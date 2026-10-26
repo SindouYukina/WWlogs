@@ -18,7 +18,8 @@ type combatEventJSONL struct {
 	Credit        combatEventCreditJSONL   `json:"credit"`
 	Summoner      combatEventSummonerJSONL `json:"summoner"`
 	Skill         combatEventSkillJSONL    `json:"skill"`
-	Damage        combatEventDamageJSONL   `json:"damage"`
+	CombatResult  combatEventResultJSONL   `json:"combatResult"`
+	Healing       *combatEventHealingJSONL `json:"healing,omitempty"`
 	Master        combatEventMasterJSONL   `json:"master"`
 }
 
@@ -64,17 +65,28 @@ type combatEventSkillJSONL struct {
 	Evidence   string           `json:"evidence,omitempty"`
 }
 
-type combatEventDamageJSONL struct {
-	ID              *uint64          `json:"damageId,omitempty"`
+type combatEventResultJSONL struct {
+	DamageID        *uint64          `json:"damageId,omitempty"`
 	SourceType      *uint64          `json:"sourceType,omitempty"`
 	BulletID        *int64           `json:"bulletId,omitempty"`
-	AmountAbs       int64            `json:"amountAbs"`
+	CombatResultAbs int64            `json:"combatResultAbs"`
 	ServerResultRaw *int32           `json:"serverResultRaw,omitempty"`
 	ChangeLifeRaw   *int32           `json:"changeLifeRaw,omitempty"`
 	CalculateType   *int32           `json:"calculateType,omitempty"`
 	ClassCandidate  string           `json:"classCandidate,omitempty"`
 	ClassStatus     resolutionStatus `json:"classStatus"`
 	ClassEvidence   string           `json:"classEvidence,omitempty"`
+}
+
+type combatEventHealingJSONL struct {
+	ReportedMagnitudeAbs int64            `json:"reportedMagnitudeAbs"`
+	MagnitudeStatus      resolutionStatus `json:"magnitudeStatus"`
+	MagnitudeEvidence    string           `json:"magnitudeEvidence,omitempty"`
+	EffectiveAmountAbs   *int64           `json:"effectiveAmountAbs"`
+	EffectiveStatus      resolutionStatus `json:"effectiveStatus"`
+	HPDeltaStatus        resolutionStatus `json:"hpDeltaStatus"`
+	OverhealAmountAbs    *int64           `json:"overhealAmountAbs"`
+	OverhealStatus       resolutionStatus `json:"overhealStatus"`
 }
 
 type combatEventMasterJSONL struct {

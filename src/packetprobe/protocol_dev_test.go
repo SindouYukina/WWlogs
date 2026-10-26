@@ -63,7 +63,7 @@ func TestCombatEventJSONLPreservesRawIDsAndUnknownResolution(t *testing.T) {
 	if err := json.NewDecoder(&jsonl).Decode(&got); err != nil {
 		t.Fatalf("decode event JSONL: %v", err)
 	}
-	if got["schemaVersion"] != float64(1) || got["eventType"] != "DAMAGE_RESULT" || got["sessionNumber"] != float64(3) || got["rpcId"] != float64(91) {
+	if got["schemaVersion"] != float64(2) || got["eventType"] != "UNCLASSIFIED_RESULT" || got["sessionNumber"] != float64(3) || got["rpcId"] != float64(91) {
 		t.Fatalf("event envelope = %#v", got)
 	}
 	source := got["source"].(map[string]any)
@@ -78,14 +78,14 @@ func TestCombatEventJSONLPreservesRawIDsAndUnknownResolution(t *testing.T) {
 	if _, exists := credit["characterId"]; exists || credit["status"] != string(resolutionUnknown) {
 		t.Fatalf("unknown credit was promoted: %#v", credit)
 	}
-	damage := got["damage"].(map[string]any)
-	if damage["damageId"] != float64(28002601) || damage["amountAbs"] != float64(177) || damage["serverResultRaw"] != float64(-177) || damage["classStatus"] != string(resolutionUnknown) {
-		t.Fatalf("raw damage evidence or unknown class changed: %#v", damage)
+	result := got["combatResult"].(map[string]any)
+	if result["damageId"] != float64(28002601) || result["combatResultAbs"] != float64(177) || result["serverResultRaw"] != float64(-177) || result["classStatus"] != string(resolutionUnknown) {
+		t.Fatalf("raw combat result evidence or unknown class changed: %#v", result)
 	}
 	runtimeFields := source["runtimeFields"].(map[string]any)
 	runtimeEntityID := runtimeFields["entityId"].(map[string]any)
-	if _, exists := damage["sourceType"]; exists || runtimeEntityID["present"] != true || runtimeEntityID["value"] != float64(30298) {
-		t.Fatalf("optional IDs or nested runtime fields malformed: source=%#v damage=%#v", source, damage)
+	if _, exists := result["sourceType"]; exists || runtimeEntityID["present"] != true || runtimeEntityID["value"] != float64(30298) {
+		t.Fatalf("optional IDs or nested runtime fields malformed: source=%#v result=%#v", source, result)
 	}
 }
 
@@ -108,6 +108,49 @@ func TestDamageResponseLabelsEntityAndKeepsCharacterUnknown(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "Entity:25320") || strings.Contains(stdout.String(), "Char:25320") {
 		t.Fatalf("entity was mislabeled or unverified character identity was presented as resolved: %q", stdout.String())
+	}
+}
+
+func TestHealingCandidateJSONLSeparatesReportedMagnitudeFromUnknownEffectiveness(t *testing.T) {
+	event := combatEvent{
+		Damage: 1311, ServerResultRaw: -1311, HasServerResult: true,
+		ChangeLifeRaw: -700, HasChangeLife: true, DamageCalculateType: 1, HasCalculateType: true,
+		EventTypeCandidate: "HEALING_CANDIDATE", EventTypeStatus: resolutionCorrelated,
+		EventTypeProof: "CalculateType=1 uses cure/heal display; HP restoration not verified",
+	}
+	view := event.jsonlView(nil)
+	encoded, err := json.Marshal(view)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(encoded, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got["schemaVersion"] != float64(2) || got["eventType"] != "HEALING_RESULT_CANDIDATE" {
+		t.Fatalf("healing event envelope = %#v", got)
+	}
+	if _, exists := got["damage"]; exists {
+		t.Fatalf("healing result was serialized in the damage object: %#v", got)
+	}
+	result := got["combatResult"].(map[string]any)
+	if result["combatResultAbs"] != float64(1311) || result["changeLifeRaw"] != float64(-700) || result["classCandidate"] != "HEALING_CANDIDATE" {
+		t.Fatalf("raw result fields changed: %#v", result)
+	}
+	healing := got["healing"].(map[string]any)
+	if healing["reportedMagnitudeAbs"] != float64(1311) || healing["magnitudeStatus"] != string(resolutionCorrelated) || healing["effectiveStatus"] != string(resolutionUnknown) || healing["hpDeltaStatus"] != string(resolutionUnknown) || healing["overhealStatus"] != string(resolutionUnknown) {
+		t.Fatalf("healing evidence classification = %#v", healing)
+	}
+	if healing["effectiveAmountAbs"] != nil || healing["overhealAmountAbs"] != nil {
+		t.Fatalf("unverified effective healing/overheal received values: %#v", healing)
+	}
+}
+
+func TestFormatNormalLabelsHealingAsCandidateResult(t *testing.T) {
+	event := combatEvent{Damage: 1311, EventTypeCandidate: "HEALING_CANDIDATE"}
+	line := event.formatNormal()
+	if !strings.Contains(line, "1311 [Healing Candidate Result]") || strings.Contains(line, "Damage Candidate Result") {
+		t.Fatalf("healing output was not labeled separately: %s", line)
 	}
 }
 
