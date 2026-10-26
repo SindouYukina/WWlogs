@@ -224,11 +224,7 @@ func (event *combatEvent) resolveEventType(masters *gameMaster) {
 }
 
 func (p *processor) writeDamageEvent(event combatEvent) {
-	if p.combatEventsJSONL != nil {
-		if err := json.NewEncoder(p.combatEventsJSONL).Encode(event.jsonlView(p.masters)); err != nil {
-			fmt.Fprintf(p.diagnostic, "combat_event_jsonl_write_error=%v\n", err)
-		}
-	}
+	p.writeStructuredEventJSONL(event.jsonlView(p.masters))
 	if _, err := fmt.Fprintln(p.stdout, event.formatNormal()); err != nil {
 		fmt.Fprintf(p.diagnostic, "stdout_write_error=%v\n", err)
 		return

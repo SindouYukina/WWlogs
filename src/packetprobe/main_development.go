@@ -37,7 +37,7 @@ func main() {
 	buffSnapshotOut := flag.String("buff-snapshot-out", "", "optionally write EntityActiveResponse Buff snapshots as local JSONL")
 	buffEventOut := flag.String("buff-event-out", "", "optionally write supported Buff lifecycle observations as local JSONL")
 	encounterSummaryOut := flag.String("encounter-summary-out", "", "optionally write evidence-labeled encounter and character summaries as Markdown")
-	combatEventsJSONLOut := flag.String("event-jsonl-out", "", "optionally write matched combat result events with raw IDs and resolution evidence as JSONL")
+	combatEventsJSONLOut := flag.String("event-jsonl-out", "", "optionally write matched combat and Buff observations with evidence as JSONL")
 	research := flag.Bool("research", false, "write per-event evidence details to stderr")
 	commandCensusOut := flag.String("command-census-out", "", "write a local JSON census of protocol commands and decode outcomes")
 	preflight := flag.Bool("preflight", false, "verify that the selected Npcap device can be opened and filtered")

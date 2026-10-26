@@ -40,6 +40,10 @@ type rawBuffSnapshot struct {
 }
 
 type buffSnapshotAuditRow struct {
+	SchemaVersion             int              `json:"schemaVersion"`
+	EventType                 string           `json:"eventType"`
+	SessionNumber             int              `json:"sessionNumber"`
+	MessageID                 uint16           `json:"messageId"`
 	Timestamp                 time.Time        `json:"timestamp"`
 	ResponseCommandID         uint16           `json:"responseCommandId"`
 	ResponseDirection         string           `json:"responseDirection"`
@@ -57,8 +61,13 @@ type buffSnapshotAuditRow struct {
 }
 
 type buffLifecycleAuditRow struct {
+	SchemaVersion       int              `json:"schemaVersion"`
+	EventType           string           `json:"eventType"`
+	SessionNumber       int              `json:"sessionNumber"`
+	MessageID           uint16           `json:"messageId"`
 	Timestamp           time.Time        `json:"timestamp"`
 	CommandID           uint16           `json:"commandId"`
+	Direction           string           `json:"direction"`
 	MessageName         string           `json:"messageName"`
 	EventKind           string           `json:"eventKind"`
 	EventTypeStatus     resolutionStatus `json:"eventTypeStatus"`
@@ -88,7 +97,8 @@ type buffLifecycleAuditRow struct {
 
 func decodeBuffLifecycleMessage(frame gameFrame, body []byte) (buffLifecycleAuditRow, error) {
 	row := buffLifecycleAuditRow{
-		Timestamp: frame.timestamp, CommandID: frame.commandID,
+		SchemaVersion: 1, EventType: "BUFF_LIFECYCLE", MessageID: frame.commandID,
+		Timestamp: frame.timestamp, CommandID: frame.commandID, Direction: frame.direction,
 		EventTypeStatus: resolutionCorrelated, InstigatorStatus: resolutionUnknown,
 		SchemaBasis: "Windows Global UHD 3.7.1 Aki.Protocol metadata; capture build unverified",
 	}
@@ -247,12 +257,13 @@ func (p *processor) handleBuffLifecycleMessage(frame gameFrame, body []byte) err
 	if err != nil {
 		return err
 	}
-	if p.buffLifecycle == nil {
-		return nil
+	row.SessionNumber = p.sessionNumber
+	if p.buffLifecycle != nil {
+		if err := json.NewEncoder(p.buffLifecycle).Encode(row); err != nil {
+			return fmt.Errorf("write Buff lifecycle row: %w", err)
+		}
 	}
-	if err := json.NewEncoder(p.buffLifecycle).Encode(row); err != nil {
-		return fmt.Errorf("write Buff lifecycle row: %w", err)
-	}
+	p.writeStructuredEventJSONL(row)
 	return nil
 }
 
@@ -331,9 +342,10 @@ func (p *processor) handleActiveResponse(frame gameFrame, body []byte) error {
 					return fmt.Errorf("parse xAs.SIs buff record: %w", err)
 				}
 				p.stats.observedBuffEvents++
-				if p.buffSnapshots != nil {
+				if p.buffSnapshots != nil || p.combatEventsJSONL != nil {
 					row := buffSnapshotAuditRow{
-						Timestamp: frame.timestamp, ResponseCommandID: frame.commandID,
+						SchemaVersion: 1, EventType: "BUFF_SNAPSHOT", SessionNumber: p.sessionNumber,
+						MessageID: frame.commandID, Timestamp: frame.timestamp, ResponseCommandID: frame.commandID,
 						ResponseDirection: frame.direction, RequestCommandID: 28481,
 						FrameToken: frame.token, EntityIDStatus: resolutionUnknown,
 						ComponentPath:             "EntityActiveResponse.field11(ComponentPbs[])->EntityComponentPb.field15(FightBuffComponent)->FightBuffComponentPb.field1(FightBuffInfos[])->FightBuffInformation",
@@ -351,10 +363,13 @@ func (p *processor) handleActiveResponse(frame gameFrame, body []byte) error {
 						row.EntityID = &entityID
 						row.EntityIDStatus = resolutionCorrelated
 					}
-					encoder := json.NewEncoder(p.buffSnapshots)
-					if err := encoder.Encode(row); err != nil {
-						return fmt.Errorf("write Buff snapshot row: %w", err)
+					if p.buffSnapshots != nil {
+						encoder := json.NewEncoder(p.buffSnapshots)
+						if err := encoder.Encode(row); err != nil {
+							return fmt.Errorf("write Buff snapshot row: %w", err)
+						}
 					}
+					p.writeStructuredEventJSONL(row)
 				}
 			}
 		}
