@@ -36,6 +36,7 @@ func main() {
 	auditOut := flag.String("audit-out", "", "optionally write matched non-secret RPC/entity/damage rows as TSV")
 	buffSnapshotOut := flag.String("buff-snapshot-out", "", "optionally write EntityActiveResponse Buff snapshots as local JSONL")
 	buffEventOut := flag.String("buff-event-out", "", "optionally write supported Buff lifecycle observations as local JSONL")
+	encounterSummaryOut := flag.String("encounter-summary-out", "", "optionally write evidence-labeled encounter and character summaries as Markdown")
 	research := flag.Bool("research", false, "write per-event evidence details to stderr")
 	commandCensusOut := flag.String("command-census-out", "", "write a local JSON census of protocol commands and decode outcomes")
 	preflight := flag.Bool("preflight", false, "verify that the selected Npcap device can be opened and filtered")
@@ -135,6 +136,19 @@ func main() {
 		}
 		defer buffEventFile.Close()
 	}
+	var encounterSummaryFile *os.File
+	if *encounterSummaryOut != "" {
+		if dir := filepath.Dir(*encounterSummaryOut); dir != "." {
+			if err := os.MkdirAll(dir, 0o700); err != nil {
+				fatal("create encounter summary directory", err)
+			}
+		}
+		encounterSummaryFile, err = os.Create(*encounterSummaryOut)
+		if err != nil {
+			fatal("create encounter summary", err)
+		}
+		defer encounterSummaryFile.Close()
+	}
 	processor := newProcessor(rsaKey, stdout, os.Stderr, auditWriter)
 	processor.masters = masters
 	processor.research = *research
@@ -144,6 +158,7 @@ func main() {
 	if buffEventFile != nil {
 		processor.buffLifecycle = buffEventFile
 	}
+	processor.encounterSummary = encounterSummaryFile
 	if *commandCensusOut != "" {
 		processor.census = newCommandCensus()
 	}
@@ -324,6 +339,9 @@ finished:
 	writeStatus("STOPPED", stopReason)
 	if err := stdout.Flush(); err != nil {
 		fmt.Fprintf(os.Stderr, "stdout flush warning: %v\n", err)
+	}
+	if err := processor.writeEncounterSummary(); err != nil {
+		fatal("write encounter summary", err)
 	}
 	processor.printSummary(os.Stderr)
 	fmt.Fprintf(os.Stderr, "capture_finished udp=%d kcp_push=%d kcp_ordered=%d kcp_messages=%d protocol_frames=%d bad_crc=%d malformed_frames=%d kernel_drops=%d duration=%s\n",

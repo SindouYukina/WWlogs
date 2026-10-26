@@ -109,29 +109,31 @@ type processorStats struct {
 }
 
 type processor struct {
-	rsa              *staticRSA
-	session          []byte
-	pending          map[uint64]pendingDamageRequest
-	pendingOrder     []pendingRef
-	pendingHead      int
-	pendingSequence  uint64
-	consumed         map[uint64]uint64
-	consumedOrder    []consumedRef
-	consumedSequence uint64
-	entities         *entityResolver
-	sourceRoles      *sourceRoleResolver
-	masters          *gameMaster
-	research         bool
-	currentFrameTime time.Time
-	stdout           io.Writer
-	diagnostic       io.Writer
-	audit            io.Writer
-	buffSnapshots    diagWriter
-	buffLifecycle    diagWriter
-	activeRequests   map[uint16]pendingActiveRequest
-	stats            processorStats
-	census           *commandCensus
-	sessionNumber    int
+	rsa                *staticRSA
+	session            []byte
+	pending            map[uint64]pendingDamageRequest
+	pendingOrder       []pendingRef
+	pendingHead        int
+	pendingSequence    uint64
+	consumed           map[uint64]uint64
+	consumedOrder      []consumedRef
+	consumedSequence   uint64
+	entities           *entityResolver
+	sourceRoles        *sourceRoleResolver
+	masters            *gameMaster
+	research           bool
+	encounterSummaries map[encounterSummaryKey]*encounterSummary
+	currentFrameTime   time.Time
+	stdout             io.Writer
+	diagnostic         io.Writer
+	audit              io.Writer
+	encounterSummary   diagWriter
+	buffSnapshots      diagWriter
+	buffLifecycle      diagWriter
+	activeRequests     map[uint16]pendingActiveRequest
+	stats              processorStats
+	census             *commandCensus
+	sessionNumber      int
 }
 
 func newProcessor(rsaKey *staticRSA, stdout, diagnostic, audit io.Writer) *processor {
@@ -807,6 +809,7 @@ func (p *processor) handleOneDamageResult(rpcID uint64, payload []byte) {
 		p.stats.unknownDamageEvents++
 	}
 	p.writeDamageEvent(event)
+	p.observeEncounterSummary(event)
 }
 
 func decryptGameBody(sequence uint32, body, sessionKey []byte) ([]byte, error) {
