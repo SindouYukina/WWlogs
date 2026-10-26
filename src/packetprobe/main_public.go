@@ -68,7 +68,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "capture_preflight=PASS adapter=%s local_ipv4=%s filter=%q\n", device, *ip, filterExpression)
 		return
 	}
-	rsaKey, err := (*staticRSA)(nil), fmt.Errorf("this revision has no embedded key")
+	rsaKey, err := loadEmbeddedPrivateKey()
 	if err != nil {
 		fatal("load embedded RSA key", err)
 	}

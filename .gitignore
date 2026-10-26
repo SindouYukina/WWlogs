@@ -1,11 +1,13 @@
 # Private local files
 /AGENTS.md
+/HANDOFF.md
 /bin/
 /data/
 /docs/
 /local-research/
 /logs/
 /references/
+/research/
 /work/
 /src/packetprobe/key_static_local.go
 

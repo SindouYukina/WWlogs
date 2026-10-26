@@ -5,8 +5,6 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
-	"os"
-	"path/filepath"
 	"testing"
 )
 
@@ -15,13 +13,9 @@ func TestPEMKeyDecryptsSessionKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(t.TempDir(), "privateKey.pem")
 	der := x509.MarshalPKCS1PrivateKey(privateKey)
 	encoded := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: der})
-	if err := os.WriteFile(path, encoded, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	key, err := loadPrivateKeyPEM(path)
+	key, err := parsePrivateKeyPEM(encoded)
 	if err != nil {
 		t.Fatal(err)
 	}

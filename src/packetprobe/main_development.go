@@ -30,9 +30,8 @@ func main() {
 	duration := flag.Duration("duration", 0, "live capture duration; 0 runs until Ctrl+C")
 	pcapIn := flag.String("pcap-in", "", "replay a saved PCAP instead of live capture")
 	pcapOut := flag.String("pcap-out", "", "optionally save captured UDP packets to a PCAP file")
-	keyFile := flag.String("key-file", defaultPrivateKeyPath(), "local-only RSA PEM used for packet decryption")
 	masterDir := flag.String("master-dir", filepath.Join("data", "global", "3.7.0", "zh-TW"), "local versioned Global master data directory")
-	verifyBaseline := flag.Bool("verify-baseline", false, "assert the known two-fight PCAP regression counts")
+	verifyBaseline := flag.Bool("verify-baseline", false, "assert the corrected Locking PCAP regression counts")
 	auditOut := flag.String("audit-out", "", "optionally write matched non-secret RPC/entity/damage rows as TSV")
 	buffSnapshotOut := flag.String("buff-snapshot-out", "", "optionally write EntityActiveResponse Buff snapshots as local JSONL")
 	buffEventOut := flag.String("buff-event-out", "", "optionally write supported Buff lifecycle observations as local JSONL")
@@ -93,9 +92,9 @@ func main() {
 		fatal("inspect local master data", statErr)
 	}
 
-	rsaKey, err := loadPrivateKeyPEM(*keyFile)
+	rsaKey, err := loadEmbeddedPrivateKey()
 	if err != nil {
-		fatal("load local RSA PEM", err)
+		fatal("load embedded RSA key", err)
 	}
 	stdout := bufio.NewWriter(os.Stdout)
 	var auditFile *os.File

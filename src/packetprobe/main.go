@@ -21,12 +21,14 @@ type segment struct {
 }
 
 type stream struct {
-	next         uint32
-	initialized  bool
-	pending      map[uint32]segment
-	assembling   [][]byte
-	assemblingAt time.Time
-	want         byte
+	next              uint32
+	initialized       bool
+	pending           map[uint32]segment
+	assembling        [][]byte
+	assemblingAt      time.Time
+	want              byte
+	applicationBuffer []byte
+	applicationSpans  []applicationSpan
 }
 
 type captureStats struct {
@@ -151,45 +153,93 @@ func consumeDatagram(payload []byte, direction string, capturedAt time.Time, str
 			state.next++
 			stats.kcpOrdered++
 			if part.fragments > 0 {
-				if len(state.assembling) == 0 || part.fragments == state.want {
+				if len(state.assembling) == 0 {
 					state.assembling = append(state.assembling, part.data)
 					state.assemblingAt = part.timestamp
-					state.want = part.fragments - 1
+				} else if part.fragments == state.want {
+					state.assembling = append(state.assembling, part.data)
 				} else {
 					state.assembling = nil
 					state.assemblingAt = time.Time{}
 				}
 				if len(state.assembling) > 0 {
-					state.assemblingAt = part.timestamp
 					state.want = part.fragments - 1
 				}
 				continue
 			}
 			app := part.data
+			appTimestamp := part.timestamp
 			if len(state.assembling) > 0 {
 				state.assembling = append(state.assembling, part.data)
-				state.assemblingAt = part.timestamp
 				app = make([]byte, 0)
 				for _, fragment := range state.assembling {
 					app = append(app, fragment...)
 				}
+				appTimestamp = state.assemblingAt
 				state.assembling = nil
-			}
-			frameTimestamp := part.timestamp
-			if len(state.assembling) == 0 && !state.assemblingAt.IsZero() {
-				frameTimestamp = state.assemblingAt
 				state.assemblingAt = time.Time{}
 			}
 			stats.kcpMessages++
-			frameCount, crcErrors, malformed := parseFrames(app, direction, frameTimestamp, processor)
-			stats.frames += frameCount
-			stats.badCRC += crcErrors
-			stats.malformed += malformed
+			processApplicationData(app, appTimestamp, direction, streams, state, processor, stats)
 		}
 	}
 	if !hasKCP && len(payload) > 0 {
 		stats.nonKCPUDP++
 	}
+}
+
+const maxApplicationFrameLength = int(^uint16(0)) + 3
+
+func processApplicationData(data []byte, capturedAt time.Time, direction string, streams map[string]*stream, state *stream, processor *processor, stats *captureStats) {
+	if len(data) == 0 {
+		return
+	}
+	state.applicationBuffer = append(state.applicationBuffer, data...)
+	if spanCount := len(state.applicationSpans); spanCount > 0 && state.applicationSpans[spanCount-1].timestamp.Equal(capturedAt) {
+		state.applicationSpans[spanCount-1].length += len(data)
+	} else {
+		state.applicationSpans = append(state.applicationSpans, applicationSpan{length: len(data), timestamp: capturedAt})
+	}
+
+	previousSession := processor.sessionGeneration
+	frameCount, crcErrors, malformed, consumed := parseFrames(state.applicationBuffer, direction, state.applicationSpans, processor)
+	stats.frames += frameCount
+	stats.badCRC += crcErrors
+	stats.malformed += malformed
+	if consumed > 0 {
+		state.applicationBuffer = append([]byte(nil), state.applicationBuffer[consumed:]...)
+		state.applicationSpans = consumeApplicationSpans(state.applicationSpans, consumed)
+	}
+	if len(state.applicationBuffer) > maxApplicationFrameLength-1 {
+		state.applicationBuffer = nil
+		state.applicationSpans = nil
+		stats.malformed++
+	}
+	if processor.sessionGeneration != previousSession {
+		clearOtherApplicationBuffers(streams, state)
+	}
+}
+
+func clearOtherApplicationBuffers(streams map[string]*stream, current *stream) {
+	for _, state := range streams {
+		if state != current {
+			state.applicationBuffer = nil
+			state.applicationSpans = nil
+		}
+	}
+}
+
+func consumeApplicationSpans(spans []applicationSpan, consumed int) []applicationSpan {
+	for consumed > 0 && len(spans) > 0 {
+		if consumed >= spans[0].length {
+			consumed -= spans[0].length
+			spans = spans[1:]
+			continue
+		}
+		spans[0].length -= consumed
+		consumed = 0
+	}
+	return spans
 }
 
 func defaultPrivateKeyPath() string {

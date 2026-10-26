@@ -13,9 +13,13 @@ func (p *processor) printSummary(w io.Writer) {
 }
 
 func (p *processor) verifyKnownBaseline() error {
-	if p.stats.damageRequests != 99 || p.stats.candidateResponses != 85 || p.stats.printed != 80 || p.stats.matchedCombatResultAbs != 310455 {
-		return fmt.Errorf("requests=%d responses=%d matched=%d combat_result_abs=%d; expected 99/85/80/310455",
-			p.stats.damageRequests, p.stats.candidateResponses, p.stats.printed, p.stats.matchedCombatResultAbs)
+	if p.stats.damageRequests != 117 || p.stats.candidateResponses != 117 || p.stats.printed != 116 || p.stats.matchedCombatResultAbs != 584134 ||
+		len(p.pending) != 1 || p.stats.unpairedResponses != 0 || p.stats.invalidResponses != 1 ||
+		p.stats.parseErrors != 0 || p.stats.decryptErrors != 0 || p.stats.compressedErrors != 0 ||
+		p.stats.handshakeFrames != 1 || p.stats.handshakeOK != 1 || p.stats.handshakeErrors != 0 {
+		return fmt.Errorf("requests=%d responses=%d matched=%d combat_result_abs=%d unmatched_requests=%d unmatched_responses=%d invalid_responses=%d parse_errors=%d decrypt_errors=%d compressed_errors=%d handshake=%d/%d/%d; expected 117/117/116/584134, 1/0/1, zero decode errors, handshake 1/1/0",
+			p.stats.damageRequests, p.stats.candidateResponses, p.stats.printed, p.stats.matchedCombatResultAbs, len(p.pending), p.stats.unpairedResponses, p.stats.invalidResponses,
+			p.stats.parseErrors, p.stats.decryptErrors, p.stats.compressedErrors, p.stats.handshakeFrames, p.stats.handshakeOK, p.stats.handshakeErrors)
 	}
 	return nil
 }

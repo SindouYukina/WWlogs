@@ -24,6 +24,11 @@ type gameFrame struct {
 	timestamp        time.Time
 }
 
+type applicationSpan struct {
+	length    int
+	timestamp time.Time
+}
+
 type protoField struct {
 	number uint64
 	wire   uint64
@@ -111,6 +116,7 @@ type processorStats struct {
 type processor struct {
 	rsa                       *staticRSA
 	session                   []byte
+	sessionGeneration         uint64
 	pending                   map[uint64]pendingDamageRequest
 	pendingOrder              []pendingRef
 	pendingHead               int
@@ -153,16 +159,19 @@ func newProcessor(rsaKey *staticRSA, stdout, diagnostic, audit io.Writer) *proce
 	}
 }
 
-func parseFrames(buffer []byte, direction string, timestamp time.Time, p *processor) (int, int, int) {
+func parseFrames(buffer []byte, direction string, spans []applicationSpan, p *processor) (int, int, int, int) {
 	frames, badCRC, malformed := 0, 0, 0
 	applicationOffset := 0
+	consumed := 0
 	var previousValid *frameBoundaryObservation
 	var pendingCRCIndexes []int
 	for len(buffer) >= 3 {
+		timestamp := applicationTimestampAt(spans, consumed)
 		payloadLen := int(binary.LittleEndian.Uint16(buffer[:2]))
 		total := payloadLen + 3
 		if total < 14 {
 			buffer = buffer[1:]
+			consumed++
 			malformed++
 			if p.census != nil {
 				p.census.malformed("short_or_unaligned_frame_candidate", timestamp, applicationOffset, uint16(payloadLen), len(buffer)+1)
@@ -182,6 +191,7 @@ func parseFrames(buffer []byte, direction string, timestamp time.Time, p *proces
 		}
 		if offset+6 > total {
 			buffer = buffer[total:]
+			consumed += total
 			malformed++
 			if p.census != nil {
 				p.census.malformed("truncated_command_header", timestamp, applicationOffset, uint16(payloadLen), total)
@@ -192,6 +202,21 @@ func parseFrames(buffer []byte, direction string, timestamp time.Time, p *proces
 		commandID := binary.LittleEndian.Uint16(frame[offset : offset+2])
 		receivedCRC := binary.LittleEndian.Uint32(frame[offset+2 : offset+6])
 		bodyStart := offset + 6
+		var compressedLength uint32
+		if compressed {
+			if bodyStart+4 > total {
+				buffer = buffer[total:]
+				consumed += total
+				malformed++
+				if p.census != nil {
+					p.census.malformed("truncated_compression_length", timestamp, applicationOffset, uint16(payloadLen), total)
+				}
+				applicationOffset += total
+				continue
+			}
+			compressedLength = binary.LittleEndian.Uint32(frame[bodyStart : bodyStart+4])
+			bodyStart += 4
+		}
 		computedCRC := crc32IEEE(frame[bodyStart:total])
 		if computedCRC != receivedCRC {
 			if p.census != nil {
@@ -213,25 +238,13 @@ func parseFrames(buffer []byte, direction string, timestamp time.Time, p *proces
 			}
 			buffer = buffer[total:]
 			badCRC++
+			consumed += total
 			applicationOffset += total
 			continue
 		}
-		var compressedLength uint32
-		if compressed {
-			if bodyStart+4 > total {
-				buffer = buffer[total:]
-				malformed++
-				if p.census != nil {
-					p.census.malformed("truncated_compression_length", timestamp, applicationOffset, uint16(payloadLen), total)
-				}
-				applicationOffset += total
-				continue
-			}
-			compressedLength = binary.LittleEndian.Uint32(frame[bodyStart : bodyStart+4])
-			bodyStart += 4
-		}
 		if bodyStart > total {
 			buffer = buffer[total:]
+			consumed += total
 			malformed++
 			if p.census != nil {
 				p.census.malformed("body_offset_exceeds_frame", timestamp, applicationOffset, uint16(payloadLen), total)
@@ -252,7 +265,7 @@ func parseFrames(buffer []byte, direction string, timestamp time.Time, p *proces
 			compressed:       compressed,
 			compressedLength: compressedLength,
 			body:             append([]byte(nil), frame[bodyStart:total]...),
-			timestamp:        timestamp,
+			timestamp:        applicationTimestampAt(spans, consumed),
 		}
 		boundary := frameBoundaryObservation{Offset: applicationOffset, MessageType: messageType, Sequence: current.sequence, Token: token, CommandID: commandID, FrameLength: total}
 		if p.census != nil {
@@ -265,9 +278,20 @@ func parseFrames(buffer []byte, direction string, timestamp time.Time, p *proces
 		frames++
 		previousValid = &boundary
 		buffer = buffer[total:]
+		consumed += total
 		applicationOffset += total
 	}
-	return frames, badCRC, malformed
+	return frames, badCRC, malformed, consumed
+}
+
+func applicationTimestampAt(spans []applicationSpan, offset int) time.Time {
+	for _, span := range spans {
+		if offset < span.length {
+			return span.timestamp
+		}
+		offset -= span.length
+	}
+	return time.Time{}
 }
 
 func crc32IEEE(data []byte) uint32 {
@@ -512,6 +536,7 @@ func (p *processor) handleProtoKeyResponse(body []byte) error {
 	p.sourceRoles.reset()
 	p.resetPendingSummaryCredits()
 	p.activeRequests = make(map[uint16]pendingActiveRequest)
+	p.sessionGeneration++
 	fmt.Fprintln(p.diagnostic, "session_key_ready bytes=32 value=redacted")
 	return nil
 }

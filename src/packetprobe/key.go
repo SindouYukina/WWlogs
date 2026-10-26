@@ -7,7 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	"os"
+
+	"wwlogs/internal/keyembed"
 )
 
 const (
@@ -20,18 +21,13 @@ type staticRSA struct {
 	d *big.Int
 }
 
-func loadPrivateKeyPEM(path string) (*staticRSA, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("read local RSA key file: %w", err)
-	}
+func parsePrivateKeyPEM(data []byte) (*staticRSA, error) {
 	block, rest := pem.Decode(data)
-	clear(data)
 	if block == nil || block.Type != "RSA PRIVATE KEY" || len(bytes.TrimSpace(rest)) != 0 {
 		return nil, errors.New("expected one PKCS#1 RSA PRIVATE KEY PEM block")
 	}
+	defer clear(block.Bytes)
 	privateKey, err := x509.ParsePKCS1PrivateKey(block.Bytes)
-	clear(block.Bytes)
 	if err != nil {
 		return nil, fmt.Errorf("parse local RSA PEM: %w", err)
 	}
@@ -42,6 +38,18 @@ func loadPrivateKeyPEM(path string) (*staticRSA, error) {
 		return nil, errors.New("local RSA PEM has an unexpected modulus size")
 	}
 	return &staticRSA{e: privateKey.E, n: new(big.Int).Set(privateKey.N), d: new(big.Int).Set(privateKey.D)}, nil
+}
+
+func loadEmbeddedPrivateKey() (*staticRSA, error) {
+	data, err := keyembed.Decrypt(keyembed.Payload{
+		Ciphertext:    embeddedKeyCiphertext,
+		EncryptionKey: embeddedKeyEncryptionKey,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("decrypt embedded RSA key: %w", err)
+	}
+	defer clear(data)
+	return parsePrivateKeyPEM(data)
 }
 
 func (key *staticRSA) decryptSessionKey(ciphertext []byte) ([]byte, error) {
