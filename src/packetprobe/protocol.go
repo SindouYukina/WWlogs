@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
-	"time"
 )
 
 type gameFrame struct {
@@ -20,12 +19,6 @@ type gameFrame struct {
 	compressed       bool
 	compressedLength uint32
 	body             []byte
-	timestamp        time.Time
-}
-
-type applicationSpan struct {
-	length    int
-	timestamp time.Time
 }
 
 type protoField struct {
@@ -65,15 +58,14 @@ type processorStats struct {
 }
 
 type processor struct {
-	rsa               *staticRSA
-	session           []byte
-	sessionGeneration uint64
-	pending           map[uint64]pendingDamageRequest
-	consumed          map[uint64]struct{}
-	stdout            io.Writer
-	diagnostic        io.Writer
-	audit             io.Writer
-	stats             processorStats
+	rsa        *staticRSA
+	session    []byte
+	pending    map[uint64]pendingDamageRequest
+	consumed   map[uint64]struct{}
+	stdout     io.Writer
+	diagnostic io.Writer
+	audit      io.Writer
+	stats      processorStats
 }
 
 func newProcessor(rsaKey *staticRSA, stdout, diagnostic, audit io.Writer) *processor {
@@ -87,15 +79,13 @@ func newProcessor(rsaKey *staticRSA, stdout, diagnostic, audit io.Writer) *proce
 	}
 }
 
-func parseFrames(buffer []byte, direction string, spans []applicationSpan, p *processor) (int, int, int, int) {
+func parseFrames(buffer []byte, direction string, p *processor) (int, int, int) {
 	frames, badCRC, malformed := 0, 0, 0
-	consumed := 0
 	for len(buffer) >= 3 {
 		payloadLen := int(binary.LittleEndian.Uint16(buffer[:2]))
 		total := payloadLen + 3
 		if total < 14 {
 			buffer = buffer[1:]
-			consumed++
 			malformed++
 			continue
 		}
@@ -111,33 +101,29 @@ func parseFrames(buffer []byte, direction string, spans []applicationSpan, p *pr
 		}
 		if offset+6 > total {
 			buffer = buffer[total:]
-			consumed += total
 			malformed++
 			continue
 		}
 		commandID := binary.LittleEndian.Uint16(frame[offset : offset+2])
 		receivedCRC := binary.LittleEndian.Uint32(frame[offset+2 : offset+6])
 		bodyStart := offset + 6
+		if crc32IEEE(frame[bodyStart:total]) != receivedCRC {
+			buffer = buffer[total:]
+			badCRC++
+			continue
+		}
 		var compressedLength uint32
 		if compressed {
 			if bodyStart+4 > total {
 				buffer = buffer[total:]
-				consumed += total
 				malformed++
 				continue
 			}
 			compressedLength = binary.LittleEndian.Uint32(frame[bodyStart : bodyStart+4])
 			bodyStart += 4
 		}
-		if crc32IEEE(frame[bodyStart:total]) != receivedCRC {
-			buffer = buffer[total:]
-			consumed += total
-			badCRC++
-			continue
-		}
 		if bodyStart > total {
 			buffer = buffer[total:]
-			consumed += total
 			malformed++
 			continue
 		}
@@ -149,24 +135,12 @@ func parseFrames(buffer []byte, direction string, spans []applicationSpan, p *pr
 			compressed:       compressed,
 			compressedLength: compressedLength,
 			body:             append([]byte(nil), frame[bodyStart:total]...),
-			timestamp:        applicationTimestampAt(spans, consumed),
 		}
 		p.handleFrame(current)
 		frames++
 		buffer = buffer[total:]
-		consumed += total
 	}
-	return frames, badCRC, malformed, consumed
-}
-
-func applicationTimestampAt(spans []applicationSpan, offset int) time.Time {
-	for _, span := range spans {
-		if offset < span.length {
-			return span.timestamp
-		}
-		offset -= span.length
-	}
-	return time.Time{}
+	return frames, badCRC, malformed
 }
 
 func crc32IEEE(data []byte) uint32 {
@@ -238,7 +212,6 @@ func (p *processor) handleProtoKeyResponse(body []byte) error {
 		clear(p.session)
 	}
 	p.session = key
-	p.sessionGeneration++
 	fmt.Fprintln(p.diagnostic, "session_key_ready bytes=32 value=redacted")
 	return nil
 }

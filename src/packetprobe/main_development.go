@@ -27,7 +27,8 @@ func main() {
 	duration := flag.Duration("duration", 0, "live capture duration; 0 runs until Ctrl+C")
 	pcapIn := flag.String("pcap-in", "", "replay a saved PCAP instead of live capture")
 	pcapOut := flag.String("pcap-out", "", "optionally save captured UDP packets to a PCAP file")
-	verifyBaseline := flag.Bool("verify-baseline", false, "assert the corrected v0.1.1 locking PCAP regression counts")
+	keyFile := flag.String("key-file", defaultPrivateKeyPath(), "local RSA PEM file used for packet decryption")
+	verifyBaseline := flag.Bool("verify-baseline", false, "assert the known two-fight PCAP regression counts")
 	auditOut := flag.String("audit-out", "", "optionally write matched non-secret RPC/entity/damage rows as TSV")
 	flag.Parse()
 
@@ -40,9 +41,9 @@ func main() {
 	if *verifyBaseline && *pcapIn == "" {
 		fatal("baseline mode", fmt.Errorf("-verify-baseline requires -pcap-in"))
 	}
-	rsaKey, err := loadEmbeddedPrivateKey()
+	rsaKey, err := loadPrivateKeyPEM(*keyFile)
 	if err != nil {
-		fatal("load embedded RSA key", err)
+		fatal("load local RSA PEM", err)
 	}
 	stdout := bufio.NewWriter(os.Stdout)
 	var auditFile *os.File
@@ -157,7 +158,7 @@ func main() {
 		if int(udp.SrcPort) >= *minPort && int(udp.SrcPort) <= *maxPort {
 			direction = "in"
 		}
-		consumeDatagram(udp.Payload, direction, packet.Metadata().CaptureInfo.Timestamp, streams, processor, &stats)
+		consumeDatagram(udp.Payload, direction, streams, processor, &stats)
 	}
 
 finished:
