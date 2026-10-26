@@ -19,6 +19,7 @@ const (
 	maxSummaryBossCandidates         = 2048
 	maxSummaryBuffObservations       = 4096
 	maxSummaryClassificationEvidence = 64
+	maxSummaryUncreditedRows         = 512
 )
 
 type encounterSummary struct {
@@ -44,6 +45,8 @@ type encounterSummary struct {
 	ownerCandidates               map[uint64]*ownerCandidateSummary
 	bossCandidates                map[bossCandidateKey]bossCandidateSummary
 	buffObservations              map[buffObservationKey]int
+	uncreditedEvents              map[uncreditedEventKey]*uncreditedEventSummary
+	uncreditedEventsOmitted       int
 }
 
 type pendingSummaryCredit struct {
@@ -109,4 +112,28 @@ type buffObservationKey struct {
 	hasBuffID   bool
 	targetID    uint64
 	hasTargetID bool
+}
+
+type uncreditedEventKey struct {
+	sessionNumber   int
+	sourceSceneID   uint64
+	hasSourceScene  bool
+	targetSceneID   uint64
+	hasTargetScene  bool
+	eventType       string
+	skillID         uint64
+	damageID        uint64
+	hasDamageID     bool
+	bulletID        int64
+	hasBulletID     bool
+	sourceEntityID  uint64
+	hasSourceEntity bool
+	targetEntityID  uint64
+	hasTargetEntity bool
+}
+
+type uncreditedEventSummary struct {
+	key       uncreditedEventKey
+	events    int
+	magnitude int64
 }
