@@ -37,6 +37,7 @@ func (p *processor) observeEncounterSummary(event combatEvent) {
 			key: key, characters: make(map[uint64]*characterSummary),
 			ownerCandidates:        make(map[uint64]*ownerCandidateSummary),
 			bossCandidates:         make(map[bossCandidateKey]bossCandidateSummary),
+			buffObservations:       make(map[buffObservationKey]int),
 			classificationEvidence: make(map[string]struct{}),
 		}
 		p.encounterSummaries[key] = summary
@@ -110,6 +111,43 @@ func (p *processor) observeEncounterSummary(event combatEvent) {
 	}
 	addBossCandidate(summary, event.Source)
 	addBossCandidate(summary, event.Target)
+}
+
+func (p *processor) observeBuffSnapshot(row buffSnapshotAuditRow) {
+	if p.encounterSummary == nil {
+		return
+	}
+	if p.encounterSummaries == nil {
+		p.encounterSummaries = make(map[encounterSummaryKey]*encounterSummary)
+	}
+	key := encounterSummaryKey{session: row.SessionNumber}
+	observation := buffObservationKey{hasBuffID: row.Buff.HasID, buffID: row.Buff.ID}
+	if row.EntityID != nil && *row.EntityID != 0 {
+		observation.targetID, observation.hasTargetID = *row.EntityID, true
+		entity, _ := p.entities.resolve(*row.EntityID)
+		if entity.hasSceneInstanceID {
+			key.sceneInstance, key.hasScene = entity.sceneInstanceID, true
+		}
+	}
+	if _, exists := p.encounterSummaries[key]; !exists && len(p.encounterSummaries) >= maxEncounterSummaryGroups {
+		key = encounterSummaryKey{overflow: true}
+	}
+	summary := p.encounterSummaries[key]
+	if summary == nil {
+		summary = &encounterSummary{
+			key: key, characters: make(map[uint64]*characterSummary),
+			ownerCandidates:        make(map[uint64]*ownerCandidateSummary),
+			bossCandidates:         make(map[bossCandidateKey]bossCandidateSummary),
+			buffObservations:       make(map[buffObservationKey]int),
+			classificationEvidence: make(map[string]struct{}),
+		}
+		p.encounterSummaries[key] = summary
+	}
+	if _, exists := summary.buffObservations[observation]; !exists && len(summary.buffObservations) >= maxSummaryBuffObservations {
+		summary.buffObservationsOmitted++
+		return
+	}
+	summary.buffObservations[observation]++
 }
 
 func addCreditedCharacterEvent(summary *encounterSummary, event combatEvent) {
@@ -256,7 +294,7 @@ func (p *processor) writeEncounterSummary() error {
 			return err
 		}
 	}
-	if _, err := fmt.Fprintln(p.encounterSummary, "\nAmounts are absolute CombatResult values. Damage and healing categories are master-based candidates. Healing is not verified as effective HP recovery, and overheal is unknown. Buff lifecycle/snapshot output remains separate; no Echo or summon attribution is inferred here."); err != nil {
+	if _, err := fmt.Fprintln(p.encounterSummary, "\nAmounts are absolute CombatResult values. Damage and healing categories are master-based candidates. Healing is not verified as effective HP recovery, and overheal is unknown. Buff snapshot observations are listed separately from combat credit; no Echo or summon attribution is inferred here."); err != nil {
 		return err
 	}
 	keys := make([]encounterSummaryKey, 0, len(p.encounterSummaries))
@@ -339,6 +377,9 @@ func writeOneEncounterSummary(w io.Writer, summary *encounterSummary) error {
 	if err := writeClassificationEvidence(w, summary); err != nil {
 		return err
 	}
+	if err := writeBuffSnapshotObservations(w, summary); err != nil {
+		return err
+	}
 	if err := writeBossCandidates(w, summary); err != nil {
 		return err
 	}
@@ -346,6 +387,54 @@ func writeOneEncounterSummary(w io.Writer, summary *encounterSummary) error {
 		return err
 	}
 	return writeOwnerCandidates(w, summary)
+}
+
+func writeBuffSnapshotObservations(w io.Writer, summary *encounterSummary) error {
+	if _, err := fmt.Fprintln(w, "\n### Buff snapshot observations"); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintln(w, "\nThese rows report Buff IDs observed in EntityActiveResponse snapshots. They do not establish apply, refresh, removal, uptime, caster, or ownership semantics."); err != nil {
+		return err
+	}
+	keys := make([]buffObservationKey, 0, len(summary.buffObservations))
+	for key := range summary.buffObservations {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		if keys[i].hasBuffID != keys[j].hasBuffID {
+			return keys[i].hasBuffID
+		}
+		if keys[i].buffID != keys[j].buffID {
+			return keys[i].buffID < keys[j].buffID
+		}
+		if keys[i].hasTargetID != keys[j].hasTargetID {
+			return keys[i].hasTargetID
+		}
+		return keys[i].targetID < keys[j].targetID
+	})
+	if len(keys) == 0 {
+		if _, err := fmt.Fprintln(w, "\n- None observed."); err != nil {
+			return err
+		}
+	}
+	for _, key := range keys {
+		buffID, targetID := "UNKNOWN", "UNKNOWN"
+		if key.hasBuffID {
+			buffID = fmt.Sprintf("%d", key.buffID)
+		}
+		if key.hasTargetID {
+			targetID = fmt.Sprintf("%d", key.targetID)
+		}
+		if _, err := fmt.Fprintf(w, "\n- BuffId %s / EntityId %s: %d snapshot observation(s)\n", buffID, targetID, summary.buffObservations[key]); err != nil {
+			return err
+		}
+	}
+	if summary.buffObservationsOmitted > 0 {
+		if _, err := fmt.Fprintf(w, "\n- Additional distinct Buff/Entity observation pairs omitted by the safety limit: %d.\n", summary.buffObservationsOmitted); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func writeClassificationEvidence(w io.Writer, summary *encounterSummary) error {

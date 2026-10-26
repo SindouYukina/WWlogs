@@ -107,6 +107,30 @@ func TestEntityActiveResponseWithoutMatchingRequestKeepsEntityUnknown(t *testing
 	}
 }
 
+func TestEntityActiveResponseAddsBuffObservationToEncounterSummary(t *testing.T) {
+	var summary bytes.Buffer
+	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
+	p.encounterSummary = &summary
+	p.sessionNumber = 3
+	const token = 17
+	if err := p.handleActiveRequest(token, appendVarintField(nil, 4, 8801)); err != nil {
+		t.Fatal(err)
+	}
+	buffRecord := appendVarintField(nil, 2, 70001)
+	response := appendBytesField(nil, 11, appendBytesField(nil, 15, appendBytesField(nil, 1, buffRecord)))
+	if err := p.handleActiveResponse(gameFrame{commandID: 26702, direction: "in", token: token}, response); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.writeEncounterSummary(); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"BuffId 70001 / EntityId 8801: 1 snapshot observation(s)", "do not establish apply, refresh, removal"} {
+		if !strings.Contains(summary.String(), want) {
+			t.Errorf("encounter summary missing %q:\n%s", want, summary.String())
+		}
+	}
+}
+
 func TestBuffLifecycleOutputRetainsUnknownFieldsAndRejectsWireMismatch(t *testing.T) {
 	var output, eventStream bytes.Buffer
 	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)

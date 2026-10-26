@@ -342,7 +342,7 @@ func (p *processor) handleActiveResponse(frame gameFrame, body []byte) error {
 					return fmt.Errorf("parse xAs.SIs buff record: %w", err)
 				}
 				p.stats.observedBuffEvents++
-				if p.buffSnapshots != nil || p.combatEventsJSONL != nil {
+				if p.buffSnapshots != nil || p.combatEventsJSONL != nil || p.encounterSummary != nil {
 					row := buffSnapshotAuditRow{
 						SchemaVersion: 1, EventType: "BUFF_SNAPSHOT", SessionNumber: p.sessionNumber,
 						MessageID: frame.commandID, Timestamp: frame.timestamp, ResponseCommandID: frame.commandID,
@@ -363,6 +363,7 @@ func (p *processor) handleActiveResponse(frame gameFrame, body []byte) error {
 						row.EntityID = &entityID
 						row.EntityIDStatus = resolutionCorrelated
 					}
+					p.observeBuffSnapshot(row)
 					if p.buffSnapshots != nil {
 						encoder := json.NewEncoder(p.buffSnapshots)
 						if err := encoder.Encode(row); err != nil {

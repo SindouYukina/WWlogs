@@ -17,6 +17,7 @@ const (
 	maxSummarySkillsPerCharacter     = 2048
 	maxSummaryOwnerCandidates        = 512
 	maxSummaryBossCandidates         = 2048
+	maxSummaryBuffObservations       = 4096
 	maxSummaryClassificationEvidence = 64
 )
 
@@ -38,9 +39,11 @@ type encounterSummary struct {
 	classificationEvidenceOmitted int
 	ownerCandidatesOmitted        int
 	bossCandidatesOmitted         int
+	buffObservationsOmitted       int
 	characters                    map[uint64]*characterSummary
 	ownerCandidates               map[uint64]*ownerCandidateSummary
 	bossCandidates                map[bossCandidateKey]bossCandidateSummary
+	buffObservations              map[buffObservationKey]int
 }
 
 type pendingSummaryCredit struct {
@@ -99,4 +102,11 @@ type bossCandidateSummary struct {
 	name      string
 	status    resolutionStatus
 	proof     string
+}
+
+type buffObservationKey struct {
+	buffID      uint64
+	hasBuffID   bool
+	targetID    uint64
+	hasTargetID bool
 }

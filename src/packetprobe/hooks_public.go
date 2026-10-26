@@ -8,6 +8,9 @@ package main
 func (p *processor) writeStructuredEventJSONL(event any) {
 }
 
+func (p *processor) observeBuffSnapshot(row buffSnapshotAuditRow) {
+}
+
 func (event combatEvent) jsonlView(masters *gameMaster) combatEventJSONL {
 	var r0 combatEventJSONL
 	return r0
