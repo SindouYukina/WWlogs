@@ -80,6 +80,47 @@ func TestEncounterSummaryWithoutEventsReportsNoMatchedEvents(t *testing.T) {
 	}
 }
 
+func TestEncounterSummaryReportsBuffSnapshotObservationsWithoutLifecycleClaims(t *testing.T) {
+	var output bytes.Buffer
+	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
+	p.encounterSummary = &output
+	p.entities.entities[8801] = runtimeEntity{entityID: 8801, sceneInstanceID: 9001, hasSceneInstanceID: true, sourceMessageID: 26702}
+	entityID := uint64(8801)
+	p.observeBuffSnapshot(buffSnapshotAuditRow{
+		SessionNumber: 4,
+		Buff:          rawBuffSnapshot{ID: 70001, HasID: true},
+		EntityID:      &entityID,
+	})
+	p.observeBuffSnapshot(buffSnapshotAuditRow{
+		SessionNumber: 4,
+		Buff:          rawBuffSnapshot{ID: 70001, HasID: true},
+		EntityID:      &entityID,
+	})
+
+	if len(p.encounterSummaries) != 1 {
+		t.Fatalf("summary scopes = %d, want 1", len(p.encounterSummaries))
+	}
+	if err := p.writeEncounterSummary(); err != nil {
+		t.Fatal(err)
+	}
+	text := output.String()
+	for _, want := range []string{
+		"Matched result events: 0",
+		"Buff snapshot observations",
+		"BuffId 70001 / EntityId 8801: 2 snapshot observation(s)",
+		"do not establish apply, refresh, removal, uptime, caster, or ownership semantics",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("summary missing %q:\n%s", want, text)
+		}
+	}
+	for _, forbidden := range []string{"BuffId 70001 was applied", "caster EntityId 8801"} {
+		if strings.Contains(text, forbidden) {
+			t.Errorf("summary made an unsupported lifecycle claim %q", forbidden)
+		}
+	}
+}
+
 func TestEncounterSummaryBackfillsEarlierSourceEventsAsCorrelated(t *testing.T) {
 	var output bytes.Buffer
 	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
