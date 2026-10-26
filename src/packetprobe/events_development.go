@@ -9,8 +9,8 @@ import (
 
 func (event combatEvent) jsonlView(masters *gameMaster) combatEventJSONL {
 	view := combatEventJSONL{
-		SchemaVersion: 1,
-		EventType:     "DAMAGE_RESULT",
+		SchemaVersion: 2,
+		EventType:     combatEventJSONLType(event.EventTypeCandidate),
 		Timestamp:     event.Timestamp,
 		SessionNumber: event.SessionNumber,
 		RPCID:         event.RPCID,
@@ -19,13 +19,19 @@ func (event combatEvent) jsonlView(masters *gameMaster) combatEventJSONL {
 		Credit:        combatEventCreditJSONL{Status: event.CharacterStatus, NameStatus: event.CharacterNameStatus, Evidence: event.CharacterProof},
 		Summoner:      combatEventSummonerJSONL{EntityIDs: append([]uint64(nil), event.SummonerCharacter.EntityIDs...), Status: event.SummonerCharacter.Status, Evidence: event.SummonerCharacter.Proof},
 		Skill:         combatEventSkillJSONL{ID: event.SkillID, MessageID: event.SkillMessageID, Name: event.SkillName, NameKind: event.SkillNameKind, Status: event.SkillStatus, NameStatus: event.SkillNameStatus, Evidence: event.SkillProof},
-		Damage: combatEventDamageJSONL{
-			ID: optionalUint64(event.DamageID, event.HasDamageID), SourceType: optionalUint64(event.DamageSourceType, event.HasDamageSourceType),
-			BulletID: optionalInt64(event.BulletID, event.HasBulletID), AmountAbs: event.Damage,
+		CombatResult: combatEventResultJSONL{
+			DamageID: optionalUint64(event.DamageID, event.HasDamageID), SourceType: optionalUint64(event.DamageSourceType, event.HasDamageSourceType),
+			BulletID: optionalInt64(event.BulletID, event.HasBulletID), CombatResultAbs: event.Damage,
 			ServerResultRaw: optionalInt32(event.ServerResultRaw, event.HasServerResult), ChangeLifeRaw: optionalInt32(event.ChangeLifeRaw, event.HasChangeLife),
 			CalculateType: optionalInt32(event.DamageCalculateType, event.HasCalculateType), ClassCandidate: event.EventTypeCandidate,
 			ClassStatus: event.EventTypeStatus, ClassEvidence: event.EventTypeProof,
 		},
+	}
+	if event.EventTypeCandidate == "HEALING_CANDIDATE" {
+		view.Healing = &combatEventHealingJSONL{
+			ReportedMagnitudeAbs: event.Damage, MagnitudeStatus: event.EventTypeStatus, MagnitudeEvidence: event.EventTypeProof,
+			EffectiveStatus: resolutionUnknown, HPDeltaStatus: resolutionUnknown, OverhealStatus: resolutionUnknown,
+		}
 	}
 	view.Source.EntityID = optionalUint64(event.SourceEntityID, event.HasSourceEntity)
 	view.Target.EntityID = optionalUint64(event.TargetEntityID, event.HasTargetEntity)
@@ -55,6 +61,19 @@ func (event combatEvent) jsonlView(masters *gameMaster) combatEventJSONL {
 		}
 	}
 	return view
+}
+
+func combatEventJSONLType(candidate string) string {
+	switch candidate {
+	case "DAMAGE_CANDIDATE":
+		return "DAMAGE_RESULT"
+	case "HEALING_CANDIDATE":
+		return "HEALING_RESULT_CANDIDATE"
+	case "OTHER_COMBAT_RESULT_CANDIDATE":
+		return "OTHER_COMBAT_RESULT_CANDIDATE"
+	default:
+		return "UNCLASSIFIED_RESULT"
+	}
 }
 
 func optionalUint64(value uint64, present bool) *uint64 {
@@ -165,7 +184,7 @@ func (event combatEvent) formatNormal() string {
 			target = fmt.Sprintf("Character:%d [name %s] [Entity:%s]", event.Target.Character.ID, event.Target.Character.NameStatus, targetID)
 		}
 	}
-	line := fmt.Sprintf("%s  %s  %s  [%s]  %s  %s  %d", timestamp, source, skill, provenance, credit, target, event.Damage)
+	line := fmt.Sprintf("%s  %s  %s  [%s]  %s  %s", timestamp, source, skill, provenance, credit, target)
 	if event.SummonerCharacter.HasCharacterID {
 		label := fmt.Sprintf("Character:%d", event.SummonerCharacter.CharacterID)
 		if event.SummonerCharacter.HasCharacter && event.SummonerCharacter.Character.Name != "" && (event.SummonerCharacter.NameStatus == resolutionVerified || event.SummonerCharacter.NameStatus == resolutionCorrelated) {
@@ -175,7 +194,19 @@ func (event combatEvent) formatNormal() string {
 	} else if len(event.SummonerCharacter.EntityIDs) > 0 {
 		line += fmt.Sprintf("  SummonerEntityChain:%v [UNKNOWN]", event.SummonerCharacter.EntityIDs)
 	}
-	return line
+	resultLabel := "Combat Result"
+	switch event.EventTypeCandidate {
+	case "DAMAGE_CANDIDATE":
+		resultLabel = "Damage Candidate Result"
+	case "HEALING_CANDIDATE":
+		resultLabel = "Healing Candidate Result"
+	case "OTHER_COMBAT_RESULT_CANDIDATE":
+		resultLabel = "Other Combat Result Candidate"
+	}
+	if resultLabel == "Combat Result" {
+		return fmt.Sprintf("%s  %d", line, event.Damage)
+	}
+	return fmt.Sprintf("%s  %d [%s]", line, event.Damage, resultLabel)
 }
 
 func marshalRuntimeIdentity(entity runtimeEntity) string {
