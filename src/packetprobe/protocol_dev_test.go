@@ -1,0 +1,211 @@
+//go:build wwdev
+
+package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"strings"
+	"testing"
+)
+
+func TestDamageResponsePreservesRawResultsAndMarksHealingOnlyAsCandidate(t *testing.T) {
+	var stdout, diagnostic, audit bytes.Buffer
+	p := newProcessor(nil, &stdout, &diagnostic, &audit)
+	p.masters = &gameMaster{damage: map[uint64]damageMasterRecord{
+		120900505: {ID: 120900505, CalculateType: 1, GameVersion: "3.7.0", ResourceVersion: "3.7.8", SourceCommit: "test-commit", SourceTable: "damage.json"},
+	}}
+	p.pending[9] = pendingDamageRequest{damageID: 120900505, hasDamageID: true}
+	response := appendVarintField(nil, 4, 0)
+	response = appendVarintField(response, 5, 0)
+	changeLife := int32(-700)
+	serverResult := int32(-1311)
+	response = appendVarintField(response, 7, uint64(uint32(changeLife)))    // raw ChangeLife
+	response = appendVarintField(response, 10, uint64(uint32(serverResult))) // raw server result
+
+	p.handleOneDamageResult(9, response)
+
+	if p.stats.printed != 1 || p.stats.matchedCombatResultAbs != 1311 || p.stats.damageCandidateResult != 0 || p.stats.healingCandidateEvents != 1 || p.stats.healingCandidateResult != 1311 || p.stats.otherCandidateResult != 0 || p.stats.unclassifiedResult != 0 {
+		t.Fatalf("candidate classification changed raw result accounting: %+v", p.stats)
+	}
+	var summary bytes.Buffer
+	p.printSummary(&summary)
+	for _, field := range []string{"matched_combat_result_abs=1311", "damage_candidate_result_abs=0", "healing_candidate_result_abs=1311", "other_combat_candidate_result_abs=0", "unclassified_result_abs=0"} {
+		if !strings.Contains(summary.String(), field) {
+			t.Fatalf("summary missing semantic result bucket %q: %s", field, summary.String())
+		}
+	}
+	if !strings.Contains(audit.String(), "\t-1311\t-700\t1\tHEALING_CANDIDATE\tCORRELATED\t") {
+		t.Fatalf("audit did not preserve signed server fields and candidate provenance: %q", audit.String())
+	}
+	if strings.Contains(audit.String(), "VERIFIED\t") {
+		t.Fatalf("cross-version CalculateType was promoted to VERIFIED: %q", audit.String())
+	}
+}
+
+func TestDamageResponseLabelsEntityAndKeepsCharacterUnknown(t *testing.T) {
+	var stdout, diagnostic bytes.Buffer
+	p := newProcessor(nil, &stdout, &diagnostic, nil)
+	p.pending[42] = pendingDamageRequest{attackerEntityID: 25320, hasAttackerEntityID: true, damageID: 70010001, hasDamageID: true, damageSourceType: 1, hasDamageSourceType: true, bulletID: -1, hasBulletID: true}
+	response := appendVarintField(nil, 4, 0)     // success
+	response = appendVarintField(response, 5, 0) // not immune
+	response = appendVarintField(response, 10, 9001)
+
+	p.handleOneDamageResult(42, response)
+	p.handleOneDamageResult(42, response)
+
+	if got, want := stdout.String(), "--:--:--.---  Unknown [Entity:25320]  SkillId:?  [DamageId:70010001, Source:Effect, BulletId:-1]  Credit:?  Unknown [Entity:?]  9001\n"; got != want {
+		t.Fatalf("stdout = %q, want %q", got, want)
+	}
+	if p.stats.printed != 1 || p.stats.duplicateResponses != 1 || p.stats.matchedCombatResultAbs != 9001 || p.stats.unclassifiedResult != 9001 {
+		t.Fatalf("unexpected stats: printed=%d duplicates=%d matched_result_abs=%d unclassified_abs=%d", p.stats.printed, p.stats.duplicateResponses, p.stats.matchedCombatResultAbs, p.stats.unclassifiedResult)
+	}
+	if !strings.Contains(stdout.String(), "Entity:25320") || strings.Contains(stdout.String(), "Char:25320") {
+		t.Fatalf("entity was mislabeled or unverified character identity was presented as resolved: %q", stdout.String())
+	}
+}
+
+func TestDamageResponseWithoutSourceUsesUnknown(t *testing.T) {
+	var stdout, diagnostic bytes.Buffer
+	p := newProcessor(nil, &stdout, &diagnostic, nil)
+	p.pending[7] = pendingDamageRequest{}
+	response := appendVarintField(nil, 4, 0)
+	response = appendVarintField(response, 5, 0)
+	response = appendVarintField(response, 10, 33)
+
+	p.handleOneDamageResult(7, response)
+
+	if got, want := stdout.String(), "--:--:--.---  Unknown [Entity:?]  SkillId:?  [DamageId:?, Source:Unknown]  Credit:?  Unknown [Entity:?]  33\n"; got != want {
+		t.Fatalf("stdout = %q, want %q", got, want)
+	}
+	if p.stats.missingAttackerEntityID != 1 {
+		t.Fatalf("missingAttackerEntityID = %d, want 1", p.stats.missingAttackerEntityID)
+	}
+}
+
+func TestCorrelatedRoleIsCreditNotSourceIdentity(t *testing.T) {
+	event := combatEvent{
+		SourceEntityID:      90,
+		HasSourceEntity:     true,
+		CharacterID:         1312,
+		CharacterName:       "Role",
+		CharacterNameStatus: resolutionVerified,
+		CharacterStatus:     resolutionCorrelated,
+		DamageID:            70010001,
+		HasDamageID:         true,
+		Damage:              100,
+	}
+	got := event.formatNormal()
+	if !strings.Contains(got, "Unknown [Entity:90]") || !strings.Contains(got, "Credit:Role [CORRELATED; name VERIFIED]") {
+		t.Fatalf("correlated role must be separate from source entity identity: %q", got)
+	}
+	if strings.Contains(got, "Role [CORRELATED] [Entity:90]") {
+		t.Fatalf("correlated role was presented as the source entity: %q", got)
+	}
+}
+
+func TestUnverifiedLocalizedSkillNameIsNotDisplayed(t *testing.T) {
+	event := combatEvent{
+		SkillID:         1312011,
+		SkillName:       "Unverified label",
+		SkillStatus:     resolutionVerified,
+		SkillNameStatus: resolutionUnknown,
+	}
+	got := event.formatNormal()
+	if !strings.Contains(got, "SkillId:1312011") || strings.Contains(got, "Unverified label") {
+		t.Fatalf("unverified skill label was displayed: %q", got)
+	}
+}
+
+func TestResolvedCharacterIDRemainsVisibleWhenNameIsUnknown(t *testing.T) {
+	event := combatEvent{
+		SourceEntityID:      90,
+		HasSourceEntity:     true,
+		CharacterID:         1312,
+		CharacterStatus:     resolutionCorrelated,
+		CharacterNameStatus: resolutionUnknown,
+		Damage:              100,
+	}
+	got := event.formatNormal()
+	if !strings.Contains(got, "Credit:Character:1312 [CORRELATED; name UNKNOWN]") {
+		t.Fatalf("resolved character ID should remain visible without a localized name: %q", got)
+	}
+	if !strings.Contains(got, "Unknown [Entity:90]") {
+		t.Fatalf("character credit must not replace source entity identity: %q", got)
+	}
+}
+
+func TestRuntimeIdentityAuditKeepsOwnerAndSummonerNamespacesSeparate(t *testing.T) {
+	entity := runtimeEntity{
+		entityID: 500, sceneInstanceID: 43, hasSceneInstanceID: true,
+		ownerID: 88, hasOwnerID: true, ownerIncID: 889, hasOwnerIncID: true,
+		summonerID: 600, hasSummonerID: true, sceneSummonerID: 800, hasSceneSummonerID: true,
+		playerEntityID: 640, hasPlayerEntityID: true,
+		playerID: 77, hasPlayerID: true, roleID: 1312, hasRoleID: true,
+		roleSourceFieldPath: "JoinSceneNotify.SceneInfo.PlayerInfos[].PlayerSceneGroupData[].FightRoleInfos[].RoleId",
+		sourceMessageID:     18559, sourceFieldPath: "JoinSceneNotify.SceneInfo.AoiData.Entities.EntityPb.Id",
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(marshalRuntimeIdentity(entity)), &got); err != nil {
+		t.Fatal(err)
+	}
+	for name, value := range map[string]uint64{
+		"entityId": 500, "sceneInstanceId": 43, "ownerId": 88, "ownerIncId": 889,
+		"summonerId": 600, "sceneSummonerId": 800, "playerEntityId": 640,
+		"playerId": 77, "roleId": 1312,
+	} {
+		field, ok := got[name].(map[string]any)
+		if !ok || field["value"] != float64(value) || field["present"] != true {
+			t.Fatalf("runtime audit field %s lost its value/presence: %#v", name, got[name])
+		}
+	}
+	if got["sourceMessageId"] != float64(18559) || got["sourceFieldPath"] != entity.sourceFieldPath {
+		t.Fatalf("runtime audit provenance missing: %#v", got)
+	}
+	if got["roleSourceFieldPath"] != entity.roleSourceFieldPath {
+		t.Fatalf("role identity provenance missing: %#v", got)
+	}
+}
+
+func TestSummonerEntityChainResolvesCharacterSeparatelyFromDamageCredit(t *testing.T) {
+	resolver := newEntityResolver()
+	add := func(entityID, configID, configType uint64, summonerID uint64, hasSummoner bool) {
+		entity := appendVarintField(nil, 1, entityID)
+		if configID != 0 {
+			entity = appendVarintField(entity, 2, configID)
+		}
+		if configType != 0 {
+			entity = appendVarintField(entity, 3, configType)
+		}
+		if hasSummoner {
+			summoner := appendVarintField(nil, 1, summonerID)
+			entity = appendBytesField(entity, 11, appendBytesField(nil, 4, summoner))
+		}
+		notify := appendBytesField(appendVarintField(nil, 1, 1), 6, entity)
+		if _, err := resolver.applyEntityAddNotify(notify); err != nil {
+			t.Fatal(err)
+		}
+	}
+	add(100, 1312, 3, 0, false) // summoner entity is a character.
+	add(101, 0, 0, 100, true)   // intermediate summon.
+	add(200, 0, 0, 101, true)   // damage source summon.
+	masters := &gameMaster{characters: map[uint64]masterRecord{
+		1312: {ID: 1312, Name: "Test Role", NameStatus: string(resolutionVerified), Status: string(resolutionVerified)},
+	}}
+	source, _ := resolver.resolve(200)
+	got := resolveSummonerCharacter(resolver, masters, source)
+	if !got.HasCharacterID || got.CharacterID != 1312 || !got.HasCharacter || got.Status != resolutionCorrelated {
+		t.Fatalf("summoner chain did not resolve a separately correlated character: %+v", got)
+	}
+	if len(got.EntityIDs) != 2 || got.EntityIDs[0] != 101 || got.EntityIDs[1] != 100 {
+		t.Fatalf("summoner chain = %v, want [101 100]", got.EntityIDs)
+	}
+	if !strings.Contains(got.Proof, "SummonerId") || !strings.Contains(got.Proof, "CreatureDataId") {
+		t.Fatalf("summoner chain provenance missing: %q", got.Proof)
+	}
+	event := combatEvent{Source: resolveEntityIdentity(resolver, masters, 200), SummonerCharacter: got, Damage: 42}
+	line := event.formatNormal()
+	if !strings.Contains(line, "Credit:?") || !strings.Contains(line, "Summoner:Test Role [CORRELATED]") {
+		t.Fatalf("summoner relation must remain separate from damage credit: %q", line)
+	}
+}

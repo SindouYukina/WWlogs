@@ -4,6 +4,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -17,6 +18,8 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 	"github.com/google/gopacket/pcapgo"
+
+	"wwlogs/internal/buildinfo"
 )
 
 func main() {
@@ -27,9 +30,19 @@ func main() {
 	duration := flag.Duration("duration", 0, "live capture duration; 0 runs until Ctrl+C")
 	pcapIn := flag.String("pcap-in", "", "replay a saved PCAP instead of live capture")
 	pcapOut := flag.String("pcap-out", "", "optionally save captured UDP packets to a PCAP file")
-	keyFile := flag.String("key-file", defaultPrivateKeyPath(), "local RSA PEM file used for packet decryption")
+	keyFile := flag.String("key-file", defaultPrivateKeyPath(), "local-only RSA PEM used for packet decryption")
+	masterDir := flag.String("master-dir", filepath.Join("data", "global", "3.7.0", "zh-TW"), "local versioned Global master data directory")
 	verifyBaseline := flag.Bool("verify-baseline", false, "assert the known two-fight PCAP regression counts")
 	auditOut := flag.String("audit-out", "", "optionally write matched non-secret RPC/entity/damage rows as TSV")
+	buffSnapshotOut := flag.String("buff-snapshot-out", "", "optionally write EntityActiveResponse Buff snapshots as local JSONL")
+	buffEventOut := flag.String("buff-event-out", "", "optionally write supported Buff lifecycle observations as local JSONL")
+	research := flag.Bool("research", false, "write per-event evidence details to stderr")
+	commandCensusOut := flag.String("command-census-out", "", "write a local JSON census of protocol commands and decode outcomes")
+	preflight := flag.Bool("preflight", false, "verify that the selected Npcap device can be opened and filtered")
+	filter := flag.String("filter", "", "optional BPF filter; defaults to the configured UDP port range")
+	stopFile := flag.String("stop-file", "", "stop a live capture cleanly when this file appears")
+	statusFile := flag.String("status-file", "", "write live capture status JSON to this path")
+	maxPCAPBytes := flag.Int64("max-pcap-bytes", 0, "stop before a live PCAP would exceed this size")
 	flag.Parse()
 
 	if *minPort < 1 || *maxPort > 65535 || *minPort > *maxPort {
@@ -41,6 +54,43 @@ func main() {
 	if *verifyBaseline && *pcapIn == "" {
 		fatal("baseline mode", fmt.Errorf("-verify-baseline requires -pcap-in"))
 	}
+	if *maxPCAPBytes > 0 && *maxPCAPBytes < 24 {
+		fatal("PCAP size limit", fmt.Errorf("-max-pcap-bytes must be at least 24"))
+	}
+	filterExpression := *filter
+	if filterExpression == "" {
+		filterExpression = fmt.Sprintf("udp and portrange %d-%d", *minPort, *maxPort)
+	}
+	if *preflight {
+		device, err := findDeviceByIP(*ip)
+		if err != nil {
+			fatal("find Npcap adapter", err)
+		}
+		handle, err := pcap.OpenLive(device, 65535, false, time.Second)
+		if err != nil {
+			fatal("open Npcap adapter", err)
+		}
+		defer handle.Close()
+		if err := handle.SetBPFFilter(filterExpression); err != nil {
+			fatal("set capture filter", err)
+		}
+		fmt.Fprintf(os.Stderr, "capture_preflight=PASS adapter=%s local_ipv4=%s filter=%q\n", device, *ip, filterExpression)
+		return
+	}
+	if (*stopFile != "" || *statusFile != "" || *maxPCAPBytes > 0) && (*pcapIn != "" || *pcapOut == "") {
+		fatal("live capture controls", fmt.Errorf("-stop-file, -status-file, and -max-pcap-bytes require live capture with -pcap-out"))
+	}
+	var masters *gameMaster
+	var err error
+	if _, statErr := os.Stat(*masterDir); statErr == nil {
+		masters, err = loadGameMaster(*masterDir)
+		if err != nil {
+			fatal("load local master data", err)
+		}
+	} else if !os.IsNotExist(statErr) {
+		fatal("inspect local master data", statErr)
+	}
+
 	rsaKey, err := loadPrivateKeyPEM(*keyFile)
 	if err != nil {
 		fatal("load local RSA PEM", err)
@@ -54,12 +104,56 @@ func main() {
 			fatal("create event audit", err)
 		}
 		defer auditFile.Close()
-		if _, err := fmt.Fprintln(auditFile, "rpc_id\tattacker_entity_id\ttarget_entity_id\tskill_level\tskill_id\tskill_message_id\tdamage_id\tdamage"); err != nil {
+		if _, err := fmt.Fprintln(auditFile, "timestamp\trpc_id\tattacker_entity_id\ttarget_entity_id\tattacker_runtime_status\tattacker_runtime_evidence\ttarget_runtime_status\ttarget_runtime_evidence\tcharacter_id\tcharacter_name\tcharacter_status\tcharacter_evidence\tskill_id\tskill_name\tskill_status\tskill_evidence\tskill_message_id\tdamage_id\tmonster_id\ttarget_name\ttarget_monster_status\ttarget_monster_evidence\tsummoner_id\tsummoner_character_id\tsummoner_character_name\tsummoner_character_status\tsummoner_character_evidence\tsummoner_entity_chain\tplayer_entity_id\tdamage\tdamage_source_type\tbullet_id\tattacker_runtime_fields_json\ttarget_runtime_fields_json\tserver_result_raw\tchange_life_raw\tdamage_calculate_type\tevent_type_candidate\tevent_type_status\tevent_type_evidence\tcharacter_name_status\tskill_name_status"); err != nil {
 			fatal("write event audit header", err)
 		}
 		auditWriter = auditFile
 	}
+	var buffSnapshotFile *os.File
+	if *buffSnapshotOut != "" {
+		if dir := filepath.Dir(*buffSnapshotOut); dir != "." {
+			if err := os.MkdirAll(dir, 0o700); err != nil {
+				fatal("create Buff snapshot directory", err)
+			}
+		}
+		buffSnapshotFile, err = os.Create(*buffSnapshotOut)
+		if err != nil {
+			fatal("create Buff snapshot JSONL", err)
+		}
+		defer buffSnapshotFile.Close()
+	}
+	var buffEventFile *os.File
+	if *buffEventOut != "" {
+		if dir := filepath.Dir(*buffEventOut); dir != "." {
+			if err := os.MkdirAll(dir, 0o700); err != nil {
+				fatal("create Buff lifecycle directory", err)
+			}
+		}
+		buffEventFile, err = os.Create(*buffEventOut)
+		if err != nil {
+			fatal("create Buff lifecycle JSONL", err)
+		}
+		defer buffEventFile.Close()
+	}
 	processor := newProcessor(rsaKey, stdout, os.Stderr, auditWriter)
+	processor.masters = masters
+	processor.research = *research
+	if buffSnapshotFile != nil {
+		processor.buffSnapshots = buffSnapshotFile
+	}
+	if buffEventFile != nil {
+		processor.buffLifecycle = buffEventFile
+	}
+	if *commandCensusOut != "" {
+		processor.census = newCommandCensus()
+	}
+	if masters == nil {
+		fmt.Fprintf(os.Stderr, "master_data_unavailable path=%s; names will remain unresolved\n", *masterDir)
+	} else {
+		fmt.Fprintf(os.Stderr, "master_data_loaded game=%s resource=%s region=%s language=%s characters=%d monsters=%d skills=%d damage=%d buffs=%s\n",
+			masters.manifest.GameVersion, masters.manifest.ResourceVersion, masters.manifest.ClientRegion, masters.manifest.Language,
+			len(masters.characters), len(masters.monsters), len(masters.skills), len(masters.damage), masters.manifest.BuffStatus)
+	}
 
 	var device string
 	var handle *pcap.Handle
@@ -81,8 +175,7 @@ func main() {
 	}
 	defer handle.Close()
 
-	filter := fmt.Sprintf("udp and portrange %d-%d", *minPort, *maxPort)
-	if err := handle.SetBPFFilter(filter); err != nil {
+	if err := handle.SetBPFFilter(filterExpression); err != nil {
 		fatal("set capture filter", err)
 	}
 
@@ -106,15 +199,61 @@ func main() {
 	}
 
 	if *pcapIn == "" {
-		fmt.Fprintf(os.Stderr, "WWLOGS live capture started adapter=%s filter=%q; login and fight normally; Ctrl+C stops capture\n", device, filter)
+		fmt.Fprintf(os.Stderr, "WWLOGS live capture started adapter=%s filter=%q\n", device, filterExpression)
 	} else {
-		fmt.Fprintf(os.Stderr, "WWLOGS offline replay started file=%s filter=%q\n", *pcapIn, filter)
+		fmt.Fprintf(os.Stderr, "WWLOGS offline replay started file=%s filter=%q\n", *pcapIn, filterExpression)
 	}
 
 	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
 	streams := make(map[string]*stream)
 	stats := captureStats{}
 	started := time.Now()
+	stopReason := "deadline"
+	currentPCAPBytes := int64(24)
+	status := captureRunStatus{
+		Build:        buildinfo.CurrentRecord(),
+		PID:          os.Getpid(),
+		State:        "RUNNING",
+		StartedAt:    started,
+		UpdatedAt:    started,
+		Adapter:      device,
+		LocalIPv4:    *ip,
+		Filter:       filterExpression,
+		PCAPPath:     *pcapOut,
+		PCAPBytes:    currentPCAPBytes,
+		MaxPCAPBytes: *maxPCAPBytes,
+	}
+	if *duration > 0 && *pcapIn == "" {
+		status.DeadlineAt = started.Add(*duration)
+	}
+	lastStatusWrite := time.Time{}
+	writeStatus := func(state, reason string) {
+		if *statusFile == "" {
+			return
+		}
+		now := time.Now()
+		if state == "RUNNING" && !lastStatusWrite.IsZero() && now.Sub(lastStatusWrite) < time.Second {
+			return
+		}
+		if statsResult, statsErr := handle.Stats(); statsErr == nil && statsResult != nil {
+			stats.kernelDrops = statsResult.PacketsDropped
+		}
+		status.State = state
+		status.StopReason = reason
+		status.UpdatedAt = now
+		lastStatusWrite = now
+		status.UDPPackets = stats.udpPackets
+		status.KernelDrops = stats.kernelDrops
+		status.PCAPBytes = currentPCAPBytes
+		data, err := json.Marshal(status)
+		if err == nil {
+			err = os.WriteFile(*statusFile, data, 0o600)
+		}
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "capture_status_write_error=%v\n", err)
+		}
+	}
+	writeStatus("RUNNING", "")
 	stop := make(chan os.Signal, 1)
 	if *pcapIn == "" {
 		signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
@@ -122,8 +261,15 @@ func main() {
 	}
 	for *pcapIn != "" || *duration == 0 || time.Since(started) < *duration {
 		if *pcapIn == "" {
+			if *stopFile != "" {
+				if _, err := os.Stat(*stopFile); err == nil {
+					stopReason = "requested"
+					goto finished
+				}
+			}
 			select {
 			case <-stop:
+				stopReason = "signal"
 				goto finished
 			default:
 			}
@@ -131,6 +277,7 @@ func main() {
 		packet, packetErr := packetSource.NextPacket()
 		if packetErr != nil {
 			if packetErr == pcap.NextErrorTimeoutExpired {
+				writeStatus("RUNNING", "")
 				continue
 			}
 			if *pcapIn != "" && packetErr == io.EOF {
@@ -144,9 +291,15 @@ func main() {
 			continue
 		}
 		if pcapWriter != nil {
+			recordBytes := int64(16 + len(packet.Data()))
+			if *maxPCAPBytes > 0 && currentPCAPBytes+recordBytes > *maxPCAPBytes {
+				stopReason = "size_limit"
+				goto finished
+			}
 			if err := pcapWriter.WritePacket(packet.Metadata().CaptureInfo, packet.Data()); err != nil {
 				fatal("write captured PCAP packet", err)
 			}
+			currentPCAPBytes += recordBytes
 		}
 		udpLayer := packet.Layer(layers.LayerTypeUDP)
 		if udpLayer == nil {
@@ -154,23 +307,37 @@ func main() {
 		}
 		udp := udpLayer.(*layers.UDP)
 		stats.udpPackets++
-		direction := "out"
-		if int(udp.SrcPort) >= *minPort && int(udp.SrcPort) <= *maxPort {
-			direction = "in"
-		}
-		consumeDatagram(udp.Payload, direction, streams, processor, &stats)
+		direction := packetDirection(packet, *ip, udp, *minPort, *maxPort)
+		consumeDatagram(udp.Payload, direction, packet.Metadata().CaptureInfo.Timestamp, streams, processor, &stats)
+		writeStatus("RUNNING", "")
 	}
 
 finished:
 	if statsResult, statsErr := handle.Stats(); statsErr == nil && statsResult != nil {
 		stats.kernelDrops = statsResult.PacketsDropped
 	}
+	if pcapFile != nil {
+		if err := pcapFile.Sync(); err != nil {
+			fmt.Fprintf(os.Stderr, "pcap_sync_error=%v\n", err)
+		}
+	}
+	writeStatus("STOPPED", stopReason)
 	if err := stdout.Flush(); err != nil {
 		fmt.Fprintf(os.Stderr, "stdout flush warning: %v\n", err)
 	}
 	processor.printSummary(os.Stderr)
 	fmt.Fprintf(os.Stderr, "capture_finished udp=%d kcp_push=%d kcp_ordered=%d kcp_messages=%d protocol_frames=%d bad_crc=%d malformed_frames=%d kernel_drops=%d duration=%s\n",
 		stats.udpPackets, stats.kcpPush, stats.kcpOrdered, stats.kcpMessages, stats.frames, stats.badCRC, stats.malformed, stats.kernelDrops, time.Since(started).Round(time.Millisecond))
+	if *commandCensusOut != "" {
+		if dir := filepath.Dir(*commandCensusOut); dir != "." {
+			if err := os.MkdirAll(dir, 0o700); err != nil {
+				fatal("create command census directory", err)
+			}
+		}
+		if err := processor.census.write(*commandCensusOut, stats); err != nil {
+			fatal("write command census", err)
+		}
+	}
 	if *verifyBaseline {
 		if err := processor.verifyKnownBaseline(); err != nil {
 			fatal("baseline verification", err)

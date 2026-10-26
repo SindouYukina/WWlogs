@@ -10,7 +10,9 @@ import (
 	"os"
 )
 
-const rsaWidth = 256
+const (
+	rsaWidth = 256
+)
 
 type staticRSA struct {
 	e int
@@ -60,10 +62,12 @@ func (key *staticRSA) decryptSessionKey(ciphertext []byte) ([]byte, error) {
 		return nil, errors.New("RSA plaintext exceeds modulus size")
 	}
 	copy(em[len(em)-len(encoded):], encoded)
-	clear(encoded)
+	for i := range encoded {
+		encoded[i] = 0
+	}
 	m.SetInt64(0)
 	c.SetInt64(0)
-	if em[0] != 0 || em[1] != 2 {
+	if len(em) < 11 || em[0] != 0 || em[1] != 2 {
 		clear(em)
 		return nil, errors.New("RSA block is not PKCS#1 v1.5 encryption padding")
 	}

@@ -1,0 +1,131 @@
+//go:build wwdev
+
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"sort"
+	"time"
+)
+
+func (c *commandCensus) write(path string, stats captureStats) error {
+	entries := make([]commandCensusEntry, 0, len(c.entries))
+	for _, entry := range c.entries {
+		copy := *entry
+		if copy.CRCValidFrames == 0 && copy.CRCFailedHeaders > 0 {
+			copy.Status = "UNKNOWN DUE TO CRC/CAPTURE LIMITATION"
+		} else if copy.CRCValidFrames > 0 && copy.DecodedFrames == copy.CRCValidFrames {
+			copy.Status = "PRESENT AND DECODED"
+		}
+		if len(copy.FailureReasons) == 0 {
+			copy.FailureReasons = nil
+		}
+		entries = append(entries, copy)
+	}
+	for _, candidate := range []struct {
+		id        uint16
+		direction string
+	}{
+		{17286, "in"}, {22492, "in"}, {25830, "in"}, {18345, "in"}, {20358, "in"}, {17893, "in"}, {22102, "in"}, {29363, "in"}, {16974, "in"}, {18559, "in"}, {25185, "in"}, {17769, "in"}, {28481, "out"}, {26702, "in"}, {19470, "out"}, {20332, "in"},
+		{21051, "in"}, {18899, "in"}, {18580, "in"}, {27633, "in"},
+	} {
+		key := censusKey{CommandID: candidate.id, Direction: candidate.direction}
+		if _, exists := c.entries[key]; !exists {
+			entry := commandCensusEntry{CommandID: candidate.id, Name: commandName(candidate.id), Direction: candidate.direction, Status: "NOT OBSERVED"}
+			if candidate.id == 17286 || candidate.id == 22492 || candidate.id == 25830 || candidate.id == 18345 || candidate.id == 20358 || candidate.id == 17893 || candidate.id == 22102 || candidate.id == 29363 || candidate.id == 16974 || candidate.id == 21051 || candidate.id == 18899 || candidate.id == 18580 || candidate.id == 27633 {
+				entry.SchemaBasis = "Windows Global UHD 3.7.1 Aki.Protocol metadata; capture build unverified"
+			}
+			entries = append(entries, entry)
+		}
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].CommandID == entries[j].CommandID {
+			return entries[i].Direction < entries[j].Direction
+		}
+		return entries[i].CommandID < entries[j].CommandID
+	})
+	inner := make(map[string]int, len(c.innerEntries))
+	for name, count := range c.innerEntries {
+		inner[name] = count
+	}
+	report := struct {
+		GeneratedAt      time.Time               `json:"generatedAt"`
+		SessionCount     int                     `json:"sessionCount"`
+		Transport        map[string]int          `json:"transport"`
+		InnerRPCs        map[string]int          `json:"innerRpcCounts"`
+		Commands         []commandCensusEntry    `json:"commands"`
+		CRCFailures      []crcFailureObservation `json:"crcFailureObservations,omitempty"`
+		CRCOmitted       int                     `json:"crcFailureObservationsOmitted,omitempty"`
+		Malformed        []malformedObservation  `json:"malformedObservations,omitempty"`
+		MalformedOmitted int                     `json:"malformedObservationsOmitted,omitempty"`
+		MoveEntityIDs    []struct {
+			EntityID         uint64         `json:"entityId"`
+			Count            int            `json:"observations"`
+			OriginatorValues map[uint64]int `json:"originatorRawValueCounts,omitempty"`
+		} `json:"movePackageEntityIds,omitempty"`
+		MoveSceneOwnerIDs []struct {
+			EntityID uint64 `json:"sceneOwnerId"`
+			Count    int    `json:"observations"`
+		} `json:"movePackageSceneOwnerIds,omitempty"`
+		PlayerFollowers       []playerFollowerObservation `json:"playerFollowerObservations,omitempty"`
+		MoveEntityOmitted     int                         `json:"movePackageEntityIdsOmitted,omitempty"`
+		MoveOwnerOmitted      int                         `json:"movePackageSceneOwnerIdsOmitted,omitempty"`
+		PlayerFollowerOmitted int                         `json:"playerFollowerObservationsOmitted,omitempty"`
+		EntityKeys            []entityKeyObservation      `json:"entityNotifyRawIds,omitempty"`
+	}{GeneratedAt: time.Now().UTC(), SessionCount: c.sessions, Transport: c.transport, InnerRPCs: inner, Commands: entries,
+		CRCFailures: c.crcFailures, CRCOmitted: c.crcOmitted, Malformed: c.malformedRecords, MalformedOmitted: c.malformedOmitted}
+	report.PlayerFollowers = c.playerFollowers
+	report.MoveEntityOmitted = c.moveEntityOmitted
+	report.MoveOwnerOmitted = c.moveOwnerOmitted
+	report.PlayerFollowerOmitted = c.playerFollowerOmitted
+	for key, count := range c.entityKeyValues {
+		report.EntityKeys = append(report.EntityKeys, entityKeyObservation{CommandID: key.commandID, FieldNumber: key.field, RawID: key.value, Count: count})
+	}
+	sort.Slice(report.EntityKeys, func(i, j int) bool {
+		if report.EntityKeys[i].CommandID != report.EntityKeys[j].CommandID {
+			return report.EntityKeys[i].CommandID < report.EntityKeys[j].CommandID
+		}
+		if report.EntityKeys[i].FieldNumber != report.EntityKeys[j].FieldNumber {
+			return report.EntityKeys[i].FieldNumber < report.EntityKeys[j].FieldNumber
+		}
+		return report.EntityKeys[i].RawID < report.EntityKeys[j].RawID
+	})
+	for id, aggregate := range c.moveEntities {
+		report.MoveEntityIDs = append(report.MoveEntityIDs, struct {
+			EntityID         uint64         `json:"entityId"`
+			Count            int            `json:"observations"`
+			OriginatorValues map[uint64]int `json:"originatorRawValueCounts,omitempty"`
+		}{EntityID: id, Count: aggregate.observations, OriginatorValues: aggregate.originators})
+	}
+	sort.Slice(report.MoveEntityIDs, func(i, j int) bool { return report.MoveEntityIDs[i].EntityID < report.MoveEntityIDs[j].EntityID })
+	for id, count := range c.moveSceneOwners {
+		report.MoveSceneOwnerIDs = append(report.MoveSceneOwnerIDs, struct {
+			EntityID uint64 `json:"sceneOwnerId"`
+			Count    int    `json:"observations"`
+		}{EntityID: id, Count: count})
+	}
+	sort.Slice(report.MoveSceneOwnerIDs, func(i, j int) bool {
+		return report.MoveSceneOwnerIDs[i].EntityID < report.MoveSceneOwnerIDs[j].EntityID
+	})
+	report.Transport["udpPackets"] = stats.udpPackets
+	report.Transport["kcpPushSegments"] = stats.kcpPush
+	report.Transport["kcpControlSegments"] = stats.kcpControl
+	report.Transport["nonKcpUdpDatagrams"] = stats.nonKCPUDP
+	report.Transport["invalidKcpDatagrams"] = stats.invalidKCP
+	report.Transport["kcpOrderedSegments"] = stats.kcpOrdered
+	report.Transport["kcpMessages"] = stats.kcpMessages
+	report.Transport["crcValidFrames"] = stats.frames
+	report.Transport["badCRCFrames"] = stats.badCRC
+	report.Transport["malformedFrames"] = stats.malformed
+	report.Transport["kernelDrops"] = stats.kernelDrops
+	data, err := json.MarshalIndent(report, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal command census: %w", err)
+	}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		return fmt.Errorf("write command census: %w", err)
+	}
+	return nil
+}

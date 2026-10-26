@@ -9,16 +9,19 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
+	"time"
 )
 
 type gameFrame struct {
 	direction        string
 	messageType      byte
 	sequence         uint32
+	token            uint16
 	commandID        uint16
 	compressed       bool
 	compressedLength uint32
 	body             []byte
+	timestamp        time.Time
 }
 
 type protoField struct {
@@ -37,56 +40,129 @@ type pendingDamageRequest struct {
 	skillID             uint64 // DamageContext.SkillId, field 4
 	skillMessageID      uint64 // DamageContext.SkillMessageId, field 5
 	damageID            uint64 // DamageExecuteRequest.DamageId, field 9
+	hasDamageID         bool
+	damageSourceType    uint64 // DamageContext.SourceType, field 1
+	hasDamageSourceType bool
+	bulletID            int64 // DamageContext.BulletId, field 2
+	hasBulletID         bool
+	sequence            uint64
+}
+
+type pendingRef struct {
+	rpcID    uint64
+	sequence uint64
+}
+
+type consumedRef struct {
+	rpcID    uint64
+	sequence uint64
+}
+
+type pendingActiveRequest struct {
+	entityID    uint64
+	hasEntityID bool
 }
 
 type processorStats struct {
-	handshakeFrames         int
-	handshakeOK             int
-	handshakeErrors         int
-	damageRequests          int
-	candidateResponses      int
-	printed                 int
-	unpairedResponses       int
-	invalidResponses        int
-	duplicateResponses      int
-	missingAttackerEntityID int
-	decryptErrors           int
-	compressedErrors        int
-	parseErrors             int
-	otherFrameDirections    int
-	sumAbsDamage            int64
+	handshakeFrames                  int
+	handshakeOK                      int
+	handshakeErrors                  int
+	damageRequests                   int
+	candidateResponses               int
+	printed                          int
+	unpairedResponses                int
+	invalidResponses                 int
+	duplicateResponses               int
+	missingAttackerEntityID          int
+	evictedPending                   int
+	entityAdds                       int
+	entityRemoves                    int
+	entityActiveRequests             int
+	observedSourceEntity             int
+	observedTargetEntity             int
+	characterResolved                int
+	verifiedCharacters               int
+	correlatedCharacters             int
+	monsterResolved                  int
+	skillResolved                    int
+	unknownDamageEvents              int
+	damageCandidateEvents            int
+	damageCandidateResult            int64
+	healingCandidateEvents           int
+	otherCandidateEvents             int
+	otherCandidateResult             int64
+	unclassifiedEvents               int
+	unclassifiedResult               int64
+	observedBuffEvents               int
+	verifiedBuffEvents               int
+	buffSnapshotResponses            int
+	activeResponseIdentityComponents int
+	activeResponseSummonerComponents int
+	activeResponseMonsterComponents  int
+	activeResponseFollowerComponents int
+	decryptErrors                    int
+	compressedErrors                 int
+	parseErrors                      int
+	otherFrameDirections             int
+	matchedCombatResultAbs           int64
+	healingCandidateResult           int64
 }
 
 type processor struct {
-	rsa        *staticRSA
-	session    []byte
-	pending    map[uint64]pendingDamageRequest
-	consumed   map[uint64]struct{}
-	stdout     io.Writer
-	diagnostic io.Writer
-	audit      io.Writer
-	stats      processorStats
+	rsa              *staticRSA
+	session          []byte
+	pending          map[uint64]pendingDamageRequest
+	pendingOrder     []pendingRef
+	pendingHead      int
+	pendingSequence  uint64
+	consumed         map[uint64]uint64
+	consumedOrder    []consumedRef
+	consumedSequence uint64
+	entities         *entityResolver
+	sourceRoles      *sourceRoleResolver
+	masters          *gameMaster
+	research         bool
+	currentFrameTime time.Time
+	stdout           io.Writer
+	diagnostic       io.Writer
+	audit            io.Writer
+	buffSnapshots    diagWriter
+	buffLifecycle    diagWriter
+	activeRequests   map[uint16]pendingActiveRequest
+	stats            processorStats
+	census           *commandCensus
+	sessionNumber    int
 }
 
 func newProcessor(rsaKey *staticRSA, stdout, diagnostic, audit io.Writer) *processor {
 	return &processor{
-		rsa:        rsaKey,
-		pending:    make(map[uint64]pendingDamageRequest),
-		consumed:   make(map[uint64]struct{}),
-		stdout:     stdout,
-		diagnostic: diagnostic,
-		audit:      audit,
+		rsa:            rsaKey,
+		pending:        make(map[uint64]pendingDamageRequest),
+		consumed:       make(map[uint64]uint64),
+		activeRequests: make(map[uint16]pendingActiveRequest),
+		entities:       newEntityResolver(),
+		sourceRoles:    newSourceRoleResolver(),
+		stdout:         stdout,
+		diagnostic:     diagnostic,
+		audit:          audit,
 	}
 }
 
-func parseFrames(buffer []byte, direction string, p *processor) (int, int, int) {
+func parseFrames(buffer []byte, direction string, timestamp time.Time, p *processor) (int, int, int) {
 	frames, badCRC, malformed := 0, 0, 0
+	applicationOffset := 0
+	var previousValid *frameBoundaryObservation
+	var pendingCRCIndexes []int
 	for len(buffer) >= 3 {
 		payloadLen := int(binary.LittleEndian.Uint16(buffer[:2]))
 		total := payloadLen + 3
 		if total < 14 {
 			buffer = buffer[1:]
 			malformed++
+			if p.census != nil {
+				p.census.malformed("short_or_unaligned_frame_candidate", timestamp, applicationOffset, uint16(payloadLen), len(buffer)+1)
+			}
+			applicationOffset++
 			continue
 		}
 		if len(buffer) < total {
@@ -102,14 +178,37 @@ func parseFrames(buffer []byte, direction string, p *processor) (int, int, int) 
 		if offset+6 > total {
 			buffer = buffer[total:]
 			malformed++
+			if p.census != nil {
+				p.census.malformed("truncated_command_header", timestamp, applicationOffset, uint16(payloadLen), total)
+			}
+			applicationOffset += total
 			continue
 		}
 		commandID := binary.LittleEndian.Uint16(frame[offset : offset+2])
 		receivedCRC := binary.LittleEndian.Uint32(frame[offset+2 : offset+6])
 		bodyStart := offset + 6
-		if crc32IEEE(frame[bodyStart:total]) != receivedCRC {
+		computedCRC := crc32IEEE(frame[bodyStart:total])
+		if computedCRC != receivedCRC {
+			if p.census != nil {
+				var token uint16
+				if messageType != 4 {
+					token = binary.LittleEndian.Uint16(frame[8:10])
+				}
+				observation := crcFailureObservation{
+					Direction: direction, Timestamp: timestamp, Offset: applicationOffset,
+					MessageType: messageType, Sequence: binary.LittleEndian.Uint32(frame[4:8]),
+					Token: token, CommandID: commandID, DeclaredLength: uint16(payloadLen),
+					FrameLength: total, BodyLength: total - bodyStart,
+					ReceivedCRC: receivedCRC, ComputedCRC: computedCRC, RemainingBytes: len(buffer) - total,
+					PreviousValid: previousValid,
+				}
+				if index := p.census.failedCRC(observation); index >= 0 {
+					pendingCRCIndexes = append(pendingCRCIndexes, index)
+				}
+			}
 			buffer = buffer[total:]
 			badCRC++
+			applicationOffset += total
 			continue
 		}
 		var compressedLength uint32
@@ -117,6 +216,10 @@ func parseFrames(buffer []byte, direction string, p *processor) (int, int, int) 
 			if bodyStart+4 > total {
 				buffer = buffer[total:]
 				malformed++
+				if p.census != nil {
+					p.census.malformed("truncated_compression_length", timestamp, applicationOffset, uint16(payloadLen), total)
+				}
+				applicationOffset += total
 				continue
 			}
 			compressedLength = binary.LittleEndian.Uint32(frame[bodyStart : bodyStart+4])
@@ -125,20 +228,39 @@ func parseFrames(buffer []byte, direction string, p *processor) (int, int, int) 
 		if bodyStart > total {
 			buffer = buffer[total:]
 			malformed++
+			if p.census != nil {
+				p.census.malformed("body_offset_exceeds_frame", timestamp, applicationOffset, uint16(payloadLen), total)
+			}
+			applicationOffset += total
 			continue
+		}
+		var token uint16
+		if messageType != 4 {
+			token = binary.LittleEndian.Uint16(frame[8:10])
 		}
 		current := gameFrame{
 			direction:        direction,
 			messageType:      messageType,
 			sequence:         binary.LittleEndian.Uint32(frame[4:8]),
+			token:            token,
 			commandID:        commandID,
 			compressed:       compressed,
 			compressedLength: compressedLength,
 			body:             append([]byte(nil), frame[bodyStart:total]...),
+			timestamp:        timestamp,
 		}
+		boundary := frameBoundaryObservation{Offset: applicationOffset, MessageType: messageType, Sequence: current.sequence, Token: token, CommandID: commandID, FrameLength: total}
+		if p.census != nil {
+			for _, index := range pendingCRCIndexes {
+				p.census.setNextValidFrame(index, boundary)
+			}
+		}
+		pendingCRCIndexes = nil
 		p.handleFrame(current)
 		frames++
+		previousValid = &boundary
 		buffer = buffer[total:]
+		applicationOffset += total
 	}
 	return frames, badCRC, malformed
 }
@@ -148,41 +270,196 @@ func crc32IEEE(data []byte) uint32 {
 }
 
 func (p *processor) handleFrame(frame gameFrame) {
+	p.currentFrameTime = frame.timestamp
+	var censusEntry *commandCensusEntry
+	if p.census != nil {
+		censusEntry = p.census.observeFrame(frame, p.sessionNumber)
+	}
 	if frame.commandID == 112 && frame.direction == "in" {
 		p.stats.handshakeFrames++
 		if err := p.handleProtoKeyResponse(frame.body); err != nil {
 			p.stats.handshakeErrors++
+			if censusEntry != nil {
+				censusEntry.FailureReasons["ProtoKeyResponse decode failed"]++
+			}
 			return
 		}
 		p.stats.handshakeOK++
+		if censusEntry != nil {
+			censusEntry.DecodedFrames++
+		}
+		p.sessionNumber++
+		if p.census != nil && p.sessionNumber > p.census.sessions {
+			p.census.sessions = p.sessionNumber
+		}
 		return
 	}
-	if frame.commandID != 19470 && frame.commandID != 20332 {
+	known := frame.commandID == 19470 || frame.commandID == 20332 || frame.commandID == 17286 || frame.commandID == 18559 || frame.commandID == 25185 || frame.commandID == 17769 || frame.commandID == 28481 || frame.commandID == 26702 || frame.commandID == 25830 || frame.commandID == 18345 || frame.commandID == 20358 || frame.commandID == 17893 || frame.commandID == 22102 || frame.commandID == 29363 || frame.commandID == 16974
+	if !known {
+		if censusEntry != nil {
+			p.inspectUndecodedFrame(frame, censusEntry)
+		}
 		return
 	}
-	if (frame.commandID == 19470 && frame.direction != "out") || (frame.commandID == 20332 && frame.direction != "in") {
+	if ((frame.commandID == 19470 || frame.commandID == 28481) && frame.direction != "out") || ((frame.commandID == 20332 || frame.commandID == 17286 || frame.commandID == 18559 || frame.commandID == 25185 || frame.commandID == 17769 || frame.commandID == 26702 || frame.commandID == 25830 || frame.commandID == 18345 || frame.commandID == 20358 || frame.commandID == 17893 || frame.commandID == 22102 || frame.commandID == 29363 || frame.commandID == 16974) && frame.direction != "in") {
 		p.stats.otherFrameDirections++
+		if censusEntry != nil {
+			censusEntry.FailureReasons["direction differs from implemented schema"]++
+		}
 		return
 	}
 	if len(p.session) != 32 {
+		if censusEntry != nil {
+			censusEntry.FailureReasons["session key unavailable"]++
+		}
 		return
 	}
 	plain, err := decryptGameBody(frame.sequence, frame.body, p.session)
 	if err != nil {
 		p.stats.decryptErrors++
+		if censusEntry != nil {
+			censusEntry.FailureReasons["decrypt failed"]++
+		}
 		return
+	}
+	if censusEntry != nil {
+		censusEntry.DecryptedFrames++
 	}
 	if frame.compressed {
 		plain, err = decompressBody(plain, frame.compressedLength)
 		if err != nil {
 			p.stats.compressedErrors++
+			if censusEntry != nil {
+				censusEntry.FailureReasons["decompression failed"]++
+			}
 			return
 		}
 	}
-	if frame.commandID == 19470 {
+	parseErrorsBefore := p.stats.parseErrors
+	switch frame.commandID {
+	case 19470:
 		p.handleDamageRequests(plain)
-	} else {
+	case 20332:
 		p.handleDamageResponses(plain)
+	case 17286:
+		if _, err := p.entities.applyUpdateSceneGroupDataNotify(plain); err != nil {
+			p.stats.parseErrors++
+			fmt.Fprintf(p.diagnostic, "scene_group_update_parse_error=%v\n", err)
+			return
+		}
+	case 25830, 18345, 20358, 17893, 22102, 29363, 16974:
+		if err := p.handleBuffLifecycleMessage(frame, plain); err != nil {
+			p.stats.parseErrors++
+			fmt.Fprintf(p.diagnostic, "buff_lifecycle_parse_error=%v\n", err)
+			return
+		}
+	case 18559:
+		if _, err := p.entities.applyJoinSceneNotify(plain); err != nil {
+			p.stats.parseErrors++
+			fmt.Fprintf(p.diagnostic, "join_scene_parse_error=%v\n", err)
+			return
+		}
+		p.sourceRoles.reset()
+	case 25185:
+		added, err := p.entities.applyEntityAddNotify(plain)
+		if err != nil {
+			p.stats.parseErrors++
+			fmt.Fprintf(p.diagnostic, "entity_add_parse_error=%v\n", err)
+			return
+		}
+		p.stats.entityAdds += added
+	case 17769:
+		removed, removedIDs, err := p.entities.applyEntityRemoveNotify(plain)
+		if err != nil {
+			p.stats.parseErrors++
+			fmt.Fprintf(p.diagnostic, "entity_remove_parse_error=%v\n", err)
+			return
+		}
+		p.stats.entityRemoves += removed
+		for _, id := range removedIDs {
+			p.sourceRoles.remove(id)
+		}
+	case 28481:
+		if err := p.handleActiveRequest(frame.token, plain); err != nil {
+			p.stats.parseErrors++
+			fmt.Fprintf(p.diagnostic, "entity_active_parse_error=%v\n", err)
+			return
+		}
+		p.stats.entityActiveRequests++
+	case 26702:
+		if err := p.handleActiveResponse(frame, plain); err != nil {
+			p.stats.parseErrors++
+			fmt.Fprintf(p.diagnostic, "entity_active_response_parse_error=%v\n", err)
+			return
+		}
+	}
+	if censusEntry != nil {
+		if parseErrorsBefore == p.stats.parseErrors {
+			censusEntry.DecodedFrames++
+		} else {
+			censusEntry.FailureReasons["protobuf or message schema decode failed"]++
+		}
+	}
+}
+
+func (p *processor) inspectUndecodedFrame(frame gameFrame, entry *commandCensusEntry) {
+	if len(p.session) != 32 {
+		entry.FailureReasons["no implemented schema; session key unavailable"]++
+		return
+	}
+	plain, err := decryptGameBody(frame.sequence, frame.body, p.session)
+	if err != nil {
+		entry.FailureReasons["no implemented schema; decrypt failed"]++
+		return
+	}
+	entry.DecryptedFrames++
+	if frame.compressed {
+		plain, err = decompressBody(plain, frame.compressedLength)
+		if err != nil {
+			entry.FailureReasons["no implemented schema; decompression failed"]++
+			return
+		}
+	}
+	if _, err := parseProtoFields(plain); err == nil {
+		entry.GenericProtoValid++
+		entry.FailureReasons["message schema not implemented"]++
+		if frame.commandID == 24756 {
+			observation, err := extractMovePackageObservation(plain)
+			if err != nil {
+				entry.FailureReasons["MovePackagePush schema-field extraction failed"]++
+			} else {
+				p.census.observeMovePackage(observation)
+			}
+		} else if frame.commandID == 27918 {
+			observation, err := extractPlayerFollowerObservation(plain)
+			if err != nil {
+				entry.FailureReasons["PlayerFollowerNotify schema-field extraction failed"]++
+			} else {
+				p.census.observePlayerFollower(observation)
+			}
+		} else if fieldNumber, ok := entityNotifyKeyField(frame.commandID); ok {
+			values, err := extractVarintField(plain, fieldNumber)
+			if err != nil {
+				entry.FailureReasons["entity notify ID extraction failed"]++
+			} else {
+				p.census.observeEntityKey(frame.commandID, fieldNumber, values)
+			}
+		}
+	} else {
+		entry.FailureReasons["no implemented schema; generic protobuf parse failed"]++
+	}
+}
+
+func entityNotifyKeyField(commandID uint16) (uint64, bool) {
+	switch commandID {
+	case 19212:
+		return 5, true // EntityRemoveDynamicInteractNotify.EntityId
+	case 19566:
+		return 5, true // EntityCommonTagNotify.Id
+	case 23517:
+		return 1, true // EntityStateReadyNotify.EntityId
+	default:
+		return 0, false
 	}
 }
 
@@ -212,6 +489,16 @@ func (p *processor) handleProtoKeyResponse(body []byte) error {
 		clear(p.session)
 	}
 	p.session = key
+	p.pending = make(map[uint64]pendingDamageRequest)
+	p.pendingOrder = nil
+	p.pendingHead = 0
+	p.pendingSequence = 0
+	p.consumed = make(map[uint64]uint64)
+	p.consumedOrder = nil
+	p.consumedSequence = 0
+	p.entities.reset()
+	p.sourceRoles.reset()
+	p.activeRequests = make(map[uint16]pendingActiveRequest)
 	fmt.Fprintln(p.diagnostic, "session_key_ready bytes=32 value=redacted")
 	return nil
 }
@@ -266,6 +553,7 @@ func (p *processor) handleDamageRequests(body []byte) {
 				case damageField.number == 9 && damageField.wire == 0: // U3n.Fjn DamageId
 					damageIDPresent = true
 					identity.damageID = damageField.value
+					identity.hasDamageID = true
 				case damageField.number == 10 && damageField.wire == 0: // DamageExecuteRequest.TargetEntityId
 					identity.targetEntityID = damageField.value
 					identity.hasTargetEntityID = true
@@ -285,6 +573,12 @@ func (p *processor) handleDamageRequests(body []byte) {
 							continue
 						}
 						switch contextField.number {
+						case 1: // DamageContext.SourceType
+							identity.damageSourceType = contextField.value
+							identity.hasDamageSourceType = true
+						case 2: // DamageContext.BulletId
+							identity.bulletID = int64(contextField.value)
+							identity.hasBulletID = true
 						case 4: // DamageContext.SkillId
 							identity.skillID = contextField.value
 						case 5: // DamageContext.SkillMessageId
@@ -296,6 +590,9 @@ func (p *processor) handleDamageRequests(body []byte) {
 			if !damageIDPresent {
 				continue
 			}
+			if p.census != nil {
+				p.census.innerEntries["22022 Client->Server DamageExecuteRequest"]++
+			}
 			p.stats.damageRequests++
 			if _, alreadyConsumed := p.consumed[rpcID]; alreadyConsumed {
 				fmt.Fprintf(p.diagnostic, "rpc_id_reused_after_completion rpc_id=%d\n", rpcID)
@@ -303,7 +600,54 @@ func (p *processor) handleDamageRequests(body []byte) {
 			if _, exists := p.pending[rpcID]; exists {
 				fmt.Fprintf(p.diagnostic, "duplicate_pending_damage_rpc rpc_id=%d\n", rpcID)
 			}
-			p.pending[rpcID] = identity
+			if p.masters != nil && identity.hasAttackerEntityID {
+				if skill, ok := p.masters.skills[identity.skillID]; ok {
+					p.sourceRoles.observe(identity.attackerEntityID, skill)
+				}
+			}
+			p.rememberPending(rpcID, identity)
+		}
+	}
+}
+
+const (
+	maxPendingDamageRequests = 4096
+	maxConsumedRPCIDs        = 8192
+)
+
+func (p *processor) rememberPending(rpcID uint64, request pendingDamageRequest) {
+	p.pendingSequence++
+	request.sequence = p.pendingSequence
+	p.pending[rpcID] = request
+	p.pendingOrder = append(p.pendingOrder, pendingRef{rpcID: rpcID, sequence: request.sequence})
+	for len(p.pending) > maxPendingDamageRequests && p.pendingHead < len(p.pendingOrder) {
+		ref := p.pendingOrder[p.pendingHead]
+		p.pendingHead++
+		if current, ok := p.pending[ref.rpcID]; ok && current.sequence == ref.sequence {
+			delete(p.pending, ref.rpcID)
+			p.stats.evictedPending++
+		}
+	}
+	p.compactPendingOrder()
+}
+
+func (p *processor) compactPendingOrder() {
+	if p.pendingHead < 1024 || p.pendingHead*2 < len(p.pendingOrder) {
+		return
+	}
+	p.pendingOrder = append([]pendingRef(nil), p.pendingOrder[p.pendingHead:]...)
+	p.pendingHead = 0
+}
+
+func (p *processor) rememberConsumed(rpcID uint64) {
+	p.consumedSequence++
+	p.consumed[rpcID] = p.consumedSequence
+	p.consumedOrder = append(p.consumedOrder, consumedRef{rpcID: rpcID, sequence: p.consumedSequence})
+	for len(p.consumed) > maxConsumedRPCIDs && len(p.consumedOrder) > 0 {
+		ref := p.consumedOrder[0]
+		p.consumedOrder = p.consumedOrder[1:]
+		if p.consumed[ref.rpcID] == ref.sequence {
+			delete(p.consumed, ref.rpcID)
 		}
 	}
 }
@@ -356,6 +700,9 @@ func (p *processor) handleDamageResponses(body []byte) {
 					continue
 				}
 				p.stats.candidateResponses++
+				if p.census != nil {
+					p.census.innerEntries["22022 Server->Client DamageExecuteResponse"]++
+				}
 				p.handleOneDamageResult(rpcID, lis)
 			}
 		}
@@ -379,6 +726,8 @@ func (p *processor) handleOneDamageResult(rpcID uint64, payload []byte) {
 	}
 	var amount int32
 	var hasAmount bool
+	var changeLife int32
+	var hasChangeLife bool
 	var errorCode int32
 	var immuneType int32
 	for _, field := range fields {
@@ -390,6 +739,9 @@ func (p *processor) handleOneDamageResult(rpcID uint64, payload []byte) {
 			errorCode = int32(uint32(field.value))
 		case 5: // lis.lAs
 			immuneType = int32(uint32(field.value))
+		case 7: // lis.jQ_, client-mapped ChangeLife
+			changeLife = int32(uint32(field.value))
+			hasChangeLife = true
 		case 10: // lis.nAs
 			amount = int32(uint32(field.value))
 			hasAmount = true
@@ -400,45 +752,61 @@ func (p *processor) handleOneDamageResult(rpcID uint64, payload []byte) {
 		return
 	}
 
-	p.consumed[rpcID] = struct{}{}
+	p.rememberConsumed(rpcID)
 	delete(p.pending, rpcID)
 	value := int64(amount)
 	if value < 0 {
 		value = -value
 	}
+	attackerStatus := resolutionUnknown
+	if request.hasAttackerEntityID && request.attackerEntityID != 0 {
+		_, attackerStatus = p.entities.resolve(request.attackerEntityID)
+		if attackerStatus == resolutionVerified || attackerStatus == resolutionCorrelated {
+			p.stats.observedSourceEntity++
+		}
+	}
+	targetStatus := resolutionUnknown
+	if request.hasTargetEntityID && request.targetEntityID != 0 {
+		_, targetStatus = p.entities.resolve(request.targetEntityID)
+		if targetStatus == resolutionVerified || targetStatus == resolutionCorrelated {
+			p.stats.observedTargetEntity++
+		}
+	}
 	if !request.hasAttackerEntityID || request.attackerEntityID == 0 {
 		p.stats.missingAttackerEntityID++
-		if _, err := fmt.Fprintf(p.stdout, "Unknown [Char: ?] [Entity: ?] %d\n", value); err != nil {
-			fmt.Fprintf(p.diagnostic, "stdout_write_error=%v\n", err)
-			return
-		}
-	} else {
-		if _, err := fmt.Fprintf(p.stdout, "Unknown [Char: ?] [Entity: %d] %d\n", request.attackerEntityID, value); err != nil {
-			fmt.Fprintf(p.diagnostic, "stdout_write_error=%v\n", err)
-			return
-		}
 	}
-	if p.audit != nil {
-		attackerEntity := "?"
-		if request.hasAttackerEntityID && request.attackerEntityID != 0 {
-			attackerEntity = fmt.Sprintf("%d", request.attackerEntityID)
-		}
-		targetEntity := "?"
-		if request.hasTargetEntityID && request.targetEntityID != 0 {
-			targetEntity = fmt.Sprintf("%d", request.targetEntityID)
-		}
-		if _, err := fmt.Fprintf(p.audit, "%d\t%s\t%s\t%d\t%d\t%d\t%d\t%d\n", rpcID, attackerEntity, targetEntity, request.skillLevel, request.skillID, request.skillMessageID, request.damageID, value); err != nil {
-			fmt.Fprintf(p.diagnostic, "event_audit_write_error=%v\n", err)
-		}
+	event := p.buildDamageEvent(rpcID, request, amount, changeLife, hasChangeLife, value)
+	switch event.EventTypeCandidate {
+	case "DAMAGE_CANDIDATE":
+		p.stats.damageCandidateEvents++
+		p.stats.damageCandidateResult += value
+	case "HEALING_CANDIDATE":
+		p.stats.healingCandidateEvents++
+		p.stats.healingCandidateResult += value
+	case "OTHER_COMBAT_RESULT_CANDIDATE":
+		p.stats.otherCandidateEvents++
+		p.stats.otherCandidateResult += value
+	default:
+		p.stats.unclassifiedEvents++
+		p.stats.unclassifiedResult += value
 	}
-	if flusher, ok := p.stdout.(interface{ Flush() error }); ok {
-		if err := flusher.Flush(); err != nil {
-			fmt.Fprintf(p.diagnostic, "stdout_flush_error=%v\n", err)
-			return
-		}
+	if event.CharacterStatus == resolutionVerified {
+		p.stats.verifiedCharacters++
+		p.stats.characterResolved++
+	} else if event.CharacterStatus == resolutionCorrelated {
+		p.stats.correlatedCharacters++
+		p.stats.characterResolved++
 	}
-	p.stats.printed++
-	p.stats.sumAbsDamage += value
+	if event.Target.HasMonster {
+		p.stats.monsterResolved++
+	}
+	if event.SkillStatus == resolutionVerified || event.SkillStatus == resolutionCorrelated {
+		p.stats.skillResolved++
+	}
+	if event.CharacterStatus == resolutionUnknown || event.Target.MonsterStatus == resolutionUnknown || event.SkillStatus == resolutionUnknown {
+		p.stats.unknownDamageEvents++
+	}
+	p.writeDamageEvent(event)
 }
 
 func decryptGameBody(sequence uint32, body, sessionKey []byte) ([]byte, error) {
