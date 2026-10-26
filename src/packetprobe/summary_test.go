@@ -80,6 +80,97 @@ func TestEncounterSummaryWithoutEventsReportsNoMatchedEvents(t *testing.T) {
 	}
 }
 
+func TestEncounterSummaryBackfillsEarlierSourceEventsAsCorrelated(t *testing.T) {
+	var output bytes.Buffer
+	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
+	p.encounterSummary = &output
+	p.masters = &gameMaster{characters: map[uint64]masterRecord{
+		1312: {ID: 1312, Name: "Role", NameStatus: string(resolutionVerified)},
+	}}
+	p.observeEncounterSummary(combatEvent{
+		SessionNumber: 1, HasSourceEntity: true, SourceEntityID: 28006,
+		Source:  entityIdentity{Runtime: runtimeEntity{entityID: 28006, sceneInstanceID: 901, hasSceneInstanceID: true}},
+		SkillID: 1312011, SkillName: "Skill A", SkillNameStatus: resolutionVerified, SkillProof: "SkillDescription -> Skill",
+		CharacterStatus: resolutionUnknown, EventTypeCandidate: "DAMAGE_CANDIDATE", Damage: 120,
+	})
+	if got := p.encounterSummaries[encounterSummaryKey{session: 1, sceneInstance: 901, hasScene: true}].unknownCredit; got != 1 {
+		t.Fatalf("unknown credit before correlation = %d, want 1", got)
+	}
+	p.sourceRoles.observe(28006, masterRecord{ID: 1312011, RoleID: 1312, Status: string(resolutionVerified), NameKind: "SkillName"})
+	p.sourceRoles.observe(28006, masterRecord{ID: 1312012, RoleID: 1312, Status: string(resolutionVerified), NameKind: "SkillName"})
+	roleID, ok := p.sourceRoles.correlatedRole(28006)
+	if !ok {
+		t.Fatal("two distinct verified skills did not establish correlated role")
+	}
+	p.backfillEncounterSummary(28006, roleID)
+
+	summary := p.encounterSummaries[encounterSummaryKey{session: 1, sceneInstance: 901, hasScene: true}]
+	if summary.unknownCredit != 0 || summary.unknownCreditAbs != 0 || summary.identityBackfilledEvents != 1 {
+		t.Fatalf("backfill counters = unknown %d/%d, backfilled %d", summary.unknownCredit, summary.unknownCreditAbs, summary.identityBackfilledEvents)
+	}
+	character := summary.characters[1312]
+	if character == nil || character.status != resolutionCorrelated || character.damage != 120 || character.eventCount != 1 {
+		t.Fatalf("backfilled character summary = %+v", character)
+	}
+	if err := p.writeEncounterSummary(); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"Events without credited CharacterId: 0 (result magnitude 0)",
+		"Earlier events backfilled from later same-lifetime Skill evidence: 1 [CORRELATED]",
+		"CharacterId 1312 — Role [CORRELATED; name VERIFIED]",
+		"backfilled within observed session/scene/entity lifetime",
+	} {
+		if !strings.Contains(output.String(), want) {
+			t.Errorf("summary missing %q:\n%s", want, output.String())
+		}
+	}
+}
+
+func TestEncounterSummaryBackfillDoesNotCrossObservedLifecycleReset(t *testing.T) {
+	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
+	p.encounterSummary = &bytes.Buffer{}
+	p.masters = &gameMaster{characters: map[uint64]masterRecord{1312: {ID: 1312}}}
+	p.observeEncounterSummary(combatEvent{
+		SessionNumber: 1, HasSourceEntity: true, SourceEntityID: 28006,
+		Source:          entityIdentity{Runtime: runtimeEntity{entityID: 28006, sceneInstanceID: 901, hasSceneInstanceID: true}},
+		CharacterStatus: resolutionUnknown, EventTypeCandidate: "DAMAGE_CANDIDATE", Damage: 120,
+	})
+	p.resetPendingSummaryCredits()
+	p.sourceRoles.observe(28006, masterRecord{ID: 1312011, RoleID: 1312, Status: string(resolutionVerified), NameKind: "SkillName"})
+	p.sourceRoles.observe(28006, masterRecord{ID: 1312012, RoleID: 1312, Status: string(resolutionVerified), NameKind: "SkillName"})
+	roleID, ok := p.sourceRoles.correlatedRole(28006)
+	if !ok {
+		t.Fatal("test setup did not establish correlated role")
+	}
+	p.backfillEncounterSummary(28006, roleID)
+
+	summary := p.encounterSummaries[encounterSummaryKey{session: 1, sceneInstance: 901, hasScene: true}]
+	if summary.unknownCredit != 1 || summary.unknownCreditAbs != 120 || summary.identityBackfilledEvents != 0 || len(summary.characters) != 0 {
+		t.Fatalf("lifecycle reset allowed an earlier event backfill: %+v", summary)
+	}
+}
+
+func TestEncounterSummaryBackfillRejectsConflictingSkillRoleEvidence(t *testing.T) {
+	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
+	p.encounterSummary = &bytes.Buffer{}
+	p.masters = &gameMaster{characters: map[uint64]masterRecord{1312: {ID: 1312}, 1414: {ID: 1414}}}
+	p.observeEncounterSummary(combatEvent{
+		SessionNumber: 1, HasSourceEntity: true, SourceEntityID: 28006,
+		Source:          entityIdentity{Runtime: runtimeEntity{entityID: 28006, sceneInstanceID: 901, hasSceneInstanceID: true}},
+		CharacterStatus: resolutionUnknown, EventTypeCandidate: "DAMAGE_CANDIDATE", Damage: 120,
+	})
+	p.sourceRoles.observe(28006, masterRecord{ID: 1312011, RoleID: 1312, Status: string(resolutionVerified), NameKind: "SkillName"})
+	p.sourceRoles.observe(28006, masterRecord{ID: 1312012, RoleID: 1312, Status: string(resolutionVerified), NameKind: "SkillName"})
+	p.sourceRoles.observe(28006, masterRecord{ID: 1414001, RoleID: 1414, Status: string(resolutionVerified), NameKind: "SkillName"})
+	p.backfillAvailableSummaryCredits()
+
+	summary := p.encounterSummaries[encounterSummaryKey{session: 1, sceneInstance: 901, hasScene: true}]
+	if summary.unknownCredit != 1 || summary.unknownCreditAbs != 120 || summary.identityBackfilledEvents != 0 || len(summary.characters) != 0 {
+		t.Fatalf("conflicting SkillId evidence was backfilled: %+v", summary)
+	}
+}
+
 func TestEncounterSummaryCapsDistinctScopesAndKeepsOverflowTotals(t *testing.T) {
 	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
 	p.encounterSummary = &bytes.Buffer{}

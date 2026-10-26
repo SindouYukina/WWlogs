@@ -20,5 +20,17 @@ func optionalDamageSource(value uint64, present bool) string {
 	return r0
 }
 
+func (p *processor) backfillAvailableSummaryCredits() {
+}
+
+func (p *processor) resetPendingSummaryCredits() {
+}
+
+func (p *processor) backfillEncounterSummary(sourceID, roleID uint64) {
+}
+
+func (p *processor) removePendingSummaryCredits(sourceID uint64) {
+}
+
 func (p *processor) observeEncounterSummary(event combatEvent) {
 }

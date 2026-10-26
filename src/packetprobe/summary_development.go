@@ -69,48 +69,21 @@ func (p *processor) observeEncounterSummary(event combatEvent) {
 	}
 
 	if isCreditedCharacterStatus(event.CharacterStatus) && event.CharacterID != 0 {
-		character := summary.characters[event.CharacterID]
-		if character == nil {
-			character = &characterSummary{id: event.CharacterID, skills: make(map[skillSummaryKey]*skillSummary), proofs: make(map[string]struct{})}
-			summary.characters[event.CharacterID] = character
-		}
-		character.status = strongestEvidence(character.status, event.CharacterStatus)
-		if event.CharacterProof != "" {
-			character.proofs[event.CharacterProof] = struct{}{}
-		}
-		if event.CharacterName != "" && (event.CharacterNameStatus == resolutionVerified || event.CharacterNameStatus == resolutionCorrelated) {
-			character.name, character.nameStatus = event.CharacterName, string(event.CharacterNameStatus)
-		}
-		character.eventCount++
-		switch event.EventTypeCandidate {
-		case "DAMAGE_CANDIDATE":
-			character.damage += event.Damage
-		case "HEALING_CANDIDATE":
-			character.healingCandidate += event.Damage
-		default:
-			character.other += event.Damage
-		}
-		skillKey := skillSummaryKey{id: event.SkillID, eventType: event.EventTypeCandidate}
-		skill := character.skills[skillKey]
-		if skill == nil && len(character.skills) >= maxSummarySkillsPerCharacter {
-			character.skillRowsOmitted++
-		} else if skill == nil {
-			skill = &skillSummary{id: event.SkillID, eventType: event.EventTypeCandidate, proofs: make(map[string]struct{})}
-			character.skills[skillKey] = skill
-		}
-		if skill != nil && event.SkillProof != "" {
-			skill.proofs[event.SkillProof] = struct{}{}
-		}
-		if skill != nil && event.SkillName != "" && (event.SkillNameStatus == resolutionVerified || event.SkillNameStatus == resolutionCorrelated) {
-			skill.name, skill.nameState = event.SkillName, event.SkillNameStatus
-		}
-		if skill != nil {
-			skill.amount += event.Damage
-			skill.events++
-		}
+		addCreditedCharacterEvent(summary, event)
 	} else {
 		summary.unknownCredit++
 		summary.unknownCreditAbs += event.Damage
+		if event.HasSourceEntity && event.SourceEntityID != 0 {
+			if p.pendingSummaryCreditCount < maxPendingSummaryCreditEvents {
+				if p.pendingSummaryCredits == nil {
+					p.pendingSummaryCredits = make(map[uint64][]pendingSummaryCredit)
+				}
+				p.pendingSummaryCredits[event.SourceEntityID] = append(p.pendingSummaryCredits[event.SourceEntityID], pendingSummaryCredit{key: key, event: event})
+				p.pendingSummaryCreditCount++
+			} else {
+				summary.identityBackfillEventsOmitted++
+			}
+		}
 	}
 
 	if event.SummonerCharacter.HasCharacterID && event.SummonerCharacter.CharacterID != 0 {
@@ -137,6 +110,108 @@ func (p *processor) observeEncounterSummary(event combatEvent) {
 	}
 	addBossCandidate(summary, event.Source)
 	addBossCandidate(summary, event.Target)
+}
+
+func addCreditedCharacterEvent(summary *encounterSummary, event combatEvent) {
+	character := summary.characters[event.CharacterID]
+	if character == nil {
+		character = &characterSummary{id: event.CharacterID, skills: make(map[skillSummaryKey]*skillSummary), proofs: make(map[string]struct{})}
+		summary.characters[event.CharacterID] = character
+	}
+	character.status = strongestEvidence(character.status, event.CharacterStatus)
+	if event.CharacterProof != "" {
+		character.proofs[event.CharacterProof] = struct{}{}
+	}
+	if event.CharacterName != "" && (event.CharacterNameStatus == resolutionVerified || event.CharacterNameStatus == resolutionCorrelated) {
+		character.name, character.nameStatus = event.CharacterName, string(event.CharacterNameStatus)
+	}
+	character.eventCount++
+	switch event.EventTypeCandidate {
+	case "DAMAGE_CANDIDATE":
+		character.damage += event.Damage
+	case "HEALING_CANDIDATE":
+		character.healingCandidate += event.Damage
+	default:
+		character.other += event.Damage
+	}
+	skillKey := skillSummaryKey{id: event.SkillID, eventType: event.EventTypeCandidate}
+	skill := character.skills[skillKey]
+	if skill == nil && len(character.skills) >= maxSummarySkillsPerCharacter {
+		character.skillRowsOmitted++
+	} else if skill == nil {
+		skill = &skillSummary{id: event.SkillID, eventType: event.EventTypeCandidate, proofs: make(map[string]struct{})}
+		character.skills[skillKey] = skill
+	}
+	if skill != nil && event.SkillProof != "" {
+		skill.proofs[event.SkillProof] = struct{}{}
+	}
+	if skill != nil && event.SkillName != "" && (event.SkillNameStatus == resolutionVerified || event.SkillNameStatus == resolutionCorrelated) {
+		skill.name, skill.nameState = event.SkillName, event.SkillNameStatus
+	}
+	if skill != nil {
+		skill.amount += event.Damage
+		skill.events++
+	}
+}
+
+func (p *processor) backfillEncounterSummary(sourceID, roleID uint64) {
+	if sourceID == 0 || roleID == 0 || p.masters == nil {
+		return
+	}
+	character, ok := p.masters.characters[roleID]
+	if !ok {
+		return
+	}
+	pending := p.pendingSummaryCredits[sourceID]
+	if len(pending) == 0 {
+		return
+	}
+	delete(p.pendingSummaryCredits, sourceID)
+	p.pendingSummaryCreditCount -= len(pending)
+	for _, item := range pending {
+		summary := p.encounterSummaries[item.key]
+		if summary == nil || summary.unknownCredit <= 0 {
+			continue
+		}
+		event := item.event
+		event.CharacterID = character.ID
+		event.CharacterStatus = resolutionCorrelated
+		event.CharacterProof = "backfilled within observed session/scene/entity lifetime from 2+ distinct verified DamageContext.SkillId values mapped to RoleId through SkillDescription -> Skill"
+		event.CharacterName = character.Name
+		event.CharacterNameStatus = resolutionStatus(character.NameStatus)
+		summary.unknownCredit--
+		summary.unknownCreditAbs -= event.Damage
+		summary.identityBackfilledEvents++
+		addCreditedCharacterEvent(summary, event)
+	}
+}
+
+func (p *processor) backfillAvailableSummaryCredits() {
+	if p.pendingSummaryCredits == nil {
+		return
+	}
+	sourceIDs := make([]uint64, 0, len(p.pendingSummaryCredits))
+	for sourceID := range p.pendingSummaryCredits {
+		sourceIDs = append(sourceIDs, sourceID)
+	}
+	for _, sourceID := range sourceIDs {
+		if roleID, correlated := p.sourceRoles.correlatedRole(sourceID); correlated {
+			p.backfillEncounterSummary(sourceID, roleID)
+		}
+	}
+}
+
+func (p *processor) removePendingSummaryCredits(sourceID uint64) {
+	if p.pendingSummaryCredits == nil {
+		return
+	}
+	p.pendingSummaryCreditCount -= len(p.pendingSummaryCredits[sourceID])
+	delete(p.pendingSummaryCredits, sourceID)
+}
+
+func (p *processor) resetPendingSummaryCredits() {
+	p.pendingSummaryCredits = nil
+	p.pendingSummaryCreditCount = 0
 }
 
 func isCreditedCharacterStatus(status resolutionStatus) bool {
@@ -172,6 +247,7 @@ func (p *processor) writeEncounterSummary() error {
 	if p.encounterSummary == nil {
 		return nil
 	}
+	p.backfillAvailableSummaryCredits()
 	if _, err := fmt.Fprintln(p.encounterSummary, "# Combat Attribution Summary"); err != nil {
 		return err
 	}
@@ -249,11 +325,16 @@ func writeOneEncounterSummary(w io.Writer, summary *encounterSummary) error {
 			return err
 		}
 	}
-	if _, err := fmt.Fprintf(w, "\n- Time range: %s to %s\n- Matched result events: %d\n- CombatResult absolute total: %d\n- Damage candidates: %d\n- Healing candidate result magnitude: %d\n- Other combat result candidates: %d\n- Unclassified result magnitude: %d\n- Events without credited CharacterId: %d (result magnitude %d)\n",
+	if _, err := fmt.Fprintf(w, "\n- Time range: %s to %s\n- Matched result events: %d\n- CombatResult absolute total: %d\n- Damage candidates: %d\n- Healing candidate result magnitude: %d\n- Other combat result candidates: %d\n- Unclassified result magnitude: %d\n- Events without credited CharacterId: %d (result magnitude %d)\n- Earlier events backfilled from later same-lifetime Skill evidence: %d [CORRELATED]\n",
 		formatSummaryTime(summary.startedAt), formatSummaryTime(summary.endedAt), summary.eventCount, summary.combatResultAbs,
 		summary.damageCandidates, summary.healCandidates, summary.otherCandidates, summary.unclassified,
-		summary.unknownCredit, summary.unknownCreditAbs); err != nil {
+		summary.unknownCredit, summary.unknownCreditAbs, summary.identityBackfilledEvents); err != nil {
 		return err
+	}
+	if summary.identityBackfillEventsOmitted > 0 {
+		if _, err := fmt.Fprintf(w, "\nWarning: %d unresolved source events were not retained for identity backfill because the bounded pending-event limit was reached.\n", summary.identityBackfillEventsOmitted); err != nil {
+			return err
+		}
 	}
 	if err := writeClassificationEvidence(w, summary); err != nil {
 		return err
