@@ -8,6 +8,7 @@ import (
 
 type combatEvent struct {
 	Timestamp           time.Time
+	SessionNumber       int
 	RPCID               uint64
 	DamageID            uint64
 	SourceEntityID      uint64
@@ -49,6 +50,7 @@ type combatEvent struct {
 func (p *processor) buildDamageEvent(rpcID uint64, request pendingDamageRequest, resultRaw, changeLifeRaw int32, hasChangeLife bool, damage int64) combatEvent {
 	event := combatEvent{
 		Timestamp:           p.currentFrameTime,
+		SessionNumber:       p.sessionNumber,
 		RPCID:               rpcID,
 		DamageID:            request.damageID,
 		SourceEntityID:      request.attackerEntityID,

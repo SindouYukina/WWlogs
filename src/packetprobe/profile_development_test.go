@@ -13,8 +13,8 @@ const diagnosticConsole = true
 // The development build keeps the sinks that research needs.
 func TestDevelopmentProcessorKeepsDiagnosticSinks(t *testing.T) {
 	var p processor
-	p.buffSnapshots = &strings.Builder{}
-	if p.buffSnapshots == nil {
+	p.encounterSummary = &strings.Builder{}
+	if p.encounterSummary == nil {
 		t.Fatal("development processor lost its diagnostic sink")
 	}
 }
