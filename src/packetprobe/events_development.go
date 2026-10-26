@@ -7,6 +7,77 @@ import (
 	"fmt"
 )
 
+func (event combatEvent) jsonlView(masters *gameMaster) combatEventJSONL {
+	view := combatEventJSONL{
+		SchemaVersion: 1,
+		EventType:     "DAMAGE_RESULT",
+		Timestamp:     event.Timestamp,
+		SessionNumber: event.SessionNumber,
+		RPCID:         event.RPCID,
+		Source:        combatEventEntityJSONL{RuntimeStatus: event.Source.RuntimeStatus, RuntimeEvidence: event.Source.RuntimeProof, RuntimeFields: json.RawMessage(marshalRuntimeIdentity(event.Source.Runtime))},
+		Target:        combatEventEntityJSONL{RuntimeStatus: event.Target.RuntimeStatus, RuntimeEvidence: event.Target.RuntimeProof, RuntimeFields: json.RawMessage(marshalRuntimeIdentity(event.Target.Runtime))},
+		Credit:        combatEventCreditJSONL{Status: event.CharacterStatus, NameStatus: event.CharacterNameStatus, Evidence: event.CharacterProof},
+		Summoner:      combatEventSummonerJSONL{EntityIDs: append([]uint64(nil), event.SummonerCharacter.EntityIDs...), Status: event.SummonerCharacter.Status, Evidence: event.SummonerCharacter.Proof},
+		Skill:         combatEventSkillJSONL{ID: event.SkillID, MessageID: event.SkillMessageID, Name: event.SkillName, NameKind: event.SkillNameKind, Status: event.SkillStatus, NameStatus: event.SkillNameStatus, Evidence: event.SkillProof},
+		Damage: combatEventDamageJSONL{
+			ID: optionalUint64(event.DamageID, event.HasDamageID), SourceType: optionalUint64(event.DamageSourceType, event.HasDamageSourceType),
+			BulletID: optionalInt64(event.BulletID, event.HasBulletID), AmountAbs: event.Damage,
+			ServerResultRaw: optionalInt32(event.ServerResultRaw, event.HasServerResult), ChangeLifeRaw: optionalInt32(event.ChangeLifeRaw, event.HasChangeLife),
+			CalculateType: optionalInt32(event.DamageCalculateType, event.HasCalculateType), ClassCandidate: event.EventTypeCandidate,
+			ClassStatus: event.EventTypeStatus, ClassEvidence: event.EventTypeProof,
+		},
+	}
+	view.Source.EntityID = optionalUint64(event.SourceEntityID, event.HasSourceEntity)
+	view.Target.EntityID = optionalUint64(event.TargetEntityID, event.HasTargetEntity)
+	if event.Source.HasCharacter {
+		view.Source.Character = &combatEventMasterIDJSONL{ID: event.Source.Character.ID, Name: event.Source.Character.Name, Status: event.Source.CharacterStatus, Evidence: event.Source.CharacterProof}
+	}
+	if event.Source.HasMonster {
+		view.Source.Monster = &combatEventMasterIDJSONL{ID: event.Source.Monster.ID, Name: event.Source.Monster.Name, Status: event.Source.MonsterStatus, Evidence: event.Source.MonsterProof}
+	}
+	if event.Target.HasCharacter {
+		view.Target.Character = &combatEventMasterIDJSONL{ID: event.Target.Character.ID, Name: event.Target.Character.Name, Status: event.Target.CharacterStatus, Evidence: event.Target.CharacterProof}
+	}
+	if event.Target.HasMonster {
+		view.Target.Monster = &combatEventMasterIDJSONL{ID: event.Target.Monster.ID, Name: event.Target.Monster.Name, Status: event.Target.MonsterStatus, Evidence: event.Target.MonsterProof}
+	}
+	view.Credit.CharacterID = optionalUint64(event.CharacterID, event.CharacterID != 0)
+	view.Credit.Name = event.CharacterName
+	view.Summoner.CharacterID = optionalUint64(event.SummonerCharacter.CharacterID, event.SummonerCharacter.HasCharacterID)
+	if event.SummonerCharacter.HasCharacter {
+		view.Summoner.Name = event.SummonerCharacter.Character.Name
+	}
+	if masters != nil {
+		view.Master = combatEventMasterJSONL{
+			GameVersion: masters.manifest.GameVersion, ResourceVersion: masters.manifest.ResourceVersion,
+			ClientRegion: masters.manifest.ClientRegion, Locale: masters.manifest.Language,
+			SourceCommit: masters.manifest.SourceCommit, SourceHash: masters.manifest.SourceHash,
+		}
+	}
+	return view
+}
+
+func optionalUint64(value uint64, present bool) *uint64 {
+	if !present {
+		return nil
+	}
+	return &value
+}
+
+func optionalInt64(value int64, present bool) *int64 {
+	if !present {
+		return nil
+	}
+	return &value
+}
+
+func optionalInt32(value int32, present bool) *int32 {
+	if !present {
+		return nil
+	}
+	return &value
+}
+
 func (event combatEvent) formatNormal() string {
 	timestamp := "--:--:--.---"
 	if !event.Timestamp.IsZero() {

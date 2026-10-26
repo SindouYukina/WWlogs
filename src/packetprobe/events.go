@@ -1,10 +1,90 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 )
+
+type combatEventJSONL struct {
+	SchemaVersion int                      `json:"schemaVersion"`
+	EventType     string                   `json:"eventType"`
+	Timestamp     time.Time                `json:"timestamp"`
+	SessionNumber int                      `json:"sessionNumber"`
+	RPCID         uint64                   `json:"rpcId"`
+	Source        combatEventEntityJSONL   `json:"source"`
+	Target        combatEventEntityJSONL   `json:"target"`
+	Credit        combatEventCreditJSONL   `json:"credit"`
+	Summoner      combatEventSummonerJSONL `json:"summoner"`
+	Skill         combatEventSkillJSONL    `json:"skill"`
+	Damage        combatEventDamageJSONL   `json:"damage"`
+	Master        combatEventMasterJSONL   `json:"master"`
+}
+
+type combatEventEntityJSONL struct {
+	EntityID        *uint64                   `json:"entityId,omitempty"`
+	RuntimeStatus   resolutionStatus          `json:"runtimeStatus"`
+	RuntimeEvidence string                    `json:"runtimeEvidence,omitempty"`
+	RuntimeFields   json.RawMessage           `json:"runtimeFields"`
+	Character       *combatEventMasterIDJSONL `json:"character,omitempty"`
+	Monster         *combatEventMasterIDJSONL `json:"monster,omitempty"`
+}
+
+type combatEventMasterIDJSONL struct {
+	ID       uint64           `json:"id"`
+	Name     string           `json:"name,omitempty"`
+	Status   resolutionStatus `json:"status"`
+	Evidence string           `json:"evidence,omitempty"`
+}
+
+type combatEventCreditJSONL struct {
+	CharacterID *uint64          `json:"characterId,omitempty"`
+	Name        string           `json:"name,omitempty"`
+	Status      resolutionStatus `json:"status"`
+	NameStatus  resolutionStatus `json:"nameStatus"`
+	Evidence    string           `json:"evidence,omitempty"`
+}
+
+type combatEventSummonerJSONL struct {
+	EntityIDs   []uint64         `json:"entityIds,omitempty"`
+	CharacterID *uint64          `json:"characterId,omitempty"`
+	Name        string           `json:"name,omitempty"`
+	Status      resolutionStatus `json:"status"`
+	Evidence    string           `json:"evidence,omitempty"`
+}
+
+type combatEventSkillJSONL struct {
+	ID         uint64           `json:"id"`
+	MessageID  uint64           `json:"messageId"`
+	Name       string           `json:"name,omitempty"`
+	NameKind   string           `json:"nameKind,omitempty"`
+	Status     resolutionStatus `json:"status"`
+	NameStatus resolutionStatus `json:"nameStatus"`
+	Evidence   string           `json:"evidence,omitempty"`
+}
+
+type combatEventDamageJSONL struct {
+	ID              *uint64          `json:"damageId,omitempty"`
+	SourceType      *uint64          `json:"sourceType,omitempty"`
+	BulletID        *int64           `json:"bulletId,omitempty"`
+	AmountAbs       int64            `json:"amountAbs"`
+	ServerResultRaw *int32           `json:"serverResultRaw,omitempty"`
+	ChangeLifeRaw   *int32           `json:"changeLifeRaw,omitempty"`
+	CalculateType   *int32           `json:"calculateType,omitempty"`
+	ClassCandidate  string           `json:"classCandidate,omitempty"`
+	ClassStatus     resolutionStatus `json:"classStatus"`
+	ClassEvidence   string           `json:"classEvidence,omitempty"`
+}
+
+type combatEventMasterJSONL struct {
+	GameVersion     string `json:"gameVersion,omitempty"`
+	ResourceVersion string `json:"resourceVersion,omitempty"`
+	ClientRegion    string `json:"clientRegion,omitempty"`
+	Locale          string `json:"locale,omitempty"`
+	SourceCommit    string `json:"sourceCommit,omitempty"`
+	SourceHash      string `json:"sourceHash,omitempty"`
+}
 
 type combatEvent struct {
 	Timestamp           time.Time
@@ -144,6 +224,11 @@ func (event *combatEvent) resolveEventType(masters *gameMaster) {
 }
 
 func (p *processor) writeDamageEvent(event combatEvent) {
+	if p.combatEventsJSONL != nil {
+		if err := json.NewEncoder(p.combatEventsJSONL).Encode(event.jsonlView(p.masters)); err != nil {
+			fmt.Fprintf(p.diagnostic, "combat_event_jsonl_write_error=%v\n", err)
+		}
+	}
 	if _, err := fmt.Fprintln(p.stdout, event.formatNormal()); err != nil {
 		fmt.Fprintf(p.diagnostic, "stdout_write_error=%v\n", err)
 		return

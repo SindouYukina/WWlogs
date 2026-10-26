@@ -37,6 +37,7 @@ func main() {
 	buffSnapshotOut := flag.String("buff-snapshot-out", "", "optionally write EntityActiveResponse Buff snapshots as local JSONL")
 	buffEventOut := flag.String("buff-event-out", "", "optionally write supported Buff lifecycle observations as local JSONL")
 	encounterSummaryOut := flag.String("encounter-summary-out", "", "optionally write evidence-labeled encounter and character summaries as Markdown")
+	combatEventsJSONLOut := flag.String("event-jsonl-out", "", "optionally write matched combat result events with raw IDs and resolution evidence as JSONL")
 	research := flag.Bool("research", false, "write per-event evidence details to stderr")
 	commandCensusOut := flag.String("command-census-out", "", "write a local JSON census of protocol commands and decode outcomes")
 	preflight := flag.Bool("preflight", false, "verify that the selected Npcap device can be opened and filtered")
@@ -149,6 +150,19 @@ func main() {
 		}
 		defer encounterSummaryFile.Close()
 	}
+	var combatEventsJSONLFile *os.File
+	if *combatEventsJSONLOut != "" {
+		if dir := filepath.Dir(*combatEventsJSONLOut); dir != "." {
+			if err := os.MkdirAll(dir, 0o700); err != nil {
+				fatal("create combat event JSONL directory", err)
+			}
+		}
+		combatEventsJSONLFile, err = os.Create(*combatEventsJSONLOut)
+		if err != nil {
+			fatal("create combat event JSONL", err)
+		}
+		defer combatEventsJSONLFile.Close()
+	}
 	processor := newProcessor(rsaKey, stdout, os.Stderr, auditWriter)
 	processor.masters = masters
 	processor.research = *research
@@ -158,7 +172,10 @@ func main() {
 	if buffEventFile != nil {
 		processor.buffLifecycle = buffEventFile
 	}
-	processor.encounterSummary = encounterSummaryFile
+	if encounterSummaryFile != nil {
+		processor.encounterSummary = encounterSummaryFile
+	}
+	processor.combatEventsJSONL = combatEventsJSONLFile
 	if *commandCensusOut != "" {
 		processor.census = newCommandCensus()
 	}
