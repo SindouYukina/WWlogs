@@ -109,31 +109,33 @@ type processorStats struct {
 }
 
 type processor struct {
-	rsa                *staticRSA
-	session            []byte
-	pending            map[uint64]pendingDamageRequest
-	pendingOrder       []pendingRef
-	pendingHead        int
-	pendingSequence    uint64
-	consumed           map[uint64]uint64
-	consumedOrder      []consumedRef
-	consumedSequence   uint64
-	entities           *entityResolver
-	sourceRoles        *sourceRoleResolver
-	masters            *gameMaster
-	research           bool
-	encounterSummaries map[encounterSummaryKey]*encounterSummary
-	currentFrameTime   time.Time
-	stdout             io.Writer
-	diagnostic         io.Writer
-	audit              io.Writer
-	encounterSummary   diagWriter
-	buffSnapshots      diagWriter
-	buffLifecycle      diagWriter
-	activeRequests     map[uint16]pendingActiveRequest
-	stats              processorStats
-	census             *commandCensus
-	sessionNumber      int
+	rsa                       *staticRSA
+	session                   []byte
+	pending                   map[uint64]pendingDamageRequest
+	pendingOrder              []pendingRef
+	pendingHead               int
+	pendingSequence           uint64
+	consumed                  map[uint64]uint64
+	consumedOrder             []consumedRef
+	consumedSequence          uint64
+	entities                  *entityResolver
+	sourceRoles               *sourceRoleResolver
+	masters                   *gameMaster
+	research                  bool
+	encounterSummaries        map[encounterSummaryKey]*encounterSummary
+	pendingSummaryCredits     map[uint64][]pendingSummaryCredit
+	pendingSummaryCreditCount int
+	currentFrameTime          time.Time
+	stdout                    io.Writer
+	diagnostic                io.Writer
+	audit                     io.Writer
+	encounterSummary          diagWriter
+	buffSnapshots             diagWriter
+	buffLifecycle             diagWriter
+	activeRequests            map[uint16]pendingActiveRequest
+	stats                     processorStats
+	census                    *commandCensus
+	sessionNumber             int
 }
 
 func newProcessor(rsaKey *staticRSA, stdout, diagnostic, audit io.Writer) *processor {
@@ -361,7 +363,9 @@ func (p *processor) handleFrame(frame gameFrame) {
 			fmt.Fprintf(p.diagnostic, "join_scene_parse_error=%v\n", err)
 			return
 		}
+		p.backfillAvailableSummaryCredits()
 		p.sourceRoles.reset()
+		p.resetPendingSummaryCredits()
 	case 25185:
 		added, err := p.entities.applyEntityAddNotify(plain)
 		if err != nil {
@@ -379,7 +383,11 @@ func (p *processor) handleFrame(frame gameFrame) {
 		}
 		p.stats.entityRemoves += removed
 		for _, id := range removedIDs {
+			if roleID, correlated := p.sourceRoles.correlatedRole(id); correlated {
+				p.backfillEncounterSummary(id, roleID)
+			}
 			p.sourceRoles.remove(id)
+			p.removePendingSummaryCredits(id)
 		}
 	case 28481:
 		if err := p.handleActiveRequest(frame.token, plain); err != nil {
@@ -499,7 +507,9 @@ func (p *processor) handleProtoKeyResponse(body []byte) error {
 	p.consumedOrder = nil
 	p.consumedSequence = 0
 	p.entities.reset()
+	p.backfillAvailableSummaryCredits()
 	p.sourceRoles.reset()
+	p.resetPendingSummaryCredits()
 	p.activeRequests = make(map[uint16]pendingActiveRequest)
 	fmt.Fprintln(p.diagnostic, "session_key_ready bytes=32 value=redacted")
 	return nil

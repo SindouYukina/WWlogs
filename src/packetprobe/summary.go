@@ -32,6 +32,8 @@ type encounterSummary struct {
 	unclassified                  int64
 	unknownCredit                 int
 	unknownCreditAbs              int64
+	identityBackfilledEvents      int
+	identityBackfillEventsOmitted int
 	classificationEvidence        map[string]struct{}
 	classificationEvidenceOmitted int
 	ownerCandidatesOmitted        int
@@ -40,6 +42,13 @@ type encounterSummary struct {
 	ownerCandidates               map[uint64]*ownerCandidateSummary
 	bossCandidates                map[bossCandidateKey]bossCandidateSummary
 }
+
+type pendingSummaryCredit struct {
+	key   encounterSummaryKey
+	event combatEvent
+}
+
+const maxPendingSummaryCreditEvents = 16384
 
 type characterSummary struct {
 	id               uint64
