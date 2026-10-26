@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestDamageResponsePreservesRawResultsAndMarksHealingOnlyAsCandidate(t *testing.T) {
@@ -40,6 +41,51 @@ func TestDamageResponsePreservesRawResultsAndMarksHealingOnlyAsCandidate(t *test
 	}
 	if strings.Contains(audit.String(), "VERIFIED\t") {
 		t.Fatalf("cross-version CalculateType was promoted to VERIFIED: %q", audit.String())
+	}
+}
+
+func TestCombatEventJSONLPreservesRawIDsAndUnknownResolution(t *testing.T) {
+	var stdout, diagnostic, jsonl bytes.Buffer
+	p := newProcessor(nil, &stdout, &diagnostic, nil)
+	p.combatEventsJSONL = &jsonl
+	event := combatEvent{
+		Timestamp: time.Date(2026, 10, 27, 1, 2, 3, 4000, time.UTC), SessionNumber: 3, RPCID: 91,
+		SourceEntityID: 30298, HasSourceEntity: true, TargetEntityID: 30802, HasTargetEntity: true,
+		SkillID: 280026010, DamageID: 28002601, HasDamageID: true, Damage: 177,
+		ServerResultRaw: -177, HasServerResult: true, ChangeLifeRaw: -200, HasChangeLife: true,
+		CharacterStatus: resolutionUnknown, CharacterNameStatus: resolutionUnknown,
+		SkillStatus: resolutionUnknown, SkillNameStatus: resolutionUnknown, EventTypeStatus: resolutionUnknown,
+		Source: entityIdentity{Runtime: runtimeEntity{entityID: 30298}, RuntimeStatus: resolutionUnknown},
+		Target: entityIdentity{Runtime: runtimeEntity{entityID: 30802}, RuntimeStatus: resolutionUnknown},
+	}
+	p.writeDamageEvent(event)
+	var got map[string]any
+	if err := json.NewDecoder(&jsonl).Decode(&got); err != nil {
+		t.Fatalf("decode event JSONL: %v", err)
+	}
+	if got["schemaVersion"] != float64(1) || got["eventType"] != "DAMAGE_RESULT" || got["sessionNumber"] != float64(3) || got["rpcId"] != float64(91) {
+		t.Fatalf("event envelope = %#v", got)
+	}
+	source := got["source"].(map[string]any)
+	target := got["target"].(map[string]any)
+	if source["entityId"] != float64(30298) || target["entityId"] != float64(30802) {
+		t.Fatalf("raw source/target IDs were lost: source=%#v target=%#v", source, target)
+	}
+	if _, exists := got["characterId"]; exists {
+		t.Fatalf("unresolved event gained a top-level character ID: %#v", got)
+	}
+	credit := got["credit"].(map[string]any)
+	if _, exists := credit["characterId"]; exists || credit["status"] != string(resolutionUnknown) {
+		t.Fatalf("unknown credit was promoted: %#v", credit)
+	}
+	damage := got["damage"].(map[string]any)
+	if damage["damageId"] != float64(28002601) || damage["amountAbs"] != float64(177) || damage["serverResultRaw"] != float64(-177) || damage["classStatus"] != string(resolutionUnknown) {
+		t.Fatalf("raw damage evidence or unknown class changed: %#v", damage)
+	}
+	runtimeFields := source["runtimeFields"].(map[string]any)
+	runtimeEntityID := runtimeFields["entityId"].(map[string]any)
+	if _, exists := damage["sourceType"]; exists || runtimeEntityID["present"] != true || runtimeEntityID["value"] != float64(30298) {
+		t.Fatalf("optional IDs or nested runtime fields malformed: source=%#v damage=%#v", source, damage)
 	}
 }
 

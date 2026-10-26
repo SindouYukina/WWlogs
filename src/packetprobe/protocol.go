@@ -130,6 +130,7 @@ type processor struct {
 	diagnostic                io.Writer
 	audit                     io.Writer
 	encounterSummary          diagWriter
+	combatEventsJSONL         diagWriter
 	buffSnapshots             diagWriter
 	buffLifecycle             diagWriter
 	activeRequests            map[uint16]pendingActiveRequest
