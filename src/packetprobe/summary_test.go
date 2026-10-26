@@ -80,6 +80,86 @@ func TestEncounterSummaryWithoutEventsReportsNoMatchedEvents(t *testing.T) {
 	}
 }
 
+func TestEncounterSummaryListsUncreditedRawIDGroups(t *testing.T) {
+	var output bytes.Buffer
+	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
+	p.encounterSummary = &output
+	event := combatEvent{
+		SessionNumber: 2, SourceEntityID: 501, HasSourceEntity: true, TargetEntityID: 602, HasTargetEntity: true,
+		SkillID: 13111001, DamageID: 13111002, HasDamageID: true, BulletID: 13111003, HasBulletID: true,
+		EventTypeCandidate: "DAMAGE_CANDIDATE", Damage: 40,
+	}
+	p.observeEncounterSummary(event)
+	event.Damage = 60
+	p.observeEncounterSummary(event)
+
+	if err := p.writeEncounterSummary(); err != nil {
+		t.Fatal(err)
+	}
+	text := output.String()
+	for _, want := range []string{
+		"Events without credited CharacterId: 2 (result magnitude 100)",
+		"Uncredited result breakdown (raw IDs)",
+		"Session 2; source Scene UNKNOWN; target Scene UNKNOWN; DAMAGE_CANDIDATE; SkillId 13111001; DamageId 13111002; BulletId 13111003; Source EntityId 501; Target EntityId 602: 2 event(s), magnitude 100; CharacterId UNKNOWN",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("summary missing %q:\n%s", want, text)
+		}
+	}
+	if strings.Contains(text, "CharacterId 1311 —") {
+		t.Fatal("uncredited raw-ID grouping inferred a CharacterId")
+	}
+}
+
+func TestEncounterSummaryBoundsUncreditedRawIDGroups(t *testing.T) {
+	var output bytes.Buffer
+	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
+	p.encounterSummary = &output
+	for skillID := uint64(1); skillID <= maxSummaryUncreditedRows+1; skillID++ {
+		p.observeEncounterSummary(combatEvent{
+			SessionNumber: 1, SkillID: skillID, EventTypeCandidate: "DAMAGE_CANDIDATE", Damage: 1,
+		})
+	}
+	if got := len(p.encounterSummaries[encounterSummaryKey{session: 1}].uncreditedEvents); got != maxSummaryUncreditedRows {
+		t.Fatalf("uncredited group count = %d, want cap %d", got, maxSummaryUncreditedRows)
+	}
+	if err := p.writeEncounterSummary(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), "Additional uncredited events omitted by the safety limit: 1") {
+		t.Fatalf("summary did not report the omitted group count: %s", output.String())
+	}
+}
+
+func TestEncounterSummaryOverflowKeepsUncreditedSessionsSeparate(t *testing.T) {
+	var output bytes.Buffer
+	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
+	p.encounterSummary = &output
+	for session := 1; session <= maxEncounterSummaryGroups+2; session++ {
+		p.observeEncounterSummary(combatEvent{
+			SessionNumber: session, SourceEntityID: 501, HasSourceEntity: true, TargetEntityID: 602, HasTargetEntity: true,
+			SkillID: 700, EventTypeCandidate: "DAMAGE_CANDIDATE", Damage: 1,
+		})
+	}
+	if got := len(p.encounterSummaries[encounterSummaryKey{overflow: true}].uncreditedEvents); got != 2 {
+		t.Fatalf("overflow uncredited groups = %d, want one per session", got)
+	}
+	if err := p.writeEncounterSummary(); err != nil {
+		t.Fatal(err)
+	}
+	text := output.String()
+	overflowAt := strings.Index(text, "Additional session/scene groups")
+	if overflowAt < 0 {
+		t.Fatalf("overflow summary was not emitted: %s", text)
+	}
+	overflowText := text[overflowAt:]
+	unknownRows := strings.Count(overflowText, "CharacterId UNKNOWN")
+	hasSession513, hasSession514 := strings.Contains(text, "Session 513;"), strings.Contains(text, "Session 514;")
+	if unknownRows != 2 || !hasSession513 || !hasSession514 {
+		t.Fatalf("overflow summary merged raw IDs across sessions: rows=%d session513=%t session514=%t", unknownRows, hasSession513, hasSession514)
+	}
+}
+
 func TestEncounterSummaryReportsBuffSnapshotObservationsWithoutLifecycleClaims(t *testing.T) {
 	var output bytes.Buffer
 	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
@@ -165,6 +245,9 @@ func TestEncounterSummaryBackfillsEarlierSourceEventsAsCorrelated(t *testing.T) 
 		if !strings.Contains(output.String(), want) {
 			t.Errorf("summary missing %q:\n%s", want, output.String())
 		}
+	}
+	if strings.Contains(output.String(), "CharacterId UNKNOWN") {
+		t.Fatal("backfilled event remained in the uncredited breakdown")
 	}
 }
 

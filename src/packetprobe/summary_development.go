@@ -38,6 +38,7 @@ func (p *processor) observeEncounterSummary(event combatEvent) {
 			ownerCandidates:        make(map[uint64]*ownerCandidateSummary),
 			bossCandidates:         make(map[bossCandidateKey]bossCandidateSummary),
 			buffObservations:       make(map[buffObservationKey]int),
+			uncreditedEvents:       make(map[uncreditedEventKey]*uncreditedEventSummary),
 			classificationEvidence: make(map[string]struct{}),
 		}
 		p.encounterSummaries[key] = summary
@@ -74,6 +75,7 @@ func (p *processor) observeEncounterSummary(event combatEvent) {
 	} else {
 		summary.unknownCredit++
 		summary.unknownCreditAbs += event.Damage
+		addUncreditedEvent(summary, event)
 		if event.HasSourceEntity && event.SourceEntityID != 0 {
 			if p.pendingSummaryCreditCount < maxPendingSummaryCreditEvents {
 				if p.pendingSummaryCredits == nil {
@@ -111,6 +113,53 @@ func (p *processor) observeEncounterSummary(event combatEvent) {
 	}
 	addBossCandidate(summary, event.Source)
 	addBossCandidate(summary, event.Target)
+}
+
+func addUncreditedEvent(summary *encounterSummary, event combatEvent) {
+	if summary.uncreditedEvents == nil {
+		summary.uncreditedEvents = make(map[uncreditedEventKey]*uncreditedEventSummary)
+	}
+	key := makeUncreditedEventKey(event)
+	row := summary.uncreditedEvents[key]
+	if row == nil {
+		if len(summary.uncreditedEvents) >= maxSummaryUncreditedRows {
+			summary.uncreditedEventsOmitted++
+			return
+		}
+		row = &uncreditedEventSummary{key: key}
+		summary.uncreditedEvents[key] = row
+	}
+	row.events++
+	row.magnitude += event.Damage
+}
+
+func removeUncreditedEvent(summary *encounterSummary, event combatEvent) {
+	key := makeUncreditedEventKey(event)
+	row := summary.uncreditedEvents[key]
+	if row == nil {
+		if summary.uncreditedEventsOmitted > 0 {
+			summary.uncreditedEventsOmitted--
+		}
+		return
+	}
+	row.events--
+	row.magnitude -= event.Damage
+	if row.events == 0 {
+		delete(summary.uncreditedEvents, key)
+	}
+}
+
+func makeUncreditedEventKey(event combatEvent) uncreditedEventKey {
+	return uncreditedEventKey{
+		sessionNumber: event.SessionNumber,
+		sourceSceneID: event.Source.Runtime.sceneInstanceID, hasSourceScene: event.Source.Runtime.hasSceneInstanceID,
+		targetSceneID: event.Target.Runtime.sceneInstanceID, hasTargetScene: event.Target.Runtime.hasSceneInstanceID,
+		eventType: event.EventTypeCandidate, skillID: event.SkillID,
+		damageID: event.DamageID, hasDamageID: event.HasDamageID,
+		bulletID: event.BulletID, hasBulletID: event.HasBulletID,
+		sourceEntityID: event.SourceEntityID, hasSourceEntity: event.HasSourceEntity,
+		targetEntityID: event.TargetEntityID, hasTargetEntity: event.HasTargetEntity,
+	}
 }
 
 func (p *processor) observeBuffSnapshot(row buffSnapshotAuditRow) {
@@ -219,6 +268,7 @@ func (p *processor) backfillEncounterSummary(sourceID, roleID uint64) {
 		event.CharacterNameStatus = resolutionStatus(character.NameStatus)
 		summary.unknownCredit--
 		summary.unknownCreditAbs -= event.Damage
+		removeUncreditedEvent(summary, event)
 		summary.identityBackfilledEvents++
 		addCreditedCharacterEvent(summary, event)
 	}
@@ -374,6 +424,9 @@ func writeOneEncounterSummary(w io.Writer, summary *encounterSummary) error {
 			return err
 		}
 	}
+	if err := writeUncreditedEvents(w, summary); err != nil {
+		return err
+	}
 	if err := writeClassificationEvidence(w, summary); err != nil {
 		return err
 	}
@@ -387,6 +440,81 @@ func writeOneEncounterSummary(w io.Writer, summary *encounterSummary) error {
 		return err
 	}
 	return writeOwnerCandidates(w, summary)
+}
+
+func writeUncreditedEvents(w io.Writer, summary *encounterSummary) error {
+	if _, err := fmt.Fprintln(w, "\n### Uncredited result breakdown (raw IDs)"); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintln(w, "\nAmounts are absolute CombatResult values grouped by observed numeric IDs. These rows do not establish a Character, Owner, or Summoner."); err != nil {
+		return err
+	}
+	keys := make([]uncreditedEventKey, 0, len(summary.uncreditedEvents))
+	for key := range summary.uncreditedEvents {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		left, right := summary.uncreditedEvents[keys[i]], summary.uncreditedEvents[keys[j]]
+		if left.magnitude != right.magnitude {
+			return left.magnitude > right.magnitude
+		}
+		if keys[i].eventType != keys[j].eventType {
+			return keys[i].eventType < keys[j].eventType
+		}
+		if keys[i].sessionNumber != keys[j].sessionNumber {
+			return keys[i].sessionNumber < keys[j].sessionNumber
+		}
+		if keys[i].skillID != keys[j].skillID {
+			return keys[i].skillID < keys[j].skillID
+		}
+		if keys[i].damageID != keys[j].damageID {
+			return keys[i].damageID < keys[j].damageID
+		}
+		if keys[i].sourceEntityID != keys[j].sourceEntityID {
+			return keys[i].sourceEntityID < keys[j].sourceEntityID
+		}
+		return keys[i].targetEntityID < keys[j].targetEntityID
+	})
+	if len(keys) == 0 {
+		if _, err := fmt.Fprintln(w, "\n- None."); err != nil {
+			return err
+		}
+	}
+	for _, key := range keys {
+		row := summary.uncreditedEvents[key]
+		eventType := key.eventType
+		if eventType == "" {
+			eventType = "UNCLASSIFIED_RESULT"
+		}
+		if _, err := fmt.Fprintf(w, "\n- Session %d; source Scene %s; target Scene %s; %s; SkillId %s; DamageId %s; BulletId %s; Source EntityId %s; Target EntityId %s: %d event(s), magnitude %d; CharacterId UNKNOWN\n",
+			key.sessionNumber, summaryIDLabel(key.sourceSceneID, key.hasSourceScene), summaryIDLabel(key.targetSceneID, key.hasTargetScene),
+			eventType,
+			summaryIDLabel(key.skillID, key.skillID != 0), summaryIDLabel(key.damageID, key.hasDamageID),
+			summaryInt64Label(key.bulletID, key.hasBulletID), summaryIDLabel(key.sourceEntityID, key.hasSourceEntity),
+			summaryIDLabel(key.targetEntityID, key.hasTargetEntity), row.events, row.magnitude); err != nil {
+			return err
+		}
+	}
+	if summary.uncreditedEventsOmitted > 0 {
+		if _, err := fmt.Fprintf(w, "\n- Additional uncredited events omitted by the safety limit: %d.\n", summary.uncreditedEventsOmitted); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func summaryIDLabel(value uint64, present bool) string {
+	if !present {
+		return "UNKNOWN"
+	}
+	return fmt.Sprintf("%d", value)
+}
+
+func summaryInt64Label(value int64, present bool) string {
+	if !present {
+		return "UNKNOWN"
+	}
+	return fmt.Sprintf("%d", value)
 }
 
 func writeBuffSnapshotObservations(w io.Writer, summary *encounterSummary) error {
