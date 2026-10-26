@@ -5,6 +5,9 @@ package main
 // Public builds have no diagnostic outputs. Each function below is implemented in a wwdev file
 // and is a no-op here so that shared code can call it unconditionally.
 
+func (p *processor) writeStructuredEventJSONL(event any) {
+}
+
 func (event combatEvent) jsonlView(masters *gameMaster) combatEventJSONL {
 	var r0 combatEventJSONL
 	return r0

@@ -78,6 +78,15 @@ func optionalInt32(value int32, present bool) *int32 {
 	return &value
 }
 
+func (p *processor) writeStructuredEventJSONL(event any) {
+	if p.combatEventsJSONL == nil {
+		return
+	}
+	if err := json.NewEncoder(p.combatEventsJSONL).Encode(event); err != nil {
+		fmt.Fprintf(p.diagnostic, "combat_event_jsonl_write_error=%v\n", err)
+	}
+}
+
 func (event combatEvent) formatNormal() string {
 	timestamp := "--:--:--.---"
 	if !event.Timestamp.IsZero() {

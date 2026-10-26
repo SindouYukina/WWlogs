@@ -11,9 +11,11 @@ import (
 )
 
 func TestEntityActiveResponseDecodesBuffSnapshotWithCorrelatedEntity(t *testing.T) {
-	var output bytes.Buffer
+	var output, eventStream bytes.Buffer
 	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
 	p.buffSnapshots = &output
+	p.combatEventsJSONL = &eventStream
+	p.sessionNumber = 5
 	const token = 42
 	if err := p.handleActiveRequest(token, appendVarintField(nil, 4, 8801)); err != nil {
 		t.Fatal(err)
@@ -75,6 +77,13 @@ func TestEntityActiveResponseDecodesBuffSnapshotWithCorrelatedEntity(t *testing.
 	if len(row.Buff.UnknownFieldNums) != 1 || row.Buff.UnknownFieldNums[0] != 30 {
 		t.Fatalf("unknown fields = %v, want [30]", row.Buff.UnknownFieldNums)
 	}
+	var streamRow map[string]any
+	if err := json.Unmarshal(bytes.TrimSpace(eventStream.Bytes()), &streamRow); err != nil {
+		t.Fatalf("decode unified event row: %v", err)
+	}
+	if streamRow["schemaVersion"] != float64(1) || streamRow["eventType"] != "BUFF_SNAPSHOT" || streamRow["sessionNumber"] != float64(5) || streamRow["messageId"] != float64(26702) {
+		t.Fatalf("snapshot missing from unified event stream: %#v", streamRow)
+	}
 }
 
 func TestEntityActiveResponseWithoutMatchingRequestKeepsEntityUnknown(t *testing.T) {
@@ -99,9 +108,11 @@ func TestEntityActiveResponseWithoutMatchingRequestKeepsEntityUnknown(t *testing
 }
 
 func TestBuffLifecycleOutputRetainsUnknownFieldsAndRejectsWireMismatch(t *testing.T) {
-	var output bytes.Buffer
+	var output, eventStream bytes.Buffer
 	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
 	p.buffLifecycle = &output
+	p.combatEventsJSONL = &eventStream
+	p.sessionNumber = 2
 	body := appendVarintField(nil, 5, 8801)
 	body = appendVarintField(body, 99, 1)
 	frame := gameFrame{commandID: 18345, direction: "in"}
@@ -114,6 +125,13 @@ func TestBuffLifecycleOutputRetainsUnknownFieldsAndRejectsWireMismatch(t *testin
 	}
 	if row.TargetEntityID == nil || *row.TargetEntityID != 8801 || len(row.UnknownFieldNumbers) != 1 || row.UnknownFieldNumbers[0] != 99 {
 		t.Fatalf("unexpected fields were not preserved as unknown: %+v", row)
+	}
+	var streamRow map[string]any
+	if err := json.Unmarshal(bytes.TrimSpace(eventStream.Bytes()), &streamRow); err != nil {
+		t.Fatalf("decode unified event row: %v", err)
+	}
+	if streamRow["schemaVersion"] != float64(1) || streamRow["eventType"] != "BUFF_LIFECYCLE" || streamRow["sessionNumber"] != float64(2) || streamRow["messageId"] != float64(18345) || streamRow["direction"] != "in" {
+		t.Fatalf("Buff lifecycle missing from unified event stream: %#v", streamRow)
 	}
 	badWire := appendBytesField(nil, 5, []byte{1})
 	if _, err := decodeBuffLifecycleMessage(gameFrame{commandID: 18345}, badWire); err == nil {
