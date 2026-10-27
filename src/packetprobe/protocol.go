@@ -387,6 +387,9 @@ func (p *processor) handleFrame(frame gameFrame) {
 			return
 		}
 	}
+	if censusEntry != nil {
+		censusEntry.observeKnownBodyWire(plain)
+	}
 	parseErrorsBefore := p.stats.parseErrors
 	switch frame.commandID {
 	case 103, 116:
