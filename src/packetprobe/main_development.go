@@ -45,6 +45,10 @@ func main() {
 	combatNotifyAuditOut := flag.String("combat-notify-audit-out", "", "offline only: write sanitized CombatNotifyData field audit JSONL")
 	encounterSummaryOut := flag.String("encounter-summary-out", "", "optionally write evidence-labeled encounter and character summaries as Markdown")
 	combatEventsJSONLOut := flag.String("event-jsonl-out", "", "optionally write matched combat and Buff observations with evidence as JSONL")
+	protocolSchemaPath := flag.String("protocol-schema", "", "optional local protocol schema JSON")
+
+	schemaDecodeOut := flag.String("schema-decode-out", "", "optional JSONL of schema-directed decodes of decrypted outer messages (requires -protocol-schema)")
+
 	frameArchiveOut := flag.String("frame-archive-out", "", "optionally write one local JSONL record per reassembled frame (digests only; no key or plaintext)")
 	research := flag.Bool("research", false, "write per-event evidence details to stderr")
 	commandCensusOut := flag.String("command-census-out", "", "write a local JSON census of protocol commands and decode outcomes")
@@ -215,6 +219,35 @@ func main() {
 	}
 	processor.combatEventsJSONL = optionalFileWriter(combatEventsJSONLFile)
 	processor.combatNotifyAudit = optionalFileWriter(combatNotifyAuditFile)
+	if *protocolSchemaPath != "" {
+		schema, err := loadProtocolSchema(*protocolSchemaPath)
+		if err != nil {
+			fatal("load protocol schema", err)
+		}
+		processor.protocolSchema = schema
+	}
+	if *schemaDecodeOut != "" {
+		if processor.protocolSchema == nil {
+			fatal("schema decode output", fmt.Errorf("-schema-decode-out requires -protocol-schema"))
+		}
+		if dir := filepath.Dir(*schemaDecodeOut); dir != "." {
+			if err := os.MkdirAll(dir, 0o700); err != nil {
+				fatal("create schema decode directory", err)
+			}
+		}
+		schemaFile, err := os.Create(*schemaDecodeOut)
+		if err != nil {
+			fatal("create schema decode output", err)
+		}
+		defer schemaFile.Close()
+		schemaWriter := bufio.NewWriter(schemaFile)
+		processor.schemaDecodeOut = schemaWriter
+		defer func() {
+			if err := schemaWriter.Flush(); err != nil {
+				fmt.Fprintf(os.Stderr, "schema decode flush error: %v\n", err)
+			}
+		}()
+	}
 	var frameArchiveWriter *bufio.Writer
 	if frameArchiveFile != nil {
 		frameArchiveWriter = bufio.NewWriter(frameArchiveFile)
@@ -410,6 +443,7 @@ finished:
 		}
 		fmt.Fprintf(os.Stderr, "frame_archive frames=%d write_errors=%d\n", processor.frameOrdinal, processor.frameArchiveErrors)
 	}
+	fmt.Fprintf(os.Stderr, "schema_decode errors=%d skipped_without_schema=%d\n", processor.schemaDecodeErrors, processor.schemaDecodeSkipped)
 	processor.printSummary(os.Stderr)
 	fmt.Fprintf(os.Stderr, "capture_finished udp=%d kcp_push=%d kcp_ordered=%d kcp_messages=%d protocol_frames=%d bad_crc=%d malformed_frames=%d kernel_drops=%d duration=%s\n",
 		stats.udpPackets, stats.kcpPush, stats.kcpOrdered, stats.kcpMessages, stats.frames, stats.badCRC, stats.malformed, stats.kernelDrops, time.Since(started).Round(time.Millisecond))
