@@ -43,6 +43,9 @@ func optionalDamageSource(value uint64, present bool) string {
 func (p *processor) archiveFrame(frame gameFrame) {
 }
 
+func (p *processor) archiveSchemaDecode(frame gameFrame, plain []byte) {
+}
+
 func (p *processor) backfillAvailableSummaryCredits() {
 }
 

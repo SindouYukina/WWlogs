@@ -144,6 +144,10 @@ type processor struct {
 	frameArchive              diagWriter
 	frameOrdinal              uint64
 	frameArchiveErrors        int
+	protocolSchema            *protocolSchema
+	schemaDecodeOut           diagWriter
+	schemaDecodeErrors        int
+	schemaDecodeSkipped       int
 	activeRequests            map[uint16]pendingActiveRequest
 	stats                     processorStats
 	census                    *commandCensus
@@ -390,6 +394,7 @@ func (p *processor) handleFrame(frame gameFrame) {
 	if censusEntry != nil {
 		censusEntry.observeKnownBodyWire(plain)
 	}
+	p.archiveSchemaDecode(frame, plain)
 	parseErrorsBefore := p.stats.parseErrors
 	switch frame.commandID {
 	case 103, 116:
