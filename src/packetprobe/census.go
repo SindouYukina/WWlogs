@@ -27,6 +27,7 @@ type commandCensusEntry struct {
 	FailureReasons        map[string]int `json:"failureReasons,omitempty"`
 	TopLevelFields        map[string]int `json:"topLevelFieldCounts,omitempty"`
 	TopLevelFieldOverflow int            `json:"topLevelFieldOverflow,omitempty"`
+	ImplementedWireBodies int            `json:"implementedWireBodies,omitempty"`
 }
 
 type crcFailureObservation struct {

@@ -24,3 +24,18 @@ func (e *commandCensusEntry) observeTopLevelFields(fields []protoField) {
 		e.TopLevelFields[key]++
 	}
 }
+
+// observeKnownBodyWire records top-level wire facts for a decrypted body of an
+// implemented command. It reads the same plaintext as the typed decoder and
+// must not change the typed decoder's result. The field counts include fields
+// the typed decoder already uses, so they are not an unknown-field census by
+// themselves.
+func (e *commandCensusEntry) observeKnownBodyWire(plain []byte) {
+	fields, err := parseProtoFields(plain)
+	if err != nil {
+		e.FailureReasons["implemented body top-level wire parse failed"]++
+		return
+	}
+	e.ImplementedWireBodies++
+	e.observeTopLevelFields(fields)
+}
