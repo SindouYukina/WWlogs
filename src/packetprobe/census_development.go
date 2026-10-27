@@ -28,7 +28,7 @@ func (c *commandCensus) write(path string, stats captureStats, clientVersion *cl
 		id        uint16
 		direction string
 	}{
-		{17286, "in"}, {22492, "in"}, {25830, "in"}, {18345, "in"}, {20358, "in"}, {17893, "in"}, {22102, "in"}, {29363, "in"}, {16974, "in"}, {18559, "in"}, {25185, "in"}, {17769, "in"}, {28481, "out"}, {26702, "in"}, {19470, "out"}, {20332, "in"},
+		{17286, "in"}, {22492, "in"}, {21803, "in"}, {25830, "in"}, {29488, "in"}, {18345, "in"}, {20358, "in"}, {17893, "in"}, {22102, "in"}, {29363, "in"}, {16974, "in"}, {26471, "in"}, {17807, "in"}, {27178, "in"}, {24831, "in"}, {16764, "in"}, {29113, "in"}, {29655, "in"}, {18559, "in"}, {25185, "in"}, {17769, "in"}, {28481, "out"}, {26702, "in"}, {19470, "out"}, {20332, "in"},
 		{21051, "in"}, {18899, "in"}, {18580, "in"}, {27633, "in"},
 		{103, "out"}, {116, "out"},
 	} {
@@ -37,7 +37,7 @@ func (c *commandCensus) write(path string, stats captureStats, clientVersion *cl
 			entry := commandCensusEntry{CommandID: candidate.id, Name: commandName(candidate.id), Direction: candidate.direction, Status: "NOT OBSERVED"}
 			if candidate.id == 103 || candidate.id == 116 {
 				entry.SchemaBasis = "Only extracted version fields are retained; command 103/116 sibling fields contain device/account identifiers and are excluded from logs and audit"
-			} else if candidate.id == 17286 || candidate.id == 22492 || candidate.id == 25830 || candidate.id == 18345 || candidate.id == 20358 || candidate.id == 17893 || candidate.id == 22102 || candidate.id == 29363 || candidate.id == 16974 || candidate.id == 21051 || candidate.id == 18899 || candidate.id == 18580 || candidate.id == 27633 {
+			} else if candidate.id == 17286 || candidate.id == 22492 || candidate.id == 21803 || candidate.id == 25830 || candidate.id == 29488 || candidate.id == 18345 || candidate.id == 20358 || candidate.id == 17893 || candidate.id == 22102 || candidate.id == 29363 || candidate.id == 16974 || candidate.id == 26471 || candidate.id == 17807 || candidate.id == 27178 || candidate.id == 24831 || candidate.id == 16764 || candidate.id == 29113 || candidate.id == 29655 || candidate.id == 21051 || candidate.id == 18899 || candidate.id == 18580 || candidate.id == 27633 {
 				entry.SchemaBasis = "Windows Global UHD 3.7.1 Aki.Protocol metadata; client version observed, schema compatibility unverified"
 			}
 			entries = append(entries, entry)

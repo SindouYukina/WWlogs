@@ -149,8 +149,12 @@ func commandName(id uint16) string {
 		return "UpdateSceneGroupDataNotify"
 	case 22492:
 		return "PlayerLivingStatesNotify"
+	case 21803:
+		return "AddSysBuffNotify"
 	case 25830:
 		return "ApplyGameplayEffectNotify"
+	case 29488:
+		return "ApplyGameplayEffectPush"
 	case 18345:
 		return "RemoveGameplayEffectNotify"
 	case 20358:
@@ -163,6 +167,20 @@ func commandName(id uint16) string {
 		return "BuffStackCountNotify"
 	case 16974:
 		return "BuffDurationNotify"
+	case 26471:
+		return "OrderApplyBuffNotify"
+	case 17807:
+		return "OrderRemoveBuffNotify"
+	case 27178:
+		return "RefreshBuffDurationPush"
+	case 24831:
+		return "RemoveSysBuffNotify"
+	case 16764:
+		return "SimpleCombatEntityAttributeUpdateNotify"
+	case 29113:
+		return "SimpleCombatEntitySyncAttributePush"
+	case 29655:
+		return "UpdateSysBuffNotify"
 	case 21051:
 		return "UpdatePlayerAllFightRoleNotify"
 	case 18899:
@@ -216,7 +234,7 @@ func (c *commandCensus) entry(id uint16, direction string) *commandCensusEntry {
 		}
 		if id == 103 || id == 116 {
 			entry.SchemaBasis = "Only extracted version fields are retained; command 103/116 sibling fields contain device/account identifiers and are excluded from logs and audit"
-		} else if id == 17286 || id == 22492 || id == 25830 || id == 18345 || id == 20358 || id == 17893 || id == 22102 || id == 29363 || id == 16974 || id == 18559 || id == 25185 || id == 17769 || id == 28481 || id == 21051 || id == 18899 || id == 18580 || id == 27633 {
+		} else if id == 17286 || id == 22492 || id == 21803 || id == 25830 || id == 29488 || id == 18345 || id == 20358 || id == 17893 || id == 22102 || id == 29363 || id == 16974 || id == 26471 || id == 17807 || id == 27178 || id == 24831 || id == 16764 || id == 29113 || id == 29655 || id == 18559 || id == 25185 || id == 17769 || id == 28481 || id == 21051 || id == 18899 || id == 18580 || id == 27633 {
 			entry.SchemaBasis = "Windows Global UHD 3.7.1 Aki.Protocol metadata; client version observed, schema compatibility unverified"
 		} else if id == 26702 {
 			entry.SchemaBasis = "client Global 3.7.1 static schema; client version observed, cross-platform schema compatibility unverified"

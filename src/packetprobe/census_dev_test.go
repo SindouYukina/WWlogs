@@ -45,7 +45,7 @@ func TestCommandCensusSeparatesDecodedFramesFromUnimplementedSchemas(t *testing.
 	if err := json.Unmarshal(data, &report); err != nil {
 		t.Fatal(err)
 	}
-	if report.SessionCount != 1 || len(report.Commands) != 23 {
+	if report.SessionCount != 1 || len(report.Commands) != 32 {
 		t.Fatalf("session/command counts = %d/%d", report.SessionCount, len(report.Commands))
 	}
 	statuses := make(map[uint16]string, len(report.Commands))
@@ -66,6 +66,26 @@ func TestCommandCensusSeparatesDecodedFramesFromUnimplementedSchemas(t *testing.
 	}
 	if statuses[25830] != "NOT OBSERVED" {
 		t.Fatalf("ApplyGameplayEffectNotify census status = %q", statuses[25830])
+	}
+	wantBuffCommands := map[uint16]string{
+		21803: "AddSysBuffNotify", 25830: "ApplyGameplayEffectNotify", 29488: "ApplyGameplayEffectPush",
+		16974: "BuffDurationNotify", 29363: "BuffStackCountNotify", 26471: "OrderApplyBuffNotify",
+		17807: "OrderRemoveBuffNotify", 27178: "RefreshBuffDurationPush", 18345: "RemoveGameplayEffectNotify",
+		20358: "RemoveGameplayEffectPush", 24831: "RemoveSysBuffNotify", 16764: "SimpleCombatEntityAttributeUpdateNotify",
+		22102: "SimpleCombatEntityBuffLayerCountNotify", 17893: "SimpleCombatEntityBuffUpdateNotify",
+		29113: "SimpleCombatEntitySyncAttributePush", 29655: "UpdateSysBuffNotify",
+	}
+	for commandID, name := range wantBuffCommands {
+		found := false
+		for _, entry := range report.Commands {
+			if entry.CommandID == commandID {
+				found = entry.Name == name && entry.Direction == "in" && entry.Status == "NOT OBSERVED" && entry.SchemaBasis == "Windows Global UHD 3.7.1 Aki.Protocol metadata; client version observed, schema compatibility unverified"
+				break
+			}
+		}
+		if !found {
+			t.Errorf("Buff schema census entry %d (%s) missing or incorrect", commandID, name)
+		}
 	}
 	wantRoleNotifies := map[uint16]string{
 		21051: "UpdatePlayerAllFightRoleNotify",
