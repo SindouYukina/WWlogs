@@ -20,6 +20,7 @@ type combatEventJSONL struct {
 	Skill         combatEventSkillJSONL    `json:"skill"`
 	CombatResult  combatEventResultJSONL   `json:"combatResult"`
 	Healing       *combatEventHealingJSONL `json:"healing,omitempty"`
+	Actors        actorsJSONL              `json:"actors"`
 	Master        combatEventMasterJSONL   `json:"master"`
 }
 
