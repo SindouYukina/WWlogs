@@ -56,13 +56,13 @@ func TestSchemaDecodeKeepsUnknownAndMismatchedFieldsRaw(t *testing.T) {
 }
 
 func TestSchemaDecodeDoesNotInterpretUnnamedBytesAsMessages(t *testing.T) {
-	// Field 16 is a map in the schema and must stay raw; it must not be parsed as nested Protobuf.
+	// Field 16 is a map with no key or value type in the schema. It must stay raw and must not be parsed as nested Protobuf.
 	body := []byte{0x82, 0x01, 0x03, 0x08, 0x01, 0x10}
 	decoded, err := decodeSchemaMessage(testSchema(t), "Inner", body, 0)
 	if err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if len(decoded.Fields) != 0 || len(decoded.Unknown) != 1 || decoded.Unknown[0].Reason != "map field not decoded" {
+	if len(decoded.Fields) != 0 || len(decoded.Unknown) != 1 || decoded.Unknown[0].Reason != "map entry does not match schema" {
 		t.Fatalf("decoded = %+v", decoded)
 	}
 }
@@ -115,5 +115,65 @@ func TestSchemaDecodeExcludesLoginIdentifiers(t *testing.T) {
 	}
 	if p.schemaDecodeSkipped != 1 {
 		t.Fatalf("skipped = %d, want 1", p.schemaDecodeSkipped)
+	}
+}
+
+func TestSchemaDecodePacksRepeatedScalars(t *testing.T) {
+	schema := &protocolSchema{Messages: map[string]schemaMessage{
+		"Packed": {Fields: []schemaField{
+			{Number: 1, Name: "Ids", schemaType: schemaType{Kind: "repeated", Element: &schemaType{Kind: "int64"}}},
+		}},
+	}}
+	// Field 1, length 3: varints 1 and 300 (0xac 0x02). Packed, so wire type 2.
+	body := []byte{0x0a, 0x03, 0x01, 0xac, 0x02}
+	decoded, err := decodeSchemaMessage(schema, "Packed", body, 0)
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(decoded.Unknown) != 0 || len(decoded.Fields) != 2 {
+		t.Fatalf("fields=%d unknown=%+v, want 2 and none", len(decoded.Fields), decoded.Unknown)
+	}
+	if decoded.Fields[0].Value != int64(1) || decoded.Fields[1].Value != int64(300) || !decoded.Fields[1].Repeated {
+		t.Fatalf("fields = %+v", decoded.Fields)
+	}
+}
+
+func TestSchemaDecodeRejectsTruncatedPackedPayload(t *testing.T) {
+	schema := &protocolSchema{Messages: map[string]schemaMessage{
+		"Packed": {Fields: []schemaField{
+			{Number: 1, Name: "Ids", schemaType: schemaType{Kind: "repeated", Element: &schemaType{Kind: "int64"}}},
+		}},
+	}}
+	// The varint 0xac has its continuation bit set and no following byte.
+	body := []byte{0x0a, 0x01, 0xac}
+	decoded, err := decodeSchemaMessage(schema, "Packed", body, 0)
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(decoded.Fields) != 0 || len(decoded.Unknown) != 1 {
+		t.Fatalf("decoded = %+v, want the raw field kept", decoded)
+	}
+}
+
+func TestSchemaDecodeMapEntries(t *testing.T) {
+	schema := &protocolSchema{Messages: map[string]schemaMessage{
+		"Holder": {Fields: []schemaField{
+			{Number: 3, Name: "Scenes", schemaType: schemaType{Kind: "map", Key: &schemaType{Kind: "int32"}, Value: &schemaType{Kind: "class", Type: "Inner"}}},
+		}},
+		"Inner": {Fields: []schemaField{{Number: 1, Name: "StackCount", schemaType: schemaType{Kind: "int32"}}}},
+	}}
+	// Entry: key 7 (field 1), value Inner{StackCount=2} (field 2).
+	entry := []byte{0x08, 0x07, 0x12, 0x02, 0x08, 0x02}
+	body := append([]byte{0x1a, byte(len(entry))}, entry...)
+	decoded, err := decodeSchemaMessage(schema, "Holder", body, 0)
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(decoded.Unknown) != 0 || len(decoded.Fields) != 1 {
+		t.Fatalf("decoded = %+v", decoded)
+	}
+	got, ok := decoded.Fields[0].Value.(mapEntry)
+	if !ok || got.Key != int32(7) || got.Message == nil || got.Message.Fields[0].Value != int32(2) {
+		t.Fatalf("map entry = %#v", decoded.Fields[0].Value)
 	}
 }

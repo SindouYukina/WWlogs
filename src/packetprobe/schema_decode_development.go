@@ -4,6 +4,7 @@ package main
 
 import (
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -34,7 +35,16 @@ func decodeSchemaMessage(schema *protocolSchema, typeName string, data []byte, d
 			continue
 		}
 		if field.Kind == "map" {
-			result.Unknown = append(result.Unknown, rawUnknown(raw, "map field not decoded"))
+			entry, ok := decodeMapEntry(schema, field, raw, depth)
+			if !ok {
+				result.Unknown = append(result.Unknown, rawUnknown(raw, "map entry does not match schema"))
+				continue
+			}
+			result.Fields = append(result.Fields, entry)
+			continue
+		}
+		if packed, ok := decodePackedScalars(schema, field, raw, depth); ok {
+			result.Fields = append(result.Fields, packed...)
 			continue
 		}
 		decoded, ok := decodeSchemaField(schema, field, raw, depth)
@@ -173,4 +183,91 @@ func (p *processor) archiveSchemaDecode(frame gameFrame, plain []byte) {
 	if _, err := p.schemaDecodeOut.Write(append(line, '\n')); err != nil {
 		p.schemaDecodeErrors++
 	}
+}
+
+// decodePackedScalars decodes a proto3 packed repeated scalar, where all elements
+// share one length-delimited field. It reports false when the field is not a
+// repeated numeric scalar or when the payload is not a whole number of elements,
+// so the caller keeps the raw field.
+func decodePackedScalars(schema *protocolSchema, field schemaField, raw protoField, depth int) ([]decodedField, bool) {
+	if field.Kind != "repeated" || field.Element == nil || raw.wire != 2 {
+		return nil, false
+	}
+	element := *field.Element
+	var fixedSize int
+	switch element.Kind {
+	case "int32", "int64", "uint32", "uint64", "enum", "bool":
+		fixedSize = 0
+	case "float":
+		fixedSize = 4
+	case "double":
+		fixedSize = 8
+	default:
+		return nil, false
+	}
+	var out []decodedField
+	data := raw.data
+	for len(data) > 0 {
+		var item protoField
+		item.number = raw.number
+		if fixedSize == 0 {
+			value, n := binary.Uvarint(data)
+			if n <= 0 {
+				return nil, false
+			}
+			item.wire = 0
+			item.value = value
+			data = data[n:]
+		} else {
+			if len(data) < fixedSize {
+				return nil, false
+			}
+			item.wire = 1
+			if fixedSize == 4 {
+				item.wire = 5
+			}
+			item.data = data[:fixedSize]
+			data = data[fixedSize:]
+		}
+		value, _, ok := decodeSchemaValue(schema, element, item, depth)
+		if !ok {
+			return nil, false
+		}
+		out = append(out, decodedField{Number: field.Number, Name: field.Name, Kind: element.Kind, Repeated: true, Value: value})
+	}
+	return out, true
+}
+
+// decodeMapEntry decodes one map entry, which is a length-delimited message with
+// key in field 1 and value in field 2. Entries missing either part are rejected
+// so that the raw field is kept instead of being guessed.
+func decodeMapEntry(schema *protocolSchema, field schemaField, raw protoField, depth int) (decodedField, bool) {
+	if field.Key == nil || field.Value == nil || raw.wire != 2 {
+		return decodedField{}, false
+	}
+	parts, err := parseProtoFields(raw.data)
+	if err != nil {
+		return decodedField{}, false
+	}
+	var keyField, valueField *protoField
+	for i := range parts {
+		switch parts[i].number {
+		case 1:
+			keyField = &parts[i]
+		case 2:
+			valueField = &parts[i]
+		}
+	}
+	if keyField == nil || valueField == nil {
+		return decodedField{}, false
+	}
+	key, _, ok := decodeSchemaValue(schema, *field.Key, *keyField, depth)
+	if !ok {
+		return decodedField{}, false
+	}
+	value, message, ok := decodeSchemaValue(schema, *field.Value, *valueField, depth)
+	if !ok {
+		return decodedField{}, false
+	}
+	return decodedField{Number: field.Number, Name: field.Name, Kind: "map", Repeated: true, Value: mapEntry{Key: key, Value: value, Message: message}}, true
 }
