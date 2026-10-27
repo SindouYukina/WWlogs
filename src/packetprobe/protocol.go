@@ -140,6 +140,7 @@ type processor struct {
 	combatEventsJSONL         diagWriter
 	buffSnapshots             diagWriter
 	buffLifecycle             diagWriter
+	combatNotifyAudit         diagWriter
 	activeRequests            map[uint16]pendingActiveRequest
 	stats                     processorStats
 	census                    *commandCensus

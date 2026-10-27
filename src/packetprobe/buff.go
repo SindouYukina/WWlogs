@@ -393,6 +393,11 @@ func (p *processor) handleCombatReceivePackNotify(frame gameFrame, body []byte) 
 				if p.census != nil {
 					p.census.observeCombatNotifyField(notification.number)
 				}
+				if p.combatNotifyAudit != nil && notification.number != 1 {
+					if err := writeCombatNotifyAudit(p.combatNotifyAudit, frame, notification, commonEntityID, commonOriginator, commonMessageID, p.sessionNumber); err != nil {
+						return fmt.Errorf("write CombatNotifyData audit field %d: %w", notification.number, err)
+					}
+				}
 				schemaCommandID, supported := combatNotifyBuffSchemaCommands[notification.number]
 				if !supported || notification.wire != 2 {
 					continue
