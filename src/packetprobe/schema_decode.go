@@ -44,3 +44,11 @@ type schemaDecodeRecord struct {
 	CommandID     uint16          `json:"commandId"`
 	Decoded       *decodedMessage `json:"decoded"`
 }
+
+// mapEntry is one decoded map<K, V> entry. Message values are decoded through
+// the schema like any other nested message.
+type mapEntry struct {
+	Key     any             `json:"key"`
+	Value   any             `json:"value,omitempty"`
+	Message *decodedMessage `json:"message,omitempty"`
+}
