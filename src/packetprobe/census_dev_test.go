@@ -45,7 +45,7 @@ func TestCommandCensusSeparatesDecodedFramesFromUnimplementedSchemas(t *testing.
 	if err := json.Unmarshal(data, &report); err != nil {
 		t.Fatal(err)
 	}
-	if report.SessionCount != 1 || len(report.Commands) != 32 {
+	if report.SessionCount != 1 || len(report.Commands) != 72 {
 		t.Fatalf("session/command counts = %d/%d", report.SessionCount, len(report.Commands))
 	}
 	statuses := make(map[uint16]string, len(report.Commands))
@@ -67,25 +67,78 @@ func TestCommandCensusSeparatesDecodedFramesFromUnimplementedSchemas(t *testing.
 	if statuses[25830] != "NOT OBSERVED" {
 		t.Fatalf("ApplyGameplayEffectNotify census status = %q", statuses[25830])
 	}
-	wantBuffCommands := map[uint16]string{
-		21803: "AddSysBuffNotify", 25830: "ApplyGameplayEffectNotify", 29488: "ApplyGameplayEffectPush",
-		16974: "BuffDurationNotify", 29363: "BuffStackCountNotify", 26471: "OrderApplyBuffNotify",
-		17807: "OrderRemoveBuffNotify", 27178: "RefreshBuffDurationPush", 18345: "RemoveGameplayEffectNotify",
-		20358: "RemoveGameplayEffectPush", 24831: "RemoveSysBuffNotify", 16764: "SimpleCombatEntityAttributeUpdateNotify",
-		22102: "SimpleCombatEntityBuffLayerCountNotify", 17893: "SimpleCombatEntityBuffUpdateNotify",
-		29113: "SimpleCombatEntitySyncAttributePush", 29655: "UpdateSysBuffNotify",
+	wantBuffCommands := map[uint16]struct{ name, direction string }{
+		16551: {name: "OrderRemoveBuffByTagsResponse", direction: "in"},
+		16727: {name: "AtomicProcessAddBuffRequest", direction: "out"},
+		16764: {name: "SimpleCombatEntityAttributeUpdateNotify", direction: "in"},
+		16890: {name: "ApplyBuffS2cResponsePush", direction: "in"},
+		16967: {name: "BuffEffectResponse", direction: "in"},
+		16974: {name: "BuffDurationNotify", direction: "in"},
+		17149: {name: "ActivateBuffRequest", direction: "out"},
+		17452: {name: "OrderRemoveBuffResponse", direction: "in"},
+		17533: {name: "BuffEffectExecuteResponse", direction: "in"},
+		17807: {name: "OrderRemoveBuffNotify", direction: "in"},
+		17893: {name: "SimpleCombatEntityBuffUpdateNotify", direction: "in"},
+		18099: {name: "BuffEffectExecutePush", direction: "in"},
+		18345: {name: "RemoveGameplayEffectNotify", direction: "in"},
+		18641: {name: "ApplyBuffS2cRequestNotify", direction: "in"},
+		18682: {name: "EntityBuffProducerRequest", direction: "out"},
+		19162: {name: "RemoveBuffByIdS2cResponsePush", direction: "in"},
+		19482: {name: "RemoveBuffByIdS2cRequestNotify", direction: "in"},
+		19678: {name: "AtomicProcessAddBuffResponse", direction: "in"},
+		19820: {name: "BuffStackCountRequest", direction: "out"},
+		19884: {name: "RemoveGameplayEffectRequest", direction: "out"},
+		19917: {name: "ActivateBuffResponse", direction: "in"},
+		20022: {name: "RemoveBuffS2cRequestNotify", direction: "in"},
+		20358: {name: "RemoveGameplayEffectPush", direction: "in"},
+		20706: {name: "BuffEffectPush", direction: "in"},
+		20926: {name: "ActivateBuffPush", direction: "in"},
+		21666: {name: "BuffStackCountPush", direction: "in"},
+		21800: {name: "OrderApplyBuffRequest", direction: "out"},
+		21803: {name: "AddSysBuffNotify", direction: "in"},
+		22006: {name: "EntityBuffProducerResponse", direction: "in"},
+		22102: {name: "SimpleCombatEntityBuffLayerCountNotify", direction: "in"},
+		22540: {name: "BuffEffectRequest", direction: "out"},
+		22742: {name: "OrderRemoveBuffByTagsRequest", direction: "out"},
+		22915: {name: "ApplyGameplayEffectResponse", direction: "in"},
+		22973: {name: "ApplyGameplayEffectRequest", direction: "out"},
+		23095: {name: "AtomicProcessRemoveBuffResponse", direction: "in"},
+		23494: {name: "RemoveBuffByServerIdS2cRequestNotify", direction: "in"},
+		23971: {name: "RemoveBuffS2cResponsePush", direction: "in"},
+		24520: {name: "OrderRemoveBuffByTagsNotify", direction: "in"},
+		24831: {name: "RemoveSysBuffNotify", direction: "in"},
+		25830: {name: "ApplyGameplayEffectNotify", direction: "in"},
+		26094: {name: "BuffEffectExecuteRequest", direction: "out"},
+		26251: {name: "BuffStackCountResponse", direction: "in"},
+		26471: {name: "OrderApplyBuffNotify", direction: "in"},
+		26503: {name: "EntityBuffProducerOperateRequest", direction: "out"},
+		27178: {name: "RefreshBuffDurationPush", direction: "in"},
+		27203: {name: "EntityBuffProducerOperateResponse", direction: "in"},
+		27266: {name: "OrderApplyBuffResponse", direction: "in"},
+		27565: {name: "AtomicProcessRemoveBuffRequest", direction: "out"},
+		27991: {name: "TransformBuffStackNotify", direction: "in"},
+		28077: {name: "RemoveGameplayEffectResponse", direction: "in"},
+		28221: {name: "ActivateBuffNotify", direction: "in"},
+		29113: {name: "SimpleCombatEntitySyncAttributePush", direction: "in"},
+		29255: {name: "OrderRemoveBuffRequest", direction: "out"},
+		29363: {name: "BuffStackCountNotify", direction: "in"},
+		29488: {name: "ApplyGameplayEffectPush", direction: "in"},
+		29655: {name: "UpdateSysBuffNotify", direction: "in"},
 	}
-	for commandID, name := range wantBuffCommands {
+	for commandID, want := range wantBuffCommands {
 		found := false
 		for _, entry := range report.Commands {
 			if entry.CommandID == commandID {
-				found = entry.Name == name && entry.Direction == "in" && entry.Status == "NOT OBSERVED" && entry.SchemaBasis == "Windows Global UHD 3.7.1 Aki.Protocol metadata; client version observed, schema compatibility unverified"
+				found = entry.Name == want.name && entry.Direction == want.direction && entry.Status == "NOT OBSERVED" && entry.SchemaBasis == "Windows Global UHD 3.7.1 Aki.Protocol metadata; client version observed, schema compatibility unverified"
 				break
 			}
 		}
 		if !found {
-			t.Errorf("Buff schema census entry %d (%s) missing or incorrect", commandID, name)
+			t.Errorf("Buff schema census entry %d (%s) missing or incorrect", commandID, want.name)
 		}
+	}
+	if len(report.Commands) != 23+len(wantBuffCommands)-7 {
+		t.Fatalf("command census entries = %d, want %d", len(report.Commands), 23+len(wantBuffCommands)-7)
 	}
 	wantRoleNotifies := map[uint16]string{
 		21051: "UpdatePlayerAllFightRoleNotify",

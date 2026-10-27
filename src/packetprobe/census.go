@@ -167,6 +167,86 @@ func commandName(id uint16) string {
 		return "BuffStackCountNotify"
 	case 16974:
 		return "BuffDurationNotify"
+	case 22973:
+		return "ApplyGameplayEffectRequest"
+	case 22915:
+		return "ApplyGameplayEffectResponse"
+	case 19884:
+		return "RemoveGameplayEffectRequest"
+	case 28077:
+		return "RemoveGameplayEffectResponse"
+	case 21800:
+		return "OrderApplyBuffRequest"
+	case 27266:
+		return "OrderApplyBuffResponse"
+	case 29255:
+		return "OrderRemoveBuffRequest"
+	case 17452:
+		return "OrderRemoveBuffResponse"
+	case 18641:
+		return "ApplyBuffS2cRequestNotify"
+	case 16890:
+		return "ApplyBuffS2cResponsePush"
+	case 20022:
+		return "RemoveBuffS2cRequestNotify"
+	case 23971:
+		return "RemoveBuffS2cResponsePush"
+	case 19482:
+		return "RemoveBuffByIdS2cRequestNotify"
+	case 19162:
+		return "RemoveBuffByIdS2cResponsePush"
+	case 17149:
+		return "ActivateBuffRequest"
+	case 19917:
+		return "ActivateBuffResponse"
+	case 28221:
+		return "ActivateBuffNotify"
+	case 20926:
+		return "ActivateBuffPush"
+	case 19820:
+		return "BuffStackCountRequest"
+	case 26251:
+		return "BuffStackCountResponse"
+	case 21666:
+		return "BuffStackCountPush"
+	case 22540:
+		return "BuffEffectRequest"
+	case 16967:
+		return "BuffEffectResponse"
+	case 20706:
+		return "BuffEffectPush"
+	case 26094:
+		return "BuffEffectExecuteRequest"
+	case 17533:
+		return "BuffEffectExecuteResponse"
+	case 18099:
+		return "BuffEffectExecutePush"
+	case 18682:
+		return "EntityBuffProducerRequest"
+	case 22006:
+		return "EntityBuffProducerResponse"
+	case 26503:
+		return "EntityBuffProducerOperateRequest"
+	case 27203:
+		return "EntityBuffProducerOperateResponse"
+	case 22742:
+		return "OrderRemoveBuffByTagsRequest"
+	case 16551:
+		return "OrderRemoveBuffByTagsResponse"
+	case 24520:
+		return "OrderRemoveBuffByTagsNotify"
+	case 23494:
+		return "RemoveBuffByServerIdS2cRequestNotify"
+	case 16727:
+		return "AtomicProcessAddBuffRequest"
+	case 19678:
+		return "AtomicProcessAddBuffResponse"
+	case 27565:
+		return "AtomicProcessRemoveBuffRequest"
+	case 23095:
+		return "AtomicProcessRemoveBuffResponse"
+	case 27991:
+		return "TransformBuffStackNotify"
 	case 26471:
 		return "OrderApplyBuffNotify"
 	case 17807:
@@ -220,6 +300,18 @@ func commandName(id uint16) string {
 	}
 }
 
+func hasWindowsProtocolSchema(id uint16) bool {
+	switch id {
+	case 17286, 22492, 21803, 25830, 29488, 18345, 20358, 17893, 22102, 29363, 16974, 26471, 17807, 27178, 24831, 16764, 29113, 29655,
+		22973, 22915, 19884, 28077, 21800, 27266, 29255, 17452, 18641, 16890, 20022, 23971, 19482, 19162, 17149, 19917, 28221, 20926,
+		19820, 26251, 21666, 22540, 16967, 20706, 26094, 17533, 18099, 18682, 22006, 26503, 27203, 22742, 16551, 24520, 23494,
+		16727, 19678, 27565, 23095, 27991, 18559, 25185, 17769, 28481, 21051, 18899, 18580, 27633:
+		return true
+	default:
+		return false
+	}
+}
+
 func (c *commandCensus) entry(id uint16, direction string) *commandCensusEntry {
 	key := censusKey{CommandID: id, Direction: direction}
 	entry := c.entries[key]
@@ -234,7 +326,7 @@ func (c *commandCensus) entry(id uint16, direction string) *commandCensusEntry {
 		}
 		if id == 103 || id == 116 {
 			entry.SchemaBasis = "Only extracted version fields are retained; command 103/116 sibling fields contain device/account identifiers and are excluded from logs and audit"
-		} else if id == 17286 || id == 22492 || id == 21803 || id == 25830 || id == 29488 || id == 18345 || id == 20358 || id == 17893 || id == 22102 || id == 29363 || id == 16974 || id == 26471 || id == 17807 || id == 27178 || id == 24831 || id == 16764 || id == 29113 || id == 29655 || id == 18559 || id == 25185 || id == 17769 || id == 28481 || id == 21051 || id == 18899 || id == 18580 || id == 27633 {
+		} else if hasWindowsProtocolSchema(id) {
 			entry.SchemaBasis = "Windows Global UHD 3.7.1 Aki.Protocol metadata; client version observed, schema compatibility unverified"
 		} else if id == 26702 {
 			entry.SchemaBasis = "client Global 3.7.1 static schema; client version observed, cross-platform schema compatibility unverified"
