@@ -107,6 +107,7 @@ type malformedObservation struct {
 type commandCensus struct {
 	entries               map[censusKey]*commandCensusEntry
 	innerEntries          map[string]int
+	combatNotifyFields    map[uint64]int
 	transport             map[string]int
 	moveEntities          map[uint64]*moveEntityAggregate
 	moveSceneOwners       map[uint64]int
@@ -126,12 +127,13 @@ const maxFrameErrorObservations = 128
 
 func newCommandCensus() *commandCensus {
 	return &commandCensus{
-		entries:         make(map[censusKey]*commandCensusEntry),
-		innerEntries:    make(map[string]int),
-		transport:       make(map[string]int),
-		moveEntities:    make(map[uint64]*moveEntityAggregate),
-		moveSceneOwners: make(map[uint64]int),
-		entityKeyValues: make(map[entityKeyCensusKey]int),
+		entries:            make(map[censusKey]*commandCensusEntry),
+		innerEntries:       make(map[string]int),
+		combatNotifyFields: make(map[uint64]int),
+		transport:          make(map[string]int),
+		moveEntities:       make(map[uint64]*moveEntityAggregate),
+		moveSceneOwners:    make(map[uint64]int),
+		entityKeyValues:    make(map[entityKeyCensusKey]int),
 	}
 }
 
@@ -273,6 +275,8 @@ func commandName(id uint16) string {
 		return "CombatRequest (outer transport)"
 	case 20332:
 		return "CombatResponse (outer transport)"
+	case 25706:
+		return "CombatReceivePackNotify"
 	case 22022:
 		return "DamageExecute RPC (inner candidate)"
 	case 22535:
@@ -305,7 +309,7 @@ func hasWindowsProtocolSchema(id uint16) bool {
 	case 17286, 22492, 21803, 25830, 29488, 18345, 20358, 17893, 22102, 29363, 16974, 26471, 17807, 27178, 24831, 16764, 29113, 29655,
 		22973, 22915, 19884, 28077, 21800, 27266, 29255, 17452, 18641, 16890, 20022, 23971, 19482, 19162, 17149, 19917, 28221, 20926,
 		19820, 26251, 21666, 22540, 16967, 20706, 26094, 17533, 18099, 18682, 22006, 26503, 27203, 22742, 16551, 24520, 23494,
-		16727, 19678, 27565, 23095, 27991, 18559, 25185, 17769, 28481, 21051, 18899, 18580, 27633:
+		16727, 19678, 27565, 23095, 27991, 18559, 25185, 17769, 28481, 21051, 18899, 18580, 27633, 25706:
 		return true
 	default:
 		return false
@@ -485,6 +489,10 @@ func (c *commandCensus) observeFrame(frame gameFrame, session int) *commandCensu
 		entry.LastSeen = frame.timestamp
 	}
 	return entry
+}
+
+func (c *commandCensus) observeCombatNotifyField(fieldNumber uint64) {
+	c.combatNotifyFields[fieldNumber]++
 }
 
 func (c *commandCensus) failedCRC(observation crcFailureObservation) int {

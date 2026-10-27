@@ -56,17 +56,18 @@ func (c *commandCensus) write(path string, stats captureStats, clientVersion *cl
 		inner[name] = count
 	}
 	report := struct {
-		GeneratedAt      time.Time               `json:"generatedAt"`
-		SessionCount     int                     `json:"sessionCount"`
-		ClientVersion    *clientVersionReport    `json:"clientVersion,omitempty"`
-		Transport        map[string]int          `json:"transport"`
-		InnerRPCs        map[string]int          `json:"innerRpcCounts"`
-		Commands         []commandCensusEntry    `json:"commands"`
-		CRCFailures      []crcFailureObservation `json:"crcFailureObservations,omitempty"`
-		CRCOmitted       int                     `json:"crcFailureObservationsOmitted,omitempty"`
-		Malformed        []malformedObservation  `json:"malformedObservations,omitempty"`
-		MalformedOmitted int                     `json:"malformedObservationsOmitted,omitempty"`
-		MoveEntityIDs    []struct {
+		GeneratedAt        time.Time               `json:"generatedAt"`
+		SessionCount       int                     `json:"sessionCount"`
+		ClientVersion      *clientVersionReport    `json:"clientVersion,omitempty"`
+		Transport          map[string]int          `json:"transport"`
+		InnerRPCs          map[string]int          `json:"innerRpcCounts"`
+		CombatNotifyFields map[uint64]int          `json:"combatNotifyOneofFieldCounts,omitempty"`
+		Commands           []commandCensusEntry    `json:"commands"`
+		CRCFailures        []crcFailureObservation `json:"crcFailureObservations,omitempty"`
+		CRCOmitted         int                     `json:"crcFailureObservationsOmitted,omitempty"`
+		Malformed          []malformedObservation  `json:"malformedObservations,omitempty"`
+		MalformedOmitted   int                     `json:"malformedObservationsOmitted,omitempty"`
+		MoveEntityIDs      []struct {
 			EntityID         uint64         `json:"entityId"`
 			Count            int            `json:"observations"`
 			OriginatorValues map[uint64]int `json:"originatorRawValueCounts,omitempty"`
@@ -80,7 +81,7 @@ func (c *commandCensus) write(path string, stats captureStats, clientVersion *cl
 		MoveOwnerOmitted      int                         `json:"movePackageSceneOwnerIdsOmitted,omitempty"`
 		PlayerFollowerOmitted int                         `json:"playerFollowerObservationsOmitted,omitempty"`
 		EntityKeys            []entityKeyObservation      `json:"entityNotifyRawIds,omitempty"`
-	}{GeneratedAt: time.Now().UTC(), SessionCount: c.sessions, ClientVersion: clientVersion, Transport: c.transport, InnerRPCs: inner, Commands: entries,
+	}{GeneratedAt: time.Now().UTC(), SessionCount: c.sessions, ClientVersion: clientVersion, Transport: c.transport, InnerRPCs: inner, CombatNotifyFields: c.combatNotifyFields, Commands: entries,
 		CRCFailures: c.crcFailures, CRCOmitted: c.crcOmitted, Malformed: c.malformedRecords, MalformedOmitted: c.malformedOmitted}
 	report.PlayerFollowers = c.playerFollowers
 	report.MoveEntityOmitted = c.moveEntityOmitted
