@@ -84,6 +84,28 @@ func TestCombatNotifyAuditDecodesRecoverAttributes(t *testing.T) {
 	}
 }
 
+func TestCombatNotifyAuditDecodesSquadAttributeValues(t *testing.T) {
+	attribute := appendVarintField(nil, 1, 42000)
+	attribute = appendVarintField(attribute, 2, 50000)
+	attribute = appendVarintField(attribute, 3, 3)
+	body := appendBytesField(nil, 13, attribute)
+	var output bytes.Buffer
+	if err := writeCombatNotifyAudit(&output, gameFrame{commandID: 25706}, protoField{number: 87, wire: 2, data: body}, nil, nil, nil, 1); err != nil {
+		t.Fatalf("write audit: %v", err)
+	}
+	var row combatNotifyAuditRow
+	if err := json.Unmarshal(output.Bytes(), &row); err != nil {
+		t.Fatalf("decode audit JSON: %v", err)
+	}
+	if row.DecodeStatus != "CANDIDATE_SCHEMA_FIELDS_DECODED" || len(row.NestedRecords) != 1 || len(row.NestedRecords[0].Values) != 3 {
+		t.Fatalf("unexpected squad attribute record: %+v", row)
+	}
+	values := row.NestedRecords[0].Values
+	if *values[0].Unsigned != 42000 || *values[1].Unsigned != 50000 || *values[2].Unsigned != 3 {
+		t.Fatalf("unexpected squad attribute values: %+v", values)
+	}
+}
+
 func TestCombatNotifyAuditRejectsMalformedNestedPayload(t *testing.T) {
 	malformed := []byte{0x42, 0x05, 0x01}
 	var output bytes.Buffer

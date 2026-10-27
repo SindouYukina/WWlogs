@@ -65,8 +65,28 @@ func writeCombatNotifyAudit(w io.Writer, frame gameFrame, notification protoFiel
 			record.Values = numericValuesForFields(nestedFields, 1, 2, 4, 5)
 			row.NestedRecords = append(row.NestedRecords, record)
 		}
+	case 87:
+		for _, field := range fields {
+			if field.number != 13 || field.wire != 2 {
+				continue
+			}
+			nestedFields, parseErr := parseProtoFields(field.data)
+			if parseErr != nil {
+				return fmt.Errorf("parse SquadPropChangedNotify.Attributes: %w", parseErr)
+			}
+			record := combatNotifyNestedRecord{FieldNumber: 13, SchemaName: "GameplayAttributeData", FieldShapes: summarizeProtoFields(nestedFields)}
+			for _, value := range nestedFields {
+				if value.number < 1 || value.number > 3 {
+					continue
+				}
+				if numeric, ok := numericProtoValue(value); ok {
+					record.Values = append(record.Values, numeric)
+				}
+			}
+			row.NestedRecords = append(row.NestedRecords, record)
+		}
 	}
-	if notification.number == 22 || notification.number == 29 || notification.number == 58 {
+	if notification.number == 22 || notification.number == 29 || notification.number == 58 || notification.number == 87 {
 		row.DecodeStatus = "CANDIDATE_SCHEMA_FIELDS_DECODED"
 	}
 	if err := json.NewEncoder(w).Encode(row); err != nil {
