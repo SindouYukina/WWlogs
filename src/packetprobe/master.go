@@ -60,12 +60,14 @@ type masterManifest struct {
 }
 
 type sceneIdentityManifest struct {
-	GameVersion  string `json:"gameVersion"`
-	ClientRegion string `json:"clientRegion"`
-	Platform     string `json:"platform"`
-	SourceHash   string `json:"sourceHash"`
-	InstanceRows int    `json:"instanceRows"`
-	LevelRows    int    `json:"levelRows"`
+	GameVersion         string `json:"gameVersion"`
+	ClientRegion        string `json:"clientRegion"`
+	Platform            string `json:"platform"`
+	SourceHash          string `json:"sourceHash"`
+	InstanceRows        int    `json:"instanceRows"`
+	LevelRows           int    `json:"levelRows"`
+	TemplateRows        int    `json:"templateRows,omitempty"`
+	TemplateCatalogRows int    `json:"templateCatalogRows,omitempty"`
 }
 
 type sceneInstanceRecord struct {
@@ -79,16 +81,32 @@ type sceneLevelMonsterRecord struct {
 	MonsterIDs []uint64 `json:"monsterIds"`
 }
 
+type sceneTemplateCandidate struct {
+	TemplateID    uint64 `json:"templateId"`
+	BlueprintType string `json:"blueprintType"`
+	RawName       string `json:"rawName"`
+}
+
+type sceneLevelTemplateRecord struct {
+	MapID       uint64   `json:"mapId"`
+	EntityID    uint64   `json:"entityId"`
+	TemplateIDs []uint64 `json:"templateIds"`
+}
+
 type sceneIdentityFile struct {
-	Manifest      sceneIdentityManifest     `json:"manifest"`
-	Instances     []sceneInstanceRecord     `json:"instances"`
-	LevelMonsters []sceneLevelMonsterRecord `json:"levelMonsters"`
+	Manifest        sceneIdentityManifest      `json:"manifest"`
+	Instances       []sceneInstanceRecord      `json:"instances"`
+	LevelMonsters   []sceneLevelMonsterRecord  `json:"levelMonsters"`
+	TemplateCatalog []sceneTemplateCandidate   `json:"templateCatalog,omitempty"`
+	LevelTemplates  []sceneLevelTemplateRecord `json:"levelTemplates,omitempty"`
 }
 
 type sceneIdentityMaster struct {
-	manifest      sceneIdentityManifest
-	instanceMaps  map[uint64]uint64
-	levelMonsters map[sceneLevelKey]uint64
+	manifest        sceneIdentityManifest
+	instanceMaps    map[uint64]uint64
+	levelMonsters   map[sceneLevelKey]uint64
+	levelTemplates  map[sceneLevelKey][]sceneTemplateCandidate
+	templateCatalog map[uint64]sceneTemplateCandidate
 }
 
 type sceneLevelKey struct {
@@ -212,13 +230,18 @@ func loadSceneIdentity(path string, master masterManifest) (*sceneIdentityMaster
 	if _, err := hex.DecodeString(source.Manifest.SourceHash); err != nil {
 		return nil, errors.New("scene identity source hash must be a SHA-256 hex digest")
 	}
-	if len(source.Instances) != source.Manifest.InstanceRows || len(source.LevelMonsters) != source.Manifest.LevelRows {
+	if len(source.Instances) != source.Manifest.InstanceRows || len(source.LevelMonsters) != source.Manifest.LevelRows || len(source.LevelTemplates) != source.Manifest.TemplateRows {
 		return nil, errors.New("scene identity row count does not match its manifest")
 	}
+	if len(source.TemplateCatalog) != source.Manifest.TemplateCatalogRows {
+		return nil, errors.New("scene template catalog row count does not match its manifest")
+	}
 	result := &sceneIdentityMaster{
-		manifest:      source.Manifest,
-		instanceMaps:  make(map[uint64]uint64, len(source.Instances)),
-		levelMonsters: make(map[sceneLevelKey]uint64, len(source.LevelMonsters)),
+		manifest:        source.Manifest,
+		instanceMaps:    make(map[uint64]uint64, len(source.Instances)),
+		levelMonsters:   make(map[sceneLevelKey]uint64, len(source.LevelMonsters)),
+		levelTemplates:  make(map[sceneLevelKey][]sceneTemplateCandidate, len(source.LevelTemplates)),
+		templateCatalog: make(map[uint64]sceneTemplateCandidate, len(source.TemplateCatalog)),
 	}
 	for _, instance := range source.Instances {
 		if instance.ID == 0 || instance.MapConfigID == 0 {
@@ -228,6 +251,15 @@ func loadSceneIdentity(path string, master masterManifest) (*sceneIdentityMaster
 			return nil, fmt.Errorf("duplicate scene identity instance ID %d", instance.ID)
 		}
 		result.instanceMaps[instance.ID] = instance.MapConfigID
+	}
+	for _, candidate := range source.TemplateCatalog {
+		if candidate.TemplateID == 0 || candidate.BlueprintType == "" {
+			return nil, errors.New("scene template catalog candidate must contain a TemplateId and BlueprintType")
+		}
+		if _, exists := result.templateCatalog[candidate.TemplateID]; exists {
+			return nil, fmt.Errorf("duplicate scene TemplateConfig Id %d", candidate.TemplateID)
+		}
+		result.templateCatalog[candidate.TemplateID] = candidate
 	}
 	seenLevelKeys := make(map[sceneLevelKey]struct{}, len(source.LevelMonsters))
 	for _, level := range source.LevelMonsters {
@@ -253,6 +285,27 @@ func loadSceneIdentity(path string, master masterManifest) (*sceneIdentityMaster
 			result.levelMonsters[key] = level.MonsterIDs[0]
 		}
 	}
+	for _, level := range source.LevelTemplates {
+		if level.MapID == 0 || level.EntityID == 0 || len(level.TemplateIDs) == 0 {
+			return nil, errors.New("scene identity template entry must contain non-zero keys and candidates")
+		}
+		key := sceneLevelKey{mapID: level.MapID, entityID: level.EntityID}
+		if _, exists := result.levelTemplates[key]; exists {
+			return nil, fmt.Errorf("duplicate scene template key map=%d entity=%d", level.MapID, level.EntityID)
+		}
+		seenTemplateIDs := make(map[uint64]struct{}, len(level.TemplateIDs))
+		for _, templateID := range level.TemplateIDs {
+			candidate, exists := result.templateCatalog[templateID]
+			if !exists {
+				return nil, fmt.Errorf("scene template key map=%d entity=%d references missing TemplateConfig Id %d", level.MapID, level.EntityID, templateID)
+			}
+			if _, exists := seenTemplateIDs[templateID]; exists {
+				return nil, fmt.Errorf("duplicate TemplateId %d in scene template key map=%d entity=%d", templateID, level.MapID, level.EntityID)
+			}
+			seenTemplateIDs[templateID] = struct{}{}
+			result.levelTemplates[key] = append(result.levelTemplates[key], candidate)
+		}
+	}
 	return result, nil
 }
 
@@ -266,6 +319,18 @@ func (m *gameMaster) sceneMonster(instanceID, entityID uint64) (uint64, bool) {
 	}
 	monsterID, ok := m.sceneIdentity.levelMonsters[sceneLevelKey{mapID: mapID, entityID: entityID}]
 	return monsterID, ok
+}
+
+func (m *gameMaster) sceneTemplates(instanceID, entityID uint64) ([]sceneTemplateCandidate, bool) {
+	if m == nil || m.sceneIdentity == nil {
+		return nil, false
+	}
+	mapID, ok := m.sceneMapConfigID(instanceID)
+	if !ok {
+		return nil, false
+	}
+	templates, ok := m.sceneIdentity.levelTemplates[sceneLevelKey{mapID: mapID, entityID: entityID}]
+	return templates, ok
 }
 
 func (m *gameMaster) sceneMapConfigID(instanceID uint64) (uint64, bool) {

@@ -80,17 +80,20 @@ type entityResolver struct {
 }
 
 type entityIdentity struct {
-	Runtime         runtimeEntity
-	RuntimeStatus   resolutionStatus
-	RuntimeProof    string
-	Character       masterRecord
-	HasCharacter    bool
-	CharacterStatus resolutionStatus
-	CharacterProof  string
-	Monster         masterRecord
-	HasMonster      bool
-	MonsterStatus   resolutionStatus
-	MonsterProof    string
+	Runtime            runtimeEntity
+	RuntimeStatus      resolutionStatus
+	RuntimeProof       string
+	Character          masterRecord
+	HasCharacter       bool
+	CharacterStatus    resolutionStatus
+	CharacterProof     string
+	Monster            masterRecord
+	HasMonster         bool
+	MonsterStatus      resolutionStatus
+	MonsterProof       string
+	TemplateCandidates []sceneTemplateCandidate
+	TemplateStatus     resolutionStatus
+	TemplateProof      string
 }
 
 type summonerCharacterIdentity struct {
@@ -230,6 +233,27 @@ func resolveEntityIdentity(resolver *entityResolver, masters *gameMaster, entity
 				// compatibility is established.
 				result.MonsterStatus = resolutionCorrelated
 				result.MonsterProof = fmt.Sprintf("JoinSceneNotify.SceneInfo.InstanceId=%d -> InstanceDungeon.MapConfigId; EntityPb.ConfigId=%d + ConfigType=Proto_Level(1) -> LevelEntityConfig(MapId, EntityId).BlueprintType -> MonsterInfo.MonsterEntityID -> MonsterInfo.Id=%d", entity.sceneInstanceID, entity.configID, monsterID)
+			}
+		}
+	}
+	sceneInstanceID, hasSceneInstanceID := entity.sceneInstanceID, entity.hasSceneInstanceID
+	sceneContextSource := "entity-scoped JoinSceneNotify context"
+	if !hasSceneInstanceID && resolver != nil && resolver.hasSceneInstanceID &&
+		(entity.sourceMessageID == 18559 || entity.sourceMessageID == 25185) {
+		sceneInstanceID, hasSceneInstanceID = resolver.sceneInstanceID, true
+		sceneContextSource = "current session JoinSceneNotify context"
+	}
+	if masters != nil && entity.hasConfigID && entity.hasConfigType && entity.configType == 1 &&
+		(entity.sourceMessageID == 18559 || entity.sourceMessageID == 25185) && hasSceneInstanceID {
+		if candidates, ok := masters.sceneTemplates(sceneInstanceID, entity.configID); ok {
+			result.TemplateCandidates = candidates
+			result.TemplateStatus = resolutionUnknown
+			result.TemplateProof = fmt.Sprintf(
+				"%s (InstanceId=%d) -> InstanceDungeon.MapConfigId; runtime EntityPb.ConfigId=%d + ConfigType=Proto_Level(1) -> LevelEntityConfig(MapId, EntityId).BlueprintType -> TemplateConfig candidates; master gameVersion %s, client/master compatibility unverified",
+				sceneContextSource, sceneInstanceID, entity.configID, masters.sceneIdentity.manifest.GameVersion,
+			)
+			if len(candidates) == 1 {
+				result.TemplateStatus = resolutionCorrelated
 			}
 		}
 	}

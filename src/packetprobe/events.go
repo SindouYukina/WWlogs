@@ -30,6 +30,7 @@ type combatEventEntityJSONL struct {
 	RuntimeFields   json.RawMessage           `json:"runtimeFields"`
 	Character       *combatEventMasterIDJSONL `json:"character,omitempty"`
 	Monster         *combatEventMasterIDJSONL `json:"monster,omitempty"`
+	SceneTemplate   *combatEventTemplateJSONL `json:"sceneTemplate,omitempty"`
 }
 
 type combatEventMasterIDJSONL struct {
@@ -37,6 +38,20 @@ type combatEventMasterIDJSONL struct {
 	Name     string           `json:"name,omitempty"`
 	Status   resolutionStatus `json:"status"`
 	Evidence string           `json:"evidence,omitempty"`
+}
+
+type combatEventTemplateJSONL struct {
+	IdentityType string                              `json:"identityType"`
+	Status       resolutionStatus                    `json:"status"`
+	NameStatus   resolutionStatus                    `json:"nameStatus"`
+	Candidates   []combatEventTemplateCandidateJSONL `json:"candidates"`
+	Evidence     string                              `json:"evidence,omitempty"`
+}
+
+type combatEventTemplateCandidateJSONL struct {
+	TemplateID    uint64 `json:"templateId"`
+	BlueprintType string `json:"blueprintType"`
+	RawName       string `json:"rawName,omitempty"`
 }
 
 type combatEventCreditJSONL struct {
