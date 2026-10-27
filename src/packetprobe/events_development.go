@@ -27,6 +27,7 @@ func (event combatEvent) jsonlView(masters *gameMaster) combatEventJSONL {
 			ClassStatus: event.EventTypeStatus, ClassEvidence: event.EventTypeProof,
 		},
 	}
+	view.Actors = projectActors(event)
 	if event.EventTypeCandidate == "HEALING_CANDIDATE" {
 		view.Healing = &combatEventHealingJSONL{
 			ReportedMagnitudeAbs: event.Damage, MagnitudeStatus: event.EventTypeStatus, MagnitudeEvidence: event.EventTypeProof,
