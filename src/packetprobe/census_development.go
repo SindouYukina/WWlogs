@@ -29,6 +29,8 @@ func (c *commandCensus) write(path string, stats captureStats, clientVersion *cl
 		direction string
 	}{
 		{17286, "in"}, {22492, "in"}, {21803, "in"}, {25830, "in"}, {29488, "in"}, {18345, "in"}, {20358, "in"}, {17893, "in"}, {22102, "in"}, {29363, "in"}, {16974, "in"}, {26471, "in"}, {17807, "in"}, {27178, "in"}, {24831, "in"}, {16764, "in"}, {29113, "in"}, {29655, "in"}, {18559, "in"}, {25185, "in"}, {17769, "in"}, {28481, "out"}, {26702, "in"}, {19470, "out"}, {20332, "in"},
+		{22973, "out"}, {22915, "in"}, {19884, "out"}, {28077, "in"}, {21800, "out"}, {27266, "in"}, {29255, "out"}, {17452, "in"}, {18641, "in"}, {16890, "in"}, {20022, "in"}, {23971, "in"}, {19482, "in"}, {19162, "in"}, {17149, "out"}, {19917, "in"}, {28221, "in"}, {20926, "in"},
+		{19820, "out"}, {26251, "in"}, {21666, "in"}, {22540, "out"}, {16967, "in"}, {20706, "in"}, {26094, "out"}, {17533, "in"}, {18099, "in"}, {18682, "out"}, {22006, "in"}, {26503, "out"}, {27203, "in"}, {22742, "out"}, {16551, "in"}, {24520, "in"}, {23494, "in"}, {16727, "out"}, {19678, "in"}, {27565, "out"}, {23095, "in"}, {27991, "in"},
 		{21051, "in"}, {18899, "in"}, {18580, "in"}, {27633, "in"},
 		{103, "out"}, {116, "out"},
 	} {
@@ -37,7 +39,7 @@ func (c *commandCensus) write(path string, stats captureStats, clientVersion *cl
 			entry := commandCensusEntry{CommandID: candidate.id, Name: commandName(candidate.id), Direction: candidate.direction, Status: "NOT OBSERVED"}
 			if candidate.id == 103 || candidate.id == 116 {
 				entry.SchemaBasis = "Only extracted version fields are retained; command 103/116 sibling fields contain device/account identifiers and are excluded from logs and audit"
-			} else if candidate.id == 17286 || candidate.id == 22492 || candidate.id == 21803 || candidate.id == 25830 || candidate.id == 29488 || candidate.id == 18345 || candidate.id == 20358 || candidate.id == 17893 || candidate.id == 22102 || candidate.id == 29363 || candidate.id == 16974 || candidate.id == 26471 || candidate.id == 17807 || candidate.id == 27178 || candidate.id == 24831 || candidate.id == 16764 || candidate.id == 29113 || candidate.id == 29655 || candidate.id == 21051 || candidate.id == 18899 || candidate.id == 18580 || candidate.id == 27633 {
+			} else if hasWindowsProtocolSchema(candidate.id) {
 				entry.SchemaBasis = "Windows Global UHD 3.7.1 Aki.Protocol metadata; client version observed, schema compatibility unverified"
 			}
 			entries = append(entries, entry)
