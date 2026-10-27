@@ -17,7 +17,7 @@ func writeCombatNotifyAudit(w io.Writer, frame gameFrame, notification protoFiel
 		return fmt.Errorf("parse inner message: %w", err)
 	}
 	row := combatNotifyAuditRow{
-		SchemaVersion: 1, EventType: "COMBAT_NOTIFY_INNER_FIELD_AUDIT", SessionNumber: sessionNumber,
+		SchemaVersion: 2, EventType: "COMBAT_NOTIFY_INNER_FIELD_AUDIT", SessionNumber: sessionNumber,
 		Timestamp: frame.timestamp, OuterCommandID: frame.commandID, Direction: frame.direction,
 		InnerFieldNumber: notification.number, InnerMessageName: combatNotifyAuditNames[notification.number],
 		SchemaBasis: combatNotifyAuditSchemaBasis, CombatCommonEntity: commonEntityID,
@@ -26,6 +26,22 @@ func writeCombatNotifyAudit(w io.Writer, frame gameFrame, notification protoFiel
 	}
 
 	switch notification.number {
+	case 4:
+		record := combatNotifyNestedRecord{FieldNumber: 0, SchemaName: "DamageExecuteNotify", FieldShapes: summarizeProtoFields(fields)}
+		record.Values = numericValuesForFields(fields, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14)
+		row.NestedRecords = append(row.NestedRecords, record)
+		for _, field := range fields {
+			if field.number != 15 || field.wire != 2 {
+				continue
+			}
+			nestedFields, parseErr := parseProtoFields(field.data)
+			if parseErr != nil {
+				return fmt.Errorf("parse DamageExecuteNotify.DamageContext: %w", parseErr)
+			}
+			context := combatNotifyNestedRecord{FieldNumber: 15, SchemaName: "DamageContext", FieldShapes: summarizeProtoFields(nestedFields)}
+			context.Values = numericValuesForFields(nestedFields, 1, 2, 3, 4, 5)
+			row.NestedRecords = append(row.NestedRecords, context)
+		}
 	case 22:
 		for _, field := range fields {
 			if field.number != 8 || field.wire != 2 {
@@ -85,8 +101,13 @@ func writeCombatNotifyAudit(w io.Writer, frame gameFrame, notification protoFiel
 			}
 			row.NestedRecords = append(row.NestedRecords, record)
 		}
+	case 38:
+		row.NestedRecords = append(row.NestedRecords, combatNotifyNestedRecord{
+			FieldNumber: 0, SchemaName: "ChangeStateNotify", FieldShapes: summarizeProtoFields(fields),
+			Values: numericValuesForFields(fields, 6, 7, 11),
+		})
 	}
-	if notification.number == 22 || notification.number == 29 || notification.number == 58 || notification.number == 87 {
+	if notification.number == 4 || notification.number == 22 || notification.number == 29 || notification.number == 38 || notification.number == 58 || notification.number == 87 {
 		row.DecodeStatus = "CANDIDATE_SCHEMA_FIELDS_DECODED"
 	}
 	if err := json.NewEncoder(w).Encode(row); err != nil {
