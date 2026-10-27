@@ -250,6 +250,11 @@ func marshalRuntimeIdentity(entity runtimeEntity) string {
 		SceneSummonSkillID:       optionalRuntimeID{entity.sceneSummonSkillID, entity.hasSceneSummonSkillID},
 		PlayerEntityID:           optionalRuntimeID{entity.playerEntityID, entity.hasPlayerEntityID},
 		FollowerSummonConfigID:   optionalRuntimeID{entity.followerSummonConfigID, entity.hasFollowerSummonConfigID},
+		PhantomRoleEntityID:      optionalRuntimeID{entity.phantomRoleEntityID, entity.hasPhantomRoleEntityID},
+		ConcomitantVisionIDs:     append([]uint64(nil), entity.concomitantVisionIDs...),
+		ConcomitantCustomIDs:     append([]uint64(nil), entity.concomitantCustomIDs...),
+		WeakVisionEntityID:       optionalRuntimeID{entity.weakVisionEntityID, entity.hasWeakVisionEntityID},
+		FollowEntityID:           optionalRuntimeID{entity.followEntityID, entity.hasFollowEntityID},
 		MonsterID:                optionalRuntimeID{entity.monsterID, entity.hasMonsterID},
 		MonsterCaptureEntityID:   optionalRuntimeID{entity.monsterCaptureEntityID, entity.hasMonsterCaptureEntityID},
 		TemplateID:               optionalRuntimeID{entity.templateID, entity.hasTemplateID},
@@ -261,6 +266,12 @@ func marshalRuntimeIdentity(entity runtimeEntity) string {
 		SourceFieldPath:          entity.sourceFieldPath,
 		ComponentSourceMessageID: entity.componentSourceMessageID,
 		ComponentSourceFieldPath: entity.componentSourceFieldPath,
+	}
+	for _, follower := range entity.playerFollowers {
+		view.PlayerFollowers = append(view.PlayerFollowers, runtimePlayerFollowerAudit{
+			Type:     optionalRuntimeID{follower.typeID, follower.hasType},
+			EntityID: optionalRuntimeID{follower.entityID, follower.hasEntity},
+		})
 	}
 	data, err := json.Marshal(view)
 	if err != nil {

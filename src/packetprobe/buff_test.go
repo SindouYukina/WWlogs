@@ -46,10 +46,21 @@ func TestEntityActiveResponseCorrelatesIdentityComponentsToRequestEntity(t *test
 	monster = appendVarintField(monster, 3, 456789)
 	follower := appendVarintField(nil, 1, 773)
 	follower = appendVarintField(follower, 2, 9902)
+	concomitants := appendVarintField(nil, 1, 781)
+	concomitants = appendVarintField(concomitants, 2, 782)
+	concomitants = appendVarintField(concomitants, 3, 783)
+	concomitants = appendVarintField(concomitants, 4, 784)
+	playerFollower := appendVarintField(nil, 1, 4)
+	playerFollower = appendVarintField(playerFollower, 2, 785)
+	playerFollowers := appendBytesField(nil, 1, playerFollower)
+	followEntity := appendVarintField(nil, 1, 786)
 	var response []byte
 	response = appendBytesField(response, 11, appendBytesField(nil, 4, summoner))
 	response = appendBytesField(response, 11, appendBytesField(nil, 18, monster))
 	response = appendBytesField(response, 11, appendBytesField(nil, 42, follower))
+	response = appendBytesField(response, 11, appendBytesField(nil, 25, concomitants))
+	response = appendBytesField(response, 11, appendBytesField(nil, 53, playerFollowers))
+	response = appendBytesField(response, 11, appendBytesField(nil, 85, followEntity))
 	if err := p.handleActiveResponse(gameFrame{commandID: 26702, direction: "in", token: token}, response); err != nil {
 		t.Fatal(err)
 	}
@@ -64,13 +75,19 @@ func TestEntityActiveResponseCorrelatesIdentityComponentsToRequestEntity(t *test
 	if !entity.hasPlayerEntityID || entity.playerEntityID != 773 || !entity.hasFollowerSummonConfigID || entity.followerSummonConfigID != 9902 {
 		t.Fatalf("follower component identity = %+v", entity)
 	}
+	if !entity.hasPhantomRoleEntityID || entity.phantomRoleEntityID != 783 || len(entity.concomitantVisionIDs) != 1 || entity.concomitantVisionIDs[0] != 781 || len(entity.concomitantCustomIDs) != 1 || entity.concomitantCustomIDs[0] != 782 || !entity.hasWeakVisionEntityID || entity.weakVisionEntityID != 784 {
+		t.Fatalf("concomitant component references = %+v", entity)
+	}
+	if len(entity.playerFollowers) != 1 || !entity.playerFollowers[0].hasType || entity.playerFollowers[0].typeID != 4 || !entity.playerFollowers[0].hasEntity || entity.playerFollowers[0].entityID != 785 || !entity.hasFollowEntityID || entity.followEntityID != 786 {
+		t.Fatalf("follower and follow-entity component references = %+v", entity)
+	}
 	if entity.sourceMessageID != 28481 || entity.componentSourceMessageID != 26702 || !strings.Contains(entity.componentSourceFieldPath, "frame token match + field4 EntityId") {
 		t.Fatalf("identity evidence provenance = %+v", entity)
 	}
 	if status := func() resolutionStatus { _, status := p.entities.resolve(entityID); return status }(); status != resolutionCorrelated {
 		t.Fatalf("runtime entity status = %s, want CORRELATED", status)
 	}
-	if p.stats.activeResponseIdentityComponents != 3 || p.stats.activeResponseSummonerComponents != 1 || p.stats.activeResponseMonsterComponents != 1 || p.stats.activeResponseFollowerComponents != 1 {
+	if p.stats.activeResponseIdentityComponents != 6 || p.stats.activeResponseSummonerComponents != 1 || p.stats.activeResponseMonsterComponents != 1 || p.stats.activeResponseFollowerComponents != 1 {
 		t.Fatalf("identity component counts = %+v", p.stats)
 	}
 
@@ -78,6 +95,28 @@ func TestEntityActiveResponseCorrelatesIdentityComponentsToRequestEntity(t *test
 	identity := resolveEntityIdentity(p.entities, masters, entityID)
 	if !identity.HasMonster || identity.Monster.ID != 456789 || identity.MonsterStatus != resolutionCorrelated {
 		t.Fatalf("static Monster mapping confidence = %+v", identity)
+	}
+}
+
+func TestRuntimeIdentityComponentReferencesRejectMalformedAndOversizedLists(t *testing.T) {
+	if err := applyEntityComponentPayload(&runtimeEntity{}, 53, appendBytesField(nil, 1, []byte{0x0a, 0x80})); err == nil {
+		t.Fatal("malformed PlayerFollowerPb should fail")
+	}
+
+	var concomitants []byte
+	for i := 0; i <= maxRuntimeComponentEntityRefs; i++ {
+		concomitants = appendVarintField(concomitants, 1, uint64(i+1))
+	}
+	if err := applyEntityComponentPayload(&runtimeEntity{}, 25, concomitants); err == nil {
+		t.Fatal("oversized ConcomitantsComponentPb entity list should fail")
+	}
+
+	var playerFollowers []byte
+	for i := 0; i <= maxRuntimeComponentEntityRefs; i++ {
+		playerFollowers = appendBytesField(playerFollowers, 1, appendVarintField(nil, 2, uint64(i+1)))
+	}
+	if err := applyEntityComponentPayload(&runtimeEntity{}, 53, playerFollowers); err == nil {
+		t.Fatal("oversized PlayerFollowersComponentPb list should fail")
 	}
 }
 

@@ -344,36 +344,47 @@ type optionalRuntimeID struct {
 	Present bool   `json:"present"`
 }
 
+type runtimePlayerFollowerAudit struct {
+	Type     optionalRuntimeID `json:"type"`
+	EntityID optionalRuntimeID `json:"entityId"`
+}
+
 type runtimeIdentityAudit struct {
-	EntityID                 optionalRuntimeID `json:"entityId"`
-	SceneInstanceID          optionalRuntimeID `json:"sceneInstanceId"`
-	EntityType               optionalRuntimeID `json:"entityType"`
-	ConfigID                 optionalRuntimeID `json:"configId"`
-	ConfigType               optionalRuntimeID `json:"configType"`
-	PlayerID                 optionalRuntimeID `json:"playerId"`
-	OwnerID                  optionalRuntimeID `json:"ownerId"`
-	OwnerIncID               optionalRuntimeID `json:"ownerIncId"`
-	SummonerID               optionalRuntimeID `json:"summonerId"`
-	SummonerPlayerID         optionalRuntimeID `json:"summonerPlayerId"`
-	SummonConfigID           optionalRuntimeID `json:"summonConfigId"`
-	SummonSkillID            optionalRuntimeID `json:"summonSkillId"`
-	SummonType               optionalRuntimeID `json:"summonType"`
-	SceneSummonerID          optionalRuntimeID `json:"sceneSummonerId"`
-	SceneSummonConfigID      optionalRuntimeID `json:"sceneSummonConfigId"`
-	SceneSummonSkillID       optionalRuntimeID `json:"sceneSummonSkillId"`
-	PlayerEntityID           optionalRuntimeID `json:"playerEntityId"`
-	FollowerSummonConfigID   optionalRuntimeID `json:"followerSummonConfigId"`
-	MonsterID                optionalRuntimeID `json:"monsterId"`
-	MonsterCaptureEntityID   optionalRuntimeID `json:"monsterCaptureEntityId"`
-	TemplateID               optionalRuntimeID `json:"templateId"`
-	RoleSkinID               optionalRuntimeID `json:"roleSkinId"`
-	RoleID                   optionalRuntimeID `json:"roleId"`
-	RoleConflict             bool              `json:"roleConflict"`
-	RoleSourceFieldPath      string            `json:"roleSourceFieldPath,omitempty"`
-	SourceMessageID          uint16            `json:"sourceMessageId"`
-	SourceFieldPath          string            `json:"sourceFieldPath,omitempty"`
-	ComponentSourceMessageID uint16            `json:"componentSourceMessageId,omitempty"`
-	ComponentSourceFieldPath string            `json:"componentSourceFieldPath,omitempty"`
+	EntityID                 optionalRuntimeID            `json:"entityId"`
+	SceneInstanceID          optionalRuntimeID            `json:"sceneInstanceId"`
+	EntityType               optionalRuntimeID            `json:"entityType"`
+	ConfigID                 optionalRuntimeID            `json:"configId"`
+	ConfigType               optionalRuntimeID            `json:"configType"`
+	PlayerID                 optionalRuntimeID            `json:"playerId"`
+	OwnerID                  optionalRuntimeID            `json:"ownerId"`
+	OwnerIncID               optionalRuntimeID            `json:"ownerIncId"`
+	SummonerID               optionalRuntimeID            `json:"summonerId"`
+	SummonerPlayerID         optionalRuntimeID            `json:"summonerPlayerId"`
+	SummonConfigID           optionalRuntimeID            `json:"summonConfigId"`
+	SummonSkillID            optionalRuntimeID            `json:"summonSkillId"`
+	SummonType               optionalRuntimeID            `json:"summonType"`
+	SceneSummonerID          optionalRuntimeID            `json:"sceneSummonerId"`
+	SceneSummonConfigID      optionalRuntimeID            `json:"sceneSummonConfigId"`
+	SceneSummonSkillID       optionalRuntimeID            `json:"sceneSummonSkillId"`
+	PlayerEntityID           optionalRuntimeID            `json:"playerEntityId"`
+	FollowerSummonConfigID   optionalRuntimeID            `json:"followerSummonConfigId"`
+	PhantomRoleEntityID      optionalRuntimeID            `json:"phantomRoleEntityId"`
+	ConcomitantVisionIDs     []uint64                     `json:"concomitantVisionEntityIds,omitempty"`
+	ConcomitantCustomIDs     []uint64                     `json:"concomitantCustomEntityIds,omitempty"`
+	WeakVisionEntityID       optionalRuntimeID            `json:"weakVisionEntityId"`
+	FollowEntityID           optionalRuntimeID            `json:"followEntityId"`
+	PlayerFollowers          []runtimePlayerFollowerAudit `json:"playerFollowers,omitempty"`
+	MonsterID                optionalRuntimeID            `json:"monsterId"`
+	MonsterCaptureEntityID   optionalRuntimeID            `json:"monsterCaptureEntityId"`
+	TemplateID               optionalRuntimeID            `json:"templateId"`
+	RoleSkinID               optionalRuntimeID            `json:"roleSkinId"`
+	RoleID                   optionalRuntimeID            `json:"roleId"`
+	RoleConflict             bool                         `json:"roleConflict"`
+	RoleSourceFieldPath      string                       `json:"roleSourceFieldPath,omitempty"`
+	SourceMessageID          uint16                       `json:"sourceMessageId"`
+	SourceFieldPath          string                       `json:"sourceFieldPath,omitempty"`
+	ComponentSourceMessageID uint16                       `json:"componentSourceMessageId,omitempty"`
+	ComponentSourceFieldPath string                       `json:"componentSourceFieldPath,omitempty"`
 }
 
 func formatOptionalUint(value uint64, present bool) string {
