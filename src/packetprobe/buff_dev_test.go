@@ -131,6 +131,82 @@ func TestEntityActiveResponseAddsBuffObservationToEncounterSummary(t *testing.T)
 	}
 }
 
+func TestCombatReceivePackNotifyDecodesInnerBuffApply(t *testing.T) {
+	var lifecycle bytes.Buffer
+	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
+	p.buffLifecycle = &lifecycle
+	p.census = newCommandCensus()
+	p.sessionNumber = 4
+
+	apply := appendVarintField(nil, 2, 501)     // Handle
+	apply = appendVarintField(apply, 11, 71001) // Id
+	apply = appendVarintField(apply, 7, 8801)   // EntityId
+	apply = appendVarintField(apply, 8, 99002)  // InstigatorId
+	notify := appendBytesField(nil, 5, apply)   // CombatNotifyData.ApplyGameplayEffectNotify
+	data := appendBytesField(nil, 2, notify)    // CombatReceiveData.CombatNotifyData
+	body := appendBytesField(nil, 5, data)      // CombatReceivePackNotify.Data[]
+	frame := gameFrame{commandID: 25706, direction: "in", timestamp: time.Date(2026, 10, 27, 5, 0, 0, 0, time.UTC)}
+
+	if err := p.handleCombatReceivePackNotify(frame, body); err != nil {
+		t.Fatalf("handle CombatReceivePackNotify: %v", err)
+	}
+	var row buffLifecycleAuditRow
+	if err := json.Unmarshal(bytes.TrimSpace(lifecycle.Bytes()), &row); err != nil {
+		t.Fatalf("decode lifecycle JSONL: %v", err)
+	}
+	if row.CommandID != 25706 || row.MessageID != 25706 || row.InnerMessageFieldNumber == nil || *row.InnerMessageFieldNumber != 5 {
+		t.Fatalf("outer and inner message provenance = %+v", row)
+	}
+	if row.MessageName != "ApplyGameplayEffectNotify" || row.EventKind != "GAMEPLAY_EFFECT_APPLY" || row.SessionNumber != 4 {
+		t.Fatalf("inner Buff classification = %+v", row)
+	}
+	if row.TargetEntityID == nil || *row.TargetEntityID != 8801 || row.InstigatorID == nil || *row.InstigatorID != 99002 {
+		t.Fatalf("inner Buff target/provider raw fields = %+v", row)
+	}
+	if p.census.combatNotifyFields[5] != 1 {
+		t.Fatalf("CombatNotifyData field 5 observations = %d, want 1", p.census.combatNotifyFields[5])
+	}
+}
+
+func TestCombatReceivePackNotifyCarriesCombatCommonContextWithBuffRequest(t *testing.T) {
+	var lifecycle bytes.Buffer
+	p := &processor{sessionNumber: 5, buffLifecycle: &lifecycle, census: newCommandCensus(), entities: newEntityResolver()}
+	request := appendVarintField(appendVarintField(nil, 4, 71001), 15, 8801)
+	notify := appendBytesField(nil, 1, appendVarintField(appendVarintField(nil, 2, 17), 5, 303))
+	notify = appendBytesField(notify, 53, request)
+	data := appendBytesField(nil, 2, notify)
+	body := appendBytesField(nil, 5, data)
+	if err := p.handleCombatReceivePackNotify(gameFrame{commandID: 25706, direction: "in"}, body); err != nil {
+		t.Fatalf("handle nested Buff request: %v", err)
+	}
+	var row buffLifecycleAuditRow
+	if err := json.Unmarshal(bytes.TrimSpace(lifecycle.Bytes()), &row); err != nil {
+		t.Fatalf("decode nested Buff request: %v", err)
+	}
+	if row.InnerMessageFieldNumber == nil || *row.InnerMessageFieldNumber != 53 || row.CombatCommonMessageID == nil || *row.CombatCommonMessageID != 17 || row.CombatCommonEntityID == nil || *row.CombatCommonEntityID != 303 {
+		t.Fatalf("nested Buff request lost envelope provenance: %+v", row)
+	}
+	if row.TargetEntityID == nil || *row.TargetEntityID != 303 || row.TargetStatus != resolutionCorrelated {
+		t.Fatalf("CombatCommon target projection must remain correlated and keep raw context: %+v", row)
+	}
+	if p.census.combatNotifyFields[53] != 1 {
+		t.Fatalf("inner request census count = %d, want 1", p.census.combatNotifyFields[53])
+	}
+	lifecycle.Reset()
+	zeroContext := appendBytesField(nil, 1, appendVarintField(nil, 5, 0))
+	zeroNotify := appendBytesField(zeroContext, 53, request)
+	if err := p.handleCombatReceivePackNotify(gameFrame{commandID: 25706, direction: "in"}, appendBytesField(nil, 5, appendBytesField(nil, 2, zeroNotify))); err != nil {
+		t.Fatalf("handle Buff request with zero CombatCommon.EntityId: %v", err)
+	}
+	row = buffLifecycleAuditRow{}
+	if err := json.Unmarshal(bytes.TrimSpace(lifecycle.Bytes()), &row); err != nil {
+		t.Fatalf("decode Buff request with zero CombatCommon.EntityId: %v", err)
+	}
+	if row.CombatCommonEntityID == nil || *row.CombatCommonEntityID != 0 || row.TargetEntityID != nil {
+		t.Fatalf("zero raw entity ID must remain raw and not resolve as a target: %+v", row)
+	}
+}
+
 func TestBuffLifecycleOutputRetainsUnknownFieldsAndRejectsWireMismatch(t *testing.T) {
 	var output, eventStream bytes.Buffer
 	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)

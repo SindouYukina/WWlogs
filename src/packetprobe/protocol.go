@@ -324,14 +324,14 @@ func (p *processor) handleFrame(frame gameFrame) {
 		}
 		return
 	}
-	known := frame.commandID == 103 || frame.commandID == 116 || frame.commandID == 19470 || frame.commandID == 20332 || frame.commandID == 17286 || frame.commandID == 18559 || frame.commandID == 25185 || frame.commandID == 17769 || frame.commandID == 28481 || frame.commandID == 26702 || frame.commandID == 25830 || frame.commandID == 18345 || frame.commandID == 20358 || frame.commandID == 17893 || frame.commandID == 22102 || frame.commandID == 29363 || frame.commandID == 16974
+	known := frame.commandID == 103 || frame.commandID == 116 || frame.commandID == 19470 || frame.commandID == 20332 || frame.commandID == 25706 || frame.commandID == 17286 || frame.commandID == 18559 || frame.commandID == 25185 || frame.commandID == 17769 || frame.commandID == 28481 || frame.commandID == 26702 || frame.commandID == 25830 || frame.commandID == 18345 || frame.commandID == 20358 || frame.commandID == 17893 || frame.commandID == 22102 || frame.commandID == 29363 || frame.commandID == 16974
 	if !known {
 		if censusEntry != nil {
 			p.inspectUndecodedFrame(frame, censusEntry)
 		}
 		return
 	}
-	if ((frame.commandID == 103 || frame.commandID == 116 || frame.commandID == 19470 || frame.commandID == 28481) && frame.direction != "out") || ((frame.commandID == 20332 || frame.commandID == 17286 || frame.commandID == 18559 || frame.commandID == 25185 || frame.commandID == 17769 || frame.commandID == 26702 || frame.commandID == 25830 || frame.commandID == 18345 || frame.commandID == 20358 || frame.commandID == 17893 || frame.commandID == 22102 || frame.commandID == 29363 || frame.commandID == 16974) && frame.direction != "in") {
+	if ((frame.commandID == 103 || frame.commandID == 116 || frame.commandID == 19470 || frame.commandID == 28481) && frame.direction != "out") || ((frame.commandID == 20332 || frame.commandID == 25706 || frame.commandID == 17286 || frame.commandID == 18559 || frame.commandID == 25185 || frame.commandID == 17769 || frame.commandID == 26702 || frame.commandID == 25830 || frame.commandID == 18345 || frame.commandID == 20358 || frame.commandID == 17893 || frame.commandID == 22102 || frame.commandID == 29363 || frame.commandID == 16974) && frame.direction != "in") {
 		p.stats.otherFrameDirections++
 		if censusEntry != nil {
 			censusEntry.FailureReasons["direction differs from implemented schema"]++
@@ -377,6 +377,12 @@ func (p *processor) handleFrame(frame gameFrame) {
 		p.handleDamageRequests(plain)
 	case 20332:
 		p.handleDamageResponses(plain)
+	case 25706:
+		if err := p.handleCombatReceivePackNotify(frame, plain); err != nil {
+			p.stats.parseErrors++
+			fmt.Fprintf(p.diagnostic, "combat_receive_pack_parse_error=%v\n", err)
+			return
+		}
 	case 17286:
 		if _, err := p.entities.applyUpdateSceneGroupDataNotify(plain); err != nil {
 			p.stats.parseErrors++

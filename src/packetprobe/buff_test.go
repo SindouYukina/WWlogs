@@ -113,6 +113,78 @@ func TestApplyGameplayEffectNotifyPreservesRawIdentityFields(t *testing.T) {
 	}
 }
 
+func TestCombatNotifyBuffRequestMessagesPreserveSchemaFields(t *testing.T) {
+	tests := []struct {
+		name      string
+		field     uint64
+		commandID uint16
+		body      []byte
+		check     func(*testing.T, buffLifecycleAuditRow)
+	}{
+		{
+			name: "apply buff request notify", field: 53, commandID: 18641,
+			body: appendVarintField(appendVarintField(appendVarintField(appendVarintField(nil, 4, 71001), 15, 8801), 11, 2), 1, 1),
+			check: func(t *testing.T, row buffLifecycleAuditRow) {
+				if row.MessageName != "ApplyBuffS2cRequestNotify" || row.EventKind != "BUFF_APPLY_REQUEST_NOTIFY" || row.ID == nil || *row.ID != 71001 || row.InstigatorID == nil || *row.InstigatorID != 8801 || row.StackCount == nil || *row.StackCount != 2 || row.IsIterable == nil || !*row.IsIterable {
+					t.Fatalf("apply request fields = %+v", row)
+				}
+			},
+		},
+		{
+			name: "remove buff request notify", field: 54, commandID: 20022,
+			body: appendVarintField(appendVarintField(appendVarintField(nil, 1, 501), 12, 1), 2, 8802),
+			check: func(t *testing.T, row buffLifecycleAuditRow) {
+				if row.MessageName != "RemoveBuffS2cRequestNotify" || row.EventKind != "BUFF_REMOVE_REQUEST_NOTIFY" || row.HandleID == nil || *row.HandleID != 501 || row.StackCount == nil || *row.StackCount != 1 || row.InstigatorID == nil || *row.InstigatorID != 8802 {
+					t.Fatalf("remove request fields = %+v", row)
+				}
+			},
+		},
+		{
+			name: "remove buff by id request notify", field: 59, commandID: 19482,
+			body: appendVarintField(appendVarintField(appendVarintField(nil, 4, 71002), 13, 3), 6, 8803),
+			check: func(t *testing.T, row buffLifecycleAuditRow) {
+				if row.MessageName != "RemoveBuffByIdS2cRequestNotify" || row.EventKind != "BUFF_REMOVE_BY_ID_REQUEST_NOTIFY" || row.BuffID == nil || *row.BuffID != 71002 || row.StackCount == nil || *row.StackCount != 3 || row.InstigatorID == nil || *row.InstigatorID != 8803 {
+					t.Fatalf("remove by ID fields = %+v", row)
+				}
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			field := test.field
+			row, err := decodeBuffLifecycleMessageForCommand(gameFrame{commandID: 25706, direction: "in"}, test.body, test.commandID, &field)
+			if err != nil {
+				t.Fatalf("decode nested Buff notify: %v", err)
+			}
+			if row.InnerMessageFieldNumber == nil || *row.InnerMessageFieldNumber != test.field {
+				t.Fatalf("inner field provenance = %+v", row.InnerMessageFieldNumber)
+			}
+			test.check(t, row)
+		})
+	}
+}
+
+func TestCombatCommonContextIsKeptSeparateFromBuffTarget(t *testing.T) {
+	body := appendVarintField(appendVarintField(appendVarintField(nil, 2, 101), 3, 202), 5, 303)
+	entityID, originatorID, messageID, err := decodeCombatCommonContext(body)
+	if err != nil {
+		t.Fatalf("decode CombatCommon context: %v", err)
+	}
+	if entityID == nil || *entityID != 303 || originatorID == nil || *originatorID != 202 || messageID == nil || *messageID != 101 {
+		t.Fatalf("CombatCommon raw context = entity:%v originator:%v message:%v", entityID, originatorID, messageID)
+	}
+	row, err := decodeBuffLifecycleMessageForCommand(gameFrame{commandID: 25706, direction: "in"}, nil, 18641, nil)
+	if err != nil {
+		t.Fatalf("decode empty nested request: %v", err)
+	}
+	if row.TargetEntityID != nil {
+		t.Fatalf("CombatCommon.EntityId must not be silently asserted as target: %+v", row)
+	}
+	if _, _, _, err := decodeCombatCommonContext([]byte{0x0a, 0x02, 0x01}); err == nil {
+		t.Fatal("malformed CombatCommon payload must remain observable")
+	}
+}
+
 func TestBuffLifecycleMessagesPreserveCommandSpecificFields(t *testing.T) {
 	tests := []struct {
 		name      string

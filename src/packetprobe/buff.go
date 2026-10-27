@@ -61,48 +61,71 @@ type buffSnapshotAuditRow struct {
 }
 
 type buffLifecycleAuditRow struct {
-	SchemaVersion       int              `json:"schemaVersion"`
-	EventType           string           `json:"eventType"`
-	SessionNumber       int              `json:"sessionNumber"`
-	MessageID           uint16           `json:"messageId"`
-	Timestamp           time.Time        `json:"timestamp"`
-	CommandID           uint16           `json:"commandId"`
-	Direction           string           `json:"direction"`
-	MessageName         string           `json:"messageName"`
-	EventKind           string           `json:"eventKind"`
-	EventTypeStatus     resolutionStatus `json:"eventTypeStatus"`
-	SchemaBasis         string           `json:"schemaBasis"`
-	TargetEntityID      *uint64          `json:"targetEntityId,omitempty"`
-	BuffID              *uint64          `json:"buffId,omitempty"`
-	ID                  *uint64          `json:"id,omitempty"`
-	ConfBuffID          *uint64          `json:"confBuffId,omitempty"`
-	InstigatorID        *uint64          `json:"instigatorIdRaw,omitempty"`
-	InstigatorStatus    resolutionStatus `json:"instigatorSemanticsStatus"`
-	InstigatorEvidence  string           `json:"instigatorEvidence,omitempty"`
-	HandleID            *uint64          `json:"handleId,omitempty"`
-	Level               *uint64          `json:"level,omitempty"`
-	StackCount          *uint64          `json:"stackCount,omitempty"`
-	ApplyType           *uint64          `json:"applyTypeRaw,omitempty"`
-	DurationSeconds     *float32         `json:"durationSeconds,omitempty"`
-	RemainingDuration   *float32         `json:"remainingDurationSeconds,omitempty"`
-	IsBuffAdd           *bool            `json:"isBuffAdd,omitempty"`
-	IsActive            *bool            `json:"isActive,omitempty"`
-	IsPrematureRemoval  *bool            `json:"isPrematureRemoval,omitempty"`
-	NotRefreshDuration  *bool            `json:"notRefreshDuration,omitempty"`
-	NotRefreshPeriod    *bool            `json:"notRefreshPeriod,omitempty"`
-	Reason              *uint64          `json:"reasonRaw,omitempty"`
-	ServerID            *uint64          `json:"serverId,omitempty"`
-	UnknownFieldNumbers []uint64         `json:"unknownFieldNumbers,omitempty"`
+	SchemaVersion           int              `json:"schemaVersion"`
+	EventType               string           `json:"eventType"`
+	SessionNumber           int              `json:"sessionNumber"`
+	MessageID               uint16           `json:"messageId"`
+	Timestamp               time.Time        `json:"timestamp"`
+	CommandID               uint16           `json:"commandId"`
+	InnerMessageFieldNumber *uint64          `json:"innerMessageFieldNumber,omitempty"`
+	MessagePath             string           `json:"messagePath,omitempty"`
+	Direction               string           `json:"direction"`
+	MessageName             string           `json:"messageName"`
+	EventKind               string           `json:"eventKind"`
+	EventTypeStatus         resolutionStatus `json:"eventTypeStatus"`
+	SchemaBasis             string           `json:"schemaBasis"`
+	TargetEntityID          *uint64          `json:"targetEntityId,omitempty"`
+	TargetStatus            resolutionStatus `json:"targetSemanticsStatus"`
+	TargetEvidence          string           `json:"targetEvidence,omitempty"`
+	BuffID                  *uint64          `json:"buffId,omitempty"`
+	ID                      *uint64          `json:"id,omitempty"`
+	ConfBuffID              *uint64          `json:"confBuffId,omitempty"`
+	InstigatorID            *uint64          `json:"instigatorIdRaw,omitempty"`
+	InstigatorStatus        resolutionStatus `json:"instigatorSemanticsStatus"`
+	InstigatorEvidence      string           `json:"instigatorEvidence,omitempty"`
+	ProviderCharacterID     *uint64          `json:"providerCharacterId,omitempty"`
+	ProviderCharacterName   string           `json:"providerCharacterName,omitempty"`
+	ProviderStatus          resolutionStatus `json:"providerStatus"`
+	ProviderNameStatus      resolutionStatus `json:"providerNameStatus"`
+	ProviderEvidence        string           `json:"providerEvidence,omitempty"`
+	CombatCommonEntityID    *uint64          `json:"combatCommonEntityId,omitempty"`
+	CombatCommonOriginator  *uint64          `json:"combatCommonOriginatorId,omitempty"`
+	CombatCommonMessageID   *uint64          `json:"combatCommonMessageId,omitempty"`
+	HandleID                *uint64          `json:"handleId,omitempty"`
+	Level                   *uint64          `json:"level,omitempty"`
+	StackCount              *uint64          `json:"stackCount,omitempty"`
+	ApplyType               *uint64          `json:"applyTypeRaw,omitempty"`
+	DurationSeconds         *float32         `json:"durationSeconds,omitempty"`
+	RemainingDuration       *float32         `json:"remainingDurationSeconds,omitempty"`
+	IsBuffAdd               *bool            `json:"isBuffAdd,omitempty"`
+	IsActive                *bool            `json:"isActive,omitempty"`
+	IsIterable              *bool            `json:"isIterable,omitempty"`
+	IsPrematureRemoval      *bool            `json:"isPrematureRemoval,omitempty"`
+	NotRefreshDuration      *bool            `json:"notRefreshDuration,omitempty"`
+	NotRefreshPeriod        *bool            `json:"notRefreshPeriod,omitempty"`
+	Reason                  *uint64          `json:"reasonRaw,omitempty"`
+	ServerID                *uint64          `json:"serverId,omitempty"`
+	UnknownFieldNumbers     []uint64         `json:"unknownFieldNumbers,omitempty"`
 }
 
 func decodeBuffLifecycleMessage(frame gameFrame, body []byte) (buffLifecycleAuditRow, error) {
+	return decodeBuffLifecycleMessageForCommand(frame, body, frame.commandID, nil)
+}
+
+func decodeBuffLifecycleMessageForCommand(frame gameFrame, body []byte, schemaCommandID uint16, innerFieldNumber *uint64) (buffLifecycleAuditRow, error) {
 	row := buffLifecycleAuditRow{
 		SchemaVersion: 1, EventType: "BUFF_LIFECYCLE", MessageID: frame.commandID,
 		Timestamp: frame.timestamp, CommandID: frame.commandID, Direction: frame.direction,
-		EventTypeStatus: resolutionCorrelated, InstigatorStatus: resolutionUnknown,
+		EventTypeStatus: resolutionCorrelated, TargetStatus: resolutionUnknown, InstigatorStatus: resolutionUnknown,
+		ProviderStatus: resolutionUnknown, ProviderNameStatus: resolutionUnknown,
 		SchemaBasis: "Windows Global UHD 3.7.1 Aki.Protocol metadata; client version observed, schema compatibility unverified",
 	}
-	switch frame.commandID {
+	if innerFieldNumber != nil {
+		fieldNumber := *innerFieldNumber
+		row.InnerMessageFieldNumber = &fieldNumber
+		row.MessagePath = fmt.Sprintf("CombatReceivePackNotify.field5(CombatReceiveData[]).field2(CombatNotifyData).field%d", fieldNumber)
+	}
+	switch schemaCommandID {
 	case 25830:
 		row.MessageName, row.EventKind = "ApplyGameplayEffectNotify", "GAMEPLAY_EFFECT_APPLY"
 	case 18345:
@@ -117,8 +140,14 @@ func decodeBuffLifecycleMessage(frame gameFrame, body []byte) (buffLifecycleAudi
 		row.MessageName, row.EventKind = "BuffStackCountNotify", "BUFF_STACK_COUNT_CHANGE"
 	case 16974:
 		row.MessageName, row.EventKind = "BuffDurationNotify", "BUFF_DURATION_CHANGE"
+	case 18641:
+		row.MessageName, row.EventKind = "ApplyBuffS2cRequestNotify", "BUFF_APPLY_REQUEST_NOTIFY"
+	case 20022:
+		row.MessageName, row.EventKind = "RemoveBuffS2cRequestNotify", "BUFF_REMOVE_REQUEST_NOTIFY"
+	case 19482:
+		row.MessageName, row.EventKind = "RemoveBuffByIdS2cRequestNotify", "BUFF_REMOVE_BY_ID_REQUEST_NOTIFY"
 	default:
-		return row, fmt.Errorf("unsupported Buff lifecycle command %d", frame.commandID)
+		return row, fmt.Errorf("unsupported Buff lifecycle schema command %d", schemaCommandID)
 	}
 	fields, err := parseProtoFields(body)
 	if err != nil {
@@ -128,7 +157,7 @@ func decodeBuffLifecycleMessage(frame gameFrame, body []byte) (buffLifecycleAudi
 		var uintTarget **uint64
 		var boolTarget **bool
 		var floatTarget **float32
-		switch frame.commandID {
+		switch schemaCommandID {
 		case 25830:
 			switch field.number {
 			case 2:
@@ -222,6 +251,49 @@ func decodeBuffLifecycleMessage(frame gameFrame, body []byte) (buffLifecycleAudi
 			case 5:
 				floatTarget = &row.RemainingDuration
 			}
+		case 18641:
+			switch field.number {
+			case 4:
+				uintTarget = &row.ID
+			case 8:
+				uintTarget = &row.Level
+			case 15:
+				uintTarget = &row.InstigatorID
+			case 5:
+				uintTarget = &row.ApplyType
+			case 3:
+				floatTarget = &row.DurationSeconds
+			case 10:
+				uintTarget = &row.ServerID
+			case 11:
+				uintTarget = &row.StackCount
+			case 1:
+				boolTarget = &row.IsIterable
+			case 9:
+				uintTarget = &row.Reason
+			}
+		case 20022:
+			switch field.number {
+			case 1:
+				uintTarget = &row.HandleID
+			case 12:
+				uintTarget = &row.StackCount
+			case 11:
+				uintTarget = &row.Reason
+			case 2:
+				uintTarget = &row.InstigatorID
+			}
+		case 19482:
+			switch field.number {
+			case 4:
+				uintTarget = &row.BuffID
+			case 13:
+				uintTarget = &row.StackCount
+			case 10:
+				uintTarget = &row.Reason
+			case 6:
+				uintTarget = &row.InstigatorID
+			}
 		}
 		if uintTarget != nil {
 			if field.wire != 0 {
@@ -249,6 +321,10 @@ func decodeBuffLifecycleMessage(frame gameFrame, body []byte) (buffLifecycleAudi
 		row.InstigatorStatus = resolutionCorrelated
 		row.InstigatorEvidence = "client Global 3.7.1 CharacterBuffComponent compares InstigatorId with CreatureDataId and resolves it through CreatureModel.GetEntity; client/master compatibility UNKNOWN"
 	}
+	if row.TargetEntityID != nil {
+		row.TargetStatus = resolutionCorrelated
+		row.TargetEvidence = "Target entity field decoded from Windows Global UHD 3.7.1 Aki.Protocol metadata; observed client compatibility unverified"
+	}
 	return row, nil
 }
 
@@ -256,6 +332,122 @@ func (p *processor) handleBuffLifecycleMessage(frame gameFrame, body []byte) err
 	row, err := decodeBuffLifecycleMessage(frame, body)
 	if err != nil {
 		return err
+	}
+	row.SessionNumber = p.sessionNumber
+	if p.buffLifecycle != nil {
+		if err := json.NewEncoder(p.buffLifecycle).Encode(row); err != nil {
+			return fmt.Errorf("write Buff lifecycle row: %w", err)
+		}
+	}
+	p.writeStructuredEventJSONL(row)
+	return nil
+}
+
+var combatNotifyBuffSchemaCommands = map[uint64]uint16{
+	5:  25830, // ApplyGameplayEffectNotify
+	6:  18345, // RemoveGameplayEffectNotify
+	41: 29363, // BuffStackCountNotify
+	73: 16974, // BuffDurationNotify
+	53: 18641, // ApplyBuffS2CRequestNotify
+	54: 20022, // RemoveBuffS2CRequestNotify
+	59: 19482, // RemoveBuffByIdS2CRequestNotify
+}
+
+func (p *processor) handleCombatReceivePackNotify(frame gameFrame, body []byte) error {
+	fields, err := parseProtoFields(body)
+	if err != nil {
+		return fmt.Errorf("parse CombatReceivePackNotify: %w", err)
+	}
+	for _, field := range fields {
+		if field.number != 5 || field.wire != 2 { // CombatReceivePackNotify.Data
+			continue
+		}
+		entryFields, err := parseProtoFields(field.data)
+		if err != nil {
+			return fmt.Errorf("parse CombatReceivePackNotify.Data item: %w", err)
+		}
+		for _, entry := range entryFields {
+			if entry.number != 2 || entry.wire != 2 { // CombatReceiveData.CombatNotifyData
+				continue
+			}
+			notifications, err := parseProtoFields(entry.data)
+			if err != nil {
+				return fmt.Errorf("parse CombatReceiveData.CombatNotifyData: %w", err)
+			}
+			var commonEntityID, commonOriginator, commonMessageID *uint64
+			for _, notification := range notifications {
+				if notification.number == 1 && notification.wire == 2 { // CombatNotifyData.CombatCommon
+					commonEntityID, commonOriginator, commonMessageID, err = decodeCombatCommonContext(notification.data)
+					if err != nil {
+						return fmt.Errorf("parse CombatCommon: %w", err)
+					}
+				}
+			}
+			for _, notification := range notifications {
+				if p.census != nil {
+					p.census.observeCombatNotifyField(notification.number)
+				}
+				schemaCommandID, supported := combatNotifyBuffSchemaCommands[notification.number]
+				if !supported || notification.wire != 2 {
+					continue
+				}
+				if err := p.handleInnerBuffLifecycleMessage(frame, notification.number, schemaCommandID, notification.data, commonEntityID, commonOriginator, commonMessageID); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func decodeCombatCommonContext(body []byte) (entityID, originatorID, messageID *uint64, err error) {
+	fields, err := parseProtoFields(body)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	for _, field := range fields {
+		if field.wire != 0 {
+			continue
+		}
+		value := field.value
+		switch field.number {
+		case 2:
+			messageID = &value
+		case 3:
+			originatorID = &value
+		case 5:
+			entityID = &value
+		}
+	}
+	return entityID, originatorID, messageID, nil
+}
+
+func (p *processor) handleInnerBuffLifecycleMessage(frame gameFrame, innerFieldNumber uint64, schemaCommandID uint16, body []byte, commonEntityID, commonOriginator, commonMessageID *uint64) error {
+	row, err := decodeBuffLifecycleMessageForCommand(frame, body, schemaCommandID, &innerFieldNumber)
+	if err != nil {
+		return err
+	}
+	row.CombatCommonEntityID = commonEntityID
+	row.CombatCommonOriginator = commonOriginator
+	row.CombatCommonMessageID = commonMessageID
+	if row.TargetEntityID == nil && commonEntityID != nil && *commonEntityID != 0 && (schemaCommandID == 18641 || schemaCommandID == 20022 || schemaCommandID == 19482) {
+		targetID := *commonEntityID
+		row.TargetEntityID = &targetID
+		row.TargetStatus = resolutionCorrelated
+		row.TargetEvidence = "CombatCommon.EntityId matched explicit TargetEntityId values in the Buff lifecycle reference PCAP; this request message has no explicit target field and remains correlated"
+	}
+	if row.InstigatorID != nil {
+		row.ProviderStatus = resolutionUnknown
+		row.ProviderNameStatus = resolutionUnknown
+		identity := resolveEntityIdentity(p.entities, p.masters, *row.InstigatorID)
+		if identity.HasCharacter {
+			row.ProviderStatus = resolutionCorrelated
+			row.ProviderNameStatus = resolutionStatus(identity.Character.NameStatus)
+			characterID := identity.Character.ID
+			row.ProviderCharacterID = &characterID
+			row.ProviderCharacterName = identity.Character.Name
+			row.ProviderEvidence = "InstigatorId -> runtime EntityId -> Character master; schema semantics correlated from client Global 3.7.1, Windows client compatibility unverified"
+		}
 	}
 	row.SessionNumber = p.sessionNumber
 	if p.buffLifecycle != nil {
