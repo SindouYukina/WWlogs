@@ -22,6 +22,13 @@ import (
 	"wwlogs/internal/buildinfo"
 )
 
+func optionalFileWriter(file *os.File) io.Writer {
+	if file == nil {
+		return nil
+	}
+	return file
+}
+
 func main() {
 	exitIfVersionRequested()
 	ip := flag.String("ip", "", "local adapter IPv4 address (required for live capture)")
@@ -175,7 +182,7 @@ func main() {
 	if encounterSummaryFile != nil {
 		processor.encounterSummary = encounterSummaryFile
 	}
-	processor.combatEventsJSONL = combatEventsJSONLFile
+	processor.combatEventsJSONL = optionalFileWriter(combatEventsJSONLFile)
 	if *commandCensusOut != "" {
 		processor.census = newCommandCensus()
 	}
