@@ -40,6 +40,9 @@ func optionalDamageSource(value uint64, present bool) string {
 	return r0
 }
 
+func (p *processor) archiveFrame(frame gameFrame) {
+}
+
 func (p *processor) backfillAvailableSummaryCredits() {
 }
 

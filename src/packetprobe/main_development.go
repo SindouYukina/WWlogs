@@ -45,6 +45,7 @@ func main() {
 	combatNotifyAuditOut := flag.String("combat-notify-audit-out", "", "offline only: write sanitized CombatNotifyData field audit JSONL")
 	encounterSummaryOut := flag.String("encounter-summary-out", "", "optionally write evidence-labeled encounter and character summaries as Markdown")
 	combatEventsJSONLOut := flag.String("event-jsonl-out", "", "optionally write matched combat and Buff observations with evidence as JSONL")
+	frameArchiveOut := flag.String("frame-archive-out", "", "optionally write one local JSONL record per reassembled frame (digests only; no key or plaintext)")
 	research := flag.Bool("research", false, "write per-event evidence details to stderr")
 	commandCensusOut := flag.String("command-census-out", "", "write a local JSON census of protocol commands and decode outcomes")
 	clientVersionOut := flag.String("client-version-out", "", "write version-only client metadata observed after the first handshake")
@@ -174,6 +175,19 @@ func main() {
 		}
 		defer combatEventsJSONLFile.Close()
 	}
+	var frameArchiveFile *os.File
+	if *frameArchiveOut != "" {
+		if dir := filepath.Dir(*frameArchiveOut); dir != "." {
+			if err := os.MkdirAll(dir, 0o700); err != nil {
+				fatal("create frame archive directory", err)
+			}
+		}
+		frameArchiveFile, err = os.Create(*frameArchiveOut)
+		if err != nil {
+			fatal("create frame archive", err)
+		}
+		defer frameArchiveFile.Close()
+	}
 	var combatNotifyAuditFile *os.File
 	if *combatNotifyAuditOut != "" {
 		if dir := filepath.Dir(*combatNotifyAuditOut); dir != "." {
@@ -201,6 +215,11 @@ func main() {
 	}
 	processor.combatEventsJSONL = optionalFileWriter(combatEventsJSONLFile)
 	processor.combatNotifyAudit = optionalFileWriter(combatNotifyAuditFile)
+	var frameArchiveWriter *bufio.Writer
+	if frameArchiveFile != nil {
+		frameArchiveWriter = bufio.NewWriter(frameArchiveFile)
+		processor.frameArchive = frameArchiveWriter
+	}
 	if *commandCensusOut != "" {
 		processor.census = newCommandCensus()
 	}
@@ -384,6 +403,12 @@ finished:
 	}
 	if err := processor.writeEncounterSummary(); err != nil {
 		fatal("write encounter summary", err)
+	}
+	if frameArchiveWriter != nil {
+		if err := frameArchiveWriter.Flush(); err != nil {
+			fatal("flush frame archive", err)
+		}
+		fmt.Fprintf(os.Stderr, "frame_archive frames=%d write_errors=%d\n", processor.frameOrdinal, processor.frameArchiveErrors)
 	}
 	processor.printSummary(os.Stderr)
 	fmt.Fprintf(os.Stderr, "capture_finished udp=%d kcp_push=%d kcp_ordered=%d kcp_messages=%d protocol_frames=%d bad_crc=%d malformed_frames=%d kernel_drops=%d duration=%s\n",

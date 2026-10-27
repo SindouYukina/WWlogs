@@ -141,6 +141,9 @@ type processor struct {
 	buffSnapshots             diagWriter
 	buffLifecycle             diagWriter
 	combatNotifyAudit         diagWriter
+	frameArchive              diagWriter
+	frameOrdinal              uint64
+	frameArchiveErrors        int
 	activeRequests            map[uint16]pendingActiveRequest
 	stats                     processorStats
 	census                    *commandCensus
@@ -300,7 +303,18 @@ func crc32IEEE(data []byte) uint32 {
 	return crc32.ChecksumIEEE(data)
 }
 
+// isImplementedCommand reports whether the outer command has a decoder path in
+// handleFrame. Other commands are only counted and inspected by the census.
+func isImplementedCommand(commandID uint16) bool {
+	switch commandID {
+	case 103, 116, 19470, 20332, 25706, 17286, 18559, 25185, 17769, 28481, 26702, 25830, 18345, 20358, 17893, 22102, 29363, 16974:
+		return true
+	}
+	return false
+}
+
 func (p *processor) handleFrame(frame gameFrame) {
+	p.archiveFrame(frame)
 	p.currentFrameTime = frame.timestamp
 	var censusEntry *commandCensusEntry
 	if p.census != nil {
@@ -325,8 +339,7 @@ func (p *processor) handleFrame(frame gameFrame) {
 		}
 		return
 	}
-	known := frame.commandID == 103 || frame.commandID == 116 || frame.commandID == 19470 || frame.commandID == 20332 || frame.commandID == 25706 || frame.commandID == 17286 || frame.commandID == 18559 || frame.commandID == 25185 || frame.commandID == 17769 || frame.commandID == 28481 || frame.commandID == 26702 || frame.commandID == 25830 || frame.commandID == 18345 || frame.commandID == 20358 || frame.commandID == 17893 || frame.commandID == 22102 || frame.commandID == 29363 || frame.commandID == 16974
-	if !known {
+	if !isImplementedCommand(frame.commandID) {
 		if censusEntry != nil {
 			p.inspectUndecodedFrame(frame, censusEntry)
 		}
