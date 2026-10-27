@@ -439,7 +439,7 @@ func (p *processor) handleInnerBuffLifecycleMessage(frame gameFrame, innerFieldN
 	if (row.EventKind == "GAMEPLAY_EFFECT_APPLY" || row.EventKind == "GAMEPLAY_EFFECT_REMOVE") &&
 		row.TargetEntityID != nil && commonEntityID != nil && *row.TargetEntityID == *commonEntityID {
 		row.TargetStatus = resolutionCorrelated
-		row.TargetEvidence = "TargetEntityId matches CombatCommon.EntityId in the operator-confirmed single-target gameplay-effect lifecycle scene"
+		row.TargetEvidence = "Gameplay-effect TargetEntityId matches CombatCommon.EntityId on this event"
 	}
 	if row.InstigatorID != nil {
 		identity := resolveEntityIdentity(p.entities, p.masters, *row.InstigatorID)
@@ -457,7 +457,7 @@ func (p *processor) handleInnerBuffLifecycleMessage(frame gameFrame, innerFieldN
 				row.ProviderCharacterID = &providerID
 				row.ProviderStatus = resolutionCorrelated
 				row.InstigatorStatus = resolutionCorrelated
-				row.ProviderEvidence = "ApplyGameplayEffectNotify InstigatorId resolves through the session runtime Entity to a verified Character; its explicit target matches CombatCommon.EntityId in the operator-confirmed single-character, single-target scene. Do not generalize this correlation to request notifications or unobserved client builds"
+				row.ProviderEvidence = "ApplyGameplayEffectNotify InstigatorId resolves through this session's runtime Entity to a verified Character; this event's explicit target matches CombatCommon.EntityId"
 				row.InstigatorEvidence = row.ProviderEvidence
 				if identity.Character.Name != "" && identity.Character.NameStatus == string(resolutionVerified) {
 					row.ProviderName = identity.Character.Name
