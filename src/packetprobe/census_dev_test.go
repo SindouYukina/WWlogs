@@ -50,7 +50,7 @@ func TestCommandCensusSeparatesDecodedFramesFromUnimplementedSchemas(t *testing.
 	}
 	statuses := make(map[uint16]string, len(report.Commands))
 	for _, entry := range report.Commands {
-		if (entry.CommandID == 103 || entry.CommandID == 116) && (entry.Direction != "out" || entry.SchemaBasis != "Version fields only; device and account fields are not recorded") {
+		if (entry.CommandID == 103 || entry.CommandID == 116) && (entry.Direction != "out" || entry.SchemaBasis != "Only extracted version fields are retained; command 103/116 sibling fields contain device/account identifiers and are excluded from logs and audit") {
 			t.Fatalf("version command metadata was not retained: %+v", entry)
 		}
 		statuses[entry.CommandID] = entry.Status
@@ -74,20 +74,20 @@ func TestCommandCensusSeparatesDecodedFramesFromUnimplementedSchemas(t *testing.
 		27633: "ChangePlayerFightRoleNotify",
 	}
 	for _, entry := range report.Commands {
-		if entry.CommandID == 17286 && (entry.Name != "UpdateSceneGroupDataNotify" || entry.Direction != "in" || entry.SchemaBasis != "Windows Global UHD 3.7.1 Aki.Protocol metadata; capture build unverified") {
+		if entry.CommandID == 17286 && (entry.Name != "UpdateSceneGroupDataNotify" || entry.Direction != "in" || entry.SchemaBasis != "Windows Global UHD 3.7.1 Aki.Protocol metadata; client version observed, schema compatibility unverified") {
 			t.Fatalf("scene-group mapping provenance was not retained: %+v", entry)
 		}
-		if entry.CommandID == 18559 && (entry.Name != "JoinSceneNotify" || entry.SchemaBasis != "Windows Global UHD 3.7.1 Aki.Protocol metadata; capture build unverified") {
+		if entry.CommandID == 18559 && (entry.Name != "JoinSceneNotify" || entry.SchemaBasis != "Windows Global UHD 3.7.1 Aki.Protocol metadata; client version observed, schema compatibility unverified") {
 			t.Fatalf("JoinSceneNotify provenance was not retained: %+v", entry)
 		}
-		if name, ok := wantRoleNotifies[entry.CommandID]; ok && (entry.Name != name || entry.Direction != "in" || entry.Status != "NOT OBSERVED" || entry.SchemaBasis != "Windows Global UHD 3.7.1 Aki.Protocol metadata; capture build unverified") {
+		if name, ok := wantRoleNotifies[entry.CommandID]; ok && (entry.Name != name || entry.Direction != "in" || entry.Status != "NOT OBSERVED" || entry.SchemaBasis != "Windows Global UHD 3.7.1 Aki.Protocol metadata; client version observed, schema compatibility unverified") {
 			t.Fatalf("fight-role notification metadata was not retained: %+v", entry)
 		}
 	}
 	var foundPhantom bool
 	for _, entry := range report.Commands {
 		if entry.CommandID == 22535 {
-			foundPhantom = entry.Name == "PhantomAttrRecommendResponse" && entry.Status == "PRESENT BUT UNDECODED" && entry.SchemaBasis == "Windows Global UHD 3.7.1 Aki.Protocol metadata; capture build unverified"
+			foundPhantom = entry.Name == "PhantomAttrRecommendResponse" && entry.Status == "PRESENT BUT UNDECODED" && entry.SchemaBasis == "Windows Global UHD 3.7.1 Aki.Protocol metadata; client version observed, schema compatibility unverified"
 		}
 	}
 	if !foundPhantom {

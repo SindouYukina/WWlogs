@@ -36,9 +36,9 @@ func (c *commandCensus) write(path string, stats captureStats, clientVersion *cl
 		if _, exists := c.entries[key]; !exists {
 			entry := commandCensusEntry{CommandID: candidate.id, Name: commandName(candidate.id), Direction: candidate.direction, Status: "NOT OBSERVED"}
 			if candidate.id == 103 || candidate.id == 116 {
-				entry.SchemaBasis = "Version fields only; device and account fields are not recorded"
+				entry.SchemaBasis = "Only extracted version fields are retained; command 103/116 sibling fields contain device/account identifiers and are excluded from logs and audit"
 			} else if candidate.id == 17286 || candidate.id == 22492 || candidate.id == 25830 || candidate.id == 18345 || candidate.id == 20358 || candidate.id == 17893 || candidate.id == 22102 || candidate.id == 29363 || candidate.id == 16974 || candidate.id == 21051 || candidate.id == 18899 || candidate.id == 18580 || candidate.id == 27633 {
-				entry.SchemaBasis = "Windows Global UHD 3.7.1 Aki.Protocol metadata; capture build unverified"
+				entry.SchemaBasis = "Windows Global UHD 3.7.1 Aki.Protocol metadata; client version observed, schema compatibility unverified"
 			}
 			entries = append(entries, entry)
 		}
