@@ -208,10 +208,13 @@ func resolveEntityIdentity(resolver *entityResolver, masters *gameMaster, entity
 			result.Monster = monster
 			result.HasMonster = true
 			result.MonsterStatus = resolutionStatus(monster.Status)
-			if entity.componentSourceMessageID == 26702 {
+			// The field path is verified against Windows Global UHD 3.7.1, but
+			// captures do not currently establish their client build. Keep a
+			// versioned Monster master join correlated until that match is known.
+			if result.MonsterStatus == resolutionVerified {
 				result.MonsterStatus = resolutionCorrelated
 			}
-			result.MonsterProof = "MonsterCaptureComponentPb.MonsterId -> MonsterInfo.Id"
+			result.MonsterProof = "MonsterCaptureComponentPb.MonsterId -> MonsterInfo.Id; Windows Global UHD 3.7.1 schema, capture build UNKNOWN"
 		}
 	}
 	if masters != nil && !entity.hasMonsterID && entity.hasConfigID && entity.hasConfigType && entity.configType == 1 &&

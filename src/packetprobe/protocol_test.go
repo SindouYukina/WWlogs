@@ -111,6 +111,34 @@ func TestEntityAddCapturesRawIdentityWithoutPromotingSkinToCharacter(t *testing.
 	}
 }
 
+func TestMonsterCaptureIdentityRemainsCorrelatedWithoutCaptureBuild(t *testing.T) {
+	resolver := newEntityResolver()
+	capture := appendVarintField(nil, 1, 702)    // MonsterCaptureComponentPb.TemplateId
+	capture = appendVarintField(capture, 3, 701) // MonsterCaptureComponentPb.MonsterId
+	component := appendBytesField(nil, 18, capture)
+	entity := appendVarintField(nil, 1, 500) // EntityPb.Id
+	entity = appendBytesField(entity, 11, component)
+	notify := appendBytesField(appendVarintField(nil, 1, 1), 6, entity)
+	if _, err := resolver.applyEntityAddNotify(notify); err != nil {
+		t.Fatal(err)
+	}
+
+	masters := &gameMaster{monsters: map[uint64]masterRecord{
+		701: {ID: 701, Name: "Monster", Status: string(resolutionVerified)},
+		702: {ID: 702, Name: "Template must not resolve as MonsterId", Status: string(resolutionVerified)},
+	}}
+	identity := resolveEntityIdentity(resolver, masters, 500)
+	if !identity.HasMonster || identity.Monster.ID != 701 {
+		t.Fatalf("MonsterCapture MonsterId did not resolve directly: %+v", identity)
+	}
+	if identity.MonsterStatus != resolutionCorrelated {
+		t.Fatalf("unknown capture build promoted a versioned Monster master join: status=%s identity=%+v", identity.MonsterStatus, identity)
+	}
+	if !strings.Contains(identity.MonsterProof, "MonsterCaptureComponentPb.MonsterId") || !strings.Contains(identity.MonsterProof, "capture build UNKNOWN") {
+		t.Fatalf("Monster proof omitted schema/build limitation: %q", identity.MonsterProof)
+	}
+}
+
 func TestJoinSceneSnapshotResolvesBothEntityBranchesAndPreservesOwnerNamespaces(t *testing.T) {
 	resolver := newEntityResolver()
 	stale := appendVarintField(nil, 1, 99)
