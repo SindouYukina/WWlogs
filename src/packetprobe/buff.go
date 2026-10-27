@@ -61,51 +61,54 @@ type buffSnapshotAuditRow struct {
 }
 
 type buffLifecycleAuditRow struct {
-	SchemaVersion           int              `json:"schemaVersion"`
-	EventType               string           `json:"eventType"`
-	SessionNumber           int              `json:"sessionNumber"`
-	MessageID               uint16           `json:"messageId"`
-	Timestamp               time.Time        `json:"timestamp"`
-	CommandID               uint16           `json:"commandId"`
-	InnerMessageFieldNumber *uint64          `json:"innerMessageFieldNumber,omitempty"`
-	MessagePath             string           `json:"messagePath,omitempty"`
-	Direction               string           `json:"direction"`
-	MessageName             string           `json:"messageName"`
-	EventKind               string           `json:"eventKind"`
-	EventTypeStatus         resolutionStatus `json:"eventTypeStatus"`
-	SchemaBasis             string           `json:"schemaBasis"`
-	TargetEntityID          *uint64          `json:"targetEntityId,omitempty"`
-	TargetStatus            resolutionStatus `json:"targetSemanticsStatus"`
-	TargetEvidence          string           `json:"targetEvidence,omitempty"`
-	BuffID                  *uint64          `json:"buffId,omitempty"`
-	ID                      *uint64          `json:"id,omitempty"`
-	ConfBuffID              *uint64          `json:"confBuffId,omitempty"`
-	InstigatorID            *uint64          `json:"instigatorIdRaw,omitempty"`
-	InstigatorStatus        resolutionStatus `json:"instigatorSemanticsStatus"`
-	InstigatorEvidence      string           `json:"instigatorEvidence,omitempty"`
-	ProviderCharacterID     *uint64          `json:"providerCharacterId,omitempty"`
-	ProviderCharacterName   string           `json:"providerCharacterName,omitempty"`
-	ProviderStatus          resolutionStatus `json:"providerStatus"`
-	ProviderNameStatus      resolutionStatus `json:"providerNameStatus"`
-	ProviderEvidence        string           `json:"providerEvidence,omitempty"`
-	CombatCommonEntityID    *uint64          `json:"combatCommonEntityId,omitempty"`
-	CombatCommonOriginator  *uint64          `json:"combatCommonOriginatorId,omitempty"`
-	CombatCommonMessageID   *uint64          `json:"combatCommonMessageId,omitempty"`
-	HandleID                *uint64          `json:"handleId,omitempty"`
-	Level                   *uint64          `json:"level,omitempty"`
-	StackCount              *uint64          `json:"stackCount,omitempty"`
-	ApplyType               *uint64          `json:"applyTypeRaw,omitempty"`
-	DurationSeconds         *float32         `json:"durationSeconds,omitempty"`
-	RemainingDuration       *float32         `json:"remainingDurationSeconds,omitempty"`
-	IsBuffAdd               *bool            `json:"isBuffAdd,omitempty"`
-	IsActive                *bool            `json:"isActive,omitempty"`
-	IsIterable              *bool            `json:"isIterable,omitempty"`
-	IsPrematureRemoval      *bool            `json:"isPrematureRemoval,omitempty"`
-	NotRefreshDuration      *bool            `json:"notRefreshDuration,omitempty"`
-	NotRefreshPeriod        *bool            `json:"notRefreshPeriod,omitempty"`
-	Reason                  *uint64          `json:"reasonRaw,omitempty"`
-	ServerID                *uint64          `json:"serverId,omitempty"`
-	UnknownFieldNumbers     []uint64         `json:"unknownFieldNumbers,omitempty"`
+	SchemaVersion                          int              `json:"schemaVersion"`
+	EventType                              string           `json:"eventType"`
+	SessionNumber                          int              `json:"sessionNumber"`
+	MessageID                              uint16           `json:"messageId"`
+	Timestamp                              time.Time        `json:"timestamp"`
+	CommandID                              uint16           `json:"commandId"`
+	InnerMessageFieldNumber                *uint64          `json:"innerMessageFieldNumber,omitempty"`
+	MessagePath                            string           `json:"messagePath,omitempty"`
+	Direction                              string           `json:"direction"`
+	MessageName                            string           `json:"messageName"`
+	EventKind                              string           `json:"eventKind"`
+	EventTypeStatus                        resolutionStatus `json:"eventTypeStatus"`
+	SchemaBasis                            string           `json:"schemaBasis"`
+	TargetEntityID                         *uint64          `json:"targetEntityIdRaw,omitempty"`
+	TargetStatus                           resolutionStatus `json:"targetSemanticsStatus"`
+	TargetEvidence                         string           `json:"targetEvidence,omitempty"`
+	BuffID                                 *uint64          `json:"buffId,omitempty"`
+	ID                                     *uint64          `json:"id,omitempty"`
+	ConfBuffID                             *uint64          `json:"confBuffId,omitempty"`
+	InstigatorID                           *uint64          `json:"instigatorIdRaw,omitempty"`
+	InstigatorStatus                       resolutionStatus `json:"instigatorSemanticsStatus"`
+	InstigatorEvidence                     string           `json:"instigatorEvidence,omitempty"`
+	InstigatorCharacterCandidateID         *uint64          `json:"instigatorCharacterCandidateId,omitempty"`
+	InstigatorCharacterCandidateName       string           `json:"instigatorCharacterCandidateName,omitempty"`
+	InstigatorCharacterCandidateStatus     resolutionStatus `json:"instigatorCharacterCandidateStatus"`
+	InstigatorCharacterCandidateNameStatus resolutionStatus `json:"instigatorCharacterCandidateNameStatus"`
+	InstigatorCharacterCandidateEvidence   string           `json:"instigatorCharacterCandidateEvidence,omitempty"`
+	ProviderStatus                         resolutionStatus `json:"providerStatus"`
+	ProviderNameStatus                     resolutionStatus `json:"providerNameStatus"`
+	ProviderEvidence                       string           `json:"providerEvidence,omitempty"`
+	CombatCommonEntityID                   *uint64          `json:"combatCommonEntityId,omitempty"`
+	CombatCommonOriginator                 *uint64          `json:"combatCommonOriginatorId,omitempty"`
+	CombatCommonMessageID                  *uint64          `json:"combatCommonMessageId,omitempty"`
+	HandleID                               *uint64          `json:"handleId,omitempty"`
+	Level                                  *uint64          `json:"level,omitempty"`
+	StackCount                             *uint64          `json:"stackCount,omitempty"`
+	ApplyType                              *uint64          `json:"applyTypeRaw,omitempty"`
+	DurationSeconds                        *float32         `json:"durationSeconds,omitempty"`
+	RemainingDuration                      *float32         `json:"remainingDurationSeconds,omitempty"`
+	IsBuffAdd                              *bool            `json:"isBuffAdd,omitempty"`
+	IsActive                               *bool            `json:"isActive,omitempty"`
+	IsIterable                             *bool            `json:"isIterable,omitempty"`
+	IsPrematureRemoval                     *bool            `json:"isPrematureRemoval,omitempty"`
+	NotRefreshDuration                     *bool            `json:"notRefreshDuration,omitempty"`
+	NotRefreshPeriod                       *bool            `json:"notRefreshPeriod,omitempty"`
+	Reason                                 *uint64          `json:"reasonRaw,omitempty"`
+	ServerID                               *uint64          `json:"serverId,omitempty"`
+	UnknownFieldNumbers                    []uint64         `json:"unknownFieldNumbers,omitempty"`
 }
 
 func decodeBuffLifecycleMessage(frame gameFrame, body []byte) (buffLifecycleAuditRow, error) {
@@ -114,9 +117,10 @@ func decodeBuffLifecycleMessage(frame gameFrame, body []byte) (buffLifecycleAudi
 
 func decodeBuffLifecycleMessageForCommand(frame gameFrame, body []byte, schemaCommandID uint16, innerFieldNumber *uint64) (buffLifecycleAuditRow, error) {
 	row := buffLifecycleAuditRow{
-		SchemaVersion: 1, EventType: "BUFF_LIFECYCLE", MessageID: frame.commandID,
+		SchemaVersion: 2, EventType: "BUFF_LIFECYCLE", MessageID: frame.commandID,
 		Timestamp: frame.timestamp, CommandID: frame.commandID, Direction: frame.direction,
 		EventTypeStatus: resolutionCorrelated, TargetStatus: resolutionUnknown, InstigatorStatus: resolutionUnknown,
+		InstigatorCharacterCandidateStatus: resolutionUnknown, InstigatorCharacterCandidateNameStatus: resolutionUnknown,
 		ProviderStatus: resolutionUnknown, ProviderNameStatus: resolutionUnknown,
 		SchemaBasis: "Windows Global UHD 3.7.1 Aki.Protocol metadata; client version observed, schema compatibility unverified",
 	}
@@ -318,12 +322,12 @@ func decodeBuffLifecycleMessageForCommand(frame gameFrame, body []byte, schemaCo
 		}
 	}
 	if row.InstigatorID != nil {
-		row.InstigatorStatus = resolutionCorrelated
-		row.InstigatorEvidence = "client Global 3.7.1 CharacterBuffComponent compares InstigatorId with CreatureDataId and resolves it through CreatureModel.GetEntity; client/master compatibility UNKNOWN"
+		row.InstigatorEvidence = "Raw InstigatorId field decoded from Windows Global UHD 3.7.1 Aki.Protocol metadata; provider semantics and compatibility with the observed client build are UNKNOWN"
+		row.ProviderEvidence = "Provider status UNKNOWN: InstigatorId semantics and time-scoped active actor linkage are unverified"
 	}
 	if row.TargetEntityID != nil {
-		row.TargetStatus = resolutionCorrelated
-		row.TargetEvidence = "Target entity field decoded from Windows Global UHD 3.7.1 Aki.Protocol metadata; observed client compatibility unverified"
+		row.TargetStatus = resolutionUnknown
+		row.TargetEvidence = "Raw target candidate field decoded from Windows Global UHD 3.7.1 Aki.Protocol metadata; target semantics and compatibility with the observed client build are UNKNOWN"
 	}
 	return row, nil
 }
@@ -430,23 +434,15 @@ func (p *processor) handleInnerBuffLifecycleMessage(frame gameFrame, innerFieldN
 	row.CombatCommonEntityID = commonEntityID
 	row.CombatCommonOriginator = commonOriginator
 	row.CombatCommonMessageID = commonMessageID
-	if row.TargetEntityID == nil && commonEntityID != nil && *commonEntityID != 0 && (schemaCommandID == 18641 || schemaCommandID == 20022 || schemaCommandID == 19482) {
-		targetID := *commonEntityID
-		row.TargetEntityID = &targetID
-		row.TargetStatus = resolutionCorrelated
-		row.TargetEvidence = "CombatCommon.EntityId matched explicit TargetEntityId values in the Buff lifecycle reference PCAP; this request message has no explicit target field and remains correlated"
-	}
 	if row.InstigatorID != nil {
-		row.ProviderStatus = resolutionUnknown
-		row.ProviderNameStatus = resolutionUnknown
 		identity := resolveEntityIdentity(p.entities, p.masters, *row.InstigatorID)
 		if identity.HasCharacter {
-			row.ProviderStatus = resolutionCorrelated
-			row.ProviderNameStatus = resolutionStatus(identity.Character.NameStatus)
 			characterID := identity.Character.ID
-			row.ProviderCharacterID = &characterID
-			row.ProviderCharacterName = identity.Character.Name
-			row.ProviderEvidence = "InstigatorId -> runtime EntityId -> Character master; schema semantics correlated from client Global 3.7.1, Windows client compatibility unverified"
+			row.InstigatorCharacterCandidateID = &characterID
+			row.InstigatorCharacterCandidateName = identity.Character.Name
+			row.InstigatorCharacterCandidateStatus = identity.CharacterStatus
+			row.InstigatorCharacterCandidateNameStatus = resolutionStatus(identity.Character.NameStatus)
+			row.InstigatorCharacterCandidateEvidence = "Raw InstigatorId matches a session runtime EntityId that resolves to a Character master; this does not establish event-provider semantics or the active character"
 		}
 	}
 	row.SessionNumber = p.sessionNumber

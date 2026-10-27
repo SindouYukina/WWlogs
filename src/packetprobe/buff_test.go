@@ -102,8 +102,8 @@ func TestApplyGameplayEffectNotifyPreservesRawIdentityFields(t *testing.T) {
 	if row.MessageName != "ApplyGameplayEffectNotify" || row.EventKind != "GAMEPLAY_EFFECT_APPLY" || row.EventTypeStatus != resolutionCorrelated {
 		t.Fatalf("event classification = %+v", row)
 	}
-	if row.TargetEntityID == nil || *row.TargetEntityID != 8801 || row.InstigatorID == nil || *row.InstigatorID != 99002 || row.InstigatorStatus != resolutionCorrelated || !strings.Contains(row.InstigatorEvidence, "CreatureModel.GetEntity") {
-		t.Fatalf("target/source evidence was lost or overstated: %+v", row)
+	if row.TargetEntityID == nil || *row.TargetEntityID != 8801 || row.TargetStatus != resolutionUnknown || row.InstigatorID == nil || *row.InstigatorID != 99002 || row.InstigatorStatus != resolutionUnknown || !strings.Contains(row.TargetEvidence, "UNKNOWN") || !strings.Contains(row.InstigatorEvidence, "UNKNOWN") {
+		t.Fatalf("raw target/source candidates or their UNKNOWN semantics were lost: %+v", row)
 	}
 	if row.HandleID == nil || *row.HandleID != 501 || row.ID == nil || *row.ID != 71001 || row.ConfBuffID == nil || *row.ConfBuffID != 72002 || row.BuffID != nil {
 		t.Fatalf("Handle, Id, ConfBuffId, and BuffId were conflated: %+v", row)

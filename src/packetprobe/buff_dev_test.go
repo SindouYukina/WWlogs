@@ -170,7 +170,20 @@ func TestCombatReceivePackNotifyDecodesInnerBuffApply(t *testing.T) {
 
 func TestCombatReceivePackNotifyCarriesCombatCommonContextWithBuffRequest(t *testing.T) {
 	var lifecycle bytes.Buffer
-	p := &processor{sessionNumber: 5, buffLifecycle: &lifecycle, census: newCommandCensus(), entities: newEntityResolver()}
+	p := &processor{
+		sessionNumber: 5,
+		buffLifecycle: &lifecycle,
+		census:        newCommandCensus(),
+		entities: &entityResolver{entities: map[uint64]runtimeEntity{
+			8801: {
+				entityID: 8801, roleID: 771, hasRoleID: true,
+				sourceMessageID: 17286, sourceFieldPath: "scene role map",
+			},
+		}},
+		masters: &gameMaster{characters: map[uint64]masterRecord{
+			771: {ID: 771, Name: "Candidate", Status: string(resolutionVerified), NameStatus: string(resolutionVerified)},
+		}},
+	}
 	request := appendVarintField(appendVarintField(nil, 4, 71001), 15, 8801)
 	notify := appendBytesField(nil, 1, appendVarintField(appendVarintField(nil, 2, 17), 5, 303))
 	notify = appendBytesField(notify, 53, request)
@@ -186,8 +199,17 @@ func TestCombatReceivePackNotifyCarriesCombatCommonContextWithBuffRequest(t *tes
 	if row.InnerMessageFieldNumber == nil || *row.InnerMessageFieldNumber != 53 || row.CombatCommonMessageID == nil || *row.CombatCommonMessageID != 17 || row.CombatCommonEntityID == nil || *row.CombatCommonEntityID != 303 {
 		t.Fatalf("nested Buff request lost envelope provenance: %+v", row)
 	}
-	if row.TargetEntityID == nil || *row.TargetEntityID != 303 || row.TargetStatus != resolutionCorrelated {
-		t.Fatalf("CombatCommon target projection must remain correlated and keep raw context: %+v", row)
+	if row.TargetEntityID != nil || row.TargetStatus != resolutionUnknown || row.CombatCommonEntityID == nil || *row.CombatCommonEntityID != 303 {
+		t.Fatalf("CombatCommon context must remain raw and must not be asserted as a target: %+v", row)
+	}
+	if row.ProviderStatus != resolutionUnknown || row.ProviderNameStatus != resolutionUnknown || row.InstigatorStatus != resolutionUnknown {
+		t.Fatalf("provider semantics must remain UNKNOWN despite a character candidate: %+v", row)
+	}
+	if row.InstigatorCharacterCandidateID == nil || *row.InstigatorCharacterCandidateID != 771 || row.InstigatorCharacterCandidateName != "Candidate" {
+		t.Fatalf("resolved character must be retained as a candidate: %+v", row)
+	}
+	if row.InstigatorCharacterCandidateStatus != resolutionVerified {
+		t.Fatalf("candidate identity status = %s, want VERIFIED", row.InstigatorCharacterCandidateStatus)
 	}
 	if p.census.combatNotifyFields[53] != 1 {
 		t.Fatalf("inner request census count = %d, want 1", p.census.combatNotifyFields[53])
@@ -230,7 +252,7 @@ func TestBuffLifecycleOutputRetainsUnknownFieldsAndRejectsWireMismatch(t *testin
 	if err := json.Unmarshal(bytes.TrimSpace(eventStream.Bytes()), &streamRow); err != nil {
 		t.Fatalf("decode unified event row: %v", err)
 	}
-	if streamRow["schemaVersion"] != float64(1) || streamRow["eventType"] != "BUFF_LIFECYCLE" || streamRow["sessionNumber"] != float64(2) || streamRow["messageId"] != float64(18345) || streamRow["direction"] != "in" {
+	if streamRow["schemaVersion"] != float64(2) || streamRow["eventType"] != "BUFF_LIFECYCLE" || streamRow["sessionNumber"] != float64(2) || streamRow["messageId"] != float64(18345) || streamRow["direction"] != "in" {
 		t.Fatalf("Buff lifecycle missing from unified event stream: %#v", streamRow)
 	}
 	badWire := appendBytesField(nil, 5, []byte{1})
