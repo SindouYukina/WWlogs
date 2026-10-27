@@ -46,6 +46,9 @@ func (p *processor) archiveFrame(frame gameFrame) {
 func (p *processor) archiveSchemaDecode(frame gameFrame, plain []byte) {
 }
 
+func (p *processor) archiveDamageRPCSchema(frame gameFrame, plain []byte) {
+}
+
 func (p *processor) backfillAvailableSummaryCredits() {
 }
 
