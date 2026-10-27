@@ -42,6 +42,7 @@ func main() {
 	auditOut := flag.String("audit-out", "", "optionally write matched non-secret RPC/entity/damage rows as TSV")
 	buffSnapshotOut := flag.String("buff-snapshot-out", "", "optionally write EntityActiveResponse Buff snapshots as local JSONL")
 	buffEventOut := flag.String("buff-event-out", "", "optionally write supported Buff lifecycle observations as local JSONL")
+	combatNotifyAuditOut := flag.String("combat-notify-audit-out", "", "offline only: write sanitized CombatNotifyData field audit JSONL")
 	encounterSummaryOut := flag.String("encounter-summary-out", "", "optionally write evidence-labeled encounter and character summaries as Markdown")
 	combatEventsJSONLOut := flag.String("event-jsonl-out", "", "optionally write matched combat and Buff observations with evidence as JSONL")
 	research := flag.Bool("research", false, "write per-event evidence details to stderr")
@@ -59,6 +60,9 @@ func main() {
 	}
 	if *pcapIn != "" && *pcapOut != "" {
 		fatal("PCAP mode", fmt.Errorf("-pcap-in and -pcap-out cannot be combined"))
+	}
+	if *combatNotifyAuditOut != "" && *pcapIn == "" {
+		fatal("CombatNotifyData audit", fmt.Errorf("-combat-notify-audit-out requires -pcap-in"))
 	}
 	if *verifyBaseline && *pcapIn == "" {
 		fatal("baseline mode", fmt.Errorf("-verify-baseline requires -pcap-in"))
@@ -170,6 +174,19 @@ func main() {
 		}
 		defer combatEventsJSONLFile.Close()
 	}
+	var combatNotifyAuditFile *os.File
+	if *combatNotifyAuditOut != "" {
+		if dir := filepath.Dir(*combatNotifyAuditOut); dir != "." {
+			if err := os.MkdirAll(dir, 0o700); err != nil {
+				fatal("create CombatNotifyData audit directory", err)
+			}
+		}
+		combatNotifyAuditFile, err = os.OpenFile(*combatNotifyAuditOut, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+		if err != nil {
+			fatal("create CombatNotifyData audit", err)
+		}
+		defer combatNotifyAuditFile.Close()
+	}
 	processor := newProcessor(rsaKey, stdout, os.Stderr, auditWriter)
 	processor.masters = masters
 	processor.research = *research
@@ -183,6 +200,7 @@ func main() {
 		processor.encounterSummary = encounterSummaryFile
 	}
 	processor.combatEventsJSONL = optionalFileWriter(combatEventsJSONLFile)
+	processor.combatNotifyAudit = optionalFileWriter(combatNotifyAuditFile)
 	if *commandCensusOut != "" {
 		processor.census = newCommandCensus()
 	}

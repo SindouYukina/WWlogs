@@ -91,6 +91,8 @@ type buffLifecycleAuditRow struct {
 	ProviderStatus                         resolutionStatus `json:"providerStatus"`
 	ProviderNameStatus                     resolutionStatus `json:"providerNameStatus"`
 	ProviderEvidence                       string           `json:"providerEvidence,omitempty"`
+	ProviderCharacterID                    *uint64          `json:"providerCharacterId,omitempty"`
+	ProviderName                           string           `json:"providerName,omitempty"`
 	CombatCommonEntityID                   *uint64          `json:"combatCommonEntityId,omitempty"`
 	CombatCommonOriginator                 *uint64          `json:"combatCommonOriginatorId,omitempty"`
 	CombatCommonMessageID                  *uint64          `json:"combatCommonMessageId,omitempty"`
@@ -117,7 +119,7 @@ func decodeBuffLifecycleMessage(frame gameFrame, body []byte) (buffLifecycleAudi
 
 func decodeBuffLifecycleMessageForCommand(frame gameFrame, body []byte, schemaCommandID uint16, innerFieldNumber *uint64) (buffLifecycleAuditRow, error) {
 	row := buffLifecycleAuditRow{
-		SchemaVersion: 2, EventType: "BUFF_LIFECYCLE", MessageID: frame.commandID,
+		SchemaVersion: 3, EventType: "BUFF_LIFECYCLE", MessageID: frame.commandID,
 		Timestamp: frame.timestamp, CommandID: frame.commandID, Direction: frame.direction,
 		EventTypeStatus: resolutionCorrelated, TargetStatus: resolutionUnknown, InstigatorStatus: resolutionUnknown,
 		InstigatorCharacterCandidateStatus: resolutionUnknown, InstigatorCharacterCandidateNameStatus: resolutionUnknown,
@@ -391,6 +393,11 @@ func (p *processor) handleCombatReceivePackNotify(frame gameFrame, body []byte) 
 				if p.census != nil {
 					p.census.observeCombatNotifyField(notification.number)
 				}
+				if p.combatNotifyAudit != nil && notification.number != 1 {
+					if err := writeCombatNotifyAudit(p.combatNotifyAudit, frame, notification, commonEntityID, commonOriginator, commonMessageID, p.sessionNumber); err != nil {
+						return fmt.Errorf("write CombatNotifyData audit field %d: %w", notification.number, err)
+					}
+				}
 				schemaCommandID, supported := combatNotifyBuffSchemaCommands[notification.number]
 				if !supported || notification.wire != 2 {
 					continue
@@ -434,6 +441,11 @@ func (p *processor) handleInnerBuffLifecycleMessage(frame gameFrame, innerFieldN
 	row.CombatCommonEntityID = commonEntityID
 	row.CombatCommonOriginator = commonOriginator
 	row.CombatCommonMessageID = commonMessageID
+	if (row.EventKind == "GAMEPLAY_EFFECT_APPLY" || row.EventKind == "GAMEPLAY_EFFECT_REMOVE") &&
+		row.TargetEntityID != nil && commonEntityID != nil && *row.TargetEntityID == *commonEntityID {
+		row.TargetStatus = resolutionCorrelated
+		row.TargetEvidence = "Gameplay-effect TargetEntityId matches CombatCommon.EntityId on this event"
+	}
 	if row.InstigatorID != nil {
 		identity := resolveEntityIdentity(p.entities, p.masters, *row.InstigatorID)
 		if identity.HasCharacter {
@@ -442,7 +454,21 @@ func (p *processor) handleInnerBuffLifecycleMessage(frame gameFrame, innerFieldN
 			row.InstigatorCharacterCandidateName = identity.Character.Name
 			row.InstigatorCharacterCandidateStatus = identity.CharacterStatus
 			row.InstigatorCharacterCandidateNameStatus = resolutionStatus(identity.Character.NameStatus)
-			row.InstigatorCharacterCandidateEvidence = "Raw InstigatorId matches a session runtime EntityId that resolves to a Character master; this does not establish event-provider semantics or the active character"
+			row.InstigatorCharacterCandidateEvidence = "Raw InstigatorId matches a session runtime EntityId that resolves to a Character master; provider attribution requires the correlated gameplay-effect path"
+			if row.EventKind == "GAMEPLAY_EFFECT_APPLY" &&
+				row.TargetStatus == resolutionCorrelated &&
+				identity.CharacterStatus == resolutionVerified {
+				providerID := identity.Character.ID
+				row.ProviderCharacterID = &providerID
+				row.ProviderStatus = resolutionCorrelated
+				row.InstigatorStatus = resolutionCorrelated
+				row.ProviderEvidence = "ApplyGameplayEffectNotify InstigatorId resolves through this session's runtime Entity to a verified Character; this event's explicit target matches CombatCommon.EntityId"
+				row.InstigatorEvidence = row.ProviderEvidence
+				if identity.Character.Name != "" && identity.Character.NameStatus == string(resolutionVerified) {
+					row.ProviderName = identity.Character.Name
+					row.ProviderNameStatus = resolutionCorrelated
+				}
+			}
 		}
 	}
 	row.SessionNumber = p.sessionNumber

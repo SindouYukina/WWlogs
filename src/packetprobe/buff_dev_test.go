@@ -229,6 +229,97 @@ func TestCombatReceivePackNotifyCarriesCombatCommonContextWithBuffRequest(t *tes
 	}
 }
 
+func TestGameplayEffectApplyCorrelatesProviderOnlyWithMatchingGroundTruthContext(t *testing.T) {
+	newProcessorWithIdentity := func() (*processor, *bytes.Buffer) {
+		var lifecycle bytes.Buffer
+		p := &processor{
+			sessionNumber: 7,
+			buffLifecycle: &lifecycle,
+			entities: &entityResolver{entities: map[uint64]runtimeEntity{
+				8801: {entityID: 8801, roleID: 771, hasRoleID: true, sourceMessageID: 17286, sourceFieldPath: "scene role map"},
+			}},
+			masters: &gameMaster{characters: map[uint64]masterRecord{
+				771: {ID: 771, Name: "Cartethyia", Status: string(resolutionVerified), NameStatus: string(resolutionVerified)},
+			}},
+		}
+		return p, &lifecycle
+	}
+
+	t.Run("correlates provider and target", func(t *testing.T) {
+		p, output := newProcessorWithIdentity()
+		target, originator, message := uint64(303), uint64(771), uint64(17)
+		body := appendVarintField(nil, 2, 1234)
+		body = appendVarintField(body, 7, target)
+		body = appendVarintField(body, 8, 8801)
+		if err := p.handleInnerBuffLifecycleMessage(gameFrame{commandID: 25706, direction: "in"}, 53, 25830, body, &target, &originator, &message); err != nil {
+			t.Fatal(err)
+		}
+		var row buffLifecycleAuditRow
+		if err := json.Unmarshal(bytes.TrimSpace(output.Bytes()), &row); err != nil {
+			t.Fatal(err)
+		}
+		if row.SchemaVersion != 3 || row.TargetStatus != resolutionCorrelated || row.InstigatorStatus != resolutionCorrelated || row.ProviderStatus != resolutionCorrelated || row.ProviderNameStatus != resolutionCorrelated {
+			t.Fatalf("expected schema v3 correlated gameplay-effect attribution: %+v", row)
+		}
+		if row.ProviderCharacterID == nil || *row.ProviderCharacterID != 771 || row.ProviderName != "Cartethyia" {
+			t.Fatalf("provider identity = (%v, %q)", row.ProviderCharacterID, row.ProviderName)
+		}
+	})
+
+	t.Run("leaves mismatched target unknown", func(t *testing.T) {
+		p, output := newProcessorWithIdentity()
+		commonTarget, originator, message := uint64(303), uint64(771), uint64(17)
+		body := appendVarintField(nil, 2, 1234)
+		body = appendVarintField(body, 7, 304)
+		body = appendVarintField(body, 8, 8801)
+		if err := p.handleInnerBuffLifecycleMessage(gameFrame{commandID: 25706, direction: "in"}, 53, 25830, body, &commonTarget, &originator, &message); err != nil {
+			t.Fatal(err)
+		}
+		var row buffLifecycleAuditRow
+		if err := json.Unmarshal(bytes.TrimSpace(output.Bytes()), &row); err != nil {
+			t.Fatal(err)
+		}
+		if row.TargetStatus != resolutionUnknown || row.InstigatorStatus != resolutionUnknown || row.ProviderStatus != resolutionUnknown || row.ProviderCharacterID != nil {
+			t.Fatalf("mismatched target must not produce provider attribution: %+v", row)
+		}
+	})
+
+	t.Run("does not claim an unverified provider name", func(t *testing.T) {
+		p, output := newProcessorWithIdentity()
+		p.masters.characters[771] = masterRecord{ID: 771, Status: string(resolutionVerified), NameStatus: string(resolutionUnknown)}
+		target, originator, message := uint64(303), uint64(771), uint64(17)
+		body := appendVarintField(nil, 2, 1234)
+		body = appendVarintField(body, 7, target)
+		body = appendVarintField(body, 8, 8801)
+		if err := p.handleInnerBuffLifecycleMessage(gameFrame{commandID: 25706, direction: "in"}, 53, 25830, body, &target, &originator, &message); err != nil {
+			t.Fatal(err)
+		}
+		var row buffLifecycleAuditRow
+		if err := json.Unmarshal(bytes.TrimSpace(output.Bytes()), &row); err != nil {
+			t.Fatal(err)
+		}
+		if row.ProviderStatus != resolutionCorrelated || row.ProviderNameStatus != resolutionUnknown || row.ProviderName != "" {
+			t.Fatalf("unverified master name must stay unknown: %+v", row)
+		}
+	})
+
+	t.Run("does not promote non-gameplay Buff target semantics", func(t *testing.T) {
+		p, output := newProcessorWithIdentity()
+		target, originator, message := uint64(303), uint64(771), uint64(17)
+		body := appendVarintField(nil, 12, target)
+		if err := p.handleInnerBuffLifecycleMessage(gameFrame{commandID: 25706, direction: "in"}, 53, 17893, body, &target, &originator, &message); err != nil {
+			t.Fatal(err)
+		}
+		var row buffLifecycleAuditRow
+		if err := json.Unmarshal(bytes.TrimSpace(output.Bytes()), &row); err != nil {
+			t.Fatal(err)
+		}
+		if row.TargetStatus != resolutionUnknown || row.ProviderStatus != resolutionUnknown {
+			t.Fatalf("CombatCommon match must not promote unrelated Buff target semantics: %+v", row)
+		}
+	})
+}
+
 func TestBuffLifecycleOutputRetainsUnknownFieldsAndRejectsWireMismatch(t *testing.T) {
 	var output, eventStream bytes.Buffer
 	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
@@ -252,7 +343,7 @@ func TestBuffLifecycleOutputRetainsUnknownFieldsAndRejectsWireMismatch(t *testin
 	if err := json.Unmarshal(bytes.TrimSpace(eventStream.Bytes()), &streamRow); err != nil {
 		t.Fatalf("decode unified event row: %v", err)
 	}
-	if streamRow["schemaVersion"] != float64(2) || streamRow["eventType"] != "BUFF_LIFECYCLE" || streamRow["sessionNumber"] != float64(2) || streamRow["messageId"] != float64(18345) || streamRow["direction"] != "in" {
+	if streamRow["schemaVersion"] != float64(3) || streamRow["eventType"] != "BUFF_LIFECYCLE" || streamRow["sessionNumber"] != float64(2) || streamRow["messageId"] != float64(18345) || streamRow["direction"] != "in" {
 		t.Fatalf("Buff lifecycle missing from unified event stream: %#v", streamRow)
 	}
 	badWire := appendBytesField(nil, 5, []byte{1})
