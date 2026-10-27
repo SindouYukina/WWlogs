@@ -148,6 +148,8 @@ type processor struct {
 	schemaDecodeOut           diagWriter
 	schemaDecodeErrors        int
 	schemaDecodeSkipped       int
+	eventOrderFrame           uint64
+	eventOrder                int
 	activeRequests            map[uint16]pendingActiveRequest
 	stats                     processorStats
 	census                    *commandCensus
