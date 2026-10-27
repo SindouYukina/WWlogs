@@ -122,7 +122,12 @@ func (p *processor) writeStructuredEventJSONL(event any) {
 	if p.combatEventsJSONL == nil {
 		return
 	}
-	if err := json.NewEncoder(p.combatEventsJSONL).Encode(event); err != nil {
+	line, err := prependEnvelope(p.nextEventEnvelope(), event)
+	if err != nil {
+		fmt.Fprintf(p.diagnostic, "combat_event_jsonl_encode_error=%v\n", err)
+		return
+	}
+	if _, err := p.combatEventsJSONL.Write(line); err != nil {
 		fmt.Fprintf(p.diagnostic, "combat_event_jsonl_write_error=%v\n", err)
 	}
 }
