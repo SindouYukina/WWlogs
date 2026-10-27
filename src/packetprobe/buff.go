@@ -529,16 +529,16 @@ func (p *processor) handleActiveResponse(frame gameFrame, body []byte) error {
 			if component.wire != 2 {
 				continue
 			}
+			if isRuntimeIdentityComponent(component.number) {
+				identityComponents = append(identityComponents, component)
+			}
 			switch component.number {
 			case 4:
 				p.stats.activeResponseSummonerComponents++
-				identityComponents = append(identityComponents, component)
 			case 18:
 				p.stats.activeResponseMonsterComponents++
-				identityComponents = append(identityComponents, component)
 			case 42:
 				p.stats.activeResponseFollowerComponents++
-				identityComponents = append(identityComponents, component)
 			}
 			if component.number != 15 {
 				continue

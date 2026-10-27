@@ -52,6 +52,15 @@ type runtimeEntity struct {
 	hasPlayerEntityID         bool
 	followerSummonConfigID    uint64
 	hasFollowerSummonConfigID bool
+	phantomRoleEntityID       uint64
+	hasPhantomRoleEntityID    bool
+	concomitantVisionIDs      []uint64
+	concomitantCustomIDs      []uint64
+	weakVisionEntityID        uint64
+	hasWeakVisionEntityID     bool
+	followEntityID            uint64
+	hasFollowEntityID         bool
+	playerFollowers           []runtimePlayerFollower
 	monsterID                 uint64
 	hasMonsterID              bool
 	monsterCaptureEntityID    uint64
@@ -70,6 +79,15 @@ type runtimeEntity struct {
 	componentSourceFieldPath  string
 	lastSeenSequence          uint64
 }
+
+type runtimePlayerFollower struct {
+	typeID    uint64
+	hasType   bool
+	entityID  uint64
+	hasEntity bool
+}
+
+const maxRuntimeComponentEntityRefs = 256
 
 type entityResolver struct {
 	entities           map[uint64]runtimeEntity
@@ -772,7 +790,7 @@ func (r *entityResolver) applyActiveResponseIdentityComponents(entityID uint64, 
 	update := runtimeEntity{entityID: entityID}
 	observed := 0
 	for _, component := range components {
-		if component.wire != 2 || (component.number != 4 && component.number != 18 && component.number != 42) {
+		if component.wire != 2 || !isRuntimeIdentityComponent(component.number) {
 			continue
 		}
 		if err := applyEntityComponentPayload(&update, component.number, component.data); err != nil {
@@ -795,6 +813,15 @@ func (r *entityResolver) applyActiveResponseIdentityComponents(entityID uint64, 
 	r.entities[entityID] = update
 	r.evictIfNeeded()
 	return observed, nil
+}
+
+func isRuntimeIdentityComponent(componentNumber uint64) bool {
+	switch componentNumber {
+	case 4, 18, 25, 42, 53, 85:
+		return true
+	default:
+		return false
+	}
 }
 
 func parseEntityPb(data []byte) (runtimeEntity, error) {
@@ -906,6 +933,72 @@ func applyEntityComponentPayload(entity *runtimeEntity, componentNumber uint64, 
 				entity.followerSummonConfigID, entity.hasFollowerSummonConfigID = field.value, true
 			}
 		}
+	case 25: // ConcomitantsComponentPb
+		fields, err := parseProtoFields(data)
+		if err != nil {
+			return fmt.Errorf("parse ConcomitantsComponentPb: %w", err)
+		}
+		for _, field := range fields {
+			if field.wire != 0 {
+				continue
+			}
+			switch field.number {
+			case 1: // VisionEntityIds[]
+				if len(entity.concomitantVisionIDs) >= maxRuntimeComponentEntityRefs {
+					return fmt.Errorf("ConcomitantsComponentPb.VisionEntityIds exceeds limit %d", maxRuntimeComponentEntityRefs)
+				}
+				entity.concomitantVisionIDs = append(entity.concomitantVisionIDs, field.value)
+			case 2: // CustomEntityIds[]
+				if len(entity.concomitantCustomIDs) >= maxRuntimeComponentEntityRefs {
+					return fmt.Errorf("ConcomitantsComponentPb.CustomEntityIds exceeds limit %d", maxRuntimeComponentEntityRefs)
+				}
+				entity.concomitantCustomIDs = append(entity.concomitantCustomIDs, field.value)
+			case 3: // PhantomRoleEid
+				entity.phantomRoleEntityID, entity.hasPhantomRoleEntityID = field.value, true
+			case 4: // WeakVisionEid
+				entity.weakVisionEntityID, entity.hasWeakVisionEntityID = field.value, true
+			}
+		}
+	case 53: // PlayerFollowersComponentPb
+		fields, err := parseProtoFields(data)
+		if err != nil {
+			return fmt.Errorf("parse PlayerFollowersComponentPb: %w", err)
+		}
+		for _, field := range fields {
+			if field.number != 1 || field.wire != 2 {
+				continue
+			}
+			if len(entity.playerFollowers) >= maxRuntimeComponentEntityRefs {
+				return fmt.Errorf("PlayerFollowersComponentPb.ListPlayerFollowerPb exceeds limit %d", maxRuntimeComponentEntityRefs)
+			}
+			followerFields, err := parseProtoFields(field.data)
+			if err != nil {
+				return fmt.Errorf("parse PlayerFollowerPb: %w", err)
+			}
+			var follower runtimePlayerFollower
+			for _, followerField := range followerFields {
+				if followerField.wire != 0 {
+					continue
+				}
+				switch followerField.number {
+				case 1: // Type
+					follower.typeID, follower.hasType = followerField.value, true
+				case 2: // EntityId
+					follower.entityID, follower.hasEntity = followerField.value, true
+				}
+			}
+			entity.playerFollowers = append(entity.playerFollowers, follower)
+		}
+	case 85: // FollowEntityComponentPb
+		fields, err := parseProtoFields(data)
+		if err != nil {
+			return fmt.Errorf("parse FollowEntityComponentPb: %w", err)
+		}
+		for _, field := range fields {
+			if field.number == 1 && field.wire == 0 {
+				entity.followEntityID, entity.hasFollowEntityID = field.value, true
+			}
+		}
 	}
 	return nil
 }
@@ -967,6 +1060,24 @@ func mergeRuntimeEntity(old, update runtimeEntity) runtimeEntity {
 	}
 	if !update.hasFollowerSummonConfigID && old.hasFollowerSummonConfigID {
 		update.followerSummonConfigID, update.hasFollowerSummonConfigID = old.followerSummonConfigID, true
+	}
+	if !update.hasPhantomRoleEntityID && old.hasPhantomRoleEntityID {
+		update.phantomRoleEntityID, update.hasPhantomRoleEntityID = old.phantomRoleEntityID, true
+	}
+	if len(update.concomitantVisionIDs) == 0 && len(old.concomitantVisionIDs) > 0 {
+		update.concomitantVisionIDs = append([]uint64(nil), old.concomitantVisionIDs...)
+	}
+	if len(update.concomitantCustomIDs) == 0 && len(old.concomitantCustomIDs) > 0 {
+		update.concomitantCustomIDs = append([]uint64(nil), old.concomitantCustomIDs...)
+	}
+	if !update.hasWeakVisionEntityID && old.hasWeakVisionEntityID {
+		update.weakVisionEntityID, update.hasWeakVisionEntityID = old.weakVisionEntityID, true
+	}
+	if !update.hasFollowEntityID && old.hasFollowEntityID {
+		update.followEntityID, update.hasFollowEntityID = old.followEntityID, true
+	}
+	if len(update.playerFollowers) == 0 && len(old.playerFollowers) > 0 {
+		update.playerFollowers = append([]runtimePlayerFollower(nil), old.playerFollowers...)
 	}
 	if !update.hasMonsterID && old.hasMonsterID {
 		update.monsterID, update.hasMonsterID = old.monsterID, true
