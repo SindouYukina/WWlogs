@@ -442,6 +442,38 @@ func TestEntityPbNonCharacterConfigIDDoesNotResolveCharacter(t *testing.T) {
 	}
 }
 
+func TestRoleSkinCharacterJoinRemainsCorrelatedWithoutCaptureBuild(t *testing.T) {
+	resolver := newEntityResolver()
+	entity := appendVarintField(nil, 1, 503)    // EntityPb.Id
+	entity = appendVarintField(entity, 23, 901) // EntityPb.RoleSkinId
+	unknownEntity := appendVarintField(nil, 1, 504)
+	unknownEntity = appendVarintField(unknownEntity, 23, 902)
+	notify := appendBytesField(appendVarintField(nil, 1, 1), 6, entity)
+	notify = appendBytesField(notify, 6, unknownEntity)
+	if _, err := resolver.applyEntityAddNotify(notify); err != nil {
+		t.Fatal(err)
+	}
+
+	masters := &gameMaster{charactersSkin: map[uint64]masterRecord{
+		901: {ID: 1312, SkinID: 901, Name: "Test Role", Status: string(resolutionVerified)},
+		902: {ID: 1313, SkinID: 902, Status: string(resolutionUnknown)},
+	}}
+	identity := resolveEntityIdentity(resolver, masters, 503)
+	if !identity.HasCharacter || identity.Character.ID != 1312 {
+		t.Fatalf("RoleSkinId did not resolve its character master row: %+v", identity)
+	}
+	if identity.CharacterStatus != resolutionCorrelated {
+		t.Fatalf("unknown capture build promoted a versioned skin-to-character join: status=%s identity=%+v", identity.CharacterStatus, identity)
+	}
+	if !strings.Contains(identity.CharacterProof, "RoleSkinId(23)") || !strings.Contains(identity.CharacterProof, "capture build UNKNOWN") {
+		t.Fatalf("skin proof omitted schema/build limitation: %q", identity.CharacterProof)
+	}
+	unknown := resolveEntityIdentity(resolver, masters, 504)
+	if !unknown.HasCharacter || unknown.CharacterStatus != resolutionUnknown {
+		t.Fatalf("skin join upgraded an unverified character master: %+v", unknown)
+	}
+}
+
 func TestEntityPbAndSceneRoleCharacterConflictStaysUnknown(t *testing.T) {
 	resolver := newEntityResolver()
 	role := appendVarintField(nil, 1, 1312)

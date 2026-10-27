@@ -200,7 +200,12 @@ func resolveEntityIdentity(resolver *entityResolver, masters *gameMaster, entity
 			result.Character = character
 			result.HasCharacter = true
 			result.CharacterStatus = resolutionStatus(character.Status)
-			result.CharacterProof = "EntityPb.RoleSkinId(23) -> RoleInfo.SkinId -> RoleInfo.Id"
+			result.CharacterProof = "EntityPb.RoleSkinId(23) -> RoleInfo.SkinId -> RoleInfo.Id; capture build UNKNOWN"
+			if result.CharacterStatus == resolutionVerified {
+				// The captures do not identify their client build; keep this versioned
+				// skin-to-character master join correlated until that match is known.
+				result.CharacterStatus = resolutionCorrelated
+			}
 		}
 	}
 	if masters != nil && entity.hasMonsterID {
