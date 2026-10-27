@@ -345,6 +345,14 @@ func (p *processor) handleFrame(frame gameFrame) {
 		}
 		return
 	}
+	if len(frame.body) == 0 {
+		// Zero-length bodies carry no ciphertext; counting them as AES failures
+		// would misreport transport health.
+		if censusEntry != nil {
+			censusEntry.FailureReasons[emptyBodyFailureReason]++
+		}
+		return
+	}
 	plain, err := decryptGameBody(frame.sequence, frame.body, p.session)
 	if err != nil {
 		p.stats.decryptErrors++
@@ -451,9 +459,16 @@ func (p *processor) handleFrame(frame gameFrame) {
 	}
 }
 
+// emptyBodyFailureReason labels frames whose command body is zero-length.
+const emptyBodyFailureReason = "empty body; no payload to decrypt"
+
 func (p *processor) inspectUndecodedFrame(frame gameFrame, entry *commandCensusEntry) {
 	if len(p.session) != 32 {
 		entry.FailureReasons["no implemented schema; session key unavailable"]++
+		return
+	}
+	if len(frame.body) == 0 {
+		entry.FailureReasons[emptyBodyFailureReason]++
 		return
 	}
 	plain, err := decryptGameBody(frame.sequence, frame.body, p.session)
