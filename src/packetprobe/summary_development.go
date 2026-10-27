@@ -36,6 +36,7 @@ func (p *processor) observeEncounterSummary(event combatEvent) {
 		summary = &encounterSummary{
 			key: key, characters: make(map[uint64]*characterSummary),
 			ownerCandidates:        make(map[uint64]*ownerCandidateSummary),
+			healingAttributions:    make(map[healingAttributionKey]*healingAttributionSummary),
 			bossCandidates:         make(map[bossCandidateKey]bossCandidateSummary),
 			buffObservations:       make(map[buffObservationKey]int),
 			uncreditedEvents:       make(map[uncreditedEventKey]*uncreditedEventSummary),
@@ -68,6 +69,9 @@ func (p *processor) observeEncounterSummary(event combatEvent) {
 		summary.otherCandidates += event.Damage
 	default:
 		summary.unclassified += event.Damage
+	}
+	if event.EventTypeCandidate == "HEALING_CANDIDATE" {
+		addHealingAttribution(summary, event)
 	}
 
 	if isCreditedCharacterStatus(event.CharacterStatus) && event.CharacterID != 0 {
@@ -186,6 +190,7 @@ func (p *processor) observeBuffSnapshot(row buffSnapshotAuditRow) {
 		summary = &encounterSummary{
 			key: key, characters: make(map[uint64]*characterSummary),
 			ownerCandidates:        make(map[uint64]*ownerCandidateSummary),
+			healingAttributions:    make(map[healingAttributionKey]*healingAttributionSummary),
 			bossCandidates:         make(map[bossCandidateKey]bossCandidateSummary),
 			buffObservations:       make(map[buffObservationKey]int),
 			classificationEvidence: make(map[string]struct{}),
@@ -197,6 +202,71 @@ func (p *processor) observeBuffSnapshot(row buffSnapshotAuditRow) {
 		return
 	}
 	summary.buffObservations[observation]++
+}
+
+func addHealingAttribution(summary *encounterSummary, event combatEvent) {
+	if !isCreditedCharacterStatus(event.CharacterStatus) || event.CharacterID == 0 ||
+		!event.Target.HasCharacter || event.Target.Character.ID == 0 ||
+		!isCreditedCharacterStatus(event.Target.CharacterStatus) {
+		summary.healingAttributionUnresolved++
+		summary.healingAttributionUnresolvedAbs += event.Damage
+		return
+	}
+
+	hasSkillID := event.SkillID != 0 && event.SkillID != ^uint64(0)
+	skillID, damageID := uint64(0), uint64(0)
+	if hasSkillID {
+		skillID = event.SkillID
+	}
+	if event.HasDamageID {
+		damageID = event.DamageID
+	}
+	key := healingAttributionKey{
+		healerID: event.CharacterID, targetID: event.Target.Character.ID,
+		skillID: skillID, damageID: damageID,
+		hasSkillID: hasSkillID, hasDamageID: event.HasDamageID,
+	}
+	row := summary.healingAttributions[key]
+	if row == nil {
+		if len(summary.healingAttributions) >= maxSummaryHealingAttributions {
+			summary.healingAttributionsOmitted++
+			return
+		}
+		row = &healingAttributionSummary{
+			key:          key,
+			healerProofs: make(map[string]struct{}), targetProofs: make(map[string]struct{}),
+			skillProofs: make(map[string]struct{}), classificationProofs: make(map[string]struct{}),
+		}
+		summary.healingAttributions[key] = row
+	}
+	row.healerStatus = strongestEvidence(row.healerStatus, event.CharacterStatus)
+	if event.CharacterProof != "" {
+		row.healerProofs[event.CharacterProof] = struct{}{}
+	}
+	if event.CharacterName != "" && (event.CharacterNameStatus == resolutionVerified || event.CharacterNameStatus == resolutionCorrelated) {
+		row.healerName, row.healerNameStatus = event.CharacterName, event.CharacterNameStatus
+	}
+	target := event.Target.Character
+	row.targetStatus = strongestEvidence(row.targetStatus, event.Target.CharacterStatus)
+	if event.Target.CharacterProof != "" {
+		row.targetProofs[event.Target.CharacterProof] = struct{}{}
+	}
+	if target.Name != "" && (target.NameStatus == string(resolutionVerified) || target.NameStatus == string(resolutionCorrelated)) {
+		row.targetName, row.targetNameStatus = target.Name, resolutionStatus(target.NameStatus)
+	}
+	row.skillStatus = strongestEvidence(row.skillStatus, event.SkillStatus)
+	if event.SkillProof != "" {
+		row.skillProofs[event.SkillProof] = struct{}{}
+	}
+	if event.SkillName != "" && (event.SkillNameStatus == resolutionVerified || event.SkillNameStatus == resolutionCorrelated) {
+		row.skillName, row.skillNameStatus = event.SkillName, event.SkillNameStatus
+	}
+	row.classificationStatus = strongestEvidence(row.classificationStatus, event.EventTypeStatus)
+	if event.EventTypeProof != "" {
+		row.classificationProofs[event.EventTypeProof] = struct{}{}
+	}
+	row.reportedMagnitudeAbs += event.Damage
+	row.events++
 }
 
 func addCreditedCharacterEvent(summary *encounterSummary, event combatEvent) {
@@ -436,6 +506,9 @@ func writeOneEncounterSummary(w io.Writer, summary *encounterSummary) error {
 	if err := writeBossCandidates(w, summary); err != nil {
 		return err
 	}
+	if err := writeHealingAttributions(w, summary); err != nil {
+		return err
+	}
 	if err := writeCharacterSummaries(w, summary); err != nil {
 		return err
 	}
@@ -617,6 +690,77 @@ func writeBossCandidates(w io.Writer, summary *encounterSummary) error {
 	}
 	if summary.bossCandidatesOmitted > 0 {
 		if _, err := fmt.Fprintf(w, "\n- Additional monster candidate rows omitted by the safety limit: %d.\n", summary.bossCandidatesOmitted); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func writeHealingAttributions(w io.Writer, summary *encounterSummary) error {
+	if _, err := fmt.Fprintln(w, "\n### Healing source-to-target attribution candidates"); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintln(w, "\nAmounts are reported absolute CombatResult magnitudes for HEALING_CANDIDATE events; they are not effective HP changes. Effective Healing and Overheal are not established and remain UNKNOWN."); err != nil {
+		return err
+	}
+	keys := make([]healingAttributionKey, 0, len(summary.healingAttributions))
+	for key := range summary.healingAttributions {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		left, right := keys[i], keys[j]
+		if left.healerID != right.healerID {
+			return left.healerID < right.healerID
+		}
+		if left.targetID != right.targetID {
+			return left.targetID < right.targetID
+		}
+		if left.hasSkillID != right.hasSkillID {
+			return left.hasSkillID
+		}
+		if left.skillID != right.skillID {
+			return left.skillID < right.skillID
+		}
+		if left.hasDamageID != right.hasDamageID {
+			return left.hasDamageID
+		}
+		return left.damageID < right.damageID
+	})
+	if len(keys) == 0 {
+		if _, err := fmt.Fprintln(w, "\n- No healing events had both a credited source CharacterId and a resolved target CharacterId."); err != nil {
+			return err
+		}
+	}
+	for _, key := range keys {
+		row := summary.healingAttributions[key]
+		skillID := summaryIDLabel(key.skillID, key.hasSkillID)
+		if key.hasSkillID {
+			skillID = fmt.Sprintf("%d [%s]", key.skillID, row.skillStatus)
+			if row.skillName != "" {
+				skillID += fmt.Sprintf(" — %s [name %s]", markdownText(row.skillName), valueOrUnknown(string(row.skillNameStatus)))
+			}
+		}
+		damageID := summaryIDLabel(key.damageID, key.hasDamageID)
+		if _, err := fmt.Fprintf(w, "\n- Source CharacterId %d — %s [%s; name %s] → Target CharacterId %d — %s [%s; name %s]; SkillId %s; DamageId %s: %d event(s), reported magnitude %d; classification %s; source evidence: %s; target evidence: %s; skill evidence: %s\n",
+			key.healerID, markdownText(valueOrUnknown(row.healerName)), row.healerStatus, valueOrUnknown(string(row.healerNameStatus)),
+			key.targetID, markdownText(valueOrUnknown(row.targetName)), row.targetStatus, valueOrUnknown(string(row.targetNameStatus)),
+			skillID, damageID, row.events, row.reportedMagnitudeAbs, row.classificationStatus,
+			markdownText(valueOrUnknown(joinEvidence(row.healerProofs))), markdownText(valueOrUnknown(joinEvidence(row.targetProofs))),
+			markdownText(valueOrUnknown(joinEvidence(row.skillProofs)))); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(w, "  Classification evidence: %s\n", markdownText(valueOrUnknown(joinEvidence(row.classificationProofs)))); err != nil {
+			return err
+		}
+	}
+	if summary.healingAttributionUnresolved > 0 {
+		if _, err := fmt.Fprintf(w, "\n- Healing events without both source and target Character identities: %d (reported magnitude %d)\n",
+			summary.healingAttributionUnresolved, summary.healingAttributionUnresolvedAbs); err != nil {
+			return err
+		}
+	}
+	if summary.healingAttributionsOmitted > 0 {
+		if _, err := fmt.Fprintf(w, "\n- Additional healing attribution rows omitted by the safety limit: %d; candidate totals above still include these events.\n", summary.healingAttributionsOmitted); err != nil {
 			return err
 		}
 	}

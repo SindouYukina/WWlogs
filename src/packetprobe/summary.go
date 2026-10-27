@@ -15,6 +15,7 @@ type encounterSummaryKey struct {
 const (
 	maxEncounterSummaryGroups        = 512
 	maxSummarySkillsPerCharacter     = 2048
+	maxSummaryHealingAttributions    = 4096
 	maxSummaryOwnerCandidates        = 512
 	maxSummaryBossCandidates         = 2048
 	maxSummaryBuffObservations       = 4096
@@ -23,30 +24,34 @@ const (
 )
 
 type encounterSummary struct {
-	key                           encounterSummaryKey
-	startedAt                     time.Time
-	endedAt                       time.Time
-	eventCount                    int
-	combatResultAbs               int64
-	damageCandidates              int64
-	healCandidates                int64
-	otherCandidates               int64
-	unclassified                  int64
-	unknownCredit                 int
-	unknownCreditAbs              int64
-	identityBackfilledEvents      int
-	identityBackfillEventsOmitted int
-	classificationEvidence        map[string]struct{}
-	classificationEvidenceOmitted int
-	ownerCandidatesOmitted        int
-	bossCandidatesOmitted         int
-	buffObservationsOmitted       int
-	characters                    map[uint64]*characterSummary
-	ownerCandidates               map[uint64]*ownerCandidateSummary
-	bossCandidates                map[bossCandidateKey]bossCandidateSummary
-	buffObservations              map[buffObservationKey]int
-	uncreditedEvents              map[uncreditedEventKey]*uncreditedEventSummary
-	uncreditedEventsOmitted       int
+	key                             encounterSummaryKey
+	startedAt                       time.Time
+	endedAt                         time.Time
+	eventCount                      int
+	combatResultAbs                 int64
+	damageCandidates                int64
+	healCandidates                  int64
+	otherCandidates                 int64
+	unclassified                    int64
+	unknownCredit                   int
+	unknownCreditAbs                int64
+	identityBackfilledEvents        int
+	identityBackfillEventsOmitted   int
+	classificationEvidence          map[string]struct{}
+	classificationEvidenceOmitted   int
+	ownerCandidatesOmitted          int
+	healingAttributions             map[healingAttributionKey]*healingAttributionSummary
+	healingAttributionUnresolved    int
+	healingAttributionUnresolvedAbs int64
+	healingAttributionsOmitted      int
+	bossCandidatesOmitted           int
+	buffObservationsOmitted         int
+	characters                      map[uint64]*characterSummary
+	ownerCandidates                 map[uint64]*ownerCandidateSummary
+	bossCandidates                  map[bossCandidateKey]bossCandidateSummary
+	buffObservations                map[buffObservationKey]int
+	uncreditedEvents                map[uncreditedEventKey]*uncreditedEventSummary
+	uncreditedEventsOmitted         int
 }
 
 type pendingSummaryCredit struct {
@@ -83,6 +88,35 @@ type skillSummary struct {
 	eventType string
 	amount    int64
 	events    int
+}
+
+type healingAttributionKey struct {
+	healerID    uint64
+	targetID    uint64
+	skillID     uint64
+	damageID    uint64
+	hasSkillID  bool
+	hasDamageID bool
+}
+
+type healingAttributionSummary struct {
+	key                  healingAttributionKey
+	healerName           string
+	healerNameStatus     resolutionStatus
+	healerStatus         resolutionStatus
+	healerProofs         map[string]struct{}
+	targetName           string
+	targetNameStatus     resolutionStatus
+	targetStatus         resolutionStatus
+	targetProofs         map[string]struct{}
+	skillName            string
+	skillNameStatus      resolutionStatus
+	skillStatus          resolutionStatus
+	skillProofs          map[string]struct{}
+	classificationStatus resolutionStatus
+	classificationProofs map[string]struct{}
+	reportedMagnitudeAbs int64
+	events               int
 }
 
 type ownerCandidateSummary struct {

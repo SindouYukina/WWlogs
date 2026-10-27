@@ -68,6 +68,100 @@ func TestEncounterSummarySeparatesCreditedDamageHealingAndOwnerCandidates(t *tes
 	}
 }
 
+func TestEncounterSummaryGroupsHealingByCreditedSourceTargetAndDamageID(t *testing.T) {
+	var output bytes.Buffer
+	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
+	p.encounterSummary = &output
+	base := combatEvent{
+		SessionNumber: 1,
+		Source: entityIdentity{
+			Runtime:      runtimeEntity{entityID: 12001},
+			HasCharacter: true, Character: masterRecord{ID: 1209, Name: "Healer", NameStatus: string(resolutionVerified)},
+			CharacterStatus: resolutionVerified, CharacterProof: "source RoleId field",
+		},
+		Target: entityIdentity{
+			Runtime:      runtimeEntity{entityID: 14001},
+			HasCharacter: true, Character: masterRecord{ID: 1409, Name: "Recipient", NameStatus: string(resolutionVerified)},
+			CharacterStatus: resolutionVerified, CharacterProof: "target RoleId field",
+		},
+		CharacterID: 1209, CharacterName: "Healer", CharacterNameStatus: resolutionVerified,
+		CharacterStatus: resolutionVerified, CharacterProof: "source RoleId field",
+		SkillID: ^uint64(0), SkillStatus: resolutionUnknown,
+		DamageID: 1100, HasDamageID: true,
+		EventTypeCandidate: "HEALING_CANDIDATE", EventTypeStatus: resolutionCorrelated,
+		EventTypeProof: "Damage CalculateType=1", Damage: 200,
+	}
+	p.observeEncounterSummary(base)
+	base.Damage = 50
+	base.SkillID = 0
+	p.observeEncounterSummary(base)
+
+	unresolvedTarget := base
+	unresolvedTarget.Target = entityIdentity{Runtime: runtimeEntity{entityID: 14999}}
+	unresolvedTarget.Damage = 25
+	p.observeEncounterSummary(unresolvedTarget)
+
+	if err := p.writeEncounterSummary(); err != nil {
+		t.Fatal(err)
+	}
+	text := output.String()
+	for _, want := range []string{
+		"### Healing source-to-target attribution candidates",
+		"Source CharacterId 1209 — Healer [VERIFIED; name VERIFIED] → Target CharacterId 1409 — Recipient [VERIFIED; name VERIFIED]; SkillId UNKNOWN; DamageId 1100: 2 event(s), reported magnitude 250; classification CORRELATED",
+		"source evidence: source RoleId field",
+		"target evidence: target RoleId field",
+		"Classification evidence: Damage CalculateType=1",
+		"Healing events without both source and target Character identities: 1 (reported magnitude 25)",
+		"Effective Healing and Overheal are not established and remain UNKNOWN.",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("healing summary missing %q:\n%s", want, text)
+		}
+	}
+}
+
+func TestEncounterSummaryHandlesHealingAfterBuffSnapshotCreatesGroup(t *testing.T) {
+	var output bytes.Buffer
+	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
+	p.encounterSummary = &output
+	p.observeBuffSnapshot(buffSnapshotAuditRow{SessionNumber: 1, Buff: rawBuffSnapshot{ID: 70001, HasID: true}})
+	p.observeEncounterSummary(combatEvent{
+		SessionNumber: 1,
+		Target: entityIdentity{
+			HasCharacter: true, Character: masterRecord{ID: 1409, Name: "Recipient", NameStatus: string(resolutionVerified)},
+			CharacterStatus: resolutionVerified, CharacterProof: "target RoleId field",
+		},
+		CharacterID: 1209, CharacterStatus: resolutionVerified, CharacterProof: "source RoleId field",
+		SkillID: ^uint64(0), EventTypeCandidate: "HEALING_CANDIDATE", EventTypeStatus: resolutionCorrelated,
+		DamageID: 1100, HasDamageID: true, Damage: 25,
+	})
+	if err := p.writeEncounterSummary(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), "reported magnitude 25") {
+		t.Fatalf("Healing after Buff snapshot was not summarized:\n%s", output.String())
+	}
+}
+
+func TestHealingAttributionRowsAreBounded(t *testing.T) {
+	summary := &encounterSummary{healingAttributions: make(map[healingAttributionKey]*healingAttributionSummary)}
+	for targetID := uint64(1); targetID <= maxSummaryHealingAttributions+1; targetID++ {
+		addHealingAttribution(summary, combatEvent{
+			CharacterID: 1209, CharacterStatus: resolutionVerified,
+			Target: entityIdentity{
+				HasCharacter: true, Character: masterRecord{ID: targetID}, CharacterStatus: resolutionVerified,
+			},
+			EventTypeCandidate: "HEALING_CANDIDATE", Damage: 1,
+		})
+	}
+	if got := len(summary.healingAttributions); got != maxSummaryHealingAttributions {
+		t.Fatalf("healing attribution rows = %d, want bounded limit %d", got, maxSummaryHealingAttributions)
+	}
+	if summary.healingAttributionsOmitted != 1 {
+		t.Fatalf("omitted healing rows = %d, want 1", summary.healingAttributionsOmitted)
+	}
+}
+
 func TestEncounterSummaryWithoutEventsReportsNoMatchedEvents(t *testing.T) {
 	var output bytes.Buffer
 	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
