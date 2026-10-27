@@ -252,6 +252,7 @@ func (event *combatEvent) resolveEventType(masters *gameMaster) {
 }
 
 func (p *processor) writeDamageEvent(event combatEvent) {
+	p.recordDamageForOverlap(event)
 	p.writeStructuredEventJSONL(event.jsonlView(p.masters))
 	if _, err := fmt.Fprintln(p.stdout, event.formatNormal()); err != nil {
 		fmt.Fprintf(p.diagnostic, "stdout_write_error=%v\n", err)

@@ -477,6 +477,7 @@ func (p *processor) handleInnerBuffLifecycleMessage(frame gameFrame, innerFieldN
 			return fmt.Errorf("write Buff lifecycle row: %w", err)
 		}
 	}
+	p.observeBuffInterval(row)
 	p.writeStructuredEventJSONL(row)
 	return nil
 }
