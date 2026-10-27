@@ -11,20 +11,22 @@ type censusKey struct {
 }
 
 type commandCensusEntry struct {
-	CommandID         uint16         `json:"commandId"`
-	Name              string         `json:"candidateName,omitempty"`
-	Direction         string         `json:"direction"`
-	CRCValidFrames    int            `json:"crcValidFrames"`
-	CRCFailedHeaders  int            `json:"crcFailedHeaderIds"`
-	DecryptedFrames   int            `json:"decryptedFrames"`
-	GenericProtoValid int            `json:"genericProtobufSyntacticallyValid"`
-	DecodedFrames     int            `json:"schemaDecodedFrames"`
-	Status            string         `json:"status"`
-	SchemaBasis       string         `json:"schemaBasis,omitempty"`
-	FirstSeen         time.Time      `json:"firstSeen"`
-	LastSeen          time.Time      `json:"lastSeen"`
-	Sessions          map[int]int    `json:"framesBySession"`
-	FailureReasons    map[string]int `json:"failureReasons,omitempty"`
+	CommandID             uint16         `json:"commandId"`
+	Name                  string         `json:"candidateName,omitempty"`
+	Direction             string         `json:"direction"`
+	CRCValidFrames        int            `json:"crcValidFrames"`
+	CRCFailedHeaders      int            `json:"crcFailedHeaderIds"`
+	DecryptedFrames       int            `json:"decryptedFrames"`
+	GenericProtoValid     int            `json:"genericProtobufSyntacticallyValid"`
+	DecodedFrames         int            `json:"schemaDecodedFrames"`
+	Status                string         `json:"status"`
+	SchemaBasis           string         `json:"schemaBasis,omitempty"`
+	FirstSeen             time.Time      `json:"firstSeen"`
+	LastSeen              time.Time      `json:"lastSeen"`
+	Sessions              map[int]int    `json:"framesBySession"`
+	FailureReasons        map[string]int `json:"failureReasons,omitempty"`
+	TopLevelFields        map[string]int `json:"topLevelFieldCounts,omitempty"`
+	TopLevelFieldOverflow int            `json:"topLevelFieldOverflow,omitempty"`
 }
 
 type crcFailureObservation struct {
