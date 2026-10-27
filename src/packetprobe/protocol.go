@@ -497,8 +497,9 @@ func (p *processor) inspectUndecodedFrame(frame gameFrame, entry *commandCensusE
 			return
 		}
 	}
-	if _, err := parseProtoFields(plain); err == nil {
+	if fields, err := parseProtoFields(plain); err == nil {
 		entry.GenericProtoValid++
+		entry.observeTopLevelFields(fields)
 		entry.FailureReasons["message schema not implemented"]++
 		if frame.commandID == 24756 {
 			observation, err := extractMovePackageObservation(plain)
