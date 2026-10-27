@@ -397,6 +397,7 @@ func (p *processor) handleFrame(frame gameFrame) {
 		censusEntry.observeKnownBodyWire(plain)
 	}
 	p.archiveSchemaDecode(frame, plain)
+	p.archiveDamageRPCSchema(frame, plain)
 	parseErrorsBefore := p.stats.parseErrors
 	switch frame.commandID {
 	case 103, 116:
