@@ -215,7 +215,7 @@ func (c *commandCensus) entry(id uint16, direction string) *commandCensusEntry {
 			FailureReasons: make(map[string]int),
 		}
 		if id == 103 || id == 116 {
-			entry.SchemaBasis = "Version fields only; device and account fields are not recorded"
+			entry.SchemaBasis = "Only extracted version fields are retained; command 103/116 sibling fields contain device/account identifiers and are excluded from logs and audit"
 		} else if id == 17286 || id == 22492 || id == 25830 || id == 18345 || id == 20358 || id == 17893 || id == 22102 || id == 29363 || id == 16974 || id == 18559 || id == 25185 || id == 17769 || id == 28481 || id == 21051 || id == 18899 || id == 18580 || id == 27633 {
 			entry.SchemaBasis = "Windows Global UHD 3.7.1 Aki.Protocol metadata; capture build unverified"
 		} else if id == 26702 {

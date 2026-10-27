@@ -5,6 +5,15 @@ import (
 	"time"
 )
 
+func TestClientVersionCensusSchemaBasisExcludesSiblingIdentifiers(t *testing.T) {
+	for _, commandID := range []uint16{103, 116} {
+		entry := newCommandCensus().entry(commandID, "out")
+		if want := "Only extracted version fields are retained; command 103/116 sibling fields contain device/account identifiers and are excluded from logs and audit"; entry.SchemaBasis != want {
+			t.Fatalf("command %d schema basis = %q, want %q", commandID, entry.SchemaBasis, want)
+		}
+	}
+}
+
 func TestFrameErrorObservationsAreBounded(t *testing.T) {
 	census := newCommandCensus()
 	when := time.Date(2026, time.October, 26, 5, 0, 0, 0, time.UTC)

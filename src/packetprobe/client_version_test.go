@@ -28,10 +28,14 @@ func TestExtractCheckClientPushKeepsOnlyThreeVersionStrings(t *testing.T) {
 
 func TestExtractLoginRequestBuildUsesOnlyFieldEightNineteen(t *testing.T) {
 	const completeBuild = "release-3.7.0-win64-global-3.7.16"
-	nested := appendBytesField(nil, 19, []byte(completeBuild))
-	nested = appendBytesField(nested, 20, []byte("DEVICE-FINGERPRINT"))
+	nested := appendBytesField(nil, 2, []byte("00000000-0000-0000-0000-000000000000"))
+	nested = appendBytesField(nested, 15, []byte("1920x1080"))
+	nested = appendBytesField(nested, 16, []byte("1920x1080"))
+	nested = appendBytesField(nested, 19, []byte(completeBuild))
+	nested = appendBytesField(nested, 20, []byte("GPU-MODEL-AND-DRIVER"))
 	body := appendBytesField(nil, 8, nested)
-	body = appendBytesField(body, 9, []byte("ACCOUNT-TOKEN"))
+	body = appendBytesField(body, 9, []byte("ACCOUNT-UID"))
+	body = appendBytesField(body, 10, []byte("0123456789abcdef0123456789abcdef"))
 
 	build, err := extractLoginRequestBuild(body)
 	if err != nil {
@@ -40,7 +44,7 @@ func TestExtractLoginRequestBuildUsesOnlyFieldEightNineteen(t *testing.T) {
 	if build != completeBuild {
 		t.Fatalf("build string = %q", build)
 	}
-	if strings.Contains(build, "DEVICE") || strings.Contains(build, "ACCOUNT") {
+	if strings.Contains(build, "DEVICE") || strings.Contains(build, "ACCOUNT") || strings.Contains(build, "GPU") || strings.Contains(build, "1920") {
 		t.Fatalf("non-version LoginRequest data leaked: %q", build)
 	}
 }
@@ -50,7 +54,14 @@ func TestClientVersionObservationWaitsForHandshakeAndKeepsFirstValues(t *testing
 	versions = appendBytesField(versions, 2, []byte("3.7.15"))
 	versions = appendBytesField(versions, 3, []byte("3.7.16"))
 	const completeBuild = "release-3.7.0-win64-global-3.7.16"
-	loginPayload := appendBytesField(nil, 8, appendBytesField(nil, 19, []byte(completeBuild)))
+	loginFields := appendBytesField(nil, 2, []byte("00000000-0000-0000-0000-000000000000"))
+	loginFields = appendBytesField(loginFields, 15, []byte("1920x1080"))
+	loginFields = appendBytesField(loginFields, 16, []byte("1920x1080"))
+	loginFields = appendBytesField(loginFields, 19, []byte(completeBuild))
+	loginFields = appendBytesField(loginFields, 20, []byte("GPU-MODEL-AND-DRIVER"))
+	loginPayload := appendBytesField(nil, 8, loginFields)
+	loginPayload = appendBytesField(loginPayload, 9, []byte("ACCOUNT-UID"))
+	loginPayload = appendBytesField(loginPayload, 10, []byte("0123456789abcdef0123456789abcdef"))
 
 	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
 	p.currentFrameTime = time.Date(2026, time.October, 27, 1, 2, 3, 0, time.UTC)
@@ -81,8 +92,16 @@ func TestClientVersionObservationWaitsForHandshakeAndKeepsFirstValues(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if bytes.Contains(encoded, []byte("DEVICE")) || bytes.Contains(encoded, []byte("ACCOUNT")) {
-		t.Fatalf("version report contains non-version request data: %s", encoded)
+	for _, sensitiveSibling := range [][]byte{
+		[]byte("00000000-0000-0000-0000-000000000000"),
+		[]byte("1920x1080"),
+		[]byte("GPU-MODEL-AND-DRIVER"),
+		[]byte("ACCOUNT-UID"),
+		[]byte("0123456789abcdef0123456789abcdef"),
+	} {
+		if bytes.Contains(encoded, sensitiveSibling) {
+			t.Fatalf("version report contains non-version request data: %s", encoded)
+		}
 	}
 }
 
