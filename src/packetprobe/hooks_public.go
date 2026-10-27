@@ -17,7 +17,13 @@ func writeCombatNotifyAudit(w io.Writer, frame gameFrame, notification protoFiel
 	return r0
 }
 
+func (p *processor) observeBuffInterval(row buffLifecycleAuditRow) {
+}
+
 func (p *processor) observeBuffSnapshot(row buffSnapshotAuditRow) {
+}
+
+func (p *processor) recordDamageForOverlap(event combatEvent) {
 }
 
 func (event combatEvent) jsonlView(masters *gameMaster) combatEventJSONL {

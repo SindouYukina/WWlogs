@@ -49,6 +49,7 @@ func main() {
 
 	schemaDecodeOut := flag.String("schema-decode-out", "", "optional JSONL of schema-directed decodes of decrypted outer messages (requires -protocol-schema)")
 
+	buffOverlapOut := flag.String("buff-overlap-out", "", "optionally write, per damage result, the Buff instances observed active on its target (packet-time precision)")
 	frameArchiveOut := flag.String("frame-archive-out", "", "optionally write one local JSONL record per reassembled frame (digests only; no key or plaintext)")
 	research := flag.Bool("research", false, "write per-event evidence details to stderr")
 	commandCensusOut := flag.String("command-census-out", "", "write a local JSON census of protocol commands and decode outcomes")
@@ -442,6 +443,26 @@ finished:
 			fatal("flush frame archive", err)
 		}
 		fmt.Fprintf(os.Stderr, "frame_archive frames=%d write_errors=%d\n", processor.frameOrdinal, processor.frameArchiveErrors)
+	}
+	if *buffOverlapOut != "" {
+		if dir := filepath.Dir(*buffOverlapOut); dir != "." {
+			if err := os.MkdirAll(dir, 0o700); err != nil {
+				fatal("create buff overlap directory", err)
+			}
+		}
+		overlapFile, err := os.Create(*buffOverlapOut)
+		if err != nil {
+			fatal("create buff overlap output", err)
+		}
+		overlapWriter := bufio.NewWriter(overlapFile)
+		if err := processor.writeBuffOverlap(overlapWriter); err != nil {
+			fatal("write buff overlap", err)
+		}
+		if err := overlapWriter.Flush(); err != nil {
+			fatal("flush buff overlap", err)
+		}
+		overlapFile.Close()
+		fmt.Fprintf(os.Stderr, "buff_overlap damage_results=%d intervals=%d duplicate_applies=%d unmatched_removes=%d skipped=%d interval_overflow=%d damage_overflow=%d\n", len(processor.damageOverlap), len(processor.buffIntervals), processor.buffDuplicateApplies, processor.buffUnmatchedRemoves, processor.buffOverlapSkipped, processor.buffIntervalOverflow, processor.damageOverlapOverflow)
 	}
 	fmt.Fprintf(os.Stderr, "schema_decode errors=%d skipped_without_schema=%d\n", processor.schemaDecodeErrors, processor.schemaDecodeSkipped)
 	processor.printSummary(os.Stderr)

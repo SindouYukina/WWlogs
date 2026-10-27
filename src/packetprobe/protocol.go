@@ -150,6 +150,14 @@ type processor struct {
 	schemaDecodeSkipped       int
 	eventOrderFrame           uint64
 	eventOrder                int
+	buffIntervals             []*buffInterval
+	buffIntervalOpen          map[overlapKey]*buffInterval
+	buffDuplicateApplies      int
+	buffUnmatchedRemoves      int
+	buffIntervalOverflow      int
+	buffOverlapSkipped        int
+	damageOverlap             []damageOverlapRecord
+	damageOverlapOverflow     int
 	activeRequests            map[uint16]pendingActiveRequest
 	stats                     processorStats
 	census                    *commandCensus
