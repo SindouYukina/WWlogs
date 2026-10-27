@@ -539,6 +539,64 @@ func TestEntityRemoveClearsMappingAndActiveRequestKeepsUnknownEntity(t *testing.
 	}
 }
 
+func TestEntityIDReuseAfterRemoveStartsFreshCharacterMapping(t *testing.T) {
+	resolver := newEntityResolver()
+	makeTeamUpdate := func(roleID uint64) []byte {
+		role := appendVarintField(nil, 1, roleID) // SceneRoleInformation.RoleId
+		role = appendVarintField(role, 2, 90)     // SceneRoleInformation.EntityId
+		group := appendBytesField(nil, 2, role)
+		player := appendBytesField(appendVarintField(nil, 1, 77), 2, group)
+		return appendBytesField(nil, 2, player)
+	}
+	addEntity := func() []byte {
+		entity := appendVarintField(nil, 1, 90) // EntityPb.Id
+		return appendBytesField(appendVarintField(nil, 1, 1), 6, entity)
+	}
+	removeEntity := func() []byte {
+		info := appendVarintField(nil, 1, 90)  // EntityRemoveInfo.EntityId
+		remove := appendVarintField(nil, 4, 1) // EntityRemoveNotify.IsRemove
+		return appendBytesField(remove, 5, info)
+	}
+	masters := &gameMaster{characters: map[uint64]masterRecord{
+		1312: {ID: 1312, Name: "Old Role", Status: string(resolutionVerified)},
+		1313: {ID: 1313, Name: "New Role", Status: string(resolutionVerified)},
+	}}
+
+	if _, err := resolver.applyEntityAddNotify(addEntity()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := resolver.applyUpdateSceneGroupDataNotify(makeTeamUpdate(1312)); err != nil {
+		t.Fatal(err)
+	}
+	oldIdentity := resolveEntityIdentity(resolver, masters, 90)
+	if !oldIdentity.HasCharacter || oldIdentity.Character.ID != 1312 {
+		t.Fatalf("initial entity identity = %+v, want CharacterId 1312", oldIdentity)
+	}
+
+	if _, _, err := resolver.applyEntityRemoveNotify(removeEntity()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := resolver.applyEntityAddNotify(addEntity()); err != nil {
+		t.Fatal(err)
+	}
+	newEntity, status := resolver.resolve(90)
+	if status != resolutionVerified || newEntity.hasRoleID || newEntity.roleConflict {
+		t.Fatalf("reused EntityId retained its prior role evidence: %+v status=%s", newEntity, status)
+	}
+	newIdentity := resolveEntityIdentity(resolver, masters, 90)
+	if newIdentity.HasCharacter {
+		t.Fatalf("reused EntityId resolved to stale CharacterId %d before new mapping", newIdentity.Character.ID)
+	}
+
+	if _, err := resolver.applyUpdateSceneGroupDataNotify(makeTeamUpdate(1313)); err != nil {
+		t.Fatal(err)
+	}
+	newIdentity = resolveEntityIdentity(resolver, masters, 90)
+	if !newIdentity.HasCharacter || newIdentity.Character.ID != 1313 || newIdentity.Character.ID == oldIdentity.Character.ID {
+		t.Fatalf("reused EntityId did not accept the new lifecycle mapping: %+v", newIdentity)
+	}
+}
+
 func TestActiveRequestDoesNotDowngradeEntityAddEvidence(t *testing.T) {
 	resolver := newEntityResolver()
 	entity := appendVarintField(nil, 1, 90) // EntityPb.Id
