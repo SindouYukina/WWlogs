@@ -187,6 +187,88 @@ func TestLoadSceneIdentityKeepsOnlyUniqueMapScopedMonsterLinks(t *testing.T) {
 	}
 }
 
+func TestResolveSceneTemplateUsesCurrentSceneForEntityAdd(t *testing.T) {
+	dir := t.TempDir()
+	manifest := masterManifest{GameVersion: "3.7.1", ClientRegion: "Global"}
+	source := sceneIdentityFile{
+		Manifest: sceneIdentityManifest{
+			GameVersion: "3.7.1", ClientRegion: "Global", Platform: "Windows UHD",
+			SourceHash: strings.Repeat("c", 64), InstanceRows: 1, LevelRows: 0,
+			TemplateRows: 1, TemplateCatalogRows: 1,
+		},
+		Instances:       []sceneInstanceRecord{{ID: 50, MapConfigID: 3926}},
+		TemplateCatalog: []sceneTemplateCandidate{{TemplateID: 667000003, BlueprintType: "Monster_branch1.3_013", RawName: "internal boss label"}},
+		LevelTemplates:  []sceneLevelTemplateRecord{{MapID: 3926, EntityID: 244750005, TemplateIDs: []uint64{667000003}}},
+	}
+	path := filepath.Join(dir, "entity-identity.json")
+	writeFixtureJSON(t, path, source)
+	identityData, err := loadSceneIdentity(path, manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	master := &gameMaster{sceneIdentity: identityData, monsters: map[uint64]masterRecord{}}
+	resolver := &entityResolver{
+		entities: map[uint64]runtimeEntity{
+			123: {
+				entityID: 123, configID: 244750005, hasConfigID: true,
+				configType: 1, hasConfigType: true, sourceMessageID: 25185,
+			},
+		},
+		sceneInstanceID: 50, hasSceneInstanceID: true,
+	}
+	identity := resolveEntityIdentity(resolver, master, 123)
+	if identity.HasMonster || identity.Monster.ID != 0 {
+		t.Fatalf("TemplateConfig must not be exposed as a MonsterId: %+v", identity)
+	}
+	if len(identity.TemplateCandidates) != 1 || identity.TemplateCandidates[0].TemplateID != 667000003 || identity.TemplateStatus != resolutionCorrelated {
+		t.Fatalf("EntityAddNotify entity did not use the active session scene: %+v", identity)
+	}
+	if !strings.Contains(identity.TemplateProof, "current session JoinSceneNotify context") {
+		t.Fatalf("template proof omits the scene-context source: %q", identity.TemplateProof)
+	}
+
+	resolver.hasSceneInstanceID = false
+	identity = resolveEntityIdentity(resolver, master, 123)
+	if len(identity.TemplateCandidates) != 0 || identity.TemplateStatus != "" {
+		t.Fatalf("template candidate must remain unresolved without scene context: %+v", identity)
+	}
+}
+
+func TestResolveSceneTemplateKeepsAmbiguousMatchesUnknown(t *testing.T) {
+	dir := t.TempDir()
+	manifest := masterManifest{GameVersion: "3.7.1", ClientRegion: "Global"}
+	source := sceneIdentityFile{
+		Manifest: sceneIdentityManifest{
+			GameVersion: "3.7.1", ClientRegion: "Global", Platform: "Windows UHD",
+			SourceHash: strings.Repeat("d", 64), InstanceRows: 1, LevelRows: 0,
+			TemplateRows: 1, TemplateCatalogRows: 2,
+		},
+		Instances: []sceneInstanceRecord{{ID: 50, MapConfigID: 3926}},
+		TemplateCatalog: []sceneTemplateCandidate{
+			{TemplateID: 667000003, BlueprintType: "Monster_branch1.3_013", RawName: "candidate one"},
+			{TemplateID: 667000004, BlueprintType: "Monster_branch1.3_013", RawName: "candidate two"},
+		},
+		LevelTemplates: []sceneLevelTemplateRecord{{MapID: 3926, EntityID: 244750005, TemplateIDs: []uint64{667000003, 667000004}}},
+	}
+	path := filepath.Join(dir, "entity-identity.json")
+	writeFixtureJSON(t, path, source)
+	identityData, err := loadSceneIdentity(path, manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	master := &gameMaster{sceneIdentity: identityData, monsters: map[uint64]masterRecord{}}
+	resolver := &entityResolver{
+		entities: map[uint64]runtimeEntity{
+			123: {entityID: 123, configID: 244750005, hasConfigID: true, configType: 1, hasConfigType: true, sourceMessageID: 25185},
+		},
+		sceneInstanceID: 50, hasSceneInstanceID: true,
+	}
+	identity := resolveEntityIdentity(resolver, master, 123)
+	if identity.TemplateStatus != resolutionUnknown || len(identity.TemplateCandidates) != 2 {
+		t.Fatalf("ambiguous template join must remain UNKNOWN with both candidates: %+v", identity)
+	}
+}
+
 func TestLoadGameMasterRejectsLocalizedNameCountDrift(t *testing.T) {
 	dir := t.TempDir()
 	manifest := masterManifest{

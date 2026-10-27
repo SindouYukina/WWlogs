@@ -41,12 +41,14 @@ func (event combatEvent) jsonlView(masters *gameMaster) combatEventJSONL {
 	if event.Source.HasMonster {
 		view.Source.Monster = &combatEventMasterIDJSONL{ID: event.Source.Monster.ID, Name: event.Source.Monster.Name, Status: event.Source.MonsterStatus, Evidence: event.Source.MonsterProof}
 	}
+	applySceneTemplateJSONL(&view.Source, event.Source)
 	if event.Target.HasCharacter {
 		view.Target.Character = &combatEventMasterIDJSONL{ID: event.Target.Character.ID, Name: event.Target.Character.Name, Status: event.Target.CharacterStatus, Evidence: event.Target.CharacterProof}
 	}
 	if event.Target.HasMonster {
 		view.Target.Monster = &combatEventMasterIDJSONL{ID: event.Target.Monster.ID, Name: event.Target.Monster.Name, Status: event.Target.MonsterStatus, Evidence: event.Target.MonsterProof}
 	}
+	applySceneTemplateJSONL(&view.Target, event.Target)
 	view.Credit.CharacterID = optionalUint64(event.CharacterID, event.CharacterID != 0)
 	view.Credit.Name = event.CharacterName
 	view.Summoner.CharacterID = optionalUint64(event.SummonerCharacter.CharacterID, event.SummonerCharacter.HasCharacterID)
@@ -61,6 +63,25 @@ func (event combatEvent) jsonlView(masters *gameMaster) combatEventJSONL {
 		}
 	}
 	return view
+}
+
+func applySceneTemplateJSONL(destination *combatEventEntityJSONL, identity entityIdentity) {
+	if len(identity.TemplateCandidates) == 0 {
+		return
+	}
+	template := &combatEventTemplateJSONL{
+		IdentityType: "template-derived",
+		Status:       identity.TemplateStatus,
+		NameStatus:   resolutionUnknown,
+		Candidates:   make([]combatEventTemplateCandidateJSONL, 0, len(identity.TemplateCandidates)),
+		Evidence:     identity.TemplateProof,
+	}
+	for _, candidate := range identity.TemplateCandidates {
+		template.Candidates = append(template.Candidates, combatEventTemplateCandidateJSONL{
+			TemplateID: candidate.TemplateID, BlueprintType: candidate.BlueprintType, RawName: candidate.RawName,
+		})
+	}
+	destination.SceneTemplate = template
 }
 
 func combatEventJSONLType(candidate string) string {
