@@ -39,6 +39,7 @@ func main() {
 	combatEventsJSONLOut := flag.String("event-jsonl-out", "", "optionally write matched combat and Buff observations with evidence as JSONL")
 	research := flag.Bool("research", false, "write per-event evidence details to stderr")
 	commandCensusOut := flag.String("command-census-out", "", "write a local JSON census of protocol commands and decode outcomes")
+	clientVersionOut := flag.String("client-version-out", "", "write version-only client metadata observed after the first handshake")
 	preflight := flag.Bool("preflight", false, "verify that the selected Npcap device can be opened and filtered")
 	filter := flag.String("filter", "", "optional BPF filter; defaults to the configured UDP port range")
 	stopFile := flag.String("stop-file", "", "stop a live capture cleanly when this file appears")
@@ -105,7 +106,7 @@ func main() {
 			fatal("create event audit", err)
 		}
 		defer auditFile.Close()
-		if _, err := fmt.Fprintln(auditFile, "timestamp\trpc_id\tattacker_entity_id\ttarget_entity_id\tattacker_runtime_status\tattacker_runtime_evidence\ttarget_runtime_status\ttarget_runtime_evidence\tcharacter_id\tcharacter_name\tcharacter_status\tcharacter_evidence\tskill_id\tskill_name\tskill_status\tskill_evidence\tskill_message_id\tdamage_id\tmonster_id\ttarget_name\ttarget_monster_status\ttarget_monster_evidence\tsummoner_id\tsummoner_character_id\tsummoner_character_name\tsummoner_character_status\tsummoner_character_evidence\tsummoner_entity_chain\tplayer_entity_id\tdamage\tdamage_source_type\tbullet_id\tattacker_runtime_fields_json\ttarget_runtime_fields_json\tserver_result_raw\tchange_life_raw\tdamage_calculate_type\tevent_type_candidate\tevent_type_status\tevent_type_evidence\tcharacter_name_status\tskill_name_status"); err != nil {
+		if _, err := fmt.Fprintln(auditFile, "timestamp\trpc_id\tattacker_entity_id\ttarget_entity_id\tattacker_runtime_status\tattacker_runtime_evidence\ttarget_runtime_status\ttarget_runtime_evidence\tcharacter_id\tcharacter_name\tcharacter_status\tcharacter_evidence\tskill_id\tskill_name\tskill_status\tskill_evidence\tskill_message_id\tdamage_id\tmonster_id\ttarget_name\ttarget_monster_status\ttarget_monster_evidence\tsummoner_id\tsummoner_character_id\tsummoner_character_name\tsummoner_character_status\tsummoner_character_evidence\tsummoner_entity_chain\tplayer_entity_id\tdamage\tdamage_source_type\tbullet_id\tattacker_runtime_fields_json\ttarget_runtime_fields_json\tserver_result_raw\tchange_life_raw\tdamage_calculate_type\tevent_type_candidate\tevent_type_status\tevent_type_evidence\tcharacter_name_status\tskill_name_status\tclient_build\tcheck_client_version_fields_json\tclient_version_source_commands"); err != nil {
 			fatal("write event audit header", err)
 		}
 		auditWriter = auditFile
@@ -368,8 +369,22 @@ finished:
 				fatal("create command census directory", err)
 			}
 		}
-		if err := processor.census.write(*commandCensusOut, stats); err != nil {
+		if err := processor.census.write(*commandCensusOut, stats, processor.clientVersion); err != nil {
 			fatal("write command census", err)
+		}
+	}
+	if *clientVersionOut != "" && processor.clientVersion != nil {
+		if dir := filepath.Dir(*clientVersionOut); dir != "." {
+			if err := os.MkdirAll(dir, 0o700); err != nil {
+				fatal("create client version directory", err)
+			}
+		}
+		data, err := json.MarshalIndent(processor.clientVersion, "", "  ")
+		if err != nil {
+			fatal("marshal client version metadata", err)
+		}
+		if err := os.WriteFile(*clientVersionOut, data, 0o600); err != nil {
+			fatal("write client version metadata", err)
 		}
 	}
 	if *verifyBaseline {

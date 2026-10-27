@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-func (c *commandCensus) write(path string, stats captureStats) error {
+func (c *commandCensus) write(path string, stats captureStats, clientVersion *clientVersionReport) error {
 	entries := make([]commandCensusEntry, 0, len(c.entries))
 	for _, entry := range c.entries {
 		copy := *entry
@@ -30,11 +30,14 @@ func (c *commandCensus) write(path string, stats captureStats) error {
 	}{
 		{17286, "in"}, {22492, "in"}, {25830, "in"}, {18345, "in"}, {20358, "in"}, {17893, "in"}, {22102, "in"}, {29363, "in"}, {16974, "in"}, {18559, "in"}, {25185, "in"}, {17769, "in"}, {28481, "out"}, {26702, "in"}, {19470, "out"}, {20332, "in"},
 		{21051, "in"}, {18899, "in"}, {18580, "in"}, {27633, "in"},
+		{103, "out"}, {116, "out"},
 	} {
 		key := censusKey{CommandID: candidate.id, Direction: candidate.direction}
 		if _, exists := c.entries[key]; !exists {
 			entry := commandCensusEntry{CommandID: candidate.id, Name: commandName(candidate.id), Direction: candidate.direction, Status: "NOT OBSERVED"}
-			if candidate.id == 17286 || candidate.id == 22492 || candidate.id == 25830 || candidate.id == 18345 || candidate.id == 20358 || candidate.id == 17893 || candidate.id == 22102 || candidate.id == 29363 || candidate.id == 16974 || candidate.id == 21051 || candidate.id == 18899 || candidate.id == 18580 || candidate.id == 27633 {
+			if candidate.id == 103 || candidate.id == 116 {
+				entry.SchemaBasis = "Version fields only; device and account fields are not recorded"
+			} else if candidate.id == 17286 || candidate.id == 22492 || candidate.id == 25830 || candidate.id == 18345 || candidate.id == 20358 || candidate.id == 17893 || candidate.id == 22102 || candidate.id == 29363 || candidate.id == 16974 || candidate.id == 21051 || candidate.id == 18899 || candidate.id == 18580 || candidate.id == 27633 {
 				entry.SchemaBasis = "Windows Global UHD 3.7.1 Aki.Protocol metadata; capture build unverified"
 			}
 			entries = append(entries, entry)
@@ -53,6 +56,7 @@ func (c *commandCensus) write(path string, stats captureStats) error {
 	report := struct {
 		GeneratedAt      time.Time               `json:"generatedAt"`
 		SessionCount     int                     `json:"sessionCount"`
+		ClientVersion    *clientVersionReport    `json:"clientVersion,omitempty"`
 		Transport        map[string]int          `json:"transport"`
 		InnerRPCs        map[string]int          `json:"innerRpcCounts"`
 		Commands         []commandCensusEntry    `json:"commands"`
@@ -74,7 +78,7 @@ func (c *commandCensus) write(path string, stats captureStats) error {
 		MoveOwnerOmitted      int                         `json:"movePackageSceneOwnerIdsOmitted,omitempty"`
 		PlayerFollowerOmitted int                         `json:"playerFollowerObservationsOmitted,omitempty"`
 		EntityKeys            []entityKeyObservation      `json:"entityNotifyRawIds,omitempty"`
-	}{GeneratedAt: time.Now().UTC(), SessionCount: c.sessions, Transport: c.transport, InnerRPCs: inner, Commands: entries,
+	}{GeneratedAt: time.Now().UTC(), SessionCount: c.sessions, ClientVersion: clientVersion, Transport: c.transport, InnerRPCs: inner, Commands: entries,
 		CRCFailures: c.crcFailures, CRCOmitted: c.crcOmitted, Malformed: c.malformedRecords, MalformedOmitted: c.malformedOmitted}
 	report.PlayerFollowers = c.playerFollowers
 	report.MoveEntityOmitted = c.moveEntityOmitted

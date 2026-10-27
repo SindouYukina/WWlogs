@@ -111,7 +111,7 @@ func TestEntityAddCapturesRawIdentityWithoutPromotingSkinToCharacter(t *testing.
 	}
 }
 
-func TestMonsterCaptureIdentityRemainsCorrelatedWithoutCaptureBuild(t *testing.T) {
+func TestMonsterCaptureIdentityRemainsCorrelatedUntilMasterCompatibilityVerified(t *testing.T) {
 	resolver := newEntityResolver()
 	capture := appendVarintField(nil, 1, 702)    // MonsterCaptureComponentPb.TemplateId
 	capture = appendVarintField(capture, 3, 701) // MonsterCaptureComponentPb.MonsterId
@@ -132,9 +132,9 @@ func TestMonsterCaptureIdentityRemainsCorrelatedWithoutCaptureBuild(t *testing.T
 		t.Fatalf("MonsterCapture MonsterId did not resolve directly: %+v", identity)
 	}
 	if identity.MonsterStatus != resolutionCorrelated {
-		t.Fatalf("unknown capture build promoted a versioned Monster master join: status=%s identity=%+v", identity.MonsterStatus, identity)
+		t.Fatalf("unverified master compatibility promoted a versioned Monster join: status=%s identity=%+v", identity.MonsterStatus, identity)
 	}
-	if !strings.Contains(identity.MonsterProof, "MonsterCaptureComponentPb.MonsterId") || !strings.Contains(identity.MonsterProof, "capture build UNKNOWN") {
+	if !strings.Contains(identity.MonsterProof, "MonsterCaptureComponentPb.MonsterId") || !strings.Contains(identity.MonsterProof, "master compatibility unverified") {
 		t.Fatalf("Monster proof omitted schema/build limitation: %q", identity.MonsterProof)
 	}
 }
@@ -442,7 +442,7 @@ func TestEntityPbNonCharacterConfigIDDoesNotResolveCharacter(t *testing.T) {
 	}
 }
 
-func TestRoleSkinCharacterJoinRemainsCorrelatedWithoutCaptureBuild(t *testing.T) {
+func TestRoleSkinCharacterJoinRemainsCorrelatedUntilMasterCompatibilityVerified(t *testing.T) {
 	resolver := newEntityResolver()
 	entity := appendVarintField(nil, 1, 503)    // EntityPb.Id
 	entity = appendVarintField(entity, 23, 901) // EntityPb.RoleSkinId
@@ -463,9 +463,9 @@ func TestRoleSkinCharacterJoinRemainsCorrelatedWithoutCaptureBuild(t *testing.T)
 		t.Fatalf("RoleSkinId did not resolve its character master row: %+v", identity)
 	}
 	if identity.CharacterStatus != resolutionCorrelated {
-		t.Fatalf("unknown capture build promoted a versioned skin-to-character join: status=%s identity=%+v", identity.CharacterStatus, identity)
+		t.Fatalf("unverified master compatibility promoted a versioned skin-to-character join: status=%s identity=%+v", identity.CharacterStatus, identity)
 	}
-	if !strings.Contains(identity.CharacterProof, "RoleSkinId(23)") || !strings.Contains(identity.CharacterProof, "capture build UNKNOWN") {
+	if !strings.Contains(identity.CharacterProof, "RoleSkinId(23)") || !strings.Contains(identity.CharacterProof, "master compatibility unverified") {
 		t.Fatalf("skin proof omitted schema/build limitation: %q", identity.CharacterProof)
 	}
 	unknown := resolveEntityIdentity(resolver, masters, 504)

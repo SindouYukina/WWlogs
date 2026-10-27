@@ -29,7 +29,7 @@ func TestCommandCensusSeparatesDecodedFramesFromUnimplementedSchemas(t *testing.
 	census.sessions = 1
 
 	path := filepath.Join(t.TempDir(), "census.json")
-	if err := census.write(path, captureStats{udpPackets: 3, frames: 2, badCRC: 1}); err != nil {
+	if err := census.write(path, captureStats{udpPackets: 3, frames: 2, badCRC: 1}, nil); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(path)
@@ -45,11 +45,14 @@ func TestCommandCensusSeparatesDecodedFramesFromUnimplementedSchemas(t *testing.
 	if err := json.Unmarshal(data, &report); err != nil {
 		t.Fatal(err)
 	}
-	if report.SessionCount != 1 || len(report.Commands) != 21 {
+	if report.SessionCount != 1 || len(report.Commands) != 23 {
 		t.Fatalf("session/command counts = %d/%d", report.SessionCount, len(report.Commands))
 	}
 	statuses := make(map[uint16]string, len(report.Commands))
 	for _, entry := range report.Commands {
+		if (entry.CommandID == 103 || entry.CommandID == 116) && (entry.Direction != "out" || entry.SchemaBasis != "Version fields only; device and account fields are not recorded") {
+			t.Fatalf("version command metadata was not retained: %+v", entry)
+		}
 		statuses[entry.CommandID] = entry.Status
 	}
 	if statuses[25185] != "PRESENT AND DECODED" {

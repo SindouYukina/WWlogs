@@ -137,6 +137,10 @@ func newCommandCensus() *commandCensus {
 
 func commandName(id uint16) string {
 	switch id {
+	case 103:
+		return "LoginRequest"
+	case 116:
+		return "CheckClientPush"
 	case 112:
 		return "ProtoKeyResponse"
 	case 18559:
@@ -210,7 +214,9 @@ func (c *commandCensus) entry(id uint16, direction string) *commandCensusEntry {
 			Sessions:       make(map[int]int),
 			FailureReasons: make(map[string]int),
 		}
-		if id == 17286 || id == 22492 || id == 25830 || id == 18345 || id == 20358 || id == 17893 || id == 22102 || id == 29363 || id == 16974 || id == 18559 || id == 25185 || id == 17769 || id == 28481 || id == 21051 || id == 18899 || id == 18580 || id == 27633 {
+		if id == 103 || id == 116 {
+			entry.SchemaBasis = "Version fields only; device and account fields are not recorded"
+		} else if id == 17286 || id == 22492 || id == 25830 || id == 18345 || id == 20358 || id == 17893 || id == 22102 || id == 29363 || id == 16974 || id == 18559 || id == 25185 || id == 17769 || id == 28481 || id == 21051 || id == 18899 || id == 18580 || id == 27633 {
 			entry.SchemaBasis = "Windows Global UHD 3.7.1 Aki.Protocol metadata; capture build unverified"
 		} else if id == 26702 {
 			entry.SchemaBasis = "client Global 3.7.1 static schema; Windows client build unverified"

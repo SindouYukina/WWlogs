@@ -188,8 +188,8 @@ func resolveEntityIdentity(resolver *entityResolver, masters *gameMaster, entity
 				result.CharacterStatus = resolutionStatus(character.Status)
 				result.CharacterProof = characterProof
 				if characterFromConfig && entity.sourceMessageID != 0 && result.CharacterStatus == resolutionVerified {
-					// The local captures do not identify their client build; retain this
-					// cross-build mapping as correlated until the wire version is known.
+					// The client build is recorded, but its compatibility with this
+					// versioned master has not been established.
 					result.CharacterStatus = resolutionCorrelated
 				}
 			}
@@ -200,10 +200,9 @@ func resolveEntityIdentity(resolver *entityResolver, masters *gameMaster, entity
 			result.Character = character
 			result.HasCharacter = true
 			result.CharacterStatus = resolutionStatus(character.Status)
-			result.CharacterProof = "EntityPb.RoleSkinId(23) -> RoleInfo.SkinId -> RoleInfo.Id; capture build UNKNOWN"
+			result.CharacterProof = "EntityPb.RoleSkinId(23) -> RoleInfo.SkinId -> RoleInfo.Id; client build observed, master compatibility unverified"
 			if result.CharacterStatus == resolutionVerified {
-				// The captures do not identify their client build; keep this versioned
-				// skin-to-character master join correlated until that match is known.
+				// Keep the versioned skin join correlated until compatibility is checked.
 				result.CharacterStatus = resolutionCorrelated
 			}
 		}
@@ -213,13 +212,12 @@ func resolveEntityIdentity(resolver *entityResolver, masters *gameMaster, entity
 			result.Monster = monster
 			result.HasMonster = true
 			result.MonsterStatus = resolutionStatus(monster.Status)
-			// The field path is verified against Windows Global UHD 3.7.1, but
-			// captures do not currently establish their client build. Keep a
-			// versioned Monster master join correlated until that match is known.
+			// The field path is verified against Windows Global UHD 3.7.1, but the
+			// observed client build has not been matched to this versioned master.
 			if result.MonsterStatus == resolutionVerified {
 				result.MonsterStatus = resolutionCorrelated
 			}
-			result.MonsterProof = "MonsterCaptureComponentPb.MonsterId -> MonsterInfo.Id; Windows Global UHD 3.7.1 schema, capture build UNKNOWN"
+			result.MonsterProof = "MonsterCaptureComponentPb.MonsterId -> MonsterInfo.Id; Windows Global UHD 3.7.1 schema, client build observed, master compatibility unverified"
 		}
 	}
 	if masters != nil && !entity.hasMonsterID && entity.hasConfigID && entity.hasConfigType && entity.configType == 1 &&
@@ -228,8 +226,8 @@ func resolveEntityIdentity(resolver *entityResolver, masters *gameMaster, entity
 			if monster, found := masters.monsters[monsterID]; found {
 				result.Monster = monster
 				result.HasMonster = true
-				// The local captures do not establish their client build. Keep this
-				// versioned static crosswalk correlated until the wire build matches.
+				// Keep this versioned static crosswalk correlated until client/master
+				// compatibility is established.
 				result.MonsterStatus = resolutionCorrelated
 				result.MonsterProof = fmt.Sprintf("JoinSceneNotify.SceneInfo.InstanceId=%d -> InstanceDungeon.MapConfigId; EntityPb.ConfigId=%d + ConfigType=Proto_Level(1) -> LevelEntityConfig(MapId, EntityId).BlueprintType -> MonsterInfo.MonsterEntityID -> MonsterInfo.Id=%d", entity.sceneInstanceID, entity.configID, monsterID)
 			}
@@ -309,7 +307,8 @@ func resolveSummonerCharacter(resolver *entityResolver, masters *gameMaster, sou
 				result.Status = resolutionUnknown
 			}
 			if result.Status == resolutionVerified {
-				// Capture build is unknown; keep the derived summon relation correlated.
+				// Keep the derived relation correlated until client/master compatibility
+				// is established.
 				result.Status = resolutionCorrelated
 			}
 			result.NameStatus = resolutionStatus(character.NameStatus)

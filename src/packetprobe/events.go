@@ -286,6 +286,8 @@ func (p *processor) writeDamageEvent(event combatEvent) {
 			string(event.EventTypeStatus), event.EventTypeProof,
 			string(event.CharacterNameStatus), string(event.SkillNameStatus),
 		}
+		build, versionFields, versionCommands := p.clientVersion.auditFields()
+		fields = append(fields, build, versionFields, versionCommands)
 		for i := range fields {
 			fields[i] = strings.NewReplacer("\t", " ", "\r", " ", "\n", " ").Replace(fields[i])
 		}
