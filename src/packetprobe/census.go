@@ -217,11 +217,11 @@ func (c *commandCensus) entry(id uint16, direction string) *commandCensusEntry {
 		if id == 103 || id == 116 {
 			entry.SchemaBasis = "Only extracted version fields are retained; command 103/116 sibling fields contain device/account identifiers and are excluded from logs and audit"
 		} else if id == 17286 || id == 22492 || id == 25830 || id == 18345 || id == 20358 || id == 17893 || id == 22102 || id == 29363 || id == 16974 || id == 18559 || id == 25185 || id == 17769 || id == 28481 || id == 21051 || id == 18899 || id == 18580 || id == 27633 {
-			entry.SchemaBasis = "Windows Global UHD 3.7.1 Aki.Protocol metadata; capture build unverified"
+			entry.SchemaBasis = "Windows Global UHD 3.7.1 Aki.Protocol metadata; client version observed, schema compatibility unverified"
 		} else if id == 26702 {
-			entry.SchemaBasis = "client Global 3.7.1 static schema; Windows client build unverified"
+			entry.SchemaBasis = "client Global 3.7.1 static schema; client version observed, cross-platform schema compatibility unverified"
 		} else if id == 22535 || id == 24756 || id == 27918 || id == 19212 || id == 19566 || id == 23517 {
-			entry.SchemaBasis = "Windows Global UHD 3.7.1 Aki.Protocol metadata; capture build unverified"
+			entry.SchemaBasis = "Windows Global UHD 3.7.1 Aki.Protocol metadata; client version observed, schema compatibility unverified"
 		}
 		c.entries[key] = entry
 	}

@@ -100,7 +100,7 @@ func decodeBuffLifecycleMessage(frame gameFrame, body []byte) (buffLifecycleAudi
 		SchemaVersion: 1, EventType: "BUFF_LIFECYCLE", MessageID: frame.commandID,
 		Timestamp: frame.timestamp, CommandID: frame.commandID, Direction: frame.direction,
 		EventTypeStatus: resolutionCorrelated, InstigatorStatus: resolutionUnknown,
-		SchemaBasis: "Windows Global UHD 3.7.1 Aki.Protocol metadata; capture build unverified",
+		SchemaBasis: "Windows Global UHD 3.7.1 Aki.Protocol metadata; client version observed, schema compatibility unverified",
 	}
 	switch frame.commandID {
 	case 25830:
@@ -247,7 +247,7 @@ func decodeBuffLifecycleMessage(frame gameFrame, body []byte) (buffLifecycleAudi
 	}
 	if row.InstigatorID != nil {
 		row.InstigatorStatus = resolutionCorrelated
-		row.InstigatorEvidence = "client Global 3.7.1 CharacterBuffComponent compares InstigatorId with CreatureDataId and resolves it through CreatureModel.GetEntity; Windows capture-build equivalence UNKNOWN"
+		row.InstigatorEvidence = "client Global 3.7.1 CharacterBuffComponent compares InstigatorId with CreatureDataId and resolves it through CreatureModel.GetEntity; client/master compatibility UNKNOWN"
 	}
 	return row, nil
 }
@@ -351,12 +351,12 @@ func (p *processor) handleActiveResponse(frame gameFrame, body []byte) error {
 						ComponentPath:             "EntityActiveResponse.field11(ComponentPbs[])->EntityComponentPb.field15(FightBuffComponent)->FightBuffComponentPb.field1(FightBuffInfos[])->FightBuffInformation",
 						BuffIDStatus:              resolutionCorrelated,
 						clientSchemaVersion:      "Global 3.7.1",
-						WindowsSchemaVerification: "Windows Global UHD 3.7.1 Aki.Protocol metadata; capture-build compatibility UNKNOWN",
+						WindowsSchemaVerification: "Windows Global UHD 3.7.1 Aki.Protocol metadata; client/master compatibility UNKNOWN",
 						Buff:                      record,
 					}
 					if record.HasInstigatorID {
 						row.InstigatorSemantics = resolutionCorrelated
-						row.InstigatorEvidence = "client Global 3.7.1 CharacterBuffComponent compares InstigatorId with CreatureDataId and resolves it through CreatureModel.GetEntity; Windows capture-build equivalence UNKNOWN"
+						row.InstigatorEvidence = "client Global 3.7.1 CharacterBuffComponent compares InstigatorId with CreatureDataId and resolves it through CreatureModel.GetEntity; client/master compatibility UNKNOWN"
 					}
 					if matched && request.hasEntityID {
 						entityID := request.entityID
