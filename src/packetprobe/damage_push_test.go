@@ -1,5 +1,3 @@
-//go:build wwdev
-
 package main
 
 import (
