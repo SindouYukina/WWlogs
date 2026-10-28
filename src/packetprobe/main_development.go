@@ -51,6 +51,7 @@ func main() {
 
 	buffOverlapOut := flag.String("buff-overlap-out", "", "optionally write, per damage result, the Buff instances observed active on its target (packet-time precision)")
 	hpStateOutPath := flag.String("hp-state-out", "", "optional JSONL of Life and LifeMax attribute values per entity (requires -protocol-schema)")
+	damagePushOutPath := flag.String("damage-push-out", "", "optional JSONL of pushed DamageExecuteNotify records, separate from the damage RPC stream (requires -protocol-schema)")
 	frameArchiveOut := flag.String("frame-archive-out", "", "optionally write one local JSONL record per reassembled frame (digests only; no key or plaintext)")
 	research := flag.Bool("research", false, "write per-event evidence details to stderr")
 	commandCensusOut := flag.String("command-census-out", "", "write a local JSON census of protocol commands and decode outcomes")
@@ -227,6 +228,28 @@ func main() {
 			fatal("load protocol schema", err)
 		}
 		processor.protocolSchema = schema
+	}
+	if *damagePushOutPath != "" {
+		if processor.protocolSchema == nil {
+			fatal("damage push output", fmt.Errorf("-damage-push-out requires -protocol-schema"))
+		}
+		if dir := filepath.Dir(*damagePushOutPath); dir != "." {
+			if err := os.MkdirAll(dir, 0o700); err != nil {
+				fatal("create damage push directory", err)
+			}
+		}
+		pushFile, err := os.Create(*damagePushOutPath)
+		if err != nil {
+			fatal("create damage push output", err)
+		}
+		defer pushFile.Close()
+		pushWriter := bufio.NewWriter(pushFile)
+		processor.damagePushOut = pushWriter
+		defer func() {
+			if err := pushWriter.Flush(); err != nil {
+				fmt.Fprintf(os.Stderr, "damage push flush error: %v\n", err)
+			}
+		}()
 	}
 	if *hpStateOutPath != "" {
 		if processor.protocolSchema == nil {

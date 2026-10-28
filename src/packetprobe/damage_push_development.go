@@ -1,0 +1,63 @@
+//go:build wwdev
+
+package main
+
+import (
+	"encoding/json"
+)
+
+// archiveDamagePushes writes DamageExecuteNotify pushes from one decoded
+// CombatReceivePackNotify. It reads the schema tree only and does not change the
+// typed damage results.
+func (p *processor) archiveDamagePushes(frame gameFrame, decoded *decodedMessage) {
+	if p.damagePushOut == nil || decoded == nil {
+		return
+	}
+	for _, data := range childMessages(decoded, "Data") {
+		for _, notify := range childMessages(data, "CombatNotifyData") {
+			for _, push := range childMessages(notify, "DamageExecuteNotify") {
+				record := damagePushRecord{
+					SchemaVersion: damagePushSchemaVersion,
+					FrameOrdinal:  p.frameOrdinal - 1,
+					SessionNumber: p.sessionNumber,
+					Timestamp:     formatTimestamp(frame.timestamp),
+					Stream:        "DAMAGE_EXECUTE_NOTIFY_PUSH",
+					Evidence:      "pushed DamageExecuteNotify; not paired with a damage RPC request; attacker identity as observed",
+				}
+				record.DamageID, _ = scalarValue(push, "DamageId")
+				record.AttackerID, _ = scalarValue(push, "AttackerEntityId")
+				record.TargetID, _ = scalarValue(push, "TargetEntityId")
+				record.Damage, _ = scalarValue(push, "Damage")
+				record.ChangeLife, _ = scalarValue(push, "ChangeLife")
+				record.ElementType, _ = scalarValue(push, "ElementType")
+				record.PartID, _ = scalarValue(push, "PartId")
+				crit, _ := scalarValue(push, "IsCrit")
+				record.IsCrit = crit != 0
+				killed, _ := scalarValue(push, "KilledTarget")
+				record.KilledTarget = killed != 0
+				line, err := json.Marshal(record)
+				if err != nil {
+					p.damagePushErrors++
+					continue
+				}
+				if _, err := p.damagePushOut.Write(append(line, '\n')); err != nil {
+					p.damagePushErrors++
+				}
+			}
+		}
+	}
+}
+
+// archiveDamagePushFrame decodes a combat frame for the push stream when the output
+// is enabled. It shares the plaintext with the other schema observers.
+func (p *processor) archiveDamagePushFrame(frame gameFrame, plain []byte) {
+	if p.damagePushOut == nil || p.protocolSchema == nil || frame.commandID != 25706 {
+		return
+	}
+	decoded, err := decodeSchemaMessage(p.protocolSchema, "CombatReceivePackNotify", plain, 0)
+	if err != nil {
+		p.damagePushErrors++
+		return
+	}
+	p.archiveDamagePushes(frame, decoded)
+}
