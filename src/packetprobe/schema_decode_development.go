@@ -158,8 +158,8 @@ func (p *processor) archiveSchemaDecode(frame gameFrame, plain []byte) {
 		p.schemaDecodeSkipped++
 		return
 	}
-	name := schemaMessageName(commandName(frame.commandID))
-	if _, known := p.protocolSchema.Messages[name]; !known {
+	name, known := p.schemaMessageFor(frame.commandID)
+	if !known {
 		p.schemaDecodeSkipped++
 		return
 	}
@@ -280,4 +280,49 @@ func schemaMessageName(commandName string) string {
 		return commandName[:index]
 	}
 	return commandName
+}
+
+// schemaMessageFor returns the schema message for an outer command. The census
+// name is tried first. Commands the census does not name are looked up in the
+// schema's message-ID enums, which map every observed ID to its message name.
+func (p *processor) schemaMessageFor(commandID uint16) (string, bool) {
+	if name := schemaMessageName(commandName(commandID)); name != "" {
+		if _, known := p.protocolSchema.Messages[name]; known {
+			return name, true
+		}
+	}
+	for _, enum := range []string{"EMessageId", "EPushMessageId", "ENotifyMessageId"} {
+		name, found := p.protocolSchema.enumName(enum, int64(commandID))
+		if !found {
+			continue
+		}
+		if _, known := p.protocolSchema.Messages[name]; known {
+			return name, true
+		}
+	}
+	return "", false
+}
+
+// archiveUndecodedSchema writes schema decodes for commands outside the typed
+// decoder when no census is running. It decrypts and decompresses the frame the
+// same way the census path does, and writes only frames that parse as top-level
+// Protobuf.
+func (p *processor) archiveUndecodedSchema(frame gameFrame) {
+	if p.protocolSchema == nil || p.schemaDecodeOut == nil || len(p.session) != 32 || len(frame.body) == 0 {
+		return
+	}
+	plain, err := decryptGameBody(frame.sequence, frame.body, p.session)
+	if err != nil {
+		return
+	}
+	if frame.compressed {
+		plain, err = decompressBody(plain, frame.compressedLength)
+		if err != nil {
+			return
+		}
+	}
+	if _, err := parseProtoFields(plain); err != nil {
+		return
+	}
+	p.archiveSchemaDecode(frame, plain)
 }
