@@ -153,6 +153,8 @@ type processor struct {
 	hpStateOut                diagWriter
 	damagePushOut             diagWriter
 	clientPushOut             diagWriter
+	summonOwnerOut            diagWriter
+	summonOwnerErrors         int
 	clientPushErrors          int
 	activeRoleID              int64
 	hasActiveRole             bool
@@ -419,6 +421,7 @@ func (p *processor) handleFrame(frame gameFrame) {
 	p.archiveHPStateFrame(frame, plain)
 	p.archiveDamagePushFrame(frame, plain)
 	p.archiveClientPushFrame(frame, plain)
+	p.archiveSummonOwnerFrame(frame, plain)
 	parseErrorsBefore := p.stats.parseErrors
 	switch frame.commandID {
 	case 103, 116:
