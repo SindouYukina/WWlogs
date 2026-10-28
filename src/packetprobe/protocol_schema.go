@@ -9,6 +9,7 @@ type protocolSchema struct {
 	SourceSHA256 string                   `json:"sourceSha256"`
 	ClientLabel  string                   `json:"clientLabel"`
 	Messages     map[string]schemaMessage `json:"messages"`
+	Enums        map[string]schemaEnum    `json:"enums"`
 }
 
 type schemaMessage struct {
@@ -31,4 +32,9 @@ type schemaType struct {
 	Element *schemaType `json:"element,omitempty"`
 	Key     *schemaType `json:"key,omitempty"`
 	Value   *schemaType `json:"value,omitempty"`
+}
+
+// schemaEnum holds the member values of one protobuf enum from the schema.
+type schemaEnum struct {
+	Members map[string]int64 `json:"members"`
 }

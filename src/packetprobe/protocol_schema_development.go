@@ -32,3 +32,18 @@ func (m schemaMessage) fieldIndex() map[uint64]schemaField {
 	}
 	return index
 }
+
+// enumName returns the member name for a value, or false when the schema has no
+// such member. Callers keep the raw number in that case.
+func (s *protocolSchema) enumName(enum string, value int64) (string, bool) {
+	definition, ok := s.Enums[enum]
+	if !ok {
+		return "", false
+	}
+	for name, member := range definition.Members {
+		if member == value {
+			return name, true
+		}
+	}
+	return "", false
+}

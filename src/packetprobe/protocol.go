@@ -150,6 +150,8 @@ type processor struct {
 	schemaDecodeSkipped       int
 	eventOrderFrame           uint64
 	eventOrder                int
+	hpStateOut                diagWriter
+	hpStateErrors             int
 	buffIntervals             []*buffInterval
 	buffIntervalOpen          map[overlapKey]*buffInterval
 	buffDuplicateApplies      int
@@ -406,6 +408,7 @@ func (p *processor) handleFrame(frame gameFrame) {
 	}
 	p.archiveSchemaDecode(frame, plain)
 	p.archiveDamageRPCSchema(frame, plain)
+	p.archiveHPStateFrame(frame, plain)
 	parseErrorsBefore := p.stats.parseErrors
 	switch frame.commandID {
 	case 103, 116:
