@@ -233,11 +233,7 @@ func (event *combatEvent) resolveEventType(masters *gameMaster) {
 	event.DamageCalculateType = record.CalculateType
 	event.HasCalculateType = true
 	event.EventTypeStatus = resolutionCorrelated
-	provenance := "source commit " + record.SourceCommit
-	if record.SourceCommit == "" {
-		provenance = "source SHA-256 " + record.SourceHash
-	}
-	source := fmt.Sprintf("%s CalculateType=%d (%s/%s; %s)", record.SourceTable, record.CalculateType, record.GameVersion, record.ResourceVersion, provenance)
+	source := fmt.Sprintf("%s CalculateType=%d (combat master SQLite SHA-256 %s)", record.SourceTable, record.CalculateType, record.SourceHash)
 	switch record.CalculateType {
 	case 0:
 		event.EventTypeCandidate = "DAMAGE_CANDIDATE"
@@ -327,9 +323,9 @@ func (p *processor) writeDamageEvent(event combatEvent) {
 			event.SummonerCharacter.EntityIDs, event.SummonerCharacter.CharacterID, event.SummonerCharacter.Character.Name, event.SummonerCharacter.Status, event.SummonerCharacter.Proof, playerEntityID,
 			event.CharacterID, event.CharacterName, event.CharacterStatus, event.CharacterNameStatus, event.CharacterProof,
 			event.Target.RuntimeStatus, event.Target.RuntimeProof, event.Target.Monster.ID, event.Target.Monster.Name, event.Target.MonsterStatus, event.Target.Monster.NameStatus, event.Target.MonsterProof)
-		fmt.Fprintf(p.diagnostic, "[SKILL_RESOLVE] skill_id=%d name=%q kind=%q status=%s name_status=%s game_version=%q source=%q\n",
+		fmt.Fprintf(p.diagnostic, "[SKILL_RESOLVE] skill_id=%d name=%q kind=%q status=%s name_status=%s master_locale=%q source=%q\n",
 			event.SkillID, event.SkillName, event.SkillNameKind, event.SkillStatus, event.SkillNameStatus,
-			masterGameVersion(p.masters), event.SkillProof)
+			masterLocale(p.masters), event.SkillProof)
 	}
 	if flusher, ok := p.stdout.(interface{ Flush() error }); ok {
 		if err := flusher.Flush(); err != nil {
@@ -410,9 +406,9 @@ func formatTimestamp(timestamp time.Time) string {
 	return timestamp.UTC().Format(time.RFC3339Nano)
 }
 
-func masterGameVersion(masters *gameMaster) string {
+func masterLocale(masters *gameMaster) string {
 	if masters == nil {
 		return ""
 	}
-	return masters.manifest.GameVersion
+	return masters.locale
 }

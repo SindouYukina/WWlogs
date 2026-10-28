@@ -5,6 +5,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -410,7 +411,7 @@ func (p *processor) writeEncounterSummary() error {
 		return err
 	}
 	if p.masters != nil {
-		if _, err := fmt.Fprintf(p.encounterSummary, "\nMaster version: %s (Global, %s)\n", p.masters.manifest.GameVersion, p.masters.manifest.Language); err != nil {
+		if _, err := fmt.Fprintf(p.encounterSummary, "\nCombat master: %s (Global, %s, SHA-256 %s)\n", filepath.Base(p.masters.databasePath), p.masters.locale, p.masters.manifest.SourceHash); err != nil {
 			return err
 		}
 	}

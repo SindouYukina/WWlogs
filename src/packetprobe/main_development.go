@@ -37,7 +37,7 @@ func main() {
 	duration := flag.Duration("duration", 0, "live capture duration; 0 runs until Ctrl+C")
 	pcapIn := flag.String("pcap-in", "", "replay a saved PCAP instead of live capture")
 	pcapOut := flag.String("pcap-out", "", "optionally save captured UDP packets to a PCAP file")
-	masterDir := flag.String("master-dir", filepath.Join("data", "global", "3.7.0", "zh-TW"), "local versioned Global master data directory")
+	masterDatabase := flag.String("master-db", filepath.Join("data", "master_data.db"), "read-only combat ID master SQLite database")
 	verifyBaseline := flag.Bool("verify-baseline", false, "assert the corrected Locking PCAP regression counts")
 	auditOut := flag.String("audit-out", "", "optionally write matched non-secret RPC/entity/damage rows as TSV")
 	buffSnapshotOut := flag.String("buff-snapshot-out", "", "optionally write EntityActiveResponse Buff snapshots as local JSONL")
@@ -84,6 +84,10 @@ func main() {
 	if filterExpression == "" {
 		filterExpression = fmt.Sprintf("udp and portrange %d-%d", *minPort, *maxPort)
 	}
+	masters, err := loadGameMasterDatabase(*masterDatabase, "zh-TW")
+	if err != nil {
+		fatal("load combat master SQLite", err)
+	}
 	if *preflight {
 		device, err := findDeviceByIP(*ip)
 		if err != nil {
@@ -97,23 +101,12 @@ func main() {
 		if err := handle.SetBPFFilter(filterExpression); err != nil {
 			fatal("set capture filter", err)
 		}
-		fmt.Fprintf(os.Stderr, "capture_preflight=PASS adapter=%s local_ipv4=%s filter=%q\n", device, *ip, filterExpression)
+		fmt.Fprintf(os.Stderr, "capture_preflight=PASS adapter=%s local_ipv4=%s filter=%q master_sha256=%s locale=%s\n", device, *ip, filterExpression, masters.manifest.SourceHash, masters.locale)
 		return
 	}
 	if (*stopFile != "" || *statusFile != "" || *maxPCAPBytes > 0) && (*pcapIn != "" || *pcapOut == "") {
 		fatal("live capture controls", fmt.Errorf("-stop-file, -status-file, and -max-pcap-bytes require live capture with -pcap-out"))
 	}
-	var masters *gameMaster
-	var err error
-	if _, statErr := os.Stat(*masterDir); statErr == nil {
-		masters, err = loadGameMaster(*masterDir)
-		if err != nil {
-			fatal("load local master data", err)
-		}
-	} else if !os.IsNotExist(statErr) {
-		fatal("inspect local master data", statErr)
-	}
-
 	rsaKey, err := loadEmbeddedPrivateKey()
 	if err != nil {
 		fatal("load embedded RSA key", err)
@@ -349,13 +342,9 @@ func main() {
 	if *commandCensusOut != "" {
 		processor.census = newCommandCensus()
 	}
-	if masters == nil {
-		fmt.Fprintf(os.Stderr, "master_data_unavailable path=%s; names will remain unresolved\n", *masterDir)
-	} else {
-		fmt.Fprintf(os.Stderr, "master_data_loaded game=%s resource=%s region=%s language=%s characters=%d monsters=%d skills=%d damage=%d buffs=%s\n",
-			masters.manifest.GameVersion, masters.manifest.ResourceVersion, masters.manifest.ClientRegion, masters.manifest.Language,
-			len(masters.characters), len(masters.monsters), len(masters.skills), len(masters.damage), masters.manifest.BuffStatus)
-	}
+	fmt.Fprintf(os.Stderr, "master_data_loaded database=%s sha256=%s locale=%s characters=%d monsters=%d skills=%d damage=%d\n",
+		masters.databasePath, masters.manifest.SourceHash, masters.locale,
+		len(masters.characters), len(masters.monsters), len(masters.skills), len(masters.damage))
 
 	var device string
 	var handle *pcap.Handle

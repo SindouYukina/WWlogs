@@ -58,9 +58,8 @@ func (event combatEvent) jsonlView(masters *gameMaster) combatEventJSONL {
 	}
 	if masters != nil {
 		view.Master = combatEventMasterJSONL{
-			GameVersion: masters.manifest.GameVersion, ResourceVersion: masters.manifest.ResourceVersion,
-			ClientRegion: masters.manifest.ClientRegion, Locale: masters.manifest.Language,
-			SourceCommit: masters.manifest.SourceCommit, SourceHash: masters.manifest.SourceHash,
+			ClientRegion: masters.manifest.ClientRegion, Locale: masters.locale,
+			SourceHash: masters.manifest.SourceHash,
 		}
 	}
 	return view

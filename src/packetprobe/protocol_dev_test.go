@@ -14,7 +14,7 @@ func TestDamageResponsePreservesRawResultsAndMarksHealingOnlyAsCandidate(t *test
 	var stdout, diagnostic, audit bytes.Buffer
 	p := newProcessor(nil, &stdout, &diagnostic, &audit)
 	p.masters = &gameMaster{damage: map[uint64]damageMasterRecord{
-		120900505: {ID: 120900505, CalculateType: 1, GameVersion: "3.7.0", ResourceVersion: "3.7.8", SourceCommit: "test-commit", SourceTable: "damage.json"},
+		120900505: {ID: 120900505, CalculateType: 1, SourceTable: "damage"},
 	}}
 	p.pending[9] = pendingDamageRequest{damageID: 120900505, hasDamageID: true}
 	response := appendVarintField(nil, 4, 0)

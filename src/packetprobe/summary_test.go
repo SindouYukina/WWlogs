@@ -13,7 +13,7 @@ func TestEncounterSummarySeparatesCreditedDamageHealingAndOwnerCandidates(t *tes
 	var output bytes.Buffer
 	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
 	p.encounterSummary = &output
-	p.masters = &gameMaster{manifest: masterManifest{GameVersion: "3.7.1", Language: "zh-Hant"}}
+	p.masters = &gameMaster{manifest: masterManifest{SourceHash: strings.Repeat("a", 64)}, locale: "zh-TW", databasePath: "data/master_data.db"}
 	start := time.Date(2026, 10, 27, 1, 2, 3, 0, time.UTC)
 	p.observeEncounterSummary(combatEvent{
 		Timestamp: start, SessionNumber: 1,
@@ -45,7 +45,7 @@ func TestEncounterSummarySeparatesCreditedDamageHealingAndOwnerCandidates(t *tes
 	}
 	text := output.String()
 	for _, want := range []string{
-		"Master version: 3.7.1 (Global, zh-Hant)",
+		"Combat master: master_data.db (Global, zh-TW, SHA-256 " + strings.Repeat("a", 64) + ")",
 		"no Echo or summon attribution is inferred here",
 		"DAMAGE_CANDIDATE: Damage master CalculateType 0",
 		"Damage candidates: 300",

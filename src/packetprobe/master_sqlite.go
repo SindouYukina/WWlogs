@@ -1,0 +1,402 @@
+package main
+
+import (
+	"crypto/sha256"
+	"database/sql"
+	"encoding/hex"
+	"fmt"
+	"io"
+	"net/url"
+	"os"
+	"path/filepath"
+	"strconv"
+
+	_ "modernc.org/sqlite"
+)
+
+var supportedMasterLocales = map[string]struct{}{
+	"zh-TW": {}, "zh-CN": {}, "en-US": {}, "ja-JP": {}, "ko-KR": {},
+}
+
+func loadGameMasterDatabase(path, locale string) (*gameMaster, error) {
+	if _, ok := supportedMasterLocales[locale]; !ok {
+		return nil, fmt.Errorf("unsupported master locale %q", locale)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, fmt.Errorf("inspect master database: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("master database path is not a regular file: %s", path)
+	}
+
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return nil, fmt.Errorf("resolve master database path: %w", err)
+	}
+	uriPath := filepath.ToSlash(absPath)
+	if len(uriPath) >= 2 && uriPath[1] == ':' {
+		uriPath = "/" + uriPath
+	}
+	dsn := (&url.URL{Scheme: "file", Path: uriPath}).String() + "?mode=ro"
+	db, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		return nil, fmt.Errorf("open master database read-only: %w", err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	if _, err := db.Exec("PRAGMA query_only=ON"); err != nil {
+		return nil, fmt.Errorf("set master database query-only: %w", err)
+	}
+	if err := db.Ping(); err != nil {
+		return nil, fmt.Errorf("open master database: %w", err)
+	}
+
+	hash, err := hashFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("hash master database: %w", err)
+	}
+	master := &gameMaster{
+		manifest:       masterManifest{Language: locale, ClientRegion: "Global", SourceHash: hash},
+		databasePath:   absPath,
+		locale:         locale,
+		characters:     make(map[uint64]masterRecord),
+		charactersSkin: make(map[uint64]masterRecord),
+		ambiguousSkins: make(map[uint64]struct{}),
+		monsters:       make(map[uint64]masterRecord),
+		skills:         make(map[uint64]masterRecord),
+		damage:         make(map[uint64]damageMasterRecord),
+		sceneIdentity: &sceneIdentityMaster{
+			instanceMaps:    make(map[uint64]uint64),
+			levelMonsters:   make(map[sceneLevelKey]uint64),
+			levelTemplates:  make(map[sceneLevelKey][]sceneTemplateCandidate),
+			templateCatalog: make(map[uint64]sceneTemplateCandidate),
+		},
+	}
+	if err := loadLocalizedDefinitions(db, locale, "roleinfo", "roleinfo_locale", &master.characters); err != nil {
+		return nil, err
+	}
+	if err := loadLocalizedDefinitions(db, locale, "monsterinfo", "monsterinfo_locale", &master.monsters); err != nil {
+		return nil, err
+	}
+	if err := loadSQLiteSkills(db, locale, master); err != nil {
+		return nil, err
+	}
+	if err := loadSQLiteDamage(db, hash, master); err != nil {
+		return nil, err
+	}
+	if err := loadSQLiteScene(db, master); err != nil {
+		return nil, err
+	}
+	if len(master.characters) == 0 || len(master.monsters) == 0 || len(master.skills) == 0 || len(master.damage) == 0 {
+		return nil, fmt.Errorf("master database is missing required combat definitions: roles=%d monsters=%d skills=%d damage=%d",
+			len(master.characters), len(master.monsters), len(master.skills), len(master.damage))
+	}
+	return master, nil
+}
+
+func loadLocalizedDefinitions(db *sql.DB, locale, baseTable, localeTable string, destination *map[uint64]masterRecord) error {
+	query := fmt.Sprintf("SELECT b.id,l.name FROM %s b LEFT JOIN %s l ON l.id=b.id AND l.locale=? ORDER BY b.id", baseTable, localeTable)
+	rows, err := db.Query(query, locale)
+	if err != nil {
+		return fmt.Errorf("query %s definitions: %w", baseTable, err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var rawID string
+		var name sql.NullString
+		if err := rows.Scan(&rawID, &name); err != nil {
+			return fmt.Errorf("read %s definition: %w", baseTable, err)
+		}
+		id, err := parseMasterID(rawID, baseTable)
+		if err != nil {
+			return err
+		}
+		if _, exists := (*destination)[id]; exists {
+			return fmt.Errorf("duplicate %s ID %d", baseTable, id)
+		}
+		record := masterRecord{ID: id, Language: locale, Status: string(resolutionVerified), SourceTable: baseTable}
+		if name.Valid {
+			record.Name = name.String
+		}
+		if record.Name == "" {
+			record.NameStatus = string(resolutionUnknown)
+		} else {
+			record.NameStatus = string(resolutionVerified)
+		}
+		(*destination)[id] = record
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate %s definitions: %w", baseTable, err)
+	}
+	return nil
+}
+
+func loadSQLiteSkills(db *sql.DB, locale string, master *gameMaster) error {
+	roleGroups := make(map[string]map[uint64]struct{})
+	rows, err := db.Query("SELECT role_id,skill_group_id FROM role_skill_group_ref ORDER BY role_id,skill_group_id")
+	if err != nil {
+		return fmt.Errorf("query role skill groups: %w", err)
+	}
+	for rows.Next() {
+		var roleRaw, groupRaw string
+		if err := rows.Scan(&roleRaw, &groupRaw); err != nil {
+			rows.Close()
+			return fmt.Errorf("read role skill group: %w", err)
+		}
+		roleID, err := parseMasterID(roleRaw, "role_skill_group_ref.role_id")
+		if err != nil {
+			rows.Close()
+			return err
+		}
+		groups := roleGroups[groupRaw]
+		if groups == nil {
+			groups = make(map[uint64]struct{})
+			roleGroups[groupRaw] = groups
+		}
+		groups[roleID] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return fmt.Errorf("iterate role skill groups: %w", err)
+	}
+	rows.Close()
+
+	rows, err = db.Query(`SELECT d.id,d.skill_level_group_id,
+		(SELECT skill_group_id FROM skill WHERE skill_level_group_id=d.skill_level_group_id ORDER BY id LIMIT 1),l.name
+		FROM skilldescription d
+		LEFT JOIN skilldescription_locale l ON l.id=d.id AND l.locale=?
+		ORDER BY d.id`, locale)
+	if err != nil {
+		return fmt.Errorf("query skill descriptions: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var rawID string
+		var rawLevelGroup sql.NullString
+		var rawGroup sql.NullString
+		var name sql.NullString
+		if err := rows.Scan(&rawID, &rawLevelGroup, &rawGroup, &name); err != nil {
+			return fmt.Errorf("read skill description: %w", err)
+		}
+		id, err := parseMasterID(rawID, "skilldescription")
+		if err != nil {
+			return err
+		}
+		record := masterRecord{ID: id, Language: locale, Status: string(resolutionVerified), SourceTable: "skilldescription -> skill"}
+		if name.Valid {
+			record.Name = name.String
+		}
+		if record.Name == "" {
+			record.NameStatus = string(resolutionUnknown)
+		} else {
+			record.NameStatus = string(resolutionVerified)
+		}
+		record.NameKind = "SkillName"
+		if rawLevelGroup.Valid && rawGroup.Valid {
+			roles := roleGroups[rawGroup.String]
+			if len(roles) == 1 {
+				for roleID := range roles {
+					record.RoleID = roleID
+					record.RoleStatus = string(resolutionCorrelated)
+					if character, ok := master.characters[roleID]; ok {
+						record.CharacterName = character.Name
+					}
+				}
+			}
+		}
+		if _, exists := master.skills[id]; exists {
+			return fmt.Errorf("duplicate skilldescription ID %d", id)
+		}
+		master.skills[id] = record
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate skill descriptions: %w", err)
+	}
+	return nil
+}
+
+func loadSQLiteDamage(db *sql.DB, hash string, master *gameMaster) error {
+	rows, err := db.Query("SELECT id,calculate_type FROM damage WHERE calculate_type IS NOT NULL ORDER BY id")
+	if err != nil {
+		return fmt.Errorf("query damage classifications: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var rawID string
+		var calculateType int32
+		if err := rows.Scan(&rawID, &calculateType); err != nil {
+			return fmt.Errorf("read damage classification: %w", err)
+		}
+		id, err := parseMasterID(rawID, "damage")
+		if err != nil {
+			return err
+		}
+		if calculateType < 0 || calculateType > 2 {
+			return fmt.Errorf("damage ID %d has unsupported CalculateType %d", id, calculateType)
+		}
+		master.damage[id] = damageMasterRecord{ID: id, CalculateType: calculateType, SourceHash: hash, SourceTable: "damage.id"}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate damage classifications: %w", err)
+	}
+	return nil
+}
+
+func loadSQLiteScene(db *sql.DB, master *gameMaster) error {
+	rows, err := db.Query("SELECT instance_id,map_id FROM map_instance ORDER BY instance_id")
+	if err != nil {
+		return fmt.Errorf("query scene instances: %w", err)
+	}
+	for rows.Next() {
+		var instanceRaw, mapRaw string
+		if err := rows.Scan(&instanceRaw, &mapRaw); err != nil {
+			rows.Close()
+			return fmt.Errorf("read scene instance: %w", err)
+		}
+		instanceID, err := parseMasterID(instanceRaw, "map_instance.instance_id")
+		if err != nil {
+			rows.Close()
+			return err
+		}
+		mapID, err := parseMasterID(mapRaw, "map_instance.map_id")
+		if err != nil {
+			rows.Close()
+			return err
+		}
+		master.sceneIdentity.instanceMaps[instanceID] = mapID
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return fmt.Errorf("iterate scene instances: %w", err)
+	}
+	rows.Close()
+
+	monsterTargets := make(map[sceneLevelKey]map[uint64]struct{})
+	rows, err = db.Query("SELECT map_id,entity_id,monster_id FROM map_entity_monster ORDER BY map_id,entity_id,monster_id")
+	if err != nil {
+		return fmt.Errorf("query scene monsters: %w", err)
+	}
+	for rows.Next() {
+		var mapRaw, entityRaw, monsterRaw string
+		if err := rows.Scan(&mapRaw, &entityRaw, &monsterRaw); err != nil {
+			rows.Close()
+			return fmt.Errorf("read scene monster relation: %w", err)
+		}
+		mapID, err := parseMasterID(mapRaw, "map_entity_monster.map_id")
+		if err != nil {
+			rows.Close()
+			return err
+		}
+		entityID, err := parseMasterID(entityRaw, "map_entity_monster.entity_id")
+		if err != nil {
+			rows.Close()
+			return err
+		}
+		monsterID, err := parseMasterID(monsterRaw, "map_entity_monster.monster_id")
+		if err != nil {
+			rows.Close()
+			return err
+		}
+		if _, exists := master.monsters[monsterID]; !exists {
+			rows.Close()
+			return fmt.Errorf("scene relation references MonsterId %d absent from MonsterInfo", monsterID)
+		}
+		key := sceneLevelKey{mapID: mapID, entityID: entityID}
+		if monsterTargets[key] == nil {
+			monsterTargets[key] = make(map[uint64]struct{})
+		}
+		monsterTargets[key][monsterID] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return fmt.Errorf("iterate scene monsters: %w", err)
+	}
+	rows.Close()
+	for key, targets := range monsterTargets {
+		if len(targets) == 1 {
+			for monsterID := range targets {
+				master.sceneIdentity.levelMonsters[key] = monsterID
+			}
+		}
+	}
+
+	if err := loadTemplateCatalog(db, master); err != nil {
+		return err
+	}
+	return loadTemplateRelations(db, master)
+}
+
+func loadTemplateCatalog(db *sql.DB, master *gameMaster) error {
+	rows, err := db.Query("SELECT id,blueprint_type,raw_name FROM templateconfig ORDER BY id")
+	if err != nil {
+		return fmt.Errorf("query scene template catalog: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var rawID, blueprintType, rawName string
+		if err := rows.Scan(&rawID, &blueprintType, &rawName); err != nil {
+			return fmt.Errorf("read scene template catalog: %w", err)
+		}
+		id, err := parseMasterID(rawID, "templateconfig")
+		if err != nil {
+			return err
+		}
+		master.sceneIdentity.templateCatalog[id] = sceneTemplateCandidate{TemplateID: id, BlueprintType: blueprintType, RawName: rawName}
+	}
+	return rows.Err()
+}
+
+func loadTemplateRelations(db *sql.DB, master *gameMaster) error {
+	rows, err := db.Query("SELECT map_id,entity_id,template_id FROM map_entity_template_ref ORDER BY map_id,entity_id,ordinal")
+	if err != nil {
+		return fmt.Errorf("query scene template relations: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var mapRaw, entityRaw, templateRaw string
+		if err := rows.Scan(&mapRaw, &entityRaw, &templateRaw); err != nil {
+			return fmt.Errorf("read scene template relation: %w", err)
+		}
+		mapID, err := parseMasterID(mapRaw, "map_entity_template_ref.map_id")
+		if err != nil {
+			return err
+		}
+		entityID, err := parseMasterID(entityRaw, "map_entity_template_ref.entity_id")
+		if err != nil {
+			return err
+		}
+		templateID, err := parseMasterID(templateRaw, "map_entity_template_ref.template_id")
+		if err != nil {
+			return err
+		}
+		candidate, exists := master.sceneIdentity.templateCatalog[templateID]
+		if !exists {
+			return fmt.Errorf("scene template relation references missing TemplateConfig Id %d", templateID)
+		}
+		key := sceneLevelKey{mapID: mapID, entityID: entityID}
+		master.sceneIdentity.levelTemplates[key] = append(master.sceneIdentity.levelTemplates[key], candidate)
+	}
+	return rows.Err()
+}
+
+func parseMasterID(raw, field string) (uint64, error) {
+	id, err := strconv.ParseUint(raw, 10, 64)
+	if err != nil || id == 0 {
+		return 0, fmt.Errorf("invalid non-zero unsigned ID %q in %s", raw, field)
+	}
+	return id, nil
+}
+
+func hashFile(path string) (string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+	hash := sha256.New()
+	if _, err := io.Copy(hash, file); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(hash.Sum(nil)), nil
+}

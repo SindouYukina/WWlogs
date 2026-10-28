@@ -267,8 +267,8 @@ func resolveEntityIdentity(resolver *entityResolver, masters *gameMaster, entity
 			result.TemplateCandidates = candidates
 			result.TemplateStatus = resolutionUnknown
 			result.TemplateProof = fmt.Sprintf(
-				"%s (InstanceId=%d) -> InstanceDungeon.MapConfigId; runtime EntityPb.ConfigId=%d + ConfigType=Proto_Level(1) -> LevelEntityConfig(MapId, EntityId).BlueprintType -> TemplateConfig candidates; master gameVersion %s, client/master compatibility unverified",
-				sceneContextSource, sceneInstanceID, entity.configID, masters.sceneIdentity.manifest.GameVersion,
+				"%s (InstanceId=%d) -> InstanceDungeon.MapConfigId; runtime EntityPb.ConfigId=%d + ConfigType=Proto_Level(1) -> LevelEntityConfig(MapId, EntityId).BlueprintType -> TemplateConfig candidates; combat master locale %s, client/master compatibility unverified",
+				sceneContextSource, sceneInstanceID, entity.configID, masters.locale,
 			)
 			if len(candidates) == 1 {
 				result.TemplateStatus = resolutionCorrelated

@@ -62,7 +62,7 @@ func TestDamageCandidateResultHasSeparateSemanticBucket(t *testing.T) {
 	var stdout, diagnostic bytes.Buffer
 	p := newProcessor(nil, &stdout, &diagnostic, nil)
 	p.masters = &gameMaster{damage: map[uint64]damageMasterRecord{
-		70010001: {ID: 70010001, CalculateType: 0, GameVersion: "3.7.1", ResourceVersion: "3.7.1", SourceHash: strings.Repeat("a", 64), SourceTable: "damage.json"},
+		70010001: {ID: 70010001, CalculateType: 0, SourceHash: strings.Repeat("a", 64), SourceTable: "damage"},
 	}}
 	p.pending[10] = pendingDamageRequest{damageID: 70010001, hasDamageID: true}
 	response := appendVarintField(nil, 4, 0)
