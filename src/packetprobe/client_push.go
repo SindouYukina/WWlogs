@@ -19,6 +19,7 @@ type clientPushRecord struct {
 	EntityID      *int64   `json:"currentEntityId,omitempty"`
 	SkillID       *int64   `json:"skillId,omitempty"`
 	SkillTime     *float64 `json:"clientSkillTime,omitempty"`
+	SkillRoleKey  *int64   `json:"skillRolePrefix,omitempty"`
 	Evidence      string   `json:"evidence"`
 }
 
