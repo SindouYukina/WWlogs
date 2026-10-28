@@ -22,6 +22,22 @@ type combatEventJSONL struct {
 	Healing       *combatEventHealingJSONL `json:"healing,omitempty"`
 	Actors        actorsJSONL              `json:"actors"`
 	Master        combatEventMasterJSONL   `json:"master"`
+	Raw           combatEventRawJSONL      `json:"raw"`
+}
+
+// combatEventRawJSONL holds only values copied from the decoded damage request
+// and response. Master lookups and runtime resolution never write here, so a
+// consumer can compare this block with the wire without reproducing resolution.
+type combatEventRawJSONL struct {
+	DamageID         *uint64 `json:"damageId,omitempty"`
+	AttackerEntityID *uint64 `json:"attackerEntityId,omitempty"`
+	TargetEntityID   *uint64 `json:"targetEntityId,omitempty"`
+	SkillID          *uint64 `json:"skillId,omitempty"`
+	SkillMessageID   *uint64 `json:"skillMessageId,omitempty"`
+	DamageSourceType *uint64 `json:"damageSourceType,omitempty"`
+	BulletID         *int64  `json:"bulletId,omitempty"`
+	ServerResultRaw  *int32  `json:"serverResultRaw,omitempty"`
+	ChangeLifeRaw    *int32  `json:"changeLifeRaw,omitempty"`
 }
 
 type combatEventEntityJSONL struct {
@@ -29,9 +45,22 @@ type combatEventEntityJSONL struct {
 	RuntimeStatus   resolutionStatus          `json:"runtimeStatus"`
 	RuntimeEvidence string                    `json:"runtimeEvidence,omitempty"`
 	RuntimeFields   json.RawMessage           `json:"runtimeFields"`
+	Lifecycle       entityLifecycleJSONL      `json:"lifecycle"`
 	Character       *combatEventMasterIDJSONL `json:"character,omitempty"`
 	Monster         *combatEventMasterIDJSONL `json:"monster,omitempty"`
 	SceneTemplate   *combatEventTemplateJSONL `json:"sceneTemplate,omitempty"`
+}
+
+// entityLifecycleJSONL is the normalized lifecycle of one entity. State UNKNOWN
+// with status UNKNOWN means no add, remove or scene snapshot named the entity.
+type entityLifecycleJSONL struct {
+	State             entityLifecycleState `json:"state"`
+	Status            resolutionStatus     `json:"status"`
+	AddCount          uint64               `json:"addCount"`
+	RemoveCount       uint64               `json:"removeCount"`
+	ReusedAfterRemove uint64               `json:"reusedAfterRemove"`
+	LastSource        string               `json:"lastSource,omitempty"`
+	Evidence          string               `json:"evidence,omitempty"`
 }
 
 type combatEventMasterIDJSONL struct {

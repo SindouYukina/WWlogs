@@ -8,7 +8,6 @@
 /references/
 /research/
 /work/
-/scripts/
 /src/packetprobe/key_static_local.go
 
 # Secrets and machine-local artifacts
@@ -26,7 +25,6 @@
 *.dll
 *.so
 *.pak
-*.ps1
 
 # Diagnostic and capture artifacts must never be tracked
 *.jsonl
