@@ -45,6 +45,9 @@ func TestClientPushRecordsRoleSwitchAndActiveRoleOnSkill(t *testing.T) {
 	if skillRow.SkillID == nil || *skillRow.SkillID != 80025056 || skillRow.ActiveRoleID == nil || *skillRow.ActiveRoleID != 1409 {
 		t.Fatalf("skill row = %+v", skillRow)
 	}
+	if skillRow.SkillRoleKey == nil || *skillRow.SkillRoleKey != 80025 {
+		t.Fatalf("skill role prefix = %+v", skillRow)
+	}
 }
 
 func TestClientPushSkillBeforeAnyRoleReportHasNoActiveRole(t *testing.T) {

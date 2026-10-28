@@ -63,12 +63,18 @@ func (p *processor) observeEndSkill(frame gameFrame, message *decodedMessage) {
 			PushName:      "EndSkillPush",
 			Evidence:      "client-reported skill end; the skill identifier is as observed and has no name mapping yet",
 		}
+		// The reported active role is context only. Skills of other entities, such as
+		// boss or healer effects, are reported while a character is active. The owner
+		// candidate comes from the thousands prefix of SkillId, which matches RoleId in
+		// the preload table; it is CORRELATED, not VERIFIED.
 		if p.hasActiveRole {
 			role := p.activeRoleID
 			record.ActiveRoleID = &role
 		}
 		if hasSkill {
 			record.SkillID = &skillID
+			prefix := skillID / 1000
+			record.SkillRoleKey = &prefix
 		}
 		if value, ok := floatValue(usage, "TimeStamp"); ok {
 			record.SkillTime = &value
