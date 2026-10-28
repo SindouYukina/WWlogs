@@ -7,9 +7,33 @@ import (
 	"fmt"
 )
 
+func lifecycleJSONL(view entityLifecycleView) entityLifecycleJSONL {
+	if !view.Known {
+		return entityLifecycleJSONL{State: lifecycleUnknown, Status: resolutionUnknown, Evidence: "no EntityAddNotify, EntityRemoveNotify or JoinSceneNotify observed for this entity ID"}
+	}
+	return entityLifecycleJSONL{
+		State: view.State, Status: resolutionVerified,
+		AddCount: view.AddCount, RemoveCount: view.RemoveCount, ReusedAfterRemove: view.ReusedAfterRemove,
+		LastSource: view.LastSource, Evidence: lifecycleEvidence(view.LastSource),
+	}
+}
+
+func lifecycleEvidence(source string) string {
+	switch source {
+	case "EntityAddNotify":
+		return "EntityAddNotify.EntityPb.Id"
+	case "EntityRemoveNotify":
+		return "EntityRemoveNotify.EntityRemoveInfo.Id"
+	case "JoinSceneNotify":
+		return "JoinSceneNotify.SceneInfo entity snapshot"
+	default:
+		return ""
+	}
+}
+
 func (event combatEvent) jsonlView(masters *gameMaster) combatEventJSONL {
 	view := combatEventJSONL{
-		SchemaVersion: 2,
+		SchemaVersion: 3,
 		EventType:     combatEventJSONLType(event.EventTypeCandidate),
 		Timestamp:     event.Timestamp,
 		SessionNumber: event.SessionNumber,
@@ -28,6 +52,13 @@ func (event combatEvent) jsonlView(masters *gameMaster) combatEventJSONL {
 		},
 	}
 	view.Actors = projectActors(event)
+	view.Raw = combatEventRawJSONL{
+		DamageID: optionalUint64(event.DamageID, event.HasDamageID), AttackerEntityID: optionalUint64(event.SourceEntityID, event.HasSourceEntity),
+		TargetEntityID: optionalUint64(event.TargetEntityID, event.HasTargetEntity), SkillID: optionalUint64(event.SkillID, event.SkillID != 0),
+		SkillMessageID: optionalUint64(event.SkillMessageID, event.SkillMessageID != 0), DamageSourceType: optionalUint64(event.DamageSourceType, event.HasDamageSourceType),
+		BulletID: optionalInt64(event.BulletID, event.HasBulletID), ServerResultRaw: optionalInt32(event.ServerResultRaw, event.HasServerResult),
+		ChangeLifeRaw: optionalInt32(event.ChangeLifeRaw, event.HasChangeLife),
+	}
 	if event.EventTypeCandidate == "HEALING_CANDIDATE" {
 		view.Healing = &combatEventHealingJSONL{
 			ReportedMagnitudeAbs: event.Damage, MagnitudeStatus: event.EventTypeStatus, MagnitudeEvidence: event.EventTypeProof,
@@ -36,6 +67,8 @@ func (event combatEvent) jsonlView(masters *gameMaster) combatEventJSONL {
 	}
 	view.Source.EntityID = optionalUint64(event.SourceEntityID, event.HasSourceEntity)
 	view.Target.EntityID = optionalUint64(event.TargetEntityID, event.HasTargetEntity)
+	view.Source.Lifecycle = lifecycleJSONL(event.Source.Lifecycle)
+	view.Target.Lifecycle = lifecycleJSONL(event.Target.Lifecycle)
 	if event.Source.HasCharacter {
 		view.Source.Character = &combatEventMasterIDJSONL{ID: event.Source.Character.ID, Name: event.Source.Character.Name, Status: event.Source.CharacterStatus, Evidence: event.Source.CharacterProof}
 	}

@@ -95,12 +95,17 @@ type entityResolver struct {
 	limit              int
 	sceneInstanceID    uint64
 	hasSceneInstanceID bool
+	// lifecycles outlives runtime entries: a removed entity keeps its record so
+	// that REMOVED is distinguishable from never observed. See lifecycle.go.
+	lifecycles        map[uint64]entityLifecycle
+	lifecycleSequence uint64
 }
 
 type entityIdentity struct {
 	Runtime            runtimeEntity
 	RuntimeStatus      resolutionStatus
 	RuntimeProof       string
+	Lifecycle          entityLifecycleView
 	Character          masterRecord
 	HasCharacter       bool
 	CharacterStatus    resolutionStatus
@@ -194,7 +199,7 @@ func (r *sourceRoleResolver) evictIfNeeded() {
 
 func resolveEntityIdentity(resolver *entityResolver, masters *gameMaster, entityID uint64) entityIdentity {
 	entity, runtimeStatus := resolver.resolve(entityID)
-	result := entityIdentity{Runtime: entity, RuntimeStatus: runtimeStatus, RuntimeProof: entityProof(entity), CharacterStatus: resolutionUnknown, MonsterStatus: resolutionUnknown}
+	result := entityIdentity{Runtime: entity, RuntimeStatus: runtimeStatus, RuntimeProof: entityProof(entity), CharacterStatus: resolutionUnknown, MonsterStatus: resolutionUnknown, Lifecycle: resolver.lifecycleView(entityID)}
 	characterID, characterProof, characterFromConfig, conflict := runtimeCharacterCandidate(entity)
 	if conflict {
 		result.CharacterProof = fmt.Sprintf("conflicting character IDs: scene RoleId=%d, EntityPb.ConfigId=%d with ConfigType=Proto_Character", entity.roleID, entity.configID)
@@ -386,13 +391,15 @@ func entityProof(entity runtimeEntity) string {
 }
 
 func newEntityResolver() *entityResolver {
-	return &entityResolver{entities: make(map[uint64]runtimeEntity), limit: 8192}
+	return &entityResolver{entities: make(map[uint64]runtimeEntity), limit: 8192, lifecycles: make(map[uint64]entityLifecycle)}
 }
 
 func (r *entityResolver) reset() {
 	r.entities = make(map[uint64]runtimeEntity)
 	r.sequence = 0
 	r.sceneInstanceID, r.hasSceneInstanceID = 0, false
+	r.lifecycles = make(map[uint64]entityLifecycle)
+	r.lifecycleSequence = 0
 }
 
 func (r *entityResolver) observeActiveRequest(body []byte) error {
@@ -442,6 +449,7 @@ func (r *entityResolver) applyEntityAddNotify(body []byte) (int, error) {
 		entity.sourceFieldPath = "EntityAddNotify.EntityPb.Id"
 		entity.lastSeenSequence = r.sequence
 		r.entities[entity.entityID] = entity
+		r.observeLifecycleAdd(entity)
 		r.evictIfNeeded()
 		added++
 	}
@@ -484,6 +492,7 @@ func (r *entityResolver) applyJoinSceneNotify(body []byte) (int, error) {
 
 	r.entities = make(map[uint64]runtimeEntity)
 	r.sceneInstanceID, r.hasSceneInstanceID = instanceID, hasInstanceID
+	snapshotIDs := make([]uint64, 0, len(entities))
 	for _, entity := range entities {
 		if entity.entityID == 0 {
 			continue
@@ -496,8 +505,10 @@ func (r *entityResolver) applyJoinSceneNotify(body []byte) (int, error) {
 		entity.sourceMessageID = 18559
 		entity.lastSeenSequence = r.sequence
 		r.entities[entity.entityID] = entity
+		snapshotIDs = append(snapshotIDs, entity.entityID)
 		r.evictIfNeeded()
 	}
+	r.observeLifecycleSnapshot(snapshotIDs)
 	return len(r.entities), nil
 }
 
@@ -776,6 +787,7 @@ func (r *entityResolver) applyEntityRemoveNotify(body []byte) (int, []uint64, er
 		for _, value := range info {
 			if value.number == 1 && value.wire == 0 && value.value != 0 {
 				removedIDs = append(removedIDs, value.value)
+				r.observeLifecycleRemove(value.value)
 				if _, ok := r.entities[value.value]; ok {
 					delete(r.entities, value.value)
 					removed++
