@@ -50,6 +50,7 @@ func main() {
 	schemaDecodeOut := flag.String("schema-decode-out", "", "optional JSONL of schema-directed decodes of decrypted outer messages (requires -protocol-schema)")
 
 	buffOverlapOut := flag.String("buff-overlap-out", "", "optionally write, per damage result, the Buff instances observed active on its target (packet-time precision)")
+	hpStateOutPath := flag.String("hp-state-out", "", "optional JSONL of Life and LifeMax attribute values per entity (requires -protocol-schema)")
 	frameArchiveOut := flag.String("frame-archive-out", "", "optionally write one local JSONL record per reassembled frame (digests only; no key or plaintext)")
 	research := flag.Bool("research", false, "write per-event evidence details to stderr")
 	commandCensusOut := flag.String("command-census-out", "", "write a local JSON census of protocol commands and decode outcomes")
@@ -226,6 +227,28 @@ func main() {
 			fatal("load protocol schema", err)
 		}
 		processor.protocolSchema = schema
+	}
+	if *hpStateOutPath != "" {
+		if processor.protocolSchema == nil {
+			fatal("hp state output", fmt.Errorf("-hp-state-out requires -protocol-schema"))
+		}
+		if dir := filepath.Dir(*hpStateOutPath); dir != "." {
+			if err := os.MkdirAll(dir, 0o700); err != nil {
+				fatal("create hp state directory", err)
+			}
+		}
+		hpFile, err := os.Create(*hpStateOutPath)
+		if err != nil {
+			fatal("create hp state output", err)
+		}
+		defer hpFile.Close()
+		hpWriter := bufio.NewWriter(hpFile)
+		processor.hpStateOut = hpWriter
+		defer func() {
+			if err := hpWriter.Flush(); err != nil {
+				fmt.Fprintf(os.Stderr, "hp state flush error: %v\n", err)
+			}
+		}()
 	}
 	if *schemaDecodeOut != "" {
 		if processor.protocolSchema == nil {
