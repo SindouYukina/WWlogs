@@ -177,3 +177,16 @@ func TestSchemaDecodeMapEntries(t *testing.T) {
 		t.Fatalf("map entry = %#v", decoded.Fields[0].Value)
 	}
 }
+
+func TestSchemaMessageNameDropsCensusAnnotation(t *testing.T) {
+	cases := map[string]string{
+		"EntityAddNotify (candidate)":     "EntityAddNotify",
+		"CombatRequest (outer transport)": "CombatRequest",
+		"LoginRequest":                    "LoginRequest",
+	}
+	for in, want := range cases {
+		if got := schemaMessageName(in); got != want {
+			t.Fatalf("schemaMessageName(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

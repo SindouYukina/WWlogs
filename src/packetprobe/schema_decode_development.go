@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"strings"
 )
 
 // decodeSchemaMessage decodes data as the named schema message. Nested message
@@ -157,7 +158,7 @@ func (p *processor) archiveSchemaDecode(frame gameFrame, plain []byte) {
 		p.schemaDecodeSkipped++
 		return
 	}
-	name := commandName(frame.commandID)
+	name := schemaMessageName(commandName(frame.commandID))
 	if _, known := p.protocolSchema.Messages[name]; !known {
 		p.schemaDecodeSkipped++
 		return
@@ -270,4 +271,13 @@ func decodeMapEntry(schema *protocolSchema, field schemaField, raw protoField, d
 		return decodedField{}, false
 	}
 	return decodedField{Number: field.Number, Name: field.Name, Kind: "map", Repeated: true, Value: mapEntry{Key: key, Value: value, Message: message}}, true
+}
+
+// schemaMessageName removes the census annotation from a command name. Names such
+// as "EntityAddNotify (candidate)" describe the census status, not the message.
+func schemaMessageName(commandName string) string {
+	if index := strings.Index(commandName, " ("); index >= 0 {
+		return commandName[:index]
+	}
+	return commandName
 }
