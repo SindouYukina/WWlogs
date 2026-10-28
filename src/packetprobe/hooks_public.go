@@ -23,6 +23,15 @@ func (p *processor) observeBuffInterval(row buffLifecycleAuditRow) {
 func (p *processor) observeBuffSnapshot(row buffSnapshotAuditRow) {
 }
 
+func decodeSchemaMessage(schema *protocolSchema, typeName string, data []byte, depth int) (*decodedMessage, error) {
+	var r0 *decodedMessage
+	var r1 error
+	return r0, r1
+}
+
+func (p *processor) archiveClientPushes(frame gameFrame, decoded *decodedMessage) {
+}
+
 func (p *processor) recordDamageForOverlap(event combatEvent) {
 }
 
