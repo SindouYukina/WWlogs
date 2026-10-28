@@ -2,9 +2,7 @@
 
 package main
 
-import (
-	"testing"
-)
+import "testing"
 
 // diagnosticConsole reports whether this build profile prints per-event console diagnostics.
 const diagnosticConsole = false

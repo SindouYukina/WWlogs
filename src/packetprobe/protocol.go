@@ -152,6 +152,10 @@ type processor struct {
 	eventOrder                int
 	hpStateOut                diagWriter
 	damagePushOut             diagWriter
+	clientPushOut             diagWriter
+	clientPushErrors          int
+	activeRoleID              int64
+	hasActiveRole             bool
 	damagePushErrors          int
 	hpStateErrors             int
 	buffIntervals             []*buffInterval
@@ -360,6 +364,8 @@ func (p *processor) handleFrame(frame gameFrame) {
 	if !isImplementedCommand(frame.commandID) {
 		if censusEntry != nil {
 			p.inspectUndecodedFrame(frame, censusEntry)
+		} else {
+			p.archiveUndecodedSchema(frame)
 		}
 		return
 	}
@@ -412,6 +418,7 @@ func (p *processor) handleFrame(frame gameFrame) {
 	p.archiveDamageRPCSchema(frame, plain)
 	p.archiveHPStateFrame(frame, plain)
 	p.archiveDamagePushFrame(frame, plain)
+	p.archiveClientPushFrame(frame, plain)
 	parseErrorsBefore := p.stats.parseErrors
 	switch frame.commandID {
 	case 103, 116:
@@ -524,6 +531,7 @@ func (p *processor) inspectUndecodedFrame(frame gameFrame, entry *commandCensusE
 	}
 	if fields, err := parseProtoFields(plain); err == nil {
 		entry.GenericProtoValid++
+		p.archiveSchemaDecode(frame, plain)
 		entry.observeTopLevelFields(fields)
 		entry.FailureReasons["message schema not implemented"]++
 		if frame.commandID == 24756 {

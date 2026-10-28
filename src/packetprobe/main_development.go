@@ -52,6 +52,7 @@ func main() {
 	buffOverlapOut := flag.String("buff-overlap-out", "", "optionally write, per damage result, the Buff instances observed active on its target (packet-time precision)")
 	hpStateOutPath := flag.String("hp-state-out", "", "optional JSONL of Life and LifeMax attribute values per entity (requires -protocol-schema)")
 	damagePushOutPath := flag.String("damage-push-out", "", "optional JSONL of pushed DamageExecuteNotify records, separate from the damage RPC stream (requires -protocol-schema)")
+	clientPushOutPath := flag.String("client-push-out", "", "optional JSONL of client role reports and skill-end pushes (requires -protocol-schema)")
 	frameArchiveOut := flag.String("frame-archive-out", "", "optionally write one local JSONL record per reassembled frame (digests only; no key or plaintext)")
 	research := flag.Bool("research", false, "write per-event evidence details to stderr")
 	commandCensusOut := flag.String("command-census-out", "", "write a local JSON census of protocol commands and decode outcomes")
@@ -228,6 +229,28 @@ func main() {
 			fatal("load protocol schema", err)
 		}
 		processor.protocolSchema = schema
+	}
+	if *clientPushOutPath != "" {
+		if processor.protocolSchema == nil {
+			fatal("client push output", fmt.Errorf("-client-push-out requires -protocol-schema"))
+		}
+		if dir := filepath.Dir(*clientPushOutPath); dir != "." {
+			if err := os.MkdirAll(dir, 0o700); err != nil {
+				fatal("create client push directory", err)
+			}
+		}
+		clientFile, err := os.Create(*clientPushOutPath)
+		if err != nil {
+			fatal("create client push output", err)
+		}
+		defer clientFile.Close()
+		clientWriter := bufio.NewWriter(clientFile)
+		processor.clientPushOut = clientWriter
+		defer func() {
+			if err := clientWriter.Flush(); err != nil {
+				fmt.Fprintf(os.Stderr, "client push flush error: %v\n", err)
+			}
+		}()
 	}
 	if *damagePushOutPath != "" {
 		if processor.protocolSchema == nil {

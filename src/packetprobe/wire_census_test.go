@@ -1,8 +1,6 @@
 package main
 
-import (
-	"testing"
-)
+import "testing"
 
 func TestTopLevelFieldCountsUseWireFactsOnly(t *testing.T) {
 	// field 1 varint 150, field 2 length-delimited "ab", field 5 fixed32.
