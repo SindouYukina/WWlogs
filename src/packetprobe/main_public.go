@@ -29,6 +29,8 @@ func main() {
 	maxPort := flag.Int("max-port", 13120, "Upper bound of the UDP server port range")
 	duration := flag.Duration("duration", 0, "Live capture duration; 0 runs until Ctrl+C is pressed")
 	pcapIn := flag.String("pcap-in", "", "Replay the specified PCAP file without live capture")
+	masterDatabase := flag.String("master-db", "data/master_data.db", "Read-only combat ID Master SQLite database")
+	masterLocale := flag.String("locale", "zh-TW", "Locale for Master display names: zh-TW, zh-CN, en-US, ja-JP, or ko-KR")
 	filter := flag.String("filter", "", "Optionally specify a BPF filter; defaults to the configured UDP port range")
 	stopFile := flag.String("stop-file", "", "Stop live capture cleanly when the specified file appears")
 	preflight := flag.Bool("preflight", false, "Check whether the specified Npcap interface can be opened and filtered")
@@ -51,6 +53,10 @@ func main() {
 	filterExpression := *filter
 	if filterExpression == "" {
 		filterExpression = fmt.Sprintf("udp and portrange %d-%d", *minPort, *maxPort)
+	}
+	masters, err := loadGameMasterDatabase(*masterDatabase, *masterLocale)
+	if err != nil {
+		fatal("load combat master SQLite", err)
 	}
 	if *preflight {
 		device, err := findDeviceByIP(*ip)
@@ -76,6 +82,7 @@ func main() {
 	defer stdout.Flush()
 	// The processor's own console and audit sinks are discarded: per-event lines are a development feature.
 	processor := newProcessor(rsaKey, io.Discard, os.Stderr, nil)
+	processor.masters = masters
 
 	var handle *pcap.Handle
 	if *pcapIn != "" {

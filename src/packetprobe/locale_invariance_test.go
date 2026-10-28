@@ -35,7 +35,7 @@ func TestAttributionIDsDoNotDependOnLocalizedMasterNames(t *testing.T) {
 	var baseline attributionIDs
 	for index, label := range labels {
 		master := &gameMaster{
-			manifest: masterManifest{GameVersion: "3.7.1", ResourceVersion: "3.7.1", Language: label.locale},
+			manifest: masterManifest{Language: label.locale},
 			characters: map[uint64]masterRecord{
 				1312: {
 					ID: 1312, Name: label.characterName, NameStatus: string(resolutionVerified),
@@ -54,8 +54,7 @@ func TestAttributionIDsDoNotDependOnLocalizedMasterNames(t *testing.T) {
 			},
 			damage: map[uint64]damageMasterRecord{
 				131201101: {
-					ID: 131201101, CalculateType: 0, GameVersion: "3.7.1",
-					ResourceVersion: "3.7.1", SourceCommit: "fixture", SourceTable: "Damage",
+					ID: 131201101, CalculateType: 0, SourceTable: "Damage",
 				},
 			},
 		}
