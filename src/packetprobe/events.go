@@ -71,6 +71,8 @@ type combatEventMasterIDJSONL struct {
 }
 
 type combatEventTemplateJSONL struct {
+	Name         string                              `json:"name,omitempty"`
+	Subtitle     string                              `json:"subtitle,omitempty"`
 	IdentityType string                              `json:"identityType"`
 	Status       resolutionStatus                    `json:"status"`
 	NameStatus   resolutionStatus                    `json:"nameStatus"`
@@ -78,11 +80,7 @@ type combatEventTemplateJSONL struct {
 	Evidence     string                              `json:"evidence,omitempty"`
 }
 
-type combatEventTemplateCandidateJSONL struct {
-	TemplateID    uint64 `json:"templateId"`
-	BlueprintType string `json:"blueprintType"`
-	RawName       string `json:"rawName,omitempty"`
-}
+type combatEventTemplateCandidateJSONL sceneTemplateCandidate
 
 type combatEventCreditJSONL struct {
 	CharacterID *uint64          `json:"characterId,omitempty"`
@@ -440,4 +438,15 @@ func masterLocale(masters *gameMaster) string {
 		return ""
 	}
 	return masters.locale
+}
+
+func sceneTemplateEventLabel(identity entityIdentity, entityID string) (string, bool) {
+	if len(identity.TemplateCandidates) != 1 || identity.TemplateStatus == resolutionUnknown {
+		return "", false
+	}
+	candidate := identity.TemplateCandidates[0]
+	if candidate.Name == "" || candidate.NameStatus != string(resolutionVerified) {
+		return "", false
+	}
+	return fmt.Sprintf("%s [Template:%d; %s] [Entity:%s]", candidate.Name, candidate.TemplateID, identity.TemplateStatus, entityID), true
 }

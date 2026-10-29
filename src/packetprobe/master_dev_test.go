@@ -7,6 +7,33 @@ import (
 	"testing"
 )
 
+func TestSceneTemplateDisplayRequiresUniqueLocalizedCandidate(t *testing.T) {
+	candidate := sceneTemplateCandidate{TemplateID: 7, Name: "Localized Boss", NameStatus: string(resolutionVerified), NameTextKey: "Entity.Name", Language: "en-US"}
+	for _, count := range []int{1, 2} {
+		identity := entityIdentity{TemplateStatus: resolutionCorrelated, TemplateCandidates: []sceneTemplateCandidate{candidate}}
+		if count == 2 {
+			identity.TemplateCandidates = append(identity.TemplateCandidates, sceneTemplateCandidate{TemplateID: 8, Name: "Localized Boss", NameStatus: string(resolutionVerified)})
+		}
+		destination := combatEventEntityJSONL{}
+		applySceneTemplateJSONL(&destination, identity)
+		if count == 1 && (destination.SceneTemplate.Name != "Localized Boss" || destination.SceneTemplate.NameStatus != resolutionVerified) {
+			t.Fatalf("unique localized name not exposed: %+v", destination.SceneTemplate)
+		}
+		if count == 2 && (destination.SceneTemplate.Name != "" || destination.SceneTemplate.NameStatus != resolutionUnknown) {
+			t.Fatalf("ambiguous names selected a candidate: %+v", destination.SceneTemplate)
+		}
+	}
+}
+
+func TestUnknownTemplateIdentityDoesNotPublishLocalizedTopLevelName(t *testing.T) {
+	identity := entityIdentity{TemplateStatus: resolutionUnknown, TemplateCandidates: []sceneTemplateCandidate{{TemplateID: 7, Name: "Candidate", NameStatus: string(resolutionVerified)}}}
+	destination := combatEventEntityJSONL{}
+	applySceneTemplateJSONL(&destination, identity)
+	if destination.SceneTemplate.Name != "" || destination.SceneTemplate.NameStatus != resolutionUnknown {
+		t.Fatalf("unknown identity published a display name: %+v", destination.SceneTemplate)
+	}
+}
+
 func TestSceneTemplateResolutionDoesNotConflateTemplateConfigWithMonsterId(t *testing.T) {
 	master := testSceneTemplateMaster([]sceneTemplateCandidate{{
 		TemplateID: 667000003, BlueprintType: "Monster_branch1.3_013", RawName: "internal boss label",

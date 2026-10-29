@@ -30,7 +30,12 @@ type masterManifest struct {
 type sceneTemplateCandidate struct {
 	TemplateID    uint64 `json:"templateId"`
 	BlueprintType string `json:"blueprintType"`
-	RawName       string `json:"rawName"`
+	RawName       string `json:"rawName,omitempty"`
+	Name          string `json:"name,omitempty"`
+	NameStatus    string `json:"nameStatus"`
+	NameTextKey   string `json:"nameTextKey,omitempty"`
+	Subtitle      string `json:"subtitle,omitempty"`
+	Language      string `json:"language,omitempty"`
 }
 
 type sceneIdentityMaster struct {

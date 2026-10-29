@@ -110,9 +110,18 @@ func applySceneTemplateJSONL(destination *combatEventEntityJSONL, identity entit
 		Evidence:     identity.TemplateProof,
 	}
 	for _, candidate := range identity.TemplateCandidates {
-		template.Candidates = append(template.Candidates, combatEventTemplateCandidateJSONL{
-			TemplateID: candidate.TemplateID, BlueprintType: candidate.BlueprintType, RawName: candidate.RawName,
-		})
+		if candidate.NameStatus == "" {
+			candidate.NameStatus = string(resolutionUnknown)
+		}
+		template.Candidates = append(template.Candidates, combatEventTemplateCandidateJSONL(candidate))
+	}
+	if len(identity.TemplateCandidates) == 1 && (identity.TemplateStatus == resolutionCorrelated || identity.TemplateStatus == resolutionVerified) {
+		candidate := identity.TemplateCandidates[0]
+		if candidate.Name != "" && candidate.NameStatus == string(resolutionVerified) {
+			template.Name = candidate.Name
+			template.Subtitle = candidate.Subtitle
+			template.NameStatus = resolutionVerified
+		}
 	}
 	destination.SceneTemplate = template
 }
@@ -242,6 +251,12 @@ func (event combatEvent) formatNormal() string {
 		} else {
 			target = fmt.Sprintf("Character:%d [name %s] [Entity:%s]", event.Target.Character.ID, event.Target.Character.NameStatus, targetID)
 		}
+	}
+	if label, ok := sceneTemplateEventLabel(event.Target, targetID); ok && !event.Target.HasMonster && !event.Target.HasCharacter {
+		target = label
+	}
+	if label, ok := sceneTemplateEventLabel(event.Source, sourceID); ok && !event.Source.HasMonster && !event.Source.HasCharacter {
+		source = label
 	}
 	line := fmt.Sprintf("%s  %s  %s  [%s]  %s  %s", timestamp, source, skill, provenance, credit, target)
 	if event.SummonerCharacter.HasCharacterID {
