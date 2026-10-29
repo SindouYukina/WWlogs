@@ -67,3 +67,68 @@ func TestClientPushSkillBeforeAnyRoleReportHasNoActiveRole(t *testing.T) {
 		t.Fatalf("active role = %v, want absent before any report", *row.ActiveRoleID)
 	}
 }
+
+func TestCombatActionRequestCapturedWithoutClientPushOutput(t *testing.T) {
+	p := &processor{combatActionRequests: make(map[combatActionRequestKey]combatActionRequest)}
+	info := &decodedMessage{Fields: []decodedField{
+		{Name: "SkillId", Value: int64(280026010)},
+		{Name: "TargetId", Value: int64(28288)},
+	}}
+	request := &decodedMessage{Fields: []decodedField{
+		{Name: "CombatCommon", Message: &decodedMessage{Fields: []decodedField{
+			{Name: "MessageId", Value: int64(1152921504606850898)},
+			{Name: "EntityId", Value: int64(27736)},
+		}}},
+		{Name: "UseSkillRequest", Message: &decodedMessage{Fields: []decodedField{{Name: "UseSkillInfo", Message: info}}}},
+	}}
+	p.observeCombatActionRequest(gameFrame{timestamp: time.Date(2026, 10, 28, 4, 58, 26, 0, time.UTC)}, request)
+
+	got, ok := p.combatActionRequests[combatActionRequestKey{sessionNumber: 0, messageID: 1152921504606850898}]
+	if !ok || got.SkillID != 280026010 || got.EntityID != 27736 || got.TargetID != 28288 || got.RequestType != "UseSkillRequest" {
+		t.Fatalf("captured action = %+v, present=%v", got, ok)
+	}
+
+	pending := pendingDamageRequest{skillMessageID: got.MessageID}
+	event := (&processor{combatActionRequests: p.combatActionRequests, entities: newEntityResolver()}).buildDamageEvent(1, pending, 0, 0, false, 1)
+	if event.SkillRequest == nil || event.SkillRequest.SkillID != got.SkillID {
+		t.Fatalf("damage request did not link exact outbound action: %+v", event.SkillRequest)
+	}
+}
+
+func TestSkillRequestIsArchivedEvenWhenNoDamageIsObserved(t *testing.T) {
+	var out strings.Builder
+	p := &processor{clientPushOut: &out, combatActionRequests: make(map[combatActionRequestKey]combatActionRequest), frameOrdinal: 1, sessionNumber: 1}
+	info := &decodedMessage{Fields: []decodedField{
+		{Name: "SkillId", Value: int64(7001001)},
+		{Name: "TargetId", Value: int64(28288)},
+	}}
+	request := &decodedMessage{Fields: []decodedField{
+		{Name: "CombatCommon", Message: &decodedMessage{Fields: []decodedField{
+			{Name: "MessageId", Value: int64(9001)},
+			{Name: "EntityId", Value: int64(27734)},
+		}}},
+		{Name: "UseSkillRequest", Message: &decodedMessage{Fields: []decodedField{{Name: "UseSkillInfo", Message: info}}}},
+	}}
+	data := &decodedMessage{Fields: []decodedField{{Name: "Request", Message: request}}}
+	decoded := &decodedMessage{Fields: []decodedField{{Name: "Data", Message: data}}}
+	p.archiveClientPushes(gameFrame{commandID: 19470, timestamp: time.Date(2026, 10, 28, 4, 58, 26, 0, time.UTC)}, decoded)
+
+	var row clientPushRecord
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &row); err != nil {
+		t.Fatalf("request row: %v", err)
+	}
+	if row.PushName != "SkillActionRequest" || row.MessageID == nil || *row.MessageID != 9001 || row.TargetEntityID == nil || *row.TargetEntityID != 28288 {
+		t.Fatalf("request row = %+v", row)
+	}
+	if !strings.Contains(row.Evidence, "do not establish a miss") {
+		t.Fatalf("request evidence = %q", row.Evidence)
+	}
+	key := combatActionRequestKey{sessionNumber: 1, messageID: 9001}
+	action := p.combatActionRequests[key]
+	action.LinkedDamageEvents = 1
+	p.combatActionRequests[key] = action
+	p.observeCombatActionRequest(gameFrame{}, request)
+	if p.combatActionRequests[key].LinkedDamageEvents != 1 || strings.Count(strings.TrimSpace(out.String()), "\n") != 0 {
+		t.Fatalf("duplicate request changed the action link count or emitted a duplicate row: %+v", p.combatActionRequests[key])
+	}
+}

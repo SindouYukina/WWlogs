@@ -30,6 +30,16 @@ type encounterSummary struct {
 	eventCount                      int
 	combatResultAbs                 int64
 	damageCandidates                int64
+	partyToEnemyCandidateAbs        int64
+	partyToEnemyCandidateEvents     int
+	partyToBossCandidateAbs         int64
+	partyToBossCandidateEvents      int
+	enemyToPartyCandidateAbs        int64
+	enemyToPartyCandidateEvents     int
+	bossToPartyCandidateAbs         int64
+	bossToPartyCandidateEvents      int
+	unknownDirectionDamageAbs       int64
+	unknownDirectionDamageEvents    int
 	healCandidates                  int64
 	otherCandidates                 int64
 	unclassified                    int64

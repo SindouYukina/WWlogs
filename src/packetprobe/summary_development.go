@@ -64,6 +64,7 @@ func (p *processor) observeEncounterSummary(event combatEvent) {
 	switch event.EventTypeCandidate {
 	case "DAMAGE_CANDIDATE":
 		summary.damageCandidates += event.Damage
+		observeDamageDirection(summary, event)
 	case "HEALING_CANDIDATE":
 		summary.healCandidates += event.Damage
 	case "OTHER_COMBAT_RESULT_CANDIDATE":
@@ -118,6 +119,33 @@ func (p *processor) observeEncounterSummary(event combatEvent) {
 	}
 	addBossCandidate(summary, event.Source)
 	addBossCandidate(summary, event.Target)
+}
+
+func observeDamageDirection(summary *encounterSummary, event combatEvent) {
+	if isCreditedCharacterStatus(event.CharacterStatus) && event.CharacterID != 0 && isEnemyEntityIdentity(event.Target) {
+		summary.partyToEnemyCandidateAbs += event.Damage
+		summary.partyToEnemyCandidateEvents++
+		if len(event.Target.TemplateCandidates) > 0 {
+			summary.partyToBossCandidateAbs += event.Damage
+			summary.partyToBossCandidateEvents++
+		}
+		return
+	}
+	if event.Target.HasCharacter && (event.Target.CharacterStatus == resolutionVerified || event.Target.CharacterStatus == resolutionCorrelated) && isEnemyEntityIdentity(event.Source) {
+		summary.enemyToPartyCandidateAbs += event.Damage
+		summary.enemyToPartyCandidateEvents++
+		if len(event.Source.TemplateCandidates) > 0 {
+			summary.bossToPartyCandidateAbs += event.Damage
+			summary.bossToPartyCandidateEvents++
+		}
+		return
+	}
+	summary.unknownDirectionDamageAbs += event.Damage
+	summary.unknownDirectionDamageEvents++
+}
+
+func isEnemyEntityIdentity(identity entityIdentity) bool {
+	return identity.HasMonster || len(identity.TemplateCandidates) > 0
 }
 
 func addUncreditedEvent(summary *encounterSummary, event combatEvent) {
@@ -441,11 +469,98 @@ func (p *processor) writeEncounterSummary() error {
 		return !keys[i].overflow && keys[j].overflow
 	})
 	if len(keys) == 0 {
-		_, err := fmt.Fprintln(p.encounterSummary, "\nNo matched combat events were observed.")
+		if _, err := fmt.Fprintln(p.encounterSummary, "\nNo matched combat events were observed."); err != nil {
+			return err
+		}
+	} else {
+		for _, key := range keys {
+			if err := writeOneEncounterSummary(p.encounterSummary, p.encounterSummaries[key]); err != nil {
+				return err
+			}
+		}
+	}
+	if err := writeCombatActionRequests(p.encounterSummary, p); err != nil {
+		return err
+	}
+	return writeTimerObservations(p.encounterSummary, p.timerObservations)
+}
+
+func writeTimerObservations(w io.Writer, observations []timerObservation) error {
+	if _, err := fmt.Fprintln(w, "\n## Challenge timers"); err != nil {
+		return err
+	}
+	if len(observations) == 0 {
+		_, err := fmt.Fprintln(w, "\n- No UpdateTimerInfoNotify timer was observed; remaining time UNKNOWN.")
+		return err
+	}
+	for _, observation := range observations {
+		if _, err := fmt.Fprintf(w, "\n- Session %d; %s; NodeId %s; EndTime %s; observed at frame %d (%s)",
+			observation.sessionNumber, summaryTextLabel(observation.timerType), summaryInt64Label(observation.nodeID, observation.hasNodeID),
+			summaryInt64Label(observation.endTime, observation.hasEndTime), observation.frameOrdinal, formatSummaryTime(observation.timestamp)); err != nil {
+			return err
+		}
+		if observation.hasEndTime && observation.priorFlowTime > 0 && observation.nextFlowTime > 0 && observation.nextFlowTime >= observation.priorFlowTime {
+			lowerMS := observation.endTime - observation.nextFlowTime
+			upperMS := observation.endTime - observation.priorFlowTime
+			if _, err := fmt.Fprintf(w, "; remaining at timer observation approximately %.3f-%.3f seconds [CORRELATED; bounded by adjacent FlowTime samples at frames %d and %d]\n",
+				float64(lowerMS)/1000, float64(upperMS)/1000, observation.priorFlowFrame, observation.nextFlowFrame); err != nil {
+				return err
+			}
+		} else if _, err := fmt.Fprintln(w, "; remaining time UNKNOWN (no valid FlowTime bracket)."); err != nil {
+			return err
+		}
+	}
+	if _, err := fmt.Fprintln(w, "\nFlowTime and EndTime share a candidate millisecond timebase in this capture. The range uses FlowTime samples immediately before and after each timer update; validate against the in-game display before treating it as exact UI time."); err != nil {
+		return err
+	}
+	return nil
+}
+
+func summaryTextLabel(value string) string {
+	if value == "" {
+		return "UNKNOWN"
+	}
+	return value
+}
+
+func writeCombatActionRequests(w io.Writer, p *processor) error {
+	if _, err := fmt.Fprintln(w, "\n## Outbound skill requests"); err != nil {
+		return err
+	}
+	keys := make([]combatActionRequestKey, 0, len(p.combatActionRequests))
+	for key := range p.combatActionRequests {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		if keys[i].sessionNumber != keys[j].sessionNumber {
+			return keys[i].sessionNumber < keys[j].sessionNumber
+		}
+		return keys[i].messageID < keys[j].messageID
+	})
+	linked, unlinked := 0, 0
+	for _, key := range keys {
+		if p.combatActionRequests[key].LinkedDamageEvents > 0 {
+			linked++
+		} else {
+			unlinked++
+		}
+	}
+	if _, err := fmt.Fprintf(w, "\n- Captured skill requests: %d\n- Requests linked to one or more server damage results by exact MessageId: %d\n- Requests with no correlated damage result: %d (not sufficient to label a miss; may be non-damaging or unobserved)\n", len(keys), linked, unlinked); err != nil {
+		return err
+	}
+	if len(keys) == 0 {
+		_, err := fmt.Fprintln(w, "\n- No outbound skill requests were observed or decoded.")
 		return err
 	}
 	for _, key := range keys {
-		if err := writeOneEncounterSummary(p.encounterSummary, p.encounterSummaries[key]); err != nil {
+		action := p.combatActionRequests[key]
+		status := "NO_CORRELATED_DAMAGE_RESULT"
+		if action.LinkedDamageEvents > 0 {
+			status = "LINKED_TO_SERVER_DAMAGE_RESULT"
+		}
+		if _, err := fmt.Fprintf(w, "\n- Session %d; %s; MessageId %d; EntityId %s; SkillId %d; TargetId %s; linked damage results %d\n",
+			action.SessionNumber, status, action.MessageID, summaryIDLabel(action.EntityID, action.EntityID != 0), action.SkillID,
+			summaryIDLabel(action.TargetID, action.TargetID != 0), action.LinkedDamageEvents); err != nil {
 			return err
 		}
 	}
@@ -488,6 +603,17 @@ func writeOneEncounterSummary(w io.Writer, summary *encounterSummary) error {
 		formatSummaryTime(summary.startedAt), formatSummaryTime(summary.endedAt), summary.eventCount, summary.combatResultAbs,
 		summary.damageCandidates, summary.healCandidates, summary.otherCandidates, summary.unclassified,
 		summary.unknownCredit, summary.unknownCreditAbs, summary.identityBackfilledEvents); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "\n### Damage direction candidates\n\n- Credited party character to enemy: %d event(s), reported magnitude %d\n- Credited party character to Boss template candidate: %d event(s), reported magnitude %d\n- Enemy to credited party character: %d event(s), reported magnitude %d\n- Boss template candidate to credited party character: %d event(s), reported magnitude %d\n- Direction unresolved: %d event(s), reported magnitude %d\n",
+		summary.partyToEnemyCandidateEvents, summary.partyToEnemyCandidateAbs,
+		summary.partyToBossCandidateEvents, summary.partyToBossCandidateAbs,
+		summary.enemyToPartyCandidateEvents, summary.enemyToPartyCandidateAbs,
+		summary.bossToPartyCandidateEvents, summary.bossToPartyCandidateAbs,
+		summary.unknownDirectionDamageEvents, summary.unknownDirectionDamageAbs); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintln(w, "These counts include only direction-classified damage candidates observed in this capture scope. A zero count means no qualifying event was observed; it does not establish that the game dealt zero damage."); err != nil {
 		return err
 	}
 	if summary.identityBackfillEventsOmitted > 0 {
