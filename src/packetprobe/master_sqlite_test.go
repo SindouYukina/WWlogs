@@ -168,3 +168,92 @@ func buildMasterDatabaseFixture(t *testing.T) string {
 	}
 	return path
 }
+
+func TestRuntimeSkillDefinitionsRetainMultipleActorBindingsWithoutInferringOwner(t *testing.T) {
+	path := buildMasterDatabaseFixture(t)
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, query := range []string{
+		"CREATE TABLE entityskillpreload(id TEXT PRIMARY KEY,skill_id TEXT)",
+		"CREATE INDEX idx_preload_skill ON entityskillpreload(skill_id)",
+		"INSERT INTO skilldescription VALUES('9001',NULL),('9002',NULL)",
+		"INSERT INTO entityskillpreload VALUES('1','9001'),('2','9001'),('3','9002')",
+	} {
+		if _, err := db.Exec(query); err != nil {
+			t.Fatal(err)
+		}
+	}
+	db.Close()
+	master, err := loadGameMasterDatabase(path, "zh-TW")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(master.skills) != 3 {
+		t.Fatalf("duplicate actor bindings multiplied skill definitions: %d", len(master.skills))
+	}
+	for _, id := range []uint64{9001, 9002} {
+		record := master.skills[id]
+		if record.Status != string(resolutionVerified) || record.NameStatus != string(resolutionUnknown) || record.Name != "" || record.RoleID != 0 || record.SourceTable != "EntitySkillPreload.SkillId -> skilldescription (group UNKNOWN)" {
+			t.Fatalf("runtime definition fabricated a name or owner: %+v", record)
+		}
+	}
+	if master.skills[1312].Name != "測試技能" {
+		t.Fatal("existing description label was overwritten")
+	}
+}
+
+func TestTemplateNamesUseRequestedLocaleAndNeverFallBackToRawLabels(t *testing.T) {
+	path := buildMasterDatabaseFixture(t)
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, query := range []string{
+		"ALTER TABLE templateconfig ADD COLUMN tid_name TEXT",
+		"UPDATE templateconfig SET tid_name='Entity.Name'",
+		"CREATE TABLE templateconfig_locale(id TEXT,locale TEXT,name TEXT,name_text_key TEXT,subtitle TEXT,PRIMARY KEY(id,locale))",
+		"INSERT INTO templateconfig_locale VALUES('18446744073709551613','zh-TW','測試王','Entity.Name','測試稱號')",
+		"INSERT INTO templateconfig_locale VALUES('18446744073709551613','en-US','Test Boss','Entity.Name',NULL)",
+		"INSERT INTO templateconfig_locale VALUES('18446744073709551613','ja-JP','dnt/internal','Entity.Name',NULL)",
+		"INSERT INTO templateconfig_locale VALUES('18446744073709551613','zh-CN','Wrong name','Other.Key',NULL)",
+	} {
+		if _, err := db.Exec(query); err != nil {
+			t.Fatal(err)
+		}
+	}
+	db.Close()
+	for _, item := range []struct{ locale, name string }{{"zh-TW", "測試王"}, {"en-US", "Test Boss"}, {"ko-KR", ""}, {"ja-JP", ""}, {"zh-CN", ""}} {
+		master, err := loadGameMasterDatabase(path, item.locale)
+		if err != nil {
+			t.Fatal(err)
+		}
+		candidates, ok := master.sceneTemplates(50, 500)
+		if !ok || len(candidates) != 1 || candidates[0].Name != item.name {
+			t.Fatalf("locale %s resolved %+v", item.locale, candidates)
+		}
+		expected := string(resolutionVerified)
+		if item.name == "" {
+			expected = string(resolutionUnknown)
+		}
+		if candidates[0].NameStatus != expected {
+			t.Fatalf("locale %s status %+v", item.locale, candidates)
+		}
+	}
+}
+
+func TestMalformedOptionalTemplateLocaleFailsObservably(t *testing.T) {
+	path := buildMasterDatabaseFixture(t)
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("CREATE TABLE templateconfig_locale(id TEXT,locale TEXT,name TEXT)"); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+	if _, err := loadGameMasterDatabase(path, "zh-TW"); err == nil {
+		t.Fatal("malformed locale schema was silently accepted")
+	}
+}

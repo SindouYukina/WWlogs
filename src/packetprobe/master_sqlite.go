@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	_ "modernc.org/sqlite"
 )
@@ -162,8 +163,16 @@ func loadSQLiteSkills(db *sql.DB, locale string, master *gameMaster) error {
 	}
 	rows.Close()
 
+	hasPreload, err := masterTableExists(db, "entityskillpreload")
+	if err != nil {
+		return err
+	}
+	preloadMatch := "0"
+	if hasPreload {
+		preloadMatch = "EXISTS(SELECT 1 FROM entityskillpreload p WHERE p.skill_id=d.id)"
+	}
 	rows, err = db.Query(`SELECT d.id,d.skill_level_group_id,
-		(SELECT skill_group_id FROM skill WHERE skill_level_group_id=d.skill_level_group_id ORDER BY id LIMIT 1),l.name
+		(SELECT skill_group_id FROM skill WHERE skill_level_group_id=d.skill_level_group_id ORDER BY id LIMIT 1),l.name,`+preloadMatch+`
 		FROM skilldescription d
 		LEFT JOIN skilldescription_locale l ON l.id=d.id AND l.locale=?
 		ORDER BY d.id`, locale)
@@ -176,7 +185,8 @@ func loadSQLiteSkills(db *sql.DB, locale string, master *gameMaster) error {
 		var rawLevelGroup sql.NullString
 		var rawGroup sql.NullString
 		var name sql.NullString
-		if err := rows.Scan(&rawID, &rawLevelGroup, &rawGroup, &name); err != nil {
+		var hasRuntimeBinding bool
+		if err := rows.Scan(&rawID, &rawLevelGroup, &rawGroup, &name, &hasRuntimeBinding); err != nil {
 			return fmt.Errorf("read skill description: %w", err)
 		}
 		id, err := parseMasterID(rawID, "skilldescription")
@@ -191,6 +201,9 @@ func loadSQLiteSkills(db *sql.DB, locale string, master *gameMaster) error {
 			record.NameStatus = string(resolutionUnknown)
 		} else {
 			record.NameStatus = string(resolutionVerified)
+		}
+		if hasRuntimeBinding && !rawLevelGroup.Valid {
+			record.SourceTable = "EntitySkillPreload.SkillId -> skilldescription (group UNKNOWN)"
 		}
 		record.NameKind = "SkillName"
 		if rawLevelGroup.Valid && rawGroup.Valid {
@@ -328,21 +341,39 @@ func loadSQLiteScene(db *sql.DB, master *gameMaster) error {
 }
 
 func loadTemplateCatalog(db *sql.DB, master *gameMaster) error {
-	rows, err := db.Query("SELECT id,blueprint_type,raw_name FROM templateconfig ORDER BY id")
+	hasTemplateLocales, err := masterTableExists(db, "templateconfig_locale")
+	if err != nil {
+		return err
+	}
+	query := "SELECT id,blueprint_type,raw_name,NULL,NULL,NULL FROM templateconfig ORDER BY id"
+	args := []any{}
+	if hasTemplateLocales {
+		query = `SELECT t.id,t.blueprint_type,t.raw_name,l.name,l.name_text_key,l.subtitle FROM templateconfig t LEFT JOIN templateconfig_locale l ON l.id=t.id AND l.locale=? AND l.name_text_key=t.tid_name ORDER BY t.id`
+		args = append(args, master.locale)
+	}
+	rows, err := db.Query(query, args...)
 	if err != nil {
 		return fmt.Errorf("query scene template catalog: %w", err)
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var rawID, blueprintType, rawName string
-		if err := rows.Scan(&rawID, &blueprintType, &rawName); err != nil {
+		var name, textKey, subtitle sql.NullString
+		if err := rows.Scan(&rawID, &blueprintType, &rawName, &name, &textKey, &subtitle); err != nil {
 			return fmt.Errorf("read scene template catalog: %w", err)
 		}
 		id, err := parseMasterID(rawID, "templateconfig")
 		if err != nil {
 			return err
 		}
-		master.sceneIdentity.templateCatalog[id] = sceneTemplateCandidate{TemplateID: id, BlueprintType: blueprintType, RawName: rawName}
+		candidate := sceneTemplateCandidate{TemplateID: id, BlueprintType: blueprintType, RawName: rawName, NameStatus: string(resolutionUnknown), Language: master.locale}
+		if name.Valid && strings.TrimSpace(name.String) != "" && !strings.HasPrefix(strings.ToLower(strings.TrimSpace(name.String)), "dnt/") && textKey.Valid && textKey.String != "" {
+			candidate.Name = name.String
+			candidate.NameTextKey = textKey.String
+			candidate.NameStatus = string(resolutionVerified)
+			candidate.Subtitle = subtitle.String
+		}
+		master.sceneIdentity.templateCatalog[id] = candidate
 	}
 	return rows.Err()
 }
@@ -399,4 +430,12 @@ func hashFile(path string) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(hash.Sum(nil)), nil
+}
+
+func masterTableExists(db *sql.DB, table string) (bool, error) {
+	var count int
+	if err := db.QueryRow("SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?", table).Scan(&count); err != nil {
+		return false, fmt.Errorf("inspect optional master table %s: %w", table, err)
+	}
+	return count == 1, nil
 }
