@@ -166,11 +166,16 @@ func TestEncounterSummaryWithoutEventsReportsNoMatchedEvents(t *testing.T) {
 	var output bytes.Buffer
 	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
 	p.encounterSummary = &output
+	key := combatActionRequestKey{sessionNumber: 1, messageID: 9}
+	p.combatActionRequests[key] = combatActionRequest{SessionNumber: 1, MessageID: 9, SkillID: 1001}
 	if err := p.writeEncounterSummary(); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(output.String(), "No matched combat events were observed.") {
 		t.Fatalf("empty summary = %q", output.String())
+	}
+	if !strings.Contains(output.String(), "NO_CORRELATED_DAMAGE_RESULT") || !strings.Contains(output.String(), "not sufficient to label a miss") {
+		t.Fatalf("skill request without a damage result was not preserved: %q", output.String())
 	}
 }
 

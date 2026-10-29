@@ -153,6 +153,12 @@ type processor struct {
 	hpStateOut                diagWriter
 	damagePushOut             diagWriter
 	clientPushOut             diagWriter
+	combatActionRequests      map[combatActionRequestKey]combatActionRequest
+	combatActionOrder         []combatActionRequestKey
+	flowTime                  int64
+	hasFlowTime               bool
+	flowTimeFrame             uint64
+	timerObservations         []timerObservation
 	summonOwnerOut            diagWriter
 	summonOwnerErrors         int
 	clientPushErrors          int
@@ -176,15 +182,16 @@ type processor struct {
 
 func newProcessor(rsaKey *staticRSA, stdout, diagnostic, audit io.Writer) *processor {
 	return &processor{
-		rsa:            rsaKey,
-		pending:        make(map[uint64]pendingDamageRequest),
-		consumed:       make(map[uint64]uint64),
-		activeRequests: make(map[uint16]pendingActiveRequest),
-		entities:       newEntityResolver(),
-		sourceRoles:    newSourceRoleResolver(),
-		stdout:         stdout,
-		diagnostic:     diagnostic,
-		audit:          audit,
+		rsa:                  rsaKey,
+		pending:              make(map[uint64]pendingDamageRequest),
+		consumed:             make(map[uint64]uint64),
+		activeRequests:       make(map[uint16]pendingActiveRequest),
+		combatActionRequests: make(map[combatActionRequestKey]combatActionRequest),
+		entities:             newEntityResolver(),
+		sourceRoles:          newSourceRoleResolver(),
+		stdout:               stdout,
+		diagnostic:           diagnostic,
+		audit:                audit,
 	}
 }
 
@@ -331,7 +338,7 @@ func crc32IEEE(data []byte) uint32 {
 // handleFrame. Other commands are only counted and inspected by the census.
 func isImplementedCommand(commandID uint16) bool {
 	switch commandID {
-	case 103, 116, 19470, 20332, 25706, 17286, 18559, 25185, 17769, 28481, 26702, 25830, 18345, 20358, 17893, 22102, 29363, 16974:
+	case 103, 116, 19470, 20332, 25706, 17250, 17286, 18559, 25185, 17769, 28030, 28481, 26702, 25830, 18345, 20358, 17893, 22102, 29363, 16974:
 		return true
 	}
 	return false
@@ -371,7 +378,7 @@ func (p *processor) handleFrame(frame gameFrame) {
 		}
 		return
 	}
-	if ((frame.commandID == 103 || frame.commandID == 116 || frame.commandID == 19470 || frame.commandID == 28481) && frame.direction != "out") || ((frame.commandID == 20332 || frame.commandID == 25706 || frame.commandID == 17286 || frame.commandID == 18559 || frame.commandID == 25185 || frame.commandID == 17769 || frame.commandID == 26702 || frame.commandID == 25830 || frame.commandID == 18345 || frame.commandID == 20358 || frame.commandID == 17893 || frame.commandID == 22102 || frame.commandID == 29363 || frame.commandID == 16974) && frame.direction != "in") {
+	if ((frame.commandID == 103 || frame.commandID == 116 || frame.commandID == 19470 || frame.commandID == 28481) && frame.direction != "out") || ((frame.commandID == 20332 || frame.commandID == 25706 || frame.commandID == 17250 || frame.commandID == 17286 || frame.commandID == 18559 || frame.commandID == 25185 || frame.commandID == 17769 || frame.commandID == 28030 || frame.commandID == 26702 || frame.commandID == 25830 || frame.commandID == 18345 || frame.commandID == 20358 || frame.commandID == 17893 || frame.commandID == 22102 || frame.commandID == 29363 || frame.commandID == 16974) && frame.direction != "in") {
 		p.stats.otherFrameDirections++
 		if censusEntry != nil {
 			censusEntry.FailureReasons["direction differs from implemented schema"]++
@@ -434,6 +441,9 @@ func (p *processor) handleFrame(frame gameFrame) {
 		p.handleDamageRequests(plain)
 	case 20332:
 		p.handleDamageResponses(plain)
+	case 17250, 28030:
+		// TimeCheckResponse and UpdateTimerInfoNotify are interpreted by the
+		// schema-directed observer to preserve their observed field provenance.
 	case 25706:
 		if err := p.handleCombatReceivePackNotify(frame, plain); err != nil {
 			p.stats.parseErrors++
@@ -615,6 +625,9 @@ func (p *processor) handleProtoKeyResponse(body []byte) error {
 	p.sourceRoles.reset()
 	p.resetPendingSummaryCredits()
 	p.activeRequests = make(map[uint16]pendingActiveRequest)
+	p.flowTime = 0
+	p.hasFlowTime = false
+	p.flowTimeFrame = 0
 	p.sessionGeneration++
 	fmt.Fprintln(p.diagnostic, "session_key_ready bytes=32 value=redacted")
 	return nil

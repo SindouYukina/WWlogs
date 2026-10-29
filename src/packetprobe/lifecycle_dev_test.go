@@ -50,8 +50,8 @@ func TestCombatEventJSONLExposesRawAndNormalizedLifecycle(t *testing.T) {
 	if err := json.Unmarshal(jsonl.Bytes(), &got); err != nil {
 		t.Fatalf("decode event: %v", err)
 	}
-	if got.SchemaVersion != 3 {
-		t.Fatalf("schemaVersion = %d, want 3", got.SchemaVersion)
+	if got.SchemaVersion != 4 {
+		t.Fatalf("schemaVersion = %d, want 4", got.SchemaVersion)
 	}
 	if got.Raw.DamageID != 1001 || got.Raw.AttackerEntityID != 8001 || got.Raw.TargetEntityID != 8002 || got.Raw.ServerResultRaw != -438 || got.Raw.ChangeLifeRaw != -438 {
 		t.Fatalf("raw block does not hold the observed request values: %+v", got.Raw)

@@ -99,13 +99,27 @@ type combatEventSummonerJSONL struct {
 }
 
 type combatEventSkillJSONL struct {
-	ID         uint64           `json:"id"`
-	MessageID  uint64           `json:"messageId"`
-	Name       string           `json:"name,omitempty"`
-	NameKind   string           `json:"nameKind,omitempty"`
-	Status     resolutionStatus `json:"status"`
-	NameStatus resolutionStatus `json:"nameStatus"`
-	Evidence   string           `json:"evidence,omitempty"`
+	ID         uint64                    `json:"id"`
+	MessageID  uint64                    `json:"messageId"`
+	Name       string                    `json:"name,omitempty"`
+	NameKind   string                    `json:"nameKind,omitempty"`
+	Status     resolutionStatus          `json:"status"`
+	NameStatus resolutionStatus          `json:"nameStatus"`
+	Evidence   string                    `json:"evidence,omitempty"`
+	Request    *combatActionRequestJSONL `json:"request,omitempty"`
+}
+
+type combatActionRequestJSONL struct {
+	SessionNumber      int              `json:"sessionNumber"`
+	MessageID          uint64           `json:"messageId"`
+	EntityID           uint64           `json:"entityId,omitempty"`
+	SkillID            uint64           `json:"skillId"`
+	TargetID           uint64           `json:"targetId,omitempty"`
+	RequestType        string           `json:"requestType"`
+	Timestamp          string           `json:"timestamp"`
+	LinkedDamageEvents int              `json:"linkedDamageEvents"`
+	LinkStatus         resolutionStatus `json:"linkStatus"`
+	Evidence           string           `json:"evidence"`
 }
 
 type combatEventResultJSONL struct {
@@ -165,6 +179,7 @@ type combatEvent struct {
 	SkillNameKind       string
 	SkillStatus         resolutionStatus
 	SkillProof          string
+	SkillRequest        *combatActionRequest
 	HasDamageID         bool
 	DamageSourceType    uint64
 	HasDamageSourceType bool
@@ -211,6 +226,15 @@ func (p *processor) buildDamageEvent(rpcID uint64, request pendingDamageRequest,
 		SkillStatus:         resolutionUnknown,
 		SkillNameStatus:     resolutionUnknown,
 		EventTypeStatus:     resolutionUnknown,
+	}
+	if request.skillMessageID != 0 {
+		key := combatActionRequestKey{sessionNumber: p.sessionNumber, messageID: request.skillMessageID}
+		if action, ok := p.combatActionRequests[key]; ok {
+			copy := action
+			copy.LinkedDamageEvents++
+			p.combatActionRequests[key] = copy
+			event.SkillRequest = &copy
+		}
 	}
 	event.SummonerCharacter = resolveSummonerCharacter(p.entities, p.masters, event.Source.Runtime)
 	event.resolveEventType(p.masters)

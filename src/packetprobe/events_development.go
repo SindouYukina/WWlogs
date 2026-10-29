@@ -33,7 +33,7 @@ func lifecycleEvidence(source string) string {
 
 func (event combatEvent) jsonlView(masters *gameMaster) combatEventJSONL {
 	view := combatEventJSONL{
-		SchemaVersion: 3,
+		SchemaVersion: 4,
 		EventType:     combatEventJSONLType(event.EventTypeCandidate),
 		Timestamp:     event.Timestamp,
 		SessionNumber: event.SessionNumber,
@@ -52,6 +52,15 @@ func (event combatEvent) jsonlView(masters *gameMaster) combatEventJSONL {
 		},
 	}
 	view.Actors = projectActors(event)
+	if event.SkillRequest != nil {
+		request := event.SkillRequest
+		view.Skill.Request = &combatActionRequestJSONL{
+			SessionNumber: request.SessionNumber, MessageID: request.MessageID, EntityID: request.EntityID, SkillID: request.SkillID,
+			TargetID: request.TargetID, RequestType: request.RequestType, Timestamp: request.Timestamp, LinkedDamageEvents: request.LinkedDamageEvents,
+			LinkStatus: resolutionVerified,
+			Evidence:   "outbound CombatSendPackRequest CombatCommon.MessageId exactly equals DamageContext.SkillMessageId; damage request is separately paired with server response by RPC ID",
+		}
+	}
 	view.Raw = combatEventRawJSONL{
 		DamageID: optionalUint64(event.DamageID, event.HasDamageID), AttackerEntityID: optionalUint64(event.SourceEntityID, event.HasSourceEntity),
 		TargetEntityID: optionalUint64(event.TargetEntityID, event.HasTargetEntity), SkillID: optionalUint64(event.SkillID, event.SkillID != 0),

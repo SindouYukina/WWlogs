@@ -148,7 +148,7 @@ func decodeSchemaValue(schema *protocolSchema, kind schemaType, raw protoField, 
 // schema is loaded and the command name has a schema message. It reads the same
 // plaintext as the typed decoder and does not change typed results.
 func (p *processor) archiveSchemaDecode(frame gameFrame, plain []byte) {
-	if p.protocolSchema == nil || p.schemaDecodeOut == nil {
+	if p.protocolSchema == nil {
 		return
 	}
 	// Commands 103 and 116 carry device and account identifiers beside the client
@@ -166,6 +166,10 @@ func (p *processor) archiveSchemaDecode(frame gameFrame, plain []byte) {
 	decoded, err := decodeSchemaMessage(p.protocolSchema, name, plain, 0)
 	if err != nil {
 		p.schemaDecodeErrors++
+		return
+	}
+	p.observeTimerSchema(frame, name, decoded)
+	if p.schemaDecodeOut == nil {
 		return
 	}
 	record := schemaDecodeRecord{
