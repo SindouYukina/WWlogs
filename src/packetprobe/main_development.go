@@ -51,6 +51,7 @@ func main() {
 	roleConfigOutPath := flag.String("role-config-out", "", "optional JSONL of observed RoleConfigInfoNotify role IDs resolved through the master database (requires -protocol-schema and -master-db)")
 
 	buffOverlapOut := flag.String("buff-overlap-out", "", "optionally write, per damage result, the Buff instances observed active on its target (packet-time precision)")
+	masterLocale := flag.String("locale", "zh-TW", "language of names read from the master database: zh-TW, zh-CN, en-US, ja-JP or ko-KR")
 	combatStateOutPath := flag.String("combat-state-out", "", "optional JSONL of every attribute change, recovery value and state-machine transition with names (requires -protocol-schema)")
 	hpStateOutPath := flag.String("hp-state-out", "", "optional JSONL of Life and LifeMax attribute values per entity (requires -protocol-schema)")
 	damagePushOutPath := flag.String("damage-push-out", "", "optional JSONL of pushed DamageExecuteNotify records, separate from the damage RPC stream (requires -protocol-schema)")
@@ -90,7 +91,7 @@ func main() {
 	if filterExpression == "" {
 		filterExpression = fmt.Sprintf("udp and portrange %d-%d", *minPort, *maxPort)
 	}
-	masters, err := loadGameMasterDatabase(*masterDatabase, "zh-TW")
+	masters, err := loadGameMasterDatabase(*masterDatabase, *masterLocale)
 	if err != nil {
 		fatal("load combat master SQLite", err)
 	}
