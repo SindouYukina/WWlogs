@@ -613,6 +613,15 @@ func resolveEntityIdentity(resolver *entityResolver, masters *gameMaster, entity
 			}
 		}
 	}
+	// EntityConfigType.Template (4): the entity was spawned from a template, so ConfigId is a TemplateConfig id and no
+	// scene context is needed. This is how dynamically spawned bosses (for example Matrix challenge bosses) are named.
+	if masters != nil && entity.hasConfigID && entity.hasConfigType && entity.configType == 4 && len(result.TemplateCandidates) == 0 {
+		if candidate, ok := masters.templateByID(entity.configID); ok {
+			result.TemplateCandidates = []sceneTemplateCandidate{candidate}
+			result.TemplateStatus = resolutionCorrelated
+			result.TemplateProof = fmt.Sprintf("EntityPb.ConfigType=Template(4) in the protocol enum EntityConfigType -> EntityPb.ConfigId=%d is a TemplateConfig.Id; combat master locale %s, client/master compatibility unverified", entity.configID, masters.locale)
+		}
+	}
 	return result
 }
 

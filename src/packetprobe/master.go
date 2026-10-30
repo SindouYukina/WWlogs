@@ -137,6 +137,15 @@ func (m *gameMaster) sceneTemplates(instanceID, entityID uint64) ([]sceneTemplat
 	return templates, ok
 }
 
+// templateByID returns the TemplateConfig candidate whose id equals a runtime EntityPb.ConfigId.
+func (m *gameMaster) templateByID(templateID uint64) (sceneTemplateCandidate, bool) {
+	if m == nil || m.sceneIdentity == nil {
+		return sceneTemplateCandidate{}, false
+	}
+	candidate, ok := m.sceneIdentity.templateCatalog[templateID]
+	return candidate, ok
+}
+
 func (m *gameMaster) sceneMapConfigID(instanceID uint64) (uint64, bool) {
 	if m == nil || m.sceneIdentity == nil {
 		return 0, false
