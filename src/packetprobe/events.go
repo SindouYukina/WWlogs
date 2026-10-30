@@ -24,6 +24,19 @@ type combatEventJSONL struct {
 	Master        combatEventMasterJSONL   `json:"master"`
 	Raw           combatEventRawJSONL      `json:"raw"`
 	Bullet        *combatEventBulletJSONL  `json:"bullet,omitempty"`
+	// Response is set on DAMAGE_RESPONSE_WITHOUT_AMOUNT events, whose server response carried no usable Damage field.
+	Response *combatEventNoAmountJSONL `json:"response,omitempty"`
+}
+
+// combatEventNoAmountJSONL records why a server-confirmed hit has no amount. HasAmount=false means proto3 omitted Damage
+// (the default 0) and the amount is therefore zero or not reported; the event never contributes to damage totals.
+type combatEventNoAmountJSONL struct {
+	HasAmount       bool   `json:"hasAmount"`
+	ErrorCode       int32  `json:"errorCode"`
+	ImmuneType      int32  `json:"immuneType"`
+	ChangeLifeRaw   *int32 `json:"changeLifeRaw,omitempty"`
+	Outcome         string `json:"outcome"`
+	OutcomeEvidence string `json:"outcomeEvidence"`
 }
 
 // combatEventBulletJSONL is the static namespace translation of the event's BulletId.

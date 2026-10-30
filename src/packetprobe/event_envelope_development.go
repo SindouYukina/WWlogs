@@ -28,6 +28,26 @@ func (p *processor) nextEventEnvelope() eventEnvelope {
 	}
 }
 
+// nextAuxEventEnvelope numbers events that are not part of the primary event sequence in a separate namespace
+// ("x"), so adding such an event type never shifts the ids of the events consumers already key on.
+func (p *processor) nextAuxEventEnvelope() eventEnvelope {
+	var frame uint64
+	if p.frameOrdinal > 0 {
+		frame = p.frameOrdinal - 1
+	}
+	if p.auxEventOrderFrame != frame {
+		p.auxEventOrderFrame = frame
+		p.auxEventOrder = 0
+	}
+	order := p.auxEventOrder
+	p.auxEventOrder++
+	return eventEnvelope{
+		EventID:          fmt.Sprintf("s%d-f%d-x%d", p.sessionNumber, frame, order),
+		EmitFrameOrdinal: frame,
+		EmitOrderInFrame: order,
+	}
+}
+
 // prependEnvelope merges the envelope fields in front of an already encoded JSON
 // object. Encoding the envelope separately keeps every event type's own struct
 // unchanged, so the Buff snapshot and lifecycle files stay byte-compatible.

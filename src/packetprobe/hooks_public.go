@@ -97,5 +97,8 @@ func (p *processor) removePendingSummaryCredits(sourceID uint64) {
 func (p *processor) writePartReference(frame gameFrame, rpcID uint64, request pendingDamageRequest) {
 }
 
+func (p *processor) writeNoAmountEvent(rpcID uint64, request pendingDamageRequest, hasAmount bool, errorCode, immuneType int32, hasChangeLife bool, changeLife int32) {
+}
+
 func (p *processor) observeEncounterSummary(event combatEvent) {
 }

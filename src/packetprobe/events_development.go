@@ -203,10 +203,21 @@ func optionalInt32(value int32, present bool) *int32 {
 }
 
 func (p *processor) writeStructuredEventJSONL(event any) {
+	p.writeEnvelopedEventJSONL(event, false)
+}
+
+// writeEnvelopedEventJSONL writes one event line; auxiliary events use their own id namespace.
+func (p *processor) writeEnvelopedEventJSONL(event any, auxiliary bool) {
 	if p.combatEventsJSONL == nil {
 		return
 	}
-	line, err := prependEnvelope(p.nextEventEnvelope(), event)
+	envelope := eventEnvelope{}
+	if auxiliary {
+		envelope = p.nextAuxEventEnvelope()
+	} else {
+		envelope = p.nextEventEnvelope()
+	}
+	line, err := prependEnvelope(envelope, event)
 	if err != nil {
 		fmt.Fprintf(p.diagnostic, "combat_event_jsonl_encode_error=%v\n", err)
 		return
@@ -387,4 +398,37 @@ func optionalDamageSource(value uint64, present bool) string {
 	default:
 		return fmt.Sprintf("Unknown(%d)", value)
 	}
+}
+
+// writeNoAmountEvent writes a server-confirmed hit whose response carried no usable Damage field as its own event type.
+// It reuses the identity resolution of damage events but is not printed, not counted in encounter totals and not fed to
+// the overlap statistics, so it can never add to or double-count damage.
+func (p *processor) writeNoAmountEvent(rpcID uint64, request pendingDamageRequest, hasAmount bool, errorCode, immuneType int32, hasChangeLife bool, changeLife int32) {
+	// buildDamageEvent counts the hit on the skill request; a no-amount hit is not a damage event, so the count is restored.
+	linkKey := combatActionRequestKey{sessionNumber: p.sessionNumber, messageID: request.skillMessageID}
+	before, hadRequest := p.combatActionRequests[linkKey]
+	event := p.buildDamageEvent(rpcID, request, 0, changeLife, hasChangeLife, 0)
+	if hadRequest && request.skillMessageID != 0 {
+		p.combatActionRequests[linkKey] = before
+		event.SkillRequest = &before
+	}
+	view := event.jsonlView(p.masters)
+	view.EventType = "DAMAGE_RESPONSE_WITHOUT_AMOUNT"
+	outcome := "NO_AMOUNT_FIELD"
+	evidence := "The DamageExecuteResponse omitted Damage (proto3 default 0): a server-confirmed hit whose amount is zero or not reported"
+	switch {
+	case errorCode != 0:
+		outcome = "ERROR_CODE"
+		evidence = "The DamageExecuteResponse carried a non-zero ErrorCode; no amount is implied"
+	case immuneType != 0:
+		outcome = "IMMUNE"
+		evidence = "The DamageExecuteResponse carried a non-zero ImmuneType; the hit was reported as immune and no amount is implied"
+	}
+	response := &combatEventNoAmountJSONL{HasAmount: hasAmount, ErrorCode: errorCode, ImmuneType: immuneType, Outcome: outcome, OutcomeEvidence: evidence}
+	if hasChangeLife {
+		response.ChangeLifeRaw = &changeLife
+	}
+	view.Response = response
+	view.CombatResult.CombatResultAbs = 0
+	p.writeEnvelopedEventJSONL(view, true)
 }

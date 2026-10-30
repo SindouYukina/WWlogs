@@ -155,6 +155,8 @@ type processor struct {
 	roleConfigOut             diagWriter
 	roleConfigErrors          int
 	eventOrderFrame           uint64
+	auxEventOrderFrame        uint64
+	auxEventOrder             int
 	eventOrder                int
 	hpStateOut                diagWriter
 	damagePushOut             diagWriter
@@ -908,6 +910,9 @@ func (p *processor) handleOneDamageResult(rpcID uint64, payload []byte) {
 	}
 	if !hasAmount || errorCode != 0 || immuneType != 0 {
 		p.stats.invalidResponses++
+		p.rememberConsumed(rpcID)
+		delete(p.pending, rpcID)
+		p.writeNoAmountEvent(rpcID, request, hasAmount, errorCode, immuneType, hasChangeLife, changeLife)
 		return
 	}
 
