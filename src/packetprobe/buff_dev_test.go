@@ -59,8 +59,11 @@ func TestEntityActiveResponseDecodesBuffSnapshotWithCorrelatedEntity(t *testing.
 	if row.Buff.ID != 70001 || row.Buff.Level != 2 || row.Buff.Stack != 3 || row.Buff.InstigatorID != 99002 || !row.Buff.HasActive || !row.Buff.Active {
 		t.Fatalf("decoded Buff snapshot = %+v", row.Buff)
 	}
-	if row.BuffIDStatus != resolutionCorrelated || row.InstigatorSemantics != resolutionCorrelated || !strings.Contains(row.WindowsSchemaVerification, "client/master compatibility UNKNOWN") {
+	if row.BuffIDStatus != resolutionCorrelated || row.BuffSemanticStatus != resolutionUnknown || row.InstigatorSemantics != resolutionCorrelated || !strings.Contains(row.WindowsSchemaVerification, "client/master compatibility UNKNOWN") {
 		t.Fatalf("evidence levels were overstated: %+v", row)
+	}
+	if !strings.Contains(row.BuffSemanticEvidence, "static-definition versus runtime-effect semantics are unresolved") || !row.Buff.HasConfBuffID || row.Buff.ConfBuffID == row.Buff.ID {
+		t.Fatalf("BuffId semantics or ConfBuffId separation = %+v", row)
 	}
 	if !strings.Contains(row.InstigatorEvidence, "CreatureModel.GetEntity") || !strings.Contains(row.InstigatorEvidence, "client/master compatibility UNKNOWN") {
 		t.Fatalf("snapshot instigator evidence basis = %q", row.InstigatorEvidence)
@@ -81,7 +84,7 @@ func TestEntityActiveResponseDecodesBuffSnapshotWithCorrelatedEntity(t *testing.
 	if err := json.Unmarshal(bytes.TrimSpace(eventStream.Bytes()), &streamRow); err != nil {
 		t.Fatalf("decode unified event row: %v", err)
 	}
-	if streamRow["schemaVersion"] != float64(1) || streamRow["eventType"] != "BUFF_SNAPSHOT" || streamRow["sessionNumber"] != float64(5) || streamRow["messageId"] != float64(26702) {
+	if streamRow["schemaVersion"] != float64(buffSnapshotSchemaVersion) || streamRow["eventType"] != "BUFF_SNAPSHOT" || streamRow["sessionNumber"] != float64(5) || streamRow["messageId"] != float64(26702) || streamRow["buffSemanticStatus"] != string(resolutionUnknown) {
 		t.Fatalf("snapshot missing from unified event stream: %#v", streamRow)
 	}
 }

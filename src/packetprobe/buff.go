@@ -40,25 +40,31 @@ type rawBuffSnapshot struct {
 }
 
 type buffSnapshotAuditRow struct {
-	SchemaVersion             int              `json:"schemaVersion"`
-	EventType                 string           `json:"eventType"`
-	SessionNumber             int              `json:"sessionNumber"`
-	MessageID                 uint16           `json:"messageId"`
-	Timestamp                 time.Time        `json:"timestamp"`
-	ResponseCommandID         uint16           `json:"responseCommandId"`
-	ResponseDirection         string           `json:"responseDirection"`
-	RequestCommandID          uint16           `json:"requestCommandId"`
-	FrameToken                uint16           `json:"frameToken"`
-	EntityID                  *uint64          `json:"entityId,omitempty"`
-	EntityIDStatus            resolutionStatus `json:"entityIdStatus"`
-	ComponentPath             string           `json:"componentPath"`
-	BuffIDStatus              resolutionStatus `json:"buffIdStatus"`
+	SchemaVersion     int              `json:"schemaVersion"`
+	EventType         string           `json:"eventType"`
+	SessionNumber     int              `json:"sessionNumber"`
+	MessageID         uint16           `json:"messageId"`
+	Timestamp         time.Time        `json:"timestamp"`
+	ResponseCommandID uint16           `json:"responseCommandId"`
+	ResponseDirection string           `json:"responseDirection"`
+	RequestCommandID  uint16           `json:"requestCommandId"`
+	FrameToken        uint16           `json:"frameToken"`
+	EntityID          *uint64          `json:"entityId,omitempty"`
+	EntityIDStatus    resolutionStatus `json:"entityIdStatus"`
+	ComponentPath     string           `json:"componentPath"`
+	// BuffIDStatus records the captured field mapping, not static-definition resolution.
+	BuffIDStatus resolutionStatus `json:"buffIdStatus"`
+	// BuffSemanticStatus keeps static-key versus runtime-effect interpretation separate.
+	BuffSemanticStatus        resolutionStatus `json:"buffSemanticStatus"`
+	BuffSemanticEvidence      string           `json:"buffSemanticEvidence"`
 	InstigatorSemantics       resolutionStatus `json:"instigatorSemantics"`
 	InstigatorEvidence        string           `json:"instigatorEvidence,omitempty"`
 	clientSchemaVersion      string           `json:"clientSchemaVersion"`
 	WindowsSchemaVerification string           `json:"windowsSchemaVerification"`
 	Buff                      rawBuffSnapshot  `json:"buff"`
 }
+
+const buffSnapshotSchemaVersion = 2
 
 type buffLifecycleAuditRow struct {
 	SchemaVersion                          int              `json:"schemaVersion"`
@@ -559,12 +565,14 @@ func (p *processor) handleActiveResponse(frame gameFrame, body []byte) error {
 				p.stats.observedBuffEvents++
 				if p.buffSnapshots != nil || p.combatEventsJSONL != nil || p.encounterSummary != nil {
 					row := buffSnapshotAuditRow{
-						SchemaVersion: 1, EventType: "BUFF_SNAPSHOT", SessionNumber: p.sessionNumber,
+						SchemaVersion: buffSnapshotSchemaVersion, EventType: "BUFF_SNAPSHOT", SessionNumber: p.sessionNumber,
 						MessageID: frame.commandID, Timestamp: frame.timestamp, ResponseCommandID: frame.commandID,
 						ResponseDirection: frame.direction, RequestCommandID: 28481,
 						FrameToken: frame.token, EntityIDStatus: resolutionUnknown,
 						ComponentPath:             "EntityActiveResponse.field11(ComponentPbs[])->EntityComponentPb.field15(FightBuffComponent)->FightBuffComponentPb.field1(FightBuffInfos[])->FightBuffInformation",
 						BuffIDStatus:              resolutionCorrelated,
+						BuffSemanticStatus:        resolutionUnknown,
+						BuffSemanticEvidence:      "FightBuffInformation.BuffId is preserved as a raw typed field; its static-definition versus runtime-effect semantics are unresolved, and ConfBuffId is kept separate when present",
 						clientSchemaVersion:      "Global 3.7.1",
 						WindowsSchemaVerification: "Windows Global UHD 3.7.1 Aki.Protocol metadata; client/master compatibility UNKNOWN",
 						Buff:                      record,
