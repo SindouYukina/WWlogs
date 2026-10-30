@@ -120,7 +120,20 @@ func (p *processor) archiveCombatState(frame gameFrame, decoded *decodedMessage)
 				to, _ := scalarValue(change, "ToState")
 				record := combatStateFsm{FsmID: fsmID, FromState: from, ToState: to, Status: resolutionUnknown,
 					Evidence: "State-machine node identities are not loaded in the master; raw ids kept"}
-				if resolution := p.masters.resolveFsmTransition(fsmID, from, to); resolution != nil {
+				var entityHash, commonHash *int64
+				if entity, ok := p.entities.entities[entityID]; ok {
+					if entity.hasFsmHashCode {
+						hash := entity.fsmHashCode
+						entityHash = &hash
+						record.EntityFsmHashCode = entityHash
+					}
+					if entity.hasFsmCommonHashCode {
+						hash := entity.fsmCommonHashCode
+						commonHash = &hash
+						record.EntityFsmCommonHashCode = commonHash
+					}
+				}
+				if resolution := p.masters.resolveFsmTransition(fsmID, from, to, entityHash, commonHash); resolution != nil {
 					record.Status, record.MachineCount, record.Machines = resolution.Status, resolution.MachineCount, resolution.Machines
 					record.FromName, record.ToName, record.Evidence = resolution.FromName, resolution.ToName, resolution.Evidence
 					record.FromLabel, record.ToLabel = p.masters.fsmLabel(resolution.FromName), p.masters.fsmLabel(resolution.ToName)

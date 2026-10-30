@@ -55,6 +55,12 @@ type runtimeEntity struct {
 	hasPlayerEntityID         bool
 	followerSummonConfigID    uint64
 	hasFollowerSummonConfigID bool
+	// fsmHashCode is EntityFsmComponentPb.HashCode, the version of the state-machine config the entity runs.
+	fsmHashCode    int64
+	hasFsmHashCode bool
+	// fsmCommonHashCode is EntityFsmComponentPb.CommonHashCode, the version of the shared common state machine.
+	fsmCommonHashCode         int64
+	hasFsmCommonHashCode      bool
 	phantomRoleEntityID       uint64
 	hasPhantomRoleEntityID    bool
 	concomitantVisionIDs      []uint64
@@ -1227,7 +1233,7 @@ func (r *entityResolver) resolvePartReference(entityID uint64, partID int32) run
 
 func isRuntimeIdentityComponent(componentNumber uint64) bool {
 	switch componentNumber {
-	case 4, 18, 25, 42, 53, 85:
+	case 4, 18, 25, 28, 42, 53, 85:
 		return true
 	default:
 		return false
@@ -1307,6 +1313,19 @@ func applyEntityComponentPayload(entity *runtimeEntity, componentNumber uint64, 
 				entity.summonerPlayerID, entity.hasSummonerPlayerID = field.value, true
 			case 5:
 				entity.summonType, entity.hasSummonType = field.value, true
+			}
+		}
+	case 28: // EntityFsmComponentPb
+		fields, err := parseProtoFields(data)
+		if err != nil {
+			return fmt.Errorf("parse EntityFsmComponentPb: %w", err)
+		}
+		for _, field := range fields {
+			if field.number == 3 && field.wire == 0 { // CommonHashCode (int32)
+				entity.fsmCommonHashCode, entity.hasFsmCommonHashCode = int64(int32(uint32(field.value))), true
+			}
+			if field.number == 2 && field.wire == 0 { // HashCode (int32)
+				entity.fsmHashCode, entity.hasFsmHashCode = int64(int32(uint32(field.value))), true
 			}
 		}
 	case 5: // PartComponentPb
@@ -1531,6 +1550,12 @@ func mergeRuntimeEntity(old, update runtimeEntity) runtimeEntity {
 	}
 	if !update.hasFollowerSummonConfigID && old.hasFollowerSummonConfigID {
 		update.followerSummonConfigID, update.hasFollowerSummonConfigID = old.followerSummonConfigID, true
+	}
+	if !update.hasFsmCommonHashCode && old.hasFsmCommonHashCode {
+		update.fsmCommonHashCode, update.hasFsmCommonHashCode = old.fsmCommonHashCode, true
+	}
+	if !update.hasFsmHashCode && old.hasFsmHashCode {
+		update.fsmHashCode, update.hasFsmHashCode = old.fsmHashCode, true
 	}
 	if !update.hasPhantomRoleEntityID && old.hasPhantomRoleEntityID {
 		update.phantomRoleEntityID, update.hasPhantomRoleEntityID = old.phantomRoleEntityID, true

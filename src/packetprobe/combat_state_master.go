@@ -20,10 +20,11 @@ type fsmNodeKey struct {
 
 // fsmMaster indexes the AI state-machine node identities (not their behaviour logic).
 type fsmMaster struct {
-	machinesByNode map[int64][]string // node uuid -> machines that define it
-	names          map[fsmNodeKey]string
-	children       map[fsmNodeKey][]int64
-	references     map[fsmNodeKey]int64
+	machinesByNode    map[int64][]string // node uuid -> machines that define it
+	machinesByVersion map[int64][]string // config Version -> machines (EntityFsmComponentPb.HashCode)
+	names             map[fsmNodeKey]string
+	children          map[fsmNodeKey][]int64
+	references        map[fsmNodeKey]int64
 	// labels holds the localized developer node names by zh-CN name: the master locale and the zh-CN original.
 	labels map[string]map[string]localizedSkillLabel
 }
@@ -58,11 +59,28 @@ func loadSQLiteStateMachines(db *sql.DB, locale string, master *gameMaster) erro
 		return err
 	}
 	fsm := &fsmMaster{
-		machinesByNode: make(map[int64][]string),
-		names:          make(map[fsmNodeKey]string),
-		children:       make(map[fsmNodeKey][]int64),
-		references:     make(map[fsmNodeKey]int64),
-		labels:         make(map[string]map[string]localizedSkillLabel),
+		machinesByNode:    make(map[int64][]string),
+		machinesByVersion: make(map[int64][]string),
+		names:             make(map[fsmNodeKey]string),
+		children:          make(map[fsmNodeKey][]int64),
+		references:        make(map[fsmNodeKey]int64),
+		labels:            make(map[string]map[string]localizedSkillLabel),
+	}
+	versions, err := db.Query("SELECT id,version FROM aistatemachine ORDER BY id")
+	if err != nil {
+		return fmt.Errorf("query state-machine versions: %w", err)
+	}
+	for versions.Next() {
+		var machine string
+		var version int64
+		if err := versions.Scan(&machine, &version); err != nil {
+			versions.Close()
+			return fmt.Errorf("read state-machine version: %w", err)
+		}
+		fsm.machinesByVersion[version] = append(fsm.machinesByVersion[version], machine)
+	}
+	if err := versions.Close(); err != nil {
+		return err
 	}
 	rows, err := db.Query("SELECT machine_id,uuid,COALESCE(dev_name_zh_cn,''),reference_uuid FROM aistatemachine_node ORDER BY machine_id,uuid")
 	if err != nil {
@@ -194,13 +212,33 @@ const maxFsmMachinesShown = 5
 // only unique inside one state-machine config, so the candidate machines are those that define the FsmId node and
 // contain both states beneath it (the states alone when no machine does). The developer names are given only when all
 // candidates agree on them; with several candidates that disagree, nothing is named.
-func (m *gameMaster) resolveFsmTransition(fsmID, fromState, toState int64) *fsmResolution {
+func (m *gameMaster) resolveFsmTransition(fsmID, fromState, toState int64, entityHash, commonHash *int64) *fsmResolution {
 	if m == nil || m.fsm == nil {
 		return nil
 	}
 	candidates := make([]string, 0, 4)
 	basis := "state machines that define the FsmId node and hold both states beneath it"
+	allowed := map[string]struct{}(nil)
+	// The entity's own config version (HashCode) and the common machine's version (CommonHashCode) narrow the machines
+	// to the ones the entity runs; either hash alone is used when the other was not observed.
+	for _, hash := range []*int64{entityHash, commonHash} {
+		if hash == nil {
+			continue
+		}
+		for _, machine := range m.fsm.machinesByVersion[*hash] {
+			if allowed == nil {
+				allowed = make(map[string]struct{})
+				basis = "state machines whose config Version equals the entity's EntityFsmComponentPb HashCode or CommonHashCode and that hold both states beneath the FsmId node"
+			}
+			allowed[machine] = struct{}{}
+		}
+	}
 	for _, machine := range m.fsm.machinesByNode[fsmID] {
+		if allowed != nil {
+			if _, ok := allowed[machine]; !ok {
+				continue
+			}
+		}
 		below := m.fsm.descendants(machine, fsmID)
 		_, hasFrom := below[fromState]
 		_, hasTo := below[toState]
@@ -209,8 +247,17 @@ func (m *gameMaster) resolveFsmTransition(fsmID, fromState, toState int64) *fsmR
 		}
 	}
 	if len(candidates) == 0 {
+		// The states may live in the entity's own machine while the FsmId names a node of the common machine.
+		pool := m.fsm.machinesByNode[fsmID]
 		basis = "state machines that define the FsmId node and both state nodes"
-		for _, machine := range m.fsm.machinesByNode[fsmID] {
+		if allowed != nil {
+			pool = pool[:0:0]
+			for machine := range allowed {
+				pool = append(pool, machine)
+			}
+			basis = "state machines whose config Version equals the entity's EntityFsmComponentPb HashCode or CommonHashCode and that define both state nodes"
+		}
+		for _, machine := range pool {
 			if _, hasFrom := m.fsm.names[fsmNodeKey{machine, fromState}]; !hasFrom {
 				continue
 			}

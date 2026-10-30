@@ -22,19 +22,19 @@ func fsmFixture() *gameMaster {
 func TestFsmTransitionIsNamedOnlyWhenEveryCandidateMachineAgrees(t *testing.T) {
 	master := fsmFixture()
 
-	agree := master.resolveFsmTransition(1, 2, 2)
+	agree := master.resolveFsmTransition(1, 2, 2, nil, nil)
 	if agree.Status != resolutionCorrelated || agree.MachineCount != 2 || agree.FromName != "idle" || agree.ToName != "idle" {
 		t.Fatalf("both machines name state 2 the same: %+v", agree)
 	}
-	differ := master.resolveFsmTransition(1, 2, 3)
+	differ := master.resolveFsmTransition(1, 2, 3, nil, nil)
 	if differ.Status != resolutionUnknown || differ.MachineCount != 2 || differ.FromName != "" || differ.ToName != "" || !strings.Contains(differ.Evidence, "differently") {
 		t.Fatalf("machines that disagree on a state name must not name it: %+v", differ)
 	}
-	none := master.resolveFsmTransition(1, 2, 77)
+	none := master.resolveFsmTransition(1, 2, 77, nil, nil)
 	if none.Status != resolutionUnknown || none.MachineCount != 0 {
 		t.Fatalf("a state that no machine holds under the FsmId must stay unknown: %+v", none)
 	}
-	if (*gameMaster)(nil).resolveFsmTransition(1, 2, 3) != nil || (&gameMaster{}).resolveFsmTransition(1, 2, 3) != nil {
+	if (*gameMaster)(nil).resolveFsmTransition(1, 2, 3, nil, nil) != nil || (&gameMaster{}).resolveFsmTransition(1, 2, 3, nil, nil) != nil {
 		t.Fatal("without state-machine nodes there is nothing to resolve")
 	}
 }
