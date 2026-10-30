@@ -31,6 +31,14 @@ func (p *processor) archiveDamagePushes(frame gameFrame, decoded *decodedMessage
 				record.ChangeLife, _ = scalarValue(push, "ChangeLife")
 				record.ElementType, _ = scalarValue(push, "ElementType")
 				record.PartID, _ = scalarValue(push, "PartId")
+				if p.masters != nil {
+					record.ElementName = p.masters.elementNames[int32(record.ElementType)]
+					record.DamageElement = resolveDamageElement(p.masters, uint64(record.DamageID), record.DamageID > 0)
+					classified := combatEvent{DamageID: uint64(record.DamageID), HasDamageID: record.DamageID > 0}
+					classified.resolveEventType(p.masters)
+					record.ClassCandidate, record.ClassStatus = classified.EventTypeCandidate, classified.EventTypeStatus
+					record.CalculateType = optionalInt32(classified.DamageCalculateType, classified.HasCalculateType)
+				}
 				crit, _ := scalarValue(push, "IsCrit")
 				record.IsCrit = crit != 0
 				killed, _ := scalarValue(push, "KilledTarget")

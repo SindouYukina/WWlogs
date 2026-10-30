@@ -23,4 +23,10 @@ type damagePushRecord struct {
 	KilledTarget  bool   `json:"killedTarget"`
 	Stream        string `json:"stream"`
 	Evidence      string `json:"evidence"`
+	// ElementName names the protocol ElementType in the master locale; DamageElement and ClassCandidate come from the DamageId row.
+	ElementName    string                   `json:"elementName,omitempty"`
+	DamageElement  *combatEventElementJSONL `json:"damageElement,omitempty"`
+	ClassCandidate string                   `json:"classCandidate,omitempty"`
+	ClassStatus    resolutionStatus         `json:"classStatus,omitempty"`
+	CalculateType  *int32                   `json:"calculateType,omitempty"`
 }
