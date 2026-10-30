@@ -11,6 +11,50 @@ import (
 	"time"
 )
 
+func addVehicleContributorEvent(summary *encounterSummary, event combatEvent) {
+	candidate := event.DamageContributorCandidate
+	if summary.vehicleContributors == nil {
+		summary.vehicleContributors = make(map[uint64]*vehicleContributorSummary)
+	}
+	row := summary.vehicleContributors[candidate.FollowerConfigID]
+	if row == nil {
+		row = &vehicleContributorSummary{followerConfigID: candidate.FollowerConfigID}
+		summary.vehicleContributors[candidate.FollowerConfigID] = row
+	}
+	row.status = strongestEvidence(row.status, candidate.Status)
+	if candidate.Name != nil && candidate.Name.Text != "" {
+		row.name, row.nameKind = candidate.Name.Text, candidate.Name.Kind
+	}
+	row.events++
+	row.damage += event.Damage
+}
+
+func writeVehicleContributors(w io.Writer, summary *encounterSummary) error {
+	if len(summary.vehicleContributors) == 0 {
+		return nil
+	}
+	ids := make([]uint64, 0, len(summary.vehicleContributors))
+	for id := range summary.vehicleContributors {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	if _, err := fmt.Fprintln(w, "\n### Vehicle contributors (separate from party characters)\n\nThe server reports these hits with the player entity as attacker; they are listed as the vehicle's own row and are not counted for any character. The relation is a CORRELATED association, not a server-confirmed credit."); err != nil {
+		return err
+	}
+	for _, id := range ids {
+		row := summary.vehicleContributors[id]
+		name := "Vehicle"
+		if row.name != "" {
+			name = fmt.Sprintf("[internal] %s", row.name)
+		}
+		if _, err := fmt.Fprintf(w, "\n- %s [FollowerSummonConfigId:%d; %s]: %d event(s), CombatResult magnitude %d", name, row.followerConfigID, row.status, row.events, row.damage); err != nil {
+			return err
+		}
+	}
+	_, err := fmt.Fprintln(w)
+	return err
+}
+
 func (p *processor) observeEncounterSummary(event combatEvent) {
 	if p.encounterSummary == nil {
 		return
@@ -78,6 +122,8 @@ func (p *processor) observeEncounterSummary(event combatEvent) {
 
 	if isCreditedCharacterStatus(event.CharacterStatus) && event.CharacterID != 0 {
 		addCreditedCharacterEvent(summary, event)
+	} else if event.DamageContributorCandidate != nil && event.EventTypeCandidate == "DAMAGE_CANDIDATE" {
+		addVehicleContributorEvent(summary, event)
 	} else {
 		summary.unknownCredit++
 		summary.unknownCreditAbs += event.Damage
@@ -620,6 +666,9 @@ func writeOneEncounterSummary(w io.Writer, summary *encounterSummary) error {
 		if _, err := fmt.Fprintf(w, "\nWarning: %d unresolved source events were not retained for identity backfill because the bounded pending-event limit was reached.\n", summary.identityBackfillEventsOmitted); err != nil {
 			return err
 		}
+	}
+	if err := writeVehicleContributors(w, summary); err != nil {
+		return err
 	}
 	if err := writeUncreditedEvents(w, summary); err != nil {
 		return err

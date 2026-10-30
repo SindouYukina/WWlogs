@@ -62,6 +62,17 @@ type encounterSummary struct {
 	buffObservations                map[buffObservationKey]int
 	uncreditedEvents                map[uncreditedEventKey]*uncreditedEventSummary
 	uncreditedEventsOmitted         int
+	// vehicleContributors counts damage attributed to a vehicle (for example the overworld motorcycle) as its own row, never as a party character.
+	vehicleContributors map[uint64]*vehicleContributorSummary
+}
+
+type vehicleContributorSummary struct {
+	followerConfigID uint64
+	name             string
+	nameKind         string
+	status           resolutionStatus
+	events           int
+	damage           int64
 }
 
 type pendingSummaryCredit struct {

@@ -10,7 +10,9 @@ type damageContributorCandidate struct {
 	ActorBlueprint   string           `json:"actorBlueprint"`
 	SummonSkillID    uint64           `json:"summonSkillId"`
 	Status           resolutionStatus `json:"status"`
-	Evidence         string           `json:"evidence"`
+	// Name is the developer note of the vehicle's own template (a TemplateConfig row); no official localized vehicle name is in the combat master.
+	Name     *combatEventLabelTextJSONL `json:"name,omitempty"`
+	Evidence string                     `json:"evidence"`
 }
 
 func resolveVehicleDamageContributorCandidate(resolver *entityResolver, masters *gameMaster, event combatEvent) *damageContributorCandidate {
@@ -41,7 +43,14 @@ func resolveVehicleDamageContributorCandidate(resolver *entityResolver, masters 
 	if !ok {
 		return nil
 	}
+	var name *combatEventLabelTextJSONL
+	if source.hasConfigID && source.hasConfigType && source.configType == 4 {
+		if template, ok := masters.templateByID(source.configID); ok {
+			name = template.DevLabel
+		}
+	}
 	return &damageContributorCandidate{
+		Name:             name,
 		ActorType:        "Vehicle",
 		EntityType:       vehicle.EntityType,
 		FollowerConfigID: vehicle.ConfigID,

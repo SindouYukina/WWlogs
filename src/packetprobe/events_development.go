@@ -258,6 +258,13 @@ func (event combatEvent) formatNormal() string {
 			credit = fmt.Sprintf("Credit:Character:%d [%s; name %s]", event.CharacterID, event.CharacterStatus, event.CharacterNameStatus)
 		}
 	}
+	if credit == "Credit:?" && event.DamageContributorCandidate != nil {
+		credit = "Credit:[Vehicle]"
+		if name := event.DamageContributorCandidate.Name; name != nil && name.Text != "" {
+			credit = fmt.Sprintf("Credit:[Vehicle] [internal] %s", name.Text)
+		}
+		credit += fmt.Sprintf(" [%s]", event.DamageContributorCandidate.Status)
+	}
 	skillID := "?"
 	if event.SkillID != 0 {
 		skillID = fmt.Sprintf("%d", event.SkillID)
