@@ -86,6 +86,8 @@ func loadGameMasterDatabase(path, locale string) (*gameMaster, error) {
 		skillActors:        make(map[uint64]map[string]struct{}),
 		commonBulletDamage: make(map[uint64]uint64),
 		skillLabels:        make(map[uint64]map[string]struct{}),
+		skillLabelText:     make(map[uint64]map[string]localizedSkillLabel),
+		elementNames:       make(map[int32]string),
 		damage:             make(map[uint64]damageMasterRecord),
 		sceneIdentity: &sceneIdentityMaster{
 			instanceMaps:    make(map[uint64]uint64),
@@ -125,6 +127,12 @@ func loadGameMasterDatabase(path, locale string) (*gameMaster, error) {
 		return nil, err
 	}
 	if err := loadSQLiteSkillLabels(db, master); err != nil {
+		return nil, err
+	}
+	if err := loadSQLiteSkillLabelText(db, locale, master); err != nil {
+		return nil, err
+	}
+	if err := loadSQLiteElementNames(db, locale, master); err != nil {
 		return nil, err
 	}
 	if err := loadLocalizedDefinitions(db, locale, "monsterinfo", "monsterinfo_locale", &master.monsters); err != nil {
@@ -859,7 +867,16 @@ func loadSQLiteSkills(db *sql.DB, locale string, master *gameMaster) error {
 }
 
 func loadSQLiteDamage(db *sql.DB, hash string, master *gameMaster) error {
-	rows, err := db.Query("SELECT id,calculate_type FROM damage WHERE calculate_type IS NOT NULL ORDER BY id")
+	// damage.element is optional so an older master without the column still loads.
+	hasElement, err := masterColumnExists(db, "damage", "element")
+	if err != nil {
+		return err
+	}
+	elementColumn := "NULL"
+	if hasElement {
+		elementColumn = "element"
+	}
+	rows, err := db.Query("SELECT id,calculate_type," + elementColumn + " FROM damage WHERE calculate_type IS NOT NULL ORDER BY id")
 	if err != nil {
 		return fmt.Errorf("query damage classifications: %w", err)
 	}
@@ -867,7 +884,8 @@ func loadSQLiteDamage(db *sql.DB, hash string, master *gameMaster) error {
 	for rows.Next() {
 		var rawID string
 		var calculateType int32
-		if err := rows.Scan(&rawID, &calculateType); err != nil {
+		var element sql.NullInt32
+		if err := rows.Scan(&rawID, &calculateType, &element); err != nil {
 			return fmt.Errorf("read damage classification: %w", err)
 		}
 		id, err := parseMasterID(rawID, "damage")
@@ -877,7 +895,7 @@ func loadSQLiteDamage(db *sql.DB, hash string, master *gameMaster) error {
 		if calculateType < 0 || calculateType > 2 {
 			return fmt.Errorf("damage ID %d has unsupported CalculateType %d", id, calculateType)
 		}
-		master.damage[id] = damageMasterRecord{ID: id, CalculateType: calculateType, SourceHash: hash, SourceTable: "damage.id"}
+		master.damage[id] = damageMasterRecord{ID: id, CalculateType: calculateType, Element: element.Int32, HasElement: element.Valid, SourceHash: hash, SourceTable: "damage.id"}
 	}
 	if err := rows.Err(); err != nil {
 		return fmt.Errorf("iterate damage classifications: %w", err)

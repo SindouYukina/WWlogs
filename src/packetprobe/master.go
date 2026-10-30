@@ -17,8 +17,11 @@ type masterRecord struct {
 type damageMasterRecord struct {
 	ID            uint64 `json:"id"`
 	CalculateType int32  `json:"calculateType"`
-	SourceHash    string `json:"sourceHash,omitempty"`
-	SourceTable   string `json:"sourceTable"`
+	// Element is damage.element; HasElement is false when the row leaves it empty.
+	Element     int32  `json:"element,omitempty"`
+	HasElement  bool   `json:"hasElement,omitempty"`
+	SourceHash  string `json:"sourceHash,omitempty"`
+	SourceTable string `json:"sourceTable"`
 }
 
 type masterManifest struct {
@@ -90,7 +93,11 @@ type gameMaster struct {
 	// commonBulletDamage maps a CDT_CommonBulletData row key to the row's own DamageId (absent when the row names none).
 	commonBulletDamage map[uint64]uint64
 	// skillLabels maps a SkillInfo row key to the distinct developer labels (zh-CN) found across SkillInfo tables.
-	skillLabels   map[uint64]map[string]struct{}
+	skillLabels map[uint64]map[string]struct{}
+	// skillLabelText holds skill_dev_label_locale rows (master locale and zh-CN) by skill id and locale.
+	skillLabelText map[uint64]map[string]localizedSkillLabel
+	// elementNames maps damage.element to the ElementInfo name of the master locale.
+	elementNames  map[int32]string
 	damage        map[uint64]damageMasterRecord
 	sceneIdentity *sceneIdentityMaster
 }

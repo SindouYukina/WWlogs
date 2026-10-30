@@ -144,6 +144,22 @@ type combatEventSkillJSONL struct {
 	DevLabelZhCn   string           `json:"devLabelZhCn,omitempty"`
 	DevLabelStatus resolutionStatus `json:"devLabelStatus,omitempty"`
 	DevLabelProof  string           `json:"devLabelEvidence,omitempty"`
+	// DevLabel is the developer label as display text in the master locale (zh-CN original as fallback).
+	DevLabel *combatEventLabelTextJSONL `json:"devLabel,omitempty"`
+}
+
+type combatEventLabelTextJSONL struct {
+	Locale   string `json:"locale"`
+	Text     string `json:"text"`
+	Kind     string `json:"kind"`
+	Evidence string `json:"evidence,omitempty"`
+}
+
+type combatEventElementJSONL struct {
+	ID       int32            `json:"id"`
+	Name     string           `json:"name,omitempty"`
+	Status   resolutionStatus `json:"status"`
+	Evidence string           `json:"evidence,omitempty"`
 }
 
 type combatActionRequestJSONL struct {
@@ -170,6 +186,8 @@ type combatEventResultJSONL struct {
 	ClassCandidate  string           `json:"classCandidate,omitempty"`
 	ClassStatus     resolutionStatus `json:"classStatus"`
 	ClassEvidence   string           `json:"classEvidence,omitempty"`
+	// Element names damage.element of the DamageId row; absent when the row is unknown or has no element.
+	Element *combatEventElementJSONL `json:"element,omitempty"`
 }
 
 type combatEventHealingJSONL struct {

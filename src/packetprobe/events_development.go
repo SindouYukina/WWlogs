@@ -72,6 +72,8 @@ func (event combatEvent) jsonlView(masters *gameMaster) combatEventJSONL {
 	if label := resolveSkillLabel(masters, event.SkillID); label != nil {
 		view.Skill.DevLabelZhCn, view.Skill.DevLabelStatus, view.Skill.DevLabelProof = label.Label, label.Status, label.Evidence
 	}
+	view.Skill.DevLabel = resolveSkillLabelText(masters, event.SkillID)
+	view.CombatResult.Element = resolveDamageElement(masters, event.DamageID, event.HasDamageID)
 	view.Actors = projectActors(event)
 	if event.SkillRequest != nil {
 		request := event.SkillRequest
