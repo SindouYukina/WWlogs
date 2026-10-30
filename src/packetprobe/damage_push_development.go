@@ -10,7 +10,7 @@ import (
 // CombatReceivePackNotify. It reads the schema tree only and does not change the
 // typed damage results.
 func (p *processor) archiveDamagePushes(frame gameFrame, decoded *decodedMessage) {
-	if p.damagePushOut == nil || decoded == nil {
+	if (p.damagePushOut == nil && p.combatEventsJSONL == nil) || decoded == nil {
 		return
 	}
 	for _, data := range childMessages(decoded, "Data") {
@@ -43,6 +43,10 @@ func (p *processor) archiveDamagePushes(frame gameFrame, decoded *decodedMessage
 				record.IsCrit = crit != 0
 				killed, _ := scalarValue(push, "KilledTarget")
 				record.KilledTarget = killed != 0
+				p.writePushDamageEvent(record)
+				if p.damagePushOut == nil {
+					continue
+				}
 				line, err := json.Marshal(record)
 				if err != nil {
 					p.damagePushErrors++
@@ -59,7 +63,7 @@ func (p *processor) archiveDamagePushes(frame gameFrame, decoded *decodedMessage
 // archiveDamagePushFrame decodes a combat frame for the push stream when the output
 // is enabled. It shares the plaintext with the other schema observers.
 func (p *processor) archiveDamagePushFrame(frame gameFrame, plain []byte) {
-	if p.damagePushOut == nil || p.protocolSchema == nil || (frame.commandID != 25706 && frame.commandID != 20332) {
+	if (p.damagePushOut == nil && p.combatEventsJSONL == nil) || p.protocolSchema == nil || (frame.commandID != 25706 && frame.commandID != 20332) {
 		return
 	}
 	payloads, err := receivePackNotifyBodies(frame.commandID, plain)

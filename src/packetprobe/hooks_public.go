@@ -3,6 +3,7 @@
 package main
 
 import (
+	"database/sql"
 	"io"
 )
 
@@ -52,6 +53,11 @@ func marshalRuntimeIdentity(entity runtimeEntity) string {
 
 func optionalDamageSource(value uint64, present bool) string {
 	var r0 string
+	return r0
+}
+
+func loadSQLiteAbnormalDamageIDs(db *sql.DB, master *gameMaster) error {
+	var r0 error
 	return r0
 }
 

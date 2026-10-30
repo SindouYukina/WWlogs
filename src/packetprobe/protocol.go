@@ -155,8 +155,7 @@ type processor struct {
 	roleConfigOut             diagWriter
 	roleConfigErrors          int
 	eventOrderFrame           uint64
-	auxEventOrderFrame        uint64
-	auxEventOrder             int
+	auxEventOrders            map[string]*auxEventOrder
 	eventOrder                int
 	hpStateOut                diagWriter
 	damagePushOut             diagWriter

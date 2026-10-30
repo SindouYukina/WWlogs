@@ -13,3 +13,9 @@ type eventEnvelope struct {
 	EmitFrameOrdinal uint64 `json:"emitFrameOrdinal"`
 	EmitOrderInFrame int    `json:"emitOrderInFrame"`
 }
+
+// auxEventOrder is the per-frame counter of one auxiliary event namespace.
+type auxEventOrder struct {
+	frame uint64
+	order int
+}

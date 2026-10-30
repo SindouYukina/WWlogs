@@ -26,6 +26,8 @@ type combatEventJSONL struct {
 	Bullet        *combatEventBulletJSONL  `json:"bullet,omitempty"`
 	// Response is set on DAMAGE_RESPONSE_WITHOUT_AMOUNT events, whose server response carried no usable Damage field.
 	Response *combatEventNoAmountJSONL `json:"response,omitempty"`
+	// Push is set on DAMAGE_PUSH_RESULT events: server-pushed damage that no client request asked for.
+	Push *combatEventPushJSONL `json:"push,omitempty"`
 }
 
 // combatEventNoAmountJSONL records why a server-confirmed hit has no amount. HasAmount=false means proto3 omitted Damage

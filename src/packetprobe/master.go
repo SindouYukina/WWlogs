@@ -98,6 +98,8 @@ type gameMaster struct {
 	buffOwners map[uint64][]buffOwnerText
 	// propertyNames maps a PropertyIndex id (the attribute id of the protocol) to its key and localized name.
 	propertyNames map[int64]propertyName
+	// abnormalDamageIDs holds the DamageIds named by the columns Abnormal<id> of AbnormalDamageConfig.
+	abnormalDamageIDs map[uint64]struct{}
 	// fsm holds the AI state-machine node identities used to name ChangeStateNotify ids.
 	fsm *fsmMaster
 	// skillLabelText holds skill_dev_label_locale rows (master locale and zh-CN) by skill id and locale.

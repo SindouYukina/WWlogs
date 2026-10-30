@@ -203,17 +203,17 @@ func optionalInt32(value int32, present bool) *int32 {
 }
 
 func (p *processor) writeStructuredEventJSONL(event any) {
-	p.writeEnvelopedEventJSONL(event, false)
+	p.writeEnvelopedEventJSONL(event, "")
 }
 
-// writeEnvelopedEventJSONL writes one event line; auxiliary events use their own id namespace.
-func (p *processor) writeEnvelopedEventJSONL(event any, auxiliary bool) {
+// writeEnvelopedEventJSONL writes one event line; a non-empty kind selects an auxiliary id namespace.
+func (p *processor) writeEnvelopedEventJSONL(event any, kind string) {
 	if p.combatEventsJSONL == nil {
 		return
 	}
 	envelope := eventEnvelope{}
-	if auxiliary {
-		envelope = p.nextAuxEventEnvelope()
+	if kind != "" {
+		envelope = p.nextAuxEventEnvelope(kind)
 	} else {
 		envelope = p.nextEventEnvelope()
 	}
@@ -430,5 +430,5 @@ func (p *processor) writeNoAmountEvent(rpcID uint64, request pendingDamageReques
 	}
 	view.Response = response
 	view.CombatResult.CombatResultAbs = 0
-	p.writeEnvelopedEventJSONL(view, true)
+	p.writeEnvelopedEventJSONL(view, "x")
 }
