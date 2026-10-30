@@ -89,6 +89,10 @@ type buffLifecycleAuditRow struct {
 	TargetStatus                           resolutionStatus `json:"targetSemanticsStatus"`
 	TargetEvidence                         string           `json:"targetEvidence,omitempty"`
 	BuffID                                 *uint64          `json:"buffId,omitempty"`
+	BuffDefinitionStatus                   resolutionStatus `json:"buffDefinitionStatus,omitempty"`
+	BuffDefinitionTable                    string           `json:"buffDefinitionTable,omitempty"`
+	BuffDefinitionID                       *uint64          `json:"buffDefinitionId,omitempty"`
+	BuffDefinitionEvidence                 string           `json:"buffDefinitionEvidence,omitempty"`
 	ID                                     *uint64          `json:"id,omitempty"`
 	ConfBuffID                             *uint64          `json:"confBuffId,omitempty"`
 	InstigatorID                           *uint64          `json:"instigatorIdRaw,omitempty"`
@@ -124,13 +128,15 @@ type buffLifecycleAuditRow struct {
 	UnknownFieldNumbers                    []uint64         `json:"unknownFieldNumbers,omitempty"`
 }
 
+const buffLifecycleSchemaVersion = 4
+
 func decodeBuffLifecycleMessage(frame gameFrame, body []byte) (buffLifecycleAuditRow, error) {
 	return decodeBuffLifecycleMessageForCommand(frame, body, frame.commandID, nil)
 }
 
 func decodeBuffLifecycleMessageForCommand(frame gameFrame, body []byte, schemaCommandID uint16, innerFieldNumber *uint64) (buffLifecycleAuditRow, error) {
 	row := buffLifecycleAuditRow{
-		SchemaVersion: 3, EventType: "BUFF_LIFECYCLE", MessageID: frame.commandID,
+		SchemaVersion: buffLifecycleSchemaVersion, EventType: "BUFF_LIFECYCLE", MessageID: frame.commandID,
 		Timestamp: frame.timestamp, CommandID: frame.commandID, Direction: frame.direction,
 		EventTypeStatus: resolutionCorrelated, TargetStatus: resolutionUnknown, InstigatorStatus: resolutionUnknown,
 		InstigatorCharacterCandidateStatus: resolutionUnknown, InstigatorCharacterCandidateNameStatus: resolutionUnknown,
@@ -351,6 +357,7 @@ func (p *processor) handleBuffLifecycleMessage(frame gameFrame, body []byte) err
 		return err
 	}
 	row.SessionNumber = p.sessionNumber
+	p.linkBuffLifecycleDefinition(&row)
 	if p.buffLifecycle != nil {
 		if err := json.NewEncoder(p.buffLifecycle).Encode(row); err != nil {
 			return fmt.Errorf("write Buff lifecycle row: %w", err)
@@ -483,6 +490,7 @@ func (p *processor) handleInnerBuffLifecycleMessage(frame gameFrame, innerFieldN
 		}
 	}
 	row.SessionNumber = p.sessionNumber
+	p.linkBuffLifecycleDefinition(&row)
 	if p.buffLifecycle != nil {
 		if err := json.NewEncoder(p.buffLifecycle).Encode(row); err != nil {
 			return fmt.Errorf("write Buff lifecycle row: %w", err)
@@ -491,6 +499,22 @@ func (p *processor) handleInnerBuffLifecycleMessage(frame gameFrame, innerFieldN
 	p.observeBuffInterval(row)
 	p.writeStructuredEventJSONL(row)
 	return nil
+}
+
+// linkBuffLifecycleDefinition resolves only explicitly decoded BuffId fields to exact buff.Id rows.
+func (p *processor) linkBuffLifecycleDefinition(row *buffLifecycleAuditRow) {
+	if row == nil || row.BuffID == nil {
+		return
+	}
+	row.BuffDefinitionStatus = resolutionUnknown
+	row.BuffDefinitionEvidence = "No exact normalized buff.id row has been linked; raw BuffId remains unchanged"
+	if p.masters != nil && p.masters.hasBuffDefinition(*row.BuffID) {
+		definitionID := *row.BuffID
+		row.BuffDefinitionStatus = resolutionCorrelated
+		row.BuffDefinitionTable = "buff"
+		row.BuffDefinitionID = &definitionID
+		row.BuffDefinitionEvidence = "The typed BuffId field has an exact normalized buff.id row; this is a static row reference and does not by itself prove that an effect was applied or its uptime"
+	}
 }
 
 func (p *processor) handleActiveRequest(token uint16, body []byte) error {
