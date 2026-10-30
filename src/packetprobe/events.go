@@ -34,6 +34,7 @@ type combatEventBulletJSONL struct {
 	ActorBlueprint string           `json:"actorBlueprint,omitempty"`
 	Via            string           `json:"via,omitempty"`
 	DevLabelZhCn   string           `json:"devLabelZhCn,omitempty"`
+	RowDamageID    uint64           `json:"rowDamageId,omitempty"`
 	Status         resolutionStatus `json:"status"`
 	Evidence       string           `json:"evidence,omitempty"`
 }

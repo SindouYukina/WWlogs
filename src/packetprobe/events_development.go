@@ -85,7 +85,7 @@ func (event combatEvent) jsonlView(masters *gameMaster) combatEventJSONL {
 	if event.HasBulletID && event.BulletID > 0 {
 		source := newBulletSource(event.Source, event.SkillID, event.SourceVisionSummonCfgs)
 		if resolution := resolveBullet(masters, uint64(event.BulletID), source); resolution != nil {
-			view.Bullet = &combatEventBulletJSONL{BulletID: resolution.BulletID, Namespace: resolution.Namespace, ActorBlueprint: resolution.ActorBlueprint, Via: resolution.Via, DevLabelZhCn: resolution.DevLabelZh, Status: resolution.Status, Evidence: resolution.Proof}
+			view.Bullet = &combatEventBulletJSONL{BulletID: resolution.BulletID, Namespace: resolution.Namespace, ActorBlueprint: resolution.ActorBlueprint, Via: resolution.Via, DevLabelZhCn: resolution.DevLabelZh, RowDamageID: resolution.RowDamageID, Status: resolution.Status, Evidence: resolution.Proof}
 		}
 	}
 	view.Raw = combatEventRawJSONL{

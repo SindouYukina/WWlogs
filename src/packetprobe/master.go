@@ -79,6 +79,8 @@ type gameMaster struct {
 	actorBullets    map[string]map[uint64]struct{}
 	assetPath       map[string]string
 	actorSkills     map[string]map[uint64]struct{}
+	// commonBulletDamage maps a CDT_CommonBulletData row key to the row's own DamageId (absent when the row names none).
+	commonBulletDamage map[uint64]uint64
 	// skillLabels maps a SkillInfo row key to the distinct developer labels (zh-CN) found across SkillInfo tables.
 	skillLabels map[uint64]map[string]struct{}
 	damage         map[uint64]damageMasterRecord

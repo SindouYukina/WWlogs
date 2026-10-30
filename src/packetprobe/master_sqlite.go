@@ -80,6 +80,7 @@ func loadGameMasterDatabase(path, locale string) (*gameMaster, error) {
 		actorBullets:    make(map[string]map[uint64]struct{}),
 		assetPath:       make(map[string]string),
 		actorSkills:     make(map[string]map[uint64]struct{}),
+		commonBulletDamage: make(map[uint64]uint64),
 		skillLabels:     make(map[uint64]map[string]struct{}),
 		damage:         make(map[uint64]damageMasterRecord),
 		sceneIdentity: &sceneIdentityMaster{
@@ -300,6 +301,25 @@ func loadSQLiteActorChain(db *sql.DB, master *gameMaster) error {
 		return nil
 	}); err != nil {
 		return err
+	}
+	hasRowDamage, err := masterColumnExists(db, "commonbullet", "damage_id")
+	if err != nil {
+		return err
+	}
+	if hasRowDamage {
+		if err := pairs("commonbullet", "SELECT id,damage_id FROM commonbullet WHERE damage_id IS NOT NULL", func(a, b sql.NullString) error {
+			bullet, ok, err := id(a, "commonbullet.id")
+			if err != nil || !ok {
+				return err
+			}
+			damage, ok, err := id(b, "commonbullet.damage_id")
+			if ok {
+				master.commonBulletDamage[bullet] = damage
+			}
+			return err
+		}); err != nil {
+			return err
+		}
 	}
 	hasActorSkills, err := masterColumnExists(db, "entityskillpreload", "actor_asset_id")
 	if err != nil {
