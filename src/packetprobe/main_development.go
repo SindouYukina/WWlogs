@@ -48,6 +48,7 @@ func main() {
 	protocolSchemaPath := flag.String("protocol-schema", "", "optional local protocol schema JSON")
 
 	schemaDecodeOut := flag.String("schema-decode-out", "", "optional JSONL of schema-directed decodes of decrypted outer messages (requires -protocol-schema)")
+	roleConfigOutPath := flag.String("role-config-out", "", "optional JSONL of observed RoleConfigInfoNotify role IDs resolved through the master database (requires -protocol-schema and -master-db)")
 
 	buffOverlapOut := flag.String("buff-overlap-out", "", "optionally write, per damage result, the Buff instances observed active on its target (packet-time precision)")
 	hpStateOutPath := flag.String("hp-state-out", "", "optional JSONL of Life and LifeMax attribute values per entity (requires -protocol-schema)")
@@ -380,6 +381,28 @@ func main() {
 			}
 		}()
 	}
+	if *roleConfigOutPath != "" {
+		if processor.protocolSchema == nil || masters == nil {
+			fatal("role config output", fmt.Errorf("-role-config-out requires -protocol-schema and -master-db"))
+		}
+		if dir := filepath.Dir(*roleConfigOutPath); dir != "." {
+			if err := os.MkdirAll(dir, 0o700); err != nil {
+				fatal("create role config directory", err)
+			}
+		}
+		roleConfigFile, err := os.Create(*roleConfigOutPath)
+		if err != nil {
+			fatal("create role config output", err)
+		}
+		defer roleConfigFile.Close()
+		roleConfigWriter := bufio.NewWriter(roleConfigFile)
+		processor.roleConfigOut = roleConfigWriter
+		defer func() {
+			if err := roleConfigWriter.Flush(); err != nil {
+				fmt.Fprintf(os.Stderr, "role config flush error: %v\n", err)
+			}
+		}()
+	}
 	var frameArchiveWriter *bufio.Writer
 	if frameArchiveFile != nil {
 		frameArchiveWriter = bufio.NewWriter(frameArchiveFile)
@@ -592,6 +615,9 @@ finished:
 		fmt.Fprintf(os.Stderr, "buff_overlap damage_results=%d intervals=%d duplicate_applies=%d unmatched_removes=%d skipped=%d interval_overflow=%d damage_overflow=%d\n", len(processor.damageOverlap), len(processor.buffIntervals), processor.buffDuplicateApplies, processor.buffUnmatchedRemoves, processor.buffOverlapSkipped, processor.buffIntervalOverflow, processor.damageOverlapOverflow)
 	}
 	fmt.Fprintf(os.Stderr, "schema_decode errors=%d skipped_without_schema=%d\n", processor.schemaDecodeErrors, processor.schemaDecodeSkipped)
+	if processor.roleConfigOut != nil {
+		fmt.Fprintf(os.Stderr, "role_config errors=%d\n", processor.roleConfigErrors)
+	}
 	processor.printSummary(os.Stderr)
 	fmt.Fprintf(os.Stderr, "capture_finished udp=%d kcp_push=%d kcp_ordered=%d kcp_messages=%d protocol_frames=%d bad_crc=%d malformed_frames=%d kernel_drops=%d duration=%s\n",
 		stats.udpPackets, stats.kcpPush, stats.kcpOrdered, stats.kcpMessages, stats.frames, stats.badCRC, stats.malformed, stats.kernelDrops, time.Since(started).Round(time.Millisecond))

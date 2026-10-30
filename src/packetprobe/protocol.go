@@ -148,6 +148,8 @@ type processor struct {
 	schemaDecodeOut           diagWriter
 	schemaDecodeErrors        int
 	schemaDecodeSkipped       int
+	roleConfigOut             diagWriter
+	roleConfigErrors          int
 	eventOrderFrame           uint64
 	eventOrder                int
 	hpStateOut                diagWriter

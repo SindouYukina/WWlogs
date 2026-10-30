@@ -68,6 +68,7 @@ func loadGameMasterDatabase(path, locale string) (*gameMaster, error) {
 		skills:             make(map[uint64]masterRecord),
 		commonSkills:       make(map[uint64]masterRecord),
 		roleSkins:          make(map[uint64]uint64),
+		trialRoleParents:   make(map[uint64]uint64),
 		phantomSkills:      make(map[uint64]struct{}),
 		visions:            make(map[uint64]struct{}),
 		commonBullets:      make(map[uint64]string),
@@ -92,6 +93,9 @@ func loadGameMasterDatabase(path, locale string) (*gameMaster, error) {
 		},
 	}
 	if err := loadLocalizedDefinitions(db, locale, "roleinfo", "roleinfo_locale", &master.characters); err != nil {
+		return nil, err
+	}
+	if err := loadSQLiteTrialRoleParents(db, master); err != nil {
 		return nil, err
 	}
 	if err := loadSQLiteCharacterSkins(db, master); err != nil {
@@ -135,6 +139,53 @@ func loadGameMasterDatabase(path, locale string) (*gameMaster, error) {
 			len(master.characters), len(master.monsters), len(master.skills), len(master.damage))
 	}
 	return master, nil
+}
+
+// loadSQLiteTrialRoleParents reads the optional normalized TrialRoleInfo relation.
+func loadSQLiteTrialRoleParents(db *sql.DB, master *gameMaster) error {
+	exists, err := masterTableExists(db, "trialroleinfo")
+	if err != nil || !exists {
+		return err
+	}
+	for _, column := range []string{"id", "parent_role_id"} {
+		present, err := masterColumnExists(db, "trialroleinfo", column)
+		if err != nil {
+			return err
+		}
+		if !present {
+			return fmt.Errorf("trialroleinfo is missing required column %s", column)
+		}
+	}
+	rows, err := db.Query("SELECT id,parent_role_id FROM trialroleinfo ORDER BY id")
+	if err != nil {
+		return fmt.Errorf("query TrialRoleInfo parent relations: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var rawID, rawParent string
+		if err := rows.Scan(&rawID, &rawParent); err != nil {
+			return fmt.Errorf("read TrialRoleInfo parent relation: %w", err)
+		}
+		id, err := parseMasterID(rawID, "trialroleinfo.id")
+		if err != nil {
+			return err
+		}
+		parentID, err := parseMasterID(rawParent, "trialroleinfo.parent_role_id")
+		if err != nil {
+			return err
+		}
+		if _, exists := master.characters[parentID]; !exists {
+			return fmt.Errorf("TrialRoleInfo Id %d references missing RoleInfo Id %d", id, parentID)
+		}
+		if _, duplicate := master.trialRoleParents[id]; duplicate {
+			return fmt.Errorf("duplicate TrialRoleInfo Id %d", id)
+		}
+		master.trialRoleParents[id] = parentID
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate TrialRoleInfo parent relations: %w", err)
+	}
+	return nil
 }
 
 // loadSQLiteSkillLabels reads the developer skill labels of the skillinfo table when it exists.

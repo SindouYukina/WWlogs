@@ -169,6 +169,7 @@ func (p *processor) archiveSchemaDecode(frame gameFrame, plain []byte) {
 		return
 	}
 	p.observeTimerSchema(frame, name, decoded)
+	p.archiveRoleConfigRecords(frame, decoded)
 	if p.schemaDecodeOut == nil {
 		return
 	}
@@ -312,7 +313,7 @@ func (p *processor) schemaMessageFor(commandID uint16) (string, bool) {
 // same way the census path does, and writes only frames that parse as top-level
 // Protobuf.
 func (p *processor) archiveUndecodedSchema(frame gameFrame) {
-	if p.protocolSchema == nil || p.schemaDecodeOut == nil || len(p.session) != 32 || len(frame.body) == 0 {
+	if p.protocolSchema == nil || (p.schemaDecodeOut == nil && p.roleConfigOut == nil) || len(p.session) != 32 || len(frame.body) == 0 {
 		return
 	}
 	plain, err := decryptGameBody(frame.sequence, frame.body, p.session)

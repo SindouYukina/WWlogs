@@ -62,6 +62,8 @@ type gameMaster struct {
 	commonSkills   map[uint64]masterRecord
 	// roleSkins maps RoleSkin.Id to RoleSkin.RoleId from the normalized roleskin table.
 	roleSkins map[uint64]uint64
+	// trialRoleParents maps TrialRoleInfo.Id to its canonical RoleInfo.Id.
+	trialRoleParents map[uint64]uint64
 	// phantomSkills holds PhantomSkill.PhantomSkillId values, the key space shared with PhantomItem.SkillId.
 	phantomSkills map[uint64]struct{}
 	// visions holds DT_Vision row keys from the typed vision table.
