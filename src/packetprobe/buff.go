@@ -59,6 +59,8 @@ type buffSnapshotAuditRow struct {
 	BuffDefinitionTable    string           `json:"buffDefinitionTable,omitempty"`
 	BuffDefinitionID       *uint64          `json:"buffDefinitionId,omitempty"`
 	BuffDefinitionEvidence string           `json:"buffDefinitionEvidence"`
+	// BuffOwners names the features that list this BuffId in an explicit reference table; the Buff has no name of its own.
+	BuffOwners *buffOwnersJSON `json:"buffOwners,omitempty"`
 	// BuffSemanticStatus covers runtime application and effect semantics, not static row lookup.
 	BuffSemanticStatus        resolutionStatus `json:"buffSemanticStatus"`
 	BuffSemanticEvidence      string           `json:"buffSemanticEvidence"`
@@ -69,31 +71,33 @@ type buffSnapshotAuditRow struct {
 	Buff                      rawBuffSnapshot  `json:"buff"`
 }
 
-const buffSnapshotSchemaVersion = 3
+const buffSnapshotSchemaVersion = 4
 
 type buffLifecycleAuditRow struct {
-	SchemaVersion                          int              `json:"schemaVersion"`
-	EventType                              string           `json:"eventType"`
-	SessionNumber                          int              `json:"sessionNumber"`
-	MessageID                              uint16           `json:"messageId"`
-	Timestamp                              time.Time        `json:"timestamp"`
-	CommandID                              uint16           `json:"commandId"`
-	InnerMessageFieldNumber                *uint64          `json:"innerMessageFieldNumber,omitempty"`
-	MessagePath                            string           `json:"messagePath,omitempty"`
-	Direction                              string           `json:"direction"`
-	MessageName                            string           `json:"messageName"`
-	EventKind                              string           `json:"eventKind"`
-	EventTypeStatus                        resolutionStatus `json:"eventTypeStatus"`
-	SchemaBasis                            string           `json:"schemaBasis"`
-	TargetEntityID                         *uint64          `json:"targetEntityIdRaw,omitempty"`
-	TargetStatus                           resolutionStatus `json:"targetSemanticsStatus"`
-	TargetEvidence                         string           `json:"targetEvidence,omitempty"`
-	BuffID                                 *uint64          `json:"buffId,omitempty"`
-	BuffDefinitionStatus                   resolutionStatus `json:"buffDefinitionStatus,omitempty"`
-	BuffDefinitionTable                    string           `json:"buffDefinitionTable,omitempty"`
-	BuffDefinitionID                       *uint64          `json:"buffDefinitionId,omitempty"`
-	BuffDefinitionEvidence                 string           `json:"buffDefinitionEvidence,omitempty"`
-	ID                                     *uint64          `json:"id,omitempty"`
+	SchemaVersion           int              `json:"schemaVersion"`
+	EventType               string           `json:"eventType"`
+	SessionNumber           int              `json:"sessionNumber"`
+	MessageID               uint16           `json:"messageId"`
+	Timestamp               time.Time        `json:"timestamp"`
+	CommandID               uint16           `json:"commandId"`
+	InnerMessageFieldNumber *uint64          `json:"innerMessageFieldNumber,omitempty"`
+	MessagePath             string           `json:"messagePath,omitempty"`
+	Direction               string           `json:"direction"`
+	MessageName             string           `json:"messageName"`
+	EventKind               string           `json:"eventKind"`
+	EventTypeStatus         resolutionStatus `json:"eventTypeStatus"`
+	SchemaBasis             string           `json:"schemaBasis"`
+	TargetEntityID          *uint64          `json:"targetEntityIdRaw,omitempty"`
+	TargetStatus            resolutionStatus `json:"targetSemanticsStatus"`
+	TargetEvidence          string           `json:"targetEvidence,omitempty"`
+	BuffID                  *uint64          `json:"buffId,omitempty"`
+	BuffDefinitionStatus    resolutionStatus `json:"buffDefinitionStatus,omitempty"`
+	BuffDefinitionTable     string           `json:"buffDefinitionTable,omitempty"`
+	BuffDefinitionID        *uint64          `json:"buffDefinitionId,omitempty"`
+	BuffDefinitionEvidence  string           `json:"buffDefinitionEvidence,omitempty"`
+	ID                      *uint64          `json:"id,omitempty"`
+	// BuffOwners names the features that list the linked Buff id (typed, apply Id or handle-inherited) in an explicit reference table.
+	BuffOwners *buffOwnersJSON `json:"buffOwners,omitempty"`
 	// GenericID* link the untyped Id of apply-type messages to buff.id. They are separate from the
 	// typed BuffDefinition* fields: the field is not named BuffId, so the basis is capture-internal evidence.
 	GenericIDDefinitionStatus   resolutionStatus `json:"genericIdDefinitionStatus,omitempty"`
@@ -101,9 +105,9 @@ type buffLifecycleAuditRow struct {
 	GenericIDDefinitionID       *uint64          `json:"genericIdDefinitionId,omitempty"`
 	GenericIDDefinitionEvidence string           `json:"genericIdDefinitionEvidence,omitempty"`
 	// HandleLinked* tie a handle-only event (duration, stack, effect removal) to the apply event that created the handle.
-	HandleLinkedID       *uint64          `json:"handleLinkedId,omitempty"`
-	HandleLinkedStatus   resolutionStatus `json:"handleLinkedStatus,omitempty"`
-	HandleLinkedEvidence string           `json:"handleLinkedEvidence,omitempty"`
+	HandleLinkedID                         *uint64          `json:"handleLinkedId,omitempty"`
+	HandleLinkedStatus                     resolutionStatus `json:"handleLinkedStatus,omitempty"`
+	HandleLinkedEvidence                   string           `json:"handleLinkedEvidence,omitempty"`
 	ConfBuffID                             *uint64          `json:"confBuffId,omitempty"`
 	InstigatorID                           *uint64          `json:"instigatorIdRaw,omitempty"`
 	InstigatorStatus                       resolutionStatus `json:"instigatorSemanticsStatus"`
@@ -138,7 +142,7 @@ type buffLifecycleAuditRow struct {
 	UnknownFieldNumbers                    []uint64         `json:"unknownFieldNumbers,omitempty"`
 }
 
-const buffLifecycleSchemaVersion = 5
+const buffLifecycleSchemaVersion = 6
 
 func decodeBuffLifecycleMessage(frame gameFrame, body []byte) (buffLifecycleAuditRow, error) {
 	return decodeBuffLifecycleMessageForCommand(frame, body, frame.commandID, nil)
@@ -369,6 +373,7 @@ func (p *processor) handleBuffLifecycleMessage(frame gameFrame, body []byte) err
 	row.SessionNumber = p.sessionNumber
 	p.linkBuffLifecycleDefinition(&row)
 	p.linkBuffLifecycleGenericAndHandle(&row)
+	p.linkBuffLifecycleOwners(&row)
 	if p.buffLifecycle != nil {
 		if err := json.NewEncoder(p.buffLifecycle).Encode(row); err != nil {
 			return fmt.Errorf("write Buff lifecycle row: %w", err)
@@ -503,6 +508,7 @@ func (p *processor) handleInnerBuffLifecycleMessage(frame gameFrame, innerFieldN
 	row.SessionNumber = p.sessionNumber
 	p.linkBuffLifecycleDefinition(&row)
 	p.linkBuffLifecycleGenericAndHandle(&row)
+	p.linkBuffLifecycleOwners(&row)
 	if p.buffLifecycle != nil {
 		if err := json.NewEncoder(p.buffLifecycle).Encode(row); err != nil {
 			return fmt.Errorf("write Buff lifecycle row: %w", err)
@@ -511,6 +517,16 @@ func (p *processor) handleInnerBuffLifecycleMessage(frame gameFrame, innerFieldN
 	p.observeBuffInterval(row)
 	p.writeStructuredEventJSONL(row)
 	return nil
+}
+
+// linkBuffLifecycleOwners attaches the named owners of the Buff id this row is tied to.
+func (p *processor) linkBuffLifecycleOwners(row *buffLifecycleAuditRow) {
+	if row == nil || p.masters == nil {
+		return
+	}
+	if id, ok := row.buffOwnerLookupID(); ok {
+		row.BuffOwners = resolveBuffOwners(p.masters, id)
+	}
 }
 
 const maxBuffHandles = 1 << 16
@@ -721,6 +737,7 @@ func (p *processor) handleActiveResponse(frame gameFrame, body []byte) error {
 						row.BuffDefinitionTable = "buff"
 						row.BuffDefinitionID = &definitionID
 						row.BuffDefinitionEvidence = "FightBuffInformation.BuffId follows the client's BuffById lookup; exact normalized buff.id row found. This links static attributes only and does not establish runtime application or effect semantics"
+						row.BuffOwners = resolveBuffOwners(p.masters, record.ID)
 					}
 					if record.HasInstigatorID {
 						row.InstigatorSemantics = resolutionCorrelated

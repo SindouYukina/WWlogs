@@ -94,6 +94,8 @@ type gameMaster struct {
 	commonBulletDamage map[uint64]uint64
 	// skillLabels maps a SkillInfo row key to the distinct developer labels (zh-CN) found across SkillInfo tables.
 	skillLabels map[uint64]map[string]struct{}
+	// buffOwners maps a Buff id to the named features (chain node, echo set, weapon passive, skill) that list it.
+	buffOwners map[uint64][]buffOwnerText
 	// skillLabelText holds skill_dev_label_locale rows (master locale and zh-CN) by skill id and locale.
 	skillLabelText map[uint64]map[string]localizedSkillLabel
 	// elementNames maps damage.element to the ElementInfo name of the master locale.
