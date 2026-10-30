@@ -209,6 +209,8 @@ type summonSkillResolution struct {
 	Namespace     string
 	Status        resolutionStatus
 	Proof         string
+	// DevLabel is the developer note of the Vision row the key resolves to; never an official name.
+	DevLabel *combatEventLabelTextJSONL
 }
 
 const (
@@ -232,6 +234,7 @@ func resolveSummonSkill(masters *gameMaster, entity runtimeEntity) *summonSkillR
 		result.Proof = "ConcomitantMotorcycle SummonSkillId has no DT_Vision row in the loaded master"
 	default:
 		result.Namespace = "Vision.Id"
+		result.DevLabel = masters.visionDevLabels[entity.summonSkillID]
 		if entity.summonType == summonTypeConcomitantVision {
 			result.Status = resolutionVerified
 			result.Proof = "SummonerComponent.Type=ConcomitantVision selects the normalized summon_skill_vision_ref crosswalk from the unique PhantomSkill.PhantomSkillId key to Vision.Id; saved same-entity SkillId references and verified damage requests validate this Type 1 mapping for multiple distinct keys"
@@ -279,6 +282,8 @@ type bulletResolution struct {
 	ActorBlueprint string
 	Via            string
 	DevLabelZh     string
+	// DevLabel is the localized developer note of the CommonBulletData row; never an official name.
+	DevLabel *combatEventLabelTextJSONL
 	// RowDamageID is the DamageId written in the matched CDT_CommonBulletData row (0 when none).
 	RowDamageID uint64
 	Status      resolutionStatus
@@ -419,6 +424,7 @@ func resolveBullet(masters *gameMaster, bulletID uint64, source bulletSource) *b
 	case inCommon:
 		result.Namespace = "CDT_CommonBulletData.RowKey"
 		result.DevLabelZh = label
+		result.DevLabel = masters.commonBulletDevLabels[bulletID]
 		result.RowDamageID = masters.commonBulletDamage[bulletID]
 		result.Status = resolutionCorrelated
 		result.Proof = "BulletId is a row key of CDT_CommonBulletData and of no actor-level BulletPreload family; the loader that serves this common table in normal combat is unproven, client build observed, master compatibility unverified"

@@ -39,6 +39,8 @@ type sceneTemplateCandidate struct {
 	NameTextKey   string `json:"nameTextKey,omitempty"`
 	Subtitle      string `json:"subtitle,omitempty"`
 	Language      string `json:"language,omitempty"`
+	// DevLabel is the developer note of a template without an official name (templateconfig_dev_label_locale).
+	DevLabel *combatEventLabelTextJSONL `json:"devLabel,omitempty"`
 }
 
 type sceneIdentityMaster struct {
@@ -71,6 +73,8 @@ type gameMaster struct {
 	phantomSkills map[uint64]struct{}
 	// visions holds DT_Vision row keys from the typed vision table.
 	visions map[uint64]struct{}
+	// visionDevLabels holds the dev_label_locale text of every Vision row (master locale, else zh-CN).
+	visionDevLabels map[uint64]*combatEventLabelTextJSONL
 	// concomitantVisionSummonSkills holds keys resolved by summon_skill_vision_ref.
 	concomitantVisionSummonSkills map[uint64]struct{}
 	// buffDefinitions holds normalized buff.Id keys for exact static-definition lookups.
@@ -95,6 +99,8 @@ type gameMaster struct {
 	skillActors map[uint64]map[string]struct{}
 	// commonBulletDamage maps a CDT_CommonBulletData row key to the row's own DamageId (absent when the row names none).
 	commonBulletDamage map[uint64]uint64
+	// commonBulletDevLabels holds the dev_label_locale text of every CDT_CommonBulletData row (master locale, else zh-CN).
+	commonBulletDevLabels map[uint64]*combatEventLabelTextJSONL
 	// skillLabels maps a SkillInfo row key to the distinct developer labels (zh-CN) found across SkillInfo tables.
 	skillLabels map[uint64]map[string]struct{}
 	// buffOwners maps a Buff id to the named features (chain node, echo set, weapon passive, skill) that list it.

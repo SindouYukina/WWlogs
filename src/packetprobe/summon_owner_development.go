@@ -80,6 +80,7 @@ func (p *processor) writeSummonerRecord(frame gameFrame, command string, entityI
 		}
 		resolution := resolveSummonSkill(p.masters, entity)
 		record.SummonSkillNamespace, record.SummonSkillStatus = resolution.Namespace, resolution.Status
+		record.SummonSkillDevLabel = resolution.DevLabel
 	}
 	p.writeSummonOwnerRecord(record)
 }

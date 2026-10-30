@@ -87,8 +87,10 @@ func loadGameMasterDatabase(path, locale string) (*gameMaster, error) {
 		actorSkills:                   make(map[string]map[uint64]struct{}),
 		skillActors:                   make(map[uint64]map[string]struct{}),
 		commonBulletDamage:            make(map[uint64]uint64),
+		commonBulletDevLabels:         make(map[uint64]*combatEventLabelTextJSONL),
 		skillLabels:                   make(map[uint64]map[string]struct{}),
 		skillLabelText:                make(map[uint64]map[string]localizedSkillLabel),
+		visionDevLabels:               make(map[uint64]*combatEventLabelTextJSONL),
 		buffOwners:                    make(map[uint64][]buffOwnerText),
 		propertyNames:                 make(map[int64]propertyName),
 		abnormalDamageIDs:             make(map[uint64]struct{}),
@@ -150,6 +152,12 @@ func loadGameMasterDatabase(path, locale string) (*gameMaster, error) {
 		return nil, err
 	}
 	if err := loadSQLiteSkillLabelText(db, locale, master); err != nil {
+		return nil, err
+	}
+	if err := loadSQLiteVisionDevLabels(db, locale, master); err != nil {
+		return nil, err
+	}
+	if err := loadSQLiteDevLabelMap(db, "commonbullet", locale, master.commonBulletDevLabels); err != nil {
 		return nil, err
 	}
 	if err := loadSQLiteElementNames(db, locale, master); err != nil {
@@ -1099,7 +1107,50 @@ func loadTemplateCatalog(db *sql.DB, master *gameMaster) error {
 		}
 		master.sceneIdentity.templateCatalog[id] = candidate
 	}
-	return rows.Err()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	return loadSQLiteTemplateDevLabels(db, master)
+}
+
+// loadSQLiteTemplateDevLabels attaches the optional developer note of templates that have no official name.
+// The master locale wins; the zh-CN original is the fallback.
+func loadSQLiteTemplateDevLabels(db *sql.DB, master *gameMaster) error {
+	rows, err := queryDevLabels(db, "templateconfig", master.locale)
+	if err != nil || rows == nil {
+		return err
+	}
+	if err != nil {
+		return fmt.Errorf("query template developer labels: %w", err)
+	}
+	defer rows.Close()
+	chosen := make(map[uint64]*combatEventLabelTextJSONL)
+	for rows.Next() {
+		var raw string
+		label := &combatEventLabelTextJSONL{Evidence: "dev_label_locale row for this TemplateConfig id; an internal developer note, not an official in-game name"}
+		if err := rows.Scan(&raw, &label.Locale, &label.Text, &label.Kind); err != nil {
+			return fmt.Errorf("read template developer label: %w", err)
+		}
+		id, err := parseMasterID(raw, "dev_label_locale.id")
+		if err != nil {
+			return err
+		}
+		if previous, ok := chosen[id]; !ok || label.Locale == master.locale && previous.Locale != master.locale {
+			chosen[id] = label
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for id, label := range chosen {
+		candidate, ok := master.sceneIdentity.templateCatalog[id]
+		if !ok || candidate.Name != "" {
+			continue
+		}
+		candidate.DevLabel = label
+		master.sceneIdentity.templateCatalog[id] = candidate
+	}
+	return nil
 }
 
 func loadTemplateRelations(db *sql.DB, master *gameMaster) error {

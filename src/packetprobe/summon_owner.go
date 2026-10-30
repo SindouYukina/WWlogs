@@ -26,5 +26,7 @@ type summonOwnerRecord struct {
 	// SummonSkillNamespace and SummonSkillStatus are the master translation of SummonSkillId (see resolveSummonSkill).
 	SummonSkillNamespace string           `json:"summonSkillNamespace,omitempty"`
 	SummonSkillStatus    resolutionStatus `json:"summonSkillStatus,omitempty"`
-	Evidence             string           `json:"evidence"`
+	// SummonSkillDevLabel is the developer note of the Vision row the key resolves to; never an official name.
+	SummonSkillDevLabel *combatEventLabelTextJSONL `json:"summonSkillDevLabel,omitempty"`
+	Evidence            string                     `json:"evidence"`
 }

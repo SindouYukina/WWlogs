@@ -24,7 +24,9 @@ type bulletRefRecord struct {
 	ActorBlueprint   string           `json:"actorBlueprint,omitempty"`
 	Via              string           `json:"via,omitempty"`
 	DevLabelZhCn     string           `json:"devLabelZhCn,omitempty"`
-	Evidence         string           `json:"evidence"`
+	// DevLabel is the localized developer note of the bullet row; never an official name.
+	DevLabel *combatEventLabelTextJSONL `json:"devLabel,omitempty"`
+	Evidence string                     `json:"evidence"`
 }
 
 const maxBulletHandles = 1 << 16

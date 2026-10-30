@@ -205,6 +205,7 @@ func (p *processor) writeBulletReference(frame gameFrame, message, parent *decod
 		if resolution := resolveBullet(p.masters, uint64(bulletID), source); resolution != nil {
 			record.Status, record.Namespace, record.ActorBlueprint, record.Via = resolution.Status, resolution.Namespace, resolution.ActorBlueprint, resolution.Via
 			record.DevLabelZhCn, record.Evidence = resolution.DevLabelZh, resolution.Proof
+			record.DevLabel = resolution.DevLabel
 		}
 	}
 	if message.Type == "CreateBulletPush" || message.Type == "CreateBulletNotify" {

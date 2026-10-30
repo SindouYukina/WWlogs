@@ -45,14 +45,16 @@ type combatEventNoAmountJSONL struct {
 // combatEventBulletJSONL is the static namespace translation of the event's BulletId.
 // It is kept apart from Raw, which only copies wire values.
 type combatEventBulletJSONL struct {
-	BulletID       uint64           `json:"bulletId"`
-	Namespace      string           `json:"namespace,omitempty"`
-	ActorBlueprint string           `json:"actorBlueprint,omitempty"`
-	Via            string           `json:"via,omitempty"`
-	DevLabelZhCn   string           `json:"devLabelZhCn,omitempty"`
-	RowDamageID    uint64           `json:"rowDamageId,omitempty"`
-	Status         resolutionStatus `json:"status"`
-	Evidence       string           `json:"evidence,omitempty"`
+	BulletID       uint64 `json:"bulletId"`
+	Namespace      string `json:"namespace,omitempty"`
+	ActorBlueprint string `json:"actorBlueprint,omitempty"`
+	Via            string `json:"via,omitempty"`
+	DevLabelZhCn   string `json:"devLabelZhCn,omitempty"`
+	// DevLabel is the localized developer note of the bullet row; never an official name.
+	DevLabel    *combatEventLabelTextJSONL `json:"devLabel,omitempty"`
+	RowDamageID uint64                     `json:"rowDamageId,omitempty"`
+	Status      resolutionStatus           `json:"status"`
+	Evidence    string                     `json:"evidence,omitempty"`
 }
 
 // combatEventRawJSONL holds only values copied from the decoded damage request
@@ -90,6 +92,8 @@ type combatEventSummonSkillJSONL struct {
 	Namespace     string           `json:"namespace,omitempty"`
 	Status        resolutionStatus `json:"status"`
 	Evidence      string           `json:"evidence,omitempty"`
+	// DevLabel is the developer note of the resolved Vision row.
+	DevLabel *combatEventLabelTextJSONL `json:"devLabel,omitempty"`
 }
 
 // combatEventRoleSkinJSONL is the RoleSkinId -> RoleSkin.RoleId translation of one entity.
@@ -120,13 +124,15 @@ type combatEventMasterIDJSONL struct {
 }
 
 type combatEventTemplateJSONL struct {
-	Name         string                              `json:"name,omitempty"`
-	Subtitle     string                              `json:"subtitle,omitempty"`
-	IdentityType string                              `json:"identityType"`
-	Status       resolutionStatus                    `json:"status"`
-	NameStatus   resolutionStatus                    `json:"nameStatus"`
-	Candidates   []combatEventTemplateCandidateJSONL `json:"candidates"`
-	Evidence     string                              `json:"evidence,omitempty"`
+	Name         string           `json:"name,omitempty"`
+	Subtitle     string           `json:"subtitle,omitempty"`
+	IdentityType string           `json:"identityType"`
+	Status       resolutionStatus `json:"status"`
+	NameStatus   resolutionStatus `json:"nameStatus"`
+	// DevLabel is set instead of Name when the single candidate has only a developer note; never an official name.
+	DevLabel   *combatEventLabelTextJSONL          `json:"devLabel,omitempty"`
+	Candidates []combatEventTemplateCandidateJSONL `json:"candidates"`
+	Evidence   string                              `json:"evidence,omitempty"`
 }
 
 type combatEventTemplateCandidateJSONL sceneTemplateCandidate
@@ -552,6 +558,9 @@ func sceneTemplateEventLabel(identity entityIdentity, entityID string) (string, 
 	}
 	candidate := identity.TemplateCandidates[0]
 	if candidate.Name == "" || candidate.NameStatus != string(resolutionVerified) {
+		if candidate.DevLabel != nil && candidate.DevLabel.Text != "" {
+			return fmt.Sprintf("[internal] %s [Template:%d; %s] [Entity:%s]", candidate.DevLabel.Text, candidate.TemplateID, identity.TemplateStatus, entityID), true
+		}
 		return "", false
 	}
 	return fmt.Sprintf("%s [Template:%d; %s] [Entity:%s]", candidate.Name, candidate.TemplateID, identity.TemplateStatus, entityID), true

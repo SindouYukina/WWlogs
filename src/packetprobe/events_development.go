@@ -11,7 +11,7 @@ func summonSkillJSONL(identity entityIdentity) *combatEventSummonSkillJSONL {
 	if identity.SummonSkill == nil {
 		return nil
 	}
-	view := &combatEventSummonSkillJSONL{SummonSkillID: identity.SummonSkill.SummonSkillID, Namespace: identity.SummonSkill.Namespace, Status: identity.SummonSkill.Status, Evidence: identity.SummonSkill.Proof}
+	view := &combatEventSummonSkillJSONL{SummonSkillID: identity.SummonSkill.SummonSkillID, Namespace: identity.SummonSkill.Namespace, Status: identity.SummonSkill.Status, Evidence: identity.SummonSkill.Proof, DevLabel: identity.SummonSkill.DevLabel}
 	if identity.SummonSkill.HasSummonType {
 		view.SummonType = &identity.SummonSkill.SummonType
 	}
@@ -87,7 +87,7 @@ func (event combatEvent) jsonlView(masters *gameMaster) combatEventJSONL {
 	if event.HasBulletID && event.BulletID > 0 {
 		source := newBulletSource(event.Source, event.SkillID, event.SourceVisionSummonCfgs)
 		if resolution := resolveBullet(masters, uint64(event.BulletID), source); resolution != nil {
-			view.Bullet = &combatEventBulletJSONL{BulletID: resolution.BulletID, Namespace: resolution.Namespace, ActorBlueprint: resolution.ActorBlueprint, Via: resolution.Via, DevLabelZhCn: resolution.DevLabelZh, RowDamageID: resolution.RowDamageID, Status: resolution.Status, Evidence: resolution.Proof}
+			view.Bullet = &combatEventBulletJSONL{BulletID: resolution.BulletID, Namespace: resolution.Namespace, ActorBlueprint: resolution.ActorBlueprint, Via: resolution.Via, DevLabelZhCn: resolution.DevLabelZh, DevLabel: resolution.DevLabel, RowDamageID: resolution.RowDamageID, Status: resolution.Status, Evidence: resolution.Proof}
 		}
 	}
 	view.DamageContributorCandidate = event.DamageContributorCandidate
@@ -164,6 +164,8 @@ func applySceneTemplateJSONL(destination *combatEventEntityJSONL, identity entit
 			template.Name = candidate.Name
 			template.Subtitle = candidate.Subtitle
 			template.NameStatus = resolutionVerified
+		} else if candidate.DevLabel != nil {
+			template.DevLabel = candidate.DevLabel
 		}
 	}
 	destination.SceneTemplate = template
