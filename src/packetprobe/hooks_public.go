@@ -3,6 +3,7 @@
 package main
 
 import (
+	"database/sql"
 	"io"
 )
 
@@ -55,6 +56,11 @@ func optionalDamageSource(value uint64, present bool) string {
 	return r0
 }
 
+func loadSQLiteAbnormalDamageIDs(db *sql.DB, master *gameMaster) error {
+	var r0 error
+	return r0
+}
+
 func (p *processor) archiveFrame(frame gameFrame) {
 }
 
@@ -70,7 +76,13 @@ func (p *processor) archiveDamageRPCSchema(frame gameFrame, plain []byte) {
 func (p *processor) archiveHPStateFrame(frame gameFrame, plain []byte) {
 }
 
+func (p *processor) archiveCombatStateFrame(frame gameFrame, plain []byte) {
+}
+
 func (p *processor) archiveDamagePushFrame(frame gameFrame, plain []byte) {
+}
+
+func (p *processor) archiveBulletRefReceiveFrame(frame gameFrame, plain []byte) {
 }
 
 func (p *processor) archiveSummonOwnerFrame(frame gameFrame, plain []byte) {
@@ -86,6 +98,12 @@ func (p *processor) backfillEncounterSummary(sourceID, roleID uint64) {
 }
 
 func (p *processor) removePendingSummaryCredits(sourceID uint64) {
+}
+
+func (p *processor) writePartReference(frame gameFrame, rpcID uint64, request pendingDamageRequest) {
+}
+
+func (p *processor) writeNoAmountEvent(rpcID uint64, request pendingDamageRequest, hasAmount bool, errorCode, immuneType int32, hasChangeLife bool, changeLife int32) {
 }
 
 func (p *processor) observeEncounterSummary(event combatEvent) {

@@ -7,6 +7,24 @@ import (
 	"fmt"
 )
 
+func summonSkillJSONL(identity entityIdentity) *combatEventSummonSkillJSONL {
+	if identity.SummonSkill == nil {
+		return nil
+	}
+	view := &combatEventSummonSkillJSONL{SummonSkillID: identity.SummonSkill.SummonSkillID, Namespace: identity.SummonSkill.Namespace, Status: identity.SummonSkill.Status, Evidence: identity.SummonSkill.Proof, DevLabel: identity.SummonSkill.DevLabel}
+	if identity.SummonSkill.HasSummonType {
+		view.SummonType = &identity.SummonSkill.SummonType
+	}
+	return view
+}
+
+func roleSkinJSONL(identity entityIdentity) *combatEventRoleSkinJSONL {
+	if identity.RoleSkin == nil {
+		return nil
+	}
+	return &combatEventRoleSkinJSONL{SkinID: identity.RoleSkin.SkinID, MasterRoleID: identity.RoleSkin.MasterRoleID, Status: identity.RoleSkin.Status, Evidence: identity.RoleSkin.Proof}
+}
+
 func lifecycleJSONL(view entityLifecycleView) entityLifecycleJSONL {
 	if !view.Known {
 		return entityLifecycleJSONL{State: lifecycleUnknown, Status: resolutionUnknown, Evidence: "no EntityAddNotify, EntityRemoveNotify or JoinSceneNotify observed for this entity ID"}
@@ -33,7 +51,7 @@ func lifecycleEvidence(source string) string {
 
 func (event combatEvent) jsonlView(masters *gameMaster) combatEventJSONL {
 	view := combatEventJSONL{
-		SchemaVersion: 4,
+		SchemaVersion: 5,
 		EventType:     combatEventJSONLType(event.EventTypeCandidate),
 		Timestamp:     event.Timestamp,
 		SessionNumber: event.SessionNumber,
@@ -51,6 +69,11 @@ func (event combatEvent) jsonlView(masters *gameMaster) combatEventJSONL {
 			ClassStatus: event.EventTypeStatus, ClassEvidence: event.EventTypeProof,
 		},
 	}
+	if label := resolveSkillLabel(masters, event.SkillID); label != nil {
+		view.Skill.DevLabelZhCn, view.Skill.DevLabelStatus, view.Skill.DevLabelProof = label.Label, label.Status, label.Evidence
+	}
+	view.Skill.DevLabel = resolveSkillLabelText(masters, event.SkillID)
+	view.CombatResult.Element = resolveDamageElement(masters, event.DamageID, event.HasDamageID)
 	view.Actors = projectActors(event)
 	if event.SkillRequest != nil {
 		request := event.SkillRequest
@@ -61,6 +84,14 @@ func (event combatEvent) jsonlView(masters *gameMaster) combatEventJSONL {
 			Evidence:   "outbound CombatSendPackRequest CombatCommon.MessageId exactly equals DamageContext.SkillMessageId; damage request is separately paired with server response by RPC ID",
 		}
 	}
+	if event.HasBulletID && event.BulletID > 0 {
+		source := newBulletSource(event.Source, event.SkillID, event.SourceVisionSummonCfgs)
+		if resolution := resolveBullet(masters, uint64(event.BulletID), source); resolution != nil {
+			view.Bullet = &combatEventBulletJSONL{BulletID: resolution.BulletID, Namespace: resolution.Namespace, ActorBlueprint: resolution.ActorBlueprint, Via: resolution.Via, DevLabelZhCn: resolution.DevLabelZh, DevLabel: resolution.DevLabel, RowDamageID: resolution.RowDamageID, Status: resolution.Status, Evidence: resolution.Proof}
+		}
+	}
+	view.DamageContributorCandidate = event.DamageContributorCandidate
+	view.DamageOwners = resolveDamageOwners(masters, event.DamageID, event.HasDamageID)
 	view.Raw = combatEventRawJSONL{
 		DamageID: optionalUint64(event.DamageID, event.HasDamageID), AttackerEntityID: optionalUint64(event.SourceEntityID, event.HasSourceEntity),
 		TargetEntityID: optionalUint64(event.TargetEntityID, event.HasTargetEntity), SkillID: optionalUint64(event.SkillID, event.SkillID != 0),
@@ -77,6 +108,10 @@ func (event combatEvent) jsonlView(masters *gameMaster) combatEventJSONL {
 	view.Source.EntityID = optionalUint64(event.SourceEntityID, event.HasSourceEntity)
 	view.Target.EntityID = optionalUint64(event.TargetEntityID, event.HasTargetEntity)
 	view.Source.Lifecycle = lifecycleJSONL(event.Source.Lifecycle)
+	view.Source.RoleSkin = roleSkinJSONL(event.Source)
+	view.Target.RoleSkin = roleSkinJSONL(event.Target)
+	view.Source.SummonSkill = summonSkillJSONL(event.Source)
+	view.Target.SummonSkill = summonSkillJSONL(event.Target)
 	view.Target.Lifecycle = lifecycleJSONL(event.Target.Lifecycle)
 	if event.Source.HasCharacter {
 		view.Source.Character = &combatEventMasterIDJSONL{ID: event.Source.Character.ID, Name: event.Source.Character.Name, Status: event.Source.CharacterStatus, Evidence: event.Source.CharacterProof}
@@ -130,6 +165,8 @@ func applySceneTemplateJSONL(destination *combatEventEntityJSONL, identity entit
 			template.Name = candidate.Name
 			template.Subtitle = candidate.Subtitle
 			template.NameStatus = resolutionVerified
+		} else if candidate.DevLabel != nil {
+			template.DevLabel = candidate.DevLabel
 		}
 	}
 	destination.SceneTemplate = template
@@ -170,10 +207,21 @@ func optionalInt32(value int32, present bool) *int32 {
 }
 
 func (p *processor) writeStructuredEventJSONL(event any) {
+	p.writeEnvelopedEventJSONL(event, "")
+}
+
+// writeEnvelopedEventJSONL writes one event line; a non-empty kind selects an auxiliary id namespace.
+func (p *processor) writeEnvelopedEventJSONL(event any, kind string) {
 	if p.combatEventsJSONL == nil {
 		return
 	}
-	line, err := prependEnvelope(p.nextEventEnvelope(), event)
+	envelope := eventEnvelope{}
+	if kind != "" {
+		envelope = p.nextAuxEventEnvelope(kind)
+	} else {
+		envelope = p.nextEventEnvelope()
+	}
+	line, err := prependEnvelope(envelope, event)
 	if err != nil {
 		fmt.Fprintf(p.diagnostic, "combat_event_jsonl_encode_error=%v\n", err)
 		return
@@ -211,6 +259,13 @@ func (event combatEvent) formatNormal() string {
 			credit = fmt.Sprintf("Credit:Character:%d [%s; name %s]", event.CharacterID, event.CharacterStatus, event.CharacterNameStatus)
 		}
 	}
+	if credit == "Credit:?" && event.DamageContributorCandidate != nil {
+		credit = "Credit:[Vehicle]"
+		if name := event.DamageContributorCandidate.Name; name != nil && name.Text != "" {
+			credit = fmt.Sprintf("Credit:[Vehicle] [internal] %s", name.Text)
+		}
+		credit += fmt.Sprintf(" [%s]", event.DamageContributorCandidate.Status)
+	}
 	skillID := "?"
 	if event.SkillID != 0 {
 		skillID = fmt.Sprintf("%d", event.SkillID)
@@ -227,6 +282,9 @@ func (event combatEvent) formatNormal() string {
 				skill = fmt.Sprintf("%s [UI label, SkillId:%s, %s; name %s]", event.SkillName, skillID, event.SkillStatus, event.SkillNameStatus)
 			}
 		}
+	}
+	if skill == fmt.Sprintf("SkillId:%s", skillID) && event.SkillDevLabel != "" {
+		skill = fmt.Sprintf("[internal] %s [SkillId:%s]", event.SkillDevLabel, skillID)
 	}
 	damageSource := "Unknown"
 	if event.HasDamageSourceType {
@@ -260,6 +318,9 @@ func (event combatEvent) formatNormal() string {
 		} else {
 			target = fmt.Sprintf("Character:%d [name %s] [Entity:%s]", event.Target.Character.ID, event.Target.Character.NameStatus, targetID)
 		}
+	}
+	if !event.Source.HasMonster && event.Source.HasCharacter && (event.Source.CharacterStatus == resolutionVerified || event.Source.CharacterStatus == resolutionCorrelated) && event.Source.Character.Name != "" && (event.Source.Character.NameStatus == string(resolutionVerified) || event.Source.Character.NameStatus == string(resolutionCorrelated)) {
+		source = fmt.Sprintf("%s [Char:%d] [Entity:%s]", event.Source.Character.Name, event.Source.Character.ID, sourceID)
 	}
 	if label, ok := sceneTemplateEventLabel(event.Target, targetID); ok && !event.Target.HasMonster && !event.Target.HasCharacter {
 		target = label
@@ -354,4 +415,37 @@ func optionalDamageSource(value uint64, present bool) string {
 	default:
 		return fmt.Sprintf("Unknown(%d)", value)
 	}
+}
+
+// writeNoAmountEvent writes a server-confirmed hit whose response carried no usable Damage field as its own event type.
+// It reuses the identity resolution of damage events but is not printed, not counted in encounter totals and not fed to
+// the overlap statistics, so it can never add to or double-count damage.
+func (p *processor) writeNoAmountEvent(rpcID uint64, request pendingDamageRequest, hasAmount bool, errorCode, immuneType int32, hasChangeLife bool, changeLife int32) {
+	// buildDamageEvent counts the hit on the skill request; a no-amount hit is not a damage event, so the count is restored.
+	linkKey := combatActionRequestKey{sessionNumber: p.sessionNumber, messageID: request.skillMessageID}
+	before, hadRequest := p.combatActionRequests[linkKey]
+	event := p.buildDamageEvent(rpcID, request, 0, changeLife, hasChangeLife, 0)
+	if hadRequest && request.skillMessageID != 0 {
+		p.combatActionRequests[linkKey] = before
+		event.SkillRequest = &before
+	}
+	view := event.jsonlView(p.masters)
+	view.EventType = "DAMAGE_RESPONSE_WITHOUT_AMOUNT"
+	outcome := "NO_AMOUNT_FIELD"
+	evidence := "The DamageExecuteResponse omitted Damage (proto3 default 0): a server-confirmed hit whose amount is zero or not reported"
+	switch {
+	case errorCode != 0:
+		outcome = "ERROR_CODE"
+		evidence = "The DamageExecuteResponse carried a non-zero ErrorCode; no amount is implied"
+	case immuneType != 0:
+		outcome = "IMMUNE"
+		evidence = "The DamageExecuteResponse carried a non-zero ImmuneType; the hit was reported as immune and no amount is implied"
+	}
+	response := &combatEventNoAmountJSONL{HasAmount: hasAmount, ErrorCode: errorCode, ImmuneType: immuneType, Outcome: outcome, OutcomeEvidence: evidence}
+	if hasChangeLife {
+		response.ChangeLifeRaw = &changeLife
+	}
+	view.Response = response
+	view.CombatResult.CombatResultAbs = 0
+	p.writeEnvelopedEventJSONL(view, "x")
 }

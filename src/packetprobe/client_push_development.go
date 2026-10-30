@@ -17,6 +17,12 @@ func (p *processor) archiveClientPushes(frame gameFrame, decoded *decodedMessage
 		for _, request := range childMessages(data, "Request") {
 			p.observeCombatActionRequest(frame, request)
 		}
+		if p.bulletRefOut != nil {
+			p.observeBulletReferences(frame, data, "out")
+		}
+		if p.skillRefOut != nil {
+			p.observeSkillReferences(frame, data, "out")
+		}
 		if p.clientPushOut == nil {
 			continue
 		}

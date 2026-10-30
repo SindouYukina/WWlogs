@@ -41,6 +41,8 @@ type pendingDamageRequest struct {
 	hasAttackerEntityID bool
 	targetEntityID      uint64 // DamageExecuteRequest.TargetEntityId, field 10
 	hasTargetEntityID   bool
+	partID              int32 // DamageExecuteRequest.PartId, field 5
+	hasPartID           bool
 	skillLevel          uint64 // DamageExecuteRequest.SkillLevel, field 12
 	skillID             uint64 // DamageContext.SkillId, field 4
 	skillMessageID      uint64 // DamageContext.SkillMessageId, field 5
@@ -148,11 +150,26 @@ type processor struct {
 	schemaDecodeOut           diagWriter
 	schemaDecodeErrors        int
 	schemaDecodeSkipped       int
+	partRefOut                diagWriter
+	partRefErrors             int
+	roleConfigOut             diagWriter
+	roleConfigErrors          int
 	eventOrderFrame           uint64
+	auxEventOrders            map[string]*auxEventOrder
 	eventOrder                int
 	hpStateOut                diagWriter
 	damagePushOut             diagWriter
 	clientPushOut             diagWriter
+	bulletRefOut              diagWriter
+	bulletRefErrors           int
+	shieldRefOut              diagWriter
+	shieldRefErrors           int
+	skillRefOut               diagWriter
+	skillRefErrors            int
+	bulletHandles             map[bulletHandleKey]bulletHandleEntry
+	buffHandles               map[buffHandleKey]buffHandleEntry
+	buffHandleOrder           []buffHandleKey
+	bulletHandleOrder         []bulletHandleKey
 	combatActionRequests      map[combatActionRequestKey]combatActionRequest
 	combatActionOrder         []combatActionRequestKey
 	flowTime                  int64
@@ -166,6 +183,8 @@ type processor struct {
 	hasActiveRole             bool
 	damagePushErrors          int
 	hpStateErrors             int
+	combatStateOut            diagWriter
+	combatStateErrors         int
 	buffIntervals             []*buffInterval
 	buffIntervalOpen          map[overlapKey]*buffInterval
 	buffDuplicateApplies      int
@@ -426,8 +445,10 @@ func (p *processor) handleFrame(frame gameFrame) {
 	p.archiveSchemaDecode(frame, plain)
 	p.archiveDamageRPCSchema(frame, plain)
 	p.archiveHPStateFrame(frame, plain)
+	p.archiveCombatStateFrame(frame, plain)
 	p.archiveDamagePushFrame(frame, plain)
 	p.archiveClientPushFrame(frame, plain)
+	p.archiveBulletRefReceiveFrame(frame, plain)
 	p.archiveSummonOwnerFrame(frame, plain)
 	parseErrorsBefore := p.stats.parseErrors
 	switch frame.commandID {
@@ -438,9 +459,14 @@ func (p *processor) handleFrame(frame gameFrame) {
 			return
 		}
 	case 19470:
-		p.handleDamageRequests(plain)
+		p.handleDamageRequests(frame, plain)
 	case 20332:
 		p.handleDamageResponses(plain)
+		if err := p.handleEmbeddedCombatReceivePackNotify(frame, plain); err != nil {
+			p.stats.parseErrors++
+			fmt.Fprintf(p.diagnostic, "combat_response_notify_parse_error=%v\n", err)
+			return
+		}
 	case 17250, 28030:
 		// TimeCheckResponse and UpdateTimerInfoNotify are interpreted by the
 		// schema-directed observer to preserve their observed field provenance.
@@ -633,7 +659,7 @@ func (p *processor) handleProtoKeyResponse(body []byte) error {
 	return nil
 }
 
-func (p *processor) handleDamageRequests(body []byte) {
+func (p *processor) handleDamageRequests(frame gameFrame, body []byte) {
 	outer, err := parseProtoFields(body)
 	if err != nil {
 		p.stats.parseErrors++
@@ -687,6 +713,9 @@ func (p *processor) handleDamageRequests(body []byte) {
 				case damageField.number == 10 && damageField.wire == 0: // DamageExecuteRequest.TargetEntityId
 					identity.targetEntityID = damageField.value
 					identity.hasTargetEntityID = true
+				case damageField.number == 5 && damageField.wire == 0: // DamageExecuteRequest.PartId
+					identity.partID = int32(uint32(damageField.value))
+					identity.hasPartID = true
 				case damageField.number == 12 && damageField.wire == 0: // DamageExecuteRequest.SkillLevel
 					identity.skillLevel = damageField.value
 				case damageField.number == 13 && damageField.wire == 0: // DamageExecuteRequest.AttackerEntityId
@@ -735,6 +764,7 @@ func (p *processor) handleDamageRequests(body []byte) {
 					p.sourceRoles.observe(identity.attackerEntityID, skill)
 				}
 			}
+			p.writePartReference(frame, rpcID, identity)
 			p.rememberPending(rpcID, identity)
 		}
 	}
@@ -879,6 +909,9 @@ func (p *processor) handleOneDamageResult(rpcID uint64, payload []byte) {
 	}
 	if !hasAmount || errorCode != 0 || immuneType != 0 {
 		p.stats.invalidResponses++
+		p.rememberConsumed(rpcID)
+		delete(p.pending, rpcID)
+		p.writeNoAmountEvent(rpcID, request, hasAmount, errorCode, immuneType, hasChangeLife, changeLife)
 		return
 	}
 

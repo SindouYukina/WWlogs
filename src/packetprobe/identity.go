@@ -1,7 +1,10 @@
 package main
 
 import (
+	"encoding/binary"
 	"fmt"
+	"math"
+	"sort"
 )
 
 type resolutionStatus string
@@ -52,6 +55,12 @@ type runtimeEntity struct {
 	hasPlayerEntityID         bool
 	followerSummonConfigID    uint64
 	hasFollowerSummonConfigID bool
+	// fsmHashCode is EntityFsmComponentPb.HashCode, the version of the state-machine config the entity runs.
+	fsmHashCode    int64
+	hasFsmHashCode bool
+	// fsmCommonHashCode is EntityFsmComponentPb.CommonHashCode, the version of the shared common state machine.
+	fsmCommonHashCode         int64
+	hasFsmCommonHashCode      bool
 	phantomRoleEntityID       uint64
 	hasPhantomRoleEntityID    bool
 	concomitantVisionIDs      []uint64
@@ -61,6 +70,9 @@ type runtimeEntity struct {
 	followEntityID            uint64
 	hasFollowEntityID         bool
 	playerFollowers           []runtimePlayerFollower
+	hasPartComponent          bool
+	partInformation           map[int32]runtimePartInformation
+	partComponentSource       string
 	monsterID                 uint64
 	hasMonsterID              bool
 	monsterCaptureEntityID    uint64
@@ -87,7 +99,36 @@ type runtimePlayerFollower struct {
 	hasEntity bool
 }
 
+type runtimePartInformation struct {
+	partID       int32
+	hasPartID    bool
+	partTag      int32
+	hasPartTag   bool
+	lifeMax      float32
+	hasLifeMax   bool
+	activated    bool
+	hasActivated bool
+	conflicted   bool
+}
+
+type runtimePartReference struct {
+	partID          int32
+	status          partReferenceStatus
+	information     *runtimePartInformation
+	informationFrom string
+	evidence        string
+}
+
+type partReferenceStatus string
+
+const (
+	partReferenceCorrelated partReferenceStatus = "CORRELATED"
+	partReferenceNoPart     partReferenceStatus = "NO_PART"
+	partReferenceUnknown    partReferenceStatus = "UNKNOWN"
+)
+
 const maxRuntimeComponentEntityRefs = 256
+const maxRuntimePartInformationRows = 256
 
 type entityResolver struct {
 	entities           map[uint64]runtimeEntity
@@ -110,6 +151,8 @@ type entityIdentity struct {
 	HasCharacter       bool
 	CharacterStatus    resolutionStatus
 	CharacterProof     string
+	RoleSkin           *roleSkinResolution
+	SummonSkill        *summonSkillResolution
 	Monster            masterRecord
 	HasMonster         bool
 	MonsterStatus      resolutionStatus
@@ -117,6 +160,280 @@ type entityIdentity struct {
 	TemplateCandidates []sceneTemplateCandidate
 	TemplateStatus     resolutionStatus
 	TemplateProof      string
+}
+
+// roleSkinResolution records how EntityPb.RoleSkinId translates through the
+// normalized RoleSkin table and whether it agrees with the entity's own RoleId.
+type roleSkinResolution struct {
+	SkinID       uint64
+	MasterRoleID uint64
+	Status       resolutionStatus
+	Proof        string
+}
+
+// resolveRoleSkin translates a RoleSkinId into the RoleSkin row's RoleId. The
+// result is CORRELATED when the entity also carries a RoleId or Proto_Character
+// ConfigId that equals the row's RoleId, and UNKNOWN (with the reason) when the
+// row is absent or names a different role.
+func resolveRoleSkin(masters *gameMaster, entity runtimeEntity, characterID uint64) *roleSkinResolution {
+	if masters == nil || !entity.hasRoleSkinID {
+		return nil
+	}
+	result := &roleSkinResolution{SkinID: entity.roleSkinID, Status: resolutionUnknown}
+	roleID, ok := masters.roleSkinRole(entity.roleSkinID)
+	if !ok {
+		result.Proof = "RoleSkinId has no RoleSkin row in the loaded master"
+		return result
+	}
+	result.MasterRoleID = roleID
+	switch {
+	case characterID == 0:
+		result.Status = resolutionCorrelated
+		result.Proof = "EntityPb.RoleSkinId(23) -> RoleSkin.Id -> RoleSkin.RoleId; the entity carries no RoleId to cross-check; client build observed, master compatibility unverified"
+	case characterID == roleID:
+		result.Status = resolutionCorrelated
+		result.Proof = fmt.Sprintf("EntityPb.RoleSkinId(23) -> RoleSkin.Id -> RoleSkin.RoleId=%d equals the same entity's own RoleId; client build observed, master compatibility unverified", roleID)
+	default:
+		result.Proof = fmt.Sprintf("CONFLICT: RoleSkin.RoleId=%d differs from the same entity's own RoleId=%d", roleID, characterID)
+	}
+	return result
+}
+
+// summonSkillResolution records how SummonerComponentPb.SummonSkillId translates.
+// ConcomitantVision (Type 1) uses the normalized PhantomSkill-to-Vision crosswalk.
+// ConcomitantMotorcycle (Type 5) remains a correlated Vision candidate.
+type summonSkillResolution struct {
+	SummonSkillID uint64
+	SummonType    uint64
+	HasSummonType bool
+	Namespace     string
+	Status        resolutionStatus
+	Proof         string
+	// DevLabel is the developer note of the Vision row the key resolves to; never an official name.
+	DevLabel *combatEventLabelTextJSONL
+}
+
+const (
+	summonTypeConcomitantVision     = 1
+	summonTypeConcomitantMotorcycle = 5
+)
+
+func resolveSummonSkill(masters *gameMaster, entity runtimeEntity) *summonSkillResolution {
+	if masters == nil || !entity.hasSummonSkillID {
+		return nil
+	}
+	result := &summonSkillResolution{SummonSkillID: entity.summonSkillID, SummonType: entity.summonType, HasSummonType: entity.hasSummonType, Status: resolutionUnknown}
+	switch {
+	case !entity.hasSummonType:
+		result.Proof = "SummonSkillId present without SummonerComponent.Type; namespace not selected"
+	case entity.summonType != summonTypeConcomitantVision && entity.summonType != summonTypeConcomitantMotorcycle:
+		result.Proof = fmt.Sprintf("SummonerComponent.Type=%d is not mapped; no static SummonSkillId namespace is established for it", entity.summonType)
+	case entity.summonType == summonTypeConcomitantVision && !masters.hasConcomitantVisionSummonSkill(entity.summonSkillID):
+		result.Proof = "ConcomitantVision SummonSkillId has no unique row in the normalized PhantomSkill-to-Vision crosswalk"
+	case entity.summonType == summonTypeConcomitantMotorcycle && !masters.hasVision(entity.summonSkillID):
+		result.Proof = "ConcomitantMotorcycle SummonSkillId has no DT_Vision row in the loaded master"
+	default:
+		result.Namespace = "Vision.Id"
+		result.DevLabel = masters.visionDevLabels[entity.summonSkillID]
+		if entity.summonType == summonTypeConcomitantVision {
+			result.Status = resolutionVerified
+			result.Proof = "SummonerComponent.Type=ConcomitantVision selects the normalized summon_skill_vision_ref crosswalk from the unique PhantomSkill.PhantomSkillId key to Vision.Id; saved same-entity SkillId references and verified damage requests validate this Type 1 mapping for multiple distinct keys"
+		} else {
+			result.Status = resolutionCorrelated
+			result.Proof = "SummonerComponent.Type=ConcomitantMotorcycle and a matching DT_Vision.Id identify a candidate; the Type 5 field consumer is not established"
+		}
+	}
+	return result
+}
+
+// skillLabel is the developer label (Simplified Chinese, not an official localized name) of a SkillInfo row.
+type skillLabel struct {
+	Label    string
+	Status   resolutionStatus
+	Evidence string
+}
+
+// resolveSkillLabel returns the SkillInfo developer label for a skill id. A key whose rows carry
+// different labels in different SkillInfo tables is ambiguous and stays unknown.
+func resolveSkillLabel(masters *gameMaster, skillID uint64) *skillLabel {
+	if masters == nil || skillID == 0 || skillID == ^uint64(0) {
+		return nil
+	}
+	labels := masters.skillLabels[skillID]
+	switch len(labels) {
+	case 0:
+		return nil
+	case 1:
+		for label := range labels {
+			return &skillLabel{Label: label, Status: resolutionCorrelated,
+				Evidence: "DamageContext.SkillId is a SkillInfo row key (DT_SkillInfo family) whose developer label is identical in every table that holds it; the label is a zh-CN developer note, not an official localized name; client build observed, master compatibility unverified"}
+		}
+	}
+	return &skillLabel{Status: resolutionUnknown, Evidence: fmt.Sprintf("SkillId has %d different developer labels across SkillInfo tables; the owning table is not selected", len(labels))}
+}
+
+// bulletResolution records which static bullet row-key namespace a BulletId belongs to.
+// BulletId alone does not name a table: it is a row key in one of several DataTable
+// families, and the same number can recur across actors. It is translated only when
+// the source chain leads to exactly one actor (or the key belongs to exactly one family).
+type bulletResolution struct {
+	BulletID       uint64
+	Namespace      string
+	ActorBlueprint string
+	Via            string
+	DevLabelZh     string
+	// DevLabel is the localized developer note of the CommonBulletData row; never an official name.
+	DevLabel *combatEventLabelTextJSONL
+	// RowDamageID is the DamageId written in the matched CDT_CommonBulletData row (0 when none).
+	RowDamageID uint64
+	Status      resolutionStatus
+	Proof       string
+}
+
+// bulletSource is what an event knows about the entity that fired a bullet.
+type bulletSource struct {
+	RoleSkinID          uint64
+	HasRoleSkin         bool
+	BlueprintTypes      []string
+	FollowerSummonCfgID uint64
+	HasFollower         bool
+	SkillID             uint64
+	// VisionSummonCfgs are SummonCfg ids of live ConcomitantVision entities summoned by the source entity.
+	VisionSummonCfgs []uint64
+	// OwnSummonCfgID is the source entity's own SummonerComponent.SummonCfgId, set when the source is itself a summon.
+	OwnSummonCfgID    uint64
+	HasOwnSummonCfgID bool
+}
+
+type bulletChain struct {
+	via   string
+	actor string
+}
+
+// newBulletSource collects what an entity identity knows about a bullet's origin.
+func newBulletSource(identity entityIdentity, skillID uint64, visionSummonCfgs []uint64) bulletSource {
+	source := bulletSource{SkillID: skillID, VisionSummonCfgs: visionSummonCfgs}
+	source.RoleSkinID, source.HasRoleSkin = identity.Runtime.roleSkinID, identity.Runtime.hasRoleSkinID
+	source.OwnSummonCfgID, source.HasOwnSummonCfgID = identity.Runtime.summonConfigID, identity.Runtime.hasSummonConfigID
+	source.FollowerSummonCfgID, source.HasFollower = identity.Runtime.followerSummonConfigID, identity.Runtime.hasFollowerSummonConfigID
+	for _, candidate := range identity.TemplateCandidates {
+		source.BlueprintTypes = append(source.BlueprintTypes, candidate.BlueprintType)
+	}
+	return source
+}
+
+func (m *gameMaster) actorOfModel(model uint64) (string, bool) {
+	actor, ok := m.modelActor[model]
+	return actor, ok
+}
+
+func (m *gameMaster) actorOfBlueprint(blueprint string) (string, bool) {
+	model, ok := m.blueprintModel[blueprint]
+	if !ok {
+		return "", false
+	}
+	return m.actorOfModel(model)
+}
+
+func (m *gameMaster) bulletChains(source bulletSource) []bulletChain {
+	var chains []bulletChain
+	if source.HasRoleSkin {
+		if mesh, ok := m.roleSkinMesh[source.RoleSkinID]; ok {
+			if actor, ok := m.actorOfModel(mesh); ok {
+				chains = append(chains, bulletChain{"EntityPb.RoleSkinId -> RoleSkin.MeshId -> ModelConfigPreload.ActorClassPath", actor})
+			}
+		}
+	}
+	for _, blueprint := range source.BlueprintTypes {
+		if actor, ok := m.actorOfBlueprint(blueprint); ok {
+			chains = append(chains, bulletChain{"scene TemplateConfig.BlueprintType -> BlueprintConfig.ModelId -> ModelConfigPreload.ActorClassPath", actor})
+		}
+	}
+	if source.HasOwnSummonCfgID {
+		if blueprint, ok := m.summonBlueprint[source.OwnSummonCfgID]; ok {
+			if actor, ok := m.actorOfBlueprint(blueprint); ok {
+				chains = append(chains, bulletChain{"source entity SummonerComponent.SummonCfgId -> SummonCfg.BlueprintType -> BlueprintConfig.ModelId -> ModelConfigPreload.ActorClassPath", actor})
+			}
+		}
+	}
+	if source.HasFollower {
+		if blueprint, ok := m.summonBlueprint[source.FollowerSummonCfgID]; ok {
+			if actor, ok := m.actorOfBlueprint(blueprint); ok {
+				chains = append(chains, bulletChain{"FollowerSummonConfigId -> SummonCfg.BlueprintType -> BlueprintConfig.ModelId -> ModelConfigPreload.ActorClassPath", actor})
+			}
+		}
+	}
+	for _, cfg := range source.VisionSummonCfgs {
+		if blueprint, ok := m.summonBlueprint[cfg]; ok {
+			if actor, ok := m.actorOfBlueprint(blueprint); ok {
+				chains = append(chains, bulletChain{"ConcomitantVision SummonerComponent(SummonerId=source entity).SummonCfgId -> SummonCfg.BlueprintType -> BlueprintConfig.ModelId -> ModelConfigPreload.ActorClassPath", actor})
+			}
+		}
+	}
+	for _, vision := range m.visionCast[source.SkillID] {
+		if blueprint, ok := m.summonBlueprint[vision]; ok {
+			if actor, ok := m.actorOfBlueprint(blueprint); ok {
+				chains = append(chains, bulletChain{"DamageContext.SkillId -> Vision.BirthCastSkillId -> SummonCfg(Vision.Id).BlueprintType -> BlueprintConfig.ModelId -> ModelConfigPreload.ActorClassPath", actor})
+			}
+		}
+	}
+	return chains
+}
+
+func resolveBullet(masters *gameMaster, bulletID uint64, source bulletSource) *bulletResolution {
+	if masters == nil {
+		return nil
+	}
+	result := &bulletResolution{BulletID: bulletID, Status: resolutionUnknown}
+	label, inCommon := masters.commonBullets[bulletID]
+	_, inPreload := masters.preloadBullets[bulletID]
+	chains := masters.bulletChains(source)
+	if len(chains) == 0 && source.SkillID != 0 {
+		if actor, ok := masters.uniqueActorForSkill(source.SkillID); ok {
+			if _, listed := masters.actorBullets[actor][bulletID]; listed {
+				chains = append(chains, bulletChain{
+					via:   "same combat reference SkillId -> unique EntitySkillPreload actor asset; BulletId -> that actor's BulletPreload.BulletId",
+					actor: actor,
+				})
+			}
+		}
+	}
+	matched := make(map[string]string)
+	for _, chain := range chains {
+		if _, ok := masters.actorBullets[chain.actor][bulletID]; ok {
+			if _, seen := matched[chain.actor]; !seen {
+				matched[chain.actor] = chain.via
+			}
+		}
+	}
+	switch {
+	case len(matched) > 1:
+		result.Proof = fmt.Sprintf("BulletId is held by %d distinct source-chain actors; the serving actor is not determined", len(matched))
+	case len(matched) == 1 && inCommon:
+		result.Proof = "BulletId is held by the source actor and by CDT_CommonBulletData; the table that served this bullet is not determined"
+	case len(matched) == 1:
+		for actor, via := range matched {
+			result.Namespace = "BulletPreload.ActorBlueprint"
+			result.ActorBlueprint = masters.assetPath[actor]
+			result.Via = via
+			result.Status = resolutionCorrelated
+			result.Proof = via + "; the actor's BulletPreload rows list this BulletId; static chain from the pinned Windows Global 3.7.1 client, client build observed, master compatibility unverified"
+		}
+	case inCommon && inPreload:
+		result.Proof = "BulletId is a row key in both CDT_CommonBulletData and BulletPreload and no source-chain actor holds it; the serving table is not determined"
+	case inCommon:
+		result.Namespace = "CDT_CommonBulletData.RowKey"
+		result.DevLabelZh = label
+		result.DevLabel = masters.commonBulletDevLabels[bulletID]
+		result.RowDamageID = masters.commonBulletDamage[bulletID]
+		result.Status = resolutionCorrelated
+		result.Proof = "BulletId is a row key of CDT_CommonBulletData and of no actor-level BulletPreload family; the loader that serves this common table in normal combat is unproven, client build observed, master compatibility unverified"
+	case inPreload:
+		result.Proof = fmt.Sprintf("BulletId matches an actor-level BulletPreload row key but none of the %d source-chain actors holds it; only a numeric match is recorded", len(chains))
+	default:
+		result.Proof = "BulletId has no row in the loaded bullet definitions"
+	}
+	return result
 }
 
 type summonerCharacterIdentity struct {
@@ -197,6 +514,26 @@ func (r *sourceRoleResolver) evictIfNeeded() {
 	}
 }
 
+// visionSummonConfigs returns the sorted SummonCfg ids of ConcomitantVision entities whose
+// SummonerComponent names summonerEntityID as the summoner.
+func (r *entityResolver) visionSummonConfigs(summonerEntityID uint64) []uint64 {
+	if r == nil || summonerEntityID == 0 {
+		return nil
+	}
+	seen := make(map[uint64]struct{})
+	for _, entity := range r.entities {
+		if entity.hasSummonerID && entity.summonerID == summonerEntityID && entity.hasSummonType && entity.summonType == summonTypeConcomitantVision && entity.hasSummonConfigID {
+			seen[entity.summonConfigID] = struct{}{}
+		}
+	}
+	configs := make([]uint64, 0, len(seen))
+	for cfg := range seen {
+		configs = append(configs, cfg)
+	}
+	sort.Slice(configs, func(i, j int) bool { return configs[i] < configs[j] })
+	return configs
+}
+
 func resolveEntityIdentity(resolver *entityResolver, masters *gameMaster, entityID uint64) entityIdentity {
 	entity, runtimeStatus := resolver.resolve(entityID)
 	result := entityIdentity{Runtime: entity, RuntimeStatus: runtimeStatus, RuntimeProof: entityProof(entity), CharacterStatus: resolutionUnknown, MonsterStatus: resolutionUnknown, Lifecycle: resolver.lifecycleView(entityID)}
@@ -221,6 +558,8 @@ func resolveEntityIdentity(resolver *entityResolver, masters *gameMaster, entity
 			}
 		}
 	}
+	result.RoleSkin = resolveRoleSkin(masters, entity, characterID)
+	result.SummonSkill = resolveSummonSkill(masters, entity)
 	if characterID == 0 && !result.HasCharacter && !entity.roleConflict && masters != nil && entity.hasRoleSkinID {
 		if character, ok := masters.characterBySkin(entity.roleSkinID); ok {
 			result.Character = character
@@ -278,6 +617,15 @@ func resolveEntityIdentity(resolver *entityResolver, masters *gameMaster, entity
 			if len(candidates) == 1 {
 				result.TemplateStatus = resolutionCorrelated
 			}
+		}
+	}
+	// EntityConfigType.Template (4): the entity was spawned from a template, so ConfigId is a TemplateConfig id and no
+	// scene context is needed. This is how dynamically spawned bosses (for example Matrix challenge bosses) are named.
+	if masters != nil && entity.hasConfigID && entity.hasConfigType && entity.configType == 4 && len(result.TemplateCandidates) == 0 {
+		if candidate, ok := masters.templateByID(entity.configID); ok {
+			result.TemplateCandidates = []sceneTemplateCandidate{candidate}
+			result.TemplateStatus = resolutionCorrelated
+			result.TemplateProof = fmt.Sprintf("EntityPb.ConfigType=Template(4) in the protocol enum EntityConfigType -> EntityPb.ConfigId=%d is a TemplateConfig.Id; combat master locale %s, client/master compatibility unverified", entity.configID, masters.locale)
 		}
 	}
 	return result
@@ -441,6 +789,9 @@ func (r *entityResolver) applyEntityAddNotify(body []byte) (int, error) {
 		if entity.entityID == 0 {
 			continue
 		}
+		if entity.hasPartComponent {
+			entity.partComponentSource = "EntityAddNotify.EntityPbs[].ComponentPbs.PartComponent.PartLifeInfos[]"
+		}
 		r.sequence++
 		if previous, ok := r.entities[entity.entityID]; ok {
 			entity = mergeRuntimeEntity(previous, entity)
@@ -496,6 +847,9 @@ func (r *entityResolver) applyJoinSceneNotify(body []byte) (int, error) {
 	for _, entity := range entities {
 		if entity.entityID == 0 {
 			continue
+		}
+		if entity.hasPartComponent {
+			entity.partComponentSource = "JoinSceneNotify.SceneInfo entity snapshot.ComponentPbs.PartComponent.PartLifeInfos[]"
 		}
 		if previous, ok := r.entities[entity.entityID]; ok {
 			entity = mergeRuntimeEntity(previous, entity)
@@ -827,6 +1181,98 @@ func (r *entityResolver) applyActiveResponseIdentityComponents(entityID uint64, 
 	return observed, nil
 }
 
+// applyActiveResponseFsmComponents records the state-machine hashes of an entity from an EntityActiveResponse. It changes
+// only those two fields: the entity's identity and its component provenance stay as they were.
+func (r *entityResolver) applyActiveResponseFsmComponents(entityID uint64, components []protoField) error {
+	previous, exists := r.entities[entityID]
+	if !exists || entityID == 0 {
+		return nil
+	}
+	update := runtimeEntity{entityID: entityID}
+	for _, component := range components {
+		if err := applyEntityComponentPayload(&update, 28, component.data); err != nil {
+			return err
+		}
+	}
+	if update.hasFsmHashCode {
+		previous.fsmHashCode, previous.hasFsmHashCode = update.fsmHashCode, true
+	}
+	if update.hasFsmCommonHashCode {
+		previous.fsmCommonHashCode, previous.hasFsmCommonHashCode = update.fsmCommonHashCode, true
+	}
+	r.entities[entityID] = previous
+	return nil
+}
+
+func (r *entityResolver) applyActiveResponsePartComponents(entityID uint64, components []protoField) (int, error) {
+	update := runtimeEntity{entityID: entityID}
+	observed := 0
+	for _, component := range components {
+		if component.number != 5 || component.wire != 2 {
+			continue
+		}
+		if err := applyEntityComponentPayload(&update, component.number, component.data); err != nil {
+			return observed, err
+		}
+		observed++
+	}
+	if observed == 0 || entityID == 0 {
+		return observed, nil
+	}
+	previous, exists := r.entities[entityID]
+	if !exists {
+		return observed, nil
+	}
+	update.partComponentSource = "EntityActiveRequest frame token match + field4 EntityId -> EntityActiveResponse.field11 ComponentPbs.PartComponent.PartLifeInfos[]"
+	update = mergeRuntimeEntity(previous, update)
+	r.sequence++
+	update.lastSeenSequence = r.sequence
+	r.entities[entityID] = update
+	r.evictIfNeeded()
+	return observed, nil
+}
+
+func (r *entityResolver) invalidatePartComponents() {
+	for entityID, entity := range r.entities {
+		entity.hasPartComponent = false
+		entity.partInformation = nil
+		entity.partComponentSource = ""
+		r.entities[entityID] = entity
+	}
+}
+
+func (r *entityResolver) resolvePartReference(entityID uint64, partID int32) runtimePartReference {
+	result := runtimePartReference{partID: partID, status: partReferenceUnknown}
+	if partID == -1 {
+		result.status = partReferenceNoPart
+		result.evidence = "DamageExecuteRequest.PartId=-1 is the observed no-part sentinel; raw value preserved and no PartInformation lookup attempted"
+		return result
+	}
+	if partID <= 0 {
+		result.evidence = "Non-positive DamageExecuteRequest.PartId is preserved without assigning a PartInformation row"
+		return result
+	}
+	entity, ok := r.entities[entityID]
+	if !ok || !entity.hasPartComponent {
+		result.evidence = "No current PartComponent observation is available for the exact target entity in this session"
+		return result
+	}
+	information, ok := entity.partInformation[partID]
+	if !ok {
+		result.evidence = "Current target PartComponent has no PartLifeInfos row with this exact PartId"
+		return result
+	}
+	if information.conflicted {
+		result.evidence = "Current target PartComponent has conflicting PartLifeInfos rows for this PartId"
+		return result
+	}
+	result.status = partReferenceCorrelated
+	result.information = &information
+	result.informationFrom = entity.partComponentSource
+	result.evidence = "DamageExecuteRequest.PartId exactly matches PartComponent.PartLifeInfos.PartId observed for the same TargetEntityId before this request; this is a session-scoped runtime relation, not a static Master key"
+	return result
+}
+
 func isRuntimeIdentityComponent(componentNumber uint64) bool {
 	switch componentNumber {
 	case 4, 18, 25, 42, 53, 85:
@@ -911,6 +1357,26 @@ func applyEntityComponentPayload(entity *runtimeEntity, componentNumber uint64, 
 				entity.summonType, entity.hasSummonType = field.value, true
 			}
 		}
+	case 28: // EntityFsmComponentPb
+		fields, err := parseProtoFields(data)
+		if err != nil {
+			return fmt.Errorf("parse EntityFsmComponentPb: %w", err)
+		}
+		for _, field := range fields {
+			if field.number == 3 && field.wire == 0 { // CommonHashCode (int32)
+				entity.fsmCommonHashCode, entity.hasFsmCommonHashCode = int64(int32(uint32(field.value))), true
+			}
+			if field.number == 2 && field.wire == 0 { // HashCode (int32)
+				entity.fsmHashCode, entity.hasFsmHashCode = int64(int32(uint32(field.value))), true
+			}
+		}
+	case 5: // PartComponentPb
+		information, err := parseRuntimePartInformation(data)
+		if err != nil {
+			return err
+		}
+		entity.hasPartComponent = true
+		entity.partInformation = information
 	case 18: // MonsterCaptureComponentPb
 		fields, err := parseProtoFields(data)
 		if err != nil {
@@ -1015,6 +1481,60 @@ func applyEntityComponentPayload(entity *runtimeEntity, componentNumber uint64, 
 	return nil
 }
 
+func parseRuntimePartInformation(data []byte) (map[int32]runtimePartInformation, error) {
+	fields, err := parseProtoFields(data)
+	if err != nil {
+		return nil, fmt.Errorf("parse PartComponentPb: %w", err)
+	}
+	parts := make(map[int32]runtimePartInformation)
+	rowsSeen := 0
+	for _, field := range fields {
+		if field.number != 1 || field.wire != 2 { // PartComponentPb.PartLifeInfos[]
+			continue
+		}
+		rowsSeen++
+		if rowsSeen > maxRuntimePartInformationRows {
+			return nil, fmt.Errorf("PartComponentPb.PartLifeInfos exceeds limit %d", maxRuntimePartInformationRows)
+		}
+		rowFields, err := parseProtoFields(field.data)
+		if err != nil {
+			return nil, fmt.Errorf("parse PartInformation: %w", err)
+		}
+		var information runtimePartInformation
+		for _, rowField := range rowFields {
+			switch {
+			case rowField.number == 1 && rowField.wire == 0: // PartInformation.PartId
+				information.partID = int32(uint32(rowField.value))
+				information.hasPartID = true
+			case rowField.number == 3 && rowField.wire == 5: // PartInformation.LifeMax
+				information.lifeMax = math.Float32frombits(binary.LittleEndian.Uint32(rowField.data))
+				if math.IsNaN(float64(information.lifeMax)) || math.IsInf(float64(information.lifeMax), 0) {
+					return nil, fmt.Errorf("PartInformation.LifeMax is not finite")
+				}
+				information.hasLifeMax = true
+			case rowField.number == 4 && rowField.wire == 0: // PartInformation.Activated
+				information.activated = rowField.value != 0
+				information.hasActivated = true
+			case rowField.number == 5 && rowField.wire == 0: // PartInformation.PartTag
+				information.partTag = int32(uint32(rowField.value))
+				information.hasPartTag = true
+			}
+		}
+		if !information.hasPartID {
+			continue
+		}
+		if previous, exists := parts[information.partID]; exists {
+			if previous != information {
+				previous.conflicted = true
+				parts[information.partID] = previous
+			}
+			continue
+		}
+		parts[information.partID] = information
+	}
+	return parts, nil
+}
+
 func mergeRuntimeEntity(old, update runtimeEntity) runtimeEntity {
 	if update.entityID == 0 {
 		update.entityID = old.entityID
@@ -1073,6 +1593,12 @@ func mergeRuntimeEntity(old, update runtimeEntity) runtimeEntity {
 	if !update.hasFollowerSummonConfigID && old.hasFollowerSummonConfigID {
 		update.followerSummonConfigID, update.hasFollowerSummonConfigID = old.followerSummonConfigID, true
 	}
+	if !update.hasFsmCommonHashCode && old.hasFsmCommonHashCode {
+		update.fsmCommonHashCode, update.hasFsmCommonHashCode = old.fsmCommonHashCode, true
+	}
+	if !update.hasFsmHashCode && old.hasFsmHashCode {
+		update.fsmHashCode, update.hasFsmHashCode = old.fsmHashCode, true
+	}
 	if !update.hasPhantomRoleEntityID && old.hasPhantomRoleEntityID {
 		update.phantomRoleEntityID, update.hasPhantomRoleEntityID = old.phantomRoleEntityID, true
 	}
@@ -1090,6 +1616,11 @@ func mergeRuntimeEntity(old, update runtimeEntity) runtimeEntity {
 	}
 	if len(update.playerFollowers) == 0 && len(old.playerFollowers) > 0 {
 		update.playerFollowers = append([]runtimePlayerFollower(nil), old.playerFollowers...)
+	}
+	if !update.hasPartComponent && old.hasPartComponent {
+		update.hasPartComponent = true
+		update.partInformation = old.partInformation
+		update.partComponentSource = old.partComponentSource
 	}
 	if !update.hasMonsterID && old.hasMonsterID {
 		update.monsterID, update.hasMonsterID = old.monsterID, true

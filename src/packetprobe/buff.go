@@ -40,19 +40,30 @@ type rawBuffSnapshot struct {
 }
 
 type buffSnapshotAuditRow struct {
-	SchemaVersion             int              `json:"schemaVersion"`
-	EventType                 string           `json:"eventType"`
-	SessionNumber             int              `json:"sessionNumber"`
-	MessageID                 uint16           `json:"messageId"`
-	Timestamp                 time.Time        `json:"timestamp"`
-	ResponseCommandID         uint16           `json:"responseCommandId"`
-	ResponseDirection         string           `json:"responseDirection"`
-	RequestCommandID          uint16           `json:"requestCommandId"`
-	FrameToken                uint16           `json:"frameToken"`
-	EntityID                  *uint64          `json:"entityId,omitempty"`
-	EntityIDStatus            resolutionStatus `json:"entityIdStatus"`
-	ComponentPath             string           `json:"componentPath"`
-	BuffIDStatus              resolutionStatus `json:"buffIdStatus"`
+	SchemaVersion     int              `json:"schemaVersion"`
+	EventType         string           `json:"eventType"`
+	SessionNumber     int              `json:"sessionNumber"`
+	MessageID         uint16           `json:"messageId"`
+	Timestamp         time.Time        `json:"timestamp"`
+	ResponseCommandID uint16           `json:"responseCommandId"`
+	ResponseDirection string           `json:"responseDirection"`
+	RequestCommandID  uint16           `json:"requestCommandId"`
+	FrameToken        uint16           `json:"frameToken"`
+	EntityID          *uint64          `json:"entityId,omitempty"`
+	EntityIDStatus    resolutionStatus `json:"entityIdStatus"`
+	ComponentPath     string           `json:"componentPath"`
+	// BuffIDStatus records the captured field mapping, not static-definition resolution.
+	BuffIDStatus resolutionStatus `json:"buffIdStatus"`
+	// BuffDefinitionStatus records an exact link from BuffId to the normalized static buff table.
+	BuffDefinitionStatus   resolutionStatus `json:"buffDefinitionStatus"`
+	BuffDefinitionTable    string           `json:"buffDefinitionTable,omitempty"`
+	BuffDefinitionID       *uint64          `json:"buffDefinitionId,omitempty"`
+	BuffDefinitionEvidence string           `json:"buffDefinitionEvidence"`
+	// BuffOwners names the features that list this BuffId in an explicit reference table; the Buff has no name of its own.
+	BuffOwners *buffOwnersJSON `json:"buffOwners,omitempty"`
+	// BuffSemanticStatus covers runtime application and effect semantics, not static row lookup.
+	BuffSemanticStatus        resolutionStatus `json:"buffSemanticStatus"`
+	BuffSemanticEvidence      string           `json:"buffSemanticEvidence"`
 	InstigatorSemantics       resolutionStatus `json:"instigatorSemantics"`
 	InstigatorEvidence        string           `json:"instigatorEvidence,omitempty"`
 	clientSchemaVersion      string           `json:"clientSchemaVersion"`
@@ -60,25 +71,43 @@ type buffSnapshotAuditRow struct {
 	Buff                      rawBuffSnapshot  `json:"buff"`
 }
 
+const buffSnapshotSchemaVersion = 4
+
 type buffLifecycleAuditRow struct {
-	SchemaVersion                          int              `json:"schemaVersion"`
-	EventType                              string           `json:"eventType"`
-	SessionNumber                          int              `json:"sessionNumber"`
-	MessageID                              uint16           `json:"messageId"`
-	Timestamp                              time.Time        `json:"timestamp"`
-	CommandID                              uint16           `json:"commandId"`
-	InnerMessageFieldNumber                *uint64          `json:"innerMessageFieldNumber,omitempty"`
-	MessagePath                            string           `json:"messagePath,omitempty"`
-	Direction                              string           `json:"direction"`
-	MessageName                            string           `json:"messageName"`
-	EventKind                              string           `json:"eventKind"`
-	EventTypeStatus                        resolutionStatus `json:"eventTypeStatus"`
-	SchemaBasis                            string           `json:"schemaBasis"`
-	TargetEntityID                         *uint64          `json:"targetEntityIdRaw,omitempty"`
-	TargetStatus                           resolutionStatus `json:"targetSemanticsStatus"`
-	TargetEvidence                         string           `json:"targetEvidence,omitempty"`
-	BuffID                                 *uint64          `json:"buffId,omitempty"`
-	ID                                     *uint64          `json:"id,omitempty"`
+	SchemaVersion           int              `json:"schemaVersion"`
+	EventType               string           `json:"eventType"`
+	SessionNumber           int              `json:"sessionNumber"`
+	MessageID               uint16           `json:"messageId"`
+	Timestamp               time.Time        `json:"timestamp"`
+	CommandID               uint16           `json:"commandId"`
+	InnerMessageFieldNumber *uint64          `json:"innerMessageFieldNumber,omitempty"`
+	MessagePath             string           `json:"messagePath,omitempty"`
+	Direction               string           `json:"direction"`
+	MessageName             string           `json:"messageName"`
+	EventKind               string           `json:"eventKind"`
+	EventTypeStatus         resolutionStatus `json:"eventTypeStatus"`
+	SchemaBasis             string           `json:"schemaBasis"`
+	TargetEntityID          *uint64          `json:"targetEntityIdRaw,omitempty"`
+	TargetStatus            resolutionStatus `json:"targetSemanticsStatus"`
+	TargetEvidence          string           `json:"targetEvidence,omitempty"`
+	BuffID                  *uint64          `json:"buffId,omitempty"`
+	BuffDefinitionStatus    resolutionStatus `json:"buffDefinitionStatus,omitempty"`
+	BuffDefinitionTable     string           `json:"buffDefinitionTable,omitempty"`
+	BuffDefinitionID        *uint64          `json:"buffDefinitionId,omitempty"`
+	BuffDefinitionEvidence  string           `json:"buffDefinitionEvidence,omitempty"`
+	ID                      *uint64          `json:"id,omitempty"`
+	// BuffOwners names the features that list the linked Buff id (typed, apply Id or handle-inherited) in an explicit reference table.
+	BuffOwners *buffOwnersJSON `json:"buffOwners,omitempty"`
+	// GenericID* link the untyped Id of apply-type messages to buff.id. They are separate from the
+	// typed BuffDefinition* fields: the field is not named BuffId, so the basis is capture-internal evidence.
+	GenericIDDefinitionStatus   resolutionStatus `json:"genericIdDefinitionStatus,omitempty"`
+	GenericIDDefinitionTable    string           `json:"genericIdDefinitionTable,omitempty"`
+	GenericIDDefinitionID       *uint64          `json:"genericIdDefinitionId,omitempty"`
+	GenericIDDefinitionEvidence string           `json:"genericIdDefinitionEvidence,omitempty"`
+	// HandleLinked* tie a handle-only event (duration, stack, effect removal) to the apply event that created the handle.
+	HandleLinkedID                         *uint64          `json:"handleLinkedId,omitempty"`
+	HandleLinkedStatus                     resolutionStatus `json:"handleLinkedStatus,omitempty"`
+	HandleLinkedEvidence                   string           `json:"handleLinkedEvidence,omitempty"`
 	ConfBuffID                             *uint64          `json:"confBuffId,omitempty"`
 	InstigatorID                           *uint64          `json:"instigatorIdRaw,omitempty"`
 	InstigatorStatus                       resolutionStatus `json:"instigatorSemanticsStatus"`
@@ -113,13 +142,15 @@ type buffLifecycleAuditRow struct {
 	UnknownFieldNumbers                    []uint64         `json:"unknownFieldNumbers,omitempty"`
 }
 
+const buffLifecycleSchemaVersion = 6
+
 func decodeBuffLifecycleMessage(frame gameFrame, body []byte) (buffLifecycleAuditRow, error) {
 	return decodeBuffLifecycleMessageForCommand(frame, body, frame.commandID, nil)
 }
 
 func decodeBuffLifecycleMessageForCommand(frame gameFrame, body []byte, schemaCommandID uint16, innerFieldNumber *uint64) (buffLifecycleAuditRow, error) {
 	row := buffLifecycleAuditRow{
-		SchemaVersion: 3, EventType: "BUFF_LIFECYCLE", MessageID: frame.commandID,
+		SchemaVersion: buffLifecycleSchemaVersion, EventType: "BUFF_LIFECYCLE", MessageID: frame.commandID,
 		Timestamp: frame.timestamp, CommandID: frame.commandID, Direction: frame.direction,
 		EventTypeStatus: resolutionCorrelated, TargetStatus: resolutionUnknown, InstigatorStatus: resolutionUnknown,
 		InstigatorCharacterCandidateStatus: resolutionUnknown, InstigatorCharacterCandidateNameStatus: resolutionUnknown,
@@ -340,6 +371,9 @@ func (p *processor) handleBuffLifecycleMessage(frame gameFrame, body []byte) err
 		return err
 	}
 	row.SessionNumber = p.sessionNumber
+	p.linkBuffLifecycleDefinition(&row)
+	p.linkBuffLifecycleGenericAndHandle(&row)
+	p.linkBuffLifecycleOwners(&row)
 	if p.buffLifecycle != nil {
 		if err := json.NewEncoder(p.buffLifecycle).Encode(row); err != nil {
 			return fmt.Errorf("write Buff lifecycle row: %w", err)
@@ -472,6 +506,9 @@ func (p *processor) handleInnerBuffLifecycleMessage(frame gameFrame, innerFieldN
 		}
 	}
 	row.SessionNumber = p.sessionNumber
+	p.linkBuffLifecycleDefinition(&row)
+	p.linkBuffLifecycleGenericAndHandle(&row)
+	p.linkBuffLifecycleOwners(&row)
 	if p.buffLifecycle != nil {
 		if err := json.NewEncoder(p.buffLifecycle).Encode(row); err != nil {
 			return fmt.Errorf("write Buff lifecycle row: %w", err)
@@ -480,6 +517,126 @@ func (p *processor) handleInnerBuffLifecycleMessage(frame gameFrame, innerFieldN
 	p.observeBuffInterval(row)
 	p.writeStructuredEventJSONL(row)
 	return nil
+}
+
+// linkBuffLifecycleOwners attaches the named owners of the Buff id this row is tied to.
+func (p *processor) linkBuffLifecycleOwners(row *buffLifecycleAuditRow) {
+	if row == nil || p.masters == nil {
+		return
+	}
+	if id, ok := row.buffOwnerLookupID(); ok {
+		row.BuffOwners = resolveBuffOwners(p.masters, id)
+	} else if row.BuffID != nil {
+		// No static definition: only an observed-role owner can exist for the raw BuffId.
+		row.BuffOwners = resolveBuffOwners(p.masters, *row.BuffID)
+	}
+}
+
+const maxBuffHandles = 1 << 16
+
+// buffHandleKey scopes a lifecycle handle id to the session and the entity that holds the buff.
+type buffHandleKey struct {
+	session  int
+	entityID uint64
+	handleID uint64
+}
+
+type buffHandleEntry struct {
+	id         uint64
+	definition bool
+}
+
+func lifecycleEntity(row *buffLifecycleAuditRow) (uint64, bool) {
+	if row.TargetEntityID != nil {
+		return *row.TargetEntityID, true
+	}
+	if row.CombatCommonEntityID != nil {
+		return *row.CombatCommonEntityID, true
+	}
+	return 0, false
+}
+
+// linkBuffLifecycleGenericAndHandle adds two CORRELATED static links that never touch the typed BuffId fields.
+//  1. The untyped Id of ApplyBuffS2cRequestNotify and ApplyGameplayEffectNotify is looked up in buff.id.
+//     Basis: every saved Id has an exact buff.id row in the sparse id space, and most also occur as typed BuffIds.
+//  2. A handle-only event is tied to the earlier apply under the same (session, entity, handle); the link is
+//     dropped when the handle was applied with different ids.
+func (p *processor) linkBuffLifecycleGenericAndHandle(row *buffLifecycleAuditRow) {
+	if row == nil {
+		return
+	}
+	entityID, hasEntity := lifecycleEntity(row)
+	switch row.EventKind {
+	case "BUFF_APPLY_REQUEST_NOTIFY", "GAMEPLAY_EFFECT_APPLY":
+		if row.ID == nil {
+			return
+		}
+		row.GenericIDDefinitionStatus = resolutionUnknown
+		row.GenericIDDefinitionEvidence = "No exact normalized buff.id row for the untyped Id; raw Id unchanged"
+		found := p.masters != nil && p.masters.hasBuffDefinition(*row.ID)
+		if found {
+			definitionID := *row.ID
+			row.GenericIDDefinitionStatus = resolutionCorrelated
+			row.GenericIDDefinitionTable = "buff"
+			row.GenericIDDefinitionID = &definitionID
+			row.GenericIDDefinitionEvidence = "The untyped Id of this apply message has an exact normalized buff.id row; namespace evidence is capture-internal (see the lifecycle Id namespace audit), not a typed BuffId field. Static row reference only: application effect and uptime are unresolved"
+		}
+		if row.EventKind == "GAMEPLAY_EFFECT_APPLY" && row.HandleID != nil && hasEntity {
+			if p.buffHandles == nil {
+				p.buffHandles = make(map[buffHandleKey]buffHandleEntry)
+			}
+			key := buffHandleKey{p.sessionNumber, entityID, *row.HandleID}
+			if previous, exists := p.buffHandles[key]; exists {
+				if previous.id != *row.ID {
+					p.buffHandles[key] = buffHandleEntry{id: 0}
+				}
+			} else {
+				p.buffHandleOrder = append(p.buffHandleOrder, key)
+				p.buffHandles[key] = buffHandleEntry{id: *row.ID, definition: found}
+			}
+			for len(p.buffHandleOrder) > maxBuffHandles {
+				delete(p.buffHandles, p.buffHandleOrder[0])
+				p.buffHandleOrder = p.buffHandleOrder[1:]
+			}
+		}
+	case "BUFF_DURATION_CHANGE", "BUFF_STACK_COUNT_CHANGE", "GAMEPLAY_EFFECT_REMOVE", "BUFF_REMOVE_REQUEST_NOTIFY":
+		if row.HandleID == nil || !hasEntity {
+			return
+		}
+		row.HandleLinkedStatus = resolutionUnknown
+		row.HandleLinkedEvidence = "No earlier ApplyGameplayEffect with this (session, entity, handle) was observed"
+		entry, ok := p.buffHandles[buffHandleKey{p.sessionNumber, entityID, *row.HandleID}]
+		switch {
+		case !ok:
+		case entry.id == 0:
+			row.HandleLinkedEvidence = "The handle was applied more than once with different ids; the link is rejected"
+		default:
+			linked := entry.id
+			row.HandleLinkedID = &linked
+			row.HandleLinkedEvidence = "Same (session, entity, handle) as an earlier ApplyGameplayEffectNotify; the Id is inherited from that apply message"
+			row.HandleLinkedStatus = resolutionCorrelated
+			if !entry.definition {
+				row.HandleLinkedStatus = resolutionUnknown
+				row.HandleLinkedEvidence += "; that Id has no exact buff.id row"
+			}
+		}
+	}
+}
+
+// linkBuffLifecycleDefinition resolves only explicitly decoded BuffId fields to exact buff.Id rows.
+func (p *processor) linkBuffLifecycleDefinition(row *buffLifecycleAuditRow) {
+	if row == nil || row.BuffID == nil {
+		return
+	}
+	row.BuffDefinitionStatus = resolutionUnknown
+	row.BuffDefinitionEvidence = "No exact normalized buff.id row has been linked; raw BuffId remains unchanged"
+	if p.masters != nil && p.masters.hasBuffDefinition(*row.BuffID) {
+		definitionID := *row.BuffID
+		row.BuffDefinitionStatus = resolutionCorrelated
+		row.BuffDefinitionTable = "buff"
+		row.BuffDefinitionID = &definitionID
+		row.BuffDefinitionEvidence = "The typed BuffId field has an exact normalized buff.id row; this is a static row reference and does not by itself prove that an effect was applied or its uptime"
+	}
 }
 
 func (p *processor) handleActiveRequest(token uint16, body []byte) error {
@@ -526,12 +683,20 @@ func (p *processor) handleActiveResponse(frame gameFrame, body []byte) error {
 			return fmt.Errorf("parse EntityActiveResponse ComponentPb: %w", err)
 		}
 		identityComponents := make([]protoField, 0, 2)
+		partComponents := make([]protoField, 0, 1)
+		fsmComponents := make([]protoField, 0, 1)
 		for _, component := range components {
 			if component.wire != 2 {
 				continue
 			}
 			if isRuntimeIdentityComponent(component.number) {
 				identityComponents = append(identityComponents, component)
+			}
+			if component.number == 5 {
+				partComponents = append(partComponents, component)
+			}
+			if component.number == 28 {
+				fsmComponents = append(fsmComponents, component)
 			}
 			switch component.number {
 			case 4:
@@ -559,15 +724,30 @@ func (p *processor) handleActiveResponse(frame gameFrame, body []byte) error {
 				p.stats.observedBuffEvents++
 				if p.buffSnapshots != nil || p.combatEventsJSONL != nil || p.encounterSummary != nil {
 					row := buffSnapshotAuditRow{
-						SchemaVersion: 1, EventType: "BUFF_SNAPSHOT", SessionNumber: p.sessionNumber,
+						SchemaVersion: buffSnapshotSchemaVersion, EventType: "BUFF_SNAPSHOT", SessionNumber: p.sessionNumber,
 						MessageID: frame.commandID, Timestamp: frame.timestamp, ResponseCommandID: frame.commandID,
 						ResponseDirection: frame.direction, RequestCommandID: 28481,
 						FrameToken: frame.token, EntityIDStatus: resolutionUnknown,
 						ComponentPath:             "EntityActiveResponse.field11(ComponentPbs[])->EntityComponentPb.field15(FightBuffComponent)->FightBuffComponentPb.field1(FightBuffInfos[])->FightBuffInformation",
 						BuffIDStatus:              resolutionCorrelated,
+						BuffDefinitionStatus:      resolutionUnknown,
+						BuffDefinitionEvidence:    "No exact normalized buff.id row has been linked; the raw BuffId remains unchanged",
+						BuffSemanticStatus:        resolutionUnknown,
+						BuffSemanticEvidence:      "This status covers runtime application and effect semantics; static row lookup is reported separately, and snapshot presence does not establish application or uptime",
 						clientSchemaVersion:      "Global 3.7.1",
 						WindowsSchemaVerification: "Windows Global UHD 3.7.1 Aki.Protocol metadata; client/master compatibility UNKNOWN",
 						Buff:                      record,
+					}
+					if record.HasID && p.masters != nil && p.masters.hasBuffDefinition(record.ID) {
+						definitionID := record.ID
+						row.BuffDefinitionStatus = resolutionCorrelated
+						row.BuffDefinitionTable = "buff"
+						row.BuffDefinitionID = &definitionID
+						row.BuffDefinitionEvidence = "FightBuffInformation.BuffId follows the client's BuffById lookup; exact normalized buff.id row found. This links static attributes only and does not establish runtime application or effect semantics"
+						row.BuffOwners = resolveBuffOwners(p.masters, record.ID)
+					} else if record.HasID {
+						// No static definition: only an observed-role owner can exist; the definition status stays UNKNOWN.
+						row.BuffOwners = resolveBuffOwners(p.masters, record.ID)
 					}
 					if record.HasInstigatorID {
 						row.InstigatorSemantics = resolutionCorrelated
@@ -599,6 +779,22 @@ func (p *processor) handleActiveResponse(frame gameFrame, body []byte) error {
 				return fmt.Errorf("parse EntityActiveResponse identity components: %w", err)
 			}
 			p.stats.activeResponseIdentityComponents += observed
+		}
+		if len(fsmComponents) > 0 && matched && request.hasEntityID {
+			if err := p.entities.applyActiveResponseFsmComponents(request.entityID, fsmComponents); err != nil {
+				return fmt.Errorf("parse EntityActiveResponse FSM components: %w", err)
+			}
+		}
+		if len(partComponents) > 0 {
+			entityID := uint64(0)
+			if matched && request.hasEntityID {
+				entityID = request.entityID
+			}
+			if entityID == 0 {
+				p.entities.invalidatePartComponents()
+			} else if _, err := p.entities.applyActiveResponsePartComponents(entityID, partComponents); err != nil {
+				return fmt.Errorf("parse EntityActiveResponse part components: %w", err)
+			}
 		}
 	}
 	return nil

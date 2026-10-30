@@ -8,21 +8,55 @@ import (
 )
 
 type combatEventJSONL struct {
-	SchemaVersion int                      `json:"schemaVersion"`
-	EventType     string                   `json:"eventType"`
-	Timestamp     time.Time                `json:"timestamp"`
-	SessionNumber int                      `json:"sessionNumber"`
-	RPCID         uint64                   `json:"rpcId"`
-	Source        combatEventEntityJSONL   `json:"source"`
-	Target        combatEventEntityJSONL   `json:"target"`
-	Credit        combatEventCreditJSONL   `json:"credit"`
-	Summoner      combatEventSummonerJSONL `json:"summoner"`
-	Skill         combatEventSkillJSONL    `json:"skill"`
-	CombatResult  combatEventResultJSONL   `json:"combatResult"`
-	Healing       *combatEventHealingJSONL `json:"healing,omitempty"`
-	Actors        actorsJSONL              `json:"actors"`
-	Master        combatEventMasterJSONL   `json:"master"`
-	Raw           combatEventRawJSONL      `json:"raw"`
+	SchemaVersion              int                         `json:"schemaVersion"`
+	EventType                  string                      `json:"eventType"`
+	Timestamp                  time.Time                   `json:"timestamp"`
+	SessionNumber              int                         `json:"sessionNumber"`
+	RPCID                      uint64                      `json:"rpcId"`
+	Source                     combatEventEntityJSONL      `json:"source"`
+	Target                     combatEventEntityJSONL      `json:"target"`
+	Credit                     combatEventCreditJSONL      `json:"credit"`
+	Summoner                   combatEventSummonerJSONL    `json:"summoner"`
+	Skill                      combatEventSkillJSONL       `json:"skill"`
+	CombatResult               combatEventResultJSONL      `json:"combatResult"`
+	Healing                    *combatEventHealingJSONL    `json:"healing,omitempty"`
+	Actors                     actorsJSONL                 `json:"actors"`
+	Master                     combatEventMasterJSONL      `json:"master"`
+	Raw                        combatEventRawJSONL         `json:"raw"`
+	Bullet                     *combatEventBulletJSONL     `json:"bullet,omitempty"`
+	DamageContributorCandidate *damageContributorCandidate `json:"damageContributorCandidate,omitempty"`
+	// DamageOwners lists the static skill and Buff owners of the DamageId; it is a master reference, not the runtime attacker.
+	DamageOwners *damageOwnersJSONL `json:"damageOwners,omitempty"`
+	// Response is set on DAMAGE_RESPONSE_WITHOUT_AMOUNT events, whose server response carried no usable Damage field.
+	Response *combatEventNoAmountJSONL `json:"response,omitempty"`
+	// Push is set on DAMAGE_PUSH_RESULT events: server-pushed damage that no client request asked for.
+	Push *combatEventPushJSONL `json:"push,omitempty"`
+}
+
+// combatEventNoAmountJSONL records why a server-confirmed hit has no amount. HasAmount=false means proto3 omitted Damage
+// (the default 0) and the amount is therefore zero or not reported; the event never contributes to damage totals.
+type combatEventNoAmountJSONL struct {
+	HasAmount       bool   `json:"hasAmount"`
+	ErrorCode       int32  `json:"errorCode"`
+	ImmuneType      int32  `json:"immuneType"`
+	ChangeLifeRaw   *int32 `json:"changeLifeRaw,omitempty"`
+	Outcome         string `json:"outcome"`
+	OutcomeEvidence string `json:"outcomeEvidence"`
+}
+
+// combatEventBulletJSONL is the static namespace translation of the event's BulletId.
+// It is kept apart from Raw, which only copies wire values.
+type combatEventBulletJSONL struct {
+	BulletID       uint64 `json:"bulletId"`
+	Namespace      string `json:"namespace,omitempty"`
+	ActorBlueprint string `json:"actorBlueprint,omitempty"`
+	Via            string `json:"via,omitempty"`
+	DevLabelZhCn   string `json:"devLabelZhCn,omitempty"`
+	// DevLabel is the localized developer note of the bullet row; never an official name.
+	DevLabel    *combatEventLabelTextJSONL `json:"devLabel,omitempty"`
+	RowDamageID uint64                     `json:"rowDamageId,omitempty"`
+	Status      resolutionStatus           `json:"status"`
+	Evidence    string                     `json:"evidence,omitempty"`
 }
 
 // combatEventRawJSONL holds only values copied from the decoded damage request
@@ -41,14 +75,35 @@ type combatEventRawJSONL struct {
 }
 
 type combatEventEntityJSONL struct {
-	EntityID        *uint64                   `json:"entityId,omitempty"`
-	RuntimeStatus   resolutionStatus          `json:"runtimeStatus"`
-	RuntimeEvidence string                    `json:"runtimeEvidence,omitempty"`
-	RuntimeFields   json.RawMessage           `json:"runtimeFields"`
-	Lifecycle       entityLifecycleJSONL      `json:"lifecycle"`
-	Character       *combatEventMasterIDJSONL `json:"character,omitempty"`
-	Monster         *combatEventMasterIDJSONL `json:"monster,omitempty"`
-	SceneTemplate   *combatEventTemplateJSONL `json:"sceneTemplate,omitempty"`
+	EntityID        *uint64                      `json:"entityId,omitempty"`
+	RuntimeStatus   resolutionStatus             `json:"runtimeStatus"`
+	RuntimeEvidence string                       `json:"runtimeEvidence,omitempty"`
+	RuntimeFields   json.RawMessage              `json:"runtimeFields"`
+	Lifecycle       entityLifecycleJSONL         `json:"lifecycle"`
+	Character       *combatEventMasterIDJSONL    `json:"character,omitempty"`
+	Monster         *combatEventMasterIDJSONL    `json:"monster,omitempty"`
+	SceneTemplate   *combatEventTemplateJSONL    `json:"sceneTemplate,omitempty"`
+	RoleSkin        *combatEventRoleSkinJSONL    `json:"roleSkin,omitempty"`
+	SummonSkill     *combatEventSummonSkillJSONL `json:"summonSkill,omitempty"`
+}
+
+// combatEventSummonSkillJSONL is the SummonSkillId namespace translation of one entity.
+type combatEventSummonSkillJSONL struct {
+	SummonSkillID uint64           `json:"summonSkillId"`
+	SummonType    *uint64          `json:"summonType,omitempty"`
+	Namespace     string           `json:"namespace,omitempty"`
+	Status        resolutionStatus `json:"status"`
+	Evidence      string           `json:"evidence,omitempty"`
+	// DevLabel is the developer note of the resolved Vision row.
+	DevLabel *combatEventLabelTextJSONL `json:"devLabel,omitempty"`
+}
+
+// combatEventRoleSkinJSONL is the RoleSkinId -> RoleSkin.RoleId translation of one entity.
+type combatEventRoleSkinJSONL struct {
+	SkinID       uint64           `json:"skinId"`
+	MasterRoleID uint64           `json:"masterRoleId,omitempty"`
+	Status       resolutionStatus `json:"status"`
+	Evidence     string           `json:"evidence,omitempty"`
 }
 
 // entityLifecycleJSONL is the normalized lifecycle of one entity. State UNKNOWN
@@ -71,13 +126,15 @@ type combatEventMasterIDJSONL struct {
 }
 
 type combatEventTemplateJSONL struct {
-	Name         string                              `json:"name,omitempty"`
-	Subtitle     string                              `json:"subtitle,omitempty"`
-	IdentityType string                              `json:"identityType"`
-	Status       resolutionStatus                    `json:"status"`
-	NameStatus   resolutionStatus                    `json:"nameStatus"`
-	Candidates   []combatEventTemplateCandidateJSONL `json:"candidates"`
-	Evidence     string                              `json:"evidence,omitempty"`
+	Name         string           `json:"name,omitempty"`
+	Subtitle     string           `json:"subtitle,omitempty"`
+	IdentityType string           `json:"identityType"`
+	Status       resolutionStatus `json:"status"`
+	NameStatus   resolutionStatus `json:"nameStatus"`
+	// DevLabel is set instead of Name when the single candidate has only a developer note; never an official name.
+	DevLabel   *combatEventLabelTextJSONL          `json:"devLabel,omitempty"`
+	Candidates []combatEventTemplateCandidateJSONL `json:"candidates"`
+	Evidence   string                              `json:"evidence,omitempty"`
 }
 
 type combatEventTemplateCandidateJSONL sceneTemplateCandidate
@@ -107,6 +164,26 @@ type combatEventSkillJSONL struct {
 	NameStatus resolutionStatus          `json:"nameStatus"`
 	Evidence   string                    `json:"evidence,omitempty"`
 	Request    *combatActionRequestJSONL `json:"request,omitempty"`
+	// DevLabelZhCn is the SkillInfo developer label; it is not an official localized name and never fills Name.
+	DevLabelZhCn   string           `json:"devLabelZhCn,omitempty"`
+	DevLabelStatus resolutionStatus `json:"devLabelStatus,omitempty"`
+	DevLabelProof  string           `json:"devLabelEvidence,omitempty"`
+	// DevLabel is the developer label as display text in the master locale (zh-CN original as fallback).
+	DevLabel *combatEventLabelTextJSONL `json:"devLabel,omitempty"`
+}
+
+type combatEventLabelTextJSONL struct {
+	Locale   string `json:"locale"`
+	Text     string `json:"text"`
+	Kind     string `json:"kind"`
+	Evidence string `json:"evidence,omitempty"`
+}
+
+type combatEventElementJSONL struct {
+	ID       int32            `json:"id"`
+	Name     string           `json:"name,omitempty"`
+	Status   resolutionStatus `json:"status"`
+	Evidence string           `json:"evidence,omitempty"`
 }
 
 type combatActionRequestJSONL struct {
@@ -133,6 +210,8 @@ type combatEventResultJSONL struct {
 	ClassCandidate  string           `json:"classCandidate,omitempty"`
 	ClassStatus     resolutionStatus `json:"classStatus"`
 	ClassEvidence   string           `json:"classEvidence,omitempty"`
+	// Element names damage.element of the DamageId row; absent when the row is unknown or has no element.
+	Element *combatEventElementJSONL `json:"element,omitempty"`
 }
 
 type combatEventHealingJSONL struct {
@@ -156,45 +235,51 @@ type combatEventMasterJSONL struct {
 }
 
 type combatEvent struct {
-	Timestamp           time.Time
-	SessionNumber       int
-	RPCID               uint64
-	DamageID            uint64
-	SourceEntityID      uint64
-	HasSourceEntity     bool
-	TargetEntityID      uint64
-	HasTargetEntity     bool
-	Source              entityIdentity
-	Target              entityIdentity
-	SummonerCharacter   summonerCharacterIdentity
-	CharacterID         uint64
-	CharacterName       string
-	CharacterNameStatus resolutionStatus
-	CharacterStatus     resolutionStatus
-	CharacterProof      string
-	SkillID             uint64
-	SkillMessageID      uint64
-	SkillName           string
-	SkillNameStatus     resolutionStatus
-	SkillNameKind       string
-	SkillStatus         resolutionStatus
-	SkillProof          string
-	SkillRequest        *combatActionRequest
-	HasDamageID         bool
-	DamageSourceType    uint64
-	HasDamageSourceType bool
-	BulletID            int64
-	HasBulletID         bool
-	Damage              int64
-	ServerResultRaw     int32
-	HasServerResult     bool
-	ChangeLifeRaw       int32
-	HasChangeLife       bool
-	DamageCalculateType int32
-	HasCalculateType    bool
-	EventTypeCandidate  string
-	EventTypeStatus     resolutionStatus
-	EventTypeProof      string
+	Timestamp         time.Time
+	SessionNumber     int
+	RPCID             uint64
+	DamageID          uint64
+	SourceEntityID    uint64
+	HasSourceEntity   bool
+	TargetEntityID    uint64
+	HasTargetEntity   bool
+	Source            entityIdentity
+	Target            entityIdentity
+	SummonerCharacter summonerCharacterIdentity
+	// SourceVisionSummonCfgs lists SummonCfg ids of ConcomitantVision entities whose SummonerComponent names the source entity.
+	SourceVisionSummonCfgs []uint64
+	CharacterID            uint64
+	CharacterName          string
+	CharacterNameStatus    resolutionStatus
+	CharacterStatus        resolutionStatus
+	CharacterProof         string
+	SkillID                uint64
+	SkillMessageID         uint64
+	SkillName              string
+	SkillNameStatus        resolutionStatus
+	SkillNameKind          string
+	// SkillDevLabel is the developer-label text of a skill that has no official name (master locale, zh-CN fallback).
+	SkillDevLabel              string
+	SkillDevLabelKind          string
+	SkillStatus                resolutionStatus
+	SkillProof                 string
+	SkillRequest               *combatActionRequest
+	HasDamageID                bool
+	DamageSourceType           uint64
+	HasDamageSourceType        bool
+	BulletID                   int64
+	HasBulletID                bool
+	Damage                     int64
+	ServerResultRaw            int32
+	HasServerResult            bool
+	ChangeLifeRaw              int32
+	HasChangeLife              bool
+	DamageCalculateType        int32
+	HasCalculateType           bool
+	EventTypeCandidate         string
+	EventTypeStatus            resolutionStatus
+	EventTypeProof             string
+	DamageContributorCandidate *damageContributorCandidate
 }
 
 func (p *processor) buildDamageEvent(rpcID uint64, request pendingDamageRequest, resultRaw, changeLifeRaw int32, hasChangeLife bool, damage int64) combatEvent {
@@ -237,6 +322,7 @@ func (p *processor) buildDamageEvent(rpcID uint64, request pendingDamageRequest,
 		}
 	}
 	event.SummonerCharacter = resolveSummonerCharacter(p.entities, p.masters, event.Source.Runtime)
+	event.SourceVisionSummonCfgs = p.entities.visionSummonConfigs(request.attackerEntityID)
 	event.resolveEventType(p.masters)
 	if event.Source.HasCharacter && (event.Source.CharacterStatus == resolutionVerified || event.Source.CharacterStatus == resolutionCorrelated) {
 		event.CharacterID = event.Source.Character.ID
@@ -259,8 +345,11 @@ func (p *processor) buildDamageEvent(rpcID uint64, request pendingDamageRequest,
 			}
 		}
 	}
+	if label := resolveSkillLabelText(p.masters, request.skillID); label != nil {
+		event.SkillDevLabel, event.SkillDevLabelKind = label.Text, label.Kind
+	}
 	if p.masters != nil {
-		if skill, ok := p.masters.skills[request.skillID]; ok {
+		if skill, ok := p.masters.damageSkill(request.skillID); ok {
 			event.SkillStatus = resolutionStatus(skill.Status)
 			event.SkillNameStatus = resolutionStatus(skill.NameStatus)
 			if event.SkillNameStatus == resolutionVerified || event.SkillNameStatus == resolutionCorrelated {
@@ -270,6 +359,7 @@ func (p *processor) buildDamageEvent(rpcID uint64, request pendingDamageRequest,
 			event.SkillProof = skill.SourceTable
 		}
 	}
+	event.DamageContributorCandidate = resolveVehicleDamageContributorCandidate(p.entities, p.masters, event)
 	return event
 }
 
@@ -470,6 +560,9 @@ func sceneTemplateEventLabel(identity entityIdentity, entityID string) (string, 
 	}
 	candidate := identity.TemplateCandidates[0]
 	if candidate.Name == "" || candidate.NameStatus != string(resolutionVerified) {
+		if candidate.DevLabel != nil && candidate.DevLabel.Text != "" {
+			return fmt.Sprintf("[internal] %s [Template:%d; %s] [Entity:%s]", candidate.DevLabel.Text, candidate.TemplateID, identity.TemplateStatus, entityID), true
+		}
 		return "", false
 	}
 	return fmt.Sprintf("%s [Template:%d; %s] [Entity:%s]", candidate.Name, candidate.TemplateID, identity.TemplateStatus, entityID), true

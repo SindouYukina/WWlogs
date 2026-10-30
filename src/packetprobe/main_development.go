@@ -48,10 +48,17 @@ func main() {
 	protocolSchemaPath := flag.String("protocol-schema", "", "optional local protocol schema JSON")
 
 	schemaDecodeOut := flag.String("schema-decode-out", "", "optional JSONL of schema-directed decodes of decrypted outer messages (requires -protocol-schema)")
+	roleConfigOutPath := flag.String("role-config-out", "", "optional JSONL of observed RoleConfigInfoNotify role IDs resolved through the master database (requires -protocol-schema and -master-db)")
 
 	buffOverlapOut := flag.String("buff-overlap-out", "", "optionally write, per damage result, the Buff instances observed active on its target (packet-time precision)")
+	masterLocale := flag.String("locale", "zh-TW", "language of names read from the master database: zh-TW, zh-CN, en-US, ja-JP or ko-KR")
+	combatStateOutPath := flag.String("combat-state-out", "", "optional JSONL of every attribute change, recovery value and state-machine transition with names (requires -protocol-schema)")
 	hpStateOutPath := flag.String("hp-state-out", "", "optional JSONL of Life and LifeMax attribute values per entity (requires -protocol-schema)")
 	damagePushOutPath := flag.String("damage-push-out", "", "optional JSONL of pushed DamageExecuteNotify records, separate from the damage RPC stream (requires -protocol-schema)")
+	skillRefOutPath := flag.String("skill-ref-out", "", "optional JSONL of every SkillId in combat messages with its EntitySkillPreload namespace check (requires -protocol-schema)")
+	bulletRefOutPath := flag.String("bullet-ref-out", "", "optional JSONL of BulletId fields in outbound and inbound combat messages with namespace and resolution evidence (requires -protocol-schema)")
+	shieldRefOutPath := flag.String("shield-ref-out", "", "optional JSONL of inbound ShieldUpdateInfo.ConfigId references resolved only against shield.Id (requires -protocol-schema and -master-db)")
+	partRefOutPath := flag.String("part-ref-out", "", "optional JSONL of DamageExecuteRequest.PartId references resolved against the active target PartComponent (requires -protocol-schema)")
 	clientPushOutPath := flag.String("client-push-out", "", "optional JSONL of skill requests, role reports, and skill-end pushes (requires -protocol-schema)")
 	summonOwnerOutPath := flag.String("summon-owner-out", "", "optional JSONL of summoner, concomitant and dependence facts from join and entity-add messages (requires -protocol-schema)")
 	frameArchiveOut := flag.String("frame-archive-out", "", "optionally write one local JSONL record per reassembled frame (digests only; no key or plaintext)")
@@ -84,7 +91,7 @@ func main() {
 	if filterExpression == "" {
 		filterExpression = fmt.Sprintf("udp and portrange %d-%d", *minPort, *maxPort)
 	}
-	masters, err := loadGameMasterDatabase(*masterDatabase, "zh-TW")
+	masters, err := loadGameMasterDatabase(*masterDatabase, *masterLocale)
 	if err != nil {
 		fatal("load combat master SQLite", err)
 	}
@@ -246,6 +253,94 @@ func main() {
 			}
 		}()
 	}
+	if *skillRefOutPath != "" {
+		if processor.protocolSchema == nil {
+			fatal("skill reference output", fmt.Errorf("-skill-ref-out requires -protocol-schema"))
+		}
+		if dir := filepath.Dir(*skillRefOutPath); dir != "." {
+			if err := os.MkdirAll(dir, 0o700); err != nil {
+				fatal("create skill reference directory", err)
+			}
+		}
+		skillFile, err := os.Create(*skillRefOutPath)
+		if err != nil {
+			fatal("create skill reference output", err)
+		}
+		defer skillFile.Close()
+		skillWriter := bufio.NewWriter(skillFile)
+		processor.skillRefOut = skillWriter
+		defer func() {
+			if err := skillWriter.Flush(); err != nil {
+				fmt.Fprintf(os.Stderr, "skill reference flush error: %v\n", err)
+			}
+		}()
+	}
+	if *bulletRefOutPath != "" {
+		if processor.protocolSchema == nil {
+			fatal("bullet reference output", fmt.Errorf("-bullet-ref-out requires -protocol-schema"))
+		}
+		if dir := filepath.Dir(*bulletRefOutPath); dir != "." {
+			if err := os.MkdirAll(dir, 0o700); err != nil {
+				fatal("create bullet reference directory", err)
+			}
+		}
+		bulletFile, err := os.Create(*bulletRefOutPath)
+		if err != nil {
+			fatal("create bullet reference output", err)
+		}
+		defer bulletFile.Close()
+		bulletWriter := bufio.NewWriter(bulletFile)
+		processor.bulletRefOut = bulletWriter
+		defer func() {
+			if err := bulletWriter.Flush(); err != nil {
+				fmt.Fprintf(os.Stderr, "bullet reference flush error: %v\n", err)
+			}
+		}()
+	}
+	if *shieldRefOutPath != "" {
+		if processor.protocolSchema == nil || masters == nil {
+			fatal("shield reference output", fmt.Errorf("-shield-ref-out requires -protocol-schema and -master-db"))
+		}
+		if dir := filepath.Dir(*shieldRefOutPath); dir != "." {
+			if err := os.MkdirAll(dir, 0o700); err != nil {
+				fatal("create shield reference directory", err)
+			}
+		}
+		shieldFile, err := os.Create(*shieldRefOutPath)
+		if err != nil {
+			fatal("create shield reference output", err)
+		}
+		defer shieldFile.Close()
+		shieldWriter := bufio.NewWriter(shieldFile)
+		processor.shieldRefOut = shieldWriter
+		defer func() {
+			if err := shieldWriter.Flush(); err != nil {
+				fmt.Fprintf(os.Stderr, "shield reference flush error: %v\n", err)
+			}
+		}()
+	}
+	if *partRefOutPath != "" {
+		if processor.protocolSchema == nil {
+			fatal("part reference output", fmt.Errorf("-part-ref-out requires -protocol-schema"))
+		}
+		if dir := filepath.Dir(*partRefOutPath); dir != "." {
+			if err := os.MkdirAll(dir, 0o700); err != nil {
+				fatal("create part reference directory", err)
+			}
+		}
+		partFile, err := os.Create(*partRefOutPath)
+		if err != nil {
+			fatal("create part reference output", err)
+		}
+		defer partFile.Close()
+		partWriter := bufio.NewWriter(partFile)
+		processor.partRefOut = partWriter
+		defer func() {
+			if err := partWriter.Flush(); err != nil {
+				fmt.Fprintf(os.Stderr, "part reference flush error: %v\n", err)
+			}
+		}()
+	}
 	if *clientPushOutPath != "" {
 		if processor.protocolSchema == nil {
 			fatal("client push output", fmt.Errorf("-client-push-out requires -protocol-schema"))
@@ -290,6 +385,28 @@ func main() {
 			}
 		}()
 	}
+	if *combatStateOutPath != "" {
+		if processor.protocolSchema == nil {
+			fatal("combat state output", fmt.Errorf("-combat-state-out requires -protocol-schema"))
+		}
+		if dir := filepath.Dir(*combatStateOutPath); dir != "." {
+			if err := os.MkdirAll(dir, 0o700); err != nil {
+				fatal("create combat state directory", err)
+			}
+		}
+		stateFile, err := os.Create(*combatStateOutPath)
+		if err != nil {
+			fatal("create combat state output", err)
+		}
+		defer stateFile.Close()
+		stateWriter := bufio.NewWriter(stateFile)
+		processor.combatStateOut = stateWriter
+		defer func() {
+			if err := stateWriter.Flush(); err != nil {
+				fmt.Fprintf(os.Stderr, "combat state flush error: %v\n", err)
+			}
+		}()
+	}
 	if *hpStateOutPath != "" {
 		if processor.protocolSchema == nil {
 			fatal("hp state output", fmt.Errorf("-hp-state-out requires -protocol-schema"))
@@ -331,6 +448,28 @@ func main() {
 		defer func() {
 			if err := schemaWriter.Flush(); err != nil {
 				fmt.Fprintf(os.Stderr, "schema decode flush error: %v\n", err)
+			}
+		}()
+	}
+	if *roleConfigOutPath != "" {
+		if processor.protocolSchema == nil || masters == nil {
+			fatal("role config output", fmt.Errorf("-role-config-out requires -protocol-schema and -master-db"))
+		}
+		if dir := filepath.Dir(*roleConfigOutPath); dir != "." {
+			if err := os.MkdirAll(dir, 0o700); err != nil {
+				fatal("create role config directory", err)
+			}
+		}
+		roleConfigFile, err := os.Create(*roleConfigOutPath)
+		if err != nil {
+			fatal("create role config output", err)
+		}
+		defer roleConfigFile.Close()
+		roleConfigWriter := bufio.NewWriter(roleConfigFile)
+		processor.roleConfigOut = roleConfigWriter
+		defer func() {
+			if err := roleConfigWriter.Flush(); err != nil {
+				fmt.Fprintf(os.Stderr, "role config flush error: %v\n", err)
 			}
 		}()
 	}
@@ -546,6 +685,12 @@ finished:
 		fmt.Fprintf(os.Stderr, "buff_overlap damage_results=%d intervals=%d duplicate_applies=%d unmatched_removes=%d skipped=%d interval_overflow=%d damage_overflow=%d\n", len(processor.damageOverlap), len(processor.buffIntervals), processor.buffDuplicateApplies, processor.buffUnmatchedRemoves, processor.buffOverlapSkipped, processor.buffIntervalOverflow, processor.damageOverlapOverflow)
 	}
 	fmt.Fprintf(os.Stderr, "schema_decode errors=%d skipped_without_schema=%d\n", processor.schemaDecodeErrors, processor.schemaDecodeSkipped)
+	if processor.roleConfigOut != nil {
+		fmt.Fprintf(os.Stderr, "role_config errors=%d\n", processor.roleConfigErrors)
+	}
+	if processor.shieldRefOut != nil {
+		fmt.Fprintf(os.Stderr, "shield_reference errors=%d\n", processor.shieldRefErrors)
+	}
 	processor.printSummary(os.Stderr)
 	fmt.Fprintf(os.Stderr, "capture_finished udp=%d kcp_push=%d kcp_ordered=%d kcp_messages=%d protocol_frames=%d bad_crc=%d malformed_frames=%d kernel_drops=%d duration=%s\n",
 		stats.udpPackets, stats.kcpPush, stats.kcpOrdered, stats.kcpMessages, stats.frames, stats.badCRC, stats.malformed, stats.kernelDrops, time.Since(started).Round(time.Millisecond))

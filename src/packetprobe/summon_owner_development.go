@@ -73,6 +73,15 @@ func (p *processor) writeSummonerRecord(frame gameFrame, command string, entityI
 			record.SummonType = name
 		}
 	}
+	if record.SummonSkillID != nil && p.masters != nil {
+		entity := runtimeEntity{summonSkillID: uint64(*record.SummonSkillID), hasSummonSkillID: true}
+		if record.SummonTypeRaw != nil {
+			entity.summonType, entity.hasSummonType = uint64(*record.SummonTypeRaw), true
+		}
+		resolution := resolveSummonSkill(p.masters, entity)
+		record.SummonSkillNamespace, record.SummonSkillStatus = resolution.Namespace, resolution.Status
+		record.SummonSkillDevLabel = resolution.DevLabel
+	}
 	p.writeSummonOwnerRecord(record)
 }
 

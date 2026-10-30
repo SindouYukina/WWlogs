@@ -11,6 +11,123 @@ import (
 	"time"
 )
 
+// observePushSummary adds one pushed hit to the encounter's separate push block. It never touches the encounter totals.
+func (p *processor) observePushSummary(event combatEvent, push *combatEventPushJSONL) {
+	if p.encounterSummary == nil || push == nil {
+		return
+	}
+	key := encounterSummaryKey{session: event.SessionNumber}
+	sourceScene, sourceHasScene := event.Source.Runtime.sceneInstanceID, event.Source.Runtime.hasSceneInstanceID
+	targetScene, targetHasScene := event.Target.Runtime.sceneInstanceID, event.Target.Runtime.hasSceneInstanceID
+	switch {
+	case sourceHasScene && targetHasScene && sourceScene != targetScene:
+		key.scopeConflict = true
+	case sourceHasScene:
+		key.sceneInstance, key.hasScene = sourceScene, true
+	case targetHasScene:
+		key.sceneInstance, key.hasScene = targetScene, true
+	}
+	summary := p.encounterSummaries[key]
+	if summary == nil {
+		return
+	}
+	label, status := "Unresolved attacker entity", resolutionUnknown
+	switch {
+	case push.AttributedCharacter != nil:
+		label, status = fmt.Sprintf("Party character %s [CharacterId:%d]", push.AttributedCharacter.Name, derefUint64(push.AttributedCharacter.CharacterID)), resolutionCorrelated
+	case len(event.Source.TemplateCandidates) == 1:
+		candidate := event.Source.TemplateCandidates[0]
+		name := candidate.Name
+		if name == "" && candidate.DevLabel != nil {
+			name = "[internal] " + candidate.DevLabel.Text
+		}
+		label, status = fmt.Sprintf("Scene entity %s [Template:%d] (no character credited)", name, candidate.TemplateID), resolutionCorrelated
+	}
+	if summary.pushDamage == nil {
+		summary.pushDamage = make(map[string]*pushDamageSummary)
+	}
+	row := summary.pushDamage[label]
+	if row == nil {
+		row = &pushDamageSummary{label: label, status: status}
+		summary.pushDamage[label] = row
+	}
+	row.events++
+	row.damage += event.Damage
+}
+
+func derefUint64(value *uint64) uint64 {
+	if value == nil {
+		return 0
+	}
+	return *value
+}
+
+func writePushDamage(w io.Writer, summary *encounterSummary) error {
+	if len(summary.pushDamage) == 0 {
+		return nil
+	}
+	labels := make([]string, 0, len(summary.pushDamage))
+	for label := range summary.pushDamage {
+		labels = append(labels, label)
+	}
+	sort.Strings(labels)
+	if _, err := fmt.Fprintln(w, "\n### Pushed abnormal-state damage (not included in any total above)\n\nThese hits come from server pushes without an instigator field. A party character is named only when the push's attacker entity is that character; the rest are listed under their attacker entity."); err != nil {
+		return err
+	}
+	for _, label := range labels {
+		row := summary.pushDamage[label]
+		if _, err := fmt.Fprintf(w, "\n- %s [%s]: %d event(s), magnitude %d", row.label, row.status, row.events, row.damage); err != nil {
+			return err
+		}
+	}
+	_, err := fmt.Fprintln(w)
+	return err
+}
+
+func addVehicleContributorEvent(summary *encounterSummary, event combatEvent) {
+	candidate := event.DamageContributorCandidate
+	if summary.vehicleContributors == nil {
+		summary.vehicleContributors = make(map[uint64]*vehicleContributorSummary)
+	}
+	row := summary.vehicleContributors[candidate.FollowerConfigID]
+	if row == nil {
+		row = &vehicleContributorSummary{followerConfigID: candidate.FollowerConfigID}
+		summary.vehicleContributors[candidate.FollowerConfigID] = row
+	}
+	row.status = strongestEvidence(row.status, candidate.Status)
+	if candidate.Name != nil && candidate.Name.Text != "" {
+		row.name, row.nameKind = candidate.Name.Text, candidate.Name.Kind
+	}
+	row.events++
+	row.damage += event.Damage
+}
+
+func writeVehicleContributors(w io.Writer, summary *encounterSummary) error {
+	if len(summary.vehicleContributors) == 0 {
+		return nil
+	}
+	ids := make([]uint64, 0, len(summary.vehicleContributors))
+	for id := range summary.vehicleContributors {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	if _, err := fmt.Fprintln(w, "\n### Vehicle contributors (separate from party characters)\n\nThe server reports these hits with the player entity as attacker; they are listed as the vehicle's own row and are not counted for any character. The relation is a CORRELATED association, not a server-confirmed credit."); err != nil {
+		return err
+	}
+	for _, id := range ids {
+		row := summary.vehicleContributors[id]
+		name := "Vehicle"
+		if row.name != "" {
+			name = fmt.Sprintf("[internal] %s", row.name)
+		}
+		if _, err := fmt.Fprintf(w, "\n- %s [FollowerSummonConfigId:%d; %s]: %d event(s), CombatResult magnitude %d", name, row.followerConfigID, row.status, row.events, row.damage); err != nil {
+			return err
+		}
+	}
+	_, err := fmt.Fprintln(w)
+	return err
+}
+
 func (p *processor) observeEncounterSummary(event combatEvent) {
 	if p.encounterSummary == nil {
 		return
@@ -78,6 +195,8 @@ func (p *processor) observeEncounterSummary(event combatEvent) {
 
 	if isCreditedCharacterStatus(event.CharacterStatus) && event.CharacterID != 0 {
 		addCreditedCharacterEvent(summary, event)
+	} else if event.DamageContributorCandidate != nil && event.EventTypeCandidate == "DAMAGE_CANDIDATE" {
+		addVehicleContributorEvent(summary, event)
 	} else {
 		summary.unknownCredit++
 		summary.unknownCreditAbs += event.Damage
@@ -620,6 +739,12 @@ func writeOneEncounterSummary(w io.Writer, summary *encounterSummary) error {
 		if _, err := fmt.Fprintf(w, "\nWarning: %d unresolved source events were not retained for identity backfill because the bounded pending-event limit was reached.\n", summary.identityBackfillEventsOmitted); err != nil {
 			return err
 		}
+	}
+	if err := writeVehicleContributors(w, summary); err != nil {
+		return err
+	}
+	if err := writePushDamage(w, summary); err != nil {
+		return err
 	}
 	if err := writeUncreditedEvents(w, summary); err != nil {
 		return err

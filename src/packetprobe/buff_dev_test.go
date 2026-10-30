@@ -15,6 +15,7 @@ func TestEntityActiveResponseDecodesBuffSnapshotWithCorrelatedEntity(t *testing.
 	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
 	p.buffSnapshots = &output
 	p.combatEventsJSONL = &eventStream
+	p.masters = &gameMaster{buffDefinitions: map[uint64]struct{}{70001: {}}}
 	p.sessionNumber = 5
 	const token = 42
 	if err := p.handleActiveRequest(token, appendVarintField(nil, 4, 8801)); err != nil {
@@ -59,8 +60,11 @@ func TestEntityActiveResponseDecodesBuffSnapshotWithCorrelatedEntity(t *testing.
 	if row.Buff.ID != 70001 || row.Buff.Level != 2 || row.Buff.Stack != 3 || row.Buff.InstigatorID != 99002 || !row.Buff.HasActive || !row.Buff.Active {
 		t.Fatalf("decoded Buff snapshot = %+v", row.Buff)
 	}
-	if row.BuffIDStatus != resolutionCorrelated || row.InstigatorSemantics != resolutionCorrelated || !strings.Contains(row.WindowsSchemaVerification, "client/master compatibility UNKNOWN") {
+	if row.BuffIDStatus != resolutionCorrelated || row.BuffDefinitionStatus != resolutionCorrelated || row.BuffDefinitionTable != "buff" || row.BuffDefinitionID == nil || *row.BuffDefinitionID != 70001 || row.BuffSemanticStatus != resolutionUnknown || row.InstigatorSemantics != resolutionCorrelated || !strings.Contains(row.WindowsSchemaVerification, "client/master compatibility UNKNOWN") {
 		t.Fatalf("evidence levels were overstated: %+v", row)
+	}
+	if !strings.Contains(row.BuffDefinitionEvidence, "exact normalized buff.id row found") || !strings.Contains(row.BuffSemanticEvidence, "does not establish application or uptime") || !row.Buff.HasConfBuffID || row.Buff.ConfBuffID == row.Buff.ID {
+		t.Fatalf("BuffId semantics or ConfBuffId separation = %+v", row)
 	}
 	if !strings.Contains(row.InstigatorEvidence, "CreatureModel.GetEntity") || !strings.Contains(row.InstigatorEvidence, "client/master compatibility UNKNOWN") {
 		t.Fatalf("snapshot instigator evidence basis = %q", row.InstigatorEvidence)
@@ -81,8 +85,34 @@ func TestEntityActiveResponseDecodesBuffSnapshotWithCorrelatedEntity(t *testing.
 	if err := json.Unmarshal(bytes.TrimSpace(eventStream.Bytes()), &streamRow); err != nil {
 		t.Fatalf("decode unified event row: %v", err)
 	}
-	if streamRow["schemaVersion"] != float64(1) || streamRow["eventType"] != "BUFF_SNAPSHOT" || streamRow["sessionNumber"] != float64(5) || streamRow["messageId"] != float64(26702) {
+	if streamRow["schemaVersion"] != float64(buffSnapshotSchemaVersion) || streamRow["eventType"] != "BUFF_SNAPSHOT" || streamRow["sessionNumber"] != float64(5) || streamRow["messageId"] != float64(26702) || streamRow["buffSemanticStatus"] != string(resolutionUnknown) {
 		t.Fatalf("snapshot missing from unified event stream: %#v", streamRow)
+	}
+}
+
+func TestEntityActiveResponseDoesNotSubstituteConfBuffIDForMissingDefinition(t *testing.T) {
+	var output bytes.Buffer
+	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
+	p.buffSnapshots = &output
+	p.masters = &gameMaster{buffDefinitions: map[uint64]struct{}{70002: {}}}
+	buffRecord := appendVarintField(nil, 2, 1312010090)
+	buffRecord = appendVarintField(buffRecord, 14, 70002)
+	response := appendBytesField(nil, 11, appendBytesField(nil, 15, appendBytesField(nil, 1, buffRecord)))
+	if err := p.handleActiveResponse(gameFrame{commandID: 26702, direction: "in", token: 7}, response); err != nil {
+		t.Fatal(err)
+	}
+	var row buffSnapshotAuditRow
+	if err := json.Unmarshal(bytes.TrimSpace(output.Bytes()), &row); err != nil {
+		t.Fatal(err)
+	}
+	if row.Buff.ID != 1312010090 || !row.Buff.HasID || row.Buff.ConfBuffID != 70002 || !row.Buff.HasConfBuffID {
+		t.Fatalf("raw Buff and ConfBuff IDs were not kept separate: %+v", row.Buff)
+	}
+	if row.BuffDefinitionStatus != resolutionUnknown || row.BuffDefinitionID != nil || row.BuffDefinitionTable != "" {
+		t.Fatalf("missing BuffId definition was resolved through ConfBuffId: %+v", row)
+	}
+	if row.BuffSemanticStatus != resolutionUnknown {
+		t.Fatalf("unresolved runtime semantics changed: %s", row.BuffSemanticStatus)
 	}
 }
 
@@ -155,6 +185,44 @@ func TestCombatReceivePackNotifyDecodesInnerBuffApply(t *testing.T) {
 		t.Fatalf("decode lifecycle JSONL: %v", err)
 	}
 	if row.CommandID != 25706 || row.MessageID != 25706 || row.InnerMessageFieldNumber == nil || *row.InnerMessageFieldNumber != 5 {
+		t.Fatalf("outer and inner message provenance = %+v", row)
+	}
+	if row.MessageName != "ApplyGameplayEffectNotify" || row.EventKind != "GAMEPLAY_EFFECT_APPLY" || row.SessionNumber != 4 {
+		t.Fatalf("inner Buff classification = %+v", row)
+	}
+	if row.TargetEntityID == nil || *row.TargetEntityID != 8801 || row.InstigatorID == nil || *row.InstigatorID != 99002 {
+		t.Fatalf("inner Buff target/provider raw fields = %+v", row)
+	}
+	if p.census.combatNotifyFields[5] != 1 {
+		t.Fatalf("CombatNotifyData field 5 observations = %d, want 1", p.census.combatNotifyFields[5])
+	}
+}
+
+func TestCombatSendPackResponseProcessesNestedBuffApply(t *testing.T) {
+	var lifecycle bytes.Buffer
+	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
+	p.buffLifecycle = &lifecycle
+	p.census = newCommandCensus()
+	p.sessionNumber = 4
+
+	apply := appendVarintField(nil, 2, 501)     // Handle
+	apply = appendVarintField(apply, 11, 71001) // Id
+	apply = appendVarintField(apply, 7, 8801)   // EntityId
+	apply = appendVarintField(apply, 8, 99002)  // InstigatorId
+	notify := appendBytesField(nil, 5, apply)   // CombatNotifyData.ApplyGameplayEffectNotify
+	data := appendBytesField(nil, 2, notify)    // CombatReceiveData.CombatNotifyData
+	receive := appendBytesField(nil, 5, data)   // CombatReceivePackNotify.Data[]
+	body := appendBytesField(nil, 14, receive)  // CombatSendPackResponse.ReceivePackNotify
+	frame := gameFrame{commandID: 20332, direction: "in", timestamp: time.Date(2026, 10, 27, 5, 0, 0, 0, time.UTC)}
+
+	if err := p.handleEmbeddedCombatReceivePackNotify(frame, body); err != nil {
+		t.Fatalf("handle embedded CombatReceivePackNotify: %v", err)
+	}
+	var row buffLifecycleAuditRow
+	if err := json.Unmarshal(bytes.TrimSpace(lifecycle.Bytes()), &row); err != nil {
+		t.Fatalf("decode lifecycle JSONL: %v", err)
+	}
+	if row.CommandID != 20332 || row.MessageID != 20332 || row.InnerMessageFieldNumber == nil || *row.InnerMessageFieldNumber != 5 {
 		t.Fatalf("outer and inner message provenance = %+v", row)
 	}
 	if row.MessageName != "ApplyGameplayEffectNotify" || row.EventKind != "GAMEPLAY_EFFECT_APPLY" || row.SessionNumber != 4 {
@@ -258,8 +326,8 @@ func TestGameplayEffectApplyCorrelatesProviderOnlyWithMatchingGroundTruthContext
 		if err := json.Unmarshal(bytes.TrimSpace(output.Bytes()), &row); err != nil {
 			t.Fatal(err)
 		}
-		if row.SchemaVersion != 3 || row.TargetStatus != resolutionCorrelated || row.InstigatorStatus != resolutionCorrelated || row.ProviderStatus != resolutionCorrelated || row.ProviderNameStatus != resolutionCorrelated {
-			t.Fatalf("expected schema v3 correlated gameplay-effect attribution: %+v", row)
+		if row.SchemaVersion != buffLifecycleSchemaVersion || row.TargetStatus != resolutionCorrelated || row.InstigatorStatus != resolutionCorrelated || row.ProviderStatus != resolutionCorrelated || row.ProviderNameStatus != resolutionCorrelated {
+			t.Fatalf("expected schema v4 correlated gameplay-effect attribution: %+v", row)
 		}
 		if row.ProviderCharacterID == nil || *row.ProviderCharacterID != 771 || row.ProviderName != "Cartethyia" {
 			t.Fatalf("provider identity = (%v, %q)", row.ProviderCharacterID, row.ProviderName)
@@ -343,11 +411,67 @@ func TestBuffLifecycleOutputRetainsUnknownFieldsAndRejectsWireMismatch(t *testin
 	if err := json.Unmarshal(bytes.TrimSpace(eventStream.Bytes()), &streamRow); err != nil {
 		t.Fatalf("decode unified event row: %v", err)
 	}
-	if streamRow["schemaVersion"] != float64(3) || streamRow["eventType"] != "BUFF_LIFECYCLE" || streamRow["sessionNumber"] != float64(2) || streamRow["messageId"] != float64(18345) || streamRow["direction"] != "in" {
+	if streamRow["schemaVersion"] != float64(buffLifecycleSchemaVersion) || streamRow["eventType"] != "BUFF_LIFECYCLE" || streamRow["sessionNumber"] != float64(2) || streamRow["messageId"] != float64(18345) || streamRow["direction"] != "in" {
 		t.Fatalf("Buff lifecycle missing from unified event stream: %#v", streamRow)
 	}
 	badWire := appendBytesField(nil, 5, []byte{1})
 	if _, err := decodeBuffLifecycleMessage(gameFrame{commandID: 18345}, badWire); err == nil {
 		t.Fatal("recognized field with a schema-incompatible wire type should fail")
+	}
+}
+
+func TestBuffLifecycleDefinitionLookupUsesOnlyTypedBuffID(t *testing.T) {
+	master := &gameMaster{buffDefinitions: map[uint64]struct{}{70001: {}}}
+	decodeOutput := func(commandID uint16, body []byte) (buffLifecycleAuditRow, map[string]any) {
+		t.Helper()
+		var lifecycle, eventStream bytes.Buffer
+		p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
+		p.masters = master
+		p.buffLifecycle = &lifecycle
+		p.combatEventsJSONL = &eventStream
+		if err := p.handleBuffLifecycleMessage(gameFrame{commandID: commandID, direction: "in"}, body); err != nil {
+			t.Fatal(err)
+		}
+		var row buffLifecycleAuditRow
+		if err := json.Unmarshal(bytes.TrimSpace(lifecycle.Bytes()), &row); err != nil {
+			t.Fatal(err)
+		}
+		var event map[string]any
+		if err := json.Unmarshal(bytes.TrimSpace(eventStream.Bytes()), &event); err != nil {
+			t.Fatal(err)
+		}
+		if event["schemaVersion"] != float64(buffLifecycleSchemaVersion) {
+			t.Fatalf("unified lifecycle event schema version = %v", event["schemaVersion"])
+		}
+		return row, event
+	}
+
+	matched, matchedEvent := decodeOutput(19482, appendVarintField(nil, 4, 70001))
+	if matched.BuffID == nil || *matched.BuffID != 70001 || matched.BuffDefinitionStatus != resolutionCorrelated || matched.BuffDefinitionTable != "buff" || matched.BuffDefinitionID == nil || *matched.BuffDefinitionID != 70001 {
+		t.Fatalf("typed BuffId did not link to its exact table row: %+v", matched)
+	}
+	if matched.BuffDefinitionEvidence == "" || matched.SchemaVersion != buffLifecycleSchemaVersion {
+		t.Fatalf("static link provenance/schema version missing: %+v", matched)
+	}
+	if matchedEvent["buffDefinitionStatus"] != string(resolutionCorrelated) || matchedEvent["buffDefinitionTable"] != "buff" || matchedEvent["buffDefinitionId"] != float64(70001) {
+		t.Fatalf("unified event did not expose the typed static link: %#v", matchedEvent)
+	}
+
+	unmatched, unmatchedEvent := decodeOutput(19482, appendVarintField(nil, 4, 1312010090))
+	if unmatched.BuffID == nil || *unmatched.BuffID != 1312010090 || unmatched.BuffDefinitionStatus != resolutionUnknown || unmatched.BuffDefinitionTable != "" || unmatched.BuffDefinitionID != nil {
+		t.Fatalf("unmatched typed BuffId was resolved: %+v", unmatched)
+	}
+	if unmatchedEvent["buffDefinitionStatus"] != string(resolutionUnknown) || unmatchedEvent["buffDefinitionId"] != nil {
+		t.Fatalf("unmatched unified event was misclassified: %#v", unmatchedEvent)
+	}
+
+	apply := appendVarintField(nil, 11, 70001)  // ApplyGameplayEffectNotify.Id
+	apply = appendVarintField(apply, 14, 70001) // ConfBuffId
+	nonBuffID, nonBuffIDEvent := decodeOutput(25830, apply)
+	if nonBuffID.BuffID != nil || nonBuffID.BuffDefinitionStatus != "" || nonBuffID.BuffDefinitionID != nil {
+		t.Fatalf("generic Id or ConfBuffId was substituted for typed BuffId: %+v", nonBuffID)
+	}
+	if _, exists := nonBuffIDEvent["buffDefinitionStatus"]; exists {
+		t.Fatalf("untyped ID was assigned a static Buff link: %#v", nonBuffIDEvent)
 	}
 }
