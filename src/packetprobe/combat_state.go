@@ -19,15 +19,17 @@ type combatStateAttribute struct {
 
 // combatStateFsm carries a ChangeStateNotify with its state names where the master can give them.
 type combatStateFsm struct {
-	FsmID        int64            `json:"fsmId"`
-	FromState    int64            `json:"fromState"`
-	ToState      int64            `json:"toState"`
-	Status       resolutionStatus `json:"status"`
-	MachineCount int              `json:"machineCount"`
-	Machines     []string         `json:"machines,omitempty"`
-	FromName     string           `json:"fromDevNameZhCn,omitempty"`
-	ToName       string           `json:"toDevNameZhCn,omitempty"`
-	Evidence     string           `json:"evidence"`
+	FsmID        int64                      `json:"fsmId"`
+	FromState    int64                      `json:"fromState"`
+	ToState      int64                      `json:"toState"`
+	Status       resolutionStatus           `json:"status"`
+	MachineCount int                        `json:"machineCount"`
+	Machines     []string                   `json:"machines,omitempty"`
+	FromName     string                     `json:"fromDevNameZhCn,omitempty"`
+	ToName       string                     `json:"toDevNameZhCn,omitempty"`
+	FromLabel    *combatEventLabelTextJSONL `json:"fromLabel,omitempty"`
+	ToLabel      *combatEventLabelTextJSONL `json:"toLabel,omitempty"`
+	Evidence     string                     `json:"evidence"`
 }
 
 // combatStateRecord is one attribute change, recovery value or state-machine transition of one entity.

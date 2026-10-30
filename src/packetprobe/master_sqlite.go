@@ -134,7 +134,7 @@ func loadGameMasterDatabase(path, locale string) (*gameMaster, error) {
 	if err := loadSQLitePropertyNames(db, locale, master); err != nil {
 		return nil, err
 	}
-	if err := loadSQLiteStateMachines(db, master); err != nil {
+	if err := loadSQLiteStateMachines(db, locale, master); err != nil {
 		return nil, err
 	}
 	if err := loadSQLiteBuffOwners(db, locale, master); err != nil {

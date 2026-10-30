@@ -123,6 +123,7 @@ func (p *processor) archiveCombatState(frame gameFrame, decoded *decodedMessage)
 				if resolution := p.masters.resolveFsmTransition(fsmID, from, to); resolution != nil {
 					record.Status, record.MachineCount, record.Machines = resolution.Status, resolution.MachineCount, resolution.Machines
 					record.FromName, record.ToName, record.Evidence = resolution.FromName, resolution.ToName, resolution.Evidence
+					record.FromLabel, record.ToLabel = p.masters.fsmLabel(resolution.FromName), p.masters.fsmLabel(resolution.ToName)
 				}
 				emit(combatStateRecord{Kind: "FSM_STATE_CHANGED", EntityID: entityID, Fsm: &record})
 			}

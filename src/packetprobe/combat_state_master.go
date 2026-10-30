@@ -24,6 +24,8 @@ type fsmMaster struct {
 	names          map[fsmNodeKey]string
 	children       map[fsmNodeKey][]int64
 	references     map[fsmNodeKey]int64
+	// labels holds the localized developer node names by zh-CN name: the master locale and the zh-CN original.
+	labels map[string]map[string]localizedSkillLabel
 }
 
 // loadSQLitePropertyNames reads PropertyIndex keys and the master-locale names; the tables are optional.
@@ -50,7 +52,7 @@ func loadSQLitePropertyNames(db *sql.DB, locale string, master *gameMaster) erro
 }
 
 // loadSQLiteStateMachines reads the state-machine node identities and their containment; the tables are optional.
-func loadSQLiteStateMachines(db *sql.DB, master *gameMaster) error {
+func loadSQLiteStateMachines(db *sql.DB, locale string, master *gameMaster) error {
 	exists, err := masterTableExists(db, "aistatemachine_node")
 	if err != nil || !exists {
 		return err
@@ -60,6 +62,7 @@ func loadSQLiteStateMachines(db *sql.DB, master *gameMaster) error {
 		names:          make(map[fsmNodeKey]string),
 		children:       make(map[fsmNodeKey][]int64),
 		references:     make(map[fsmNodeKey]int64),
+		labels:         make(map[string]map[string]localizedSkillLabel),
 	}
 	rows, err := db.Query("SELECT machine_id,uuid,COALESCE(dev_name_zh_cn,''),reference_uuid FROM aistatemachine_node ORDER BY machine_id,uuid")
 	if err != nil {
@@ -100,8 +103,52 @@ func loadSQLiteStateMachines(db *sql.DB, master *gameMaster) error {
 	if err := childRows.Err(); err != nil {
 		return err
 	}
+	labelsPresent, err := masterTableExists(db, "aistatemachine_node_name_locale")
+	if err != nil {
+		return err
+	}
+	if labelsPresent {
+		labelRows, err := db.Query("SELECT dev_name_zh_cn,locale,label,label_kind FROM aistatemachine_node_name_locale WHERE locale IN (?,?)", locale, "zh-CN")
+		if err != nil {
+			return fmt.Errorf("query state-machine node labels: %w", err)
+		}
+		defer labelRows.Close()
+		for labelRows.Next() {
+			var name string
+			var label localizedSkillLabel
+			if err := labelRows.Scan(&name, &label.Locale, &label.Text, &label.Kind); err != nil {
+				return fmt.Errorf("read state-machine node label: %w", err)
+			}
+			byLocale := fsm.labels[name]
+			if byLocale == nil {
+				byLocale = make(map[string]localizedSkillLabel)
+				fsm.labels[name] = byLocale
+			}
+			byLocale[label.Locale] = label
+		}
+		if err := labelRows.Err(); err != nil {
+			return err
+		}
+	}
 	master.fsm = fsm
 	return nil
+}
+
+// fsmLabel returns the display text of a developer node name: the master locale text, else the zh-CN original.
+func (m *gameMaster) fsmLabel(devName string) *combatEventLabelTextJSONL {
+	if m == nil || m.fsm == nil || devName == "" {
+		return nil
+	}
+	byLocale := m.fsm.labels[devName]
+	chosen, ok := byLocale[m.locale]
+	if !ok {
+		chosen, ok = byLocale["zh-CN"]
+	}
+	if !ok || chosen.Text == "" {
+		return nil
+	}
+	return &combatEventLabelTextJSONL{Locale: chosen.Locale, Text: chosen.Text, Kind: chosen.Kind,
+		Evidence: "aistatemachine_node_name_locale row for this node name; an internal developer node name, not an official in-game text"}
 }
 
 // descendants returns every node uuid reachable from a node by child links, following reference links into the

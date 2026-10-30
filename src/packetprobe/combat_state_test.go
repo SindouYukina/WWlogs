@@ -54,3 +54,21 @@ func TestFsmDescendantsFollowReferencesIntoOtherMachines(t *testing.T) {
 		t.Fatalf("children of the referenced node must be reachable: %v", below)
 	}
 }
+
+func TestFsmLabelUsesTheMasterLocaleAndFallsBackToTheOriginal(t *testing.T) {
+	master := fsmFixture()
+	master.locale = "en-US"
+	master.fsm.labels = map[string]map[string]localizedSkillLabel{
+		"idle": {"zh-CN": {Text: "idle", Locale: "zh-CN", Kind: "developer-original"}, "en-US": {Text: "Idle", Locale: "en-US", Kind: "unofficial-translation"}},
+		"root": {"zh-CN": {Text: "root", Locale: "zh-CN", Kind: "developer-original"}},
+	}
+	if got := master.fsmLabel("idle"); got == nil || got.Text != "Idle" || got.Locale != "en-US" || got.Kind != "unofficial-translation" {
+		t.Fatalf("the master locale text must win: %+v", got)
+	}
+	if got := master.fsmLabel("root"); got == nil || got.Text != "root" || got.Locale != "zh-CN" || got.Kind != "developer-original" {
+		t.Fatalf("a name without a translation must fall back to the original: %+v", got)
+	}
+	if master.fsmLabel("fight") != nil || master.fsmLabel("") != nil || (*gameMaster)(nil).fsmLabel("idle") != nil {
+		t.Fatal("an unlabelled or empty name must give no label")
+	}
+}
