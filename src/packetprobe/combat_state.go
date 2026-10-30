@@ -35,6 +35,17 @@ type combatStateFsm struct {
 	Evidence                string                     `json:"evidence"`
 }
 
+// combatStateBuff carries an ActivateBuffNotify: a switch of a buff handle that the message names only by handle.
+type combatStateBuff struct {
+	Handle         int64            `json:"handle"`
+	On             *bool            `json:"on,omitempty"`
+	LinkedBuffID   *uint64          `json:"linkedBuffId,omitempty"`
+	Status         resolutionStatus `json:"status"`
+	BuffDefinition string           `json:"buffDefinitionTable,omitempty"`
+	BuffOwners     *buffOwnersJSON  `json:"buffOwners,omitempty"`
+	Evidence       string           `json:"evidence"`
+}
+
 // combatStateRecord is one attribute change, recovery value or state-machine transition of one entity.
 type combatStateRecord struct {
 	SchemaVersion   int                   `json:"schemaVersion"`
@@ -46,4 +57,5 @@ type combatStateRecord struct {
 	EventOrderInMsg int                   `json:"orderInMessage"`
 	Attribute       *combatStateAttribute `json:"attribute,omitempty"`
 	Fsm             *combatStateFsm       `json:"fsm,omitempty"`
+	Buff            *combatStateBuff      `json:"buff,omitempty"`
 }

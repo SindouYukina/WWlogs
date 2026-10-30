@@ -111,6 +111,31 @@ func (p *processor) archiveCombatState(frame gameFrame, decoded *decodedMessage)
 					emit(combatStateRecord{Kind: "SQUAD_PROP_CHANGED", EntityID: entityID, Attribute: &resolved})
 				}
 			}
+			for _, activate := range childMessages(notify, "ActivateBuffNotify") {
+				handle, okHandle := scalarValue(activate, "Handle")
+				if !okHandle {
+					continue
+				}
+				record := combatStateBuff{Handle: handle, Status: resolutionUnknown,
+					Evidence: "No earlier ApplyGameplayEffectNotify with this (session, entity, handle) was observed; the message names the buff only by handle"}
+				if on, ok := scalarValue(activate, "On"); ok {
+					value := on != 0
+					record.On = &value
+				}
+				if entry, found := p.buffHandles[buffHandleKey{p.sessionNumber, entityID, uint64(handle)}]; found && entry.id != 0 {
+					linked := entry.id
+					record.LinkedBuffID = &linked
+					record.Evidence = "Same (session, entity, handle) as an earlier ApplyGameplayEffectNotify; the Id is inherited from that apply message"
+					if entry.definition {
+						record.Status = resolutionCorrelated
+						record.BuffDefinition = "buff"
+						record.BuffOwners = resolveBuffOwners(p.masters, linked)
+					} else {
+						record.Evidence += "; that Id has no exact buff.id row"
+					}
+				}
+				emit(combatStateRecord{Kind: "BUFF_ACTIVATED", EntityID: entityID, Buff: &record})
+			}
 			for _, change := range childMessages(notify, "ChangeStateNotify") {
 				fsmID, okID := scalarValue(change, "FsmId")
 				if !okID {
