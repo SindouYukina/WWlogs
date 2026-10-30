@@ -52,6 +52,8 @@ func main() {
 	buffOverlapOut := flag.String("buff-overlap-out", "", "optionally write, per damage result, the Buff instances observed active on its target (packet-time precision)")
 	hpStateOutPath := flag.String("hp-state-out", "", "optional JSONL of Life and LifeMax attribute values per entity (requires -protocol-schema)")
 	damagePushOutPath := flag.String("damage-push-out", "", "optional JSONL of pushed DamageExecuteNotify records, separate from the damage RPC stream (requires -protocol-schema)")
+	skillRefOutPath := flag.String("skill-ref-out", "", "optional JSONL of every SkillId in combat messages with its EntitySkillPreload namespace check (requires -protocol-schema)")
+	bulletRefOutPath := flag.String("bullet-ref-out", "", "optional JSONL of every BulletId in outbound combat messages with its actor-chain translation (requires -protocol-schema)")
 	clientPushOutPath := flag.String("client-push-out", "", "optional JSONL of skill requests, role reports, and skill-end pushes (requires -protocol-schema)")
 	summonOwnerOutPath := flag.String("summon-owner-out", "", "optional JSONL of summoner, concomitant and dependence facts from join and entity-add messages (requires -protocol-schema)")
 	frameArchiveOut := flag.String("frame-archive-out", "", "optionally write one local JSONL record per reassembled frame (digests only; no key or plaintext)")
@@ -243,6 +245,50 @@ func main() {
 		defer func() {
 			if err := ownerWriter.Flush(); err != nil {
 				fmt.Fprintf(os.Stderr, "summon owner flush error: %v\n", err)
+			}
+		}()
+	}
+	if *skillRefOutPath != "" {
+		if processor.protocolSchema == nil {
+			fatal("skill reference output", fmt.Errorf("-skill-ref-out requires -protocol-schema"))
+		}
+		if dir := filepath.Dir(*skillRefOutPath); dir != "." {
+			if err := os.MkdirAll(dir, 0o700); err != nil {
+				fatal("create skill reference directory", err)
+			}
+		}
+		skillFile, err := os.Create(*skillRefOutPath)
+		if err != nil {
+			fatal("create skill reference output", err)
+		}
+		defer skillFile.Close()
+		skillWriter := bufio.NewWriter(skillFile)
+		processor.skillRefOut = skillWriter
+		defer func() {
+			if err := skillWriter.Flush(); err != nil {
+				fmt.Fprintf(os.Stderr, "skill reference flush error: %v\n", err)
+			}
+		}()
+	}
+	if *bulletRefOutPath != "" {
+		if processor.protocolSchema == nil {
+			fatal("bullet reference output", fmt.Errorf("-bullet-ref-out requires -protocol-schema"))
+		}
+		if dir := filepath.Dir(*bulletRefOutPath); dir != "." {
+			if err := os.MkdirAll(dir, 0o700); err != nil {
+				fatal("create bullet reference directory", err)
+			}
+		}
+		bulletFile, err := os.Create(*bulletRefOutPath)
+		if err != nil {
+			fatal("create bullet reference output", err)
+		}
+		defer bulletFile.Close()
+		bulletWriter := bufio.NewWriter(bulletFile)
+		processor.bulletRefOut = bulletWriter
+		defer func() {
+			if err := bulletWriter.Flush(); err != nil {
+				fmt.Fprintf(os.Stderr, "bullet reference flush error: %v\n", err)
 			}
 		}()
 	}

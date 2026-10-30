@@ -7,6 +7,24 @@ import (
 	"fmt"
 )
 
+func summonSkillJSONL(identity entityIdentity) *combatEventSummonSkillJSONL {
+	if identity.SummonSkill == nil {
+		return nil
+	}
+	view := &combatEventSummonSkillJSONL{SummonSkillID: identity.SummonSkill.SummonSkillID, Namespace: identity.SummonSkill.Namespace, Status: identity.SummonSkill.Status, Evidence: identity.SummonSkill.Proof}
+	if identity.SummonSkill.HasSummonType {
+		view.SummonType = &identity.SummonSkill.SummonType
+	}
+	return view
+}
+
+func roleSkinJSONL(identity entityIdentity) *combatEventRoleSkinJSONL {
+	if identity.RoleSkin == nil {
+		return nil
+	}
+	return &combatEventRoleSkinJSONL{SkinID: identity.RoleSkin.SkinID, MasterRoleID: identity.RoleSkin.MasterRoleID, Status: identity.RoleSkin.Status, Evidence: identity.RoleSkin.Proof}
+}
+
 func lifecycleJSONL(view entityLifecycleView) entityLifecycleJSONL {
 	if !view.Known {
 		return entityLifecycleJSONL{State: lifecycleUnknown, Status: resolutionUnknown, Evidence: "no EntityAddNotify, EntityRemoveNotify or JoinSceneNotify observed for this entity ID"}
@@ -51,6 +69,9 @@ func (event combatEvent) jsonlView(masters *gameMaster) combatEventJSONL {
 			ClassStatus: event.EventTypeStatus, ClassEvidence: event.EventTypeProof,
 		},
 	}
+	if label := resolveSkillLabel(masters, event.SkillID); label != nil {
+		view.Skill.DevLabelZhCn, view.Skill.DevLabelStatus, view.Skill.DevLabelProof = label.Label, label.Status, label.Evidence
+	}
 	view.Actors = projectActors(event)
 	if event.SkillRequest != nil {
 		request := event.SkillRequest
@@ -59,6 +80,12 @@ func (event combatEvent) jsonlView(masters *gameMaster) combatEventJSONL {
 			TargetID: request.TargetID, RequestType: request.RequestType, Timestamp: request.Timestamp, LinkedDamageEvents: request.LinkedDamageEvents,
 			LinkStatus: resolutionVerified,
 			Evidence:   "outbound CombatSendPackRequest CombatCommon.MessageId exactly equals DamageContext.SkillMessageId; damage request is separately paired with server response by RPC ID",
+		}
+	}
+	if event.HasBulletID && event.BulletID > 0 {
+		source := newBulletSource(event.Source, event.SkillID, event.SourceVisionSummonCfgs)
+		if resolution := resolveBullet(masters, uint64(event.BulletID), source); resolution != nil {
+			view.Bullet = &combatEventBulletJSONL{BulletID: resolution.BulletID, Namespace: resolution.Namespace, ActorBlueprint: resolution.ActorBlueprint, Via: resolution.Via, DevLabelZhCn: resolution.DevLabelZh, Status: resolution.Status, Evidence: resolution.Proof}
 		}
 	}
 	view.Raw = combatEventRawJSONL{
@@ -77,6 +104,10 @@ func (event combatEvent) jsonlView(masters *gameMaster) combatEventJSONL {
 	view.Source.EntityID = optionalUint64(event.SourceEntityID, event.HasSourceEntity)
 	view.Target.EntityID = optionalUint64(event.TargetEntityID, event.HasTargetEntity)
 	view.Source.Lifecycle = lifecycleJSONL(event.Source.Lifecycle)
+	view.Source.RoleSkin = roleSkinJSONL(event.Source)
+	view.Target.RoleSkin = roleSkinJSONL(event.Target)
+	view.Source.SummonSkill = summonSkillJSONL(event.Source)
+	view.Target.SummonSkill = summonSkillJSONL(event.Target)
 	view.Target.Lifecycle = lifecycleJSONL(event.Target.Lifecycle)
 	if event.Source.HasCharacter {
 		view.Source.Character = &combatEventMasterIDJSONL{ID: event.Source.Character.ID, Name: event.Source.Character.Name, Status: event.Source.CharacterStatus, Evidence: event.Source.CharacterProof}

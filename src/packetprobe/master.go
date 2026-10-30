@@ -59,6 +59,28 @@ type gameMaster struct {
 	ambiguousSkins map[uint64]struct{}
 	monsters       map[uint64]masterRecord
 	skills         map[uint64]masterRecord
+	commonSkills   map[uint64]masterRecord
+	// roleSkins maps RoleSkin.Id to RoleSkin.RoleId from the normalized roleskin table.
+	roleSkins map[uint64]uint64
+	// phantomSkills holds PhantomSkill.PhantomSkillId values, the key space shared with PhantomItem.SkillId.
+	phantomSkills map[uint64]struct{}
+	// visions holds DT_Vision row keys from the typed vision table.
+	visions map[uint64]struct{}
+	// commonBullets holds CDT_CommonBulletData row keys with their developer label.
+	commonBullets map[uint64]string
+	// preloadBullets holds BulletPreload.BulletId values (actor-level bullet row keys).
+	preloadBullets map[uint64]struct{}
+	// Static actor chain: skin mesh / blueprint type / summon config -> model -> actor asset -> bullet row keys.
+	roleSkinMesh    map[uint64]uint64
+	modelActor      map[uint64]string
+	blueprintModel  map[string]uint64
+	summonBlueprint map[uint64]string
+	visionCast      map[uint64][]uint64
+	actorBullets    map[string]map[uint64]struct{}
+	assetPath       map[string]string
+	actorSkills     map[string]map[uint64]struct{}
+	// skillLabels maps a SkillInfo row key to the distinct developer labels (zh-CN) found across SkillInfo tables.
+	skillLabels map[uint64]map[string]struct{}
 	damage         map[uint64]damageMasterRecord
 	sceneIdentity  *sceneIdentityMaster
 }
@@ -100,5 +122,33 @@ func (m *gameMaster) characterBySkin(skinID uint64) (masterRecord, bool) {
 		return masterRecord{}, false
 	}
 	value, ok := m.charactersSkin[skinID]
+	return value, ok
+}
+
+// hasVision reports whether the vision table has a row with this key.
+func (m *gameMaster) hasVision(id uint64) bool {
+	_, ok := m.visions[id]
+	return ok
+}
+
+// hasPhantomSkill reports whether PhantomSkill has a row with this PhantomSkillId.
+func (m *gameMaster) hasPhantomSkill(id uint64) bool {
+	_, ok := m.phantomSkills[id]
+	return ok
+}
+
+// roleSkinRole returns RoleSkin.RoleId for a RoleSkin.Id and reports whether the row exists.
+func (m *gameMaster) roleSkinRole(skinID uint64) (uint64, bool) {
+	value, ok := m.roleSkins[skinID]
+	return value, ok
+}
+
+func (m *gameMaster) damageSkill(skillID uint64) (masterRecord, bool) {
+	value, ok := m.skills[skillID]
+	return value, ok
+}
+
+func (m *gameMaster) commonSkill(skillID uint64) (masterRecord, bool) {
+	value, ok := m.commonSkills[skillID]
 	return value, ok
 }

@@ -23,5 +23,8 @@ type summonOwnerRecord struct {
 	PlayerID      *int64 `json:"playerId,omitempty"`
 	SummonType    string `json:"summonType,omitempty"`
 	SummonTypeRaw *int64 `json:"summonTypeRaw,omitempty"`
-	Evidence      string `json:"evidence"`
+	// SummonSkillNamespace and SummonSkillStatus are the master translation of SummonSkillId (see resolveSummonSkill).
+	SummonSkillNamespace string           `json:"summonSkillNamespace,omitempty"`
+	SummonSkillStatus    resolutionStatus `json:"summonSkillStatus,omitempty"`
+	Evidence             string           `json:"evidence"`
 }

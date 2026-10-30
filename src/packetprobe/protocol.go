@@ -153,6 +153,12 @@ type processor struct {
 	hpStateOut                diagWriter
 	damagePushOut             diagWriter
 	clientPushOut             diagWriter
+	bulletRefOut              diagWriter
+	bulletRefErrors           int
+	skillRefOut               diagWriter
+	skillRefErrors            int
+	bulletHandles             map[bulletHandleKey]bulletHandleEntry
+	bulletHandleOrder         []bulletHandleKey
 	combatActionRequests      map[combatActionRequestKey]combatActionRequest
 	combatActionOrder         []combatActionRequestKey
 	flowTime                  int64
@@ -428,6 +434,7 @@ func (p *processor) handleFrame(frame gameFrame) {
 	p.archiveHPStateFrame(frame, plain)
 	p.archiveDamagePushFrame(frame, plain)
 	p.archiveClientPushFrame(frame, plain)
+	p.archiveBulletRefReceiveFrame(frame, plain)
 	p.archiveSummonOwnerFrame(frame, plain)
 	parseErrorsBefore := p.stats.parseErrors
 	switch frame.commandID {

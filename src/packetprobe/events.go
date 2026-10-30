@@ -23,6 +23,19 @@ type combatEventJSONL struct {
 	Actors        actorsJSONL              `json:"actors"`
 	Master        combatEventMasterJSONL   `json:"master"`
 	Raw           combatEventRawJSONL      `json:"raw"`
+	Bullet        *combatEventBulletJSONL  `json:"bullet,omitempty"`
+}
+
+// combatEventBulletJSONL is the static namespace translation of the event's BulletId.
+// It is kept apart from Raw, which only copies wire values.
+type combatEventBulletJSONL struct {
+	BulletID       uint64           `json:"bulletId"`
+	Namespace      string           `json:"namespace,omitempty"`
+	ActorBlueprint string           `json:"actorBlueprint,omitempty"`
+	Via            string           `json:"via,omitempty"`
+	DevLabelZhCn   string           `json:"devLabelZhCn,omitempty"`
+	Status         resolutionStatus `json:"status"`
+	Evidence       string           `json:"evidence,omitempty"`
 }
 
 // combatEventRawJSONL holds only values copied from the decoded damage request
@@ -41,14 +54,33 @@ type combatEventRawJSONL struct {
 }
 
 type combatEventEntityJSONL struct {
-	EntityID        *uint64                   `json:"entityId,omitempty"`
-	RuntimeStatus   resolutionStatus          `json:"runtimeStatus"`
-	RuntimeEvidence string                    `json:"runtimeEvidence,omitempty"`
-	RuntimeFields   json.RawMessage           `json:"runtimeFields"`
-	Lifecycle       entityLifecycleJSONL      `json:"lifecycle"`
-	Character       *combatEventMasterIDJSONL `json:"character,omitempty"`
-	Monster         *combatEventMasterIDJSONL `json:"monster,omitempty"`
-	SceneTemplate   *combatEventTemplateJSONL `json:"sceneTemplate,omitempty"`
+	EntityID        *uint64                      `json:"entityId,omitempty"`
+	RuntimeStatus   resolutionStatus             `json:"runtimeStatus"`
+	RuntimeEvidence string                       `json:"runtimeEvidence,omitempty"`
+	RuntimeFields   json.RawMessage              `json:"runtimeFields"`
+	Lifecycle       entityLifecycleJSONL         `json:"lifecycle"`
+	Character       *combatEventMasterIDJSONL    `json:"character,omitempty"`
+	Monster         *combatEventMasterIDJSONL    `json:"monster,omitempty"`
+	SceneTemplate   *combatEventTemplateJSONL    `json:"sceneTemplate,omitempty"`
+	RoleSkin        *combatEventRoleSkinJSONL    `json:"roleSkin,omitempty"`
+	SummonSkill     *combatEventSummonSkillJSONL `json:"summonSkill,omitempty"`
+}
+
+// combatEventSummonSkillJSONL is the SummonSkillId namespace translation of one entity.
+type combatEventSummonSkillJSONL struct {
+	SummonSkillID uint64           `json:"summonSkillId"`
+	SummonType    *uint64          `json:"summonType,omitempty"`
+	Namespace     string           `json:"namespace,omitempty"`
+	Status        resolutionStatus `json:"status"`
+	Evidence      string           `json:"evidence,omitempty"`
+}
+
+// combatEventRoleSkinJSONL is the RoleSkinId -> RoleSkin.RoleId translation of one entity.
+type combatEventRoleSkinJSONL struct {
+	SkinID       uint64           `json:"skinId"`
+	MasterRoleID uint64           `json:"masterRoleId,omitempty"`
+	Status       resolutionStatus `json:"status"`
+	Evidence     string           `json:"evidence,omitempty"`
 }
 
 // entityLifecycleJSONL is the normalized lifecycle of one entity. State UNKNOWN
@@ -107,6 +139,10 @@ type combatEventSkillJSONL struct {
 	NameStatus resolutionStatus          `json:"nameStatus"`
 	Evidence   string                    `json:"evidence,omitempty"`
 	Request    *combatActionRequestJSONL `json:"request,omitempty"`
+	// DevLabelZhCn is the SkillInfo developer label; it is not an official localized name and never fills Name.
+	DevLabelZhCn   string           `json:"devLabelZhCn,omitempty"`
+	DevLabelStatus resolutionStatus `json:"devLabelStatus,omitempty"`
+	DevLabelProof  string           `json:"devLabelEvidence,omitempty"`
 }
 
 type combatActionRequestJSONL struct {
@@ -156,45 +192,47 @@ type combatEventMasterJSONL struct {
 }
 
 type combatEvent struct {
-	Timestamp           time.Time
-	SessionNumber       int
-	RPCID               uint64
-	DamageID            uint64
-	SourceEntityID      uint64
-	HasSourceEntity     bool
-	TargetEntityID      uint64
-	HasTargetEntity     bool
-	Source              entityIdentity
-	Target              entityIdentity
-	SummonerCharacter   summonerCharacterIdentity
-	CharacterID         uint64
-	CharacterName       string
-	CharacterNameStatus resolutionStatus
-	CharacterStatus     resolutionStatus
-	CharacterProof      string
-	SkillID             uint64
-	SkillMessageID      uint64
-	SkillName           string
-	SkillNameStatus     resolutionStatus
-	SkillNameKind       string
-	SkillStatus         resolutionStatus
-	SkillProof          string
-	SkillRequest        *combatActionRequest
-	HasDamageID         bool
-	DamageSourceType    uint64
-	HasDamageSourceType bool
-	BulletID            int64
-	HasBulletID         bool
-	Damage              int64
-	ServerResultRaw     int32
-	HasServerResult     bool
-	ChangeLifeRaw       int32
-	HasChangeLife       bool
-	DamageCalculateType int32
-	HasCalculateType    bool
-	EventTypeCandidate  string
-	EventTypeStatus     resolutionStatus
-	EventTypeProof      string
+	Timestamp         time.Time
+	SessionNumber     int
+	RPCID             uint64
+	DamageID          uint64
+	SourceEntityID    uint64
+	HasSourceEntity   bool
+	TargetEntityID    uint64
+	HasTargetEntity   bool
+	Source            entityIdentity
+	Target            entityIdentity
+	SummonerCharacter summonerCharacterIdentity
+	// SourceVisionSummonCfgs lists SummonCfg ids of ConcomitantVision entities whose SummonerComponent names the source entity.
+	SourceVisionSummonCfgs []uint64
+	CharacterID            uint64
+	CharacterName          string
+	CharacterNameStatus    resolutionStatus
+	CharacterStatus        resolutionStatus
+	CharacterProof         string
+	SkillID                uint64
+	SkillMessageID         uint64
+	SkillName              string
+	SkillNameStatus        resolutionStatus
+	SkillNameKind          string
+	SkillStatus            resolutionStatus
+	SkillProof             string
+	SkillRequest           *combatActionRequest
+	HasDamageID            bool
+	DamageSourceType       uint64
+	HasDamageSourceType    bool
+	BulletID               int64
+	HasBulletID            bool
+	Damage                 int64
+	ServerResultRaw        int32
+	HasServerResult        bool
+	ChangeLifeRaw          int32
+	HasChangeLife          bool
+	DamageCalculateType    int32
+	HasCalculateType       bool
+	EventTypeCandidate     string
+	EventTypeStatus        resolutionStatus
+	EventTypeProof         string
 }
 
 func (p *processor) buildDamageEvent(rpcID uint64, request pendingDamageRequest, resultRaw, changeLifeRaw int32, hasChangeLife bool, damage int64) combatEvent {
@@ -237,6 +275,7 @@ func (p *processor) buildDamageEvent(rpcID uint64, request pendingDamageRequest,
 		}
 	}
 	event.SummonerCharacter = resolveSummonerCharacter(p.entities, p.masters, event.Source.Runtime)
+	event.SourceVisionSummonCfgs = p.entities.visionSummonConfigs(request.attackerEntityID)
 	event.resolveEventType(p.masters)
 	if event.Source.HasCharacter && (event.Source.CharacterStatus == resolutionVerified || event.Source.CharacterStatus == resolutionCorrelated) {
 		event.CharacterID = event.Source.Character.ID
@@ -260,7 +299,7 @@ func (p *processor) buildDamageEvent(rpcID uint64, request pendingDamageRequest,
 		}
 	}
 	if p.masters != nil {
-		if skill, ok := p.masters.skills[request.skillID]; ok {
+		if skill, ok := p.masters.damageSkill(request.skillID); ok {
 			event.SkillStatus = resolutionStatus(skill.Status)
 			event.SkillNameStatus = resolutionStatus(skill.NameStatus)
 			if event.SkillNameStatus == resolutionVerified || event.SkillNameStatus == resolutionCorrelated {

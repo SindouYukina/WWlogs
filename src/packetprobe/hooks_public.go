@@ -73,6 +73,9 @@ func (p *processor) archiveHPStateFrame(frame gameFrame, plain []byte) {
 func (p *processor) archiveDamagePushFrame(frame gameFrame, plain []byte) {
 }
 
+func (p *processor) archiveBulletRefReceiveFrame(frame gameFrame, plain []byte) {
+}
+
 func (p *processor) archiveSummonOwnerFrame(frame gameFrame, plain []byte) {
 }
 
