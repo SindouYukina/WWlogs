@@ -72,3 +72,26 @@ func TestFsmLabelUsesTheMasterLocaleAndFallsBackToTheOriginal(t *testing.T) {
 		t.Fatal("an unlabelled or empty name must give no label")
 	}
 }
+
+func TestActiveResponseFsmComponentOnlyAddsTheHashes(t *testing.T) {
+	resolver := newEntityResolver()
+	resolver.entities[77] = runtimeEntity{entityID: 77, componentSourceMessageID: 5, componentSourceFieldPath: "kept"}
+	component := appendVarintField(nil, 2, uint64(uint32(0x59d9c441)))
+	component = appendVarintField(component, 3, uint64(uint32(0x4a3b2c1d)))
+	if err := resolver.applyActiveResponseFsmComponents(77, []protoField{{number: 28, wire: 2, data: component}}); err != nil {
+		t.Fatal(err)
+	}
+	got := resolver.entities[77]
+	if !got.hasFsmHashCode || got.fsmHashCode != 0x59d9c441 || !got.hasFsmCommonHashCode || got.fsmCommonHashCode != 0x4a3b2c1d {
+		t.Fatalf("hashes not recorded: %+v", got)
+	}
+	if got.componentSourceMessageID != 5 || got.componentSourceFieldPath != "kept" {
+		t.Fatalf("identity provenance must stay untouched: %+v", got)
+	}
+	if err := resolver.applyActiveResponseFsmComponents(999, []protoField{{number: 28, wire: 2, data: component}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, created := resolver.entities[999]; created {
+		t.Fatal("an unknown entity must not be created from an FSM component")
+	}
+}

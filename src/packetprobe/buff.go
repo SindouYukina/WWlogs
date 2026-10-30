@@ -681,6 +681,7 @@ func (p *processor) handleActiveResponse(frame gameFrame, body []byte) error {
 		}
 		identityComponents := make([]protoField, 0, 2)
 		partComponents := make([]protoField, 0, 1)
+		fsmComponents := make([]protoField, 0, 1)
 		for _, component := range components {
 			if component.wire != 2 {
 				continue
@@ -690,6 +691,9 @@ func (p *processor) handleActiveResponse(frame gameFrame, body []byte) error {
 			}
 			if component.number == 5 {
 				partComponents = append(partComponents, component)
+			}
+			if component.number == 28 {
+				fsmComponents = append(fsmComponents, component)
 			}
 			switch component.number {
 			case 4:
@@ -769,6 +773,11 @@ func (p *processor) handleActiveResponse(frame gameFrame, body []byte) error {
 				return fmt.Errorf("parse EntityActiveResponse identity components: %w", err)
 			}
 			p.stats.activeResponseIdentityComponents += observed
+		}
+		if len(fsmComponents) > 0 && matched && request.hasEntityID {
+			if err := p.entities.applyActiveResponseFsmComponents(request.entityID, fsmComponents); err != nil {
+				return fmt.Errorf("parse EntityActiveResponse FSM components: %w", err)
+			}
 		}
 		if len(partComponents) > 0 {
 			entityID := uint64(0)

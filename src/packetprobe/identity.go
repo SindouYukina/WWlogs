@@ -1162,6 +1162,29 @@ func (r *entityResolver) applyActiveResponseIdentityComponents(entityID uint64, 
 	return observed, nil
 }
 
+// applyActiveResponseFsmComponents records the state-machine hashes of an entity from an EntityActiveResponse. It changes
+// only those two fields: the entity's identity and its component provenance stay as they were.
+func (r *entityResolver) applyActiveResponseFsmComponents(entityID uint64, components []protoField) error {
+	previous, exists := r.entities[entityID]
+	if !exists || entityID == 0 {
+		return nil
+	}
+	update := runtimeEntity{entityID: entityID}
+	for _, component := range components {
+		if err := applyEntityComponentPayload(&update, 28, component.data); err != nil {
+			return err
+		}
+	}
+	if update.hasFsmHashCode {
+		previous.fsmHashCode, previous.hasFsmHashCode = update.fsmHashCode, true
+	}
+	if update.hasFsmCommonHashCode {
+		previous.fsmCommonHashCode, previous.hasFsmCommonHashCode = update.fsmCommonHashCode, true
+	}
+	r.entities[entityID] = previous
+	return nil
+}
+
 func (r *entityResolver) applyActiveResponsePartComponents(entityID uint64, components []protoField) (int, error) {
 	update := runtimeEntity{entityID: entityID}
 	observed := 0
@@ -1233,7 +1256,7 @@ func (r *entityResolver) resolvePartReference(entityID uint64, partID int32) run
 
 func isRuntimeIdentityComponent(componentNumber uint64) bool {
 	switch componentNumber {
-	case 4, 18, 25, 28, 42, 53, 85:
+	case 4, 18, 25, 42, 53, 85:
 		return true
 	default:
 		return false
