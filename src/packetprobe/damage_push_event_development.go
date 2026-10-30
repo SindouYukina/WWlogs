@@ -70,6 +70,20 @@ func (p *processor) writePushDamageEvent(record damagePushRecord) {
 			push.CategoryEvidence = "DamageId equals an Abnormal<id> column of AbnormalDamageConfig (one per element); pushed damage lowered the target's Life by its amount in the saved captures; the in-game name of the status is not confirmed"
 		}
 	}
+	push.SourceKind = "unresolved"
+	if event.Source.HasCharacter && (event.Source.CharacterStatus == resolutionVerified || event.Source.CharacterStatus == resolutionCorrelated) && event.Source.Character.ID != 0 {
+		push.SourceKind = "party character"
+		push.AttributedCharacter = &combatEventCreditJSONL{
+			CharacterID: optionalUint64(event.Source.Character.ID, true), Name: event.Source.Character.Name,
+			Status: resolutionCorrelated, NameStatus: resolutionStatus(event.Source.Character.NameStatus),
+			Evidence: "the push names a party character entity as attacker; in the saved captures every such push (42 of 42) followed an ordinary hit by the same character on the same target within 15 seconds. No instigator field exists, so this is an association and not a server-confirmed credit",
+		}
+		push.Attribution = "The attacker entity is a party character; the credit is CORRELATED and is kept out of encounter totals"
+	} else if len(event.Source.TemplateCandidates) == 1 {
+		push.SourceKind = "scene template"
+		push.Attribution = "The attacker entity is a scene template entity, not a party character; no character is credited"
+	}
+	p.observePushSummary(event, push)
 	view.Push = push
 	view.Credit = combatEventCreditJSONL{Status: resolutionUnknown, NameStatus: resolutionUnknown, Evidence: "Pushed damage names no instigator; the credited character is not established"}
 	view.Actors.CreditedCharacter = actorRoleJSONL{ActorType: "Unknown", Status: resolutionUnknown, Evidence: "Pushed damage names no instigator; the credited character is not established"}

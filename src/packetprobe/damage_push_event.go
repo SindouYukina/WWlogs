@@ -27,4 +27,8 @@ type combatEventPushJSONL struct {
 	DamageRaw        int64            `json:"damageRaw"`
 	ChangeLifeRaw    int64            `json:"changeLifeRaw"`
 	Attribution      string           `json:"attribution"`
+	// AttributedCharacter is set when the push's attacker entity is a party character that hit the same target shortly before.
+	AttributedCharacter *combatEventCreditJSONL `json:"attributedCharacter,omitempty"`
+	// SourceKind says what kind of entity the push names as attacker: "party character", "scene template" or "unresolved".
+	SourceKind string `json:"sourceKind"`
 }
