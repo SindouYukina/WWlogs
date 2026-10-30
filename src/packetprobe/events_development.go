@@ -272,6 +272,9 @@ func (event combatEvent) formatNormal() string {
 			}
 		}
 	}
+	if skill == fmt.Sprintf("SkillId:%s", skillID) && event.SkillDevLabel != "" {
+		skill = fmt.Sprintf("[internal] %s [SkillId:%s]", event.SkillDevLabel, skillID)
+	}
 	damageSource := "Unknown"
 	if event.HasDamageSourceType {
 		switch event.DamageSourceType {
@@ -304,6 +307,9 @@ func (event combatEvent) formatNormal() string {
 		} else {
 			target = fmt.Sprintf("Character:%d [name %s] [Entity:%s]", event.Target.Character.ID, event.Target.Character.NameStatus, targetID)
 		}
+	}
+	if !event.Source.HasMonster && event.Source.HasCharacter && (event.Source.CharacterStatus == resolutionVerified || event.Source.CharacterStatus == resolutionCorrelated) && event.Source.Character.Name != "" && (event.Source.Character.NameStatus == string(resolutionVerified) || event.Source.Character.NameStatus == string(resolutionCorrelated)) {
+		source = fmt.Sprintf("%s [Char:%d] [Entity:%s]", event.Source.Character.Name, event.Source.Character.ID, sourceID)
 	}
 	if label, ok := sceneTemplateEventLabel(event.Target, targetID); ok && !event.Target.HasMonster && !event.Target.HasCharacter {
 		target = label

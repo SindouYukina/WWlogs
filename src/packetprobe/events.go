@@ -249,24 +249,27 @@ type combatEvent struct {
 	SkillName              string
 	SkillNameStatus        resolutionStatus
 	SkillNameKind          string
-	SkillStatus            resolutionStatus
-	SkillProof             string
-	SkillRequest           *combatActionRequest
-	HasDamageID            bool
-	DamageSourceType       uint64
-	HasDamageSourceType    bool
-	BulletID               int64
-	HasBulletID            bool
-	Damage                 int64
-	ServerResultRaw        int32
-	HasServerResult        bool
-	ChangeLifeRaw          int32
-	HasChangeLife          bool
-	DamageCalculateType    int32
-	HasCalculateType       bool
-	EventTypeCandidate     string
-	EventTypeStatus        resolutionStatus
-	EventTypeProof         string
+	// SkillDevLabel is the developer-label text of a skill that has no official name (master locale, zh-CN fallback).
+	SkillDevLabel       string
+	SkillDevLabelKind   string
+	SkillStatus         resolutionStatus
+	SkillProof          string
+	SkillRequest        *combatActionRequest
+	HasDamageID         bool
+	DamageSourceType    uint64
+	HasDamageSourceType bool
+	BulletID            int64
+	HasBulletID         bool
+	Damage              int64
+	ServerResultRaw     int32
+	HasServerResult     bool
+	ChangeLifeRaw       int32
+	HasChangeLife       bool
+	DamageCalculateType int32
+	HasCalculateType    bool
+	EventTypeCandidate  string
+	EventTypeStatus     resolutionStatus
+	EventTypeProof      string
 }
 
 func (p *processor) buildDamageEvent(rpcID uint64, request pendingDamageRequest, resultRaw, changeLifeRaw int32, hasChangeLife bool, damage int64) combatEvent {
@@ -331,6 +334,9 @@ func (p *processor) buildDamageEvent(rpcID uint64, request pendingDamageRequest,
 				event.CharacterProof = "2+ distinct DamageContext.SkillId values for this source map to RoleId through SkillDescription -> Skill"
 			}
 		}
+	}
+	if label := resolveSkillLabelText(p.masters, request.skillID); label != nil {
+		event.SkillDevLabel, event.SkillDevLabelKind = label.Text, label.Kind
 	}
 	if p.masters != nil {
 		if skill, ok := p.masters.damageSkill(request.skillID); ok {
