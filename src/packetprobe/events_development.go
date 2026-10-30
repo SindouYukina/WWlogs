@@ -91,6 +91,7 @@ func (event combatEvent) jsonlView(masters *gameMaster) combatEventJSONL {
 		}
 	}
 	view.DamageContributorCandidate = event.DamageContributorCandidate
+	view.DamageOwners = resolveDamageOwners(masters, event.DamageID, event.HasDamageID)
 	view.Raw = combatEventRawJSONL{
 		DamageID: optionalUint64(event.DamageID, event.HasDamageID), AttackerEntityID: optionalUint64(event.SourceEntityID, event.HasSourceEntity),
 		TargetEntityID: optionalUint64(event.TargetEntityID, event.HasTargetEntity), SkillID: optionalUint64(event.SkillID, event.SkillID != 0),

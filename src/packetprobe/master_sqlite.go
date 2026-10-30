@@ -87,6 +87,7 @@ func loadGameMasterDatabase(path, locale string) (*gameMaster, error) {
 		actorSkills:                   make(map[string]map[uint64]struct{}),
 		skillActors:                   make(map[uint64]map[string]struct{}),
 		commonBulletDamage:            make(map[uint64]uint64),
+		damageOwners:                  make(map[uint64][]damageOwnerJSONL),
 		commonBulletDevLabels:         make(map[uint64]*combatEventLabelTextJSONL),
 		skillLabels:                   make(map[uint64]map[string]struct{}),
 		skillLabelText:                make(map[uint64]map[string]localizedSkillLabel),
@@ -152,6 +153,9 @@ func loadGameMasterDatabase(path, locale string) (*gameMaster, error) {
 		return nil, err
 	}
 	if err := loadSQLiteSkillLabelText(db, locale, master); err != nil {
+		return nil, err
+	}
+	if err := loadSQLiteDamageOwners(db, locale, master); err != nil {
 		return nil, err
 	}
 	if err := loadSQLiteVisionDevLabels(db, locale, master); err != nil {

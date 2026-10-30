@@ -99,6 +99,8 @@ type gameMaster struct {
 	skillActors map[uint64]map[string]struct{}
 	// commonBulletDamage maps a CDT_CommonBulletData row key to the row's own DamageId (absent when the row names none).
 	commonBulletDamage map[uint64]uint64
+	// damageOwners maps a DamageId to the skills and Buffs that reference it (damage_owners.go).
+	damageOwners map[uint64][]damageOwnerJSONL
 	// commonBulletDevLabels holds the dev_label_locale text of every CDT_CommonBulletData row (master locale, else zh-CN).
 	commonBulletDevLabels map[uint64]*combatEventLabelTextJSONL
 	// skillLabels maps a SkillInfo row key to the distinct developer labels (zh-CN) found across SkillInfo tables.

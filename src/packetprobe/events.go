@@ -25,6 +25,8 @@ type combatEventJSONL struct {
 	Raw                        combatEventRawJSONL         `json:"raw"`
 	Bullet                     *combatEventBulletJSONL     `json:"bullet,omitempty"`
 	DamageContributorCandidate *damageContributorCandidate `json:"damageContributorCandidate,omitempty"`
+	// DamageOwners lists the static skill and Buff owners of the DamageId; it is a master reference, not the runtime attacker.
+	DamageOwners *damageOwnersJSONL `json:"damageOwners,omitempty"`
 	// Response is set on DAMAGE_RESPONSE_WITHOUT_AMOUNT events, whose server response carried no usable Damage field.
 	Response *combatEventNoAmountJSONL `json:"response,omitempty"`
 	// Push is set on DAMAGE_PUSH_RESULT events: server-pushed damage that no client request asked for.
