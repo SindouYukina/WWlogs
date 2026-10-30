@@ -8,22 +8,23 @@ import (
 )
 
 type combatEventJSONL struct {
-	SchemaVersion int                      `json:"schemaVersion"`
-	EventType     string                   `json:"eventType"`
-	Timestamp     time.Time                `json:"timestamp"`
-	SessionNumber int                      `json:"sessionNumber"`
-	RPCID         uint64                   `json:"rpcId"`
-	Source        combatEventEntityJSONL   `json:"source"`
-	Target        combatEventEntityJSONL   `json:"target"`
-	Credit        combatEventCreditJSONL   `json:"credit"`
-	Summoner      combatEventSummonerJSONL `json:"summoner"`
-	Skill         combatEventSkillJSONL    `json:"skill"`
-	CombatResult  combatEventResultJSONL   `json:"combatResult"`
-	Healing       *combatEventHealingJSONL `json:"healing,omitempty"`
-	Actors        actorsJSONL              `json:"actors"`
-	Master        combatEventMasterJSONL   `json:"master"`
-	Raw           combatEventRawJSONL      `json:"raw"`
-	Bullet        *combatEventBulletJSONL  `json:"bullet,omitempty"`
+	SchemaVersion              int                         `json:"schemaVersion"`
+	EventType                  string                      `json:"eventType"`
+	Timestamp                  time.Time                   `json:"timestamp"`
+	SessionNumber              int                         `json:"sessionNumber"`
+	RPCID                      uint64                      `json:"rpcId"`
+	Source                     combatEventEntityJSONL      `json:"source"`
+	Target                     combatEventEntityJSONL      `json:"target"`
+	Credit                     combatEventCreditJSONL      `json:"credit"`
+	Summoner                   combatEventSummonerJSONL    `json:"summoner"`
+	Skill                      combatEventSkillJSONL       `json:"skill"`
+	CombatResult               combatEventResultJSONL      `json:"combatResult"`
+	Healing                    *combatEventHealingJSONL    `json:"healing,omitempty"`
+	Actors                     actorsJSONL                 `json:"actors"`
+	Master                     combatEventMasterJSONL      `json:"master"`
+	Raw                        combatEventRawJSONL         `json:"raw"`
+	Bullet                     *combatEventBulletJSONL     `json:"bullet,omitempty"`
+	DamageContributorCandidate *damageContributorCandidate `json:"damageContributorCandidate,omitempty"`
 	// Response is set on DAMAGE_RESPONSE_WITHOUT_AMOUNT events, whose server response carried no usable Damage field.
 	Response *combatEventNoAmountJSONL `json:"response,omitempty"`
 	// Push is set on DAMAGE_PUSH_RESULT events: server-pushed damage that no client request asked for.
@@ -250,26 +251,27 @@ type combatEvent struct {
 	SkillNameStatus        resolutionStatus
 	SkillNameKind          string
 	// SkillDevLabel is the developer-label text of a skill that has no official name (master locale, zh-CN fallback).
-	SkillDevLabel       string
-	SkillDevLabelKind   string
-	SkillStatus         resolutionStatus
-	SkillProof          string
-	SkillRequest        *combatActionRequest
-	HasDamageID         bool
-	DamageSourceType    uint64
-	HasDamageSourceType bool
-	BulletID            int64
-	HasBulletID         bool
-	Damage              int64
-	ServerResultRaw     int32
-	HasServerResult     bool
-	ChangeLifeRaw       int32
-	HasChangeLife       bool
-	DamageCalculateType int32
-	HasCalculateType    bool
-	EventTypeCandidate  string
-	EventTypeStatus     resolutionStatus
-	EventTypeProof      string
+	SkillDevLabel              string
+	SkillDevLabelKind          string
+	SkillStatus                resolutionStatus
+	SkillProof                 string
+	SkillRequest               *combatActionRequest
+	HasDamageID                bool
+	DamageSourceType           uint64
+	HasDamageSourceType        bool
+	BulletID                   int64
+	HasBulletID                bool
+	Damage                     int64
+	ServerResultRaw            int32
+	HasServerResult            bool
+	ChangeLifeRaw              int32
+	HasChangeLife              bool
+	DamageCalculateType        int32
+	HasCalculateType           bool
+	EventTypeCandidate         string
+	EventTypeStatus            resolutionStatus
+	EventTypeProof             string
+	DamageContributorCandidate *damageContributorCandidate
 }
 
 func (p *processor) buildDamageEvent(rpcID uint64, request pendingDamageRequest, resultRaw, changeLifeRaw int32, hasChangeLife bool, damage int64) combatEvent {
@@ -349,6 +351,7 @@ func (p *processor) buildDamageEvent(rpcID uint64, request pendingDamageRequest,
 			event.SkillProof = skill.SourceTable
 		}
 	}
+	event.DamageContributorCandidate = resolveVehicleDamageContributorCandidate(p.entities, p.masters, event)
 	return event
 }
 

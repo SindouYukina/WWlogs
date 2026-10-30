@@ -200,9 +200,8 @@ func resolveRoleSkin(masters *gameMaster, entity runtimeEntity, characterID uint
 }
 
 // summonSkillResolution records how SummonerComponentPb.SummonSkillId translates.
-// ConcomitantVision (Type 1) and ConcomitantMotorcycle (Type 5) are mapped to
-// DT_Vision row keys, and only as CORRELATED: the client consumer for these types
-// is not proven and the observed client build is not matched to the master.
+// ConcomitantVision (Type 1) uses the normalized PhantomSkill-to-Vision crosswalk.
+// ConcomitantMotorcycle (Type 5) remains a correlated Vision candidate.
 type summonSkillResolution struct {
 	SummonSkillID uint64
 	SummonType    uint64
@@ -227,14 +226,19 @@ func resolveSummonSkill(masters *gameMaster, entity runtimeEntity) *summonSkillR
 		result.Proof = "SummonSkillId present without SummonerComponent.Type; namespace not selected"
 	case entity.summonType != summonTypeConcomitantVision && entity.summonType != summonTypeConcomitantMotorcycle:
 		result.Proof = fmt.Sprintf("SummonerComponent.Type=%d is not mapped; no static SummonSkillId namespace is established for it", entity.summonType)
-	case !masters.hasVision(entity.summonSkillID):
-		result.Proof = "SummonSkillId has no DT_Vision row in the loaded master"
-	case entity.summonType == summonTypeConcomitantVision && !masters.hasPhantomSkill(entity.summonSkillID):
-		result.Proof = "ConcomitantVision SummonSkillId is a DT_Vision key but has no PhantomSkill.PhantomSkillId row"
+	case entity.summonType == summonTypeConcomitantVision && !masters.hasConcomitantVisionSummonSkill(entity.summonSkillID):
+		result.Proof = "ConcomitantVision SummonSkillId has no unique row in the normalized PhantomSkill-to-Vision crosswalk"
+	case entity.summonType == summonTypeConcomitantMotorcycle && !masters.hasVision(entity.summonSkillID):
+		result.Proof = "ConcomitantMotorcycle SummonSkillId has no DT_Vision row in the loaded master"
 	default:
 		result.Namespace = "Vision.Id"
-		result.Status = resolutionCorrelated
-		result.Proof = "SummonerComponentPb.SummonSkillId(3) -> DT_Vision row key (Vision.Id); for ConcomitantVision the key is also PhantomSkill.PhantomSkillId; structural key-space match, client consumer for this summon type unproven, client build observed, master compatibility unverified"
+		if entity.summonType == summonTypeConcomitantVision {
+			result.Status = resolutionVerified
+			result.Proof = "SummonerComponent.Type=ConcomitantVision selects the normalized summon_skill_vision_ref crosswalk from the unique PhantomSkill.PhantomSkillId key to Vision.Id; saved same-entity SkillId references and verified damage requests validate this Type 1 mapping for multiple distinct keys"
+		} else {
+			result.Status = resolutionCorrelated
+			result.Proof = "SummonerComponent.Type=ConcomitantMotorcycle and a matching DT_Vision.Id identify a candidate; the Type 5 field consumer is not established"
+		}
 	}
 	return result
 }

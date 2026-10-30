@@ -51,7 +51,7 @@ func lifecycleEvidence(source string) string {
 
 func (event combatEvent) jsonlView(masters *gameMaster) combatEventJSONL {
 	view := combatEventJSONL{
-		SchemaVersion: 4,
+		SchemaVersion: 5,
 		EventType:     combatEventJSONLType(event.EventTypeCandidate),
 		Timestamp:     event.Timestamp,
 		SessionNumber: event.SessionNumber,
@@ -90,6 +90,7 @@ func (event combatEvent) jsonlView(masters *gameMaster) combatEventJSONL {
 			view.Bullet = &combatEventBulletJSONL{BulletID: resolution.BulletID, Namespace: resolution.Namespace, ActorBlueprint: resolution.ActorBlueprint, Via: resolution.Via, DevLabelZhCn: resolution.DevLabelZh, RowDamageID: resolution.RowDamageID, Status: resolution.Status, Evidence: resolution.Proof}
 		}
 	}
+	view.DamageContributorCandidate = event.DamageContributorCandidate
 	view.Raw = combatEventRawJSONL{
 		DamageID: optionalUint64(event.DamageID, event.HasDamageID), AttackerEntityID: optionalUint64(event.SourceEntityID, event.HasSourceEntity),
 		TargetEntityID: optionalUint64(event.TargetEntityID, event.HasTargetEntity), SkillID: optionalUint64(event.SkillID, event.SkillID != 0),

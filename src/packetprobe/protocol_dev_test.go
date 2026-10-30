@@ -63,7 +63,7 @@ func TestCombatEventJSONLPreservesRawIDsAndUnknownResolution(t *testing.T) {
 	if err := json.NewDecoder(&jsonl).Decode(&got); err != nil {
 		t.Fatalf("decode event JSONL: %v", err)
 	}
-	if got["schemaVersion"] != float64(4) || got["eventType"] != "UNCLASSIFIED_RESULT" || got["sessionNumber"] != float64(3) || got["rpcId"] != float64(91) {
+	if got["schemaVersion"] != float64(5) || got["eventType"] != "UNCLASSIFIED_RESULT" || got["sessionNumber"] != float64(3) || got["rpcId"] != float64(91) {
 		t.Fatalf("event envelope = %#v", got)
 	}
 	source := got["source"].(map[string]any)
@@ -127,7 +127,7 @@ func TestHealingCandidateJSONLSeparatesReportedMagnitudeFromUnknownEffectiveness
 	if err := json.Unmarshal(encoded, &got); err != nil {
 		t.Fatal(err)
 	}
-	if got["schemaVersion"] != float64(4) || got["eventType"] != "HEALING_RESULT_CANDIDATE" {
+	if got["schemaVersion"] != float64(5) || got["eventType"] != "HEALING_RESULT_CANDIDATE" {
 		t.Fatalf("healing event envelope = %#v", got)
 	}
 	if _, exists := got["damage"]; exists {

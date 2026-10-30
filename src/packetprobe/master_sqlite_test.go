@@ -472,9 +472,21 @@ func TestResolveSummonSkillMapsVisionTypesToDTVisionKeys(t *testing.T) {
 	}
 	for _, statement := range []string{
 		"CREATE TABLE phantomskill(id TEXT PRIMARY KEY,phantom_skill_id TEXT)",
-		"INSERT INTO phantomskill(id,phantom_skill_id) VALUES('280026','280026')",
+		"INSERT INTO phantomskill(id,phantom_skill_id) VALUES('280026','280026'),('280028a','280028'),('280028b','280028')",
 		"CREATE TABLE vision(id TEXT PRIMARY KEY)",
-		"INSERT INTO vision(id) VALUES('280026'),('6013'),('280027')",
+		"INSERT INTO vision(id) VALUES('280026'),('6013'),('280027'),('280028')",
+		`CREATE VIEW summon_skill_vision_ref AS
+			WITH unique_phantom_skill AS (
+				SELECT CAST(phantom_skill_id AS TEXT) AS phantom_skill_id
+				FROM phantomskill
+				WHERE phantom_skill_id IS NOT NULL AND CAST(phantom_skill_id AS TEXT) <> ''
+				GROUP BY CAST(phantom_skill_id AS TEXT)
+				HAVING COUNT(*) = 1
+			)
+			SELECT 1 AS summon_type, p.phantom_skill_id AS summon_skill_id,
+				CAST(v.id AS TEXT) AS vision_id, p.phantom_skill_id AS phantom_skill_id
+			FROM unique_phantom_skill AS p
+			JOIN vision AS v ON CAST(v.id AS TEXT) = p.phantom_skill_id`,
 	} {
 		if _, err := db.Exec(statement); err != nil {
 			db.Close()
@@ -491,14 +503,17 @@ func TestResolveSummonSkillMapsVisionTypesToDTVisionKeys(t *testing.T) {
 	entity := func(id, kind uint64, hasType bool) runtimeEntity {
 		return runtimeEntity{summonSkillID: id, hasSummonSkillID: true, summonType: kind, hasSummonType: hasType}
 	}
-	if r := resolveSummonSkill(master, entity(280026, 1, true)); r == nil || r.Status != resolutionCorrelated || r.Namespace != "Vision.Id" {
-		t.Fatalf("ConcomitantVision with Vision and PhantomSkill rows must correlate: %+v", r)
+	if r := resolveSummonSkill(master, entity(280026, 1, true)); r == nil || r.Status != resolutionVerified || r.Namespace != "Vision.Id" {
+		t.Fatalf("ConcomitantVision with a unique normalized Vision crosswalk must resolve: %+v", r)
 	}
 	if r := resolveSummonSkill(master, entity(6013, 5, true)); r == nil || r.Status != resolutionCorrelated || r.Namespace != "Vision.Id" {
 		t.Fatalf("ConcomitantMotorcycle with a Vision row must correlate: %+v", r)
 	}
 	if r := resolveSummonSkill(master, entity(280027, 1, true)); r == nil || r.Status != resolutionUnknown || r.Namespace != "" {
 		t.Fatalf("a Vision key without a PhantomSkill row must stay unknown for Type 1: %+v", r)
+	}
+	if r := resolveSummonSkill(master, entity(280028, 1, true)); r == nil || r.Status != resolutionUnknown || r.Namespace != "" {
+		t.Fatalf("a duplicated PhantomSkill key must not resolve for Type 1: %+v", r)
 	}
 	if r := resolveSummonSkill(master, entity(280099, 1, true)); r == nil || r.Status != resolutionUnknown {
 		t.Fatalf("a value without a Vision row must stay unknown: %+v", r)

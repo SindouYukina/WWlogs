@@ -71,6 +71,8 @@ type gameMaster struct {
 	phantomSkills map[uint64]struct{}
 	// visions holds DT_Vision row keys from the typed vision table.
 	visions map[uint64]struct{}
+	// concomitantVisionSummonSkills holds keys resolved by summon_skill_vision_ref.
+	concomitantVisionSummonSkills map[uint64]struct{}
 	// buffDefinitions holds normalized buff.Id keys for exact static-definition lookups.
 	buffDefinitions map[uint64]struct{}
 	// shieldDefinitions holds normalized shield.Id keys for ShieldUpdateNotify references.
@@ -80,14 +82,15 @@ type gameMaster struct {
 	// preloadBullets holds BulletPreload.BulletId values (actor-level bullet row keys).
 	preloadBullets map[uint64]struct{}
 	// Static actor chain: skin mesh / blueprint type / summon config -> model -> actor asset -> bullet row keys.
-	roleSkinMesh    map[uint64]uint64
-	modelActor      map[uint64]string
-	blueprintModel  map[string]uint64
-	summonBlueprint map[uint64]string
-	visionCast      map[uint64][]uint64
-	actorBullets    map[string]map[uint64]struct{}
-	assetPath       map[string]string
-	actorSkills     map[string]map[uint64]struct{}
+	roleSkinMesh         map[uint64]uint64
+	modelActor           map[uint64]string
+	blueprintModel       map[string]uint64
+	blueprintEntityTypes map[string]map[string]struct{}
+	summonBlueprint      map[uint64]string
+	visionCast           map[uint64][]uint64
+	actorBullets         map[string]map[uint64]struct{}
+	assetPath            map[string]string
+	actorSkills          map[string]map[uint64]struct{}
 	// skillActors maps EntitySkillPreload.SkillId to the distinct actor assets that list it.
 	skillActors map[uint64]map[string]struct{}
 	// commonBulletDamage maps a CDT_CommonBulletData row key to the row's own DamageId (absent when the row names none).
@@ -142,6 +145,49 @@ func (m *gameMaster) sceneMapConfigID(instanceID uint64) (uint64, bool) {
 	return mapID, ok
 }
 
+type vehicleActorMasterRecord struct {
+	ConfigID       uint64
+	BlueprintType  string
+	EntityType     string
+	ActorBlueprint string
+}
+
+// vehicleActorForFollowerConfig resolves a follower config only when its static chain
+// identifies one BattleVehicle actor and that actor lists the observed SkillId and BulletId.
+func (m *gameMaster) vehicleActorForFollowerConfig(configID, skillID, bulletID uint64) (vehicleActorMasterRecord, bool) {
+	if m == nil || configID == 0 || skillID == 0 || bulletID == 0 {
+		return vehicleActorMasterRecord{}, false
+	}
+	blueprint, ok := m.summonBlueprint[configID]
+	if !ok {
+		return vehicleActorMasterRecord{}, false
+	}
+	entityTypes := m.blueprintEntityTypes[blueprint]
+	if len(entityTypes) != 1 {
+		return vehicleActorMasterRecord{}, false
+	}
+	if _, ok := entityTypes["BattleVehicle"]; !ok {
+		return vehicleActorMasterRecord{}, false
+	}
+	actor, ok := m.actorOfBlueprint(blueprint)
+	if !ok {
+		return vehicleActorMasterRecord{}, false
+	}
+	if _, ok := m.actorSkills[actor][skillID]; !ok {
+		return vehicleActorMasterRecord{}, false
+	}
+	if _, ok := m.actorBullets[actor][bulletID]; !ok {
+		return vehicleActorMasterRecord{}, false
+	}
+	actorBlueprint := m.assetPath[actor]
+	if actorBlueprint == "" {
+		return vehicleActorMasterRecord{}, false
+	}
+	return vehicleActorMasterRecord{
+		ConfigID: configID, BlueprintType: blueprint, EntityType: "BattleVehicle", ActorBlueprint: actorBlueprint,
+	}, true
+}
+
 func (m *gameMaster) characterBySkin(skinID uint64) (masterRecord, bool) {
 	if _, ambiguous := m.ambiguousSkins[skinID]; ambiguous {
 		return masterRecord{}, false
@@ -177,6 +223,15 @@ func (m *gameMaster) hasShieldDefinition(id uint64) bool {
 // hasPhantomSkill reports whether PhantomSkill has a row with this PhantomSkillId.
 func (m *gameMaster) hasPhantomSkill(id uint64) bool {
 	_, ok := m.phantomSkills[id]
+	return ok
+}
+
+// hasConcomitantVisionSummonSkill reports whether the normalized Type 1 crosswalk contains the key.
+func (m *gameMaster) hasConcomitantVisionSummonSkill(id uint64) bool {
+	if m == nil {
+		return false
+	}
+	_, ok := m.concomitantVisionSummonSkills[id]
 	return ok
 }
 

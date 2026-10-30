@@ -58,40 +58,42 @@ func loadGameMasterDatabase(path, locale string) (*gameMaster, error) {
 		return nil, fmt.Errorf("hash master database: %w", err)
 	}
 	master := &gameMaster{
-		manifest:           masterManifest{Language: locale, ClientRegion: "Global", SourceHash: hash},
-		databasePath:       absPath,
-		locale:             locale,
-		characters:         make(map[uint64]masterRecord),
-		charactersSkin:     make(map[uint64]masterRecord),
-		ambiguousSkins:     make(map[uint64]struct{}),
-		monsters:           make(map[uint64]masterRecord),
-		skills:             make(map[uint64]masterRecord),
-		commonSkills:       make(map[uint64]masterRecord),
-		roleSkins:          make(map[uint64]uint64),
-		trialRoleParents:   make(map[uint64]uint64),
-		phantomSkills:      make(map[uint64]struct{}),
-		visions:            make(map[uint64]struct{}),
-		buffDefinitions:    make(map[uint64]struct{}),
-		shieldDefinitions:  make(map[uint64]struct{}),
-		commonBullets:      make(map[uint64]string),
-		preloadBullets:     make(map[uint64]struct{}),
-		roleSkinMesh:       make(map[uint64]uint64),
-		modelActor:         make(map[uint64]string),
-		blueprintModel:     make(map[string]uint64),
-		summonBlueprint:    make(map[uint64]string),
-		visionCast:         make(map[uint64][]uint64),
-		actorBullets:       make(map[string]map[uint64]struct{}),
-		assetPath:          make(map[string]string),
-		actorSkills:        make(map[string]map[uint64]struct{}),
-		skillActors:        make(map[uint64]map[string]struct{}),
-		commonBulletDamage: make(map[uint64]uint64),
-		skillLabels:        make(map[uint64]map[string]struct{}),
-		skillLabelText:     make(map[uint64]map[string]localizedSkillLabel),
-		buffOwners:         make(map[uint64][]buffOwnerText),
-		propertyNames:      make(map[int64]propertyName),
-		abnormalDamageIDs:  make(map[uint64]struct{}),
-		elementNames:       make(map[int32]string),
-		damage:             make(map[uint64]damageMasterRecord),
+		manifest:                      masterManifest{Language: locale, ClientRegion: "Global", SourceHash: hash},
+		databasePath:                  absPath,
+		locale:                        locale,
+		characters:                    make(map[uint64]masterRecord),
+		charactersSkin:                make(map[uint64]masterRecord),
+		ambiguousSkins:                make(map[uint64]struct{}),
+		monsters:                      make(map[uint64]masterRecord),
+		skills:                        make(map[uint64]masterRecord),
+		commonSkills:                  make(map[uint64]masterRecord),
+		roleSkins:                     make(map[uint64]uint64),
+		trialRoleParents:              make(map[uint64]uint64),
+		phantomSkills:                 make(map[uint64]struct{}),
+		visions:                       make(map[uint64]struct{}),
+		concomitantVisionSummonSkills: make(map[uint64]struct{}),
+		buffDefinitions:               make(map[uint64]struct{}),
+		shieldDefinitions:             make(map[uint64]struct{}),
+		commonBullets:                 make(map[uint64]string),
+		preloadBullets:                make(map[uint64]struct{}),
+		roleSkinMesh:                  make(map[uint64]uint64),
+		modelActor:                    make(map[uint64]string),
+		blueprintModel:                make(map[string]uint64),
+		blueprintEntityTypes:          make(map[string]map[string]struct{}),
+		summonBlueprint:               make(map[uint64]string),
+		visionCast:                    make(map[uint64][]uint64),
+		actorBullets:                  make(map[string]map[uint64]struct{}),
+		assetPath:                     make(map[string]string),
+		actorSkills:                   make(map[string]map[uint64]struct{}),
+		skillActors:                   make(map[uint64]map[string]struct{}),
+		commonBulletDamage:            make(map[uint64]uint64),
+		skillLabels:                   make(map[uint64]map[string]struct{}),
+		skillLabelText:                make(map[uint64]map[string]localizedSkillLabel),
+		buffOwners:                    make(map[uint64][]buffOwnerText),
+		propertyNames:                 make(map[int64]propertyName),
+		abnormalDamageIDs:             make(map[uint64]struct{}),
+		elementNames:                  make(map[int32]string),
+		damage:                        make(map[uint64]damageMasterRecord),
 		sceneIdentity: &sceneIdentityMaster{
 			instanceMaps:    make(map[uint64]uint64),
 			levelMonsters:   make(map[sceneLevelKey]uint64),
@@ -115,6 +117,9 @@ func loadGameMasterDatabase(path, locale string) (*gameMaster, error) {
 		return nil, err
 	}
 	if err := loadSQLiteVisions(db, master); err != nil {
+		return nil, err
+	}
+	if err := loadSQLiteConcomitantVisionSummonSkills(db, master); err != nil {
 		return nil, err
 	}
 	if err := loadSQLiteBuffDefinitions(db, master); err != nil {
@@ -339,6 +344,9 @@ func loadSQLiteActorChain(db *sql.DB, master *gameMaster) error {
 		master.blueprintModel[a.String] = model
 		return nil
 	}); err != nil {
+		return err
+	}
+	if err := loadSQLiteBlueprintEntityTypes(db, master); err != nil {
 		return err
 	}
 	if err := pairs("summoncfg", "SELECT id,blueprint_type FROM summoncfg WHERE blueprint_type IS NOT NULL", func(a, b sql.NullString) error {
@@ -593,6 +601,60 @@ func loadSQLitePhantomSkills(db *sql.DB, master *gameMaster) error {
 			return err
 		}
 		master.phantomSkills[id] = struct{}{}
+	}
+	return rows.Err()
+}
+
+// loadSQLiteConcomitantVisionSummonSkills reads the normalized Type 1 Vision crosswalk when present.
+func loadSQLiteConcomitantVisionSummonSkills(db *sql.DB, master *gameMaster) error {
+	var viewCount int
+	if err := db.QueryRow(
+		"SELECT COUNT(*) FROM sqlite_master WHERE type='view' AND name='summon_skill_vision_ref'",
+	).Scan(&viewCount); err != nil {
+		return fmt.Errorf("check SummonSkillId Vision crosswalk: %w", err)
+	}
+	if viewCount == 0 {
+		return nil
+	}
+	rows, err := db.Query(
+		"SELECT summon_type, summon_skill_id, vision_id, phantom_skill_id " +
+			"FROM summon_skill_vision_ref ORDER BY summon_type, summon_skill_id",
+	)
+	if err != nil {
+		return fmt.Errorf("query SummonSkillId Vision crosswalk: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var summonType int64
+		var summonRaw, visionRaw, phantomRaw string
+		if err := rows.Scan(&summonType, &summonRaw, &visionRaw, &phantomRaw); err != nil {
+			return fmt.Errorf("read SummonSkillId Vision crosswalk: %w", err)
+		}
+		if summonType != summonTypeConcomitantVision {
+			return fmt.Errorf("unsupported SummonSkillId Vision crosswalk Type %d", summonType)
+		}
+		summonID, err := parseMasterID(summonRaw, "summon_skill_vision_ref.summon_skill_id")
+		if err != nil {
+			return err
+		}
+		visionID, err := parseMasterID(visionRaw, "summon_skill_vision_ref.vision_id")
+		if err != nil {
+			return err
+		}
+		phantomID, err := parseMasterID(phantomRaw, "summon_skill_vision_ref.phantom_skill_id")
+		if err != nil {
+			return err
+		}
+		if summonID != visionID || summonID != phantomID {
+			return fmt.Errorf(
+				"inconsistent SummonSkillId Vision crosswalk: summon=%d vision=%d phantom=%d",
+				summonID, visionID, phantomID,
+			)
+		}
+		if _, duplicate := master.concomitantVisionSummonSkills[summonID]; duplicate {
+			return fmt.Errorf("duplicate ConcomitantVision SummonSkillId crosswalk %d", summonID)
+		}
+		master.concomitantVisionSummonSkills[summonID] = struct{}{}
 	}
 	return rows.Err()
 }
@@ -1100,4 +1162,35 @@ func masterTableExists(db *sql.DB, table string) (bool, error) {
 		return false, fmt.Errorf("inspect optional master table %s: %w", table, err)
 	}
 	return count == 1, nil
+}
+
+func loadSQLiteBlueprintEntityTypes(db *sql.DB, master *gameMaster) error {
+	hasEntityType, err := masterColumnExists(db, "blueprintconfig", "entity_type")
+	if err != nil || !hasEntityType {
+		return err
+	}
+	rows, err := db.Query("SELECT blueprint_type,entity_type FROM blueprintconfig WHERE blueprint_type IS NOT NULL AND entity_type IS NOT NULL")
+	if err != nil {
+		return fmt.Errorf("query blueprint entity types: %w", err)
+	}
+	defer rows.Close()
+	if master.blueprintEntityTypes == nil {
+		master.blueprintEntityTypes = make(map[string]map[string]struct{})
+	}
+	for rows.Next() {
+		var blueprintType, entityType string
+		if err := rows.Scan(&blueprintType, &entityType); err != nil {
+			return fmt.Errorf("read blueprint entity type: %w", err)
+		}
+		if blueprintType == "" || entityType == "" {
+			continue
+		}
+		values := master.blueprintEntityTypes[blueprintType]
+		if values == nil {
+			values = make(map[string]struct{})
+			master.blueprintEntityTypes[blueprintType] = values
+		}
+		values[entityType] = struct{}{}
+	}
+	return rows.Err()
 }
