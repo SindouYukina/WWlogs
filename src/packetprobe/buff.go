@@ -561,12 +561,16 @@ func (p *processor) handleActiveResponse(frame gameFrame, body []byte) error {
 			return fmt.Errorf("parse EntityActiveResponse ComponentPb: %w", err)
 		}
 		identityComponents := make([]protoField, 0, 2)
+		partComponents := make([]protoField, 0, 1)
 		for _, component := range components {
 			if component.wire != 2 {
 				continue
 			}
 			if isRuntimeIdentityComponent(component.number) {
 				identityComponents = append(identityComponents, component)
+			}
+			if component.number == 5 {
+				partComponents = append(partComponents, component)
 			}
 			switch component.number {
 			case 4:
@@ -645,6 +649,17 @@ func (p *processor) handleActiveResponse(frame gameFrame, body []byte) error {
 				return fmt.Errorf("parse EntityActiveResponse identity components: %w", err)
 			}
 			p.stats.activeResponseIdentityComponents += observed
+		}
+		if len(partComponents) > 0 {
+			entityID := uint64(0)
+			if matched && request.hasEntityID {
+				entityID = request.entityID
+			}
+			if entityID == 0 {
+				p.entities.invalidatePartComponents()
+			} else if _, err := p.entities.applyActiveResponsePartComponents(entityID, partComponents); err != nil {
+				return fmt.Errorf("parse EntityActiveResponse part components: %w", err)
+			}
 		}
 	}
 	return nil

@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/binary"
 	"fmt"
+	"math"
 	"sort"
 )
 
@@ -62,6 +64,9 @@ type runtimeEntity struct {
 	followEntityID            uint64
 	hasFollowEntityID         bool
 	playerFollowers           []runtimePlayerFollower
+	hasPartComponent          bool
+	partInformation           map[int32]runtimePartInformation
+	partComponentSource       string
 	monsterID                 uint64
 	hasMonsterID              bool
 	monsterCaptureEntityID    uint64
@@ -88,7 +93,36 @@ type runtimePlayerFollower struct {
 	hasEntity bool
 }
 
+type runtimePartInformation struct {
+	partID       int32
+	hasPartID    bool
+	partTag      int32
+	hasPartTag   bool
+	lifeMax      float32
+	hasLifeMax   bool
+	activated    bool
+	hasActivated bool
+	conflicted   bool
+}
+
+type runtimePartReference struct {
+	partID          int32
+	status          partReferenceStatus
+	information     *runtimePartInformation
+	informationFrom string
+	evidence        string
+}
+
+type partReferenceStatus string
+
+const (
+	partReferenceCorrelated partReferenceStatus = "CORRELATED"
+	partReferenceNoPart     partReferenceStatus = "NO_PART"
+	partReferenceUnknown    partReferenceStatus = "UNKNOWN"
+)
+
 const maxRuntimeComponentEntityRefs = 256
+const maxRuntimePartInformationRows = 256
 
 type entityResolver struct {
 	entities           map[uint64]runtimeEntity
@@ -730,6 +764,9 @@ func (r *entityResolver) applyEntityAddNotify(body []byte) (int, error) {
 		if entity.entityID == 0 {
 			continue
 		}
+		if entity.hasPartComponent {
+			entity.partComponentSource = "EntityAddNotify.EntityPbs[].ComponentPbs.PartComponent.PartLifeInfos[]"
+		}
 		r.sequence++
 		if previous, ok := r.entities[entity.entityID]; ok {
 			entity = mergeRuntimeEntity(previous, entity)
@@ -785,6 +822,9 @@ func (r *entityResolver) applyJoinSceneNotify(body []byte) (int, error) {
 	for _, entity := range entities {
 		if entity.entityID == 0 {
 			continue
+		}
+		if entity.hasPartComponent {
+			entity.partComponentSource = "JoinSceneNotify.SceneInfo entity snapshot.ComponentPbs.PartComponent.PartLifeInfos[]"
 		}
 		if previous, ok := r.entities[entity.entityID]; ok {
 			entity = mergeRuntimeEntity(previous, entity)
@@ -1116,6 +1156,75 @@ func (r *entityResolver) applyActiveResponseIdentityComponents(entityID uint64, 
 	return observed, nil
 }
 
+func (r *entityResolver) applyActiveResponsePartComponents(entityID uint64, components []protoField) (int, error) {
+	update := runtimeEntity{entityID: entityID}
+	observed := 0
+	for _, component := range components {
+		if component.number != 5 || component.wire != 2 {
+			continue
+		}
+		if err := applyEntityComponentPayload(&update, component.number, component.data); err != nil {
+			return observed, err
+		}
+		observed++
+	}
+	if observed == 0 || entityID == 0 {
+		return observed, nil
+	}
+	previous, exists := r.entities[entityID]
+	if !exists {
+		return observed, nil
+	}
+	update.partComponentSource = "EntityActiveRequest frame token match + field4 EntityId -> EntityActiveResponse.field11 ComponentPbs.PartComponent.PartLifeInfos[]"
+	update = mergeRuntimeEntity(previous, update)
+	r.sequence++
+	update.lastSeenSequence = r.sequence
+	r.entities[entityID] = update
+	r.evictIfNeeded()
+	return observed, nil
+}
+
+func (r *entityResolver) invalidatePartComponents() {
+	for entityID, entity := range r.entities {
+		entity.hasPartComponent = false
+		entity.partInformation = nil
+		entity.partComponentSource = ""
+		r.entities[entityID] = entity
+	}
+}
+
+func (r *entityResolver) resolvePartReference(entityID uint64, partID int32) runtimePartReference {
+	result := runtimePartReference{partID: partID, status: partReferenceUnknown}
+	if partID == -1 {
+		result.status = partReferenceNoPart
+		result.evidence = "DamageExecuteRequest.PartId=-1 is the observed no-part sentinel; raw value preserved and no PartInformation lookup attempted"
+		return result
+	}
+	if partID <= 0 {
+		result.evidence = "Non-positive DamageExecuteRequest.PartId is preserved without assigning a PartInformation row"
+		return result
+	}
+	entity, ok := r.entities[entityID]
+	if !ok || !entity.hasPartComponent {
+		result.evidence = "No current PartComponent observation is available for the exact target entity in this session"
+		return result
+	}
+	information, ok := entity.partInformation[partID]
+	if !ok {
+		result.evidence = "Current target PartComponent has no PartLifeInfos row with this exact PartId"
+		return result
+	}
+	if information.conflicted {
+		result.evidence = "Current target PartComponent has conflicting PartLifeInfos rows for this PartId"
+		return result
+	}
+	result.status = partReferenceCorrelated
+	result.information = &information
+	result.informationFrom = entity.partComponentSource
+	result.evidence = "DamageExecuteRequest.PartId exactly matches PartComponent.PartLifeInfos.PartId observed for the same TargetEntityId before this request; this is a session-scoped runtime relation, not a static Master key"
+	return result
+}
+
 func isRuntimeIdentityComponent(componentNumber uint64) bool {
 	switch componentNumber {
 	case 4, 18, 25, 42, 53, 85:
@@ -1200,6 +1309,13 @@ func applyEntityComponentPayload(entity *runtimeEntity, componentNumber uint64, 
 				entity.summonType, entity.hasSummonType = field.value, true
 			}
 		}
+	case 5: // PartComponentPb
+		information, err := parseRuntimePartInformation(data)
+		if err != nil {
+			return err
+		}
+		entity.hasPartComponent = true
+		entity.partInformation = information
 	case 18: // MonsterCaptureComponentPb
 		fields, err := parseProtoFields(data)
 		if err != nil {
@@ -1304,6 +1420,60 @@ func applyEntityComponentPayload(entity *runtimeEntity, componentNumber uint64, 
 	return nil
 }
 
+func parseRuntimePartInformation(data []byte) (map[int32]runtimePartInformation, error) {
+	fields, err := parseProtoFields(data)
+	if err != nil {
+		return nil, fmt.Errorf("parse PartComponentPb: %w", err)
+	}
+	parts := make(map[int32]runtimePartInformation)
+	rowsSeen := 0
+	for _, field := range fields {
+		if field.number != 1 || field.wire != 2 { // PartComponentPb.PartLifeInfos[]
+			continue
+		}
+		rowsSeen++
+		if rowsSeen > maxRuntimePartInformationRows {
+			return nil, fmt.Errorf("PartComponentPb.PartLifeInfos exceeds limit %d", maxRuntimePartInformationRows)
+		}
+		rowFields, err := parseProtoFields(field.data)
+		if err != nil {
+			return nil, fmt.Errorf("parse PartInformation: %w", err)
+		}
+		var information runtimePartInformation
+		for _, rowField := range rowFields {
+			switch {
+			case rowField.number == 1 && rowField.wire == 0: // PartInformation.PartId
+				information.partID = int32(uint32(rowField.value))
+				information.hasPartID = true
+			case rowField.number == 3 && rowField.wire == 5: // PartInformation.LifeMax
+				information.lifeMax = math.Float32frombits(binary.LittleEndian.Uint32(rowField.data))
+				if math.IsNaN(float64(information.lifeMax)) || math.IsInf(float64(information.lifeMax), 0) {
+					return nil, fmt.Errorf("PartInformation.LifeMax is not finite")
+				}
+				information.hasLifeMax = true
+			case rowField.number == 4 && rowField.wire == 0: // PartInformation.Activated
+				information.activated = rowField.value != 0
+				information.hasActivated = true
+			case rowField.number == 5 && rowField.wire == 0: // PartInformation.PartTag
+				information.partTag = int32(uint32(rowField.value))
+				information.hasPartTag = true
+			}
+		}
+		if !information.hasPartID {
+			continue
+		}
+		if previous, exists := parts[information.partID]; exists {
+			if previous != information {
+				previous.conflicted = true
+				parts[information.partID] = previous
+			}
+			continue
+		}
+		parts[information.partID] = information
+	}
+	return parts, nil
+}
+
 func mergeRuntimeEntity(old, update runtimeEntity) runtimeEntity {
 	if update.entityID == 0 {
 		update.entityID = old.entityID
@@ -1379,6 +1549,11 @@ func mergeRuntimeEntity(old, update runtimeEntity) runtimeEntity {
 	}
 	if len(update.playerFollowers) == 0 && len(old.playerFollowers) > 0 {
 		update.playerFollowers = append([]runtimePlayerFollower(nil), old.playerFollowers...)
+	}
+	if !update.hasPartComponent && old.hasPartComponent {
+		update.hasPartComponent = true
+		update.partInformation = old.partInformation
+		update.partComponentSource = old.partComponentSource
 	}
 	if !update.hasMonsterID && old.hasMonsterID {
 		update.monsterID, update.hasMonsterID = old.monsterID, true

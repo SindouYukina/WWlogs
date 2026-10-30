@@ -41,7 +41,7 @@ func TestDamageRequestUsesSchemaEntityAndSkillFields(t *testing.T) {
 	variant := appendBytesField(nil, 3, request)
 	outer := appendBytesField(nil, 14, variant)
 
-	p.handleDamageRequests(outer)
+	p.handleDamageRequests(gameFrame{direction: "out", commandID: 19470}, outer)
 
 	got, ok := p.pending[42]
 	if !ok {

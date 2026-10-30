@@ -91,5 +91,8 @@ func (p *processor) backfillEncounterSummary(sourceID, roleID uint64) {
 func (p *processor) removePendingSummaryCredits(sourceID uint64) {
 }
 
+func (p *processor) writePartReference(frame gameFrame, rpcID uint64, request pendingDamageRequest) {
+}
+
 func (p *processor) observeEncounterSummary(event combatEvent) {
 }

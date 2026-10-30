@@ -56,6 +56,7 @@ func main() {
 	skillRefOutPath := flag.String("skill-ref-out", "", "optional JSONL of every SkillId in combat messages with its EntitySkillPreload namespace check (requires -protocol-schema)")
 	bulletRefOutPath := flag.String("bullet-ref-out", "", "optional JSONL of BulletId fields in outbound and inbound combat messages with namespace and resolution evidence (requires -protocol-schema)")
 	shieldRefOutPath := flag.String("shield-ref-out", "", "optional JSONL of inbound ShieldUpdateInfo.ConfigId references resolved only against shield.Id (requires -protocol-schema and -master-db)")
+	partRefOutPath := flag.String("part-ref-out", "", "optional JSONL of DamageExecuteRequest.PartId references resolved against the active target PartComponent (requires -protocol-schema)")
 	clientPushOutPath := flag.String("client-push-out", "", "optional JSONL of skill requests, role reports, and skill-end pushes (requires -protocol-schema)")
 	summonOwnerOutPath := flag.String("summon-owner-out", "", "optional JSONL of summoner, concomitant and dependence facts from join and entity-add messages (requires -protocol-schema)")
 	frameArchiveOut := flag.String("frame-archive-out", "", "optionally write one local JSONL record per reassembled frame (digests only; no key or plaintext)")
@@ -313,6 +314,28 @@ func main() {
 		defer func() {
 			if err := shieldWriter.Flush(); err != nil {
 				fmt.Fprintf(os.Stderr, "shield reference flush error: %v\n", err)
+			}
+		}()
+	}
+	if *partRefOutPath != "" {
+		if processor.protocolSchema == nil {
+			fatal("part reference output", fmt.Errorf("-part-ref-out requires -protocol-schema"))
+		}
+		if dir := filepath.Dir(*partRefOutPath); dir != "." {
+			if err := os.MkdirAll(dir, 0o700); err != nil {
+				fatal("create part reference directory", err)
+			}
+		}
+		partFile, err := os.Create(*partRefOutPath)
+		if err != nil {
+			fatal("create part reference output", err)
+		}
+		defer partFile.Close()
+		partWriter := bufio.NewWriter(partFile)
+		processor.partRefOut = partWriter
+		defer func() {
+			if err := partWriter.Flush(); err != nil {
+				fmt.Fprintf(os.Stderr, "part reference flush error: %v\n", err)
 			}
 		}()
 	}

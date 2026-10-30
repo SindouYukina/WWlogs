@@ -41,6 +41,8 @@ type pendingDamageRequest struct {
 	hasAttackerEntityID bool
 	targetEntityID      uint64 // DamageExecuteRequest.TargetEntityId, field 10
 	hasTargetEntityID   bool
+	partID              int32 // DamageExecuteRequest.PartId, field 5
+	hasPartID           bool
 	skillLevel          uint64 // DamageExecuteRequest.SkillLevel, field 12
 	skillID             uint64 // DamageContext.SkillId, field 4
 	skillMessageID      uint64 // DamageContext.SkillMessageId, field 5
@@ -148,6 +150,8 @@ type processor struct {
 	schemaDecodeOut           diagWriter
 	schemaDecodeErrors        int
 	schemaDecodeSkipped       int
+	partRefOut                diagWriter
+	partRefErrors             int
 	roleConfigOut             diagWriter
 	roleConfigErrors          int
 	eventOrderFrame           uint64
@@ -449,7 +453,7 @@ func (p *processor) handleFrame(frame gameFrame) {
 			return
 		}
 	case 19470:
-		p.handleDamageRequests(plain)
+		p.handleDamageRequests(frame, plain)
 	case 20332:
 		p.handleDamageResponses(plain)
 		if err := p.handleEmbeddedCombatReceivePackNotify(frame, plain); err != nil {
@@ -649,7 +653,7 @@ func (p *processor) handleProtoKeyResponse(body []byte) error {
 	return nil
 }
 
-func (p *processor) handleDamageRequests(body []byte) {
+func (p *processor) handleDamageRequests(frame gameFrame, body []byte) {
 	outer, err := parseProtoFields(body)
 	if err != nil {
 		p.stats.parseErrors++
@@ -703,6 +707,9 @@ func (p *processor) handleDamageRequests(body []byte) {
 				case damageField.number == 10 && damageField.wire == 0: // DamageExecuteRequest.TargetEntityId
 					identity.targetEntityID = damageField.value
 					identity.hasTargetEntityID = true
+				case damageField.number == 5 && damageField.wire == 0: // DamageExecuteRequest.PartId
+					identity.partID = int32(uint32(damageField.value))
+					identity.hasPartID = true
 				case damageField.number == 12 && damageField.wire == 0: // DamageExecuteRequest.SkillLevel
 					identity.skillLevel = damageField.value
 				case damageField.number == 13 && damageField.wire == 0: // DamageExecuteRequest.AttackerEntityId
@@ -751,6 +758,7 @@ func (p *processor) handleDamageRequests(body []byte) {
 					p.sourceRoles.observe(identity.attackerEntityID, skill)
 				}
 			}
+			p.writePartReference(frame, rpcID, identity)
 			p.rememberPending(rpcID, identity)
 		}
 	}
