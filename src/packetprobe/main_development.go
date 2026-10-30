@@ -51,6 +51,7 @@ func main() {
 	roleConfigOutPath := flag.String("role-config-out", "", "optional JSONL of observed RoleConfigInfoNotify role IDs resolved through the master database (requires -protocol-schema and -master-db)")
 
 	buffOverlapOut := flag.String("buff-overlap-out", "", "optionally write, per damage result, the Buff instances observed active on its target (packet-time precision)")
+	combatStateOutPath := flag.String("combat-state-out", "", "optional JSONL of every attribute change, recovery value and state-machine transition with names (requires -protocol-schema)")
 	hpStateOutPath := flag.String("hp-state-out", "", "optional JSONL of Life and LifeMax attribute values per entity (requires -protocol-schema)")
 	damagePushOutPath := flag.String("damage-push-out", "", "optional JSONL of pushed DamageExecuteNotify records, separate from the damage RPC stream (requires -protocol-schema)")
 	skillRefOutPath := flag.String("skill-ref-out", "", "optional JSONL of every SkillId in combat messages with its EntitySkillPreload namespace check (requires -protocol-schema)")
@@ -380,6 +381,28 @@ func main() {
 		defer func() {
 			if err := pushWriter.Flush(); err != nil {
 				fmt.Fprintf(os.Stderr, "damage push flush error: %v\n", err)
+			}
+		}()
+	}
+	if *combatStateOutPath != "" {
+		if processor.protocolSchema == nil {
+			fatal("combat state output", fmt.Errorf("-combat-state-out requires -protocol-schema"))
+		}
+		if dir := filepath.Dir(*combatStateOutPath); dir != "." {
+			if err := os.MkdirAll(dir, 0o700); err != nil {
+				fatal("create combat state directory", err)
+			}
+		}
+		stateFile, err := os.Create(*combatStateOutPath)
+		if err != nil {
+			fatal("create combat state output", err)
+		}
+		defer stateFile.Close()
+		stateWriter := bufio.NewWriter(stateFile)
+		processor.combatStateOut = stateWriter
+		defer func() {
+			if err := stateWriter.Flush(); err != nil {
+				fmt.Fprintf(os.Stderr, "combat state flush error: %v\n", err)
 			}
 		}()
 	}

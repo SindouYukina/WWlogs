@@ -96,6 +96,10 @@ type gameMaster struct {
 	skillLabels map[uint64]map[string]struct{}
 	// buffOwners maps a Buff id to the named features (chain node, echo set, weapon passive, skill) that list it.
 	buffOwners map[uint64][]buffOwnerText
+	// propertyNames maps a PropertyIndex id (the attribute id of the protocol) to its key and localized name.
+	propertyNames map[int64]propertyName
+	// fsm holds the AI state-machine node identities used to name ChangeStateNotify ids.
+	fsm *fsmMaster
 	// skillLabelText holds skill_dev_label_locale rows (master locale and zh-CN) by skill id and locale.
 	skillLabelText map[uint64]map[string]localizedSkillLabel
 	// elementNames maps damage.element to the ElementInfo name of the master locale.

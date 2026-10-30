@@ -70,6 +70,9 @@ func (p *processor) archiveDamageRPCSchema(frame gameFrame, plain []byte) {
 func (p *processor) archiveHPStateFrame(frame gameFrame, plain []byte) {
 }
 
+func (p *processor) archiveCombatStateFrame(frame gameFrame, plain []byte) {
+}
+
 func (p *processor) archiveDamagePushFrame(frame gameFrame, plain []byte) {
 }
 

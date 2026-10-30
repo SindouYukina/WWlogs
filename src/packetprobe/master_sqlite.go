@@ -88,6 +88,7 @@ func loadGameMasterDatabase(path, locale string) (*gameMaster, error) {
 		skillLabels:        make(map[uint64]map[string]struct{}),
 		skillLabelText:     make(map[uint64]map[string]localizedSkillLabel),
 		buffOwners:         make(map[uint64][]buffOwnerText),
+		propertyNames:      make(map[int64]propertyName),
 		elementNames:       make(map[int32]string),
 		damage:             make(map[uint64]damageMasterRecord),
 		sceneIdentity: &sceneIdentityMaster{
@@ -128,6 +129,12 @@ func loadGameMasterDatabase(path, locale string) (*gameMaster, error) {
 		return nil, err
 	}
 	if err := loadSQLiteSkillLabels(db, master); err != nil {
+		return nil, err
+	}
+	if err := loadSQLitePropertyNames(db, locale, master); err != nil {
+		return nil, err
+	}
+	if err := loadSQLiteStateMachines(db, master); err != nil {
 		return nil, err
 	}
 	if err := loadSQLiteBuffOwners(db, locale, master); err != nil {

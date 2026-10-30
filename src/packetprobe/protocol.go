@@ -182,6 +182,8 @@ type processor struct {
 	hasActiveRole             bool
 	damagePushErrors          int
 	hpStateErrors             int
+	combatStateOut            diagWriter
+	combatStateErrors         int
 	buffIntervals             []*buffInterval
 	buffIntervalOpen          map[overlapKey]*buffInterval
 	buffDuplicateApplies      int
@@ -442,6 +444,7 @@ func (p *processor) handleFrame(frame gameFrame) {
 	p.archiveSchemaDecode(frame, plain)
 	p.archiveDamageRPCSchema(frame, plain)
 	p.archiveHPStateFrame(frame, plain)
+	p.archiveCombatStateFrame(frame, plain)
 	p.archiveDamagePushFrame(frame, plain)
 	p.archiveClientPushFrame(frame, plain)
 	p.archiveBulletRefReceiveFrame(frame, plain)
