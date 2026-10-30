@@ -68,6 +68,10 @@ type gameMaster struct {
 	phantomSkills map[uint64]struct{}
 	// visions holds DT_Vision row keys from the typed vision table.
 	visions map[uint64]struct{}
+	// buffDefinitions holds normalized buff.Id keys for exact static-definition lookups.
+	buffDefinitions map[uint64]struct{}
+	// shieldDefinitions holds normalized shield.Id keys for ShieldUpdateNotify references.
+	shieldDefinitions map[uint64]struct{}
 	// commonBullets holds CDT_CommonBulletData row keys with their developer label.
 	commonBullets map[uint64]string
 	// preloadBullets holds BulletPreload.BulletId values (actor-level bullet row keys).
@@ -134,6 +138,24 @@ func (m *gameMaster) characterBySkin(skinID uint64) (masterRecord, bool) {
 // hasVision reports whether the vision table has a row with this key.
 func (m *gameMaster) hasVision(id uint64) bool {
 	_, ok := m.visions[id]
+	return ok
+}
+
+// hasBuffDefinition reports whether buff has a normalized row with this key.
+func (m *gameMaster) hasBuffDefinition(id uint64) bool {
+	if m == nil {
+		return false
+	}
+	_, ok := m.buffDefinitions[id]
+	return ok
+}
+
+// hasShieldDefinition reports whether shield has a normalized row with this key.
+func (m *gameMaster) hasShieldDefinition(id uint64) bool {
+	if m == nil {
+		return false
+	}
+	_, ok := m.shieldDefinitions[id]
 	return ok
 }
 

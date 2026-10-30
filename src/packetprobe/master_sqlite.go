@@ -71,6 +71,8 @@ func loadGameMasterDatabase(path, locale string) (*gameMaster, error) {
 		trialRoleParents:   make(map[uint64]uint64),
 		phantomSkills:      make(map[uint64]struct{}),
 		visions:            make(map[uint64]struct{}),
+		buffDefinitions:    make(map[uint64]struct{}),
+		shieldDefinitions:  make(map[uint64]struct{}),
 		commonBullets:      make(map[uint64]string),
 		preloadBullets:     make(map[uint64]struct{}),
 		roleSkinMesh:       make(map[uint64]uint64),
@@ -108,6 +110,12 @@ func loadGameMasterDatabase(path, locale string) (*gameMaster, error) {
 		return nil, err
 	}
 	if err := loadSQLiteVisions(db, master); err != nil {
+		return nil, err
+	}
+	if err := loadSQLiteBuffDefinitions(db, master); err != nil {
+		return nil, err
+	}
+	if err := loadSQLiteShieldDefinitions(db, master); err != nil {
 		return nil, err
 	}
 	if err := loadSQLiteBullets(db, master); err != nil {
@@ -467,6 +475,76 @@ func loadSQLiteVisions(db *sql.DB, master *gameMaster) error {
 			return err
 		}
 		master.visions[id] = struct{}{}
+	}
+	return rows.Err()
+}
+
+// loadSQLiteBuffDefinitions reads normalized buff.Id keys when the table exists.
+func loadSQLiteBuffDefinitions(db *sql.DB, master *gameMaster) error {
+	exists, err := masterTableExists(db, "buff")
+	if err != nil || !exists {
+		return err
+	}
+	present, err := masterColumnExists(db, "buff", "id")
+	if err != nil {
+		return err
+	}
+	if !present {
+		return fmt.Errorf("buff is missing required column id")
+	}
+	rows, err := db.Query("SELECT id FROM buff ORDER BY id")
+	if err != nil {
+		return fmt.Errorf("query Buff definitions: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var raw string
+		if err := rows.Scan(&raw); err != nil {
+			return fmt.Errorf("read Buff definition: %w", err)
+		}
+		id, err := parseMasterID(raw, "buff.id")
+		if err != nil {
+			return err
+		}
+		if _, duplicate := master.buffDefinitions[id]; duplicate {
+			return fmt.Errorf("duplicate Buff definition Id %d", id)
+		}
+		master.buffDefinitions[id] = struct{}{}
+	}
+	return rows.Err()
+}
+
+// loadSQLiteShieldDefinitions reads normalized shield.Id keys when the table exists.
+func loadSQLiteShieldDefinitions(db *sql.DB, master *gameMaster) error {
+	exists, err := masterTableExists(db, "shield")
+	if err != nil || !exists {
+		return err
+	}
+	present, err := masterColumnExists(db, "shield", "id")
+	if err != nil {
+		return err
+	}
+	if !present {
+		return fmt.Errorf("shield is missing required column id")
+	}
+	rows, err := db.Query("SELECT id FROM shield ORDER BY id")
+	if err != nil {
+		return fmt.Errorf("query Shield definitions: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var raw string
+		if err := rows.Scan(&raw); err != nil {
+			return fmt.Errorf("read Shield definition: %w", err)
+		}
+		id, err := parseMasterID(raw, "shield.id")
+		if err != nil {
+			return err
+		}
+		if _, duplicate := master.shieldDefinitions[id]; duplicate {
+			return fmt.Errorf("duplicate Shield definition Id %d", id)
+		}
+		master.shieldDefinitions[id] = struct{}{}
 	}
 	return rows.Err()
 }

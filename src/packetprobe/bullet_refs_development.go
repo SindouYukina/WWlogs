@@ -64,18 +64,34 @@ func (p *processor) observeBulletReferences(frame gameFrame, data *decodedMessag
 
 // archiveBulletRefReceiveFrame handles standalone and response-embedded inbound combat notifications.
 func (p *processor) archiveBulletRefReceiveFrame(frame gameFrame, plain []byte) {
-	if (p.bulletRefOut == nil && p.skillRefOut == nil) || p.protocolSchema == nil || (frame.commandID != 25706 && frame.commandID != 20332) {
+	if (p.bulletRefOut == nil && p.skillRefOut == nil && p.shieldRefOut == nil) || p.protocolSchema == nil || (frame.commandID != 25706 && frame.commandID != 20332) {
 		return
 	}
 	payloads, err := receivePackNotifyBodies(frame.commandID, plain)
 	if err != nil {
-		p.bulletRefErrors++
+		if p.bulletRefOut != nil {
+			p.bulletRefErrors++
+		}
+		if p.skillRefOut != nil {
+			p.skillRefErrors++
+		}
+		if p.shieldRefOut != nil {
+			p.shieldRefErrors++
+		}
 		return
 	}
 	for _, payload := range payloads {
 		decoded, err := decodeSchemaMessage(p.protocolSchema, "CombatReceivePackNotify", payload, 0)
 		if err != nil {
-			p.bulletRefErrors++
+			if p.bulletRefOut != nil {
+				p.bulletRefErrors++
+			}
+			if p.skillRefOut != nil {
+				p.skillRefErrors++
+			}
+			if p.shieldRefOut != nil {
+				p.shieldRefErrors++
+			}
 			continue
 		}
 		for _, data := range childMessages(decoded, "Data") {
@@ -84,6 +100,9 @@ func (p *processor) archiveBulletRefReceiveFrame(frame gameFrame, plain []byte) 
 			}
 			if p.skillRefOut != nil {
 				p.observeSkillReferences(frame, data, "in")
+			}
+			if p.shieldRefOut != nil {
+				p.observeShieldReferences(frame, data, "in")
 			}
 		}
 	}

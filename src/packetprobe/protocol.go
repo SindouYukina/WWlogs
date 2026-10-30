@@ -157,6 +157,8 @@ type processor struct {
 	clientPushOut             diagWriter
 	bulletRefOut              diagWriter
 	bulletRefErrors           int
+	shieldRefOut              diagWriter
+	shieldRefErrors           int
 	skillRefOut               diagWriter
 	skillRefErrors            int
 	bulletHandles             map[bulletHandleKey]bulletHandleEntry

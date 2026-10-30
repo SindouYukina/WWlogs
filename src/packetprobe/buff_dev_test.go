@@ -15,6 +15,7 @@ func TestEntityActiveResponseDecodesBuffSnapshotWithCorrelatedEntity(t *testing.
 	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
 	p.buffSnapshots = &output
 	p.combatEventsJSONL = &eventStream
+	p.masters = &gameMaster{buffDefinitions: map[uint64]struct{}{70001: {}}}
 	p.sessionNumber = 5
 	const token = 42
 	if err := p.handleActiveRequest(token, appendVarintField(nil, 4, 8801)); err != nil {
@@ -59,10 +60,10 @@ func TestEntityActiveResponseDecodesBuffSnapshotWithCorrelatedEntity(t *testing.
 	if row.Buff.ID != 70001 || row.Buff.Level != 2 || row.Buff.Stack != 3 || row.Buff.InstigatorID != 99002 || !row.Buff.HasActive || !row.Buff.Active {
 		t.Fatalf("decoded Buff snapshot = %+v", row.Buff)
 	}
-	if row.BuffIDStatus != resolutionCorrelated || row.BuffSemanticStatus != resolutionUnknown || row.InstigatorSemantics != resolutionCorrelated || !strings.Contains(row.WindowsSchemaVerification, "client/master compatibility UNKNOWN") {
+	if row.BuffIDStatus != resolutionCorrelated || row.BuffDefinitionStatus != resolutionCorrelated || row.BuffDefinitionTable != "buff" || row.BuffDefinitionID == nil || *row.BuffDefinitionID != 70001 || row.BuffSemanticStatus != resolutionUnknown || row.InstigatorSemantics != resolutionCorrelated || !strings.Contains(row.WindowsSchemaVerification, "client/master compatibility UNKNOWN") {
 		t.Fatalf("evidence levels were overstated: %+v", row)
 	}
-	if !strings.Contains(row.BuffSemanticEvidence, "static-definition versus runtime-effect semantics are unresolved") || !row.Buff.HasConfBuffID || row.Buff.ConfBuffID == row.Buff.ID {
+	if !strings.Contains(row.BuffDefinitionEvidence, "exact normalized buff.id row found") || !strings.Contains(row.BuffSemanticEvidence, "does not establish application or uptime") || !row.Buff.HasConfBuffID || row.Buff.ConfBuffID == row.Buff.ID {
 		t.Fatalf("BuffId semantics or ConfBuffId separation = %+v", row)
 	}
 	if !strings.Contains(row.InstigatorEvidence, "CreatureModel.GetEntity") || !strings.Contains(row.InstigatorEvidence, "client/master compatibility UNKNOWN") {
@@ -86,6 +87,32 @@ func TestEntityActiveResponseDecodesBuffSnapshotWithCorrelatedEntity(t *testing.
 	}
 	if streamRow["schemaVersion"] != float64(buffSnapshotSchemaVersion) || streamRow["eventType"] != "BUFF_SNAPSHOT" || streamRow["sessionNumber"] != float64(5) || streamRow["messageId"] != float64(26702) || streamRow["buffSemanticStatus"] != string(resolutionUnknown) {
 		t.Fatalf("snapshot missing from unified event stream: %#v", streamRow)
+	}
+}
+
+func TestEntityActiveResponseDoesNotSubstituteConfBuffIDForMissingDefinition(t *testing.T) {
+	var output bytes.Buffer
+	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
+	p.buffSnapshots = &output
+	p.masters = &gameMaster{buffDefinitions: map[uint64]struct{}{70002: {}}}
+	buffRecord := appendVarintField(nil, 2, 1312010090)
+	buffRecord = appendVarintField(buffRecord, 14, 70002)
+	response := appendBytesField(nil, 11, appendBytesField(nil, 15, appendBytesField(nil, 1, buffRecord)))
+	if err := p.handleActiveResponse(gameFrame{commandID: 26702, direction: "in", token: 7}, response); err != nil {
+		t.Fatal(err)
+	}
+	var row buffSnapshotAuditRow
+	if err := json.Unmarshal(bytes.TrimSpace(output.Bytes()), &row); err != nil {
+		t.Fatal(err)
+	}
+	if row.Buff.ID != 1312010090 || !row.Buff.HasID || row.Buff.ConfBuffID != 70002 || !row.Buff.HasConfBuffID {
+		t.Fatalf("raw Buff and ConfBuff IDs were not kept separate: %+v", row.Buff)
+	}
+	if row.BuffDefinitionStatus != resolutionUnknown || row.BuffDefinitionID != nil || row.BuffDefinitionTable != "" {
+		t.Fatalf("missing BuffId definition was resolved through ConfBuffId: %+v", row)
+	}
+	if row.BuffSemanticStatus != resolutionUnknown {
+		t.Fatalf("unresolved runtime semantics changed: %s", row.BuffSemanticStatus)
 	}
 }
 

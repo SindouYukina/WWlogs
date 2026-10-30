@@ -38,6 +38,68 @@ func TestLoadGameMasterDatabaseUsesLocaleAndKeepsIDNamespacesSeparate(t *testing
 	}
 }
 
+func TestLoadGameMasterDatabaseLoadsNormalizedBuffDefinitionKeys(t *testing.T) {
+	path := buildMasterDatabaseFixture(t)
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("CREATE TABLE buff(id TEXT PRIMARY KEY)"); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("INSERT INTO buff VALUES('70001'),('18446744073709551614')"); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	master, err := loadGameMasterDatabase(path, "zh-TW")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !master.hasBuffDefinition(70001) || !master.hasBuffDefinition(18446744073709551614) {
+		t.Fatal("normalized Buff definition keys were not loaded exactly")
+	}
+	if master.hasBuffDefinition(1312010090) {
+		t.Fatal("missing Buff ID unexpectedly resolved")
+	}
+}
+
+func TestLoadGameMasterDatabaseLoadsNormalizedShieldDefinitionKeys(t *testing.T) {
+	path := buildMasterDatabaseFixture(t)
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("CREATE TABLE shield(id TEXT PRIMARY KEY)"); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("INSERT INTO shield VALUES('1409404003'),('1508990003'),('18446744073709551614')"); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	master, err := loadGameMasterDatabase(path, "zh-TW")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []uint64{1409404003, 1508990003, 18446744073709551614} {
+		if !master.hasShieldDefinition(id) {
+			t.Fatalf("normalized shield definition %d was not loaded", id)
+		}
+	}
+	if master.hasShieldDefinition(1312010090) {
+		t.Fatal("missing Shield ID unexpectedly resolved")
+	}
+}
+
 func TestLoadGameMasterDatabaseRejectsAmbiguousRoleSkinMappings(t *testing.T) {
 	path := buildMasterDatabaseFixture(t)
 	db, err := sql.Open("sqlite", path)

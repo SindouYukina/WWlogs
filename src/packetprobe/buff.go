@@ -54,7 +54,12 @@ type buffSnapshotAuditRow struct {
 	ComponentPath     string           `json:"componentPath"`
 	// BuffIDStatus records the captured field mapping, not static-definition resolution.
 	BuffIDStatus resolutionStatus `json:"buffIdStatus"`
-	// BuffSemanticStatus keeps static-key versus runtime-effect interpretation separate.
+	// BuffDefinitionStatus records an exact link from BuffId to the normalized static buff table.
+	BuffDefinitionStatus   resolutionStatus `json:"buffDefinitionStatus"`
+	BuffDefinitionTable    string           `json:"buffDefinitionTable,omitempty"`
+	BuffDefinitionID       *uint64          `json:"buffDefinitionId,omitempty"`
+	BuffDefinitionEvidence string           `json:"buffDefinitionEvidence"`
+	// BuffSemanticStatus covers runtime application and effect semantics, not static row lookup.
 	BuffSemanticStatus        resolutionStatus `json:"buffSemanticStatus"`
 	BuffSemanticEvidence      string           `json:"buffSemanticEvidence"`
 	InstigatorSemantics       resolutionStatus `json:"instigatorSemantics"`
@@ -64,7 +69,7 @@ type buffSnapshotAuditRow struct {
 	Buff                      rawBuffSnapshot  `json:"buff"`
 }
 
-const buffSnapshotSchemaVersion = 2
+const buffSnapshotSchemaVersion = 3
 
 type buffLifecycleAuditRow struct {
 	SchemaVersion                          int              `json:"schemaVersion"`
@@ -571,11 +576,20 @@ func (p *processor) handleActiveResponse(frame gameFrame, body []byte) error {
 						FrameToken: frame.token, EntityIDStatus: resolutionUnknown,
 						ComponentPath:             "EntityActiveResponse.field11(ComponentPbs[])->EntityComponentPb.field15(FightBuffComponent)->FightBuffComponentPb.field1(FightBuffInfos[])->FightBuffInformation",
 						BuffIDStatus:              resolutionCorrelated,
+						BuffDefinitionStatus:      resolutionUnknown,
+						BuffDefinitionEvidence:    "No exact normalized buff.id row has been linked; the raw BuffId remains unchanged",
 						BuffSemanticStatus:        resolutionUnknown,
-						BuffSemanticEvidence:      "FightBuffInformation.BuffId is preserved as a raw typed field; its static-definition versus runtime-effect semantics are unresolved, and ConfBuffId is kept separate when present",
+						BuffSemanticEvidence:      "This status covers runtime application and effect semantics; static row lookup is reported separately, and snapshot presence does not establish application or uptime",
 						clientSchemaVersion:      "Global 3.7.1",
 						WindowsSchemaVerification: "Windows Global UHD 3.7.1 Aki.Protocol metadata; client/master compatibility UNKNOWN",
 						Buff:                      record,
+					}
+					if record.HasID && p.masters != nil && p.masters.hasBuffDefinition(record.ID) {
+						definitionID := record.ID
+						row.BuffDefinitionStatus = resolutionCorrelated
+						row.BuffDefinitionTable = "buff"
+						row.BuffDefinitionID = &definitionID
+						row.BuffDefinitionEvidence = "FightBuffInformation.BuffId follows the client's BuffById lookup; exact normalized buff.id row found. This links static attributes only and does not establish runtime application or effect semantics"
 					}
 					if record.HasInstigatorID {
 						row.InstigatorSemantics = resolutionCorrelated

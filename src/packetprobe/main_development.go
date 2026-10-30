@@ -55,6 +55,7 @@ func main() {
 	damagePushOutPath := flag.String("damage-push-out", "", "optional JSONL of pushed DamageExecuteNotify records, separate from the damage RPC stream (requires -protocol-schema)")
 	skillRefOutPath := flag.String("skill-ref-out", "", "optional JSONL of every SkillId in combat messages with its EntitySkillPreload namespace check (requires -protocol-schema)")
 	bulletRefOutPath := flag.String("bullet-ref-out", "", "optional JSONL of BulletId fields in outbound and inbound combat messages with namespace and resolution evidence (requires -protocol-schema)")
+	shieldRefOutPath := flag.String("shield-ref-out", "", "optional JSONL of inbound ShieldUpdateInfo.ConfigId references resolved only against shield.Id (requires -protocol-schema and -master-db)")
 	clientPushOutPath := flag.String("client-push-out", "", "optional JSONL of skill requests, role reports, and skill-end pushes (requires -protocol-schema)")
 	summonOwnerOutPath := flag.String("summon-owner-out", "", "optional JSONL of summoner, concomitant and dependence facts from join and entity-add messages (requires -protocol-schema)")
 	frameArchiveOut := flag.String("frame-archive-out", "", "optionally write one local JSONL record per reassembled frame (digests only; no key or plaintext)")
@@ -290,6 +291,28 @@ func main() {
 		defer func() {
 			if err := bulletWriter.Flush(); err != nil {
 				fmt.Fprintf(os.Stderr, "bullet reference flush error: %v\n", err)
+			}
+		}()
+	}
+	if *shieldRefOutPath != "" {
+		if processor.protocolSchema == nil || masters == nil {
+			fatal("shield reference output", fmt.Errorf("-shield-ref-out requires -protocol-schema and -master-db"))
+		}
+		if dir := filepath.Dir(*shieldRefOutPath); dir != "." {
+			if err := os.MkdirAll(dir, 0o700); err != nil {
+				fatal("create shield reference directory", err)
+			}
+		}
+		shieldFile, err := os.Create(*shieldRefOutPath)
+		if err != nil {
+			fatal("create shield reference output", err)
+		}
+		defer shieldFile.Close()
+		shieldWriter := bufio.NewWriter(shieldFile)
+		processor.shieldRefOut = shieldWriter
+		defer func() {
+			if err := shieldWriter.Flush(); err != nil {
+				fmt.Fprintf(os.Stderr, "shield reference flush error: %v\n", err)
 			}
 		}()
 	}
@@ -617,6 +640,9 @@ finished:
 	fmt.Fprintf(os.Stderr, "schema_decode errors=%d skipped_without_schema=%d\n", processor.schemaDecodeErrors, processor.schemaDecodeSkipped)
 	if processor.roleConfigOut != nil {
 		fmt.Fprintf(os.Stderr, "role_config errors=%d\n", processor.roleConfigErrors)
+	}
+	if processor.shieldRefOut != nil {
+		fmt.Fprintf(os.Stderr, "shield_reference errors=%d\n", processor.shieldRefErrors)
 	}
 	processor.printSummary(os.Stderr)
 	fmt.Fprintf(os.Stderr, "capture_finished udp=%d kcp_push=%d kcp_ordered=%d kcp_messages=%d protocol_frames=%d bad_crc=%d malformed_frames=%d kernel_drops=%d duration=%s\n",
