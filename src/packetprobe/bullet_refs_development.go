@@ -62,23 +62,29 @@ func (p *processor) observeBulletReferences(frame gameFrame, data *decodedMessag
 	p.walkBulletReferences(frame, data, "Data", nil, nil, direction)
 }
 
-// archiveBulletRefReceiveFrame handles the inbound combat notification frame (command 25706), whose
-// CombatNotifyData items carry bullet creation, damage records, and the damage notify itself.
+// archiveBulletRefReceiveFrame handles standalone and response-embedded inbound combat notifications.
 func (p *processor) archiveBulletRefReceiveFrame(frame gameFrame, plain []byte) {
-	if (p.bulletRefOut == nil && p.skillRefOut == nil) || p.protocolSchema == nil || frame.commandID != 25706 {
+	if (p.bulletRefOut == nil && p.skillRefOut == nil) || p.protocolSchema == nil || (frame.commandID != 25706 && frame.commandID != 20332) {
 		return
 	}
-	decoded, err := decodeSchemaMessage(p.protocolSchema, "CombatReceivePackNotify", plain, 0)
+	payloads, err := receivePackNotifyBodies(frame.commandID, plain)
 	if err != nil {
 		p.bulletRefErrors++
 		return
 	}
-	for _, data := range childMessages(decoded, "Data") {
-		if p.bulletRefOut != nil {
-			p.observeBulletReferences(frame, data, "in")
+	for _, payload := range payloads {
+		decoded, err := decodeSchemaMessage(p.protocolSchema, "CombatReceivePackNotify", payload, 0)
+		if err != nil {
+			p.bulletRefErrors++
+			continue
 		}
-		if p.skillRefOut != nil {
-			p.observeSkillReferences(frame, data, "in")
+		for _, data := range childMessages(decoded, "Data") {
+			if p.bulletRefOut != nil {
+				p.observeBulletReferences(frame, data, "in")
+			}
+			if p.skillRefOut != nil {
+				p.observeSkillReferences(frame, data, "in")
+			}
 		}
 	}
 }

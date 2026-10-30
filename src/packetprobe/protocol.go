@@ -448,6 +448,11 @@ func (p *processor) handleFrame(frame gameFrame) {
 		p.handleDamageRequests(plain)
 	case 20332:
 		p.handleDamageResponses(plain)
+		if err := p.handleEmbeddedCombatReceivePackNotify(frame, plain); err != nil {
+			p.stats.parseErrors++
+			fmt.Fprintf(p.diagnostic, "combat_response_notify_parse_error=%v\n", err)
+			return
+		}
 	case 17250, 28030:
 		// TimeCheckResponse and UpdateTimerInfoNotify are interpreted by the
 		// schema-directed observer to preserve their observed field provenance.

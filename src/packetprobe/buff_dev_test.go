@@ -168,6 +168,44 @@ func TestCombatReceivePackNotifyDecodesInnerBuffApply(t *testing.T) {
 	}
 }
 
+func TestCombatSendPackResponseProcessesNestedBuffApply(t *testing.T) {
+	var lifecycle bytes.Buffer
+	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
+	p.buffLifecycle = &lifecycle
+	p.census = newCommandCensus()
+	p.sessionNumber = 4
+
+	apply := appendVarintField(nil, 2, 501)     // Handle
+	apply = appendVarintField(apply, 11, 71001) // Id
+	apply = appendVarintField(apply, 7, 8801)   // EntityId
+	apply = appendVarintField(apply, 8, 99002)  // InstigatorId
+	notify := appendBytesField(nil, 5, apply)   // CombatNotifyData.ApplyGameplayEffectNotify
+	data := appendBytesField(nil, 2, notify)    // CombatReceiveData.CombatNotifyData
+	receive := appendBytesField(nil, 5, data)   // CombatReceivePackNotify.Data[]
+	body := appendBytesField(nil, 14, receive)  // CombatSendPackResponse.ReceivePackNotify
+	frame := gameFrame{commandID: 20332, direction: "in", timestamp: time.Date(2026, 10, 27, 5, 0, 0, 0, time.UTC)}
+
+	if err := p.handleEmbeddedCombatReceivePackNotify(frame, body); err != nil {
+		t.Fatalf("handle embedded CombatReceivePackNotify: %v", err)
+	}
+	var row buffLifecycleAuditRow
+	if err := json.Unmarshal(bytes.TrimSpace(lifecycle.Bytes()), &row); err != nil {
+		t.Fatalf("decode lifecycle JSONL: %v", err)
+	}
+	if row.CommandID != 20332 || row.MessageID != 20332 || row.InnerMessageFieldNumber == nil || *row.InnerMessageFieldNumber != 5 {
+		t.Fatalf("outer and inner message provenance = %+v", row)
+	}
+	if row.MessageName != "ApplyGameplayEffectNotify" || row.EventKind != "GAMEPLAY_EFFECT_APPLY" || row.SessionNumber != 4 {
+		t.Fatalf("inner Buff classification = %+v", row)
+	}
+	if row.TargetEntityID == nil || *row.TargetEntityID != 8801 || row.InstigatorID == nil || *row.InstigatorID != 99002 {
+		t.Fatalf("inner Buff target/provider raw fields = %+v", row)
+	}
+	if p.census.combatNotifyFields[5] != 1 {
+		t.Fatalf("CombatNotifyData field 5 observations = %d, want 1", p.census.combatNotifyFields[5])
+	}
+}
+
 func TestCombatReceivePackNotifyCarriesCombatCommonContextWithBuffRequest(t *testing.T) {
 	var lifecycle bytes.Buffer
 	p := &processor{
