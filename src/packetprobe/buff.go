@@ -94,6 +94,16 @@ type buffLifecycleAuditRow struct {
 	BuffDefinitionID                       *uint64          `json:"buffDefinitionId,omitempty"`
 	BuffDefinitionEvidence                 string           `json:"buffDefinitionEvidence,omitempty"`
 	ID                                     *uint64          `json:"id,omitempty"`
+	// GenericID* link the untyped Id of apply-type messages to buff.id. They are separate from the
+	// typed BuffDefinition* fields: the field is not named BuffId, so the basis is capture-internal evidence.
+	GenericIDDefinitionStatus   resolutionStatus `json:"genericIdDefinitionStatus,omitempty"`
+	GenericIDDefinitionTable    string           `json:"genericIdDefinitionTable,omitempty"`
+	GenericIDDefinitionID       *uint64          `json:"genericIdDefinitionId,omitempty"`
+	GenericIDDefinitionEvidence string           `json:"genericIdDefinitionEvidence,omitempty"`
+	// HandleLinked* tie a handle-only event (duration, stack, effect removal) to the apply event that created the handle.
+	HandleLinkedID       *uint64          `json:"handleLinkedId,omitempty"`
+	HandleLinkedStatus   resolutionStatus `json:"handleLinkedStatus,omitempty"`
+	HandleLinkedEvidence string           `json:"handleLinkedEvidence,omitempty"`
 	ConfBuffID                             *uint64          `json:"confBuffId,omitempty"`
 	InstigatorID                           *uint64          `json:"instigatorIdRaw,omitempty"`
 	InstigatorStatus                       resolutionStatus `json:"instigatorSemanticsStatus"`
@@ -128,7 +138,7 @@ type buffLifecycleAuditRow struct {
 	UnknownFieldNumbers                    []uint64         `json:"unknownFieldNumbers,omitempty"`
 }
 
-const buffLifecycleSchemaVersion = 4
+const buffLifecycleSchemaVersion = 5
 
 func decodeBuffLifecycleMessage(frame gameFrame, body []byte) (buffLifecycleAuditRow, error) {
 	return decodeBuffLifecycleMessageForCommand(frame, body, frame.commandID, nil)
@@ -358,6 +368,7 @@ func (p *processor) handleBuffLifecycleMessage(frame gameFrame, body []byte) err
 	}
 	row.SessionNumber = p.sessionNumber
 	p.linkBuffLifecycleDefinition(&row)
+	p.linkBuffLifecycleGenericAndHandle(&row)
 	if p.buffLifecycle != nil {
 		if err := json.NewEncoder(p.buffLifecycle).Encode(row); err != nil {
 			return fmt.Errorf("write Buff lifecycle row: %w", err)
@@ -491,6 +502,7 @@ func (p *processor) handleInnerBuffLifecycleMessage(frame gameFrame, innerFieldN
 	}
 	row.SessionNumber = p.sessionNumber
 	p.linkBuffLifecycleDefinition(&row)
+	p.linkBuffLifecycleGenericAndHandle(&row)
 	if p.buffLifecycle != nil {
 		if err := json.NewEncoder(p.buffLifecycle).Encode(row); err != nil {
 			return fmt.Errorf("write Buff lifecycle row: %w", err)
@@ -499,6 +511,97 @@ func (p *processor) handleInnerBuffLifecycleMessage(frame gameFrame, innerFieldN
 	p.observeBuffInterval(row)
 	p.writeStructuredEventJSONL(row)
 	return nil
+}
+
+const maxBuffHandles = 1 << 16
+
+// buffHandleKey scopes a lifecycle handle id to the session and the entity that holds the buff.
+type buffHandleKey struct {
+	session  int
+	entityID uint64
+	handleID uint64
+}
+
+type buffHandleEntry struct {
+	id         uint64
+	definition bool
+}
+
+func lifecycleEntity(row *buffLifecycleAuditRow) (uint64, bool) {
+	if row.TargetEntityID != nil {
+		return *row.TargetEntityID, true
+	}
+	if row.CombatCommonEntityID != nil {
+		return *row.CombatCommonEntityID, true
+	}
+	return 0, false
+}
+
+// linkBuffLifecycleGenericAndHandle adds two CORRELATED static links that never touch the typed BuffId fields.
+//  1. The untyped Id of ApplyBuffS2cRequestNotify and ApplyGameplayEffectNotify is looked up in buff.id.
+//     Basis: every saved Id has an exact buff.id row in the sparse id space, and most also occur as typed BuffIds.
+//  2. A handle-only event is tied to the earlier apply under the same (session, entity, handle); the link is
+//     dropped when the handle was applied with different ids.
+func (p *processor) linkBuffLifecycleGenericAndHandle(row *buffLifecycleAuditRow) {
+	if row == nil {
+		return
+	}
+	entityID, hasEntity := lifecycleEntity(row)
+	switch row.EventKind {
+	case "BUFF_APPLY_REQUEST_NOTIFY", "GAMEPLAY_EFFECT_APPLY":
+		if row.ID == nil {
+			return
+		}
+		row.GenericIDDefinitionStatus = resolutionUnknown
+		row.GenericIDDefinitionEvidence = "No exact normalized buff.id row for the untyped Id; raw Id unchanged"
+		found := p.masters != nil && p.masters.hasBuffDefinition(*row.ID)
+		if found {
+			definitionID := *row.ID
+			row.GenericIDDefinitionStatus = resolutionCorrelated
+			row.GenericIDDefinitionTable = "buff"
+			row.GenericIDDefinitionID = &definitionID
+			row.GenericIDDefinitionEvidence = "The untyped Id of this apply message has an exact normalized buff.id row; namespace evidence is capture-internal (see the lifecycle Id namespace audit), not a typed BuffId field. Static row reference only: application effect and uptime are unresolved"
+		}
+		if row.EventKind == "GAMEPLAY_EFFECT_APPLY" && row.HandleID != nil && hasEntity {
+			if p.buffHandles == nil {
+				p.buffHandles = make(map[buffHandleKey]buffHandleEntry)
+			}
+			key := buffHandleKey{p.sessionNumber, entityID, *row.HandleID}
+			if previous, exists := p.buffHandles[key]; exists {
+				if previous.id != *row.ID {
+					p.buffHandles[key] = buffHandleEntry{id: 0}
+				}
+			} else {
+				p.buffHandleOrder = append(p.buffHandleOrder, key)
+				p.buffHandles[key] = buffHandleEntry{id: *row.ID, definition: found}
+			}
+			for len(p.buffHandleOrder) > maxBuffHandles {
+				delete(p.buffHandles, p.buffHandleOrder[0])
+				p.buffHandleOrder = p.buffHandleOrder[1:]
+			}
+		}
+	case "BUFF_DURATION_CHANGE", "BUFF_STACK_COUNT_CHANGE", "GAMEPLAY_EFFECT_REMOVE", "BUFF_REMOVE_REQUEST_NOTIFY":
+		if row.HandleID == nil || !hasEntity {
+			return
+		}
+		row.HandleLinkedStatus = resolutionUnknown
+		row.HandleLinkedEvidence = "No earlier ApplyGameplayEffect with this (session, entity, handle) was observed"
+		entry, ok := p.buffHandles[buffHandleKey{p.sessionNumber, entityID, *row.HandleID}]
+		switch {
+		case !ok:
+		case entry.id == 0:
+			row.HandleLinkedEvidence = "The handle was applied more than once with different ids; the link is rejected"
+		default:
+			linked := entry.id
+			row.HandleLinkedID = &linked
+			row.HandleLinkedEvidence = "Same (session, entity, handle) as an earlier ApplyGameplayEffectNotify; the Id is inherited from that apply message"
+			row.HandleLinkedStatus = resolutionCorrelated
+			if !entry.definition {
+				row.HandleLinkedStatus = resolutionUnknown
+				row.HandleLinkedEvidence += "; that Id has no exact buff.id row"
+			}
+		}
+	}
 }
 
 // linkBuffLifecycleDefinition resolves only explicitly decoded BuffId fields to exact buff.Id rows.

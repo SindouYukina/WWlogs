@@ -166,6 +166,8 @@ type processor struct {
 	skillRefOut               diagWriter
 	skillRefErrors            int
 	bulletHandles             map[bulletHandleKey]bulletHandleEntry
+	buffHandles               map[buffHandleKey]buffHandleEntry
+	buffHandleOrder           []buffHandleKey
 	bulletHandleOrder         []bulletHandleKey
 	combatActionRequests      map[combatActionRequestKey]combatActionRequest
 	combatActionOrder         []combatActionRequestKey
