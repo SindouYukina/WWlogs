@@ -526,6 +526,9 @@ func (p *processor) linkBuffLifecycleOwners(row *buffLifecycleAuditRow) {
 	}
 	if id, ok := row.buffOwnerLookupID(); ok {
 		row.BuffOwners = resolveBuffOwners(p.masters, id)
+	} else if row.BuffID != nil {
+		// No static definition: only an observed-role owner can exist for the raw BuffId.
+		row.BuffOwners = resolveBuffOwners(p.masters, *row.BuffID)
 	}
 }
 
@@ -741,6 +744,9 @@ func (p *processor) handleActiveResponse(frame gameFrame, body []byte) error {
 						row.BuffDefinitionTable = "buff"
 						row.BuffDefinitionID = &definitionID
 						row.BuffDefinitionEvidence = "FightBuffInformation.BuffId follows the client's BuffById lookup; exact normalized buff.id row found. This links static attributes only and does not establish runtime application or effect semantics"
+						row.BuffOwners = resolveBuffOwners(p.masters, record.ID)
+					} else if record.HasID {
+						// No static definition: only an observed-role owner can exist; the definition status stays UNKNOWN.
 						row.BuffOwners = resolveBuffOwners(p.masters, record.ID)
 					}
 					if record.HasInstigatorID {

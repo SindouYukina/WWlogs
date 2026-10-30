@@ -10,7 +10,7 @@ import (
 const maxBuffOwnerNames = 5
 
 // buffOwnerText names a game feature that lists a Buff id in an explicit Buff-id reference table
-// (a resonant chain node, an echo set bonus, a weapon passive or a skill). The Buff itself has no
+// (a resonant chain node, an echo set bonus, a weapon passive, a skill or a role observed carrying it). The Buff itself has no
 // display name in the master; this is the readable text of the feature that grants it.
 type buffOwnerText struct {
 	Kind        string   `json:"kind"`
@@ -33,19 +33,26 @@ var buffOwnerQueries = []struct {
 	kind   string
 	tables []string
 	query  string
+	// anyBuff keeps rows whose Buff id has no static definition; the observation itself is the evidence.
+	anyBuff bool
 }{
 	{"resonantchain", []string{"resonantchain_buff_ids", "resonantchain_locale"},
 		`SELECT CAST(b.value AS TEXT),CAST(b.owner_id AS TEXT),l.name FROM resonantchain_buff_ids b
-		 JOIN resonantchain_locale l ON l.id=b.owner_id AND l.locale=? AND l.name<>''`},
+		 JOIN resonantchain_locale l ON l.id=b.owner_id AND l.locale=? AND l.name<>''`, false},
 	{"phantomfetter", []string{"phantomfetter_buff_ids", "phantomfetter_locale"},
 		`SELECT CAST(b.value AS TEXT),CAST(b.owner_id AS TEXT),l.name FROM phantomfetter_buff_ids b
-		 JOIN phantomfetter_locale l ON l.id=b.owner_id AND l.locale=? AND l.name<>''`},
+		 JOIN phantomfetter_locale l ON l.id=b.owner_id AND l.locale=? AND l.name<>''`, false},
 	{"weaponreson", []string{"weaponreson_effect", "weaponreson_locale"},
 		`SELECT CAST(b.value AS TEXT),CAST(b.owner_id AS TEXT),l.name FROM weaponreson_effect b
-		 JOIN weaponreson_locale l ON l.id=b.owner_id AND l.locale=? AND l.name<>''`},
+		 JOIN weaponreson_locale l ON l.id=b.owner_id AND l.locale=? AND l.name<>''`, false},
 	{"skill", []string{"skill_buff_ref", "skilldescription_locale"},
 		`SELECT CAST(b.buff_id AS TEXT),CAST(b.skill_id AS TEXT),l.name FROM skill_buff_ref b
-		 JOIN skilldescription_locale l ON l.id=b.skill_id AND l.locale=? AND l.name<>''`},
+		 JOIN skilldescription_locale l ON l.id=b.skill_id AND l.locale=? AND l.name<>''`, false},
+	// role_observation: the role carried this Buff as an active, self-instigated, indefinite-duration Buff in a capture.
+	// It names the role only; it does not say which feature of the role grants the Buff.
+	{"role_observation", []string{"role_buff_observation", "roleinfo_locale"},
+		`SELECT CAST(b.buff_id AS TEXT),CAST(b.role_id AS TEXT),l.name FROM role_buff_observation b
+		 JOIN roleinfo_locale l ON l.id=b.role_id AND l.locale=? AND l.name<>''`, true},
 }
 
 // loadSQLiteBuffOwners indexes the named owners of every Buff id that exists in the buff table.
@@ -88,7 +95,7 @@ func loadSQLiteBuffOwners(db *sql.DB, locale string, master *gameMaster) error {
 				rows.Close()
 				return err
 			}
-			if !master.hasBuffDefinition(buffID) {
+			if !source.anyBuff && !master.hasBuffDefinition(buffID) {
 				continue
 			}
 			key := ownerKey{buffID, source.kind, name}

@@ -102,3 +102,38 @@ func TestLifecycleRowsTakeOwnersFromTheLinkedBuffId(t *testing.T) {
 		t.Fatalf("an unlinked handle must not get owners: %+v", unlinked.BuffOwners)
 	}
 }
+
+func TestRoleBuffObservationNamesTheRoleEvenWithoutABuffDefinition(t *testing.T) {
+	path := buildMasterDatabaseFixture(t)
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	statements := []string{
+		"CREATE TABLE buff(id TEXT PRIMARY KEY)",
+		"INSERT INTO buff VALUES('70001')",
+		"CREATE TABLE role_buff_observation(role_id TEXT, buff_id TEXT, observation_kind TEXT, evidence_status TEXT)",
+		"INSERT INTO role_buff_observation VALUES('9001','1312010090','active_self_instigated_duration_minus_one','CORRELATED'),('9001','70001','active_self_instigated_duration_minus_one','CORRELATED'),('9002','70001','active_self_instigated_duration_minus_one','CORRELATED')",
+		"INSERT INTO roleinfo_locale VALUES('9001','zh-TW','角色甲',NULL),('9002','zh-TW','',NULL),('9002','en-US','Role B',NULL)",
+	}
+	for _, statement := range statements {
+		if _, err := db.Exec(statement); err != nil {
+			db.Close()
+			t.Fatalf("%s: %v", statement, err)
+		}
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	master, err := loadGameMasterDatabase(path, "zh-TW")
+	if err != nil {
+		t.Fatal(err)
+	}
+	owners := resolveBuffOwners(master, 1312010090)
+	if owners == nil || owners.Status != resolutionCorrelated || len(owners.Owners) != 1 || owners.Owners[0].Kind != "role_observation" || owners.Owners[0].Name != "角色甲" || owners.Owners[0].OwnerIDs[0] != 9001 {
+		t.Fatalf("an observed role must name a Buff that has no static definition: %+v", owners)
+	}
+	if got := resolveBuffOwners(master, 70001); got == nil || got.OwnerCount != 1 {
+		t.Fatalf("a role whose locale name is empty must not produce text: %+v", got)
+	}
+}
