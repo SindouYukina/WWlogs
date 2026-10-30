@@ -79,12 +79,14 @@ type gameMaster struct {
 	actorBullets    map[string]map[uint64]struct{}
 	assetPath       map[string]string
 	actorSkills     map[string]map[uint64]struct{}
+	// skillActors maps EntitySkillPreload.SkillId to the distinct actor assets that list it.
+	skillActors map[uint64]map[string]struct{}
 	// commonBulletDamage maps a CDT_CommonBulletData row key to the row's own DamageId (absent when the row names none).
 	commonBulletDamage map[uint64]uint64
 	// skillLabels maps a SkillInfo row key to the distinct developer labels (zh-CN) found across SkillInfo tables.
-	skillLabels map[uint64]map[string]struct{}
-	damage         map[uint64]damageMasterRecord
-	sceneIdentity  *sceneIdentityMaster
+	skillLabels   map[uint64]map[string]struct{}
+	damage        map[uint64]damageMasterRecord
+	sceneIdentity *sceneIdentityMaster
 }
 
 func (m *gameMaster) sceneMonster(instanceID, entityID uint64) (uint64, bool) {
@@ -153,4 +155,23 @@ func (m *gameMaster) damageSkill(skillID uint64) (masterRecord, bool) {
 func (m *gameMaster) commonSkill(skillID uint64) (masterRecord, bool) {
 	value, ok := m.commonSkills[skillID]
 	return value, ok
+}
+
+// uniqueActorForSkill returns an actor only when a non-common SkillId belongs to exactly one
+// distinct actor asset in the loaded EntitySkillPreload rows.
+func (m *gameMaster) uniqueActorForSkill(skillID uint64) (string, bool) {
+	if m == nil || skillID == 0 {
+		return "", false
+	}
+	if _, common := m.commonSkills[skillID]; common {
+		return "", false
+	}
+	owners := m.skillActors[skillID]
+	if len(owners) != 1 {
+		return "", false
+	}
+	for actor := range owners {
+		return actor, true
+	}
+	return "", false
 }

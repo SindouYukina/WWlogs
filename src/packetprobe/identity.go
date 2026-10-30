@@ -1,8 +1,8 @@
 package main
 
 import (
-	"sort"
 	"fmt"
+	"sort"
 )
 
 type resolutionStatus string
@@ -339,6 +339,16 @@ func resolveBullet(masters *gameMaster, bulletID uint64, source bulletSource) *b
 	label, inCommon := masters.commonBullets[bulletID]
 	_, inPreload := masters.preloadBullets[bulletID]
 	chains := masters.bulletChains(source)
+	if len(chains) == 0 && source.SkillID != 0 {
+		if actor, ok := masters.uniqueActorForSkill(source.SkillID); ok {
+			if _, listed := masters.actorBullets[actor][bulletID]; listed {
+				chains = append(chains, bulletChain{
+					via:   "same combat reference SkillId -> unique EntitySkillPreload actor asset; BulletId -> that actor's BulletPreload.BulletId",
+					actor: actor,
+				})
+			}
+		}
+	}
 	matched := make(map[string]string)
 	for _, chain := range chains {
 		if _, ok := masters.actorBullets[chain.actor][bulletID]; ok {

@@ -58,31 +58,32 @@ func loadGameMasterDatabase(path, locale string) (*gameMaster, error) {
 		return nil, fmt.Errorf("hash master database: %w", err)
 	}
 	master := &gameMaster{
-		manifest:       masterManifest{Language: locale, ClientRegion: "Global", SourceHash: hash},
-		databasePath:   absPath,
-		locale:         locale,
-		characters:     make(map[uint64]masterRecord),
-		charactersSkin: make(map[uint64]masterRecord),
-		ambiguousSkins: make(map[uint64]struct{}),
-		monsters:       make(map[uint64]masterRecord),
-		skills:         make(map[uint64]masterRecord),
-		commonSkills:   make(map[uint64]masterRecord),
-		roleSkins:      make(map[uint64]uint64),
-		phantomSkills:  make(map[uint64]struct{}),
-		visions:        make(map[uint64]struct{}),
-		commonBullets:  make(map[uint64]string),
-		preloadBullets: make(map[uint64]struct{}),
-		roleSkinMesh:    make(map[uint64]uint64),
-		modelActor:      make(map[uint64]string),
-		blueprintModel:  make(map[string]uint64),
-		summonBlueprint: make(map[uint64]string),
-		visionCast:      make(map[uint64][]uint64),
-		actorBullets:    make(map[string]map[uint64]struct{}),
-		assetPath:       make(map[string]string),
-		actorSkills:     make(map[string]map[uint64]struct{}),
+		manifest:           masterManifest{Language: locale, ClientRegion: "Global", SourceHash: hash},
+		databasePath:       absPath,
+		locale:             locale,
+		characters:         make(map[uint64]masterRecord),
+		charactersSkin:     make(map[uint64]masterRecord),
+		ambiguousSkins:     make(map[uint64]struct{}),
+		monsters:           make(map[uint64]masterRecord),
+		skills:             make(map[uint64]masterRecord),
+		commonSkills:       make(map[uint64]masterRecord),
+		roleSkins:          make(map[uint64]uint64),
+		phantomSkills:      make(map[uint64]struct{}),
+		visions:            make(map[uint64]struct{}),
+		commonBullets:      make(map[uint64]string),
+		preloadBullets:     make(map[uint64]struct{}),
+		roleSkinMesh:       make(map[uint64]uint64),
+		modelActor:         make(map[uint64]string),
+		blueprintModel:     make(map[string]uint64),
+		summonBlueprint:    make(map[uint64]string),
+		visionCast:         make(map[uint64][]uint64),
+		actorBullets:       make(map[string]map[uint64]struct{}),
+		assetPath:          make(map[string]string),
+		actorSkills:        make(map[string]map[uint64]struct{}),
+		skillActors:        make(map[uint64]map[string]struct{}),
 		commonBulletDamage: make(map[uint64]uint64),
-		skillLabels:     make(map[uint64]map[string]struct{}),
-		damage:         make(map[uint64]damageMasterRecord),
+		skillLabels:        make(map[uint64]map[string]struct{}),
+		damage:             make(map[uint64]damageMasterRecord),
 		sceneIdentity: &sceneIdentityMaster{
 			instanceMaps:    make(map[uint64]uint64),
 			levelMonsters:   make(map[sceneLevelKey]uint64),
@@ -342,6 +343,12 @@ func loadSQLiteActorChain(db *sql.DB, master *gameMaster) error {
 			master.actorSkills[a.String] = set
 		}
 		set[skill] = struct{}{}
+		owners := master.skillActors[skill]
+		if owners == nil {
+			owners = make(map[string]struct{})
+			master.skillActors[skill] = owners
+		}
+		owners[a.String] = struct{}{}
 		return nil
 	}); err != nil {
 		return err

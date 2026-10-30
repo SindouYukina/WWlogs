@@ -473,6 +473,8 @@ func TestResolveBulletFollowsSourceChainToExactlyOneActor(t *testing.T) {
 		"INSERT INTO vision VALUES('280026','280026010')",
 		"CREATE TABLE bulletpreload(id TEXT PRIMARY KEY,actor_asset_id TEXT,bullet_id TEXT)",
 		"INSERT INTO bulletpreload VALUES('1','actorA','111'),('2','actorB','222'),('3','actorV','280026012'),('4','actorA','333'),('5','actorB','333'),('6','actorA','444')",
+		"CREATE TABLE entityskillpreload(id TEXT PRIMARY KEY,actor_asset_id TEXT,skill_id TEXT)",
+		"INSERT INTO entityskillpreload VALUES('1','actorA','501'),('2','actorA','502'),('3','actorB','502'),('4','actorB','503')",
 		"CREATE TABLE commonbullet(id TEXT PRIMARY KEY,dev_name_zh_cn TEXT)",
 		"INSERT INTO commonbullet VALUES('210002005','label-a'),('444','label-shared')",
 	} {
@@ -488,9 +490,24 @@ func TestResolveBulletFollowsSourceChainToExactlyOneActor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if actor, ok := master.uniqueActorForSkill(501); !ok || actor != "actorA" {
+		t.Fatalf("a SkillId listed by exactly one actor asset must resolve in the reverse index: %q %t", actor, ok)
+	}
+	if _, ok := master.uniqueActorForSkill(502); ok {
+		t.Fatal("a SkillId listed by multiple actor assets must remain ambiguous")
+	}
 	character := bulletSource{RoleSkinID: 9001, HasRoleSkin: true}
 	if r := resolveBullet(master, 111, character); r.Status != resolutionCorrelated || r.Namespace != "BulletPreload.ActorBlueprint" || r.ActorBlueprint != "/Game/A.A_C" {
 		t.Fatalf("a character bullet held by its own actor must correlate: %+v", r)
+	}
+	if r := resolveBullet(master, 111, bulletSource{SkillID: 501}); r.Status != resolutionCorrelated || r.ActorBlueprint != "/Game/A.A_C" || r.Via == "" {
+		t.Fatalf("a co-referenced SkillId with one actor owner must resolve its listed bullet: %+v", r)
+	}
+	if r := resolveBullet(master, 222, bulletSource{SkillID: 502}); r.Status != resolutionUnknown {
+		t.Fatalf("a SkillId shared by multiple actors must not select a bullet owner: %+v", r)
+	}
+	if r := resolveBullet(master, 222, bulletSource{RoleSkinID: 9001, HasRoleSkin: true, SkillID: 503}); r.Status != resolutionUnknown {
+		t.Fatalf("a runtime source chain must not be overridden by a conflicting SkillId owner: %+v", r)
 	}
 	if r := resolveBullet(master, 222, character); r.Status != resolutionUnknown {
 		t.Fatalf("a bullet held only by another actor must not resolve for this source: %+v", r)

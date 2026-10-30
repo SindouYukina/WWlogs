@@ -164,25 +164,25 @@ func (p *processor) writeBulletReference(frame gameFrame, message, parent *decod
 	candidates := bulletSourceCandidates(message, parent, common)
 	var identity entityIdentity
 	found := false
-	for _, candidate := range candidates {
-		resolved := resolveEntityIdentity(p.entities, p.masters, uint64(candidate.id))
-		if resolved.RuntimeStatus == resolutionUnknown {
-			continue
-		}
+	if len(candidates) != 0 {
+		candidate := candidates[0]
 		id := candidate.id
 		record.SourceEntityID, record.SourceBasis = &id, candidate.basis
-		identity, found = resolved, true
-		break
+		resolved := resolveEntityIdentity(p.entities, p.masters, uint64(candidate.id))
+		if resolved.RuntimeStatus != resolutionUnknown {
+			identity, found = resolved, true
+		}
 	}
 	switch {
 	case message.Type == "InterruptSkillInfo":
 		p.resolveBulletHandle(&record)
 	case p.masters == nil:
 		record.Evidence = "no master database loaded"
-	case !found:
-		record.Evidence = "no candidate source entity is known to the runtime resolver"
 	default:
-		source := newBulletSource(identity, skillID, p.entities.visionSummonConfigs(uint64(*record.SourceEntityID)))
+		source := bulletSource{SkillID: skillID}
+		if found {
+			source = newBulletSource(identity, skillID, p.entities.visionSummonConfigs(uint64(*record.SourceEntityID)))
+		}
 		if resolution := resolveBullet(p.masters, uint64(bulletID), source); resolution != nil {
 			record.Status, record.Namespace, record.ActorBlueprint, record.Via = resolution.Status, resolution.Namespace, resolution.ActorBlueprint, resolution.Via
 			record.DevLabelZhCn, record.Evidence = resolution.DevLabelZh, resolution.Proof

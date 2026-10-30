@@ -7,9 +7,8 @@ import (
 	"strings"
 )
 
-// resolveSkillRef checks a SkillId against the actors reachable from the firing entity. The chain
-// deliberately omits the skill-derived echo link, so the skill never helps choose the actor that
-// is then used to validate it.
+// resolveSkillRef validates a SkillId against an available source chain or a unique static owner.
+// The skill-derived echo link remains excluded because it cannot independently validate itself.
 func resolveSkillRef(masters *gameMaster, skillID uint64, source bulletSource) (resolutionStatus, string, string, string) {
 	if masters == nil {
 		return resolutionUnknown, "", "", "no master database loaded"
@@ -28,6 +27,10 @@ func resolveSkillRef(masters *gameMaster, skillID uint64, source bulletSource) (
 			"the SkillId is a CommonSkillPreload row, loaded for every actor rather than listed per actor; client build observed, master compatibility unverified"
 	}
 	if len(chains) == 0 {
+		if actor, ok := masters.uniqueActorForSkill(skillID); ok {
+			return resolutionCorrelated, "EntitySkillPreload.SkillId", masters.assetPath[actor],
+				"SkillId -> exactly one distinct EntitySkillPreload.ActorAssetId -> AssetReference.Path in the loaded master; client build observed, master compatibility unverified"
+		}
 		return resolutionUnknown, "", "", "the source entity has no actor chain in the loaded master"
 	}
 	return resolutionUnknown, "", "", "the SkillId is not listed by any source-chain actor or by CommonSkillPreload"
@@ -87,24 +90,23 @@ func (p *processor) writeSkillReference(frame gameFrame, message, parent *decode
 	}
 	var identity entityIdentity
 	found := false
-	for _, candidate := range skillSourceCandidates(message, parent, common) {
-		resolved := resolveEntityIdentity(p.entities, p.masters, uint64(candidate.id))
-		if resolved.RuntimeStatus == resolutionUnknown {
-			continue
-		}
+	candidates := skillSourceCandidates(message, parent, common)
+	if len(candidates) != 0 {
+		candidate := candidates[0]
 		id := candidate.id
 		record.SourceEntityID, record.SourceBasis = &id, candidate.basis
-		identity, found = resolved, true
-		break
-	}
-	if !found {
-		record.Evidence = "no candidate source entity is known to the runtime resolver"
-		if p.masters == nil {
-			record.Evidence = "no master database loaded"
+		resolved := resolveEntityIdentity(p.entities, p.masters, uint64(candidate.id))
+		if resolved.RuntimeStatus != resolutionUnknown {
+			identity, found = resolved, true
 		}
-	} else {
-		source := newBulletSource(identity, 0, p.entities.visionSummonConfigs(uint64(*record.SourceEntityID)))
-		record.Status, record.Namespace, record.ActorBlueprint, record.Evidence = resolveSkillRef(p.masters, uint64(skillID), source)
+	}
+	source := bulletSource{}
+	if found {
+		source = newBulletSource(identity, 0, p.entities.visionSummonConfigs(uint64(*record.SourceEntityID)))
+	}
+	record.Status, record.Namespace, record.ActorBlueprint, record.Evidence = resolveSkillRef(p.masters, uint64(skillID), source)
+	if !found && record.Status == resolutionUnknown && p.masters != nil {
+		record.Evidence = "no candidate source entity is known to the runtime resolver; " + record.Evidence
 	}
 	if label := resolveSkillLabel(p.masters, uint64(skillID)); label != nil && label.Status == resolutionCorrelated {
 		record.DevLabelZhCn = label.Label

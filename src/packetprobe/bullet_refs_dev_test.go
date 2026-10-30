@@ -53,6 +53,37 @@ func TestBulletSourceCandidatesFollowThePerMessageRule(t *testing.T) {
 	}
 }
 
+func TestBulletReferenceKeepsThePrimaryRawSourceWhenResolverCannotResolveIt(t *testing.T) {
+	var out bytes.Buffer
+	masters := &gameMaster{
+		commonBullets:  map[uint64]string{},
+		preloadBullets: map[uint64]struct{}{111: {}},
+		roleSkinMesh:   map[uint64]uint64{9001: 10},
+		modelActor:     map[uint64]string{10: "actorA"},
+		actorBullets:   map[string]map[uint64]struct{}{"actorA": {111: {}}},
+		assetPath:      map[string]string{"actorA": "/Game/A.A_C"},
+	}
+	entities := newEntityResolver()
+	entities.entities[11] = runtimeEntity{entityID: 11, roleSkinID: 9001, hasRoleSkinID: true}
+	processor := &processor{bulletRefOut: &out, masters: masters, entities: entities, sessionNumber: 1, frameOrdinal: 2}
+	message := &decodedMessage{Type: "CreateBulletPush", Fields: []decodedField{
+		scalarField("BulletId", 111),
+		scalarField("OwnerEntityId", 22),
+	}}
+	common := &decodedMessage{Type: "CombatCommon", Fields: []decodedField{scalarField("EntityId", 11)}}
+	processor.writeBulletReference(gameFrame{}, message, nil, "Data.Push.CreateBulletPush.BulletId", 111, common, "out")
+	var record bulletRefRecord
+	if err := json.Unmarshal(bytes.TrimSpace(out.Bytes()), &record); err != nil {
+		t.Fatalf("one JSON record expected: %v (%q)", err, out.String())
+	}
+	if record.SourceEntityID == nil || *record.SourceEntityID != 22 || record.SourceBasis != "CreateBulletPush.OwnerEntityId" {
+		t.Fatalf("the primary raw owner must be preserved even when the runtime resolver does not know it: %+v", record)
+	}
+	if record.Status != resolutionUnknown {
+		t.Fatalf("a later sender candidate must not replace the unresolved primary owner: %+v", record)
+	}
+}
+
 func TestWalkBulletReferencesFindsNestedBulletIdsWithoutAMaster(t *testing.T) {
 	var out bytes.Buffer
 	p := &processor{bulletRefOut: &out, entities: newEntityResolver(), frameOrdinal: 1}

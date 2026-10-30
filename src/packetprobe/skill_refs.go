@@ -2,8 +2,7 @@ package main
 
 const skillRefSchemaVersion = 1
 
-// skillRefRecord is one SkillId carried by a combat message with its namespace check: whether the
-// SkillId is a skill the firing entity's actor lists in EntitySkillPreload.
+// skillRefRecord is one SkillId carried by a combat message with its namespace and actor-owner evidence.
 type skillRefRecord struct {
 	SchemaVersion  int              `json:"schemaVersion"`
 	FrameOrdinal   uint64           `json:"frameOrdinal"`
