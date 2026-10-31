@@ -1,9 +1,9 @@
-# WWlogs v0.2.1 發布候選
+# WWlogs v0.2.1
 
 日期：2026-11-01（Asia/Tokyo）
-狀態：本機 release candidate。GitHub repository 目前無法存取；尚未 push、尚未建立 GitHub Release，也尚未移除 v0.2.0 Release 或 tag。
+狀態：GitHub Release `v0.2.1` 已發布於恢復的 private repository；資產已上傳並驗證 SHA-256。
 
-Windows x64 產物：`WWlogs.exe`，15,515,648 bytes，SHA-256 `c6e34a937c23a32d9732694b3e551d5d07f5314374963c352d452e3d54459e23`。建置方式：`go run ./scripts/embed-key.go -o ./bin/WWlogs.exe`。本機發布副本位於忽略版控的 `work/github-release-assets/v0.2.1/WWlogs.exe`，與 `bin/WWlogs.exe` 的雜湊一致。
+Windows x64 產物：`WWlogs.exe`，15,515,648 bytes，SHA-256 `c6e34a937c23a32d9732694b3e551d5d07f5314374963c352d452e3d54459e23`。建置方式：`go run ./scripts/embed-key.go -o ./bin/WWlogs.exe`。GitHub Release 資產雜湊與本機建置副本一致。
 
 Master DB：`data/master_data.db`，72,069,120 bytes，SHA-256 `9f2d56ba0e2577a000fd112ad4a1feBA62B2CA6D56F988979D7862FFB682535F`。
 
@@ -31,12 +31,12 @@ Master DB：`data/master_data.db`，72,069,120 bytes，SHA-256 `9f2d56ba0e2577a0
 
 三組 PCAP 都沒有足夠證據把任何事件確定分類為與玩家無關，因此這次 replay 沒有隱藏事件。這是保留未知資料的預期結果；單元測試另外驗證雙端已確認為環境實體時會被過濾。玩家關聯目前只由精確的本機 current-role entity 與已驗證的 Summoner owner chain 證明；其他關聯若無證據會保留並標示為 unresolved。
 
-目前 Git remote 不存在，GitHub repository 尚未恢復，因此公開 push、GitHub Release 與 v0.2.0 遠端 Release/tag 清理尚未執行。v0.2.0 tag 暫時保留，直到 v0.2.1 成功發布並驗證。
+GitHub Release `v0.2.1` 已發布，遠端資產 SHA-256 與本機檔案一致；Live/Npcap 仍為 NOT RUN。
 
 # WWlogs v0.2.0 歷史發布紀錄
 
 日期：2026-11-01（Asia/Tokyo）
-狀態：曾發布的歷史版本；v0.2.1 尚未公開前，依替換順序保留本機 v0.2.0 Tag。GitHub repository 目前不存在，無法查驗或刪除遠端 Release／Tag。
+狀態：v0.2.0 歷史版本說明；目前版本狀態請見前文的 v0.2.1。
 
 ## 內容
 
