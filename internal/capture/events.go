@@ -389,12 +389,23 @@ func (event *combatEvent) resolveEventType(masters *gameMaster) {
 	}
 }
 
-func (p *processor) writeDamageEvent(event combatEvent) {
-	p.recordDamageForOverlap(event)
+// writeDamageEvent writes all diagnostic forms and returns whether the event
+// passes the normal player-relevance filter.
+func (p *processor) writeDamageEvent(event combatEvent) bool {
+	sourceRelation, targetRelation, visible := p.playerRelevantDamageEvent(event)
+	if visible {
+		p.recordDamageForOverlap(event)
+	}
 	p.writeStructuredEventJSONL(event.jsonlView(p.masters))
-	if _, err := fmt.Fprintln(p.stdout, event.formatNormal()); err != nil {
-		fmt.Fprintf(p.diagnostic, "stdout_write_error=%v\n", err)
-		return
+	if visible {
+		normalOutput := event.formatNormal()
+		if sourceRelation != playerRelationLocal && targetRelation != playerRelationLocal {
+			normalOutput += " [PlayerRelation: UNKNOWN]"
+		}
+		if _, err := fmt.Fprintln(p.stdout, normalOutput); err != nil {
+			fmt.Fprintf(p.diagnostic, "stdout_write_error=%v\n", err)
+			return true
+		}
 	}
 	if p.audit != nil {
 		summonerID := "?"
@@ -470,13 +481,25 @@ func (p *processor) writeDamageEvent(event combatEvent) {
 			masterLocale(p.masters), event.SkillProof)
 	}
 	if flusher, ok := p.stdout.(interface{ Flush() error }); ok {
-		if err := flusher.Flush(); err != nil {
-			fmt.Fprintf(p.diagnostic, "stdout_flush_error=%v\n", err)
-			return
+		if visible {
+			if err := flusher.Flush(); err != nil {
+				fmt.Fprintf(p.diagnostic, "stdout_flush_error=%v\n", err)
+				return true
+			}
 		}
+	}
+	if !visible {
+		p.stats.suppressedUnrelatedEvents++
+		return false
+	}
+	if sourceRelation == playerRelationLocal || targetRelation == playerRelationLocal {
+		p.stats.playerRelatedEvents++
+	} else {
+		p.stats.includedUnresolvedRelations++
 	}
 	p.stats.printed++
 	p.stats.matchedCombatResultAbs += event.Damage
+	return true
 }
 
 type optionalRuntimeID struct {

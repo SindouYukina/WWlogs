@@ -1,0 +1,181 @@
+package capture
+
+const maxTrackedLocalRoleEntities = 8192
+
+// playerRelation describes what the capture can establish about one runtime
+// entity. UNKNOWN is intentionally kept visible: lack of evidence that an
+// entity belongs to the local player is not evidence that it is unrelated.
+type playerRelation uint8
+
+const (
+	playerRelationUnknown playerRelation = iota
+	playerRelationLocal
+	playerRelationUnrelated
+)
+
+// playerRelevanceResolver records exact runtime entities reported as the
+// client's current role. It deliberately does not infer local ownership from a
+// character ID, player ID, damage request, or skill name.
+type playerRelevanceResolver struct {
+	roleEntities map[uint64]struct{}
+	order        []uint64
+}
+
+func newPlayerRelevanceResolver() *playerRelevanceResolver {
+	return &playerRelevanceResolver{roleEntities: make(map[uint64]struct{})}
+}
+
+func (r *playerRelevanceResolver) observeRoleEntity(entityID uint64) {
+	if r == nil || entityID == 0 {
+		return
+	}
+	if r.roleEntities == nil {
+		r.roleEntities = make(map[uint64]struct{})
+	}
+	if _, exists := r.roleEntities[entityID]; exists {
+		return
+	}
+	r.roleEntities[entityID] = struct{}{}
+	r.order = append(r.order, entityID)
+	for len(r.roleEntities) > maxTrackedLocalRoleEntities && len(r.order) > 0 {
+		oldest := r.order[0]
+		r.order = r.order[1:]
+		delete(r.roleEntities, oldest)
+	}
+}
+
+func (r *playerRelevanceResolver) removeEntity(entityID uint64) {
+	if r == nil || entityID == 0 {
+		return
+	}
+	delete(r.roleEntities, entityID)
+	for i, trackedID := range r.order {
+		if trackedID == entityID {
+			r.order = append(r.order[:i], r.order[i+1:]...)
+			return
+		}
+	}
+}
+
+func (r *playerRelevanceResolver) reset() {
+	if r == nil {
+		return
+	}
+	r.roleEntities = make(map[uint64]struct{})
+	r.order = nil
+}
+
+func (r *playerRelevanceResolver) isRoleEntity(entityID uint64) bool {
+	if r == nil || entityID == 0 {
+		return false
+	}
+	_, exists := r.roleEntities[entityID]
+	return exists
+}
+
+func (p *processor) isLocallyOwnedCombatEntity(entityID uint64, identity entityIdentity) bool {
+	return p.playerRelationForEntity(entityID, identity) == playerRelationLocal
+}
+
+// playerRelationForEntity marks an entity unrelated only when its observed
+// runtime ownership chain is closed and ends at a known monster or template
+// entity. Player-shaped entities, unresolved owners, and unclassified runtime
+// entities remain UNKNOWN so that potentially relevant events are not lost.
+func (p *processor) playerRelationForEntity(entityID uint64, identity entityIdentity) playerRelation {
+	if p == nil || p.playerRelevance == nil || entityID == 0 {
+		return playerRelationUnknown
+	}
+	if p.playerRelevance.isRoleEntity(entityID) {
+		return playerRelationLocal
+	}
+	if identity.RuntimeStatus != resolutionVerified || identity.Runtime.entityID != entityID || p.entities == nil {
+		return playerRelationUnknown
+	}
+
+	current := identity.Runtime
+	seen := make(map[uint64]struct{}, maxSummonerEntityDepth)
+	ambiguousOwnerLink := false
+	chainClosed := false
+	for depth := 0; depth < maxSummonerEntityDepth; depth++ {
+		if p.playerRelevance.isRoleEntity(current.entityID) {
+			return playerRelationLocal
+		}
+		if hasUnresolvedPlayerOrOwnerLink(current) {
+			ambiguousOwnerLink = true
+		}
+		if !current.hasSummonerID || current.summonerID == 0 {
+			chainClosed = true
+			break
+		}
+		parentID := current.summonerID
+		if p.playerRelevance.isRoleEntity(parentID) {
+			return playerRelationLocal
+		}
+		if _, duplicate := seen[parentID]; duplicate {
+			return playerRelationUnknown
+		}
+		seen[parentID] = struct{}{}
+		parent, status := p.entities.resolve(parentID)
+		if status != resolutionVerified || parent.entityID != parentID {
+			return playerRelationUnknown
+		}
+		current = parent
+	}
+
+	if !chainClosed || ambiguousOwnerLink || isPlayerShapedEntity(current) {
+		return playerRelationUnknown
+	}
+	environmentIdentity := entityIdentity{}
+	if current.entityID == entityID {
+		environmentIdentity = identity
+	}
+	if isKnownEnvironmentEntity(current, environmentIdentity) {
+		return playerRelationUnrelated
+	}
+	return playerRelationUnknown
+}
+
+func hasUnresolvedPlayerOrOwnerLink(entity runtimeEntity) bool {
+	return (entity.hasPlayerID && entity.playerID != 0) ||
+		(entity.hasOwnerID && entity.ownerID != 0) ||
+		(entity.hasSummonerPlayerID && entity.summonerPlayerID != 0) ||
+		(entity.hasSceneSummonerID && entity.sceneSummonerID != 0) ||
+		(entity.hasSceneSummonConfigID && entity.sceneSummonConfigID != 0) ||
+		(entity.hasSceneSummonSkillID && entity.sceneSummonSkillID != 0) ||
+		(entity.hasPlayerEntityID && entity.playerEntityID != 0) ||
+		(entity.hasPhantomRoleEntityID && entity.phantomRoleEntityID != 0) ||
+		(entity.hasWeakVisionEntityID && entity.weakVisionEntityID != 0) ||
+		(entity.hasOwnerIncID && entity.ownerIncID != 0) ||
+		(entity.hasSummonConfigID && entity.summonConfigID != 0) ||
+		(entity.hasSummonSkillID && entity.summonSkillID != 0) ||
+		(entity.hasSummonType && entity.summonType != 0) ||
+		(entity.hasFollowerSummonConfigID && entity.followerSummonConfigID != 0) ||
+		(entity.hasFollowEntityID && entity.followEntityID != 0) ||
+		len(entity.concomitantVisionIDs) > 0 || len(entity.concomitantCustomIDs) > 0 ||
+		len(entity.playerFollowers) > 0
+}
+
+func isPlayerShapedEntity(entity runtimeEntity) bool {
+	return (entity.hasRoleID && entity.roleID != 0) ||
+		(entity.hasPlayerID && entity.playerID != 0) ||
+		(entity.hasPlayerEntityID && entity.playerEntityID != 0) ||
+		(entity.hasSummonerPlayerID && entity.summonerPlayerID != 0) ||
+		len(entity.playerFollowers) > 0
+}
+
+func isKnownEnvironmentEntity(entity runtimeEntity, identity entityIdentity) bool {
+	if isPlayerShapedEntity(entity) {
+		return false
+	}
+	return (entity.hasMonsterID && entity.monsterID != 0) ||
+		(entity.hasTemplateID && entity.templateID != 0) ||
+		identity.HasMonster || len(identity.TemplateCandidates) > 0
+}
+
+// playerRelevantDamageEvent filters only events proven unrelated to the local
+// player. A local endpoint or any unresolved relation keeps the event visible.
+func (p *processor) playerRelevantDamageEvent(event combatEvent) (playerRelation, playerRelation, bool) {
+	source := p.playerRelationForEntity(event.SourceEntityID, event.Source)
+	target := p.playerRelationForEntity(event.TargetEntityID, event.Target)
+	return source, target, source != playerRelationUnrelated || target != playerRelationUnrelated
+}

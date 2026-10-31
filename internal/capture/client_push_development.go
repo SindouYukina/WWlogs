@@ -23,9 +23,6 @@ func (p *processor) archiveClientPushes(frame gameFrame, decoded *decodedMessage
 		if p.skillRefOut != nil {
 			p.observeSkillReferences(frame, data, "out")
 		}
-		if p.clientPushOut == nil {
-			continue
-		}
 		for _, push := range childMessages(data, "Push") {
 			for _, child := range push.Fields {
 				if child.Message == nil {
@@ -149,6 +146,12 @@ func (p *processor) observeRoleReport(frame gameFrame, message *decodedMessage) 
 	}
 	if hasEntity {
 		record.EntityID = &entity
+		if entity > 0 {
+			if p.playerRelevance == nil {
+				p.playerRelevance = newPlayerRelevanceResolver()
+			}
+			p.playerRelevance.observeRoleEntity(uint64(entity))
+		}
 	}
 	p.writeClientPush(record)
 }
@@ -185,6 +188,9 @@ func (p *processor) observeEndSkill(frame gameFrame, message *decodedMessage) {
 }
 
 func (p *processor) writeClientPush(record clientPushRecord) {
+	if p.clientPushOut == nil {
+		return
+	}
 	line, err := json.Marshal(record)
 	if err != nil {
 		p.clientPushErrors++
