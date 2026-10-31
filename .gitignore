@@ -1,28 +1,30 @@
-/bin/
-/work/
-/local-research/
-/data/
-/logs/
-/references/
-/docs/
+# Private local files
 /AGENTS.md
 /HANDOFF.md
-/src/packetprobe/key_static_local.go
+/bin/*
+!/bin/
+/docs/
+/research/
+/logs/
+/references/
+/research/
+/work/
+
+# Secrets and machine-local artifacts
+.env
+.env.*
 *.pem
 *.key
 *private*key*
 *session*key*
-.env
-.env.*
 *.pcap
 *.pcapng
-*.log
 *.ndjson
+*.log
 *.exe
 *.dll
 *.so
 *.pak
-/research/
 
 # Diagnostic and capture artifacts must never be tracked
 *.jsonl
