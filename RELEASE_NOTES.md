@@ -1,11 +1,11 @@
 # WWlogs v0.2.0 發布紀錄
 
-日期：2026-10-31（Asia/Tokyo）
-狀態：v0.2.0 發布候選；Windows 執行檔作為對應 GitHub Release 資產，不納入 Git tree。
+日期：2026-11-01（Asia/Tokyo）
+狀態：v0.2.0 正式版本；Windows 執行檔作為對應 GitHub Release 資產，不納入 Git tree。
 
 ## 內容
 
-- Windows x64 Go 執行檔：GitHub Release 資產 `WWlogs.exe`，15,464,960 bytes，SHA-256 `c827333862e5221dbabb125a9dcca9b12fbefd6454cf1cc9cca4d02d27731107`。
+- Windows x64 Go 執行檔：GitHub Release 資產 `WWlogs.exe`，15,500,800 bytes，SHA-256 `4b9a76f51138cf13af084acc4b32ef9a1425557eddb82b49cf42c12fbe3420ee`。
 - Master 資料庫：`data/master_data.db`，72,069,120 bytes，SHA-256 `9f2d56ba0e2577a000fd112ad4a1feba62b2ca6d56f988979d7862ffb682535f`；唯讀檢查為 298 張表、`integrity_check=ok`、`foreign_key_check` 無錯誤。本次未修改或刪除資料。
 - 執行檔支援 `-version`、繁體中文 `-help`、啟動時列出本機 IPv4 Npcap 介面並由使用者選擇，以及依執行檔位置解析預設 Master 路徑。
 - 私鑰不納入執行檔發行內容；建置時會將 AES-GCM 密文嵌入 EXE，執行時僅在記憶體解密。此設計避免明文直接寫入 EXE，仍不代表無法透過逆向還原。
