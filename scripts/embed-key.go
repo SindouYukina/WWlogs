@@ -53,6 +53,7 @@ func run() error {
 	}
 	version := *versionFlag
 	if version == "" {
+		version = registeredVersion(repositoryRootFor())
 	}
 
 	_, sourcePath, _, ok := runtime.Caller(0)
@@ -92,7 +93,7 @@ func run() error {
 	}
 	defer os.Remove(temporaryExecutable)
 
-	generatedSource := []byte(fmt.Sprintf(`package main
+	generatedSource := []byte(fmt.Sprintf(`package capture
 
 var (
 	embeddedKeyCiphertext = %q
@@ -110,7 +111,7 @@ var (
 		Replace map[string]string
 	}{
 		Replace: map[string]string{
-			filepath.Join(repositoryRoot, "src", "packetprobe", "key_payload.go"): generatedSourcePath,
+			filepath.Join(repositoryRoot, "internal", "capture", "key_payload.go"): generatedSourcePath,
 		},
 	})
 	if err != nil {
@@ -132,7 +133,7 @@ var (
 		" -X wwlogs/internal/buildinfo.injectedDirty=" + dirty
 	// -buildvcs=false keeps the result independent of Git being reachable; the identity is injected above.
 	buildArgs := append([]string{"build", "-trimpath", "-buildvcs=false"}, buildTags...)
-	buildArgs = append(buildArgs, "-ldflags", ldflags, "-overlay", overlayPath, "-o", temporaryExecutable, "./src/packetprobe")
+	buildArgs = append(buildArgs, "-ldflags", ldflags, "-overlay", overlayPath, "-o", temporaryExecutable, "./cmd/capture")
 	build := exec.Command("go", buildArgs...)
 	build.Dir = repositoryRoot
 	build.Stdout = os.Stdout
