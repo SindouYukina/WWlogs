@@ -1,6 +1,8 @@
 package capture
 
-import "testing"
+import (
+	"testing"
+)
 
 func u64(value uint64) *uint64 { return &value }
 

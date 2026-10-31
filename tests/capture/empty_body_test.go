@@ -1,6 +1,8 @@
 package capture
 
-import "testing"
+import (
+	"testing"
+)
 
 // Zero-length command bodies must not be counted as AES decryption failures.
 // The 2026-10-27 replays counted 428 such frames under "decrypt failed" on the
