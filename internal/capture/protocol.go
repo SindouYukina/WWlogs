@@ -112,6 +112,13 @@ type processorStats struct {
 	parseErrors                      int
 	otherFrameDirections             int
 	matchedCombatResultAbs           int64
+	decodedMatchedEvents             int
+	decodedCombatResultAbs           int64
+	playerRelatedEvents              int
+	includedUnresolvedRelations      int
+	suppressedUnrelatedEvents        int
+	playerRoleReports                int
+	playerRoleReportParseErrors      int
 	healingCandidateResult           int64
 }
 
@@ -128,6 +135,7 @@ type processor struct {
 	consumedSequence          uint64
 	entities                  *entityResolver
 	sourceRoles               *sourceRoleResolver
+	playerRelevance           *playerRelevanceResolver
 	masters                   *gameMaster
 	research                  bool
 	encounterSummaries        map[encounterSummaryKey]*encounterSummary
@@ -208,6 +216,7 @@ func newProcessor(rsaKey *staticRSA, stdout, diagnostic, audit io.Writer) *proce
 		combatActionRequests: make(map[combatActionRequestKey]combatActionRequest),
 		entities:             newEntityResolver(),
 		sourceRoles:          newSourceRoleResolver(),
+		playerRelevance:      newPlayerRelevanceResolver(),
 		stdout:               stdout,
 		diagnostic:           diagnostic,
 		audit:                audit,
@@ -494,6 +503,7 @@ func (p *processor) handleFrame(frame gameFrame) {
 			fmt.Fprintf(p.diagnostic, "join_scene_parse_error=%v\n", err)
 			return
 		}
+		p.playerRelevance.reset()
 		p.backfillAvailableSummaryCredits()
 		p.sourceRoles.reset()
 		p.resetPendingSummaryCredits()
@@ -514,6 +524,7 @@ func (p *processor) handleFrame(frame gameFrame) {
 		}
 		p.stats.entityRemoves += removed
 		for _, id := range removedIDs {
+			p.playerRelevance.removeEntity(id)
 			if roleID, correlated := p.sourceRoles.correlatedRole(id); correlated {
 				p.backfillEncounterSummary(id, roleID)
 			}
@@ -647,6 +658,7 @@ func (p *processor) handleProtoKeyResponse(body []byte) error {
 	p.consumedOrder = nil
 	p.consumedSequence = 0
 	p.entities.reset()
+	p.playerRelevance.reset()
 	p.backfillAvailableSummaryCredits()
 	p.sourceRoles.reset()
 	p.resetPendingSummaryCredits()
@@ -969,8 +981,11 @@ func (p *processor) handleOneDamageResult(rpcID uint64, payload []byte) {
 	if event.CharacterStatus == resolutionUnknown || event.Target.MonsterStatus == resolutionUnknown || event.SkillStatus == resolutionUnknown {
 		p.stats.unknownDamageEvents++
 	}
-	p.writeDamageEvent(event)
-	p.observeEncounterSummary(event)
+	p.stats.decodedMatchedEvents++
+	p.stats.decodedCombatResultAbs += value
+	if p.writeDamageEvent(event) {
+		p.observeEncounterSummary(event)
+	}
 }
 
 func decryptGameBody(sequence uint32, body, sessionKey []byte) ([]byte, error) {

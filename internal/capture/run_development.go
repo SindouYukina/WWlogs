@@ -41,7 +41,7 @@ func Main() {
 	pcapOut := flag.String("pcap-out", "", "選擇性地將擷取到的 UDP 封包寫入 PCAP 檔案")
 	masterDatabase := flag.String("master-db", defaultMasterDatabasePath(), "唯讀戰鬥 ID Master SQLite 資料庫")
 	showVersion := flag.Bool("version", false, "顯示 WWlogs 版本")
-	verifyBaseline := flag.Bool("verify-baseline", false, "驗證 Locking PCAP 的既定回歸事件數")
+	verifyBaseline := flag.Bool("verify-baseline", false, "驗證 Locking PCAP 的解碼與玩家輸出回歸基線")
 	auditOut := flag.String("audit-out", "", "選擇性輸出不含祕密的 RPC、entity 與傷害配對 TSV")
 	buffSnapshotOut := flag.String("buff-snapshot-out", "", "選擇性輸出 EntityActiveResponse Buff 快照 JSONL")
 	buffEventOut := flag.String("buff-event-out", "", "選擇性輸出目前支援的 Buff 生命週期觀察 JSONL")

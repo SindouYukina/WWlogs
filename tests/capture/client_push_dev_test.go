@@ -132,3 +132,15 @@ func TestSkillRequestIsArchivedEvenWhenNoDamageIsObserved(t *testing.T) {
 		t.Fatalf("duplicate request changed the action link count or emitted a duplicate row: %+v", p.combatActionRequests[key])
 	}
 }
+
+func TestRoleReportTracksLocalEntityWithoutOptionalClientPushOutput(t *testing.T) {
+	p := &processor{}
+	role := decodedField{Number: 1, Name: "ClientCurrentRoleReportPush", Kind: "class", Message: &decodedMessage{Fields: []decodedField{
+		{Number: 1, Name: "CurrentRoleId", Kind: "int32", Value: int32(1409)},
+		{Number: 2, Name: "CurrentEntityId", Kind: "int64", Value: int64(51522)},
+	}}}
+	p.archiveClientPushes(gameFrame{}, pushWrapper(role))
+	if p.playerRelevance == nil || !p.playerRelevance.isRoleEntity(51522) {
+		t.Fatal("normal processing did not retain the client-reported local entity when optional output was disabled")
+	}
+}
