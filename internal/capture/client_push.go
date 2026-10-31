@@ -1,5 +1,16 @@
 package capture
 
+import (
+	"fmt"
+)
+
+const (
+	combatSendPackDataField                   = 14
+	combatSendPackDataPushField               = 2
+	combatPushClientRoleReportField           = 56
+	clientCurrentRoleReportCurrentEntityField = 12
+)
+
 // clientPushSchemaVersion identifies the layout of clientPushRecord.
 const clientPushSchemaVersion = 2
 
@@ -47,10 +58,14 @@ type combatActionRequestKey struct {
 
 const maxCombatActionRequests = 8192
 
-// archiveClientPushFrame decodes a combat send frame for the client-push output.
-// It runs on the same plaintext as the other observers.
+// archiveClientPushFrame tracks the self-reported role entity without an
+// optional schema, then decodes the full client-push output when a schema exists.
 func (p *processor) archiveClientPushFrame(frame gameFrame, plain []byte) {
-	if p.protocolSchema == nil || frame.commandID != 19470 {
+	if frame.commandID != 19470 || frame.direction != "out" {
+		return
+	}
+	if p.protocolSchema == nil {
+		p.observeLocalRoleReports(plain)
 		return
 	}
 	decoded, err := decodeSchemaMessage(p.protocolSchema, "CombatSendPackRequest", plain, 0)
@@ -59,4 +74,65 @@ func (p *processor) archiveClientPushFrame(frame gameFrame, plain []byte) {
 		return
 	}
 	p.archiveClientPushes(frame, decoded)
+}
+
+func (p *processor) observeLocalRoleReports(plain []byte) {
+	outer, err := parseProtoFields(plain)
+	if err != nil {
+		p.stats.playerRoleReportParseErrors++
+		fmt.Fprintf(p.diagnostic, "player_role_report_parse_error=%v\n", err)
+		return
+	}
+	for _, dataField := range outer {
+		if dataField.number != combatSendPackDataField || dataField.wire != 2 {
+			continue
+		}
+		dataFields, err := parseProtoFields(dataField.data)
+		if err != nil {
+			p.stats.playerRoleReportParseErrors++
+			fmt.Fprintf(p.diagnostic, "player_role_report_parse_error=%v\n", err)
+			continue
+		}
+		for _, pushField := range dataFields {
+			if pushField.number != combatSendPackDataPushField || pushField.wire != 2 {
+				continue
+			}
+			pushFields, err := parseProtoFields(pushField.data)
+			if err != nil {
+				p.stats.playerRoleReportParseErrors++
+				fmt.Fprintf(p.diagnostic, "player_role_report_parse_error=%v\n", err)
+				continue
+			}
+			for _, roleField := range pushFields {
+				if roleField.number != combatPushClientRoleReportField || roleField.wire != 2 {
+					continue
+				}
+				roleFields, err := parseProtoFields(roleField.data)
+				if err != nil {
+					p.stats.playerRoleReportParseErrors++
+					fmt.Fprintf(p.diagnostic, "player_role_report_parse_error=%v\n", err)
+					continue
+				}
+				var entityID uint64
+				var hasEntityID, conflictingEntityID bool
+				for _, roleValue := range roleFields {
+					if roleValue.number != clientCurrentRoleReportCurrentEntityField || roleValue.wire != 0 || roleValue.value == 0 {
+						continue
+					}
+					if hasEntityID && entityID != roleValue.value {
+						conflictingEntityID = true
+					}
+					entityID, hasEntityID = roleValue.value, true
+				}
+				if !hasEntityID || conflictingEntityID {
+					continue
+				}
+				p.stats.playerRoleReports++
+				if p.playerRelevance == nil {
+					p.playerRelevance = newPlayerRelevanceResolver()
+				}
+				p.playerRelevance.observeRoleEntity(entityID)
+			}
+		}
+	}
 }

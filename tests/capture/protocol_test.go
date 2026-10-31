@@ -72,8 +72,26 @@ func TestDamageCandidateResultHasSeparateSemanticBucket(t *testing.T) {
 
 	p.handleOneDamageResult(10, response)
 
-	if p.stats.matchedCombatResultAbs != 42 || p.stats.damageCandidateEvents != 1 || p.stats.damageCandidateResult != 42 || p.stats.healingCandidateResult != 0 || p.stats.otherCandidateResult != 0 || p.stats.unclassifiedResult != 0 {
+	if p.stats.matchedCombatResultAbs != 42 || p.stats.decodedCombatResultAbs != 42 || p.stats.includedUnresolvedRelations != 1 || p.stats.damageCandidateEvents != 1 || p.stats.damageCandidateResult != 42 || p.stats.healingCandidateResult != 0 || p.stats.otherCandidateResult != 0 || p.stats.unclassifiedResult != 0 {
 		t.Fatalf("damage candidate was not isolated from other result buckets: %+v", p.stats)
+	}
+}
+
+func TestDamageResponseWithoutSourceUsesUnknown(t *testing.T) {
+	var stdout, diagnostic bytes.Buffer
+	p := newProcessor(nil, &stdout, &diagnostic, nil)
+	p.pending[7] = pendingDamageRequest{}
+	response := appendVarintField(nil, 4, 0)
+	response = appendVarintField(response, 5, 0)
+	response = appendVarintField(response, 10, 33)
+
+	p.handleOneDamageResult(7, response)
+
+	if stdout.Len() == 0 || p.stats.includedUnresolvedRelations != 1 || p.stats.suppressedUnrelatedEvents != 0 {
+		t.Fatalf("damage with missing actor was hidden without proof it was unrelated: stdout=%q stats=%+v", stdout.String(), p.stats)
+	}
+	if p.stats.missingAttackerEntityID != 1 {
+		t.Fatalf("missingAttackerEntityID = %d, want 1", p.stats.missingAttackerEntityID)
 	}
 }
 

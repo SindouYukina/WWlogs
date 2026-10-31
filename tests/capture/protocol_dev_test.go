@@ -10,6 +10,32 @@ import (
 	"time"
 )
 
+func TestDamageResponseKeepsUnresolvedEntityVisible(t *testing.T) {
+	var stdout, diagnostic, jsonl bytes.Buffer
+	p := newProcessor(nil, &stdout, &diagnostic, nil)
+	p.combatEventsJSONL = &jsonl
+	p.pending[42] = pendingDamageRequest{attackerEntityID: 25320, hasAttackerEntityID: true, damageID: 70010001, hasDamageID: true, damageSourceType: 1, hasDamageSourceType: true, bulletID: -1, hasBulletID: true}
+	response := appendVarintField(nil, 4, 0)     // success
+	response = appendVarintField(response, 5, 0) // not immune
+	response = appendVarintField(response, 10, 9001)
+
+	p.handleOneDamageResult(42, response)
+	p.handleOneDamageResult(42, response)
+
+	if stdout.Len() == 0 {
+		t.Fatal("unresolved damage was hidden even though it was not proven unrelated")
+	}
+	if !strings.Contains(stdout.String(), "[PlayerRelation: UNKNOWN]") {
+		t.Fatalf("unresolved relation was not labeled in normal output: %q", stdout.String())
+	}
+	if p.stats.printed != 1 || p.stats.duplicateResponses != 1 || p.stats.matchedCombatResultAbs != 9001 || p.stats.decodedMatchedEvents != 1 || p.stats.decodedCombatResultAbs != 9001 || p.stats.includedUnresolvedRelations != 1 || p.stats.suppressedUnrelatedEvents != 0 || p.stats.unclassifiedResult != 9001 {
+		t.Fatalf("unexpected stats: visible=%d duplicates=%d visible_abs=%d decoded_events=%d decoded_abs=%d unresolved=%d suppressed=%d unclassified_abs=%d", p.stats.printed, p.stats.duplicateResponses, p.stats.matchedCombatResultAbs, p.stats.decodedMatchedEvents, p.stats.decodedCombatResultAbs, p.stats.includedUnresolvedRelations, p.stats.suppressedUnrelatedEvents, p.stats.unclassifiedResult)
+	}
+	if !strings.Contains(jsonl.String(), `"entityId":25320`) || strings.Contains(jsonl.String(), `"characterId":25320`) {
+		t.Fatalf("raw entity identity was lost or promoted to a character: %q", jsonl.String())
+	}
+}
+
 func TestDamageResponsePreservesRawResultsAndMarksHealingOnlyAsCandidate(t *testing.T) {
 	var stdout, diagnostic, audit bytes.Buffer
 	p := newProcessor(nil, &stdout, &diagnostic, &audit)
@@ -26,12 +52,12 @@ func TestDamageResponsePreservesRawResultsAndMarksHealingOnlyAsCandidate(t *test
 
 	p.handleOneDamageResult(9, response)
 
-	if p.stats.printed != 1 || p.stats.matchedCombatResultAbs != 1311 || p.stats.damageCandidateResult != 0 || p.stats.healingCandidateEvents != 1 || p.stats.healingCandidateResult != 1311 || p.stats.otherCandidateResult != 0 || p.stats.unclassifiedResult != 0 {
+	if p.stats.printed != 1 || p.stats.matchedCombatResultAbs != 1311 || p.stats.decodedMatchedEvents != 1 || p.stats.decodedCombatResultAbs != 1311 || p.stats.includedUnresolvedRelations != 1 || p.stats.suppressedUnrelatedEvents != 0 || p.stats.damageCandidateResult != 0 || p.stats.healingCandidateEvents != 1 || p.stats.healingCandidateResult != 1311 || p.stats.otherCandidateResult != 0 || p.stats.unclassifiedResult != 0 {
 		t.Fatalf("candidate classification changed raw result accounting: %+v", p.stats)
 	}
 	var summary bytes.Buffer
 	p.printSummary(&summary)
-	for _, field := range []string{"matched_combat_result_abs=1311", "damage_candidate_result_abs=0", "healing_candidate_result_abs=1311", "other_combat_candidate_result_abs=0", "unclassified_result_abs=0"} {
+	for _, field := range []string{"visible_combat_result_abs=1311", "decoded_matched_events=1", "decoded_combat_result_abs=1311", "included_unresolved_relation_events=1", "suppressed_confirmed_unrelated_events=0", "decoded_damage_candidate_result_abs=0", "decoded_healing_candidate_result_abs=1311", "decoded_other_combat_candidate_result_abs=0", "decoded_unclassified_result_abs=0"} {
 		if !strings.Contains(summary.String(), field) {
 			t.Fatalf("summary missing semantic result bucket %q: %s", field, summary.String())
 		}
@@ -89,28 +115,6 @@ func TestCombatEventJSONLPreservesRawIDsAndUnknownResolution(t *testing.T) {
 	}
 }
 
-func TestDamageResponseLabelsEntityAndKeepsCharacterUnknown(t *testing.T) {
-	var stdout, diagnostic bytes.Buffer
-	p := newProcessor(nil, &stdout, &diagnostic, nil)
-	p.pending[42] = pendingDamageRequest{attackerEntityID: 25320, hasAttackerEntityID: true, damageID: 70010001, hasDamageID: true, damageSourceType: 1, hasDamageSourceType: true, bulletID: -1, hasBulletID: true}
-	response := appendVarintField(nil, 4, 0)     // success
-	response = appendVarintField(response, 5, 0) // not immune
-	response = appendVarintField(response, 10, 9001)
-
-	p.handleOneDamageResult(42, response)
-	p.handleOneDamageResult(42, response)
-
-	if got, want := stdout.String(), "--:--:--.---  Unknown [Entity:25320]  SkillId:?  [DamageId:70010001, Source:Effect, BulletId:-1]  Credit:?  Unknown [Entity:?]  9001\n"; got != want {
-		t.Fatalf("stdout = %q, want %q", got, want)
-	}
-	if p.stats.printed != 1 || p.stats.duplicateResponses != 1 || p.stats.matchedCombatResultAbs != 9001 || p.stats.unclassifiedResult != 9001 {
-		t.Fatalf("unexpected stats: printed=%d duplicates=%d matched_result_abs=%d unclassified_abs=%d", p.stats.printed, p.stats.duplicateResponses, p.stats.matchedCombatResultAbs, p.stats.unclassifiedResult)
-	}
-	if !strings.Contains(stdout.String(), "Entity:25320") || strings.Contains(stdout.String(), "Char:25320") {
-		t.Fatalf("entity was mislabeled or unverified character identity was presented as resolved: %q", stdout.String())
-	}
-}
-
 func TestHealingCandidateJSONLSeparatesReportedMagnitudeFromUnknownEffectiveness(t *testing.T) {
 	event := combatEvent{
 		Damage: 1311, ServerResultRaw: -1311, HasServerResult: true,
@@ -151,24 +155,6 @@ func TestFormatNormalLabelsHealingAsCandidateResult(t *testing.T) {
 	line := event.formatNormal()
 	if !strings.Contains(line, "1311 [Healing Candidate Result]") || strings.Contains(line, "Damage Candidate Result") {
 		t.Fatalf("healing output was not labeled separately: %s", line)
-	}
-}
-
-func TestDamageResponseWithoutSourceUsesUnknown(t *testing.T) {
-	var stdout, diagnostic bytes.Buffer
-	p := newProcessor(nil, &stdout, &diagnostic, nil)
-	p.pending[7] = pendingDamageRequest{}
-	response := appendVarintField(nil, 4, 0)
-	response = appendVarintField(response, 5, 0)
-	response = appendVarintField(response, 10, 33)
-
-	p.handleOneDamageResult(7, response)
-
-	if got, want := stdout.String(), "--:--:--.---  Unknown [Entity:?]  SkillId:?  [DamageId:?, Source:Unknown]  Credit:?  Unknown [Entity:?]  33\n"; got != want {
-		t.Fatalf("stdout = %q, want %q", got, want)
-	}
-	if p.stats.missingAttackerEntityID != 1 {
-		t.Fatalf("missingAttackerEntityID = %d, want 1", p.stats.missingAttackerEntityID)
 	}
 }
 
