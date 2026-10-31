@@ -8,7 +8,8 @@ param(
 $ErrorActionPreference = 'Stop'
 $repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).ProviderPath
 $testGroups = @(
-    @{ TestDirectory = 'tests/capture'; PackageDirectory = 'internal/capture' }
+    @{ TestDirectory = 'tests/capture'; PackageDirectory = 'internal/capture' },
+    @{ TestDirectory = 'tests/keyembed'; PackageDirectory = 'internal/keyembed' }
 )
 $replace = [ordered]@{}
 
@@ -46,7 +47,7 @@ try {
         foreach ($current in $profiles) {
             $tagArguments = if ($current -eq 'Development') { @('-tags', 'wwdev') } else { @() }
             Write-Host "== go test ($current profile)"
-            $arguments = @("-overlay=$overlayPath") + $tagArguments + $GoTestArgs + @('./cmd/capture', './internal/buildinfo', './internal/capture', './tests/versioninfo')
+            $arguments = @("-overlay=$overlayPath") + $tagArguments + $GoTestArgs + @('./cmd/capture', './internal/buildinfo', './internal/capture', './internal/keyembed', './tests/versioninfo')
             & go test @arguments
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         }

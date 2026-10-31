@@ -1,9 +1,12 @@
 package capture
 
 import (
+	"bufio"
 	"encoding/binary"
 	"fmt"
+	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -242,7 +245,83 @@ func consumeApplicationSpans(spans []applicationSpan, consumed int) []applicatio
 	return spans
 }
 
+func defaultMasterDatabasePath() string {
+	return defaultRuntimePath(filepath.Join("data", "master_data.db"))
+}
+
+func defaultRuntimePath(relativePath string) string {
+	executable, _ := os.Executable()
+	workingDirectory, _ := os.Getwd()
+	return resolveRuntimePath(relativePath, executable, workingDirectory)
+}
+
+func resolveRuntimePath(relativePath, executablePath, workingDirectory string) string {
+	var candidates []string
+	if executablePath != "" {
+		executableDirectory := filepath.Dir(executablePath)
+		candidates = append(candidates, filepath.Join(executableDirectory, relativePath))
+		parentDirectory := filepath.Dir(executableDirectory)
+		if parentDirectory != executableDirectory {
+			candidates = append(candidates, filepath.Join(parentDirectory, relativePath))
+		}
+	}
+	if workingDirectory != "" {
+		candidates = append(candidates, filepath.Join(workingDirectory, relativePath))
+	} else {
+		candidates = append(candidates, relativePath)
+	}
+	for _, candidate := range candidates {
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+			return candidate
+		}
+	}
+	return relativePath
+}
+
+func promptLocalIPv4(input io.Reader, output io.Writer) (string, error) {
+	devices, err := pcap.FindAllDevs()
+	if err != nil {
+		return "", fmt.Errorf("無法列出 Npcap 網路介面：%w", err)
+	}
+	type adapterAddress struct {
+		description string
+		ip          string
+	}
+	var addresses []adapterAddress
+	for _, device := range devices {
+		for _, address := range device.Addresses {
+			if address.IP == nil || address.IP.To4() == nil {
+				continue
+			}
+			addresses = append(addresses, adapterAddress{
+				description: device.Description,
+				ip:          address.IP.String(),
+			})
+		}
+	}
+	if len(addresses) == 0 {
+		return "", fmt.Errorf("找不到可用的 IPv4 網路介面；請確認 Npcap 已安裝，或使用 -ip 指定介面位址")
+	}
+	fmt.Fprintln(output, "請選擇遊戲流量使用的網路介面：")
+	for index, address := range addresses {
+		fmt.Fprintf(output, "  %d. %s (%s)\n", index+1, address.ip, address.description)
+	}
+	fmt.Fprint(output, "輸入編號：")
+	var choice int
+	if _, err := fmt.Fscan(input, &choice); err != nil {
+		return "", fmt.Errorf("讀取介面選擇失敗：%w", err)
+	}
+	if choice < 1 || choice > len(addresses) {
+		return "", fmt.Errorf("介面編號超出範圍：1-%d", len(addresses))
+	}
+	return addresses[choice-1].ip, nil
+}
+
 func fatal(action string, err error) {
-	fmt.Fprintf(os.Stderr, "%s: %v\n", action, err)
+	fmt.Fprintf(os.Stderr, "錯誤（%s）：%v\n", action, err)
+	if info, statErr := os.Stdin.Stat(); statErr == nil && info.Mode()&os.ModeCharDevice != 0 {
+		fmt.Fprint(os.Stderr, "按 Enter 關閉此視窗。")
+		_, _ = bufio.NewReader(os.Stdin).ReadString('\n')
+	}
 	os.Exit(1)
 }

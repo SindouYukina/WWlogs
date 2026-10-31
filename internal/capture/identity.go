@@ -641,7 +641,7 @@ func runtimeCharacterCandidate(entity runtimeEntity) (characterID uint64, proof 
 			proof = "scene role mapping -> runtime EntityId"
 		}
 	}
-	// The pinned client Protocol.js schema defines Proto_Character as enum value 3.
+	// The pinned reference protocol schema defines Proto_Character as enum value 3.
 	// SetPbDataByProtocol assigns EntityData.PbDataId to RoleId only in this branch.
 	if entity.hasConfigType && entity.configType == 3 && entity.hasConfigID {
 		if characterID != 0 && characterID != entity.configID {

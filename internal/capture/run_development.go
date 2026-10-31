@@ -20,6 +20,7 @@ import (
 	"github.com/google/gopacket/pcapgo"
 
 	"wwlogs/internal/buildinfo"
+	"wwlogs/internal/versioninfo"
 )
 
 func optionalFileWriter(file *os.File) io.Writer {
@@ -32,46 +33,65 @@ func optionalFileWriter(file *os.File) io.Writer {
 // Main parses the capture command flags and runs live capture or PCAP replay.
 func Main() {
 	exitIfVersionRequested()
-	ip := flag.String("ip", "", "local adapter IPv4 address (required for live capture)")
-	minPort := flag.Int("min-port", 13100, "minimum UDP server port")
-	maxPort := flag.Int("max-port", 13120, "maximum UDP server port")
-	duration := flag.Duration("duration", 0, "live capture duration; 0 runs until Ctrl+C")
-	pcapIn := flag.String("pcap-in", "", "replay a saved PCAP instead of live capture")
-	pcapOut := flag.String("pcap-out", "", "optionally save captured UDP packets to a PCAP file")
-	masterDatabase := flag.String("master-db", filepath.Join("data", "master_data.db"), "read-only combat ID master SQLite database")
-	verifyBaseline := flag.Bool("verify-baseline", false, "assert the corrected Locking PCAP regression counts")
-	auditOut := flag.String("audit-out", "", "optionally write matched non-secret RPC/entity/damage rows as TSV")
-	buffSnapshotOut := flag.String("buff-snapshot-out", "", "optionally write EntityActiveResponse Buff snapshots as local JSONL")
-	buffEventOut := flag.String("buff-event-out", "", "optionally write supported Buff lifecycle observations as local JSONL")
-	combatNotifyAuditOut := flag.String("combat-notify-audit-out", "", "offline only: write sanitized CombatNotifyData field audit JSONL")
-	encounterSummaryOut := flag.String("encounter-summary-out", "", "optionally write evidence-labeled encounter and character summaries as Markdown")
-	combatEventsJSONLOut := flag.String("event-jsonl-out", "", "optionally write matched combat and Buff observations with evidence as JSONL")
-	protocolSchemaPath := flag.String("protocol-schema", "", "optional local protocol schema JSON")
+	ip := flag.String("ip", "", "本機網路介面的 IPv4 位址；未提供時會列出介面供選擇")
+	minPort := flag.Int("min-port", 13100, "UDP 伺服器連接埠範圍下限")
+	maxPort := flag.Int("max-port", 13120, "UDP 伺服器連接埠範圍上限")
+	duration := flag.Duration("duration", 0, "即時擷取時間；0 表示持續執行直到按下 Ctrl+C")
+	pcapIn := flag.String("pcap-in", "", "重播指定的 PCAP 檔案，不進行即時擷取")
+	pcapOut := flag.String("pcap-out", "", "選擇性地將擷取到的 UDP 封包寫入 PCAP 檔案")
+	masterDatabase := flag.String("master-db", defaultMasterDatabasePath(), "唯讀戰鬥 ID Master SQLite 資料庫")
+	showVersion := flag.Bool("version", false, "顯示 WWlogs 版本")
+	verifyBaseline := flag.Bool("verify-baseline", false, "驗證 Locking PCAP 的既定回歸事件數")
+	auditOut := flag.String("audit-out", "", "選擇性輸出不含祕密的 RPC、entity 與傷害配對 TSV")
+	buffSnapshotOut := flag.String("buff-snapshot-out", "", "選擇性輸出 EntityActiveResponse Buff 快照 JSONL")
+	buffEventOut := flag.String("buff-event-out", "", "選擇性輸出目前支援的 Buff 生命週期觀察 JSONL")
+	combatNotifyAuditOut := flag.String("combat-notify-audit-out", "", "僅供離線使用：輸出已去識別化的 CombatNotifyData 欄位稽核 JSONL")
+	encounterSummaryOut := flag.String("encounter-summary-out", "", "選擇性輸出附有證據標籤的 encounter 與角色摘要 Markdown")
+	combatEventsJSONLOut := flag.String("event-jsonl-out", "", "選擇性輸出已配對且附證據的戰鬥與 Buff 觀察 JSONL")
+	protocolSchemaPath := flag.String("protocol-schema", "", "選擇性指定本機 protocol schema JSON 檔案")
 
-	schemaDecodeOut := flag.String("schema-decode-out", "", "optional JSONL of schema-directed decodes of decrypted outer messages (requires -protocol-schema)")
-	roleConfigOutPath := flag.String("role-config-out", "", "optional JSONL of observed RoleConfigInfoNotify role IDs resolved through the master database (requires -protocol-schema and -master-db)")
+	schemaDecodeOut := flag.String("schema-decode-out", "", "選擇性輸出依 schema 解碼外層訊息的 JSONL；需要 -protocol-schema")
+	roleConfigOutPath := flag.String("role-config-out", "", "選擇性輸出透過 Master 解析的 RoleConfigInfoNotify 角色 ID JSONL；需要 -protocol-schema 與 -master-db")
 
-	buffOverlapOut := flag.String("buff-overlap-out", "", "optionally write, per damage result, the Buff instances observed active on its target (packet-time precision)")
-	masterLocale := flag.String("locale", "zh-TW", "language of names read from the master database: zh-TW, zh-CN, en-US, ja-JP or ko-KR")
-	combatStateOutPath := flag.String("combat-state-out", "", "optional JSONL of every attribute change, recovery value and state-machine transition with names (requires -protocol-schema)")
-	hpStateOutPath := flag.String("hp-state-out", "", "optional JSONL of Life and LifeMax attribute values per entity (requires -protocol-schema)")
-	damagePushOutPath := flag.String("damage-push-out", "", "optional JSONL of pushed DamageExecuteNotify records, separate from the damage RPC stream (requires -protocol-schema)")
-	skillRefOutPath := flag.String("skill-ref-out", "", "optional JSONL of every SkillId in combat messages with its EntitySkillPreload namespace check (requires -protocol-schema)")
-	bulletRefOutPath := flag.String("bullet-ref-out", "", "optional JSONL of BulletId fields in outbound and inbound combat messages with namespace and resolution evidence (requires -protocol-schema)")
-	shieldRefOutPath := flag.String("shield-ref-out", "", "optional JSONL of inbound ShieldUpdateInfo.ConfigId references resolved only against shield.Id (requires -protocol-schema and -master-db)")
-	partRefOutPath := flag.String("part-ref-out", "", "optional JSONL of DamageExecuteRequest.PartId references resolved against the active target PartComponent (requires -protocol-schema)")
-	clientPushOutPath := flag.String("client-push-out", "", "optional JSONL of skill requests, role reports, and skill-end pushes (requires -protocol-schema)")
-	summonOwnerOutPath := flag.String("summon-owner-out", "", "optional JSONL of summoner, concomitant and dependence facts from join and entity-add messages (requires -protocol-schema)")
-	frameArchiveOut := flag.String("frame-archive-out", "", "optionally write one local JSONL record per reassembled frame (digests only; no key or plaintext)")
-	research := flag.Bool("research", false, "write per-event evidence details to stderr")
-	commandCensusOut := flag.String("command-census-out", "", "write a local JSON census of protocol commands and decode outcomes")
-	clientVersionOut := flag.String("client-version-out", "", "write version-only client metadata observed after the first handshake")
-	preflight := flag.Bool("preflight", false, "verify that the selected Npcap device can be opened and filtered")
-	filter := flag.String("filter", "", "optional BPF filter; defaults to the configured UDP port range")
-	stopFile := flag.String("stop-file", "", "stop a live capture cleanly when this file appears")
-	statusFile := flag.String("status-file", "", "write live capture status JSON to this path")
-	maxPCAPBytes := flag.Int64("max-pcap-bytes", 0, "stop before a live PCAP would exceed this size")
+	buffOverlapOut := flag.String("buff-overlap-out", "", "選擇性輸出每筆傷害事件當下目標身上觀察到的 Buff 實例")
+	masterLocale := flag.String("locale", "zh-TW", "Master 名稱語言：zh-TW、zh-CN、en-US、ja-JP 或 ko-KR")
+	combatStateOutPath := flag.String("combat-state-out", "", "選擇性輸出屬性變化、回復值及狀態機轉換 JSONL；需要 -protocol-schema")
+	hpStateOutPath := flag.String("hp-state-out", "", "選擇性輸出各 entity 的 Life 與 LifeMax JSONL；需要 -protocol-schema")
+	damagePushOutPath := flag.String("damage-push-out", "", "選擇性輸出獨立於 damage RPC stream 的 DamageExecuteNotify JSONL；需要 -protocol-schema")
+	skillRefOutPath := flag.String("skill-ref-out", "", "選擇性輸出戰鬥訊息中的 SkillId 與 EntitySkillPreload namespace 查核 JSONL；需要 -protocol-schema")
+	bulletRefOutPath := flag.String("bullet-ref-out", "", "選擇性輸出收發戰鬥訊息中的 BulletId、namespace 與解析證據 JSONL；需要 -protocol-schema")
+	shieldRefOutPath := flag.String("shield-ref-out", "", "選擇性以 shield.Id 解析 ShieldUpdateInfo.ConfigId JSONL；需要 -protocol-schema 與 -master-db")
+	partRefOutPath := flag.String("part-ref-out", "", "選擇性以目標 PartComponent 解析 DamageExecuteRequest.PartId JSONL；需要 -protocol-schema")
+	clientPushOutPath := flag.String("client-push-out", "", "選擇性輸出技能請求、角色回報及技能結束 push JSONL；需要 -protocol-schema")
+	summonOwnerOutPath := flag.String("summon-owner-out", "", "選擇性輸出 join 與 entity-add 訊息中的 summoner、concomitant 及 dependence 事實 JSONL；需要 -protocol-schema")
+	frameArchiveOut := flag.String("frame-archive-out", "", "選擇性為每個重組 frame 輸出本機 JSONL；僅保存 digest，不含金鑰或明文")
+	research := flag.Bool("research", false, "將逐事件證據細節寫至標準錯誤")
+	commandCensusOut := flag.String("command-census-out", "", "輸出本機 protocol command 與解碼結果 JSON")
+	clientVersionOut := flag.String("client-version-out", "", "輸出首次 handshake 後觀察到的版本 metadata")
+	preflight := flag.Bool("preflight", false, "檢查指定 Npcap 介面是否可開啟並套用 filter")
+	filter := flag.String("filter", "", "選擇性指定 BPF filter；預設使用設定的 UDP 連接埠範圍")
+	stopFile := flag.String("stop-file", "", "指定檔案出現時正常停止即時擷取")
+	statusFile := flag.String("status-file", "", "將即時擷取狀態 JSON 寫入指定路徑")
+	maxPCAPBytes := flag.Int64("max-pcap-bytes", 0, "限制即時 PCAP 大小；達到上限前停止")
+	flag.Usage = func() {
+		fmt.Fprintf(flag.CommandLine.Output(), "WWlogs %s\n用法：WWlogs [選項]\n\n選項：\n", versioninfo.Current().Product.DevelopmentLine)
+		flag.PrintDefaults()
+	}
 	flag.Parse()
+	if *showVersion {
+		fmt.Printf("WWlogs 版本：%s\n", versioninfo.Current().Product.DevelopmentLine)
+		return
+	}
+	fmt.Printf("WWlogs %s\n", versioninfo.Current().Product.DevelopmentLine)
+	announceBuildIdentity(os.Stderr)
+	if *ip == "" && *pcapIn == "" {
+		selectedIP, err := promptLocalIPv4(os.Stdin, os.Stdout)
+		if err != nil {
+			fatal("選擇網路介面", err)
+		}
+		*ip = selectedIP
+	}
+
 	if *minPort < 1 || *maxPort > 65535 || *minPort > *maxPort {
 		fatal("port range", fmt.Errorf("invalid range %d-%d", *minPort, *maxPort))
 	}

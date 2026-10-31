@@ -68,7 +68,7 @@ type buffSnapshotAuditRow struct {
 	BuffSemanticEvidence      string           `json:"buffSemanticEvidence"`
 	InstigatorSemantics       resolutionStatus `json:"instigatorSemantics"`
 	InstigatorEvidence        string           `json:"instigatorEvidence,omitempty"`
-	clientSchemaVersion      string           `json:"clientSchemaVersion"`
+	ReferenceSchema           string           `json:"referenceSchema"`
 	WindowsSchemaVerification string           `json:"windowsSchemaVerification"`
 	Buff                      rawBuffSnapshot  `json:"buff"`
 }
@@ -736,7 +736,7 @@ func (p *processor) handleActiveResponse(frame gameFrame, body []byte) error {
 						BuffDefinitionEvidence:    "No exact normalized buff.id row has been linked; the raw BuffId remains unchanged",
 						BuffSemanticStatus:        resolutionUnknown,
 						BuffSemanticEvidence:      "This status covers runtime application and effect semantics; static row lookup is reported separately, and snapshot presence does not establish application or uptime",
-						clientSchemaVersion:      versioninfo.clientSchemaLabel(),
+						ReferenceSchema:           versioninfo.ReferenceSchemaLabel(),
 						WindowsSchemaVerification: versioninfo.WindowsSchemaLabel() + " Aki.Protocol metadata; client/master compatibility UNKNOWN",
 						Buff:                      record,
 					}
@@ -753,7 +753,7 @@ func (p *processor) handleActiveResponse(frame gameFrame, body []byte) error {
 					}
 					if record.HasInstigatorID {
 						row.InstigatorSemantics = resolutionCorrelated
-						row.InstigatorEvidence = versioninfo.clientSchemaLabel() + " CharacterBuffComponent compares InstigatorId with CreatureDataId and resolves it through CreatureModel.GetEntity; client/master compatibility UNKNOWN"
+						row.InstigatorEvidence = versioninfo.ReferenceSchemaLabel() + " CharacterBuffComponent compares InstigatorId with CreatureDataId and resolves it through CreatureModel.GetEntity; client/master compatibility UNKNOWN"
 					}
 					if matched && request.hasEntityID {
 						entityID := request.entityID

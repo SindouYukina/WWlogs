@@ -24,12 +24,12 @@ const publicReportInterval = 5 * time.Second
 // the console and writes nothing to disk. Raw diagnostic outputs exist only in development builds.
 func Main() {
 	exitIfVersionRequested()
-	ip := flag.String("ip", "", "Local network interface IPv4 address")
+	ip := flag.String("ip", "", "Local network interface IPv4 address; if omitted, list available interfaces for selection")
 	minPort := flag.Int("min-port", 13100, "Lower bound of the UDP server port range")
 	maxPort := flag.Int("max-port", 13120, "Upper bound of the UDP server port range")
 	duration := flag.Duration("duration", 0, "Live capture duration; 0 runs until Ctrl+C is pressed")
 	pcapIn := flag.String("pcap-in", "", "Replay the specified PCAP file without live capture")
-	masterDatabase := flag.String("master-db", "data/master_data.db", "Read-only combat ID Master SQLite database")
+	masterDatabase := flag.String("master-db", defaultMasterDatabasePath(), "Read-only combat ID Master SQLite database")
 	masterLocale := flag.String("locale", "zh-TW", "Locale for Master display names: zh-TW, zh-CN, en-US, ja-JP, or ko-KR")
 	filter := flag.String("filter", "", "Optionally specify a BPF filter; defaults to the configured UDP port range")
 	stopFile := flag.String("stop-file", "", "Stop live capture cleanly when the specified file appears")
@@ -42,7 +42,11 @@ func Main() {
 	flag.Parse()
 	fmt.Println("WWlogs")
 	if *ip == "" && *pcapIn == "" {
-		fatal("select network interface", fmt.Errorf("specify the local IPv4 address with -ip"))
+		selectedIP, err := promptLocalIPv4(os.Stdin, os.Stdout)
+		if err != nil {
+			fatal("select network interface", err)
+		}
+		*ip = selectedIP
 	}
 	if *minPort < 1 || *maxPort > 65535 || *minPort > *maxPort {
 		fatal("port range", fmt.Errorf("invalid range %d-%d", *minPort, *maxPort))

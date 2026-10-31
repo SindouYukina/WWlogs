@@ -5,12 +5,12 @@
   "observedClient": {
     "region": "Global",
     "gameVersion": "3.7.0",
-    "resourceVersion": "3.7.16",
-    "loginBuild": "release-3.7.0-win64-global-3.7.16",
+    "resourceVersion": "3.7.17",
+    "loginBuild": "release-3.7.0-win64-global-3.7.17",
     "checkClientPushVersions": [
       "3.7.0",
-      "3.7.15",
-      "3.7.16"
+      "3.7.17",
+      "3.7.17"
     ]
   },
   "schemas": {
@@ -19,18 +19,10 @@
       "version": "3.7.1",
       "compatibility": "unverified"
     },
-    "clientGlobal": {
-      "label": "client Global",
+    "referenceGlobal": {
+      "label": "Reference Protocol",
       "version": "3.7.1",
       "compatibility": "unverified"
     }
-  },
-  "masterBuilder": {
-    "region": "Global",
-    "gameVersion": "3.7.0",
-    "resourceVersion": "3.7.8",
-    "sourceCommit": "9218d612ad815e398e064e577e42aaf878899968",
-    "sourceURL": "https://github.com/Arikatsu/WutheringWaves_Data/tree/3.7",
-    "defaultLocale": "zh-TW"
   }
 }

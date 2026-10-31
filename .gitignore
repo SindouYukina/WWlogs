@@ -1,14 +1,14 @@
 # Private local files
 /AGENTS.md
 /HANDOFF.md
-/bin/
+/bin/*
+!/bin/
 /docs/
 /research/
 /logs/
 /references/
 /research/
 /work/
-/internal/capture/key_static_local.go
 
 # Secrets and machine-local artifacts
 .env

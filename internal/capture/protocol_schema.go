@@ -1,10 +1,9 @@
 package capture
 
-// protocolSchema is the field schema extracted offline from the local Windows
-// Aki.Protocol metadata schema note.
-// private client-derived data and is loaded only when -protocol-schema is set.
-// Schema facts are client-version evidence: they say how a field is typed in
-// that build, not that the same bytes carry that meaning in a capture build.
+// protocolSchema is optional, versioned field metadata used by schema-aware
+// analysis. Callers provide it with -protocol-schema; it is not embedded in the
+// executable. Schema facts describe one client build and do not prove that the
+// same bytes carry that meaning in a capture build.
 type protocolSchema struct {
 	SourceSHA256 string                   `json:"sourceSha256"`
 	ClientLabel  string                   `json:"clientLabel"`

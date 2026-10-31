@@ -338,7 +338,7 @@ func (c *commandCensus) entry(id uint16, direction string) *commandCensusEntry {
 		} else if hasWindowsProtocolSchema(id) {
 			entry.SchemaBasis = versioninfo.WindowsSchemaLabel() + " Aki.Protocol metadata; client version observed, schema compatibility unverified"
 		} else if id == 26702 {
-			entry.SchemaBasis = versioninfo.clientSchemaLabel() + " static schema; client version observed, cross-platform schema compatibility unverified"
+			entry.SchemaBasis = versioninfo.ReferenceSchemaLabel() + " static schema; client version observed, cross-platform schema compatibility unverified"
 		} else if id == 22535 || id == 24756 || id == 27918 || id == 19212 || id == 19566 || id == 23517 {
 			entry.SchemaBasis = versioninfo.WindowsSchemaLabel() + " Aki.Protocol metadata; client version observed, schema compatibility unverified"
 		}

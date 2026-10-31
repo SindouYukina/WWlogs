@@ -10,7 +10,7 @@ import (
 //go:embed versions.json
 var versionsJSON []byte
 
-// Metadata records the active client, schema, and product data version roles.
+// Metadata records the active product, observed client, and protocol schema versions.
 type Metadata struct {
 	Product struct {
 		DevelopmentLine string `json:"developmentLine"`
@@ -23,20 +23,12 @@ type Metadata struct {
 		CheckClientPushVersions []string `json:"checkClientPushVersions"`
 	} `json:"observedClient"`
 	Schemas struct {
-		WindowsGlobal SchemaMetadata `json:"windowsGlobal"`
-		clientGlobal  SchemaMetadata `json:"clientGlobal"`
+		WindowsGlobal   SchemaMetadata `json:"windowsGlobal"`
+		ReferenceGlobal SchemaMetadata `json:"referenceGlobal"`
 	} `json:"schemas"`
-	MasterBuilder struct {
-		Region          string `json:"region"`
-		GameVersion     string `json:"gameVersion"`
-		ResourceVersion string `json:"resourceVersion"`
-		SourceCommit    string `json:"sourceCommit"`
-		SourceURL       string `json:"sourceURL"`
-		DefaultLocale   string `json:"defaultLocale"`
-	} `json:"masterBuilder"`
 }
 
-// SchemaMetadata keeps a schema's source label and compatibility evidence together.
+// SchemaMetadata records a schema label, version, and compatibility status.
 type SchemaMetadata struct {
 	Label         string `json:"label"`
 	Version       string `json:"version"`
@@ -63,9 +55,9 @@ func WindowsSchemaLabel() string {
 	return schemaLabel(current.Schemas.WindowsGlobal)
 }
 
-// clientSchemaLabel formats the registered client schema source and version.
-func clientSchemaLabel() string {
-	return schemaLabel(current.Schemas.clientGlobal)
+// ReferenceSchemaLabel formats the registered reference schema and version.
+func ReferenceSchemaLabel() string {
+	return schemaLabel(current.Schemas.ReferenceGlobal)
 }
 
 func schemaLabel(value SchemaMetadata) string {
@@ -77,7 +69,7 @@ func WindowsSchemaVersion() string {
 	return current.Schemas.WindowsGlobal.Version
 }
 
-// clientSchemaVersion returns the registered client schema version.
-func clientSchemaVersion() string {
-	return current.Schemas.clientGlobal.Version
+// ReferenceSchemaVersion returns the registered reference schema version.
+func ReferenceSchemaVersion() string {
+	return current.Schemas.ReferenceGlobal.Version
 }
