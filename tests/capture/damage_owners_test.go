@@ -1,6 +1,8 @@
 package capture
 
-import "testing"
+import (
+	"testing"
+)
 
 func TestDamageOwnersListSkillsAndBuffsAsStaticReferences(t *testing.T) {
 	master := &gameMaster{damageOwners: map[uint64][]damageOwnerJSONL{
