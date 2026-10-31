@@ -8,7 +8,7 @@
 /references/
 /research/
 /work/
-/src/packetprobe/key_static_local.go
+/internal/capture/key_static_local.go
 
 # Secrets and machine-local artifacts
 .env
