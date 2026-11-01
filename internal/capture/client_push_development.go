@@ -147,10 +147,7 @@ func (p *processor) observeRoleReport(frame gameFrame, message *decodedMessage) 
 	if hasEntity {
 		record.EntityID = &entity
 		if entity > 0 {
-			if p.playerRelevance == nil {
-				p.playerRelevance = newPlayerRelevanceResolver()
-			}
-			p.playerRelevance.observeRoleEntity(uint64(entity))
+			p.observeLocalRoleEntity(uint64(entity))
 		}
 	}
 	p.writeClientPush(record)

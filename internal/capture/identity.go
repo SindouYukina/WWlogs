@@ -11,6 +11,9 @@ import (
 
 type resolutionStatus string
 
+// entityTypeMonster follows the EntityPb.EntityType enum in the pinned Windows schema.
+const entityTypeMonster uint64 = 2
+
 const (
 	resolutionVerified   resolutionStatus = "VERIFIED"
 	resolutionCorrelated resolutionStatus = "CORRELATED"
@@ -654,6 +657,19 @@ func runtimeCharacterCandidate(entity runtimeEntity) (characterID uint64, proof 
 		}
 	}
 	return characterID, proof, fromConfig, false
+}
+
+func hasPlayerSceneRoleMapping(entity runtimeEntity) bool {
+	if !entity.hasPlayerID || entity.playerID == 0 || !entity.hasRoleID || entity.roleID == 0 || entity.roleConflict {
+		return false
+	}
+	switch entity.roleSourceFieldPath {
+	case "JoinSceneNotify.SceneInfo.PlayerInfos[].PlayerSceneGroupData[].FightRoleInfos[].RoleId",
+		"UpdateSceneGroupDataNotify.PlayerSceneGroupDataList[].PlayerSceneGroupData[].FightRoleInfos[].RoleId":
+		return true
+	default:
+		return false
+	}
 }
 
 const maxSummonerEntityDepth = 8
