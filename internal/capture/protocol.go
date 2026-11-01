@@ -493,6 +493,7 @@ func (p *processor) handleFrame(frame gameFrame) {
 			fmt.Fprintf(p.diagnostic, "scene_group_update_parse_error=%v\n", err)
 			return
 		}
+		p.playerRelevance.reconcileLocalPlayers(p.entities)
 	case 25830, 18345, 20358, 17893, 22102, 29363, 16974:
 		if err := p.handleBuffLifecycleMessage(frame, plain); err != nil {
 			p.stats.parseErrors++

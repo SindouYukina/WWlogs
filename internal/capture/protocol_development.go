@@ -16,14 +16,15 @@ func (p *processor) printSummary(w io.Writer) {
 }
 
 func (p *processor) verifyKnownBaseline() error {
+	// This baseline reflects v0.3.0 team-role and explicit Monster classification.
 	if p.stats.damageRequests != 117 || p.stats.candidateResponses != 117 || p.stats.decodedMatchedEvents != 116 || p.stats.decodedCombatResultAbs != 584134 ||
-		p.stats.printed != 116 || p.stats.matchedCombatResultAbs != 584134 || p.stats.playerRelatedEvents != 32 ||
-		p.stats.includedUnresolvedRelations != 84 || p.stats.suppressedUnrelatedEvents != 0 || p.stats.playerRoleReports == 0 ||
+		p.stats.printed != 99 || p.stats.matchedCombatResultAbs != 580509 || p.stats.playerRelatedEvents != 43 ||
+		p.stats.includedUnresolvedRelations != 56 || p.stats.suppressedUnrelatedEvents != 17 || p.stats.playerRoleReports == 0 ||
 		len(p.pending) != 0 || p.stats.unpairedResponses != 0 || p.stats.invalidResponses != 1 ||
 		p.stats.parseErrors != 0 || p.stats.decryptErrors != 0 || p.stats.compressedErrors != 0 ||
 		p.stats.playerRoleReportParseErrors != 0 ||
 		p.stats.handshakeFrames != 1 || p.stats.handshakeOK != 1 || p.stats.handshakeErrors != 0 {
-		return fmt.Errorf("requests=%d responses=%d decoded_matched=%d decoded_combat_result_abs=%d visible_matched=%d visible_combat_result_abs=%d player_related=%d unresolved_relation=%d suppressed_unrelated=%d player_role_reports=%d player_role_report_parse_errors=%d unmatched_requests=%d unmatched_responses=%d invalid_responses=%d parse_errors=%d decrypt_errors=%d compressed_errors=%d handshake=%d/%d/%d; expected raw 117/117/116/584134, visible 116/584134 split into 32 confirmed player-related and 84 unresolved, 0 confirmed unrelated suppressed, 0/0/1 invalid, zero decode errors, handshake 1/1/0",
+		return fmt.Errorf("requests=%d responses=%d decoded_matched=%d decoded_combat_result_abs=%d visible_matched=%d visible_combat_result_abs=%d player_related=%d unresolved_relation=%d suppressed_unrelated=%d player_role_reports=%d player_role_report_parse_errors=%d unmatched_requests=%d unmatched_responses=%d invalid_responses=%d parse_errors=%d decrypt_errors=%d compressed_errors=%d handshake=%d/%d/%d; expected raw 117/117/116/584134, visible 99/580509 split into 43 confirmed player-related, 56 unresolved, and 17 confirmed unrelated suppressed, 0/0/1 invalid, zero decode errors, handshake 1/1/0",
 			p.stats.damageRequests, p.stats.candidateResponses, p.stats.decodedMatchedEvents, p.stats.decodedCombatResultAbs, p.stats.printed, p.stats.matchedCombatResultAbs, p.stats.playerRelatedEvents, p.stats.includedUnresolvedRelations, p.stats.suppressedUnrelatedEvents, p.stats.playerRoleReports, p.stats.playerRoleReportParseErrors, len(p.pending), p.stats.unpairedResponses, p.stats.invalidResponses,
 			p.stats.parseErrors, p.stats.decryptErrors, p.stats.compressedErrors, p.stats.handshakeFrames, p.stats.handshakeOK, p.stats.handshakeErrors)
 	}

@@ -243,6 +243,130 @@ func TestPlayerRelevanceKeepsLocallyOwnedMotorcycleDamage(t *testing.T) {
 	}
 }
 
+func TestPlayerRelevanceUsesLocalPlayerRoleGroup(t *testing.T) {
+	p, _, _ := newPlayerRelevanceTestProcessor()
+	addTestPlayerRoleGroupEntity(p, 100, 77, 1409)
+	addTestPlayerRoleGroupEntity(p, 101, 77, 1508, true)
+	addTestPlayerRoleGroupEntity(p, 102, 88, 1312)
+	observeTestLocalRole(p, 100)
+	addTestRuntimeEntity(p, 200, func(entity *runtimeEntity) {
+		entity.entityTypeCode, entity.hasEntityType = entityTypeMonster, true
+		entity.playerID, entity.hasPlayerID = 77, true
+		entity.ownerIncID, entity.hasOwnerIncID = 99, true
+	})
+
+	event := testDamageEvent(p, 101, 200)
+	source, target, _ := p.playerRelevantDamageEvent(event)
+	if source != playerRelationLocal || target != playerRelationUnrelated {
+		t.Fatalf("team role relations = (%d, %d), want (local, unrelated)", source, target)
+	}
+	event.EventTypeCandidate = "DAMAGE_CANDIDATE"
+	if !p.writeDamageEvent(event) {
+		t.Fatal("damage from another role in the local PlayerSceneGroup was not retained")
+	}
+	if got := p.damageStatistics.Snapshot(); got.DamageDealt != 10 || got.OutgoingEvents != 1 {
+		t.Fatalf("team role damage was not counted as confirmed output: %+v", got)
+	}
+
+	otherPlayerEvent := testDamageEvent(p, 102, 200)
+	otherSource, otherTarget, _ := p.playerRelevantDamageEvent(otherPlayerEvent)
+	if otherSource != playerRelationUnknown || otherTarget != playerRelationUnrelated {
+		t.Fatalf("another player's role was attributed locally: relations=(%d, %d)", otherSource, otherTarget)
+	}
+}
+
+func TestPlayerRelevanceUsesExplicitMonsterEntityType(t *testing.T) {
+	p, _, _ := newPlayerRelevanceTestProcessor()
+	addTestPlayerRoleGroupEntity(p, 100, 77, 1409)
+	observeTestLocalRole(p, 100)
+	addTestRuntimeEntity(p, 200, func(entity *runtimeEntity) {
+		entity.entityTypeCode, entity.hasEntityType = entityTypeMonster, true
+		entity.playerID, entity.hasPlayerID = 77, true
+		entity.ownerIncID, entity.hasOwnerIncID = 99, true
+	})
+
+	outgoing := testDamageEvent(p, 100, 200)
+	outgoing.EventTypeCandidate = "DAMAGE_CANDIDATE"
+	if !p.writeDamageEvent(outgoing) {
+		t.Fatal("damage against an explicit Monster entity was not retained")
+	}
+	incoming := testDamageEvent(p, 200, 100)
+	incoming.EventTypeCandidate = "DAMAGE_CANDIDATE"
+	if !p.writeDamageEvent(incoming) {
+		t.Fatal("damage from an explicit Monster entity was not retained")
+	}
+	if got := p.damageStatistics.Snapshot(); got.DamageDealt != 10 || got.DamageTaken != 10 ||
+		got.OutgoingEvents != 1 || got.IncomingEvents != 1 {
+		t.Fatalf("Monster entity damage was not classified by direction: %+v", got)
+	}
+}
+
+func TestPlayerRelevanceKeepsUnownedMonsterSummonUnknown(t *testing.T) {
+	p, _, _ := newPlayerRelevanceTestProcessor()
+	observeTestLocalRole(p, 100)
+	addTestRuntimeEntity(p, 100, func(entity *runtimeEntity) { entity.roleID, entity.hasRoleID = 1409, true })
+	addTestRuntimeEntity(p, 200, func(entity *runtimeEntity) {
+		entity.entityTypeCode, entity.hasEntityType = entityTypeMonster, true
+		entity.summonType, entity.hasSummonType = summonTypeConcomitantVision, true
+	})
+	event := testDamageEvent(p, 200, 100)
+	event.EventTypeCandidate = "DAMAGE_CANDIDATE"
+	source, target, visible := p.playerRelevantDamageEvent(event)
+	if source != playerRelationUnknown || target != playerRelationLocal || !visible {
+		t.Fatalf("unowned Monster summon relations = (%d, %d), visible=%t; want (unknown, local), visible=true", source, target, visible)
+	}
+	if !p.writeDamageEvent(event) {
+		t.Fatal("unknown Monster summon damage was discarded instead of retained as unresolved")
+	}
+	if got := p.damageStatistics.Snapshot(); got.DamageTaken != 0 || got.UnattributedIncomingDamage != 10 {
+		t.Fatalf("unknown Monster summon was counted as confirmed incoming damage: %+v", got)
+	}
+}
+
+func TestPlayerRelevanceDoesNotCountMonsterVersusMonster(t *testing.T) {
+	p, _, _ := newPlayerRelevanceTestProcessor()
+	addTestPlayerRoleGroupEntity(p, 100, 77, 1409)
+	observeTestLocalRole(p, 100)
+	for _, entityID := range []uint64{200, 201} {
+		addTestRuntimeEntity(p, entityID, func(entity *runtimeEntity) {
+			entity.entityTypeCode, entity.hasEntityType = entityTypeMonster, true
+			entity.playerID, entity.hasPlayerID = 77, true
+			entity.ownerIncID, entity.hasOwnerIncID = entityID+1000, true
+		})
+	}
+	event := testDamageEvent(p, 200, 201)
+	event.EventTypeCandidate = "DAMAGE_CANDIDATE"
+	if p.writeDamageEvent(event) {
+		t.Fatal("Monster-versus-Monster damage passed the player relevance filter")
+	}
+	if got := p.damageStatistics.Snapshot(); got.DamageDealt != 0 || got.DamageTaken != 0 || got.UnattributedOutgoingDamage != 0 {
+		t.Fatalf("Monster-versus-Monster damage changed player statistics: %+v", got)
+	}
+}
+
+func TestPlayerRelevanceAttributesSummonOfAnotherLocalTeamRole(t *testing.T) {
+	p, _, _ := newPlayerRelevanceTestProcessor()
+	addTestPlayerRoleGroupEntity(p, 100, 77, 1409)
+	addTestPlayerRoleGroupEntity(p, 101, 77, 1508)
+	observeTestLocalRole(p, 100)
+	addTestRuntimeEntity(p, 102, func(entity *runtimeEntity) {
+		entity.summonerID, entity.hasSummonerID = 101, true
+		entity.summonType, entity.hasSummonType = summonTypeConcomitantVision, true
+	})
+	addTestRuntimeEntity(p, 200, func(entity *runtimeEntity) {
+		entity.entityTypeCode, entity.hasEntityType = entityTypeMonster, true
+	})
+
+	event := testDamageEvent(p, 102, 200)
+	event.EventTypeCandidate = "DAMAGE_CANDIDATE"
+	if !p.writeDamageEvent(event) {
+		t.Fatal("summon damage linked to another local team role was not retained")
+	}
+	if got := p.damageStatistics.Snapshot(); got.DamageDealt != 10 || got.OutgoingEvents != 1 {
+		t.Fatalf("summon damage linked to the local team was not counted: %+v", got)
+	}
+}
+
 func TestPlayerRelevanceIsSessionAndSceneScoped(t *testing.T) {
 	p, stdout, _ := newPlayerRelevanceTestProcessor()
 	observeTestLocalRole(p, 100)

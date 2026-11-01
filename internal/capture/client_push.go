@@ -128,10 +128,7 @@ func (p *processor) observeLocalRoleReports(plain []byte) {
 					continue
 				}
 				p.stats.playerRoleReports++
-				if p.playerRelevance == nil {
-					p.playerRelevance = newPlayerRelevanceResolver()
-				}
-				p.playerRelevance.observeRoleEntity(entityID)
+				p.observeLocalRoleEntity(entityID)
 			}
 		}
 	}

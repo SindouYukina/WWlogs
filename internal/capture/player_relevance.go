@@ -13,16 +13,20 @@ const (
 	playerRelationUnrelated
 )
 
-// playerRelevanceResolver records exact runtime entities reported as the
-// client's current role. It deliberately does not infer local ownership from a
-// character ID, player ID, damage request, or skill name.
+// playerRelevanceResolver anchors local role entities to PlayerIds observed in
+// verified scene role groups. It does not infer ownership from a character ID,
+// damage request, or skill name.
 type playerRelevanceResolver struct {
-	roleEntities map[uint64]struct{}
-	order        []uint64
+	roleEntities   map[uint64]struct{}
+	localPlayerIDs map[uint64]struct{}
+	order          []uint64
 }
 
 func newPlayerRelevanceResolver() *playerRelevanceResolver {
-	return &playerRelevanceResolver{roleEntities: make(map[uint64]struct{})}
+	return &playerRelevanceResolver{
+		roleEntities:   make(map[uint64]struct{}),
+		localPlayerIDs: make(map[uint64]struct{}),
+	}
 }
 
 func (r *playerRelevanceResolver) observeRoleEntity(entityID uint64) {
@@ -62,7 +66,43 @@ func (r *playerRelevanceResolver) reset() {
 		return
 	}
 	r.roleEntities = make(map[uint64]struct{})
+	r.localPlayerIDs = make(map[uint64]struct{})
 	r.order = nil
+}
+
+func (r *playerRelevanceResolver) reconcileLocalPlayers(entities *entityResolver) {
+	if r == nil || entities == nil {
+		return
+	}
+	if r.localPlayerIDs == nil {
+		r.localPlayerIDs = make(map[uint64]struct{})
+	}
+	for entityID := range r.roleEntities {
+		entity, status := entities.resolve(entityID)
+		if status == resolutionUnknown || entity.entityID != entityID || !hasPlayerSceneRoleMapping(entity) {
+			continue
+		}
+		r.localPlayerIDs[entity.playerID] = struct{}{}
+	}
+}
+
+func (r *playerRelevanceResolver) isLocalPlayerRoleEntity(entity runtimeEntity) bool {
+	if r == nil || !hasPlayerSceneRoleMapping(entity) {
+		return false
+	}
+	_, exists := r.localPlayerIDs[entity.playerID]
+	return exists
+}
+
+func (p *processor) observeLocalRoleEntity(entityID uint64) {
+	if p == nil || entityID == 0 {
+		return
+	}
+	if p.playerRelevance == nil {
+		p.playerRelevance = newPlayerRelevanceResolver()
+	}
+	p.playerRelevance.observeRoleEntity(entityID)
+	p.playerRelevance.reconcileLocalPlayers(p.entities)
 }
 
 func (r *playerRelevanceResolver) isRoleEntity(entityID uint64) bool {
@@ -88,7 +128,13 @@ func (p *processor) playerRelationForEntity(entityID uint64, identity entityIden
 	if p.playerRelevance.isRoleEntity(entityID) {
 		return playerRelationLocal
 	}
-	if identity.RuntimeStatus != resolutionVerified || identity.Runtime.entityID != entityID || p.entities == nil {
+	if identity.Runtime.entityID != entityID {
+		return playerRelationUnknown
+	}
+	if p.playerRelevance.isLocalPlayerRoleEntity(identity.Runtime) {
+		return playerRelationLocal
+	}
+	if identity.RuntimeStatus != resolutionVerified || p.entities == nil {
 		return playerRelationUnknown
 	}
 
@@ -98,6 +144,9 @@ func (p *processor) playerRelationForEntity(entityID uint64, identity entityIden
 	chainClosed := false
 	for depth := 0; depth < maxSummonerEntityDepth; depth++ {
 		if p.playerRelevance.isRoleEntity(current.entityID) {
+			return playerRelationLocal
+		}
+		if p.playerRelevance.isLocalPlayerRoleEntity(current) {
 			return playerRelationLocal
 		}
 		if hasUnresolvedPlayerOrOwnerLink(current) {
@@ -119,6 +168,9 @@ func (p *processor) playerRelationForEntity(entityID uint64, identity entityIden
 		if status != resolutionVerified || parent.entityID != parentID {
 			return playerRelationUnknown
 		}
+		if p.playerRelevance.isLocalPlayerRoleEntity(parent) {
+			return playerRelationLocal
+		}
 		current = parent
 	}
 
@@ -136,6 +188,22 @@ func (p *processor) playerRelationForEntity(entityID uint64, identity entityIden
 }
 
 func hasUnresolvedPlayerOrOwnerLink(entity runtimeEntity) bool {
+	if isExplicitMonsterEntity(entity) {
+		return (entity.hasOwnerID && entity.ownerID != 0) ||
+			(entity.hasSummonerPlayerID && entity.summonerPlayerID != 0) ||
+			(entity.hasSceneSummonerID && entity.sceneSummonerID != 0) ||
+			(entity.hasSceneSummonConfigID && entity.sceneSummonConfigID != 0) ||
+			(entity.hasSceneSummonSkillID && entity.sceneSummonSkillID != 0) ||
+			(entity.hasPlayerEntityID && entity.playerEntityID != 0) ||
+			(entity.hasPhantomRoleEntityID && entity.phantomRoleEntityID != 0) ||
+			(entity.hasWeakVisionEntityID && entity.weakVisionEntityID != 0) ||
+			(entity.hasSummonConfigID && entity.summonConfigID != 0) ||
+			(entity.hasSummonSkillID && entity.summonSkillID != 0) ||
+			(entity.hasSummonType && entity.summonType != 0) ||
+			(entity.hasFollowerSummonConfigID && entity.followerSummonConfigID != 0) ||
+			(entity.hasFollowEntityID && entity.followEntityID != 0) ||
+			len(entity.concomitantVisionIDs) > 0 || len(entity.concomitantCustomIDs) > 0 || len(entity.playerFollowers) > 0
+	}
 	return (entity.hasPlayerID && entity.playerID != 0) ||
 		(entity.hasOwnerID && entity.ownerID != 0) ||
 		(entity.hasSummonerPlayerID && entity.summonerPlayerID != 0) ||
@@ -155,7 +223,14 @@ func hasUnresolvedPlayerOrOwnerLink(entity runtimeEntity) bool {
 		len(entity.playerFollowers) > 0
 }
 
+func isExplicitMonsterEntity(entity runtimeEntity) bool {
+	return entity.hasEntityType && entity.entityTypeCode == entityTypeMonster && !entity.hasRoleID && !entity.roleConflict
+}
+
 func isPlayerShapedEntity(entity runtimeEntity) bool {
+	if isExplicitMonsterEntity(entity) {
+		return false
+	}
 	return (entity.hasRoleID && entity.roleID != 0) ||
 		(entity.hasPlayerID && entity.playerID != 0) ||
 		(entity.hasPlayerEntityID && entity.playerEntityID != 0) ||
@@ -164,6 +239,9 @@ func isPlayerShapedEntity(entity runtimeEntity) bool {
 }
 
 func isKnownEnvironmentEntity(entity runtimeEntity, identity entityIdentity) bool {
+	if isExplicitMonsterEntity(entity) {
+		return true
+	}
 	if isPlayerShapedEntity(entity) {
 		return false
 	}
