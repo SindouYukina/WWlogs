@@ -123,6 +123,19 @@ func (s *DamageStatistics) Reset() {
 	s.ungroupedIncomingEvents = 0
 }
 
+func (p *processor) damageStatisticsSnapshot() DamageStatisticsSnapshot {
+	if p == nil || p.damageStatistics == nil {
+		return DamageStatisticsSnapshot{ByPlayerEntity: []PlayerEntityDamageSnapshot{}}
+	}
+	return p.damageStatistics.Snapshot()
+}
+
+func (p *processor) resetDamageStatistics() {
+	if p != nil && p.damageStatistics != nil {
+		p.damageStatistics.Reset()
+	}
+}
+
 // addDamageEvent receives only events that passed response validation and RPC deduplication.
 func (s *DamageStatistics) addDamageEvent(event combatEvent, sourceRelation, targetRelation playerRelation) {
 	if s == nil || event.EventTypeCandidate != "DAMAGE_CANDIDATE" || event.Damage <= 0 ||
