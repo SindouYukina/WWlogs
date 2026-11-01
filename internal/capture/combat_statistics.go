@@ -14,7 +14,7 @@ type combatStatisticsKey struct {
 	entityGeneration uint64
 }
 
-// PlayerEntityDamageSnapshot は、セッション内の EntityId ごとに確認できた傷害合計を保持します。
+// PlayerEntityDamageSnapshot stores confirmed damage totals for one EntityId within a session.
 type PlayerEntityDamageSnapshot struct {
 	SessionNumber    int    `json:"sessionNumber"`
 	EntityID         uint64 `json:"entityId"`
@@ -23,12 +23,12 @@ type PlayerEntityDamageSnapshot struct {
 	DamageTaken      int64  `json:"damageTaken"`
 	OutgoingEvents   uint64 `json:"outgoingEvents"`
 	IncomingEvents   uint64 `json:"incomingEvents"`
-	// 捕獲フレームの観測時刻であり、ゲーム内イベントの権威時刻ではありません。
+	// These are capture-frame observation times, not authoritative in-game event times.
 	FirstObserved time.Time `json:"firstObserved,omitempty"`
 	LastObserved  time.Time `json:"lastObserved,omitempty"`
 }
 
-// DamageStatisticsSnapshot は、確認済み合計と帰属未確定の候補を分けて返します。
+// DamageStatisticsSnapshot separates confirmed totals from unattributed candidates.
 type DamageStatisticsSnapshot struct {
 	DamageDealt                int64                        `json:"damageDealt"`
 	DamageTaken                int64                        `json:"damageTaken"`
@@ -45,7 +45,7 @@ type DamageStatisticsSnapshot struct {
 	ByPlayerEntity             []PlayerEntityDamageSnapshot `json:"byPlayerEntity"`
 }
 
-// DamageStatistics は、サーバー応答で確認したプレイヤー関連傷害を集計します。
+// DamageStatistics aggregates player-related damage confirmed by server responses.
 type DamageStatistics struct {
 	mu sync.RWMutex
 
@@ -64,12 +64,12 @@ type DamageStatistics struct {
 	ungroupedIncomingEvents    uint64
 }
 
-// NewDamageStatistics は、新しい空の統計器を作成します。
+// NewDamageStatistics creates an empty damage statistics accumulator.
 func NewDamageStatistics() *DamageStatistics {
 	return &DamageStatistics{entities: make(map[combatStatisticsKey]PlayerEntityDamageSnapshot)}
 }
 
-// Snapshot は、内部状態を変更できない独立したスナップショットを返します。
+// Snapshot returns an independent copy of the current statistics.
 func (s *DamageStatistics) Snapshot() DamageStatisticsSnapshot {
 	if s == nil {
 		return DamageStatisticsSnapshot{ByPlayerEntity: []PlayerEntityDamageSnapshot{}}
@@ -101,7 +101,7 @@ func (s *DamageStatistics) Snapshot() DamageStatisticsSnapshot {
 	return snapshot
 }
 
-// Reset は、集計値と EntityId 別の状態をすべて消去します。
+// Reset clears all totals and per-entity state.
 func (s *DamageStatistics) Reset() {
 	if s == nil {
 		return
@@ -123,7 +123,7 @@ func (s *DamageStatistics) Reset() {
 	s.ungroupedIncomingEvents = 0
 }
 
-// addDamageEvent は、応答検証と RPC 重複排除を通過したイベントだけを受け取ります。
+// addDamageEvent receives only events that passed response validation and RPC deduplication.
 func (s *DamageStatistics) addDamageEvent(event combatEvent, sourceRelation, targetRelation playerRelation) {
 	if s == nil || event.EventTypeCandidate != "DAMAGE_CANDIDATE" || event.Damage <= 0 ||
 		!event.HasSourceEntity || event.SourceEntityID == 0 || !event.HasTargetEntity || event.TargetEntityID == 0 {
