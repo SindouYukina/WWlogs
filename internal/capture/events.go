@@ -393,6 +393,9 @@ func (event *combatEvent) resolveEventType(masters *gameMaster) {
 // passes the normal player-relevance filter.
 func (p *processor) writeDamageEvent(event combatEvent) bool {
 	sourceRelation, targetRelation, visible := p.playerRelevantDamageEvent(event)
+	if p.damageStatistics != nil {
+		p.damageStatistics.addDamageEvent(event, sourceRelation, targetRelation)
+	}
 	if visible {
 		p.recordDamageForOverlap(event)
 	}
