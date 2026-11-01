@@ -95,6 +95,28 @@ func TestDamageStatisticsKeepsUnresolvedSummonDamageUnattributed(t *testing.T) {
 	}
 }
 
+func TestProcessorStatisticsAccessorsReturnCopiesAndResetSharedState(t *testing.T) {
+	p, _, _ := newPlayerRelevanceTestProcessor()
+	p.damageStatistics.addDamageEvent(combatEvent{
+		SessionNumber: 1, SourceEntityID: 100, HasSourceEntity: true, TargetEntityID: 200, HasTargetEntity: true,
+		EventTypeCandidate: "DAMAGE_CANDIDATE", Damage: 321,
+	}, playerRelationLocal, playerRelationUnrelated)
+
+	snapshot := p.damageStatisticsSnapshot()
+	if snapshot.DamageDealt != 321 || len(snapshot.ByPlayerEntity) != 1 {
+		t.Fatalf("processor snapshot did not expose the current totals: %+v", snapshot)
+	}
+	snapshot.ByPlayerEntity[0].DamageDealt = 0
+	if got := p.damageStatisticsSnapshot(); got.ByPlayerEntity[0].DamageDealt != 321 {
+		t.Fatalf("mutating a returned snapshot changed internal state: %+v", got)
+	}
+
+	p.resetDamageStatistics()
+	if got := p.damageStatisticsSnapshot(); got.DamageDealt != 0 || len(got.ByPlayerEntity) != 0 {
+		t.Fatalf("processor reset did not clear the shared statistics: %+v", got)
+	}
+}
+
 func TestDamageResponseDeduplicatesStatisticsThroughParser(t *testing.T) {
 	var stdout, diagnostic bytes.Buffer
 	p := newProcessor(nil, &stdout, &diagnostic, nil)
