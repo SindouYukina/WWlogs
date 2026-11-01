@@ -9,6 +9,13 @@ import (
 )
 
 const maxCombatStatisticsEntities = 8192
+// maxRollingDamageEvents prevents unusually dense captures from consuming unbounded memory.
+const maxRollingDamageEvents = 32768
+
+const (
+	rollingFiveSecondWindow = 5 * time.Second
+	rollingTenSecondWindow  = 10 * time.Second
+)
 
 var captureSessionSequence atomic.Uint64
 
@@ -53,6 +60,12 @@ type DPSResult struct {
 	EndObservedAt   time.Time     `json:"endObservedAt,omitempty"`
 }
 
+// CaptureQueryTime binds an explicit timestamp from a capture clock domain to its capture session.
+type CaptureQueryTime struct {
+	CaptureSessionID uint64
+	Timestamp        time.Time
+}
+
 // DamageStatisticsSnapshot separates confirmed totals from unattributed candidates.
 type DamageStatisticsSnapshot struct {
 	// CaptureSessionID is process-local and stays fixed for this statistics owner.
@@ -75,6 +88,13 @@ type DamageStatisticsSnapshot struct {
 	EncounterDPS               DPSResult                    `json:"encounterDps"`
 	GameTimeDPS                DPSResult                    `json:"gameTimeDps"`
 	DamageSpanDPS              DPSResult                    `json:"damageSpanDps"`
+	Rolling5sDPS               DPSResult                    `json:"rolling5sDps"`
+	Rolling10sDPS              DPSResult                    `json:"rolling10sDps"`
+}
+
+type rollingDamageEvent struct {
+	observedAt time.Time
+	damage     int64
 }
 
 // DamageStatistics aggregates player-related damage confirmed by server responses.
@@ -102,6 +122,13 @@ type DamageStatistics struct {
 	outgoingSessionNumber      int
 	hasOutgoingSession         bool
 	multipleOutgoingSessions   bool
+	rollingEvents              []rollingDamageEvent
+	rollingHighWater           time.Time
+	rollingRetentionStart      time.Time
+	rollingLastQuery           time.Time
+	rollingSessionNumber       int
+	hasRollingSession          bool
+	rollingUnavailableReason   string
 }
 
 // NewDamageStatistics creates an empty damage statistics accumulator.
@@ -123,6 +150,75 @@ func (s *DamageStatistics) Snapshot() DamageStatisticsSnapshot {
 	return s.snapshotLocked()
 }
 
+// SnapshotAt returns statistics and rolling DPS for an explicit timestamp from this capture session.
+// The timestamp must use the same clock domain as the capture events; backwards queries are unavailable.
+func (s *DamageStatistics) SnapshotAt(query CaptureQueryTime) DamageStatisticsSnapshot {
+	if s == nil {
+		return emptyDamageStatisticsSnapshot()
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.snapshotAtLocked(query)
+}
+
+func (s *DamageStatistics) snapshotAtLocked(query CaptureQueryTime) DamageStatisticsSnapshot {
+	snapshot := s.snapshotLocked()
+	reason := s.validateRollingQueryLocked(query)
+	if reason != "" {
+		snapshot.Rolling5sDPS = unavailableRollingDPS(reason)
+		snapshot.Rolling10sDPS = unavailableRollingDPS(reason)
+		return snapshot
+	}
+	s.rollingLastQuery = query.Timestamp
+	s.advanceRollingRetentionLocked(query.Timestamp)
+	snapshot.Rolling5sDPS = s.rollingDPSLocked(query.Timestamp, rollingFiveSecondWindow)
+	snapshot.Rolling10sDPS = s.rollingDPSLocked(query.Timestamp, rollingTenSecondWindow)
+	return snapshot
+}
+
+func (s *DamageStatistics) validateRollingQueryLocked(query CaptureQueryTime) string {
+	switch {
+	case query.CaptureSessionID == 0 || query.CaptureSessionID != s.captureSessionID:
+		return "capture_session_mismatch"
+	case query.Timestamp.IsZero():
+		return "query_time_unavailable"
+	case s.rollingUnavailableReason != "":
+		return s.rollingUnavailableReason
+	case !s.rollingLastQuery.IsZero() && query.Timestamp.Before(s.rollingLastQuery):
+		return "query_time_moved_backwards"
+	case !s.rollingRetentionStart.IsZero() && query.Timestamp.Before(s.rollingRetentionStart):
+		return "query_before_retained_window"
+	default:
+		return ""
+	}
+}
+
+func (s *DamageStatistics) rollingDPSLocked(queryTime time.Time, window time.Duration) DPSResult {
+	result := DPSResult{Duration: window, StartObservedAt: queryTime.Add(-window), EndObservedAt: queryTime}
+	start := result.StartObservedAt
+	var total int64
+	for _, event := range s.rollingEvents {
+		if !event.observedAt.After(start) || event.observedAt.After(queryTime) {
+			continue
+		}
+		if event.damage > math.MaxInt64-total {
+			return unavailableRollingDPS("damage_sum_overflow")
+		}
+		total += event.damage
+	}
+	result.Damage = total
+	result.Value = float64(total) / window.Seconds()
+	if math.IsNaN(result.Value) || math.IsInf(result.Value, 0) {
+		return unavailableRollingDPS("non_finite_result")
+	}
+	result.Status = DPSStatusAvailable
+	return result
+}
+
+func unavailableRollingDPS(reason string) DPSResult {
+	return DPSResult{Status: DPSStatusUnavailable, Reason: reason}
+}
+
 func (s *DamageStatistics) snapshotLocked() DamageStatisticsSnapshot {
 	snapshot := DamageStatisticsSnapshot{
 		CaptureSessionID: s.captureSessionID, StatisticsIntervalID: s.statisticsIntervalID,
@@ -140,6 +236,8 @@ func (s *DamageStatistics) snapshotLocked() DamageStatisticsSnapshot {
 	snapshot.EncounterDPS = DPSResult{Status: DPSStatusUnavailable, Reason: "encounter_boundaries_unavailable"}
 	snapshot.GameTimeDPS = DPSResult{Status: DPSStatusUnavailable, Reason: "official_timer_duration_unavailable"}
 	snapshot.DamageSpanDPS = s.damageSpanDPSLocked()
+	snapshot.Rolling5sDPS = unavailableRollingDPS("query_time_required")
+	snapshot.Rolling10sDPS = unavailableRollingDPS("query_time_required")
 	sort.Slice(snapshot.ByPlayerEntity, func(i, j int) bool {
 		if snapshot.ByPlayerEntity[i].SessionNumber != snapshot.ByPlayerEntity[j].SessionNumber {
 			return snapshot.ByPlayerEntity[i].SessionNumber < snapshot.ByPlayerEntity[j].SessionNumber
@@ -159,6 +257,17 @@ func (s *DamageStatistics) snapshotAndReset() DamageStatisticsSnapshot {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	snapshot := s.snapshotLocked()
+	s.resetLocked()
+	return snapshot
+}
+
+func (s *DamageStatistics) snapshotAndResetAt(query CaptureQueryTime) DamageStatisticsSnapshot {
+	if s == nil {
+		return emptyDamageStatisticsSnapshot()
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	snapshot := s.snapshotAtLocked(query)
 	s.resetLocked()
 	return snapshot
 }
@@ -194,6 +303,13 @@ func (s *DamageStatistics) resetLocked() {
 	s.outgoingSessionNumber = 0
 	s.hasOutgoingSession = false
 	s.multipleOutgoingSessions = false
+	s.rollingEvents = nil
+	s.rollingHighWater = time.Time{}
+	s.rollingRetentionStart = time.Time{}
+	s.rollingLastQuery = time.Time{}
+	s.rollingSessionNumber = 0
+	s.hasRollingSession = false
+	s.rollingUnavailableReason = ""
 }
 
 func (p *processor) damageStatisticsSnapshot() DamageStatisticsSnapshot {
@@ -209,7 +325,16 @@ func emptyDamageStatisticsSnapshot() DamageStatisticsSnapshot {
 		EncounterDPS:   DPSResult{Status: DPSStatusUnavailable, Reason: "encounter_boundaries_unavailable"},
 		GameTimeDPS:    DPSResult{Status: DPSStatusUnavailable, Reason: "official_timer_duration_unavailable"},
 		DamageSpanDPS:  DPSResult{Status: DPSStatusInsufficientData, Reason: "no_confirmed_outgoing_damage"},
+		Rolling5sDPS:   unavailableRollingDPS("query_time_required"),
+		Rolling10sDPS:  unavailableRollingDPS("query_time_required"),
 	}
+}
+
+func (p *processor) damageStatisticsSnapshotAt(query CaptureQueryTime) DamageStatisticsSnapshot {
+	if p == nil || p.damageStatistics == nil {
+		return emptyDamageStatisticsSnapshot()
+	}
+	return p.damageStatistics.SnapshotAt(query)
 }
 
 func (p *processor) resetDamageStatistics() {
@@ -223,6 +348,13 @@ func (p *processor) snapshotAndResetDamageStatistics() DamageStatisticsSnapshot 
 		return emptyDamageStatisticsSnapshot()
 	}
 	return p.damageStatistics.snapshotAndReset()
+}
+
+func (p *processor) snapshotAndResetDamageStatisticsAt(query CaptureQueryTime) DamageStatisticsSnapshot {
+	if p == nil || p.damageStatistics == nil {
+		return emptyDamageStatisticsSnapshot()
+	}
+	return p.damageStatistics.snapshotAndResetAt(query)
 }
 
 // addDamageEvent receives only events that passed response validation and RPC deduplication.
@@ -242,6 +374,7 @@ func (s *DamageStatistics) addDamageEvent(event combatEvent, sourceRelation, tar
 		s.damageDealt += event.Damage
 		s.outgoingEvents++
 		s.addOutgoingDamageTime(event.SessionNumber, event.Timestamp)
+		s.addRollingDamageEventLocked(event.SessionNumber, event.Timestamp, event.Damage)
 		s.addEntityDamage(event.SessionNumber, event.SourceEntityID, event.Source.Lifecycle.ReusedAfterRemove, event.Damage, true, event.Timestamp)
 	case sourceRelation == playerRelationUnrelated && targetRelation == playerRelationLocal:
 		s.damageTaken += event.Damage
@@ -259,6 +392,60 @@ func (s *DamageStatistics) addDamageEvent(event combatEvent, sourceRelation, tar
 	case sourceRelation == playerRelationUnrelated && targetRelation != playerRelationUnrelated:
 		s.unattributedIncomingDamage += event.Damage
 		s.unattributedIncomingEvents++
+	}
+}
+
+func (s *DamageStatistics) addRollingDamageEventLocked(sessionNumber int, observedAt time.Time, damage int64) {
+	if observedAt.IsZero() {
+		s.rollingUnavailableReason = "outgoing_event_missing_observed_time"
+		s.rollingEvents = nil
+		return
+	}
+	if !s.hasRollingSession {
+		s.rollingSessionNumber = sessionNumber
+		s.hasRollingSession = true
+	} else if s.rollingSessionNumber != sessionNumber {
+		s.rollingUnavailableReason = "multiple_sessions_require_separate_statistics"
+		s.rollingEvents = nil
+		return
+	}
+	if s.rollingUnavailableReason != "" {
+		return
+	}
+	if !s.rollingRetentionStart.IsZero() && observedAt.Before(s.rollingRetentionStart) {
+		return
+	}
+	if len(s.rollingEvents) >= maxRollingDamageEvents {
+		s.rollingUnavailableReason = "event_capacity_exceeded"
+		s.rollingEvents = nil
+		return
+	}
+	i := sort.Search(len(s.rollingEvents), func(i int) bool {
+		return s.rollingEvents[i].observedAt.After(observedAt)
+	})
+	s.rollingEvents = append(s.rollingEvents, rollingDamageEvent{})
+	copy(s.rollingEvents[i+1:], s.rollingEvents[i:])
+	s.rollingEvents[i] = rollingDamageEvent{observedAt: observedAt, damage: damage}
+	if observedAt.After(s.rollingHighWater) {
+		s.rollingHighWater = observedAt
+	}
+	s.advanceRollingRetentionLocked(s.rollingHighWater)
+}
+
+func (s *DamageStatistics) advanceRollingRetentionLocked(reference time.Time) {
+	if reference.After(s.rollingHighWater) {
+		s.rollingHighWater = reference
+	}
+	if reference.After(s.rollingRetentionStart.Add(rollingTenSecondWindow)) || s.rollingRetentionStart.IsZero() {
+		s.rollingRetentionStart = reference.Add(-rollingTenSecondWindow)
+	}
+	cutoff := s.rollingRetentionStart
+	firstRetained := sort.Search(len(s.rollingEvents), func(i int) bool {
+		return !s.rollingEvents[i].observedAt.Before(cutoff)
+	})
+	if firstRetained > 0 {
+		copy(s.rollingEvents, s.rollingEvents[firstRetained:])
+		s.rollingEvents = s.rollingEvents[:len(s.rollingEvents)-firstRetained]
 	}
 }
 
