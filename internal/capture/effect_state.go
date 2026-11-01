@@ -173,6 +173,8 @@ type EffectCounters struct {
 	HolderRemovals         uint64 `json:"holderRemovals"`
 	BoundaryDrops          uint64 `json:"boundaryDrops"`
 	ExcludedUnrelated      uint64 `json:"excludedUnrelated"`
+	// LateMessages counts update and remove messages that arrive for an instance already ended by holder removal.
+	LateMessages uint64 `json:"lateMessages"`
 	// ExcludedMessages counts update and remove messages addressed to an instance that was excluded as unrelated.
 	ExcludedMessages          uint64 `json:"excludedMessages"`
 	SkippedUncorrelatedHolder uint64 `json:"skippedUncorrelatedHolder"`
@@ -444,6 +446,8 @@ func (t *EffectTracker) ObserveUpdate(event EffectUpdateEvent) {
 	if !active || !validEffectHandle(event.HandleID) {
 		if _, excluded := t.excluded[key]; excluded {
 			t.counters.ExcludedMessages++
+		} else if t.endedByHolderRemovalLocked(key) >= 0 {
+			t.counters.LateMessages++
 		} else {
 			t.counters.UpdatesWithoutApply++
 		}
@@ -474,6 +478,14 @@ func (t *EffectTracker) ObserveRemove(event EffectRemoveEvent) {
 		if _, excluded := t.excluded[key]; excluded {
 			t.counters.ExcludedMessages++
 			delete(t.excluded, key)
+			return
+		}
+		if i := t.endedByHolderRemovalLocked(key); i >= 0 {
+			// The server confirms the REMOVE after it removed the holder entity.
+			t.counters.LateMessages++
+			t.ended[i].Lifecycle = EffectLifecycleConfirmedRemoved
+			t.ended[i].EndedAt = event.ObservedAt
+			t.ended[i].ExpiryDeltaSeconds = nil
 			return
 		}
 		t.counters.RemovesWithoutInstance++
@@ -533,6 +545,34 @@ func (t *EffectTracker) RefreshRelations(sessionNumber int, holderEntityID uint6
 		}
 		if instance.hasSource && instance.sourceRelation == EffectRelationUnknown {
 			instance.sourceRelation = normalizeEffectRelation(resolve(instance.source))
+		}
+	}
+}
+
+// RefreshUnknownRelations upgrades every UNKNOWN holder or source relation, resolving
+// each distinct entity once. A known relation is never downgraded. resolve runs
+// while the tracker lock is held and must not call the tracker.
+func (t *EffectTracker) RefreshUnknownRelations(resolve func(entityID uint64) EffectEntityRelation) {
+	if t == nil || resolve == nil {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	resolved := make(map[uint64]EffectEntityRelation)
+	lookup := func(entityID uint64) EffectEntityRelation {
+		relation, done := resolved[entityID]
+		if !done {
+			relation = normalizeEffectRelation(resolve(entityID))
+			resolved[entityID] = relation
+		}
+		return relation
+	}
+	for _, instance := range t.instances {
+		if instance.holderRelation == EffectRelationUnknown {
+			instance.holderRelation = lookup(instance.key.holder)
+		}
+		if instance.hasSource && instance.sourceRelation == EffectRelationUnknown {
+			instance.sourceRelation = lookup(instance.source)
 		}
 	}
 }
@@ -702,6 +742,18 @@ func (t *EffectTracker) addTombstoneLocked(key effectKey, at time.Time) {
 		delete(t.tombstones, t.tombstoneOrder[0])
 		t.tombstoneOrder = t.tombstoneOrder[1:]
 	}
+}
+
+// endedByHolderRemovalLocked returns the index of the newest holder_removed record for key, or -1.
+func (t *EffectTracker) endedByHolderRemovalLocked(key effectKey) int {
+	for i := len(t.ended) - 1; i >= 0; i-- {
+		record := t.ended[i]
+		if record.Lifecycle == EffectLifecycleHolderRemoved && record.SessionNumber == key.session &&
+			record.HolderEntityID == key.holder && record.HolderGeneration == key.generation && record.HandleID == key.handle {
+			return i
+		}
+	}
+	return -1
 }
 
 func (t *EffectTracker) addExcludedLocked(key effectKey) {

@@ -92,3 +92,36 @@ func deliverEffectSnapshot(t *testing.T, p *processor, token uint16, holder uint
 		t.Fatal(err)
 	}
 }
+
+func TestEffectTrackerRefreshUnknownRelationsResolvesEachEntityOnce(t *testing.T) {
+	tracker := newTestEffectTracker()
+	unknown := func(e *EffectApplyEvent) {
+		e.HolderRelation, e.SourceRelation = EffectRelationUnknown, EffectRelationUnknown
+	}
+	for handle := uint64(1); handle <= 5; handle++ {
+		tracker.ObserveApply(testEffectApply(handle, 0, unknown))
+	}
+	tracker.ObserveApply(testEffectApply(6, 0, func(e *EffectApplyEvent) {
+		e.HolderRelation, e.SourceRelation = EffectRelationLocalRole, EffectRelationUnknown
+	}))
+	calls := map[uint64]int{}
+	tracker.RefreshUnknownRelations(func(entityID uint64) EffectEntityRelation {
+		calls[entityID]++
+		if entityID == 20 {
+			return EffectRelationLocalRole
+		}
+		return EffectRelationUnknown
+	})
+	if calls[10] != 1 || calls[20] != 1 {
+		t.Fatalf("resolve calls = %v, want one per distinct entity", calls)
+	}
+	for _, effect := range tracker.Snapshot().Effects {
+		if effect.SourceRelation != EffectRelationLocalRole {
+			t.Fatalf("source relation = %s, want local_role", effect.SourceRelation)
+		}
+		if effect.HandleID == 6 && effect.HolderRelation != EffectRelationLocalRole {
+			t.Fatalf("known holder relation changed: %s", effect.HolderRelation)
+		}
+	}
+	tracker.RefreshUnknownRelations(nil)
+}

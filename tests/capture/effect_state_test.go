@@ -664,3 +664,27 @@ func TestEffectTrackerSeparatesMessagesOfExcludedInstancesFromOrphans(t *testing
 		t.Fatalf("excluded keys survived a reset: %+v", got)
 	}
 }
+
+func TestEffectTrackerMessagesAfterHolderRemovalAreLateNotOrphans(t *testing.T) {
+	tracker := newTestEffectTracker()
+	tracker.ObserveApply(testEffectApply(1, 0, nil))
+	tracker.ObserveApply(testEffectApply(2, 0, nil))
+	tracker.ObserveHolderRemoved(1, 10, effectAt(1))
+	tracker.ObserveUpdate(EffectUpdateEvent{SessionNumber: 1, HolderEntityID: 10, HandleID: 1, RemainingSeconds: effectFloat(3), ObservedAt: effectAt(1.05)})
+	tracker.ObserveRemove(testEffectRemove(1, 1.06))
+	tracker.ObserveRemove(testEffectRemove(99, 1.06)) // a real orphan
+
+	snapshot := tracker.Snapshot()
+	counters := snapshot.Counters
+	if counters.LateMessages != 2 || counters.UpdatesWithoutApply != 0 || counters.RemovesWithoutInstance != 1 {
+		t.Fatalf("counters = %+v", counters)
+	}
+	lifecycles := map[uint64]EffectLifecycle{}
+	for _, ended := range snapshot.RecentEnded {
+		lifecycles[ended.HandleID] = ended.Lifecycle
+	}
+	// Handle 1 got its server REMOVE after the holder went away; handle 2 never did.
+	if lifecycles[1] != EffectLifecycleConfirmedRemoved || lifecycles[2] != EffectLifecycleHolderRemoved {
+		t.Fatalf("ended lifecycles = %v", lifecycles)
+	}
+}

@@ -1,8 +1,9 @@
 package capture
 
 // effectEntityRelation classifies an entity with the same evidence rules as damage
-// attribution. A role entity of the local team is local_role; other entities that
-// reach the local team through a confirmed owner chain are local_owned.
+// attribution. A role of the local team, whether reported as the current entity or
+// listed in the local PlayerSceneGroup, is local_role; other entities that reach
+// the local team through a confirmed owner chain are local_owned.
 func (p *processor) effectEntityRelation(entityID uint64) EffectEntityRelation {
 	if p == nil || p.entities == nil || entityID == 0 {
 		return EffectRelationUnknown
@@ -10,7 +11,7 @@ func (p *processor) effectEntityRelation(entityID uint64) EffectEntityRelation {
 	identity := resolveEntityIdentity(p.entities, p.masters, entityID)
 	switch p.playerRelationForEntity(entityID, identity) {
 	case playerRelationLocal:
-		if p.playerRelevance.isRoleEntity(entityID) {
+		if p.playerRelevance.isRoleEntity(entityID) || p.playerRelevance.isLocalPlayerRoleEntity(identity.Runtime) {
 			return EffectRelationLocalRole
 		}
 		return EffectRelationLocalOwned
@@ -19,6 +20,16 @@ func (p *processor) effectEntityRelation(entityID uint64) EffectEntityRelation {
 	default:
 		return EffectRelationUnknown
 	}
+}
+
+// refreshEffectRelations re-evaluates UNKNOWN relations of tracked effects after the
+// entity or local-team evidence changed. It must run on the processing goroutine,
+// the only owner of the entity resolver.
+func (p *processor) refreshEffectRelations() {
+	if p == nil || p.effects == nil {
+		return
+	}
+	p.effects.RefreshUnknownRelations(p.effectEntityRelation)
 }
 
 func (p *processor) effectHolderGeneration(entityID uint64) uint64 {
@@ -161,5 +172,6 @@ func (p *processor) effectSnapshotAtLastFrame() EffectSnapshot {
 	if p == nil || p.effects == nil {
 		return emptyEffectSnapshot()
 	}
+	p.refreshEffectRelations()
 	return p.effects.SnapshotAt(CaptureQueryTime{CaptureSessionID: p.effects.captureSessionID, Timestamp: p.currentFrameTime})
 }

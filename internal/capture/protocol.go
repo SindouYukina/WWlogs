@@ -497,6 +497,7 @@ func (p *processor) handleFrame(frame gameFrame) {
 			return
 		}
 		p.playerRelevance.reconcileLocalPlayers(p.entities)
+		p.refreshEffectRelations()
 	case 25830, 18345, 20358, 17893, 22102, 29363, 16974:
 		if err := p.handleBuffLifecycleMessage(frame, plain); err != nil {
 			p.stats.parseErrors++
@@ -522,6 +523,7 @@ func (p *processor) handleFrame(frame gameFrame) {
 			return
 		}
 		p.stats.entityAdds += added
+		p.refreshEffectRelations()
 	case 17769:
 		removed, removedIDs, err := p.entities.applyEntityRemoveNotify(plain)
 		if err != nil {

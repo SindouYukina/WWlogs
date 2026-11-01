@@ -802,6 +802,7 @@ func (p *processor) handleActiveResponse(frame gameFrame, body []byte) error {
 			}
 		}
 	}
+	p.refreshEffectRelations()
 	return nil
 }
 

@@ -103,6 +103,7 @@ func (p *processor) observeLocalRoleEntity(entityID uint64) {
 	}
 	p.playerRelevance.observeRoleEntity(entityID)
 	p.playerRelevance.reconcileLocalPlayers(p.entities)
+	p.refreshEffectRelations()
 }
 
 func (r *playerRelevanceResolver) isRoleEntity(entityID uint64) bool {
