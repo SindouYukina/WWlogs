@@ -1,6 +1,7 @@
 package capture
 
 import (
+	"math"
 	"sort"
 	"sync"
 	"time"
@@ -28,6 +29,27 @@ type PlayerEntityDamageSnapshot struct {
 	LastObserved  time.Time `json:"lastObserved,omitempty"`
 }
 
+// DPSStatus identifies whether a DPS result is supported by its required data.
+type DPSStatus string
+
+const (
+	DPSStatusAvailable        DPSStatus = "available"
+	DPSStatusInsufficientData DPSStatus = "insufficient_data"
+	DPSStatusUnavailable      DPSStatus = "unavailable"
+	DPSStatusInvalidDuration  DPSStatus = "invalid_duration"
+)
+
+// DPSResult reports a calculation and the evidence state that supports it.
+type DPSResult struct {
+	Status          DPSStatus     `json:"status"`
+	Reason          string        `json:"reason,omitempty"`
+	Damage          int64         `json:"damage"`
+	Duration        time.Duration `json:"duration"`
+	Value           float64       `json:"value"`
+	StartObservedAt time.Time     `json:"startObservedAt,omitempty"`
+	EndObservedAt   time.Time     `json:"endObservedAt,omitempty"`
+}
+
 // DamageStatisticsSnapshot separates confirmed totals from unattributed candidates.
 type DamageStatisticsSnapshot struct {
 	DamageDealt                int64                        `json:"damageDealt"`
@@ -43,6 +65,9 @@ type DamageStatisticsSnapshot struct {
 	UngroupedOutgoingEvents    uint64                       `json:"ungroupedOutgoingEvents"`
 	UngroupedIncomingEvents    uint64                       `json:"ungroupedIncomingEvents"`
 	ByPlayerEntity             []PlayerEntityDamageSnapshot `json:"byPlayerEntity"`
+	EncounterDPS               DPSResult                    `json:"encounterDps"`
+	GameTimeDPS                DPSResult                    `json:"gameTimeDps"`
+	DamageSpanDPS              DPSResult                    `json:"damageSpanDps"`
 }
 
 // DamageStatistics aggregates player-related damage confirmed by server responses.
@@ -62,6 +87,12 @@ type DamageStatistics struct {
 	ungroupedDamageTaken       int64
 	ungroupedOutgoingEvents    uint64
 	ungroupedIncomingEvents    uint64
+	firstOutgoingObserved      time.Time
+	lastOutgoingObserved       time.Time
+	outgoingMissingTime        bool
+	outgoingSessionNumber      int
+	hasOutgoingSession         bool
+	multipleOutgoingSessions   bool
 }
 
 // NewDamageStatistics creates an empty damage statistics accumulator.
@@ -72,7 +103,7 @@ func NewDamageStatistics() *DamageStatistics {
 // Snapshot returns an independent copy of the current statistics.
 func (s *DamageStatistics) Snapshot() DamageStatisticsSnapshot {
 	if s == nil {
-		return DamageStatisticsSnapshot{ByPlayerEntity: []PlayerEntityDamageSnapshot{}}
+		return emptyDamageStatisticsSnapshot()
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -89,6 +120,9 @@ func (s *DamageStatistics) Snapshot() DamageStatisticsSnapshot {
 	for _, entity := range s.entities {
 		snapshot.ByPlayerEntity = append(snapshot.ByPlayerEntity, entity)
 	}
+	snapshot.EncounterDPS = DPSResult{Status: DPSStatusUnavailable, Reason: "encounter_boundaries_unavailable"}
+	snapshot.GameTimeDPS = DPSResult{Status: DPSStatusUnavailable, Reason: "official_timer_duration_unavailable"}
+	snapshot.DamageSpanDPS = s.damageSpanDPSLocked()
 	sort.Slice(snapshot.ByPlayerEntity, func(i, j int) bool {
 		if snapshot.ByPlayerEntity[i].SessionNumber != snapshot.ByPlayerEntity[j].SessionNumber {
 			return snapshot.ByPlayerEntity[i].SessionNumber < snapshot.ByPlayerEntity[j].SessionNumber
@@ -121,13 +155,28 @@ func (s *DamageStatistics) Reset() {
 	s.ungroupedDamageTaken = 0
 	s.ungroupedOutgoingEvents = 0
 	s.ungroupedIncomingEvents = 0
+	s.firstOutgoingObserved = time.Time{}
+	s.lastOutgoingObserved = time.Time{}
+	s.outgoingMissingTime = false
+	s.outgoingSessionNumber = 0
+	s.hasOutgoingSession = false
+	s.multipleOutgoingSessions = false
 }
 
 func (p *processor) damageStatisticsSnapshot() DamageStatisticsSnapshot {
 	if p == nil || p.damageStatistics == nil {
-		return DamageStatisticsSnapshot{ByPlayerEntity: []PlayerEntityDamageSnapshot{}}
+		return emptyDamageStatisticsSnapshot()
 	}
 	return p.damageStatistics.Snapshot()
+}
+
+func emptyDamageStatisticsSnapshot() DamageStatisticsSnapshot {
+	return DamageStatisticsSnapshot{
+		ByPlayerEntity: []PlayerEntityDamageSnapshot{},
+		EncounterDPS:   DPSResult{Status: DPSStatusUnavailable, Reason: "encounter_boundaries_unavailable"},
+		GameTimeDPS:    DPSResult{Status: DPSStatusUnavailable, Reason: "official_timer_duration_unavailable"},
+		DamageSpanDPS:  DPSResult{Status: DPSStatusInsufficientData, Reason: "no_confirmed_outgoing_damage"},
+	}
 }
 
 func (p *processor) resetDamageStatistics() {
@@ -152,6 +201,7 @@ func (s *DamageStatistics) addDamageEvent(event combatEvent, sourceRelation, tar
 	case sourceRelation == playerRelationLocal && targetRelation == playerRelationUnrelated:
 		s.damageDealt += event.Damage
 		s.outgoingEvents++
+		s.addOutgoingDamageTime(event.SessionNumber, event.Timestamp)
 		s.addEntityDamage(event.SessionNumber, event.SourceEntityID, event.Source.Lifecycle.ReusedAfterRemove, event.Damage, true, event.Timestamp)
 	case sourceRelation == playerRelationUnrelated && targetRelation == playerRelationLocal:
 		s.damageTaken += event.Damage
@@ -170,6 +220,58 @@ func (s *DamageStatistics) addDamageEvent(event combatEvent, sourceRelation, tar
 		s.unattributedIncomingDamage += event.Damage
 		s.unattributedIncomingEvents++
 	}
+}
+
+func (s *DamageStatistics) addOutgoingDamageTime(sessionNumber int, observedAt time.Time) {
+	if !s.hasOutgoingSession {
+		s.outgoingSessionNumber = sessionNumber
+		s.hasOutgoingSession = true
+	} else if s.outgoingSessionNumber != sessionNumber {
+		s.multipleOutgoingSessions = true
+	}
+	if observedAt.IsZero() {
+		s.outgoingMissingTime = true
+		return
+	}
+	if s.firstOutgoingObserved.IsZero() || observedAt.Before(s.firstOutgoingObserved) {
+		s.firstOutgoingObserved = observedAt
+	}
+	if s.lastOutgoingObserved.IsZero() || observedAt.After(s.lastOutgoingObserved) {
+		s.lastOutgoingObserved = observedAt
+	}
+}
+
+func (s *DamageStatistics) damageSpanDPSLocked() DPSResult {
+	result := DPSResult{Damage: s.damageDealt}
+	switch {
+	case s.outgoingEvents == 0:
+		result.Status, result.Reason = DPSStatusInsufficientData, "no_confirmed_outgoing_damage"
+	case s.multipleOutgoingSessions:
+		result.Status, result.Reason = DPSStatusUnavailable, "multiple_sessions_require_separate_statistics"
+	case s.outgoingMissingTime:
+		result.Status, result.Reason = DPSStatusUnavailable, "outgoing_event_missing_observed_time"
+	case s.outgoingEvents < 2:
+		result.Status, result.Reason = DPSStatusInsufficientData, "requires_multiple_damage_events"
+	default:
+		result.StartObservedAt = s.firstOutgoingObserved
+		result.EndObservedAt = s.lastOutgoingObserved
+		if result.StartObservedAt.IsZero() || result.EndObservedAt.IsZero() {
+			result.Status, result.Reason = DPSStatusUnavailable, "outgoing_event_missing_observed_time"
+			return result
+		}
+		result.Duration = result.EndObservedAt.Sub(result.StartObservedAt)
+		if result.Duration <= 0 {
+			result.Status, result.Reason = DPSStatusInvalidDuration, "non_positive_damage_span"
+			return result
+		}
+		value := float64(result.Damage) / result.Duration.Seconds()
+		if math.IsNaN(value) || math.IsInf(value, 0) {
+			result.Status, result.Reason = DPSStatusUnavailable, "non_finite_result"
+			return result
+		}
+		result.Status, result.Value = DPSStatusAvailable, value
+	}
+	return result
 }
 
 func (s *DamageStatistics) addEntityDamage(sessionNumber int, entityID, entityGeneration uint64, amount int64, outgoing bool, observedAt time.Time) {

@@ -93,6 +93,9 @@ func TestDamageStatisticsKeepsUnresolvedSummonDamageUnattributed(t *testing.T) {
 		snapshot.UnattributedIncomingDamage != 250 || snapshot.UnattributedIncomingEvents != 1 {
 		t.Fatalf("unresolved summon damage was credited instead of kept unattributed: %+v", snapshot)
 	}
+	if snapshot.DamageSpanDPS.Status != DPSStatusInsufficientData || snapshot.DamageSpanDPS.Damage != 0 {
+		t.Fatalf("unresolved summon damage changed confirmed DPS: %+v", snapshot.DamageSpanDPS)
+	}
 }
 
 func TestProcessorStatisticsAccessorsReturnCopiesAndResetSharedState(t *testing.T) {
