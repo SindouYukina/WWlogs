@@ -58,6 +58,7 @@ func (p *processor) observeEffectLifecycle(row buffLifecycleAuditRow) {
 		}
 		if row.ID != nil {
 			event.EffectID, event.HasEffectID = *row.ID, true
+			event.DefinitionLinked = p.masters.hasBuffDefinition(*row.ID)
 		}
 		if row.InstigatorID != nil && *row.InstigatorID != 0 {
 			event.SourceEntityID, event.HasSource = *row.InstigatorID, true
@@ -116,6 +117,7 @@ func (p *processor) observeEffectSnapshot(frame gameFrame, record rawBuffSnapsho
 	}
 	if record.HasID {
 		event.EffectID, event.HasEffectID = record.ID, true
+		event.DefinitionLinked = p.masters.hasBuffDefinition(record.ID)
 	}
 	if record.HasInstigatorID && record.InstigatorID != 0 {
 		event.SourceEntityID, event.HasSource = record.InstigatorID, true

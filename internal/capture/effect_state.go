@@ -116,6 +116,8 @@ type EffectApplyEvent struct {
 	HandleID         uint64
 	EffectID         uint64
 	HasEffectID      bool
+	// DefinitionLinked reports an exact static buff row for EffectID.
+	DefinitionLinked bool
 	SourceEntityID   uint64
 	HasSource        bool
 	HolderRelation   EffectEntityRelation
@@ -187,14 +189,17 @@ type EffectInstanceSnapshot struct {
 	HandleID         uint64               `json:"handleId"`
 	HolderRelation   EffectEntityRelation `json:"holderRelation"`
 	// EffectID is the Id of the apply message (or the BuffId of a snapshot row); it is the only stable identity and the display fallback.
-	EffectID        *uint64              `json:"effectId,omitempty"`
-	SourceEntityID  *uint64              `json:"sourceEntityId,omitempty"`
-	SourceRelation  EffectEntityRelation `json:"sourceRelation"`
-	Polarity        EffectPolarity       `json:"polarity"`
-	StackCount      *uint64              `json:"stackCount,omitempty"`
-	Lifecycle       EffectLifecycle      `json:"lifecycle"`
-	Origin          EffectOrigin         `json:"origin"`
-	FirstObservedAt time.Time            `json:"firstObservedAt"`
+	EffectID *uint64 `json:"effectId,omitempty"`
+	// DefinitionStatus is correlated when the effect id has an exact row in the static buff table.
+	// It says nothing about the effect's meaning, name or polarity.
+	DefinitionStatus string               `json:"definitionStatus"`
+	SourceEntityID   *uint64              `json:"sourceEntityId,omitempty"`
+	SourceRelation   EffectEntityRelation `json:"sourceRelation"`
+	Polarity         EffectPolarity       `json:"polarity"`
+	StackCount       *uint64              `json:"stackCount,omitempty"`
+	Lifecycle        EffectLifecycle      `json:"lifecycle"`
+	Origin           EffectOrigin         `json:"origin"`
+	FirstObservedAt  time.Time            `json:"firstObservedAt"`
 	// AppliedAt is set only for origin apply; a snapshot-origin instance has an unknown application time.
 	AppliedAt     *time.Time `json:"appliedAt,omitempty"`
 	LastUpdatedAt time.Time  `json:"lastUpdatedAt"`
@@ -238,6 +243,7 @@ type effectInstance struct {
 	key              effectKey
 	effectID         uint64
 	hasEffectID      bool
+	definitionLinked bool
 	source           uint64
 	hasSource        bool
 	holderRelation   EffectEntityRelation
@@ -388,7 +394,7 @@ func (t *EffectTracker) ObserveApply(event EffectApplyEvent) {
 	}
 	t.ordinal++
 	instance := &effectInstance{
-		key: key, effectID: event.EffectID, hasEffectID: event.HasEffectID,
+		key: key, effectID: event.EffectID, hasEffectID: event.HasEffectID, definitionLinked: event.DefinitionLinked,
 		source: event.SourceEntityID, hasSource: event.HasSource,
 		holderRelation: normalizeEffectRelation(event.HolderRelation), sourceRelation: normalizeEffectRelation(event.SourceRelation),
 		stack: event.StackCount, hasStack: event.HasStackCount,
@@ -817,7 +823,7 @@ func (t *EffectTracker) instanceSnapshotLocked(instance *effectInstance, query C
 		SessionNumber: instance.key.session, HolderEntityID: instance.key.holder,
 		HolderGeneration: instance.key.generation, HandleID: instance.key.handle,
 		HolderRelation: instance.holderRelation, SourceRelation: instance.sourceRelation,
-		Polarity: EffectPolarityUnclassified, Lifecycle: EffectLifecycleActive,
+		DefinitionStatus: string(resolutionUnknown), Polarity: EffectPolarityUnclassified, Lifecycle: EffectLifecycleActive,
 		Origin: instance.origin, FirstObservedAt: instance.firstObservedAt, LastUpdatedAt: instance.lastUpdatedAt,
 	}
 	if instance.origin == EffectOriginApply {
@@ -827,6 +833,9 @@ func (t *EffectTracker) instanceSnapshotLocked(instance *effectInstance, query C
 	if instance.hasEffectID {
 		id := instance.effectID
 		snapshot.EffectID = &id
+		if instance.definitionLinked {
+			snapshot.DefinitionStatus = string(resolutionCorrelated)
+		}
 	}
 	if instance.hasSource {
 		id := instance.source

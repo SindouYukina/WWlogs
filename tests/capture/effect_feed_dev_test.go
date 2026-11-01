@@ -312,3 +312,22 @@ func TestEffectFeedApplyAfterSnapshotUpgradesOrigin(t *testing.T) {
 		t.Fatalf("origin after a confirming APPLY = %+v", effect)
 	}
 }
+
+func TestEffectFeedLinksStaticDefinitionOnlyByExactRow(t *testing.T) {
+	p := newEffectTestProcessor()
+	p.masters = &gameMaster{buffDefinitions: map[uint64]struct{}{10041000: {}}}
+	deliverEffectMessage(t, p, 0, effectPackBody(200, 5, effectApplyPayload(1, 10041000, 200, 100, 1, 30, 30)))
+	deliverEffectMessage(t, p, 0, effectPackBody(200, 5, effectApplyPayload(2, 1312010090, 200, 100, 1, 30, 30)))
+	byHandle := map[uint64]EffectInstanceSnapshot{}
+	for _, effect := range p.effects.Snapshot().Effects {
+		byHandle[effect.HandleID] = effect
+	}
+	if got := byHandle[1].DefinitionStatus; got != string(resolutionCorrelated) {
+		t.Fatalf("effect with a static row: definitionStatus = %s", got)
+	}
+	// An id without a row is still tracked, keeps its raw id and is not named or dropped.
+	unnamed := byHandle[2]
+	if unnamed.DefinitionStatus != string(resolutionUnknown) || unnamed.EffectID == nil || *unnamed.EffectID != 1312010090 || unnamed.Lifecycle != EffectLifecycleActive {
+		t.Fatalf("effect without a static row = %+v", unnamed)
+	}
+}
