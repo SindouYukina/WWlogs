@@ -54,6 +54,7 @@ func Main() {
 	roleConfigOutPath := flag.String("role-config-out", "", "Optionally write RoleConfigInfoNotify character IDs resolved through Master as JSONL; requires -protocol-schema and -master-db")
 
 	buffOverlapOut := flag.String("buff-overlap-out", "", "Optionally write Buff instances observed on each damage target at event time")
+	effectStateOut := flag.String("effect-state-out", "", "Optionally write the final gameplay-effect state snapshot, with remaining-time estimates at the last frame time, as one JSON line")
 	masterLocale := flag.String("locale", "zh-TW", "Locale for Master display names: zh-TW, zh-CN, en-US, ja-JP, or ko-KR")
 	combatStateOutPath := flag.String("combat-state-out", "", "Optionally write attribute changes, recovery values, and state transitions as JSONL; requires -protocol-schema")
 	hpStateOutPath := flag.String("hp-state-out", "", "Optionally write each entity's Life and LifeMax as JSONL; requires -protocol-schema")
@@ -703,6 +704,25 @@ finished:
 		}
 		overlapFile.Close()
 		fmt.Fprintf(os.Stderr, "buff_overlap damage_results=%d intervals=%d duplicate_applies=%d unmatched_removes=%d skipped=%d interval_overflow=%d damage_overflow=%d\n", len(processor.damageOverlap), len(processor.buffIntervals), processor.buffDuplicateApplies, processor.buffUnmatchedRemoves, processor.buffOverlapSkipped, processor.buffIntervalOverflow, processor.damageOverlapOverflow)
+	}
+	if *effectStateOut != "" {
+		if dir := filepath.Dir(*effectStateOut); dir != "." {
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				fatal("create effect state directory", err)
+			}
+		}
+		effectFile, err := os.Create(*effectStateOut)
+		if err != nil {
+			fatal("create effect state output", err)
+		}
+		if err := processor.writeEffectState(effectFile); err != nil {
+			fatal("write effect state", err)
+		}
+		if err := effectFile.Close(); err != nil {
+			fatal("close effect state output", err)
+		}
+		counters := processor.effects.Snapshot().Counters
+		fmt.Fprintf(os.Stderr, "effect_state applies=%d duplicate_applies=%d instant_applies=%d updates=%d updates_without_apply=%d removes=%d removes_without_instance=%d holder_removals=%d excluded_unrelated=%d\n", counters.Applies, counters.DuplicateApplies, counters.InstantApplies, counters.Updates, counters.UpdatesWithoutApply, counters.Removes, counters.RemovesWithoutInstance, counters.HolderRemovals, counters.ExcludedUnrelated)
 	}
 	fmt.Fprintf(os.Stderr, "schema_decode errors=%d skipped_without_schema=%d\n", processor.schemaDecodeErrors, processor.schemaDecodeSkipped)
 	if processor.roleConfigOut != nil {
