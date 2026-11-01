@@ -4,10 +4,13 @@ import (
 	"math"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
 const maxCombatStatisticsEntities = 8192
+
+var captureSessionSequence atomic.Uint64
 
 type combatStatisticsKey struct {
 	sessionNumber    int
@@ -52,6 +55,10 @@ type DPSResult struct {
 
 // DamageStatisticsSnapshot separates confirmed totals from unattributed candidates.
 type DamageStatisticsSnapshot struct {
+	// CaptureSessionID is process-local and stays fixed for this statistics owner.
+	CaptureSessionID uint64 `json:"captureSessionId"`
+	// StatisticsIntervalID starts at 1 and advances whenever Reset begins a new interval.
+	StatisticsIntervalID       uint64                       `json:"statisticsIntervalId"`
 	DamageDealt                int64                        `json:"damageDealt"`
 	DamageTaken                int64                        `json:"damageTaken"`
 	OutgoingEvents             uint64                       `json:"outgoingEvents"`
@@ -74,6 +81,8 @@ type DamageStatisticsSnapshot struct {
 type DamageStatistics struct {
 	mu sync.RWMutex
 
+	captureSessionID           uint64
+	statisticsIntervalID       uint64
 	entities                   map[combatStatisticsKey]PlayerEntityDamageSnapshot
 	damageDealt                int64
 	damageTaken                int64
@@ -97,7 +106,11 @@ type DamageStatistics struct {
 
 // NewDamageStatistics creates an empty damage statistics accumulator.
 func NewDamageStatistics() *DamageStatistics {
-	return &DamageStatistics{entities: make(map[combatStatisticsKey]PlayerEntityDamageSnapshot)}
+	return &DamageStatistics{
+		captureSessionID:     captureSessionSequence.Add(1),
+		statisticsIntervalID: 1,
+		entities:             make(map[combatStatisticsKey]PlayerEntityDamageSnapshot),
+	}
 }
 
 // Snapshot returns an independent copy of the current statistics.
@@ -107,8 +120,12 @@ func (s *DamageStatistics) Snapshot() DamageStatisticsSnapshot {
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	return s.snapshotLocked()
+}
 
+func (s *DamageStatistics) snapshotLocked() DamageStatisticsSnapshot {
 	snapshot := DamageStatisticsSnapshot{
+		CaptureSessionID: s.captureSessionID, StatisticsIntervalID: s.statisticsIntervalID,
 		DamageDealt: s.damageDealt, DamageTaken: s.damageTaken,
 		OutgoingEvents: s.outgoingEvents, IncomingEvents: s.incomingEvents,
 		UnattributedOutgoingDamage: s.unattributedOutgoingDamage, UnattributedIncomingDamage: s.unattributedIncomingDamage,
@@ -135,6 +152,17 @@ func (s *DamageStatistics) Snapshot() DamageStatisticsSnapshot {
 	return snapshot
 }
 
+func (s *DamageStatistics) snapshotAndReset() DamageStatisticsSnapshot {
+	if s == nil {
+		return emptyDamageStatisticsSnapshot()
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	snapshot := s.snapshotLocked()
+	s.resetLocked()
+	return snapshot
+}
+
 // Reset clears all totals and per-entity state.
 func (s *DamageStatistics) Reset() {
 	if s == nil {
@@ -142,7 +170,12 @@ func (s *DamageStatistics) Reset() {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.resetLocked()
+}
+
+func (s *DamageStatistics) resetLocked() {
 	s.entities = make(map[combatStatisticsKey]PlayerEntityDamageSnapshot)
+	s.statisticsIntervalID++
 	s.damageDealt = 0
 	s.damageTaken = 0
 	s.outgoingEvents = 0
@@ -183,6 +216,13 @@ func (p *processor) resetDamageStatistics() {
 	if p != nil && p.damageStatistics != nil {
 		p.damageStatistics.Reset()
 	}
+}
+
+func (p *processor) snapshotAndResetDamageStatistics() DamageStatisticsSnapshot {
+	if p == nil || p.damageStatistics == nil {
+		return emptyDamageStatisticsSnapshot()
+	}
+	return p.damageStatistics.snapshotAndReset()
 }
 
 // addDamageEvent receives only events that passed response validation and RPC deduplication.

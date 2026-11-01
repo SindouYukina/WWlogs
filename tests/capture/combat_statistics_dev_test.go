@@ -98,8 +98,37 @@ func TestDamageStatisticsKeepsUnresolvedSummonDamageUnattributed(t *testing.T) {
 	}
 }
 
+func TestProcessorSnapshotAndResetReturnsOldIntervalAndPreservesProtocolState(t *testing.T) {
+	p, _, _ := newPlayerRelevanceTestProcessor()
+	p.sessionNumber = 5
+	p.pending[42] = pendingDamageRequest{hasDamageID: true, damageID: 1}
+	p.consumed[99] = 1
+	addStatisticsOutgoingDamage(p.damageStatistics, 5, 10, time.Unix(10, 0))
+	addStatisticsOutgoingDamage(p.damageStatistics, 5, 20, time.Unix(20, 0))
+
+	oldInterval := p.snapshotAndResetDamageStatistics()
+	newInterval := p.damageStatisticsSnapshot()
+	if oldInterval.CaptureSessionID != newInterval.CaptureSessionID ||
+		oldInterval.StatisticsIntervalID != 1 || newInterval.StatisticsIntervalID != 2 ||
+		oldInterval.DamageDealt != 30 || oldInterval.DamageSpanDPS.Status != DPSStatusAvailable ||
+		newInterval.DamageDealt != 0 || newInterval.OutgoingEvents != 0 ||
+		newInterval.DamageSpanDPS.Status != DPSStatusInsufficientData {
+		t.Fatalf("snapshot-and-reset did not switch intervals atomically: old=%+v new=%+v", oldInterval, newInterval)
+	}
+	if p.sessionNumber != 5 || p.pending[42].damageID != 1 || p.consumed[99] != 1 {
+		t.Fatalf("interval switch modified protocol session or RPC pairing state: session=%d pending=%+v consumed=%v", p.sessionNumber, p.pending, p.consumed)
+	}
+	addStatisticsOutgoingDamage(p.damageStatistics, 5, 7, time.Unix(30, 0))
+	if oldInterval.DamageDealt != 30 || oldInterval.DamageSpanDPS.Value != 3 {
+		t.Fatalf("subsequent events mutated the returned interval snapshot: %+v", oldInterval)
+	}
+}
+
 func TestProcessorStatisticsAccessorsReturnCopiesAndResetSharedState(t *testing.T) {
 	p, _, _ := newPlayerRelevanceTestProcessor()
+	p.sessionNumber = 7
+	p.pending[42] = pendingDamageRequest{hasDamageID: true, damageID: 1}
+	p.consumed[99] = 1
 	p.damageStatistics.addDamageEvent(combatEvent{
 		SessionNumber: 1, SourceEntityID: 100, HasSourceEntity: true, TargetEntityID: 200, HasTargetEntity: true,
 		EventTypeCandidate: "DAMAGE_CANDIDATE", Damage: 321,
@@ -117,6 +146,9 @@ func TestProcessorStatisticsAccessorsReturnCopiesAndResetSharedState(t *testing.
 	p.resetDamageStatistics()
 	if got := p.damageStatisticsSnapshot(); got.DamageDealt != 0 || len(got.ByPlayerEntity) != 0 {
 		t.Fatalf("processor reset did not clear the shared statistics: %+v", got)
+	}
+	if p.sessionNumber != 7 || p.pending[42].damageID != 1 || p.consumed[99] != 1 {
+		t.Fatalf("statistics reset modified protocol session or RPC pairing state: session=%d pending=%+v consumed=%v", p.sessionNumber, p.pending, p.consumed)
 	}
 }
 
