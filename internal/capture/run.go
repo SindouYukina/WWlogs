@@ -281,7 +281,7 @@ func resolveRuntimePath(relativePath, executablePath, workingDirectory string) s
 func promptLocalIPv4(input io.Reader, output io.Writer) (string, error) {
 	devices, err := pcap.FindAllDevs()
 	if err != nil {
-		return "", fmt.Errorf("無法列出 Npcap 網路介面：%w", err)
+		return "", fmt.Errorf("unable to list Npcap network interfaces: %w", err)
 	}
 	type adapterAddress struct {
 		description string
@@ -300,27 +300,27 @@ func promptLocalIPv4(input io.Reader, output io.Writer) (string, error) {
 		}
 	}
 	if len(addresses) == 0 {
-		return "", fmt.Errorf("找不到可用的 IPv4 網路介面；請確認 Npcap 已安裝，或使用 -ip 指定介面位址")
+		return "", fmt.Errorf("no usable IPv4 network interface found; verify that Npcap is installed or specify an address with -ip")
 	}
-	fmt.Fprintln(output, "請選擇遊戲流量使用的網路介面：")
+	fmt.Fprintln(output, "Select the network interface used for game traffic:")
 	for index, address := range addresses {
 		fmt.Fprintf(output, "  %d. %s (%s)\n", index+1, address.ip, address.description)
 	}
-	fmt.Fprint(output, "輸入編號：")
+	fmt.Fprint(output, "Enter selection: ")
 	var choice int
 	if _, err := fmt.Fscan(input, &choice); err != nil {
-		return "", fmt.Errorf("讀取介面選擇失敗：%w", err)
+		return "", fmt.Errorf("failed to read interface selection: %w", err)
 	}
 	if choice < 1 || choice > len(addresses) {
-		return "", fmt.Errorf("介面編號超出範圍：1-%d", len(addresses))
+		return "", fmt.Errorf("interface selection is out of range: 1-%d", len(addresses))
 	}
 	return addresses[choice-1].ip, nil
 }
 
 func fatal(action string, err error) {
-	fmt.Fprintf(os.Stderr, "錯誤（%s）：%v\n", action, err)
+	fmt.Fprintf(os.Stderr, "Error (%s): %v\n", action, err)
 	if info, statErr := os.Stdin.Stat(); statErr == nil && info.Mode()&os.ModeCharDevice != 0 {
-		fmt.Fprint(os.Stderr, "按 Enter 關閉此視窗。")
+		fmt.Fprint(os.Stderr, "Press Enter to close this window.")
 		_, _ = bufio.NewReader(os.Stdin).ReadString('\n')
 	}
 	os.Exit(1)
