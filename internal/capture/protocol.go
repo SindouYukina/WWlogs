@@ -203,6 +203,7 @@ type processor struct {
 	damageOverlapOverflow     int
 	activeRequests            map[uint16]pendingActiveRequest
 	stats                     processorStats
+	damageStatistics          *DamageStatistics
 	census                    *commandCensus
 	sessionNumber             int
 }
@@ -217,6 +218,7 @@ func newProcessor(rsaKey *staticRSA, stdout, diagnostic, audit io.Writer) *proce
 		entities:             newEntityResolver(),
 		sourceRoles:          newSourceRoleResolver(),
 		playerRelevance:      newPlayerRelevanceResolver(),
+		damageStatistics:     NewDamageStatistics(),
 		stdout:               stdout,
 		diagnostic:           diagnostic,
 		audit:                audit,
