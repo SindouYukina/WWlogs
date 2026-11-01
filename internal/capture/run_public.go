@@ -202,5 +202,5 @@ func publicPacketDirection(packet gopacket.Packet, localIPv4 string, udp *layers
 
 // publicStatisticsLine formats confirmed aggregates only: no Entity, Handle, or RPC identifiers.
 func publicStatisticsLine(p *processor) string {
-	return fmt.Sprintf("damage_events=%d damage_total=%d", p.stats.decodedMatchedEvents, p.stats.decodedCombatResultAbs)
+	return p.currentStatisticsReport().String()
 }

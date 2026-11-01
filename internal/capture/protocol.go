@@ -204,11 +204,13 @@ type processor struct {
 	activeRequests            map[uint16]pendingActiveRequest
 	stats                     processorStats
 	damageStatistics          *DamageStatistics
+	effects                   *EffectTracker
 	census                    *commandCensus
 	sessionNumber             int
 }
 
 func newProcessor(rsaKey *staticRSA, stdout, diagnostic, audit io.Writer) *processor {
+	statistics := NewDamageStatistics()
 	return &processor{
 		rsa:                  rsaKey,
 		pending:              make(map[uint64]pendingDamageRequest),
@@ -218,7 +220,8 @@ func newProcessor(rsaKey *staticRSA, stdout, diagnostic, audit io.Writer) *proce
 		entities:             newEntityResolver(),
 		sourceRoles:          newSourceRoleResolver(),
 		playerRelevance:      newPlayerRelevanceResolver(),
-		damageStatistics:     NewDamageStatistics(),
+		damageStatistics:     statistics,
+		effects:              NewEffectTracker(statistics.captureSessionID),
 		stdout:               stdout,
 		diagnostic:           diagnostic,
 		audit:                audit,
@@ -507,6 +510,7 @@ func (p *processor) handleFrame(frame gameFrame) {
 			return
 		}
 		p.playerRelevance.reset()
+		p.effects.EndLiveState()
 		p.backfillAvailableSummaryCredits()
 		p.sourceRoles.reset()
 		p.resetPendingSummaryCredits()
@@ -527,6 +531,7 @@ func (p *processor) handleFrame(frame gameFrame) {
 		}
 		p.stats.entityRemoves += removed
 		for _, id := range removedIDs {
+			p.effects.ObserveHolderRemoved(p.sessionNumber, id, p.currentFrameTime)
 			p.playerRelevance.removeEntity(id)
 			if roleID, correlated := p.sourceRoles.correlatedRole(id); correlated {
 				p.backfillEncounterSummary(id, roleID)
@@ -662,6 +667,7 @@ func (p *processor) handleProtoKeyResponse(body []byte) error {
 	p.consumedSequence = 0
 	p.entities.reset()
 	p.playerRelevance.reset()
+	p.effects.EndLiveState()
 	p.backfillAvailableSummaryCredits()
 	p.sourceRoles.reset()
 	p.resetPendingSummaryCredits()

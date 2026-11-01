@@ -381,6 +381,7 @@ func (p *processor) handleBuffLifecycleMessage(frame gameFrame, body []byte) err
 			return fmt.Errorf("write Buff lifecycle row: %w", err)
 		}
 	}
+	p.observeEffectLifecycle(row)
 	p.writeStructuredEventJSONL(row)
 	return nil
 }
@@ -517,6 +518,7 @@ func (p *processor) handleInnerBuffLifecycleMessage(frame gameFrame, innerFieldN
 		}
 	}
 	p.observeBuffInterval(row)
+	p.observeEffectLifecycle(row)
 	p.writeStructuredEventJSONL(row)
 	return nil
 }
@@ -724,6 +726,7 @@ func (p *processor) handleActiveResponse(frame gameFrame, body []byte) error {
 					return fmt.Errorf("parse xAs.SIs buff record: %w", err)
 				}
 				p.stats.observedBuffEvents++
+				p.observeEffectSnapshot(frame, record, request.entityID, matched && request.hasEntityID)
 				if p.buffSnapshots != nil || p.combatEventsJSONL != nil || p.encounterSummary != nil {
 					row := buffSnapshotAuditRow{
 						SchemaVersion: buffSnapshotSchemaVersion, EventType: "BUFF_SNAPSHOT", SessionNumber: p.sessionNumber,
