@@ -1,21 +1,21 @@
-# 產品測試
+# Product Tests
 
-所有 WWlogs 產品測試原始碼、測試輔助程式與 fixtures 都放在此 `tests/` 目錄；`cmd/` 與 `internal/` 不放測試程式碼。
+All WWlogs product test source files, test helpers, and fixtures belong in this `tests/` directory. Do not put test code in `cmd/` or `internal/`.
 
-- `capture/` 與 `keyembed/` 保存白箱測試。`go-overlay.json` 將這些實體位於 `tests/` 的檔案映射到受測產品套件，並從 `tests/` 套件掃描中隱藏原始路徑。
-- `versioninfo/` 保存使用 exported API 的產品測試。
-- `.vscode/settings.json` 與 `scripts/test.ps1` 使用同一 overlay，讓 gopls、Go 測試與編輯器解析一致。
+- `capture/` and `keyembed/` contain white-box tests. `go-overlay.json` maps these files from their physical locations under `tests/` to the product packages under test, and hides their original paths from `tests/` package discovery.
+- `versioninfo/` contains product tests that use exported APIs.
+- `.vscode/settings.json` and `scripts/test.ps1` use the same overlay so that `gopls`, Go tests, and editor diagnostics resolve files consistently.
 
-請在 repository 根目錄執行產品測試：
+Run product tests from the repository root:
 
 ```powershell
 pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\test.ps1
 ```
 
-一般 `go test` 參數會轉交給測試命令，例如：
+The test script forwards standard `go test` flags to the test command. For example:
 
 ```powershell
 pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\test.ps1 -run TestCurrentMetadataIsComplete
 ```
 
-測試入口會明確指定 `cmd`、`internal` 與所需 `tests` 套件，不遞迴掃描 repository 中的 `work/` 或其他無關目錄。
+The test entry point explicitly lists the required `cmd`, `internal`, and `tests` packages. It does not recursively scan `work/` or other unrelated repository directories.
