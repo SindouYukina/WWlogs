@@ -1,0 +1,12 @@
+{
+  "gopls": {
+    "build.buildFlags": [
+      "-overlay=tests/go-overlay.json",
+      "-tags=wwdev"
+    ]
+  },
+  "go.testFlags": [
+    "-overlay=tests/go-overlay.json",
+    "-tags=wwdev"
+  ]
+}
