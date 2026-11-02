@@ -253,7 +253,13 @@ func (event combatEvent) formatNormalForSourceRelation(sourceRelation playerRela
 		}
 	}
 	credit := "Credit:?"
-	if event.CharacterID != 0 && (event.CharacterStatus == resolutionVerified || event.CharacterStatus == resolutionCorrelated) {
+	if event.DamageContributorCandidate != nil && event.DamageContributorCandidate.ActorType == "Vehicle" {
+		credit = "Credit:[Vehicle]"
+		if name := event.DamageContributorCandidate.Name; name != nil && name.Text != "" {
+			credit = fmt.Sprintf("Credit:[Vehicle] [internal] %s", name.Text)
+		}
+		credit += fmt.Sprintf(" [%s]", event.DamageContributorCandidate.Status)
+	} else if event.CharacterID != 0 && (event.CharacterStatus == resolutionVerified || event.CharacterStatus == resolutionCorrelated) {
 		if event.CharacterName != "" {
 			credit = fmt.Sprintf("Credit:%s [%s]", event.CharacterName, event.CharacterStatus)
 			if event.CharacterNameStatus != "" && event.CharacterNameStatus != event.CharacterStatus {
@@ -262,13 +268,6 @@ func (event combatEvent) formatNormalForSourceRelation(sourceRelation playerRela
 		} else {
 			credit = fmt.Sprintf("Credit:Character:%d [%s; name %s]", event.CharacterID, event.CharacterStatus, event.CharacterNameStatus)
 		}
-	}
-	if credit == "Credit:?" && event.DamageContributorCandidate != nil {
-		credit = "Credit:[Vehicle]"
-		if name := event.DamageContributorCandidate.Name; name != nil && name.Text != "" {
-			credit = fmt.Sprintf("Credit:[Vehicle] [internal] %s", name.Text)
-		}
-		credit += fmt.Sprintf(" [%s]", event.DamageContributorCandidate.Status)
 	}
 	if credit == "Credit:?" && event.Source.HasMonster && (event.Source.MonsterStatus == resolutionVerified || event.Source.MonsterStatus == resolutionCorrelated) {
 		credit = fmt.Sprintf("Credit:NonPlayerSource [Monster:%d; %s]", event.Source.Monster.ID, event.Source.MonsterStatus)

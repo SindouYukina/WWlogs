@@ -297,7 +297,7 @@ func TestPlayerRelevanceKeepsLocallyOwnedMotorcycleDamage(t *testing.T) {
 }
 
 func TestPlayerRelevanceUsesLocalPlayerIDForVehicleEntity(t *testing.T) {
-	p, stdout, _ := newPlayerRelevanceTestProcessor()
+	p, stdout, jsonl := newPlayerRelevanceTestProcessor()
 	addTestPlayerRoleGroupEntity(p, 100, 77, 1409)
 	observeTestLocalRole(p, 100)
 	addTestRuntimeEntity(p, 101, func(entity *runtimeEntity) {
@@ -312,6 +312,10 @@ func TestPlayerRelevanceUsesLocalPlayerIDForVehicleEntity(t *testing.T) {
 	event := testDamageEvent(p, 101, 200)
 	event.EventTypeCandidate = "DAMAGE_CANDIDATE"
 	event.Damage = 321
+	event.CharacterID = 1409
+	event.CharacterName = "Role"
+	event.CharacterNameStatus = resolutionVerified
+	event.CharacterStatus = resolutionVerified
 	event.DamageContributorCandidate = &damageContributorCandidate{ActorType: "Vehicle", Status: resolutionCorrelated}
 	source, target, visible := p.playerRelevantDamageEvent(event)
 	if source != playerRelationLocal || target != playerRelationUnrelated || !visible {
@@ -326,6 +330,9 @@ func TestPlayerRelevanceUsesLocalPlayerIDForVehicleEntity(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "Credit:[Vehicle]") {
 		t.Fatalf("vehicle contributor was not visible in console output: %q", stdout.String())
+	}
+	if strings.Contains(stdout.String(), "Credit:Role") || !strings.Contains(jsonl.String(), `"characterId":1409`) || !strings.Contains(jsonl.String(), `"actorType":"Vehicle"`) {
+		t.Fatalf("vehicle source was merged into character credit or raw identity was lost: stdout=%q jsonl=%q", stdout.String(), jsonl.String())
 	}
 	if !strings.Contains(stdout.String(), "[PlayerTeamSide: SOURCE]") {
 		t.Fatalf("local motorcycle damage was not labeled as player-team output: %q", stdout.String())
