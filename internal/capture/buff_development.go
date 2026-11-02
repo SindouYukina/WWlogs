@@ -11,7 +11,11 @@ func (p *processor) writeBuffLifecycleConsole(row buffLifecycleAuditRow) {
 	if p == nil || !p.showEffectEvents || p.stdout == nil {
 		return
 	}
-	if _, err := fmt.Fprintln(p.stdout, formatBuffLifecycleConsole(row)); err != nil {
+	line := formatBuffLifecycleConsole(row)
+	if fields := p.effectSemanticConsoleFields(row); fields != "" {
+		line += " " + fields
+	}
+	if _, err := fmt.Fprintln(p.stdout, line); err != nil {
 		if p.diagnostic != nil {
 			fmt.Fprintf(p.diagnostic, "effect_event_stdout_error=%v\n", err)
 		}

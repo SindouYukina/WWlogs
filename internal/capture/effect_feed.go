@@ -39,6 +39,35 @@ func (p *processor) effectHolderGeneration(entityID uint64) uint64 {
 	return p.entities.lifecycleView(entityID).ReusedAfterRemove
 }
 
+// effectStaticInfo returns the static definition parameters of an effect id, or nil.
+func (p *processor) effectStaticInfo(effectID uint64) *EffectStaticInfo {
+	if p == nil {
+		return nil
+	}
+	static, hasStatic := p.masters.buffStatic(effectID)
+	term, hasTerm := p.masters.buffTerm(effectID)
+	if !hasStatic && !hasTerm {
+		return nil
+	}
+	info := &EffectStaticInfo{DeveloperTags: append([]string(nil), static.tags...)}
+	if hasTerm {
+		info.Term = &EffectTermInfo{TermID: term.termID, Name: term.name, Description: term.description, Status: string(term.status)}
+	}
+	if static.hasDurationPolicy {
+		value := static.durationPolicy
+		info.DurationPolicy = &value
+	}
+	if static.hasDuration {
+		value := static.durationSeconds
+		info.StaticDurationSeconds = &value
+	}
+	if static.hasStackLimit {
+		value := static.stackLimit
+		info.StackLimit = &value
+	}
+	return info
+}
+
 func float64Pointer(value *float32) *float64 {
 	if value == nil {
 		return nil
@@ -70,6 +99,9 @@ func (p *processor) observeEffectLifecycle(row buffLifecycleAuditRow) {
 		if row.ID != nil {
 			event.EffectID, event.HasEffectID = *row.ID, true
 			event.DefinitionLinked = p.masters.hasBuffDefinition(*row.ID)
+			if event.DefinitionLinked {
+				event.Static = p.effectStaticInfo(*row.ID)
+			}
 		}
 		if row.InstigatorID != nil && *row.InstigatorID != 0 {
 			event.SourceEntityID, event.HasSource = *row.InstigatorID, true
@@ -129,6 +161,9 @@ func (p *processor) observeEffectSnapshot(frame gameFrame, record rawBuffSnapsho
 	if record.HasID {
 		event.EffectID, event.HasEffectID = record.ID, true
 		event.DefinitionLinked = p.masters.hasBuffDefinition(record.ID)
+		if event.DefinitionLinked {
+			event.Static = p.effectStaticInfo(record.ID)
+		}
 	}
 	if record.HasInstigatorID && record.InstigatorID != 0 {
 		event.SourceEntityID, event.HasSource = record.InstigatorID, true

@@ -105,6 +105,43 @@ const (
 	effectReasonCapacityExceeded     = "capacity_exceeded"
 )
 
+// EffectStaticInfo is the static Master definition of an effect id. It describes the
+// definition, not the live instance, and none of it is an official display name.
+type EffectStaticInfo struct {
+	DurationPolicy        *int64   `json:"durationPolicy,omitempty"`
+	StaticDurationSeconds *float64 `json:"staticDurationSeconds,omitempty"`
+	StackLimit            *uint64  `json:"stackLimit,omitempty"`
+	// DeveloperTags are GameplayTag paths of the definition: simplified-Chinese developer
+	// text, unofficial, and in part hashed segments that no table can read.
+	DeveloperTags []string `json:"developerTags,omitempty"`
+	// Term is the official glossary text of an element-ailment effect. Its link to the effect is
+	// correlated, never verified, because it joins on the GameplayTag rather than on an engine key.
+	Term *EffectTermInfo `json:"term,omitempty"`
+}
+
+// EffectTermInfo is the localized glossary term tied to an effect definition.
+type EffectTermInfo struct {
+	TermID      uint64 `json:"termId"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	Status      string `json:"status"`
+}
+
+// EffectSemanticStatus reports how much of an effect's meaning is resolved. No state
+// here means the official name is known: no table keys a name by effect id.
+type EffectSemanticStatus string
+
+const (
+	// EffectSemanticDefinitionUnresolved means the effect id has no exact static row.
+	EffectSemanticDefinitionUnresolved EffectSemanticStatus = "definition_unresolved"
+	// EffectSemanticNameUnresolved means the static row is linked and its parameters are
+	// available, but no official name or description is tied to the id.
+	EffectSemanticNameUnresolved EffectSemanticStatus = "definition_linked_name_unresolved"
+	// EffectSemanticNameCorrelated means a glossary term is tied to the definition by its
+	// GameplayTag. The name is real game text, but the link is correlated, not verified.
+	EffectSemanticNameCorrelated EffectSemanticStatus = "definition_linked_name_correlated"
+)
+
 // EffectApplyEvent is a server-confirmed gameplay-effect APPLY on one holder, or
 // (with Origin snapshot) a snapshot row that reports an already existing instance.
 type EffectApplyEvent struct {
@@ -118,12 +155,14 @@ type EffectApplyEvent struct {
 	HasEffectID      bool
 	// DefinitionLinked reports an exact static buff row for EffectID.
 	DefinitionLinked bool
-	SourceEntityID   uint64
-	HasSource        bool
-	HolderRelation   EffectEntityRelation
-	SourceRelation   EffectEntityRelation
-	StackCount       uint64
-	HasStackCount    bool
+	// Static carries the definition parameters of that row, when linked.
+	Static         *EffectStaticInfo
+	SourceEntityID uint64
+	HasSource      bool
+	HolderRelation EffectEntityRelation
+	SourceRelation EffectEntityRelation
+	StackCount     uint64
+	HasStackCount  bool
 	// DurationSeconds and RemainingSeconds are the raw server floats; nil means the field was absent.
 	DurationSeconds  *float64
 	RemainingSeconds *float64
@@ -194,14 +233,18 @@ type EffectInstanceSnapshot struct {
 	EffectID *uint64 `json:"effectId,omitempty"`
 	// DefinitionStatus is correlated when the effect id has an exact row in the static buff table.
 	// It says nothing about the effect's meaning, name or polarity.
-	DefinitionStatus string               `json:"definitionStatus"`
-	SourceEntityID   *uint64              `json:"sourceEntityId,omitempty"`
-	SourceRelation   EffectEntityRelation `json:"sourceRelation"`
-	Polarity         EffectPolarity       `json:"polarity"`
-	StackCount       *uint64              `json:"stackCount,omitempty"`
-	Lifecycle        EffectLifecycle      `json:"lifecycle"`
-	Origin           EffectOrigin         `json:"origin"`
-	FirstObservedAt  time.Time            `json:"firstObservedAt"`
+	DefinitionStatus string `json:"definitionStatus"`
+	// SemanticStatus is never complete: the official name is unresolved for every effect.
+	SemanticStatus EffectSemanticStatus `json:"semanticStatus"`
+	// Static holds the linked definition's parameters; it is a copy and may be nil.
+	Static          *EffectStaticInfo    `json:"static,omitempty"`
+	SourceEntityID  *uint64              `json:"sourceEntityId,omitempty"`
+	SourceRelation  EffectEntityRelation `json:"sourceRelation"`
+	Polarity        EffectPolarity       `json:"polarity"`
+	StackCount      *uint64              `json:"stackCount,omitempty"`
+	Lifecycle       EffectLifecycle      `json:"lifecycle"`
+	Origin          EffectOrigin         `json:"origin"`
+	FirstObservedAt time.Time            `json:"firstObservedAt"`
 	// AppliedAt is set only for origin apply; a snapshot-origin instance has an unknown application time.
 	AppliedAt     *time.Time `json:"appliedAt,omitempty"`
 	LastUpdatedAt time.Time  `json:"lastUpdatedAt"`
@@ -246,6 +289,7 @@ type effectInstance struct {
 	effectID         uint64
 	hasEffectID      bool
 	definitionLinked bool
+	static           *EffectStaticInfo
 	source           uint64
 	hasSource        bool
 	holderRelation   EffectEntityRelation
@@ -338,6 +382,30 @@ func classifyEffectTime(duration, remaining *float64) (timeBasis, float64, bool)
 	}
 }
 
+func (info *EffectStaticInfo) clone() *EffectStaticInfo {
+	if info == nil {
+		return nil
+	}
+	copied := &EffectStaticInfo{DeveloperTags: append([]string(nil), info.DeveloperTags...)}
+	if info.Term != nil {
+		term := *info.Term
+		copied.Term = &term
+	}
+	if info.DurationPolicy != nil {
+		value := *info.DurationPolicy
+		copied.DurationPolicy = &value
+	}
+	if info.StaticDurationSeconds != nil {
+		value := *info.StaticDurationSeconds
+		copied.StaticDurationSeconds = &value
+	}
+	if info.StackLimit != nil {
+		value := *info.StackLimit
+		copied.StackLimit = &value
+	}
+	return copied
+}
+
 // ObserveApply records a server APPLY. A repeated APPLY for an active handle is
 // treated as a refresh of that instance, never as a second instance.
 func (t *EffectTracker) ObserveApply(event EffectApplyEvent) {
@@ -396,7 +464,7 @@ func (t *EffectTracker) ObserveApply(event EffectApplyEvent) {
 	}
 	t.ordinal++
 	instance := &effectInstance{
-		key: key, effectID: event.EffectID, hasEffectID: event.HasEffectID, definitionLinked: event.DefinitionLinked,
+		key: key, effectID: event.EffectID, hasEffectID: event.HasEffectID, definitionLinked: event.DefinitionLinked, static: event.Static,
 		source: event.SourceEntityID, hasSource: event.HasSource,
 		holderRelation: normalizeEffectRelation(event.HolderRelation), sourceRelation: normalizeEffectRelation(event.SourceRelation),
 		stack: event.StackCount, hasStack: event.HasStackCount,
@@ -875,7 +943,8 @@ func (t *EffectTracker) instanceSnapshotLocked(instance *effectInstance, query C
 		SessionNumber: instance.key.session, HolderEntityID: instance.key.holder,
 		HolderGeneration: instance.key.generation, HandleID: instance.key.handle,
 		HolderRelation: instance.holderRelation, SourceRelation: instance.sourceRelation,
-		DefinitionStatus: string(resolutionUnknown), Polarity: EffectPolarityUnclassified, Lifecycle: EffectLifecycleActive,
+		DefinitionStatus: string(resolutionUnknown), SemanticStatus: EffectSemanticDefinitionUnresolved,
+		Polarity: EffectPolarityUnclassified, Lifecycle: EffectLifecycleActive,
 		Origin: instance.origin, FirstObservedAt: instance.firstObservedAt, LastUpdatedAt: instance.lastUpdatedAt,
 	}
 	if instance.origin == EffectOriginApply {
@@ -887,6 +956,11 @@ func (t *EffectTracker) instanceSnapshotLocked(instance *effectInstance, query C
 		snapshot.EffectID = &id
 		if instance.definitionLinked {
 			snapshot.DefinitionStatus = string(resolutionCorrelated)
+			snapshot.SemanticStatus = EffectSemanticNameUnresolved
+			snapshot.Static = instance.static.clone()
+			if snapshot.Static != nil && snapshot.Static.Term != nil {
+				snapshot.SemanticStatus = EffectSemanticNameCorrelated
+			}
 		}
 	}
 	if instance.hasSource {
