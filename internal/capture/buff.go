@@ -383,6 +383,7 @@ func (p *processor) handleBuffLifecycleMessage(frame gameFrame, body []byte) err
 	}
 	p.observeEffectLifecycle(row)
 	p.writeStructuredEventJSONL(row)
+	p.writeBuffLifecycleConsole(row)
 	return nil
 }
 
@@ -520,6 +521,7 @@ func (p *processor) handleInnerBuffLifecycleMessage(frame gameFrame, innerFieldN
 	p.observeBuffInterval(row)
 	p.observeEffectLifecycle(row)
 	p.writeStructuredEventJSONL(row)
+	p.writeBuffLifecycleConsole(row)
 	return nil
 }
 

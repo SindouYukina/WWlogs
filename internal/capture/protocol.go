@@ -145,6 +145,7 @@ type processor struct {
 	clientVersion             *clientVersionReport
 	stdout                    io.Writer
 	diagnostic                io.Writer
+	showEffectEvents          bool
 	audit                     io.Writer
 	encounterSummary          diagWriter
 	combatEventsJSONL         diagWriter
