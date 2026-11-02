@@ -9,6 +9,7 @@ import (
 )
 
 const maxCombatStatisticsEntities = 8192
+
 // maxRollingDamageEvents prevents unusually dense captures from consuming unbounded memory.
 const maxRollingDamageEvents = 32768
 
