@@ -32,6 +32,10 @@ func formatBuffLifecycleConsole(row buffLifecycleAuditRow) string {
 	if row.EventKind != "" {
 		parts = append(parts, "kind="+row.EventKind)
 	}
+	switch row.EventKind {
+	case "BUFF_APPLY_REQUEST_NOTIFY", "BUFF_REMOVE_BY_ID_REQUEST_NOTIFY":
+		parts = append(parts, "effectState=UNCONFIRMED")
+	}
 	appendID := func(label string, value *uint64) {
 		if value != nil {
 			parts = append(parts, fmt.Sprintf("%s=%d", label, *value))
@@ -63,7 +67,9 @@ func formatBuffLifecycleConsole(row buffLifecycleAuditRow) string {
 	if row.HandleLinkedStatus != "" {
 		parts = append(parts, "handleLinkedStatus="+string(row.HandleLinkedStatus))
 	}
-	appendID("stack", row.StackCount)
+	if row.StackCount != nil && !(row.EventKind == "BUFF_REMOVE_BY_ID_REQUEST_NOTIFY" && *row.StackCount == ^uint64(0)) {
+		appendID("stack", row.StackCount)
+	}
 	if row.DurationSeconds != nil {
 		parts = append(parts, fmt.Sprintf("duration_s=%.3f", *row.DurationSeconds))
 	}
@@ -71,7 +77,7 @@ func formatBuffLifecycleConsole(row buffLifecycleAuditRow) string {
 		parts = append(parts, fmt.Sprintf("remaining_s=%.3f", *row.RemainingDuration))
 	}
 	if row.BuffDefinitionStatus != "" {
-		parts = append(parts, "definitionStatus="+string(row.BuffDefinitionStatus))
+		parts = append(parts, "buffIdLookup="+string(row.BuffDefinitionStatus))
 	}
 	if row.GenericIDDefinitionStatus != "" {
 		parts = append(parts, "idReferenceStatus="+string(row.GenericIDDefinitionStatus))

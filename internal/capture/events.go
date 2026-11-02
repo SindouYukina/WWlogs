@@ -402,8 +402,15 @@ func (p *processor) writeDamageEvent(event combatEvent) bool {
 	p.writeStructuredEventJSONL(event.jsonlView(p.masters))
 	if visible {
 		normalOutput := event.formatNormal()
-		if sourceRelation != playerRelationLocal && targetRelation != playerRelationLocal {
-			normalOutput += " [PlayerRelation: UNKNOWN]"
+		switch {
+		case sourceRelation == playerRelationLocal && targetRelation == playerRelationLocal:
+			normalOutput += " [PlayerTeamSide: BOTH]"
+		case sourceRelation == playerRelationLocal:
+			normalOutput += " [PlayerTeamSide: SOURCE]"
+		case targetRelation == playerRelationLocal:
+			normalOutput += " [PlayerTeamSide: TARGET]"
+		default:
+			normalOutput += " [PlayerTeamSide: UNCONFIRMED]"
 		}
 		if _, err := fmt.Fprintln(p.stdout, normalOutput); err != nil {
 			fmt.Fprintf(p.diagnostic, "stdout_write_error=%v\n", err)

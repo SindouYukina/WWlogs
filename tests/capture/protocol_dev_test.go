@@ -25,7 +25,7 @@ func TestDamageResponseKeepsUnresolvedEntityVisible(t *testing.T) {
 	if stdout.Len() == 0 {
 		t.Fatal("unresolved damage was hidden even though it was not proven unrelated")
 	}
-	if !strings.Contains(stdout.String(), "[PlayerRelation: UNKNOWN]") {
+	if !strings.Contains(stdout.String(), "[PlayerTeamSide: UNCONFIRMED]") {
 		t.Fatalf("unresolved relation was not labeled in normal output: %q", stdout.String())
 	}
 	if p.stats.printed != 1 || p.stats.duplicateResponses != 1 || p.stats.matchedCombatResultAbs != 9001 || p.stats.decodedMatchedEvents != 1 || p.stats.decodedCombatResultAbs != 9001 || p.stats.includedUnresolvedRelations != 1 || p.stats.suppressedUnrelatedEvents != 0 || p.stats.unclassifiedResult != 9001 {

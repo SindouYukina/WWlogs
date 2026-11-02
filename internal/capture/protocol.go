@@ -399,6 +399,7 @@ func (p *processor) handleFrame(frame gameFrame) {
 			censusEntry.DecodedFrames++
 		}
 		p.sessionNumber++
+		p.playerRelevance.reset()
 		if p.census != nil && p.sessionNumber > p.census.sessions {
 			p.census.sessions = p.sessionNumber
 		}
@@ -511,7 +512,7 @@ func (p *processor) handleFrame(frame gameFrame) {
 			fmt.Fprintf(p.diagnostic, "join_scene_parse_error=%v\n", err)
 			return
 		}
-		p.playerRelevance.reset()
+		p.playerRelevance.resetSceneEntities()
 		p.effects.EndLiveState()
 		p.backfillAvailableSummaryCredits()
 		p.sourceRoles.reset()

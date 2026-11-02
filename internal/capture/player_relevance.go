@@ -70,6 +70,16 @@ func (r *playerRelevanceResolver) reset() {
 	r.order = nil
 }
 
+// resetSceneEntities drops scene-scoped entity IDs while retaining the stable
+// local PlayerId anchor for the current capture session.
+func (r *playerRelevanceResolver) resetSceneEntities() {
+	if r == nil {
+		return
+	}
+	r.roleEntities = make(map[uint64]struct{})
+	r.order = nil
+}
+
 func (r *playerRelevanceResolver) reconcileLocalPlayers(entities *entityResolver) {
 	if r == nil || entities == nil {
 		return
