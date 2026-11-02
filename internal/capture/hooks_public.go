@@ -44,7 +44,7 @@ func (event combatEvent) jsonlView(masters *gameMaster) combatEventJSONL {
 	return r0
 }
 
-func (event combatEvent) formatNormal() string {
+func (event combatEvent) formatNormalForSourceRelation(sourceRelation playerRelation) string {
 	var r0 string
 	return r0
 }

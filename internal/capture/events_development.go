@@ -232,6 +232,10 @@ func (p *processor) writeEnvelopedEventJSONL(event any, kind string) {
 }
 
 func (event combatEvent) formatNormal() string {
+	return event.formatNormalForSourceRelation(playerRelationUnknown)
+}
+
+func (event combatEvent) formatNormalForSourceRelation(sourceRelation playerRelation) string {
 	timestamp := "--:--:--.---"
 	if !event.Timestamp.IsZero() {
 		timestamp = event.Timestamp.Local().Format("15:04:05.000")
@@ -271,6 +275,9 @@ func (event combatEvent) formatNormal() string {
 	}
 	if credit == "Credit:?" && len(event.Source.TemplateCandidates) == 1 && (event.Source.TemplateStatus == resolutionVerified || event.Source.TemplateStatus == resolutionCorrelated) {
 		credit = fmt.Sprintf("Credit:NonPlayerSource [Template:%d; %s]", event.Source.TemplateCandidates[0].TemplateID, event.Source.TemplateStatus)
+	}
+	if credit == "Credit:?" && sourceRelation == playerRelationLocal {
+		credit = "Credit:PlayerTeam [role not resolved]"
 	}
 	skillID := "?"
 	if event.SkillID != 0 {

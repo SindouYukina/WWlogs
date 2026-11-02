@@ -401,7 +401,7 @@ func (p *processor) writeDamageEvent(event combatEvent) bool {
 	}
 	p.writeStructuredEventJSONL(event.jsonlView(p.masters))
 	if visible {
-		normalOutput := event.formatNormal()
+		normalOutput := event.formatNormalForSourceRelation(sourceRelation)
 		switch {
 		case sourceRelation == playerRelationLocal && targetRelation == playerRelationLocal:
 			normalOutput += " [PlayerTeamSide: BOTH]"

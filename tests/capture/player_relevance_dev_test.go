@@ -474,6 +474,34 @@ func TestPlayerRelevanceUsesLocalPlayerRoleGroup(t *testing.T) {
 	}
 }
 
+func TestPlayerTeamDamageDoesNotDisplayUnknownCreditWhenRoleIdentityIsUnavailable(t *testing.T) {
+	p, stdout, _ := newPlayerRelevanceTestProcessor()
+	addTestPlayerRoleGroupEntity(p, 100, 77, 1409)
+	observeTestLocalRole(p, 100)
+	addTestPlayerRoleGroupEntity(p, 101, 77, 1508, true)
+	addTestRuntimeEntity(p, 200, func(entity *runtimeEntity) {
+		entity.entityTypeCode, entity.hasEntityType = entityTypeMonster, true
+		entity.monsterID, entity.hasMonsterID = 9001, true
+	})
+
+	event := testDamageEvent(p, 101, 200)
+	event.EventTypeCandidate = "DAMAGE_CANDIDATE"
+	event.Damage = 321
+	if !p.writeDamageEvent(event) {
+		t.Fatal("damage from another role in the local player group was filtered")
+	}
+	output := stdout.String()
+	if !strings.Contains(output, "Credit:PlayerTeam [role not resolved]") || strings.Contains(output, "Credit:?") {
+		t.Fatalf("confirmed player-team damage was presented as unknown credit: %q", output)
+	}
+	if !strings.Contains(output, "[PlayerTeamSide: SOURCE]") {
+		t.Fatalf("confirmed player-team source label missing: %q", output)
+	}
+	if got := p.damageStatistics.Snapshot(); got.DamageDealt != 321 || got.OutgoingEvents != 1 {
+		t.Fatalf("team role damage was not counted as player output: %+v", got)
+	}
+}
+
 func TestPlayerRelevanceUsesExplicitMonsterEntityType(t *testing.T) {
 	p, _, _ := newPlayerRelevanceTestProcessor()
 	addTestPlayerRoleGroupEntity(p, 100, 77, 1409)
