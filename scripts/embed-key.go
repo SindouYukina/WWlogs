@@ -32,6 +32,7 @@ func run() error {
 	profileFlag := flag.String("profile", "public", "build profile: public (no raw diagnostic outputs) or development (full diagnostics)")
 	versionFlag := flag.String("version", "", "product version to embed (default: the version registered in internal/versioninfo)")
 	requireClean := flag.Bool("require-clean", false, "fail when the Git working tree has uncommitted changes to tracked files")
+	testBinary := flag.String("test-binary", "", "build a test binary of this package (for example ./internal/capture) carrying the encrypted key payload and the committed test overlay, instead of the executable; requires -o")
 	flag.Parse()
 	if flag.NArg() != 0 {
 		return errors.New("unexpected positional arguments")
@@ -45,7 +46,7 @@ func run() error {
 	default:
 		return fmt.Errorf("unknown profile %q: use public or development", *profileFlag)
 	}
-	if *outputFlag == "" {
+	if *outputFlag == "" && *testBinary == "" {
 		*outputFlag = filepath.Join("bin", "WWlogs.exe")
 		if *profileFlag == "development" {
 			*outputFlag = filepath.Join("bin", "WWlogs-dev.exe")
@@ -107,13 +108,20 @@ var (
 	}
 	defer os.Remove(generatedSourcePath)
 
+	replacements := map[string]string{
+		filepath.Join(repositoryRoot, "internal", "capture", "key_payload.go"): generatedSourcePath,
+	}
+	if *testBinary != "" {
+		if *outputFlag == "" {
+			return errors.New("-test-binary requires -o")
+		}
+		if err := mergeTestOverlay(repositoryRoot, replacements); err != nil {
+			return err
+		}
+	}
 	overlayData, err := json.Marshal(struct {
 		Replace map[string]string
-	}{
-		Replace: map[string]string{
-			filepath.Join(repositoryRoot, "internal", "capture", "key_payload.go"): generatedSourcePath,
-		},
-	})
+	}{Replace: replacements})
 	if err != nil {
 		return fmt.Errorf("encode Go build overlay: %w", err)
 	}
@@ -123,6 +131,10 @@ var (
 		return fmt.Errorf("write Go build overlay: %w", err)
 	}
 	defer os.Remove(overlayPath)
+
+	if *testBinary != "" {
+		return buildTestBinary(repositoryRoot, *testBinary, outputPath, overlayPath, buildTags, keyPEM, privateDER)
+	}
 
 	commit, dirty := gitIdentity(repositoryRoot)
 	if *requireClean && dirty != "false" {
@@ -334,4 +346,63 @@ func registeredVersion(root string) string {
 		return ""
 	}
 	return registry.Product.DevelopmentLine
+}
+
+// mergeTestOverlay adds the committed test overlay (tests/go-overlay.json) to the replacement map, with every
+// path made absolute so the combined overlay does not depend on the working directory.
+func mergeTestOverlay(root string, replacements map[string]string) error {
+	data, err := os.ReadFile(filepath.Join(root, "tests", "go-overlay.json"))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("read test overlay: %w", err)
+	}
+	var overlay struct {
+		Replace map[string]string
+	}
+	if err := json.Unmarshal(data, &overlay); err != nil {
+		return fmt.Errorf("parse test overlay: %w", err)
+	}
+	for from, to := range overlay.Replace {
+		absoluteFrom := filepath.Join(root, filepath.FromSlash(from))
+		absoluteTo := ""
+		if to != "" {
+			absoluteTo = filepath.Join(root, filepath.FromSlash(to))
+		}
+		if _, exists := replacements[absoluteFrom]; exists {
+			return fmt.Errorf("test overlay replaces %s, which the key payload already replaces", from)
+		}
+		replacements[absoluteFrom] = absoluteTo
+	}
+	return nil
+}
+
+// buildTestBinary compiles (without running) the tests of one package into outputPath. Test-only tools use
+// it when a test needs the embedded key payload that plain "go test" does not carry.
+func buildTestBinary(root, pkg, outputPath, overlayPath string, buildTags []string, keyPEM, privateDER []byte) error {
+	if err := os.MkdirAll(filepath.Dir(outputPath), 0o755); err != nil {
+		return fmt.Errorf("create output directory: %w", err)
+	}
+	args := append([]string{"test", "-c", "-trimpath", "-buildvcs=false"}, buildTags...)
+	args = append(args, "-overlay", overlayPath, "-o", outputPath, pkg)
+	build := exec.Command("go", args...)
+	build.Dir = root
+	build.Stdout = os.Stdout
+	build.Stderr = os.Stderr
+	if err := build.Run(); err != nil {
+		return fmt.Errorf("build test binary: %w", err)
+	}
+	if err := verifyNoPlaintextKey(outputPath, keyPEM, privateDER); err != nil {
+		os.Remove(outputPath)
+		return err
+	}
+	digest, err := fileSHA256(outputPath)
+	if err != nil {
+		return fmt.Errorf("hash test binary: %w", err)
+	}
+	fmt.Fprintf(os.Stdout, "Built test binary %s\n", outputPath)
+	fmt.Fprintf(os.Stdout, "Test binary SHA-256: %s\n", digest)
+	fmt.Fprintln(os.Stdout, "Plaintext RSA PEM/DER scan: PASS")
+	return nil
 }
