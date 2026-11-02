@@ -115,41 +115,6 @@ func TestCombatEventJSONLPreservesRawIDsAndUnknownResolution(t *testing.T) {
 	}
 }
 
-func TestHealingCandidateJSONLSeparatesReportedMagnitudeFromUnknownEffectiveness(t *testing.T) {
-	event := combatEvent{
-		Damage: 1311, ServerResultRaw: -1311, HasServerResult: true,
-		ChangeLifeRaw: -700, HasChangeLife: true, DamageCalculateType: 1, HasCalculateType: true,
-		EventTypeCandidate: "HEALING_CANDIDATE", EventTypeStatus: resolutionCorrelated,
-		EventTypeProof: "CalculateType=1 uses cure/heal display; HP restoration not verified",
-	}
-	view := event.jsonlView(nil)
-	encoded, err := json.Marshal(view)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var got map[string]any
-	if err := json.Unmarshal(encoded, &got); err != nil {
-		t.Fatal(err)
-	}
-	if got["schemaVersion"] != float64(5) || got["eventType"] != "HEALING_RESULT_CANDIDATE" {
-		t.Fatalf("healing event envelope = %#v", got)
-	}
-	if _, exists := got["damage"]; exists {
-		t.Fatalf("healing result was serialized in the damage object: %#v", got)
-	}
-	result := got["combatResult"].(map[string]any)
-	if result["combatResultAbs"] != float64(1311) || result["changeLifeRaw"] != float64(-700) || result["classCandidate"] != "HEALING_CANDIDATE" {
-		t.Fatalf("raw result fields changed: %#v", result)
-	}
-	healing := got["healing"].(map[string]any)
-	if healing["reportedMagnitudeAbs"] != float64(1311) || healing["magnitudeStatus"] != string(resolutionCorrelated) || healing["effectiveStatus"] != string(resolutionUnknown) || healing["hpDeltaStatus"] != string(resolutionUnknown) || healing["overhealStatus"] != string(resolutionUnknown) {
-		t.Fatalf("healing evidence classification = %#v", healing)
-	}
-	if healing["effectiveAmountAbs"] != nil || healing["overhealAmountAbs"] != nil {
-		t.Fatalf("unverified effective healing/overheal received values: %#v", healing)
-	}
-}
-
 func TestFormatNormalLabelsHealingAsCandidateResult(t *testing.T) {
 	event := combatEvent{Damage: 1311, EventTypeCandidate: "HEALING_CANDIDATE"}
 	line := event.formatNormal()
@@ -237,38 +202,6 @@ func TestResolvedCharacterIDRemainsVisibleWhenNameIsUnknown(t *testing.T) {
 	}
 }
 
-func TestRuntimeIdentityAuditKeepsOwnerAndSummonerNamespacesSeparate(t *testing.T) {
-	entity := runtimeEntity{
-		entityID: 500, sceneInstanceID: 43, hasSceneInstanceID: true,
-		ownerID: 88, hasOwnerID: true, ownerIncID: 889, hasOwnerIncID: true,
-		summonerID: 600, hasSummonerID: true, sceneSummonerID: 800, hasSceneSummonerID: true,
-		playerEntityID: 640, hasPlayerEntityID: true,
-		playerID: 77, hasPlayerID: true, roleID: 1312, hasRoleID: true,
-		roleSourceFieldPath: "JoinSceneNotify.SceneInfo.PlayerInfos[].PlayerSceneGroupData[].FightRoleInfos[].RoleId",
-		sourceMessageID:     18559, sourceFieldPath: "JoinSceneNotify.SceneInfo.AoiData.Entities.EntityPb.Id",
-	}
-	var got map[string]any
-	if err := json.Unmarshal([]byte(marshalRuntimeIdentity(entity)), &got); err != nil {
-		t.Fatal(err)
-	}
-	for name, value := range map[string]uint64{
-		"entityId": 500, "sceneInstanceId": 43, "ownerId": 88, "ownerIncId": 889,
-		"summonerId": 600, "sceneSummonerId": 800, "playerEntityId": 640,
-		"playerId": 77, "roleId": 1312,
-	} {
-		field, ok := got[name].(map[string]any)
-		if !ok || field["value"] != float64(value) || field["present"] != true {
-			t.Fatalf("runtime audit field %s lost its value/presence: %#v", name, got[name])
-		}
-	}
-	if got["sourceMessageId"] != float64(18559) || got["sourceFieldPath"] != entity.sourceFieldPath {
-		t.Fatalf("runtime audit provenance missing: %#v", got)
-	}
-	if got["roleSourceFieldPath"] != entity.roleSourceFieldPath {
-		t.Fatalf("role identity provenance missing: %#v", got)
-	}
-}
-
 func TestSummonerEntityChainResolvesCharacterSeparatelyFromDamageCredit(t *testing.T) {
 	resolver := newEntityResolver()
 	add := func(entityID, configID, configType uint64, summonerID uint64, hasSummoner bool) {
@@ -309,5 +242,72 @@ func TestSummonerEntityChainResolvesCharacterSeparatelyFromDamageCredit(t *testi
 	line := event.formatNormal()
 	if !strings.Contains(line, "Credit:?") || !strings.Contains(line, "Summoner:Test Role [CORRELATED]") {
 		t.Fatalf("summoner relation must remain separate from damage credit: %q", line)
+	}
+}
+
+func TestHealingCandidateJSONLSeparatesReportedMagnitudeFromUnknownEffectiveness(t *testing.T) {
+	event := combatEvent{
+		Damage: 1311, ServerResultRaw: -1311, HasServerResult: true,
+		ChangeLifeRaw: -700, HasChangeLife: true, DamageCalculateType: 1, HasCalculateType: true,
+		EventTypeCandidate: "HEALING_CANDIDATE", EventTypeStatus: resolutionCorrelated,
+		EventTypeProof: "CalculateType=1 uses cure/heal display; HP restoration not verified",
+	}
+	view := event.jsonlView(nil)
+	encoded, err := json.Marshal(view)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(encoded, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got["schemaVersion"] != float64(5) || got["eventType"] != "HEALING_RESULT_CANDIDATE" {
+		t.Fatalf("healing event envelope = %#v", got)
+	}
+	if _, exists := got["damage"]; exists {
+		t.Fatalf("healing result was serialized in the damage object: %#v", got)
+	}
+	result := got["combatResult"].(map[string]any)
+	if result["combatResultAbs"] != float64(1311) || result["changeLifeRaw"] != float64(-700) || result["classCandidate"] != "HEALING_CANDIDATE" {
+		t.Fatalf("raw result fields changed: %#v", result)
+	}
+	healing := got["healing"].(map[string]any)
+	if healing["reportedMagnitudeAbs"] != float64(1311) || healing["magnitudeStatus"] != string(resolutionCorrelated) || healing["effectiveStatus"] != string(resolutionUnknown) || healing["hpDeltaStatus"] != string(resolutionUnknown) || healing["overhealStatus"] != string(resolutionUnknown) {
+		t.Fatalf("healing evidence classification = %#v", healing)
+	}
+	if healing["effectiveAmountAbs"] != nil || healing["overhealAmountAbs"] != nil {
+		t.Fatalf("unverified effective healing/overheal received values: %#v", healing)
+	}
+}
+
+func TestRuntimeIdentityAuditKeepsOwnerAndSummonerNamespacesSeparate(t *testing.T) {
+	entity := runtimeEntity{
+		entityID: 500, sceneInstanceID: 43, hasSceneInstanceID: true,
+		ownerID: 88, hasOwnerID: true, ownerIncID: 889, hasOwnerIncID: true,
+		summonerID: 600, hasSummonerID: true, sceneSummonerID: 800, hasSceneSummonerID: true,
+		playerEntityID: 640, hasPlayerEntityID: true,
+		playerID: 77, hasPlayerID: true, roleID: 1312, hasRoleID: true,
+		roleSourceFieldPath: "JoinSceneNotify.SceneInfo.PlayerInfos[].PlayerSceneGroupData[].FightRoleInfos[].RoleId",
+		sourceMessageID:     18559, sourceFieldPath: "JoinSceneNotify.SceneInfo.AoiData.Entities.EntityPb.Id",
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(marshalRuntimeIdentity(entity)), &got); err != nil {
+		t.Fatal(err)
+	}
+	for name, value := range map[string]uint64{
+		"entityId": 500, "sceneInstanceId": 43, "ownerId": 88, "ownerIncId": 889,
+		"summonerId": 600, "sceneSummonerId": 800, "playerEntityId": 640,
+		"playerId": 77, "roleId": 1312,
+	} {
+		field, ok := got[name].(map[string]any)
+		if !ok || field["value"] != float64(value) || field["present"] != true {
+			t.Fatalf("runtime audit field %s lost its value/presence: %#v", name, got[name])
+		}
+	}
+	if got["sourceMessageId"] != float64(18559) || got["sourceFieldPath"] != entity.sourceFieldPath {
+		t.Fatalf("runtime audit provenance missing: %#v", got)
+	}
+	if got["roleSourceFieldPath"] != entity.roleSourceFieldPath {
+		t.Fatalf("role identity provenance missing: %#v", got)
 	}
 }
