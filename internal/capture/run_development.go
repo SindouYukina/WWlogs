@@ -23,6 +23,37 @@ import (
 	"wwlogs/internal/versioninfo"
 )
 
+func (p *processor) liveDiagnosticSnapshot(sampledAt time.Time) liveDiagnosticSnapshot {
+	statistics := p.damageStatisticsSnapshot()
+	captureObservedAt := p.currentFrameTime
+	if !captureObservedAt.IsZero() {
+		statistics = p.damageStatisticsSnapshotAt(CaptureQueryTime{
+			CaptureSessionID: statistics.CaptureSessionID,
+			Timestamp:        captureObservedAt,
+		})
+	}
+	effects := p.effectSnapshotAtLastFrame()
+	var clockDifference *float64
+	if !sampledAt.IsZero() && !captureObservedAt.IsZero() {
+		difference := sampledAt.Sub(captureObservedAt).Seconds()
+		clockDifference = &difference
+	}
+	return liveDiagnosticSnapshot{
+		Type:                             "LIVE_DIAGNOSTIC_SNAPSHOT",
+		SampledAt:                        sampledAt,
+		CaptureObservedAt:                captureObservedAt,
+		ClockDifferenceSeconds:           clockDifference,
+		CaptureTimeAdvanceInterpretation: "A flat packet timestamp may mean an idle capture or a game-time pause; this field is not proof of either.",
+		ClockDifferenceInterpretation:    "Diagnostic comparison only; clock-domain equivalence is not established. DPS uses capture-observed timestamps only.",
+		DamageStatistics:                 statistics,
+		Effects:                          effects,
+	}
+}
+
+func writeLiveDiagnosticSnapshot(w io.Writer, snapshot liveDiagnosticSnapshot) error {
+	return json.NewEncoder(w).Encode(snapshot)
+}
+
 func optionalFileWriter(file *os.File) io.Writer {
 	if file == nil {
 		return nil
@@ -74,6 +105,7 @@ func Main() {
 	stopFile := flag.String("stop-file", "", "Stop live capture cleanly when the specified file appears")
 	statusFile := flag.String("status-file", "", "Write live capture status as JSON to the specified path")
 	maxPCAPBytes := flag.Int64("max-pcap-bytes", 0, "Limit live PCAP size and stop before exceeding the limit")
+	liveDiagnosticOut := flag.String("live-diagnostic-out", "", "Optionally write one bounded-rate JSONL damage and effect snapshot per second")
 	flag.Usage = func() {
 		fmt.Fprintf(flag.CommandLine.Output(), "WWlogs %s\nUsage: WWlogs [options]\n\nOptions:\n", versioninfo.Current().Product.DevelopmentLine)
 		flag.PrintDefaults()
@@ -98,6 +130,9 @@ func Main() {
 	}
 	if *pcapIn != "" && *pcapOut != "" {
 		fatal("PCAP mode", fmt.Errorf("-pcap-in and -pcap-out cannot be combined"))
+	}
+	if *liveDiagnosticOut != "" && *pcapIn != "" {
+		fatal("live diagnostics", fmt.Errorf("-live-diagnostic-out requires live capture"))
 	}
 	if *combatNotifyAuditOut != "" && *pcapIn == "" {
 		fatal("CombatNotifyData audit", fmt.Errorf("-combat-notify-audit-out requires -pcap-in"))
@@ -559,6 +594,52 @@ func Main() {
 	streams := make(map[string]*stream)
 	stats := captureStats{}
 	started := time.Now()
+	var liveDiagnosticFile *os.File
+	if *liveDiagnosticOut != "" && *pcapIn == "" {
+		if dir := filepath.Dir(*liveDiagnosticOut); dir != "." {
+			if err := os.MkdirAll(dir, 0o700); err != nil {
+				fmt.Fprintf(os.Stderr, "live_diagnostic_disabled error=%v\n", err)
+			}
+		}
+		if _, err := os.Stat(filepath.Dir(*liveDiagnosticOut)); err == nil {
+			liveDiagnosticFile, err = os.OpenFile(*liveDiagnosticOut, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "live_diagnostic_disabled error=%v\n", err)
+			}
+		} else {
+			fmt.Fprintf(os.Stderr, "live_diagnostic_disabled error=%v\n", err)
+		}
+	}
+	if liveDiagnosticFile != nil {
+		defer liveDiagnosticFile.Close()
+	}
+	lastLiveDiagnostic := time.Time{}
+	lastDiagnosticCaptureTime := time.Time{}
+	writeLiveDiagnostic := func(now time.Time, final bool) {
+		if liveDiagnosticFile == nil || (!final && !lastLiveDiagnostic.IsZero() && now.Sub(lastLiveDiagnostic) < liveDiagnosticInterval) {
+			return
+		}
+		previousSampleAt := lastLiveDiagnostic
+		previousCaptureAt := lastDiagnosticCaptureTime
+		lastLiveDiagnostic = now
+		snapshot := processor.liveDiagnosticSnapshot(now)
+		snapshot.Final = final
+		if !previousSampleAt.IsZero() {
+			localInterval := now.Sub(previousSampleAt).Seconds()
+			snapshot.LocalSampleIntervalSeconds = &localInterval
+		}
+		if !previousCaptureAt.IsZero() && !snapshot.CaptureObservedAt.IsZero() {
+			captureAdvance := snapshot.CaptureObservedAt.Sub(previousCaptureAt).Seconds()
+			snapshot.CaptureTimestampAdvanceSeconds = &captureAdvance
+		}
+		lastDiagnosticCaptureTime = snapshot.CaptureObservedAt
+		if err := writeLiveDiagnosticSnapshot(liveDiagnosticFile, snapshot); err != nil {
+			fmt.Fprintf(os.Stderr, "live_diagnostic_disabled error=%v\n", err)
+			_ = liveDiagnosticFile.Close()
+			liveDiagnosticFile = nil
+			return
+		}
+	}
 	stopReason := "deadline"
 	currentPCAPBytes := int64(24)
 	status := captureRunStatus{
@@ -629,6 +710,7 @@ func Main() {
 		if packetErr != nil {
 			if packetErr == pcap.NextErrorTimeoutExpired {
 				writeStatus("RUNNING", "")
+				writeLiveDiagnostic(time.Now(), false)
 				continue
 			}
 			if *pcapIn != "" && packetErr == io.EOF {
@@ -660,10 +742,12 @@ func Main() {
 		stats.udpPackets++
 		direction := packetDirection(packet, *ip, udp, *minPort, *maxPort)
 		consumeDatagram(udp.Payload, direction, packet.Metadata().CaptureInfo.Timestamp, streams, processor, &stats)
+		writeLiveDiagnostic(time.Now(), false)
 		writeStatus("RUNNING", "")
 	}
 
 finished:
+	writeLiveDiagnostic(time.Now(), true)
 	if statsResult, statsErr := handle.Stats(); statsErr == nil && statsResult != nil {
 		stats.kernelDrops = statsResult.PacketsDropped
 	}

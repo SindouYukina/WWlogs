@@ -66,6 +66,22 @@ type captureRunStatus struct {
 	KernelDrops  int              `json:"kernelDrops"`
 }
 
+type liveDiagnosticSnapshot struct {
+	Type                             string                   `json:"type"`
+	Final                            bool                     `json:"final"`
+	SampledAt                        time.Time                `json:"sampledAt"`
+	CaptureObservedAt                time.Time                `json:"captureObservedAt,omitempty"`
+	ClockDifferenceSeconds           *float64                 `json:"clockDifferenceSeconds,omitempty"`
+	LocalSampleIntervalSeconds       *float64                 `json:"localSampleIntervalSeconds,omitempty"`
+	CaptureTimestampAdvanceSeconds   *float64                 `json:"captureTimestampAdvanceSeconds,omitempty"`
+	CaptureTimeAdvanceInterpretation string                   `json:"captureTimeAdvanceInterpretation"`
+	ClockDifferenceInterpretation    string                   `json:"clockDifferenceInterpretation"`
+	DamageStatistics                 DamageStatisticsSnapshot `json:"damageStatistics"`
+	Effects                          EffectSnapshot           `json:"effects"`
+}
+
+const liveDiagnosticInterval = time.Second
+
 func findDeviceByIP(ip string) (string, error) {
 	devices, err := pcap.FindAllDevs()
 	if err != nil {
