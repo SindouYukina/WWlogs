@@ -3,6 +3,7 @@ package capture
 import (
 	"database/sql"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -62,6 +63,12 @@ func TestResolveVehicleDamageContributorCandidateRequiresCorrelatedChain(t *test
 		"unlinked request source": func(_ *entityResolver, _ *gameMaster, e *combatEvent) {
 			e.SkillRequest.EntityID = 99
 		},
+		"mismatched request message": func(_ *entityResolver, _ *gameMaster, e *combatEvent) {
+			e.SkillRequest.MessageID = 99
+		},
+		"missing skill message id": func(_ *entityResolver, _ *gameMaster, e *combatEvent) {
+			e.SkillMessageID = 0
+		},
 		"ambiguous blueprint entity type": func(_ *entityResolver, m *gameMaster, _ *combatEvent) {
 			m.blueprintEntityTypes["branch3.0_Motorcycle_Skill"]["OtherType"] = struct{}{}
 		},
@@ -77,6 +84,18 @@ func TestResolveVehicleDamageContributorCandidateRequiresCorrelatedChain(t *test
 				t.Fatalf("unexpected candidate: %+v", got)
 			}
 		})
+	}
+}
+
+func TestResolveVehicleDamageContributorCandidateWithoutResolvedSkillRequest(t *testing.T) {
+	resolver, master, event := vehicleDamageContributorFixture()
+	event.SkillRequest = nil
+	candidate := resolveVehicleDamageContributorCandidate(resolver, master, event)
+	if candidate == nil {
+		t.Fatal("verified runtime and static vehicle chain did not resolve without an optional request link")
+	}
+	if candidate.Status != resolutionCorrelated || !strings.Contains(candidate.Evidence, "no matching outbound UseSkillRequest was resolved") {
+		t.Fatalf("missing request evidence was not kept explicit: %+v", candidate)
 	}
 }
 

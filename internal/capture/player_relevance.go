@@ -94,6 +94,14 @@ func (r *playerRelevanceResolver) isLocalPlayerRoleEntity(entity runtimeEntity) 
 	return exists
 }
 
+func (r *playerRelevanceResolver) isLocalPlayerID(playerID uint64) bool {
+	if r == nil || playerID == 0 {
+		return false
+	}
+	_, exists := r.localPlayerIDs[playerID]
+	return exists
+}
+
 func (p *processor) observeLocalRoleEntity(entityID uint64) {
 	if p == nil || entityID == 0 {
 		return
@@ -138,7 +146,6 @@ func (p *processor) playerRelationForEntity(entityID uint64, identity entityIden
 	if identity.RuntimeStatus != resolutionVerified || p.entities == nil {
 		return playerRelationUnknown
 	}
-
 	current := identity.Runtime
 	seen := make(map[uint64]struct{}, maxSummonerEntityDepth)
 	ambiguousOwnerLink := false
@@ -255,6 +262,21 @@ func isKnownEnvironmentEntity(entity runtimeEntity, identity entityIdentity) boo
 // player. A local endpoint or any unresolved relation keeps the event visible.
 func (p *processor) playerRelevantDamageEvent(event combatEvent) (playerRelation, playerRelation, bool) {
 	source := p.playerRelationForEntity(event.SourceEntityID, event.Source)
+	if source != playerRelationLocal && p.isLocallyOwnedVehicleDamage(event) {
+		source = playerRelationLocal
+	}
 	target := p.playerRelationForEntity(event.TargetEntityID, event.Target)
 	return source, target, source != playerRelationUnrelated || target != playerRelationUnrelated
+}
+
+func (p *processor) isLocallyOwnedVehicleDamage(event combatEvent) bool {
+	if p == nil || p.playerRelevance == nil || event.EventTypeCandidate != "DAMAGE_CANDIDATE" ||
+		event.DamageContributorCandidate == nil || event.DamageContributorCandidate.ActorType != "Vehicle" ||
+		(event.DamageContributorCandidate.Status != resolutionCorrelated && event.DamageContributorCandidate.Status != resolutionVerified) ||
+		!event.HasSourceEntity || event.Source.RuntimeStatus != resolutionVerified ||
+		event.Source.Runtime.entityID != event.SourceEntityID || !event.Source.Runtime.hasPlayerID ||
+		isExplicitMonsterEntity(event.Source.Runtime) {
+		return false
+	}
+	return p.playerRelevance.isLocalPlayerID(event.Source.Runtime.playerID)
 }

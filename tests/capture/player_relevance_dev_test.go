@@ -243,6 +243,117 @@ func TestPlayerRelevanceKeepsLocallyOwnedMotorcycleDamage(t *testing.T) {
 	}
 }
 
+func TestPlayerRelevanceUsesLocalPlayerIDForVehicleEntity(t *testing.T) {
+	p, stdout, _ := newPlayerRelevanceTestProcessor()
+	addTestPlayerRoleGroupEntity(p, 100, 77, 1409)
+	observeTestLocalRole(p, 100)
+	addTestRuntimeEntity(p, 101, func(entity *runtimeEntity) {
+		entity.playerID, entity.hasPlayerID = 77, true
+		entity.entityTypeCode, entity.hasEntityType = 10, true
+	})
+	addTestRuntimeEntity(p, 200, func(entity *runtimeEntity) {
+		entity.entityTypeCode, entity.hasEntityType = entityTypeMonster, true
+		entity.monsterID, entity.hasMonsterID = 9001, true
+	})
+
+	event := testDamageEvent(p, 101, 200)
+	event.EventTypeCandidate = "DAMAGE_CANDIDATE"
+	event.Damage = 321
+	event.DamageContributorCandidate = &damageContributorCandidate{ActorType: "Vehicle", Status: resolutionCorrelated}
+	source, target, visible := p.playerRelevantDamageEvent(event)
+	if source != playerRelationLocal || target != playerRelationUnrelated || !visible {
+		t.Fatalf("local vehicle relations = (%d, %d, %t), want (local, unrelated, visible)", source, target, visible)
+	}
+	if !p.writeDamageEvent(event) {
+		t.Fatal("local vehicle damage was filtered")
+	}
+	snapshot := p.damageStatistics.Snapshot()
+	if snapshot.DamageDealt != 321 || snapshot.OutgoingEvents != 1 {
+		t.Fatalf("local vehicle damage was not included in confirmed output: %+v", snapshot)
+	}
+	if !strings.Contains(stdout.String(), "Credit:[Vehicle]") {
+		t.Fatalf("vehicle contributor was not visible in console output: %q", stdout.String())
+	}
+}
+
+func TestPlayerRelevanceDoesNotAttributeOtherPlayerVehicleByPlayerID(t *testing.T) {
+	p, _, _ := newPlayerRelevanceTestProcessor()
+	addTestPlayerRoleGroupEntity(p, 100, 77, 1409)
+	observeTestLocalRole(p, 100)
+	addTestRuntimeEntity(p, 101, func(entity *runtimeEntity) {
+		entity.playerID, entity.hasPlayerID = 88, true
+		entity.entityTypeCode, entity.hasEntityType = 10, true
+	})
+	addTestRuntimeEntity(p, 200, func(entity *runtimeEntity) {
+		entity.entityTypeCode, entity.hasEntityType = entityTypeMonster, true
+		entity.monsterID, entity.hasMonsterID = 9001, true
+	})
+
+	event := testDamageEvent(p, 101, 200)
+	event.EventTypeCandidate = "DAMAGE_CANDIDATE"
+	event.Damage = 321
+	event.DamageContributorCandidate = &damageContributorCandidate{ActorType: "Vehicle", Status: resolutionCorrelated}
+	if !p.writeDamageEvent(event) {
+		t.Fatal("unresolved other-player vehicle event was filtered")
+	}
+	snapshot := p.damageStatistics.Snapshot()
+	if snapshot.DamageDealt != 0 || snapshot.UnattributedOutgoingDamage != 321 {
+		t.Fatalf("other-player vehicle was attributed to the local player: %+v", snapshot)
+	}
+}
+
+func TestPlayerRelevanceDoesNotInferUnknownSummonFromPlayerID(t *testing.T) {
+	p, _, _ := newPlayerRelevanceTestProcessor()
+	addTestPlayerRoleGroupEntity(p, 100, 77, 1409)
+	observeTestLocalRole(p, 100)
+	addTestRuntimeEntity(p, 101, func(entity *runtimeEntity) {
+		entity.playerID, entity.hasPlayerID = 77, true
+		entity.entityTypeCode, entity.hasEntityType = 10, true
+	})
+	addTestRuntimeEntity(p, 200, func(entity *runtimeEntity) {
+		entity.entityTypeCode, entity.hasEntityType = entityTypeMonster, true
+		entity.monsterID, entity.hasMonsterID = 9001, true
+	})
+
+	event := testDamageEvent(p, 101, 200)
+	event.EventTypeCandidate = "DAMAGE_CANDIDATE"
+	event.Damage = 321
+	if !p.writeDamageEvent(event) {
+		t.Fatal("unresolved summon event was filtered")
+	}
+	snapshot := p.damageStatistics.Snapshot()
+	if snapshot.DamageDealt != 0 || snapshot.UnattributedOutgoingDamage != 321 {
+		t.Fatalf("unknown summon was attributed to the local player: %+v", snapshot)
+	}
+}
+
+func TestPlayerRelevanceKeepsNPCDamageUnrelatedWithLocalPlayerID(t *testing.T) {
+	p, _, _ := newPlayerRelevanceTestProcessor()
+	addTestPlayerRoleGroupEntity(p, 100, 77, 1409)
+	observeTestLocalRole(p, 100)
+	addTestRuntimeEntity(p, 101, func(entity *runtimeEntity) {
+		entity.playerID, entity.hasPlayerID = 77, true
+		entity.entityTypeCode, entity.hasEntityType = entityTypeMonster, true
+		entity.monsterID, entity.hasMonsterID = 9001, true
+	})
+	addTestRuntimeEntity(p, 200, func(entity *runtimeEntity) {
+		entity.entityTypeCode, entity.hasEntityType = entityTypeMonster, true
+		entity.monsterID, entity.hasMonsterID = 9002, true
+	})
+
+	event := testDamageEvent(p, 101, 200)
+	event.EventTypeCandidate = "DAMAGE_CANDIDATE"
+	event.Damage = 321
+	event.DamageContributorCandidate = &damageContributorCandidate{ActorType: "Vehicle", Status: resolutionCorrelated}
+	if p.writeDamageEvent(event) {
+		t.Fatal("NPC vs NPC event was classified as player-relevant")
+	}
+	snapshot := p.damageStatistics.Snapshot()
+	if snapshot.DamageDealt != 0 || snapshot.DamageTaken != 0 {
+		t.Fatalf("NPC vs NPC event changed player totals: %+v", snapshot)
+	}
+}
+
 func TestPlayerRelevanceUsesLocalPlayerRoleGroup(t *testing.T) {
 	p, _, _ := newPlayerRelevanceTestProcessor()
 	addTestPlayerRoleGroupEntity(p, 100, 77, 1409)

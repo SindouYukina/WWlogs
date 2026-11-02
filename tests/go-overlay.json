@@ -84,6 +84,8 @@
     "internal/capture/central_lifecycle_test.go": "tests/capture/lifecycle_test.go",
     "tests/capture/live_diagnostics_test.go": "",
     "internal/capture/central_live_diagnostics_test.go": "tests/capture/live_diagnostics_test.go",
+    "tests/capture/live_output_test.go": "",
+    "internal/capture/central_live_output_test.go": "tests/capture/live_output_test.go",
     "tests/capture/locale_invariance_test.go": "",
     "internal/capture/central_locale_invariance_test.go": "tests/capture/locale_invariance_test.go",
     "tests/capture/main_test.go": "",

@@ -61,6 +61,65 @@ func optionalFileWriter(file *os.File) io.Writer {
 	return file
 }
 
+func defaultLiveCaptureOutputBundle(localAppData string, now time.Time) (liveCaptureOutputBundle, error) {
+	if localAppData == "" {
+		var err error
+		localAppData, err = os.UserCacheDir()
+		if err != nil {
+			return liveCaptureOutputBundle{}, fmt.Errorf("resolve local capture directory: %w", err)
+		}
+	}
+	spoolRoot := filepath.Join(localAppData, "WWlogs", "capture-spool")
+	if err := os.MkdirAll(spoolRoot, 0o700); err != nil {
+		return liveCaptureOutputBundle{}, fmt.Errorf("create local capture spool: %w", err)
+	}
+	baseRunID := "LIVE_" + now.Local().Format("20060102_150405")
+	var directory string
+	for suffix := 0; ; suffix++ {
+		runID := baseRunID
+		if suffix > 0 {
+			runID = fmt.Sprintf("%s_%d", baseRunID, suffix)
+		}
+		directory = filepath.Join(spoolRoot, runID)
+		if err := os.Mkdir(directory, 0o700); err == nil {
+			break
+		} else if !os.IsExist(err) {
+			return liveCaptureOutputBundle{}, fmt.Errorf("create local capture directory: %w", err)
+		}
+	}
+	return liveCaptureOutputBundle{
+		directory:        directory,
+		pcap:             filepath.Join(directory, "capture.pcap"),
+		console:          filepath.Join(directory, "console.log"),
+		combatEvents:     filepath.Join(directory, "combat-events.jsonl"),
+		buffEvents:       filepath.Join(directory, "buff-events.jsonl"),
+		buffSnapshots:    filepath.Join(directory, "buff-snapshots.jsonl"),
+		liveDiagnostics:  filepath.Join(directory, "dps-effects.jsonl"),
+		effectState:      filepath.Join(directory, "effect-state-final.json"),
+		status:           filepath.Join(directory, "status.json"),
+		encounterSummary: filepath.Join(directory, "encounter-summary.md"),
+	}, nil
+}
+
+func hasAnyOutputPath(paths ...string) bool {
+	for _, path := range paths {
+		if path != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func flagWasSet(name string) bool {
+	set := false
+	flag.Visit(func(current *flag.Flag) {
+		if current.Name == name {
+			set = true
+		}
+	})
+	return set
+}
+
 // Main parses the capture command flags and runs live capture or PCAP replay.
 func Main() {
 	exitIfVersionRequested()
@@ -106,6 +165,7 @@ func Main() {
 	statusFile := flag.String("status-file", "", "Write live capture status as JSON to the specified path")
 	maxPCAPBytes := flag.Int64("max-pcap-bytes", 0, "Limit live PCAP size and stop before exceeding the limit")
 	liveDiagnosticOut := flag.String("live-diagnostic-out", "", "Optionally write one bounded-rate JSONL damage and effect snapshot per second")
+	showEffectEvents := flag.Bool("show-effect-events", true, "Print raw gameplay-effect lifecycle events during live capture")
 	flag.Usage = func() {
 		fmt.Fprintf(flag.CommandLine.Output(), "WWlogs %s\nUsage: WWlogs [options]\n\nOptions:\n", versioninfo.Current().Product.DevelopmentLine)
 		flag.PrintDefaults()
@@ -123,6 +183,36 @@ func Main() {
 			fatal("select network interface", err)
 		}
 		*ip = selectedIP
+	}
+	var defaultOutputDirectory, consoleLogPath string
+	if *pcapIn == "" && !*preflight && !hasAnyOutputPath(
+		*pcapOut, *auditOut, *buffSnapshotOut, *buffEventOut, *combatNotifyAuditOut,
+		*encounterSummaryOut, *combatEventsJSONLOut, *schemaDecodeOut, *roleConfigOutPath,
+		*buffOverlapOut, *effectStateOut, *combatStateOutPath, *hpStateOutPath, *damagePushOutPath,
+		*skillRefOutPath, *bulletRefOutPath, *shieldRefOutPath, *partRefOutPath, *clientPushOutPath,
+		*summonOwnerOutPath, *frameArchiveOut, *commandCensusOut, *clientVersionOut, *statusFile,
+		*liveDiagnosticOut,
+	) {
+		bundle, err := defaultLiveCaptureOutputBundle(os.Getenv("LOCALAPPDATA"), time.Now())
+		if err != nil {
+			fatal("create default live capture output", err)
+		}
+		defaultOutputDirectory, consoleLogPath = bundle.directory, bundle.console
+		*pcapOut = bundle.pcap
+		*combatEventsJSONLOut = bundle.combatEvents
+		*buffEventOut = bundle.buffEvents
+		*buffSnapshotOut = bundle.buffSnapshots
+		*liveDiagnosticOut = bundle.liveDiagnostics
+		*effectStateOut = bundle.effectState
+		*statusFile = bundle.status
+		*encounterSummaryOut = bundle.encounterSummary
+		if !flagWasSet("duration") {
+			*duration = 20 * time.Minute
+		}
+		if !flagWasSet("max-pcap-bytes") {
+			*maxPCAPBytes = 2 << 30
+		}
+		fmt.Fprintf(os.Stdout, "Live capture output directory: %s\n", defaultOutputDirectory)
 	}
 
 	if *minPort < 1 || *maxPort > 65535 || *minPort > *maxPort {
@@ -174,7 +264,21 @@ func Main() {
 	if err != nil {
 		fatal("load embedded RSA key", err)
 	}
-	stdout := bufio.NewWriter(os.Stdout)
+	var consoleLog *os.File
+	var stdoutTarget io.Writer = os.Stdout
+	var diagnosticTarget io.Writer = os.Stderr
+	if consoleLogPath != "" {
+		consoleLog, err = os.OpenFile(consoleLogPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+		if err != nil {
+			fatal("create console log", err)
+		}
+		defer consoleLog.Close()
+		stdoutTarget = io.MultiWriter(os.Stdout, consoleLog)
+		diagnosticTarget = io.MultiWriter(os.Stderr, consoleLog)
+		fmt.Fprintf(consoleLog, "Live capture output directory: %s\n", defaultOutputDirectory)
+	}
+	stdout := bufio.NewWriter(stdoutTarget)
+	defer stdout.Flush()
 	var auditFile *os.File
 	var auditWriter io.Writer
 	if *auditOut != "" {
@@ -266,7 +370,8 @@ func Main() {
 		}
 		defer combatNotifyAuditFile.Close()
 	}
-	processor := newProcessor(rsaKey, stdout, os.Stderr, auditWriter)
+	processor := newProcessor(rsaKey, stdout, diagnosticTarget, auditWriter)
+	processor.showEffectEvents = *showEffectEvents && *pcapIn == ""
 	processor.masters = masters
 	processor.research = *research
 	if buffSnapshotFile != nil {
@@ -573,7 +678,7 @@ func Main() {
 				fatal("create PCAP directory", err)
 			}
 		}
-		pcapFile, err = os.Create(*pcapOut)
+		pcapFile, err = os.OpenFile(*pcapOut, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
 		if err != nil {
 			fatal("create PCAP", err)
 		}
@@ -815,8 +920,9 @@ finished:
 	if processor.shieldRefOut != nil {
 		fmt.Fprintf(os.Stderr, "shield_reference errors=%d\n", processor.shieldRefErrors)
 	}
-	processor.printSummary(os.Stderr)
-	fmt.Fprintf(os.Stderr, "capture_finished udp=%d kcp_push=%d kcp_ordered=%d kcp_messages=%d protocol_frames=%d bad_crc=%d malformed_frames=%d kernel_drops=%d duration=%s\n",
+	processor.printSummary(diagnosticTarget)
+	fmt.Fprintf(diagnosticTarget, "statistics_final %s\n", processor.currentStatisticsReport())
+	fmt.Fprintf(diagnosticTarget, "capture_finished udp=%d kcp_push=%d kcp_ordered=%d kcp_messages=%d protocol_frames=%d bad_crc=%d malformed_frames=%d kernel_drops=%d duration=%s\n",
 		stats.udpPackets, stats.kcpPush, stats.kcpOrdered, stats.kcpMessages, stats.frames, stats.badCRC, stats.malformed, stats.kernelDrops, time.Since(started).Round(time.Millisecond))
 	if *commandCensusOut != "" {
 		if dir := filepath.Dir(*commandCensusOut); dir != "." {

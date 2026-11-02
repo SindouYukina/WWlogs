@@ -13,6 +13,9 @@ import (
 func (p *processor) writeStructuredEventJSONL(event any) {
 }
 
+func (p *processor) writeBuffLifecycleConsole(row buffLifecycleAuditRow) {
+}
+
 func writeCombatNotifyAudit(w io.Writer, frame gameFrame, notification protoField, commonEntityID, commonOriginator, commonMessageID *uint64, sessionNumber int) error {
 	var r0 error
 	return r0

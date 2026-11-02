@@ -82,6 +82,19 @@ type liveDiagnosticSnapshot struct {
 
 const liveDiagnosticInterval = time.Second
 
+type liveCaptureOutputBundle struct {
+	directory        string
+	pcap             string
+	console          string
+	combatEvents     string
+	buffEvents       string
+	buffSnapshots    string
+	liveDiagnostics  string
+	effectState      string
+	status           string
+	encounterSummary string
+}
+
 func findDeviceByIP(ip string) (string, error) {
 	devices, err := pcap.FindAllDevs()
 	if err != nil {

@@ -16,6 +16,16 @@ func appendFixed32TestField(dst []byte, number uint64, value uint32) []byte {
 	return append(dst, raw[:]...)
 }
 
+func TestWriteBuffLifecycleConsoleCanBeDisabled(t *testing.T) {
+	var stdout bytes.Buffer
+	p := newProcessor(nil, &stdout, &bytes.Buffer{}, nil)
+	row := buffLifecycleAuditRow{EventKind: "GAMEPLAY_EFFECT_APPLY"}
+	p.writeBuffLifecycleConsole(row)
+	if stdout.Len() != 0 {
+		t.Fatalf("disabled effect console wrote %q", stdout.String())
+	}
+}
+
 func TestEntityActiveResponseWithoutSnapshotOutputStillParsesBuff(t *testing.T) {
 	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
 	buffRecord := appendVarintField(nil, 2, 70001)

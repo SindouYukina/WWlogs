@@ -10,6 +10,26 @@ import (
 	"time"
 )
 
+func TestFormatBuffLifecycleConsoleUsesRawEffectEvidence(t *testing.T) {
+	timestamp := time.Date(2026, 11, 2, 2, 37, 28, 33000000, time.UTC)
+	buffID, handleID, targetID, stack := uint64(70001), uint64(111), uint64(8801), uint64(3)
+	duration, remaining := float32(12.5), float32(4.25)
+	line := formatBuffLifecycleConsole(buffLifecycleAuditRow{
+		Timestamp: timestamp, EventKind: "GAMEPLAY_EFFECT_APPLY",
+		BuffID: &buffID, HandleID: &handleID, TargetEntityID: &targetID, StackCount: &stack,
+		DurationSeconds: &duration, RemainingDuration: &remaining,
+		BuffDefinitionStatus: resolutionUnknown, TargetStatus: resolutionUnknown,
+	})
+	for _, want := range []string{"EffectEvent", "kind=GAMEPLAY_EFFECT_APPLY", "buffId=70001", "handle=111", "target=8801", "stack=3", "duration_s=12.500", "remaining_s=4.250", "definitionStatus=UNKNOWN"} {
+		if !strings.Contains(line, want) {
+			t.Fatalf("effect console line %q is missing %q", line, want)
+		}
+	}
+	if strings.Contains(strings.ToLower(line), "debuff") || strings.Contains(line, "name=") {
+		t.Fatalf("effect console output invented a name or polarity: %q", line)
+	}
+}
+
 func TestEntityActiveResponseDecodesBuffSnapshotWithCorrelatedEntity(t *testing.T) {
 	var output, eventStream bytes.Buffer
 	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
@@ -473,5 +493,22 @@ func TestBuffLifecycleDefinitionLookupUsesOnlyTypedBuffID(t *testing.T) {
 	}
 	if _, exists := nonBuffIDEvent["buffDefinitionStatus"]; exists {
 		t.Fatalf("untyped ID was assigned a static Buff link: %#v", nonBuffIDEvent)
+	}
+}
+
+func TestWriteBuffLifecycleConsoleEmitsRawEffectEvent(t *testing.T) {
+	var stdout, diagnostic bytes.Buffer
+	p := newProcessor(nil, &stdout, &diagnostic, nil)
+	p.showEffectEvents = true
+	buffID := uint64(70001)
+	p.writeBuffLifecycleConsole(buffLifecycleAuditRow{
+		EventKind: "GAMEPLAY_EFFECT_REMOVE", BuffID: &buffID, BuffDefinitionStatus: resolutionUnknown,
+		TargetStatus: resolutionUnknown,
+	})
+	if !strings.Contains(stdout.String(), "kind=GAMEPLAY_EFFECT_REMOVE") || !strings.Contains(stdout.String(), "buffId=70001") {
+		t.Fatalf("effect lifecycle was not printed: %q", stdout.String())
+	}
+	if diagnostic.Len() != 0 {
+		t.Fatalf("effect lifecycle output had an unexpected diagnostic: %q", diagnostic.String())
 	}
 }

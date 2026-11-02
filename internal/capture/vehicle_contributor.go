@@ -26,10 +26,16 @@ func resolveVehicleDamageContributorCandidate(resolver *entityResolver, masters 
 	if !source.hasFollowerSummonConfigID || !source.hasFollowEntityID || source.followEntityID == 0 {
 		return nil
 	}
-	if event.SkillRequest == nil || event.SkillMessageID == 0 || event.SkillRequest.SessionNumber != event.SessionNumber ||
-		event.SkillRequest.MessageID != event.SkillMessageID || event.SkillRequest.EntityID != event.SourceEntityID ||
-		event.SkillRequest.SkillID != event.SkillID || event.SkillRequest.RequestType != "UseSkillRequest" {
+	if event.SkillMessageID == 0 {
 		return nil
+	}
+	requestMatched := false
+	if request := event.SkillRequest; request != nil {
+		if request.SessionNumber != event.SessionNumber || request.MessageID != event.SkillMessageID ||
+			request.EntityID != event.SourceEntityID || request.SkillID != event.SkillID || request.RequestType != "UseSkillRequest" {
+			return nil
+		}
+		requestMatched = true
 	}
 
 	motorcycle, status := resolver.resolve(source.followEntityID)
@@ -49,6 +55,10 @@ func resolveVehicleDamageContributorCandidate(resolver *entityResolver, masters 
 			name = template.DevLabel
 		}
 	}
+	requestEvidence := "DamageContext.SkillMessageId is present, but no matching outbound UseSkillRequest was resolved; the candidate is correlated from the decoded SkillId and BulletId, verified runtime follower link, and static vehicle actor chain"
+	if requestMatched {
+		requestEvidence = "the outbound UseSkillRequest exactly matches DamageContext.SkillMessageId and the raw source entity"
+	}
 	return &damageContributorCandidate{
 		Name:             name,
 		ActorType:        "Vehicle",
@@ -58,6 +68,6 @@ func resolveVehicleDamageContributorCandidate(resolver *entityResolver, masters 
 		ActorBlueprint:   vehicle.ActorBlueprint,
 		SummonSkillID:    motorcycle.summonSkillID,
 		Status:           resolutionCorrelated,
-		Evidence:         "the outbound UseSkillRequest exactly matches DamageContext.SkillMessageId and the raw source entity; PlayerFollowerSelfComponentPb.FollowerSummonConfigId selects a SummonCfg/BlueprintConfig chain with EntityType=BattleVehicle, and that actor's EntitySkillPreload and BulletPreload list this SkillId and BulletId; the source FollowEntityId resolves in the same session to a Type 5 ConcomitantMotorcycle entity whose SummonerId is the raw source entity. The server-reported AttackerEntityId remains the player entity, so vehicle contribution is CORRELATED and does not replace raw source or character credit",
+		Evidence:         requestEvidence + "; PlayerFollowerSelfComponentPb.FollowerSummonConfigId selects a SummonCfg/BlueprintConfig chain with EntityType=BattleVehicle, and that actor's EntitySkillPreload and BulletPreload list this SkillId and BulletId; the source FollowEntityId resolves in the same session to a Type 5 ConcomitantMotorcycle entity whose SummonerId is the raw source entity. The server-reported AttackerEntityId remains the player entity, so vehicle contribution is CORRELATED and does not replace raw source or character credit",
 	}
 }
