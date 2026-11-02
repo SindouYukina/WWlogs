@@ -9,14 +9,14 @@ import (
 	"time"
 )
 
-func TestDefaultLiveCaptureOutputBundleUsesBoundedPrivateSpool(t *testing.T) {
-	root := t.TempDir()
+func TestDefaultLiveCaptureOutputBundleUsesProjectLogsDirectory(t *testing.T) {
+	logs := filepath.Join(t.TempDir(), "logs")
 	now := time.Date(2026, 11, 2, 11, 37, 28, 0, time.FixedZone("JST", 9*60*60))
-	bundle, err := defaultLiveCaptureOutputBundle(root, now)
+	bundle, err := defaultLiveCaptureOutputBundle(logs, now)
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantDir := filepath.Join(root, "WWlogs", "capture-spool", "LIVE_20261102_113728")
+	wantDir := filepath.Join(logs, "LIVE_20261102_113728")
 	if bundle.directory != wantDir {
 		t.Fatalf("directory = %q, want %q", bundle.directory, wantDir)
 	}
@@ -28,12 +28,15 @@ func TestDefaultLiveCaptureOutputBundleUsesBoundedPrivateSpool(t *testing.T) {
 			t.Fatalf("output %q is outside run directory %q", path, bundle.directory)
 		}
 	}
-	second, err := defaultLiveCaptureOutputBundle(root, now)
+	second, err := defaultLiveCaptureOutputBundle(logs, now)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if second.directory == bundle.directory {
 		t.Fatalf("same-second capture reused directory %q", bundle.directory)
+	}
+	if _, err := defaultLiveCaptureOutputBundle("", now); err == nil {
+		t.Fatal("an empty logs directory must be an error, not a fallback location")
 	}
 }
 
