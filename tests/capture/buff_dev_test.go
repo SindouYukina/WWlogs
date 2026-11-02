@@ -20,13 +20,64 @@ func TestFormatBuffLifecycleConsoleUsesRawEffectEvidence(t *testing.T) {
 		DurationSeconds: &duration, RemainingDuration: &remaining,
 		BuffDefinitionStatus: resolutionUnknown, TargetStatus: resolutionUnknown,
 	})
-	for _, want := range []string{"EffectEvent", "kind=GAMEPLAY_EFFECT_APPLY", "buffId=70001", "handle=111", "target=8801", "stack=3", "duration_s=12.500", "remaining_s=4.250", "definitionStatus=UNKNOWN"} {
+	for _, want := range []string{"BuffEvent", "kind=GAMEPLAY_EFFECT_APPLY", "buffId=70001", "handle=111", "target=8801", "targetStatus=UNKNOWN", "stack=3", "duration_s=12.500", "remaining_s=4.250", "definitionStatus=UNKNOWN"} {
 		if !strings.Contains(line, want) {
 			t.Fatalf("effect console line %q is missing %q", line, want)
 		}
 	}
 	if strings.Contains(strings.ToLower(line), "debuff") || strings.Contains(line, "name=") {
 		t.Fatalf("effect console output invented a name or polarity: %q", line)
+	}
+}
+
+func TestFormatBuffLifecycleConsoleShowsCorrelatedStackHolder(t *testing.T) {
+	effectID, handleID, entityID, stack := uint64(10061000), uint64(177), uint64(29106), uint64(6)
+	line := formatBuffLifecycleConsole(buffLifecycleAuditRow{
+		EventKind: "BUFF_STACK_COUNT_CHANGE", ID: &effectID, HandleID: &handleID,
+		HandleLinkedID: &effectID, HandleLinkedStatus: resolutionCorrelated,
+		CombatCommonEntityID: &entityID, StackCount: &stack,
+		TargetStatus: resolutionUnknown,
+	})
+	for _, want := range []string{"BuffEvent", "kind=BUFF_STACK_COUNT_CHANGE", "id=10061000", "handle=177", "handleLinkedId=10061000", "holder=29106", "holderStatus=CORRELATED", "handleLinkedStatus=CORRELATED", "stack=6"} {
+		if !strings.Contains(line, want) {
+			t.Fatalf("correlated stack event %q is missing %q", line, want)
+		}
+	}
+	if strings.Contains(line, "targetStatus=UNKNOWN") {
+		t.Fatalf("handle-linked stack update was mislabeled as an unknown target: %q", line)
+	}
+}
+
+func TestFormatBuffLifecycleConsoleKeepsUnlinkedHolderUnconfirmed(t *testing.T) {
+	entityID, handleID, stack := uint64(29106), uint64(177), uint64(6)
+	line := formatBuffLifecycleConsole(buffLifecycleAuditRow{
+		EventKind: "BUFF_STACK_COUNT_CHANGE", HandleID: &handleID,
+		HandleLinkedStatus: resolutionUnknown, CombatCommonEntityID: &entityID,
+		StackCount: &stack,
+	})
+	for _, want := range []string{"holderCandidate=29106", "holderStatus=UNKNOWN", "stack=6"} {
+		if !strings.Contains(line, want) {
+			t.Fatalf("unlinked stack event %q is missing %q", line, want)
+		}
+	}
+	if strings.Contains(line, "holder=29106") {
+		t.Fatalf("unlinked stack event was presented as a confirmed holder: %q", line)
+	}
+}
+
+func TestFormatBuffLifecycleConsoleDoesNotTreatRequestContextAsTarget(t *testing.T) {
+	id, entityID := uint64(10061000), uint64(90)
+	line := formatBuffLifecycleConsole(buffLifecycleAuditRow{
+		EventKind: "BUFF_APPLY_REQUEST_NOTIFY", ID: &id, CombatCommonEntityID: &entityID,
+		GenericIDDefinitionStatus: resolutionCorrelated, TargetStatus: resolutionUnknown,
+	})
+	for _, want := range []string{"kind=BUFF_APPLY_REQUEST_NOTIFY", "id=10061000", "commonEntity=90", "idReferenceStatus=CORRELATED"} {
+		if !strings.Contains(line, want) {
+			t.Fatalf("request event %q is missing %q", line, want)
+		}
+	}
+	if strings.Contains(line, "targetStatus=UNKNOWN") {
+		t.Fatalf("request context was mislabeled as an unknown target: %q", line)
 	}
 }
 
@@ -496,7 +547,7 @@ func TestBuffLifecycleDefinitionLookupUsesOnlyTypedBuffID(t *testing.T) {
 	}
 }
 
-func TestWriteBuffLifecycleConsoleEmitsRawEffectEvent(t *testing.T) {
+func TestWriteBuffLifecycleConsoleEmitsBuffEvent(t *testing.T) {
 	var stdout, diagnostic bytes.Buffer
 	p := newProcessor(nil, &stdout, &diagnostic, nil)
 	p.showEffectEvents = true
@@ -505,7 +556,7 @@ func TestWriteBuffLifecycleConsoleEmitsRawEffectEvent(t *testing.T) {
 		EventKind: "GAMEPLAY_EFFECT_REMOVE", BuffID: &buffID, BuffDefinitionStatus: resolutionUnknown,
 		TargetStatus: resolutionUnknown,
 	})
-	if !strings.Contains(stdout.String(), "kind=GAMEPLAY_EFFECT_REMOVE") || !strings.Contains(stdout.String(), "buffId=70001") {
+	if !strings.Contains(stdout.String(), "BuffEvent") || !strings.Contains(stdout.String(), "kind=GAMEPLAY_EFFECT_REMOVE") || !strings.Contains(stdout.String(), "buffId=70001") {
 		t.Fatalf("effect lifecycle was not printed: %q", stdout.String())
 	}
 	if diagnostic.Len() != 0 {

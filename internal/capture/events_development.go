@@ -266,6 +266,12 @@ func (event combatEvent) formatNormal() string {
 		}
 		credit += fmt.Sprintf(" [%s]", event.DamageContributorCandidate.Status)
 	}
+	if credit == "Credit:?" && event.Source.HasMonster && (event.Source.MonsterStatus == resolutionVerified || event.Source.MonsterStatus == resolutionCorrelated) {
+		credit = fmt.Sprintf("Credit:NonPlayerSource [Monster:%d; %s]", event.Source.Monster.ID, event.Source.MonsterStatus)
+	}
+	if credit == "Credit:?" && len(event.Source.TemplateCandidates) == 1 && (event.Source.TemplateStatus == resolutionVerified || event.Source.TemplateStatus == resolutionCorrelated) {
+		credit = fmt.Sprintf("Credit:NonPlayerSource [Template:%d; %s]", event.Source.TemplateCandidates[0].TemplateID, event.Source.TemplateStatus)
+	}
 	skillID := "?"
 	if event.SkillID != 0 {
 		skillID = fmt.Sprintf("%d", event.SkillID)

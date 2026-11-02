@@ -25,7 +25,7 @@ func (p *processor) writeBuffLifecycleConsole(row buffLifecycleAuditRow) {
 }
 
 func formatBuffLifecycleConsole(row buffLifecycleAuditRow) string {
-	parts := []string{"EffectEvent"}
+	parts := []string{"BuffEvent"}
 	if !row.Timestamp.IsZero() {
 		parts = append(parts, row.Timestamp.Local().Format("15:04:05.000"))
 	}
@@ -43,6 +43,26 @@ func formatBuffLifecycleConsole(row buffLifecycleAuditRow) string {
 	appendID("handleLinkedId", row.HandleLinkedID)
 	appendID("target", row.TargetEntityID)
 	appendID("instigator", row.InstigatorID)
+	if row.TargetEntityID != nil {
+		parts = append(parts, "targetStatus="+string(row.TargetStatus))
+	} else if row.CombatCommonEntityID != nil {
+		switch row.EventKind {
+		case "BUFF_DURATION_CHANGE", "BUFF_STACK_COUNT_CHANGE":
+			label, status := "holderCandidate", resolutionUnknown
+			if row.HandleLinkedStatus == resolutionCorrelated {
+				label, status = "holder", resolutionCorrelated
+			}
+			parts = append(parts,
+				fmt.Sprintf("%s=%d", label, *row.CombatCommonEntityID),
+				"holderStatus="+string(status),
+			)
+		default:
+			appendID("commonEntity", row.CombatCommonEntityID)
+		}
+	}
+	if row.HandleLinkedStatus != "" {
+		parts = append(parts, "handleLinkedStatus="+string(row.HandleLinkedStatus))
+	}
 	appendID("stack", row.StackCount)
 	if row.DurationSeconds != nil {
 		parts = append(parts, fmt.Sprintf("duration_s=%.3f", *row.DurationSeconds))
@@ -50,6 +70,11 @@ func formatBuffLifecycleConsole(row buffLifecycleAuditRow) string {
 	if row.RemainingDuration != nil {
 		parts = append(parts, fmt.Sprintf("remaining_s=%.3f", *row.RemainingDuration))
 	}
-	parts = append(parts, "definitionStatus="+string(row.BuffDefinitionStatus), "targetStatus="+string(row.TargetStatus))
+	if row.BuffDefinitionStatus != "" {
+		parts = append(parts, "definitionStatus="+string(row.BuffDefinitionStatus))
+	}
+	if row.GenericIDDefinitionStatus != "" {
+		parts = append(parts, "idReferenceStatus="+string(row.GenericIDDefinitionStatus))
+	}
 	return strings.Join(parts, " ")
 }
