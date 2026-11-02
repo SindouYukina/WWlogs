@@ -158,6 +158,33 @@ func TestFormatNormalLabelsHealingAsCandidateResult(t *testing.T) {
 	}
 }
 
+func TestFormatNormalLabelsVerifiedMonsterInsteadOfUnknownCredit(t *testing.T) {
+	event := combatEvent{
+		Source: entityIdentity{
+			HasMonster: true, Monster: masterRecord{ID: 602000019}, MonsterStatus: resolutionVerified,
+		},
+		Damage: 2151,
+	}
+	line := event.formatNormal()
+	if !strings.Contains(line, "Credit:NonPlayerSource [Monster:602000019; VERIFIED]") || strings.Contains(line, "Credit:?") {
+		t.Fatalf("verified monster source was presented as unknown credit: %q", line)
+	}
+}
+
+func TestFormatNormalLabelsCorrelatedTemplateInsteadOfUnknownCredit(t *testing.T) {
+	event := combatEvent{
+		Source: entityIdentity{
+			TemplateStatus:     resolutionCorrelated,
+			TemplateCandidates: []sceneTemplateCandidate{{TemplateID: 602000019}},
+		},
+		Damage: 2151,
+	}
+	line := event.formatNormal()
+	if !strings.Contains(line, "Credit:NonPlayerSource [Template:602000019; CORRELATED]") || strings.Contains(line, "Credit:?") {
+		t.Fatalf("correlated non-player template was presented as unknown credit: %q", line)
+	}
+}
+
 func TestCorrelatedRoleIsCreditNotSourceIdentity(t *testing.T) {
 	event := combatEvent{
 		SourceEntityID:      90,
