@@ -210,6 +210,9 @@ func TestPlayerRelevanceFilterUsesLocalRuntimeIdentity(t *testing.T) {
 			if test.wantOutput != (stdout.Len() > 0) {
 				t.Fatalf("normal output presence = %v, want %v: %q", stdout.Len() > 0, test.wantOutput, stdout.String())
 			}
+			if test.name == "unresolved event remains visible" && !strings.Contains(stdout.String(), "[PlayerTeamSide: UNCONFIRMED]") {
+				t.Fatalf("unconfirmed player-team attribution was not identified precisely: %q", stdout.String())
+			}
 			if jsonl.Len() == 0 {
 				t.Fatal("event diagnostics were dropped by the normal-output filter")
 			}
@@ -218,6 +221,56 @@ func TestPlayerRelevanceFilterUsesLocalRuntimeIdentity(t *testing.T) {
 			}
 			if !test.wantOutput && p.stats.suppressedUnrelatedEvents != 1 {
 				t.Fatalf("confirmed unrelated event count = %d, want 1", p.stats.suppressedUnrelatedEvents)
+			}
+		})
+	}
+}
+
+func TestDamageEventConsoleLabelsLocalPlayerSide(t *testing.T) {
+	tests := []struct {
+		name      string
+		setup     func(*processor)
+		sourceID  uint64
+		targetID  uint64
+		wantLabel string
+	}{
+		{
+			name: "local source",
+			setup: func(p *processor) {
+				observeTestLocalRole(p, 100)
+				addTestRuntimeEntity(p, 100, nil)
+				addTestRuntimeEntity(p, 200, func(entity *runtimeEntity) { entity.monsterID, entity.hasMonsterID = 9001, true })
+			},
+			sourceID: 100, targetID: 200, wantLabel: "SOURCE",
+		},
+		{
+			name: "local target",
+			setup: func(p *processor) {
+				observeTestLocalRole(p, 200)
+				addTestRuntimeEntity(p, 100, func(entity *runtimeEntity) { entity.monsterID, entity.hasMonsterID = 9001, true })
+				addTestRuntimeEntity(p, 200, nil)
+			},
+			sourceID: 100, targetID: 200, wantLabel: "TARGET",
+		},
+		{
+			name:      "unresolved endpoints",
+			setup:     func(*processor) {},
+			sourceID:  100,
+			targetID:  200,
+			wantLabel: "UNCONFIRMED",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			p, stdout, _ := newPlayerRelevanceTestProcessor()
+			test.setup(p)
+			if !p.writeDamageEvent(testDamageEvent(p, test.sourceID, test.targetID)) {
+				t.Fatal("player-relevant event was filtered")
+			}
+			want := "[PlayerTeamSide: " + test.wantLabel + "]"
+			if !strings.Contains(stdout.String(), want) {
+				t.Fatalf("console output %q does not contain %q", stdout.String(), want)
 			}
 		})
 	}
@@ -273,6 +326,41 @@ func TestPlayerRelevanceUsesLocalPlayerIDForVehicleEntity(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "Credit:[Vehicle]") {
 		t.Fatalf("vehicle contributor was not visible in console output: %q", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "[PlayerTeamSide: SOURCE]") {
+		t.Fatalf("local motorcycle damage was not labeled as player-team output: %q", stdout.String())
+	}
+}
+
+func TestPlayerRelevanceKeepsLocalPlayerIDAcrossSceneTransition(t *testing.T) {
+	p, _, _ := newPlayerRelevanceTestProcessor()
+	addTestPlayerRoleGroupEntity(p, 100, 77, 1409)
+	observeTestLocalRole(p, 100)
+	if _, ok := p.playerRelevance.localPlayerIDs[77]; !ok {
+		t.Fatal("local PlayerId was not established from the client role report")
+	}
+
+	p.playerRelevance.resetSceneEntities()
+	p.entities.entities = make(map[uint64]runtimeEntity)
+	addTestPlayerRoleGroupEntity(p, 200, 77, 1508)
+	addTestPlayerRoleGroupEntity(p, 201, 88, 1508)
+	addTestRuntimeEntity(p, 300, func(entity *runtimeEntity) { entity.monsterID, entity.hasMonsterID = 9001, true })
+
+	localEvent := testDamageEvent(p, 200, 300)
+	sourceRelation, targetRelation, visible := p.playerRelevantDamageEvent(localEvent)
+	if !visible || sourceRelation != playerRelationLocal || targetRelation != playerRelationUnrelated {
+		t.Fatalf("same-player entity after scene transition = %v/%v/%v, want LOCAL/UNRELATED/true", sourceRelation, targetRelation, visible)
+	}
+
+	otherPlayerEvent := testDamageEvent(p, 201, 300)
+	sourceRelation, _, visible = p.playerRelevantDamageEvent(otherPlayerEvent)
+	if !visible || sourceRelation != playerRelationUnknown {
+		t.Fatalf("other player after scene transition = %v/%v, want UNKNOWN/true", sourceRelation, visible)
+	}
+
+	p.playerRelevance.reset()
+	if len(p.playerRelevance.localPlayerIDs) != 0 {
+		t.Fatal("new capture session retained the previous local PlayerId")
 	}
 }
 

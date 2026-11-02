@@ -20,7 +20,7 @@ func TestFormatBuffLifecycleConsoleUsesRawEffectEvidence(t *testing.T) {
 		DurationSeconds: &duration, RemainingDuration: &remaining,
 		BuffDefinitionStatus: resolutionUnknown, TargetStatus: resolutionUnknown,
 	})
-	for _, want := range []string{"BuffEvent", "kind=GAMEPLAY_EFFECT_APPLY", "buffId=70001", "handle=111", "target=8801", "targetStatus=UNKNOWN", "stack=3", "duration_s=12.500", "remaining_s=4.250", "definitionStatus=UNKNOWN"} {
+	for _, want := range []string{"BuffEvent", "kind=GAMEPLAY_EFFECT_APPLY", "buffId=70001", "handle=111", "target=8801", "targetStatus=UNKNOWN", "stack=3", "duration_s=12.500", "remaining_s=4.250", "buffIdLookup=UNKNOWN"} {
 		if !strings.Contains(line, want) {
 			t.Fatalf("effect console line %q is missing %q", line, want)
 		}
@@ -78,6 +78,35 @@ func TestFormatBuffLifecycleConsoleDoesNotTreatRequestContextAsTarget(t *testing
 	}
 	if strings.Contains(line, "targetStatus=UNKNOWN") {
 		t.Fatalf("request context was mislabeled as an unknown target: %q", line)
+	}
+}
+
+func TestFormatBuffLifecycleConsoleOmitsMaxStackSentinelFromRemoveRequest(t *testing.T) {
+	buffID, entityID, stack := uint64(600100116), uint64(30116), ^uint64(0)
+	line := formatBuffLifecycleConsole(buffLifecycleAuditRow{
+		EventKind: "BUFF_REMOVE_BY_ID_REQUEST_NOTIFY", BuffID: &buffID,
+		CombatCommonEntityID: &entityID, StackCount: &stack,
+		BuffDefinitionStatus: resolutionCorrelated,
+	})
+	if !strings.Contains(line, "buffId=600100116") || !strings.Contains(line, "commonEntity=30116") {
+		t.Fatalf("remove request context was lost: %q", line)
+	}
+	if !strings.Contains(line, "effectState=UNCONFIRMED") || !strings.Contains(line, "buffIdLookup=CORRELATED") {
+		t.Fatalf("request evidence was not labeled precisely: %q", line)
+	}
+	if strings.Contains(line, "stack=") {
+		t.Fatalf("raw max-value stack sentinel was presented as a real count: %q", line)
+	}
+}
+
+func TestFormatBuffLifecycleConsoleMarksApplyRequestUnconfirmed(t *testing.T) {
+	id, instigator := uint64(3000020003), uint64(30116)
+	line := formatBuffLifecycleConsole(buffLifecycleAuditRow{
+		EventKind: "BUFF_APPLY_REQUEST_NOTIFY", ID: &id, InstigatorID: &instigator,
+		GenericIDDefinitionStatus: resolutionCorrelated,
+	})
+	if !strings.Contains(line, "effectState=UNCONFIRMED") || !strings.Contains(line, "idReferenceStatus=CORRELATED") {
+		t.Fatalf("apply request evidence was not labeled precisely: %q", line)
 	}
 }
 
