@@ -4,6 +4,7 @@ package capture
 
 import (
 	"bytes"
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -482,7 +483,7 @@ func TestPlayerRelevanceUsesLocalPlayerRoleGroup(t *testing.T) {
 }
 
 func TestPlayerTeamDamageDoesNotDisplayUnknownCreditWhenRoleIdentityIsUnavailable(t *testing.T) {
-	p, stdout, _ := newPlayerRelevanceTestProcessor()
+	p, stdout, jsonl := newPlayerRelevanceTestProcessor()
 	addTestPlayerRoleGroupEntity(p, 100, 77, 1409)
 	observeTestLocalRole(p, 100)
 	addTestPlayerRoleGroupEntity(p, 101, 77, 1508, true)
@@ -503,6 +504,23 @@ func TestPlayerTeamDamageDoesNotDisplayUnknownCreditWhenRoleIdentityIsUnavailabl
 	}
 	if !strings.Contains(output, "[PlayerTeamSide: SOURCE]") {
 		t.Fatalf("confirmed player-team source label missing: %q", output)
+	}
+	var row struct {
+		SchemaVersion int                    `json:"schemaVersion"`
+		Credit        combatEventCreditJSONL `json:"credit"`
+		Actors        actorsJSONL            `json:"actors"`
+	}
+	if err := json.NewDecoder(jsonl).Decode(&row); err != nil {
+		t.Fatalf("decode player-team event JSONL: %v", err)
+	}
+	if row.SchemaVersion != 5 {
+		t.Fatalf("event schemaVersion = %d, want the unchanged 5", row.SchemaVersion)
+	}
+	if row.Credit.CharacterID == nil || *row.Credit.CharacterID != 1508 || row.Credit.Status != resolutionCorrelated || row.Credit.Name != "" || row.Credit.NameStatus == resolutionVerified || row.Credit.NameStatus == resolutionCorrelated {
+		t.Fatalf("the FightRoleInfos role must be kept in the credit block without a resolved name: %+v", row.Credit)
+	}
+	if row.Actors.ActualSource.ActorType != "Character" || row.Actors.Target.ActorType != "Monster" {
+		t.Fatalf("actors = %+v", row.Actors)
 	}
 	if got := p.damageStatistics.Snapshot(); got.DamageDealt != 321 || got.OutgoingEvents != 1 {
 		t.Fatalf("team role damage was not counted as player output: %+v", got)

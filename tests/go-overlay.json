@@ -8,6 +8,8 @@
     "internal/buildinfo/central_profile_development_test.go": "tests/buildinfo/profile_development_test.go",
     "tests/buildinfo/profile_public_test.go": "",
     "internal/buildinfo/central_profile_public_test.go": "tests/buildinfo/profile_public_test.go",
+    "tests/capture/actor_model_dev_test.go": "",
+    "internal/capture/central_actor_model_dev_test.go": "tests/capture/actor_model_dev_test.go",
     "tests/capture/actor_model_test.go": "",
     "internal/capture/central_actor_model_test.go": "tests/capture/actor_model_test.go",
     "tests/capture/buff_dev_test.go": "",

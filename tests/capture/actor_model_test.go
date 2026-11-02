@@ -39,8 +39,8 @@ func TestProjectActorsKeepsRolesSeparate(t *testing.T) {
 	if actors.Target.ActorType != "Monster" || *actors.Target.EntityID != 28530 {
 		t.Fatalf("target = %+v", actors.Target)
 	}
-	if actors.Instigator.Status != resolutionUnknown || actors.Instigator.EntityID != nil {
-		t.Fatalf("instigator must stay unknown, got %+v", actors.Instigator)
+	if actors.Instigator.Status != resolutionNotApplicable || actors.Instigator.EntityID != nil {
+		t.Fatalf("instigator has no decoded protocol field and must be not applicable, got %+v", actors.Instigator)
 	}
 	if actors.Owner.EntityID != nil || actors.Owner.Status != resolutionUnknown {
 		t.Fatalf("owner without runtime owner id = %+v", actors.Owner)
@@ -78,5 +78,71 @@ func TestActorsSerializeWithStableRoleNames(t *testing.T) {
 		if _, ok := decoded[role]; !ok {
 			t.Fatalf("missing role %q in %s", role, line)
 		}
+	}
+}
+
+// unresolvedEvent mirrors the defaults of buildDamageEvent: nothing about credit or summoner is resolved yet.
+func unresolvedEvent() combatEvent {
+	return combatEvent{
+		CharacterStatus: resolutionUnknown, CharacterNameStatus: resolutionUnknown,
+		SummonerCharacter: summonerCharacterIdentity{Status: resolutionUnknown},
+	}
+}
+
+// monsterRuntime is an explicit EntityType=2 entity with no Master monster row.
+func monsterRuntime(entityID uint64) runtimeEntity {
+	return runtimeEntity{entityID: entityID, entityTypeCode: entityTypeMonster, hasEntityType: true}
+}
+
+// playerRoleRuntime is a role listed in the local PlayerSceneGroup.
+func playerRoleRuntime(entityID, roleID uint64) runtimeEntity {
+	return runtimeEntity{
+		entityID: entityID, playerID: 77, hasPlayerID: true, roleID: roleID, hasRoleID: true,
+		roleSourceFieldPath: "JoinSceneNotify.SceneInfo.PlayerInfos[].PlayerSceneGroupData[].FightRoleInfos[].RoleId",
+	}
+}
+
+func TestProjectActorsUsesRuntimeMonsterTypeWithoutMasterIdentity(t *testing.T) {
+	event := unresolvedEvent()
+	event.Source = entityIdentity{Runtime: monsterRuntime(40001), RuntimeStatus: resolutionVerified}
+	event.Target = entityIdentity{Runtime: monsterRuntime(40002), RuntimeStatus: resolutionVerified}
+
+	actors := projectActors(event)
+	if actors.ActualSource.ActorType != "Monster" || actors.Target.ActorType != "Monster" {
+		t.Fatalf("explicit runtime Monster types were lost: source=%+v target=%+v", actors.ActualSource, actors.Target)
+	}
+	for name, role := range map[string]actorRoleJSONL{"owner": actors.Owner, "summoner": actors.Summoner, "credit": actors.CreditedCharacter} {
+		if role.Status != resolutionNotApplicable {
+			t.Errorf("%s of a direct monster = %+v, want NOT_APPLICABLE", name, role)
+		}
+	}
+}
+
+func TestProjectActorsKeepsMonsterWithOwnerLinkUnresolved(t *testing.T) {
+	// A monster that carries an owner field (as in the 2026-11-02 LIVE capture) has an owner
+	// that is observed but unresolved; it must not be reported as having none.
+	event := unresolvedEvent()
+	runtime := monsterRuntime(40001)
+	runtime.ownerIncID, runtime.hasOwnerIncID = 1125899906870022, true
+	event.Source = entityIdentity{Runtime: runtime, RuntimeStatus: resolutionVerified}
+
+	actors := projectActors(event)
+	if actors.ActualSource.ActorType != "Monster" {
+		t.Fatalf("actual source = %+v", actors.ActualSource)
+	}
+	if actors.Owner.Status != resolutionUnknown || actors.Summoner.Status != resolutionUnknown || actors.CreditedCharacter.Status == resolutionNotApplicable {
+		t.Fatalf("an observed owner link was hidden: owner=%+v summoner=%+v credit=%+v", actors.Owner, actors.Summoner, actors.CreditedCharacter)
+	}
+}
+
+func TestProjectActorsKeepsSummonOwnerUnresolved(t *testing.T) {
+	event := unresolvedEvent()
+	runtime := monsterRuntime(40001)
+	runtime.summonerID, runtime.hasSummonerID = 9001, true
+	event.Source = entityIdentity{Runtime: runtime, RuntimeStatus: resolutionVerified}
+
+	actors := projectActors(event)
+	if actors.ActualSource.ActorType != "Summon" || actors.Owner.Status != resolutionUnknown || actors.Summoner.Status == resolutionNotApplicable {
+		t.Fatalf("summon roles = %+v", actors)
 	}
 }
