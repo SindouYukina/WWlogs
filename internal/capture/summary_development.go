@@ -111,7 +111,7 @@ func writeVehicleContributors(w io.Writer, summary *encounterSummary) error {
 		ids = append(ids, id)
 	}
 	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
-	if _, err := fmt.Fprintln(w, "\n### Vehicle contributors (separate from party characters)\n\nThe server reports these hits with the player entity as attacker; they are listed as the vehicle's own row and are not counted for any character. The relation is a CORRELATED association, not a server-confirmed credit."); err != nil {
+	if _, err := fmt.Fprintln(w, "\n### Player-team vehicle contributors (independent damage sources)\n\nThese correlated vehicle contributors are included in the player-team damage and direction totals above when the runtime ownership link is established. They are listed separately from character rows so vehicle damage is not attributed to the active character or counted twice. The vehicle association is CORRELATED, not server-confirmed credit."); err != nil {
 		return err
 	}
 	for _, id := range ids {
@@ -132,6 +132,7 @@ func (p *processor) observeEncounterSummary(event combatEvent) {
 	if p.encounterSummary == nil {
 		return
 	}
+	sourceRelation, targetRelation, _ := p.playerRelevantDamageEvent(event)
 	if p.encounterSummaries == nil {
 		p.encounterSummaries = make(map[encounterSummaryKey]*encounterSummary)
 	}
@@ -181,7 +182,7 @@ func (p *processor) observeEncounterSummary(event combatEvent) {
 	switch event.EventTypeCandidate {
 	case "DAMAGE_CANDIDATE":
 		summary.damageCandidates += event.Damage
-		observeDamageDirection(summary, event)
+		observeDamageDirection(summary, event, sourceRelation, targetRelation)
 	case "HEALING_CANDIDATE":
 		summary.healCandidates += event.Damage
 	case "OTHER_COMBAT_RESULT_CANDIDATE":
@@ -193,10 +194,11 @@ func (p *processor) observeEncounterSummary(event combatEvent) {
 		addHealingAttribution(summary, event)
 	}
 
-	if isCreditedCharacterStatus(event.CharacterStatus) && event.CharacterID != 0 {
-		addCreditedCharacterEvent(summary, event)
-	} else if event.DamageContributorCandidate != nil && event.EventTypeCandidate == "DAMAGE_CANDIDATE" {
+	if sourceRelation == playerRelationLocal && event.EventTypeCandidate == "DAMAGE_CANDIDATE" &&
+		event.DamageContributorCandidate != nil && event.DamageContributorCandidate.ActorType == "Vehicle" {
 		addVehicleContributorEvent(summary, event)
+	} else if isCreditedCharacterStatus(event.CharacterStatus) && event.CharacterID != 0 {
+		addCreditedCharacterEvent(summary, event)
 	} else {
 		summary.unknownCredit++
 		summary.unknownCreditAbs += event.Damage
@@ -240,8 +242,8 @@ func (p *processor) observeEncounterSummary(event combatEvent) {
 	addBossCandidate(summary, event.Target)
 }
 
-func observeDamageDirection(summary *encounterSummary, event combatEvent) {
-	if isCreditedCharacterStatus(event.CharacterStatus) && event.CharacterID != 0 && isEnemyEntityIdentity(event.Target) {
+func observeDamageDirection(summary *encounterSummary, event combatEvent, sourceRelation, targetRelation playerRelation) {
+	if sourceRelation == playerRelationLocal && isEnemyEntityIdentity(event.Target) {
 		summary.partyToEnemyCandidateAbs += event.Damage
 		summary.partyToEnemyCandidateEvents++
 		if len(event.Target.TemplateCandidates) > 0 {
@@ -250,7 +252,7 @@ func observeDamageDirection(summary *encounterSummary, event combatEvent) {
 		}
 		return
 	}
-	if event.Target.HasCharacter && (event.Target.CharacterStatus == resolutionVerified || event.Target.CharacterStatus == resolutionCorrelated) && isEnemyEntityIdentity(event.Source) {
+	if targetRelation == playerRelationLocal && isEnemyEntityIdentity(event.Source) {
 		summary.enemyToPartyCandidateAbs += event.Damage
 		summary.enemyToPartyCandidateEvents++
 		if len(event.Source.TemplateCandidates) > 0 {
@@ -718,13 +720,13 @@ func writeOneEncounterSummary(w io.Writer, summary *encounterSummary) error {
 			return err
 		}
 	}
-	if _, err := fmt.Fprintf(w, "\n- Time range: %s to %s\n- Matched result events: %d\n- CombatResult absolute total: %d\n- Damage candidates: %d\n- Healing candidate result magnitude: %d\n- Other combat result candidates: %d\n- Unclassified result magnitude: %d\n- Events without credited CharacterId: %d (result magnitude %d)\n- Earlier events backfilled from later same-lifetime Skill evidence: %d [CORRELATED]\n",
+	if _, err := fmt.Fprintf(w, "\n- Time range: %s to %s\n- Matched result events: %d\n- CombatResult absolute total: %d\n- Damage candidates: %d\n- Healing candidate result magnitude: %d\n- Other combat result candidates: %d\n- Unclassified result magnitude: %d\n- Events without resolved source character identity: %d (result magnitude %d; this does not imply non-player damage; player-team relation is tracked separately)\n- Earlier events backfilled from later same-lifetime Skill evidence: %d [CORRELATED]\n",
 		formatSummaryTime(summary.startedAt), formatSummaryTime(summary.endedAt), summary.eventCount, summary.combatResultAbs,
 		summary.damageCandidates, summary.healCandidates, summary.otherCandidates, summary.unclassified,
 		summary.unknownCredit, summary.unknownCreditAbs, summary.identityBackfilledEvents); err != nil {
 		return err
 	}
-	if _, err := fmt.Fprintf(w, "\n### Damage direction candidates\n\n- Credited party character to enemy: %d event(s), reported magnitude %d\n- Credited party character to Boss template candidate: %d event(s), reported magnitude %d\n- Enemy to credited party character: %d event(s), reported magnitude %d\n- Boss template candidate to credited party character: %d event(s), reported magnitude %d\n- Direction unresolved: %d event(s), reported magnitude %d\n",
+	if _, err := fmt.Fprintf(w, "\n### Damage direction candidates\n\n- Player team to identified enemy: %d event(s), reported magnitude %d\n- Player team to Boss template candidate: %d event(s), reported magnitude %d\n- Enemy to player team: %d event(s), reported magnitude %d\n- Boss template candidate to player team: %d event(s), reported magnitude %d\n- Player-team direction unresolved: %d event(s), reported magnitude %d\n",
 		summary.partyToEnemyCandidateEvents, summary.partyToEnemyCandidateAbs,
 		summary.partyToBossCandidateEvents, summary.partyToBossCandidateAbs,
 		summary.enemyToPartyCandidateEvents, summary.enemyToPartyCandidateAbs,
@@ -732,7 +734,7 @@ func writeOneEncounterSummary(w io.Writer, summary *encounterSummary) error {
 		summary.unknownDirectionDamageEvents, summary.unknownDirectionDamageAbs); err != nil {
 		return err
 	}
-	if _, err := fmt.Fprintln(w, "These counts include only direction-classified damage candidates observed in this capture scope. A zero count means no qualifying event was observed; it does not establish that the game dealt zero damage."); err != nil {
+	if _, err := fmt.Fprintln(w, "These counts use observed runtime player-team ownership and identified enemy entities. Missing CharacterId or character names do not break a confirmed player-team relation. A zero count means no qualifying event was observed; it does not establish that the game dealt zero damage."); err != nil {
 		return err
 	}
 	if summary.identityBackfillEventsOmitted > 0 {
@@ -768,7 +770,7 @@ func writeOneEncounterSummary(w io.Writer, summary *encounterSummary) error {
 }
 
 func writeUncreditedEvents(w io.Writer, summary *encounterSummary) error {
-	if _, err := fmt.Fprintln(w, "\n### Uncredited result breakdown (raw IDs)"); err != nil {
+	if _, err := fmt.Fprintln(w, "\n### Unresolved source character identity breakdown (raw IDs)"); err != nil {
 		return err
 	}
 	if _, err := fmt.Fprintln(w, "\nAmounts are absolute CombatResult values grouped by observed numeric IDs. These rows do not establish a Character, Owner, or Summoner."); err != nil {

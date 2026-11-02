@@ -50,7 +50,7 @@ func TestEncounterSummarySeparatesCreditedDamageHealingAndOwnerCandidates(t *tes
 		"DAMAGE_CANDIDATE: Damage master CalculateType 0",
 		"Damage candidates: 300",
 		"Healing candidate result magnitude: 50",
-		"Events without credited CharacterId: 1 (result magnitude 50)",
+		"Events without resolved source character identity: 1 (result magnitude 50; this does not imply non-player damage; player-team relation is tracked separately)",
 		"CharacterId 1312 — Role [CORRELATED; name VERIFIED]",
 		"SkillDescription -> Skill",
 		"SkillId 1312011 — Skill",
@@ -65,6 +65,121 @@ func TestEncounterSummarySeparatesCreditedDamageHealingAndOwnerCandidates(t *tes
 	}
 	if strings.Contains(text, "Effective Healing") && !strings.Contains(text, "not established") {
 		t.Fatal("summary implied effective healing without its evidence limitation")
+	}
+}
+
+func TestEncounterSummaryUsesPlayerTeamRelationWithoutCharacterIdentity(t *testing.T) {
+	var output bytes.Buffer
+	p, _, _ := newPlayerRelevanceTestProcessor()
+	p.encounterSummary = &output
+	addTestPlayerRoleGroupEntity(p, 100, 77, 1409)
+	observeTestLocalRole(p, 100)
+	addTestPlayerRoleGroupEntity(p, 101, 77, 1508, true)
+	addTestRuntimeEntity(p, 200, func(entity *runtimeEntity) {
+		entity.entityTypeCode, entity.hasEntityType = entityTypeMonster, true
+		entity.monsterID, entity.hasMonsterID = 9001, true
+	})
+
+	event := testDamageEvent(p, 101, 200)
+	event.SessionNumber = 1
+	event.EventTypeCandidate = "DAMAGE_CANDIDATE"
+	event.Damage = 321
+	event.Target.HasMonster, event.Target.MonsterStatus = true, resolutionVerified
+	p.observeEncounterSummary(event)
+
+	summary := p.encounterSummaries[encounterSummaryKey{session: 1}]
+	if summary == nil || summary.partyToEnemyCandidateEvents != 1 || summary.partyToEnemyCandidateAbs != 321 || summary.unknownDirectionDamageEvents != 0 {
+		t.Fatalf("known player-team damage lost its direction when CharacterId was unresolved: %+v", summary)
+	}
+	if summary.unknownCredit != 1 || summary.unknownCreditAbs != 321 {
+		t.Fatalf("missing character identity was not kept separate from player-team direction: %+v", summary)
+	}
+	if err := p.writeEncounterSummary(); err != nil {
+		t.Fatal(err)
+	}
+	text := output.String()
+	for _, want := range []string{
+		"Player team to identified enemy: 1 event(s), reported magnitude 321",
+		"Events without resolved source character identity: 1 (result magnitude 321; this does not imply non-player damage; player-team relation is tracked separately)",
+		"Missing CharacterId or character names do not break a confirmed player-team relation.",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("summary missing %q:\n%s", want, text)
+		}
+	}
+}
+
+func TestEncounterSummaryListsLocalVehicleAsIndependentPlayerTeamSource(t *testing.T) {
+	var output bytes.Buffer
+	p, _, _ := newPlayerRelevanceTestProcessor()
+	p.encounterSummary = &output
+	addTestPlayerRoleGroupEntity(p, 100, 77, 1409)
+	observeTestLocalRole(p, 100)
+	addTestRuntimeEntity(p, 200, func(entity *runtimeEntity) {
+		entity.entityTypeCode, entity.hasEntityType = entityTypeMonster, true
+		entity.monsterID, entity.hasMonsterID = 9001, true
+	})
+
+	event := testDamageEvent(p, 100, 200)
+	event.SessionNumber = 1
+	event.EventTypeCandidate = "DAMAGE_CANDIDATE"
+	event.Damage = 55
+	event.Target.HasMonster, event.Target.MonsterStatus = true, resolutionVerified
+	event.CharacterID = 1409
+	event.CharacterName = "Role"
+	event.CharacterNameStatus = resolutionVerified
+	event.CharacterStatus = resolutionVerified
+	event.DamageContributorCandidate = &damageContributorCandidate{
+		ActorType: "Vehicle", FollowerConfigID: 290101, Status: resolutionCorrelated,
+	}
+	p.observeEncounterSummary(event)
+
+	summary := p.encounterSummaries[encounterSummaryKey{session: 1}]
+	if summary == nil || summary.damageCandidates != 55 || summary.partyToEnemyCandidateAbs != 55 || summary.partyToEnemyCandidateEvents != 1 {
+		t.Fatalf("vehicle damage was lost from player-team totals or counted more than once: %+v", summary)
+	}
+	if len(summary.characters) != 0 || summary.unknownCredit != 0 || len(summary.vehicleContributors) != 1 {
+		t.Fatalf("vehicle damage was attributed to a character or omitted as a source: %+v", summary)
+	}
+	if row := summary.vehicleContributors[290101]; row == nil || row.events != 1 || row.damage != 55 {
+		t.Fatalf("vehicle contributor row = %+v", row)
+	}
+	if err := p.writeEncounterSummary(); err != nil {
+		t.Fatal(err)
+	}
+	text := output.String()
+	for _, want := range []string{
+		"Player-team vehicle contributors (independent damage sources)",
+		"included in the player-team damage and direction totals above",
+		"FollowerSummonConfigId:290101; CORRELATED]: 1 event(s), CombatResult magnitude 55",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("summary missing %q:\n%s", want, text)
+		}
+	}
+}
+
+func TestEncounterSummaryUsesPlayerTeamTargetWithoutCharacterIdentity(t *testing.T) {
+	p, _, _ := newPlayerRelevanceTestProcessor()
+	p.encounterSummary = &bytes.Buffer{}
+	addTestPlayerRoleGroupEntity(p, 100, 77, 1409)
+	observeTestLocalRole(p, 100)
+	addTestPlayerRoleGroupEntity(p, 101, 77, 1508, true)
+	addTestRuntimeEntity(p, 200, func(entity *runtimeEntity) {
+		entity.entityTypeCode, entity.hasEntityType = entityTypeMonster, true
+		entity.monsterID, entity.hasMonsterID = 9001, true
+	})
+
+	event := testDamageEvent(p, 200, 101)
+	event.SessionNumber = 1
+	event.EventTypeCandidate = "DAMAGE_CANDIDATE"
+	event.Damage = 77
+	event.Source.HasMonster, event.Source.MonsterStatus = true, resolutionVerified
+	p.observeEncounterSummary(event)
+
+	summary := p.encounterSummaries[encounterSummaryKey{session: 1}]
+	if summary == nil || summary.enemyToPartyCandidateEvents != 1 || summary.enemyToPartyCandidateAbs != 77 || summary.unknownDirectionDamageEvents != 0 {
+		t.Fatalf("incoming damage to a local player-team role lost its direction when CharacterId was unresolved: %+v", summary)
 	}
 }
 
@@ -197,8 +312,8 @@ func TestEncounterSummaryListsUncreditedRawIDGroups(t *testing.T) {
 	}
 	text := output.String()
 	for _, want := range []string{
-		"Events without credited CharacterId: 2 (result magnitude 100)",
-		"Uncredited result breakdown (raw IDs)",
+		"Events without resolved source character identity: 2 (result magnitude 100; this does not imply non-player damage; player-team relation is tracked separately)",
+		"Unresolved source character identity breakdown (raw IDs)",
 		"Session 2; source Scene UNKNOWN; target Scene UNKNOWN; DAMAGE_CANDIDATE; SkillId 13111001; DamageId 13111002; BulletId 13111003; Source EntityId 501; Target EntityId 602: 2 event(s), magnitude 100; CharacterId UNKNOWN",
 	} {
 		if !strings.Contains(text, want) {
@@ -336,7 +451,7 @@ func TestEncounterSummaryBackfillsEarlierSourceEventsAsCorrelated(t *testing.T) 
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		"Events without credited CharacterId: 0 (result magnitude 0)",
+		"Events without resolved source character identity: 0 (result magnitude 0; this does not imply non-player damage; player-team relation is tracked separately)",
 		"Earlier events backfilled from later same-lifetime Skill evidence: 1 [CORRELATED]",
 		"CharacterId 1312 — Role [CORRELATED; name VERIFIED]",
 		"backfilled within observed session/scene/entity lifetime",
