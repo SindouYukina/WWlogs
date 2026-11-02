@@ -5,6 +5,7 @@ package capture
 import (
 	"bytes"
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -47,6 +48,95 @@ func TestEffectFeedWritesFinalStateAsOneJSONLine(t *testing.T) {
 	requireNear(t, "remaining at the last frame time", effect.RemainingSeconds, 20)
 	if snapshot.QueryTime == nil || !snapshot.QueryTime.Equal(effectAt(10)) {
 		t.Fatalf("query time = %v, want the last frame time", snapshot.QueryTime)
+	}
+}
+
+func TestEffectSemanticConsoleFieldsAreLabelledAndNeverNameTheEffect(t *testing.T) {
+	duration, limit := 14.8, uint64(3)
+	readable := &EffectStaticInfo{StaticDurationSeconds: &duration, StackLimit: &limit, DeveloperTags: []string{"战斗状态.异常状态.基础元素异常.风蚀效应"}}
+	got := formatEffectSemanticFields(10041000, readable)
+	for _, want := range []string{"effectId=10041000", "semantic=definition_linked_name_unresolved", "staticDuration_s=14.800", "staticStackLimit=3", "devTag[internal]=战斗状态.异常状态.基础元素异常.风蚀效应"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("console fields %q lack %q", got, want)
+		}
+	}
+	if strings.Contains(got, "name=") {
+		t.Errorf("a name field was produced without a name source: %q", got)
+	}
+	hashed := formatEffectSemanticFields(1508300103, &EffectStaticInfo{DeveloperTags: []string{"角色.dc777977.cf4dcd3d.7315298d.5941a58c"}})
+	if !strings.Contains(hashed, "devTag[internal]=unreadable(1)") || strings.Contains(hashed, "dc777977") {
+		t.Errorf("hashed tag was shown as readable: %q", hashed)
+	}
+	if bare := formatEffectSemanticFields(70051, &EffectStaticInfo{}); strings.Contains(bare, "devTag") || strings.Contains(bare, "staticDuration") {
+		t.Errorf("absent parameters were invented: %q", bare)
+	}
+}
+
+func TestEffectSemanticConsoleFieldsFollowApplyAndHandleLink(t *testing.T) {
+	p := newEffectTestProcessor()
+	p.masters = &gameMaster{buffDefinitions: map[uint64]struct{}{10041000: {}}}
+	apply := uint64(10041000)
+	link := uint64(10041000)
+	if got := p.effectSemanticConsoleFields(buffLifecycleAuditRow{EventKind: "GAMEPLAY_EFFECT_APPLY", ID: &apply}); !strings.Contains(got, "effectId=10041000") || !strings.Contains(got, "definition_linked_name_unresolved") {
+		t.Errorf("apply row fields = %q", got)
+	}
+	if got := p.effectSemanticConsoleFields(buffLifecycleAuditRow{EventKind: "BUFF_STACK_COUNT_CHANGE", HandleLinkedID: &link, HandleLinkedStatus: resolutionCorrelated}); !strings.Contains(got, "effectId=10041000") {
+		t.Errorf("handle-linked row fields = %q", got)
+	}
+	// An unconfirmed handle link must not attribute the update to an effect id.
+	if got := p.effectSemanticConsoleFields(buffLifecycleAuditRow{EventKind: "BUFF_STACK_COUNT_CHANGE", HandleLinkedID: &link, HandleLinkedStatus: resolutionUnknown}); got != "" {
+		t.Errorf("unconfirmed handle link produced fields: %q", got)
+	}
+	// Request notifications describe no effect instance.
+	if got := p.effectSemanticConsoleFields(buffLifecycleAuditRow{EventKind: "BUFF_APPLY_REQUEST_NOTIFY", ID: &apply}); got != "" {
+		t.Errorf("request notification produced fields: %q", got)
+	}
+	unknown := uint64(1312010090)
+	if got := p.effectSemanticConsoleFields(buffLifecycleAuditRow{EventKind: "GAMEPLAY_EFFECT_APPLY", ID: &unknown}); !strings.Contains(got, "semantic=definition_unresolved") {
+		t.Errorf("unlinked id fields = %q", got)
+	}
+}
+
+func TestEffectFeedReportsCorrelatedTermNameWithoutPromotingIt(t *testing.T) {
+	p := newEffectTestProcessor()
+	p.masters = &gameMaster{
+		buffDefinitions: map[uint64]struct{}{10041000: {}, 10040002: {}},
+		buffStatics:     map[uint64]buffStaticParameters{10041000: {stackLimit: 3, hasStackLimit: true}},
+		buffTerms:       map[uint64]effectTermRecord{10041000: {termID: 850009, name: "風蝕效應", description: "持續時造成氣動傷害", status: resolutionCorrelated}},
+	}
+	deliverEffectMessage(t, p, 0, effectPackBody(200, 5, effectApplyPayload(1, 10041000, 200, 100, 1, 14.8, 14.8)))
+	deliverEffectMessage(t, p, 0, effectPackBody(200, 5, effectApplyPayload(2, 10040002, 200, 100, 1, 2, 2)))
+	byHandle := map[uint64]EffectInstanceSnapshot{}
+	for _, effect := range p.effects.Snapshot().Effects {
+		byHandle[effect.HandleID] = effect
+	}
+	named := byHandle[1]
+	if named.SemanticStatus != EffectSemanticNameCorrelated || named.Static == nil || named.Static.Term == nil ||
+		named.Static.Term.Name != "風蝕效應" || named.Static.Term.Status != string(resolutionCorrelated) {
+		t.Fatalf("named effect = %+v static=%+v", named, named.Static)
+	}
+	if named.DefinitionStatus != string(resolutionCorrelated) {
+		t.Fatalf("definition status = %s", named.DefinitionStatus)
+	}
+	// A linked effect without a term keeps its id and an unresolved name.
+	plain := byHandle[2]
+	if plain.SemanticStatus != EffectSemanticNameUnresolved || (plain.Static != nil && plain.Static.Term != nil) {
+		t.Fatalf("effect without a term = %+v", plain)
+	}
+	// The tracker owns its copy of the term.
+	named.Static.Term.Name = "mutated"
+	for _, effect := range p.effects.Snapshot().Effects {
+		if effect.HandleID == 1 && effect.Static.Term.Name != "風蝕效應" {
+			t.Fatal("tracker state changed through a snapshot term")
+		}
+	}
+
+	apply := uint64(10041000)
+	fields := p.effectSemanticConsoleFields(buffLifecycleAuditRow{EventKind: "GAMEPLAY_EFFECT_APPLY", ID: &apply})
+	for _, want := range []string{"semantic=definition_linked_name_correlated", `name="風蝕效應"`, "nameStatus=CORRELATED", "nameSource=Term850009"} {
+		if !strings.Contains(fields, want) {
+			t.Errorf("console fields %q lack %q", fields, want)
+		}
 	}
 }
 
@@ -366,5 +456,46 @@ func TestEffectFeedLinksStaticDefinitionOnlyByExactRow(t *testing.T) {
 	unnamed := byHandle[2]
 	if unnamed.DefinitionStatus != string(resolutionUnknown) || unnamed.EffectID == nil || *unnamed.EffectID != 1312010090 || unnamed.Lifecycle != EffectLifecycleActive {
 		t.Fatalf("effect without a static row = %+v", unnamed)
+	}
+}
+
+func TestEffectFeedAttachesStaticDefinitionWithoutResolvingAName(t *testing.T) {
+	p := newEffectTestProcessor()
+	p.masters = &gameMaster{
+		buffDefinitions: map[uint64]struct{}{10041000: {}, 70000045: {}},
+		buffStatics: map[uint64]buffStaticParameters{
+			10041000: {durationSeconds: 14.8, hasDuration: true, stackLimit: 3, hasStackLimit: true, durationPolicy: 2, hasDurationPolicy: true, tags: []string{"a.b.c"}},
+		},
+	}
+	deliverEffectMessage(t, p, 0, effectPackBody(200, 5, effectApplyPayload(1, 10041000, 200, 100, 1, 14.8, 14.8)))
+	deliverEffectMessage(t, p, 0, effectPackBody(200, 5, effectApplyPayload(2, 70000045, 200, 100, 1, -1, -1)))
+	deliverEffectMessage(t, p, 0, effectPackBody(200, 5, effectApplyPayload(3, 1312010090, 200, 100, 1, 5, 5)))
+
+	byHandle := map[uint64]EffectInstanceSnapshot{}
+	for _, effect := range p.effects.Snapshot().Effects {
+		byHandle[effect.HandleID] = effect
+	}
+	aero := byHandle[1]
+	if aero.SemanticStatus != EffectSemanticNameUnresolved || aero.Static == nil || aero.Static.StaticDurationSeconds == nil ||
+		*aero.Static.StaticDurationSeconds != 14.8 || *aero.Static.StackLimit != 3 || len(aero.Static.DeveloperTags) != 1 {
+		t.Fatalf("linked effect = %+v static=%+v", aero, aero.Static)
+	}
+	// A definition with no parameters is still linked, and the name is still unresolved.
+	if bare := byHandle[2]; bare.SemanticStatus != EffectSemanticNameUnresolved || bare.DefinitionStatus != string(resolutionCorrelated) {
+		t.Fatalf("definition without parameters = %+v", bare)
+	}
+	// An id with no static row is tracked and flagged unresolved, without a name or parameters.
+	missing := byHandle[3]
+	if missing.SemanticStatus != EffectSemanticDefinitionUnresolved || missing.Static != nil || missing.EffectID == nil || *missing.EffectID != 1312010090 {
+		t.Fatalf("effect without a definition = %+v", missing)
+	}
+	// The snapshot owns its static block.
+	*aero.Static.StackLimit = 99
+	aero.Static.DeveloperTags[0] = "mutated"
+	again := p.effects.Snapshot()
+	for _, effect := range again.Effects {
+		if effect.HandleID == 1 && (*effect.Static.StackLimit != 3 || effect.Static.DeveloperTags[0] != "a.b.c") {
+			t.Fatalf("tracker state changed through a snapshot: %+v", effect.Static)
+		}
 	}
 }

@@ -20,8 +20,11 @@ func TestVehicleContributorCandidateJSONKeepsRawAttacker(t *testing.T) {
 	if view.Raw.AttackerEntityID == nil || *view.Raw.AttackerEntityID != 10 {
 		t.Fatalf("raw attacker was rewritten: %+v", view.Raw)
 	}
-	if view.Credit.CharacterID != nil || view.Credit.Status != resolutionUnknown {
-		t.Fatalf("candidate overwrote character credit: %+v", view.Credit)
+	if view.Credit.CharacterID != nil || view.Credit.Status != resolutionNotApplicable {
+		t.Fatalf("a vehicle contributor must have no character credit and must not be a character-resolution failure: %+v", view.Credit)
+	}
+	if view.Actors.ActualSource.ActorType == "Vehicle" {
+		t.Fatalf("the candidate rewrote the observed actual source: %+v", view.Actors.ActualSource)
 	}
 	encoded, err := json.Marshal(view)
 	if err != nil {

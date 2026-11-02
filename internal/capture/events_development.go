@@ -129,6 +129,7 @@ func (event combatEvent) jsonlView(masters *gameMaster) combatEventJSONL {
 	applySceneTemplateJSONL(&view.Target, event.Target)
 	view.Credit.CharacterID = optionalUint64(event.CharacterID, event.CharacterID != 0)
 	view.Credit.Name = event.CharacterName
+	creditJSONLFallback(&view.Credit, event)
 	view.Summoner.CharacterID = optionalUint64(event.SummonerCharacter.CharacterID, event.SummonerCharacter.HasCharacterID)
 	if event.SummonerCharacter.HasCharacter {
 		view.Summoner.Name = event.SummonerCharacter.Character.Name

@@ -6,9 +6,11 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"math"
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -126,6 +128,12 @@ func loadGameMasterDatabase(path, locale string) (*gameMaster, error) {
 		return nil, err
 	}
 	if err := loadSQLiteBuffDefinitions(db, master); err != nil {
+		return nil, err
+	}
+	if err := loadSQLiteBuffStaticParameters(db, master); err != nil {
+		return nil, err
+	}
+	if err := loadSQLiteBuffTerms(db, locale, master); err != nil {
 		return nil, err
 	}
 	if err := loadSQLiteShieldDefinitions(db, master); err != nil {
@@ -553,6 +561,203 @@ func loadSQLiteBuffDefinitions(db *sql.DB, master *gameMaster) error {
 			return fmt.Errorf("duplicate Buff definition Id %d", id)
 		}
 		master.buffDefinitions[id] = struct{}{}
+	}
+	return rows.Err()
+}
+
+// loadSQLiteBuffStaticParameters reads the definition fields of existing buff rows: the duration
+// policy, the stack limit, the single static duration magnitude and the granted tag paths. Every
+// table and column is optional so an older Master still loads. Rows without a buff.id are ignored.
+func loadSQLiteBuffStaticParameters(db *sql.DB, master *gameMaster) error {
+	if len(master.buffDefinitions) == 0 {
+		return nil
+	}
+	statics := make(map[uint64]buffStaticParameters)
+	exists, err := masterTableExists(db, "buff")
+	if err != nil || !exists {
+		return err
+	}
+	hasPolicy, err := masterColumnExists(db, "buff", "duration_policy")
+	if err != nil {
+		return err
+	}
+	hasLimit, err := masterColumnExists(db, "buff", "stack_limit_count")
+	if err != nil {
+		return err
+	}
+	if hasPolicy || hasLimit {
+		rows, err := db.Query("SELECT id, " + nullableColumn(hasPolicy, "duration_policy") + ", " + nullableColumn(hasLimit, "stack_limit_count") + " FROM buff")
+		if err != nil {
+			return fmt.Errorf("query Buff static parameters: %w", err)
+		}
+		for rows.Next() {
+			var raw string
+			var policy, limit sql.NullInt64
+			if err := rows.Scan(&raw, &policy, &limit); err != nil {
+				rows.Close()
+				return fmt.Errorf("read Buff static parameters: %w", err)
+			}
+			id, err := parseMasterID(raw, "buff.id")
+			if err != nil {
+				rows.Close()
+				return err
+			}
+			entry := statics[id]
+			if policy.Valid {
+				entry.durationPolicy, entry.hasDurationPolicy = policy.Int64, true
+			}
+			if limit.Valid && limit.Int64 >= 0 {
+				entry.stackLimit, entry.hasStackLimit = uint64(limit.Int64), true
+			}
+			statics[id] = entry
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return err
+		}
+		rows.Close()
+	}
+	if err := loadBuffMagnitudes(db, statics); err != nil {
+		return err
+	}
+	if err := loadBuffGrantedTags(db, statics); err != nil {
+		return err
+	}
+	master.buffStatics = make(map[uint64]buffStaticParameters, len(statics))
+	for id, entry := range statics {
+		if _, defined := master.buffDefinitions[id]; defined {
+			master.buffStatics[id] = entry
+		}
+	}
+	return nil
+}
+
+var richTextTag = regexp.MustCompile(`<[^>]*>`)
+
+// loadSQLiteBuffTerms reads buff_term_ref joined to the localized term text. Both tables are optional.
+// A relation whose evidence is not VERIFIED or CORRELATED, or whose buff row is absent, is ignored.
+func loadSQLiteBuffTerms(db *sql.DB, locale string, master *gameMaster) error {
+	for _, table := range []string{"buff_term_ref", "term_locale"} {
+		exists, err := masterTableExists(db, table)
+		if err != nil || !exists {
+			return err
+		}
+	}
+	rows, err := db.Query(`SELECT r.buff_id, r.term_id, r.evidence_status, l.name, l.description
+		FROM buff_term_ref r JOIN term_locale l ON l.id = r.term_id AND l.locale = ? ORDER BY r.buff_id`, locale)
+	if err != nil {
+		return fmt.Errorf("query Buff term references: %w", err)
+	}
+	defer rows.Close()
+	terms := make(map[uint64]effectTermRecord)
+	for rows.Next() {
+		var rawBuff, rawTerm, evidence, name, description string
+		if err := rows.Scan(&rawBuff, &rawTerm, &evidence, &name, &description); err != nil {
+			return fmt.Errorf("read Buff term reference: %w", err)
+		}
+		buffID, err := parseMasterID(rawBuff, "buff_term_ref.buff_id")
+		if err != nil {
+			return err
+		}
+		termID, err := parseMasterID(rawTerm, "buff_term_ref.term_id")
+		if err != nil {
+			return err
+		}
+		status := resolutionStatus(evidence)
+		if status != resolutionVerified && status != resolutionCorrelated {
+			continue
+		}
+		if _, defined := master.buffDefinitions[buffID]; !defined || name == "" {
+			continue
+		}
+		terms[buffID] = effectTermRecord{termID: termID, name: name, description: strings.TrimSpace(richTextTag.ReplaceAllString(description, "")), status: status}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	master.buffTerms = terms
+	return nil
+}
+
+func nullableColumn(present bool, name string) string {
+	if present {
+		return name
+	}
+	return "NULL"
+}
+
+// loadBuffMagnitudes keeps the duration magnitude only for rows that list exactly one value;
+// several values would need a rule to pick one.
+func loadBuffMagnitudes(db *sql.DB, statics map[uint64]buffStaticParameters) error {
+	exists, err := masterTableExists(db, "buff_duration_magnitude")
+	if err != nil || !exists {
+		return err
+	}
+	rows, err := db.Query("SELECT owner_id, value FROM buff_duration_magnitude ORDER BY owner_id, ordinal")
+	if err != nil {
+		return fmt.Errorf("query Buff duration magnitudes: %w", err)
+	}
+	defer rows.Close()
+	counts := make(map[uint64]int)
+	values := make(map[uint64]float64)
+	for rows.Next() {
+		var raw string
+		var value sql.NullFloat64
+		if err := rows.Scan(&raw, &value); err != nil {
+			return fmt.Errorf("read Buff duration magnitude: %w", err)
+		}
+		id, err := parseMasterID(raw, "buff_duration_magnitude.owner_id")
+		if err != nil {
+			return err
+		}
+		counts[id]++
+		if value.Valid {
+			values[id] = value.Float64
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for id, count := range counts {
+		value, ok := values[id]
+		if count != 1 || !ok || math.IsNaN(value) || math.IsInf(value, 0) {
+			continue
+		}
+		entry := statics[id]
+		entry.durationSeconds, entry.hasDuration = value, true
+		statics[id] = entry
+	}
+	return nil
+}
+
+// maxBuffStaticTags bounds the tag paths kept for one buff row.
+const maxBuffStaticTags = 8
+
+func loadBuffGrantedTags(db *sql.DB, statics map[uint64]buffStaticParameters) error {
+	exists, err := masterTableExists(db, "buff_granted_tags")
+	if err != nil || !exists {
+		return err
+	}
+	rows, err := db.Query("SELECT owner_id, value FROM buff_granted_tags ORDER BY owner_id, ordinal")
+	if err != nil {
+		return fmt.Errorf("query Buff granted tags: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var raw string
+		var tag sql.NullString
+		if err := rows.Scan(&raw, &tag); err != nil {
+			return fmt.Errorf("read Buff granted tag: %w", err)
+		}
+		id, err := parseMasterID(raw, "buff_granted_tags.owner_id")
+		if err != nil {
+			return err
+		}
+		entry := statics[id]
+		if tag.Valid && tag.String != "" && len(entry.tags) < maxBuffStaticTags {
+			entry.tags = append(entry.tags, tag.String)
+			statics[id] = entry
+		}
 	}
 	return rows.Err()
 }

@@ -702,3 +702,140 @@ func TestResolveSkillLabelNeverFillsOfficialNameAndRejectsConflicts(t *testing.T
 		t.Fatal("absent, zero, sentinel or master-less skills must produce no label")
 	}
 }
+
+func TestLoadGameMasterDatabaseLoadsBuffStaticParametersWithoutNames(t *testing.T) {
+	path := buildMasterDatabaseFixture(t)
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range []string{
+		"CREATE TABLE buff(id TEXT PRIMARY KEY, duration_policy INTEGER, stack_limit_count INTEGER)",
+		"INSERT INTO buff VALUES('10041000',2,3),('10040002',2,1),('70000045',1,0),('5',0,0)",
+		"CREATE TABLE buff_duration_magnitude(owner_id TEXT, ordinal INTEGER, value REAL)",
+		// 10041000 has one magnitude; 10040002 lists two, which would need a rule to choose; 999 has no buff row.
+		"INSERT INTO buff_duration_magnitude VALUES('10041000',0,14.8),('10040002',0,2.0),('10040002',1,3.0),('999',0,1.0)",
+		"CREATE TABLE buff_granted_tags(owner_id TEXT, ordinal INTEGER, value TEXT)",
+		"INSERT INTO buff_granted_tags VALUES('10041000',0,'tag.path.a'),('10041000',1,'tag.path.b'),('999',0,'orphan')",
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			db.Close()
+			t.Fatal(err)
+		}
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	master, err := loadGameMasterDatabase(path, "zh-TW")
+	if err != nil {
+		t.Fatal(err)
+	}
+	aero, ok := master.buffStatic(10041000)
+	if !ok || !aero.hasDuration || aero.durationSeconds != 14.8 || !aero.hasStackLimit || aero.stackLimit != 3 || !aero.hasDurationPolicy || aero.durationPolicy != 2 {
+		t.Fatalf("static parameters = %+v, ok=%t", aero, ok)
+	}
+	if len(aero.tags) != 2 || aero.tags[0] != "tag.path.a" || aero.tags[1] != "tag.path.b" {
+		t.Fatalf("granted tags = %v", aero.tags)
+	}
+	if tick, _ := master.buffStatic(10040002); tick.hasDuration {
+		t.Fatalf("an ambiguous multi-value duration magnitude was used: %+v", tick)
+	}
+	if _, ok := master.buffStatic(999); ok {
+		t.Fatal("a magnitude or tag row without a buff row created a definition")
+	}
+	if _, ok := master.buffStatic(1312010090); ok {
+		t.Fatal("a missing buff id has static parameters")
+	}
+	var nilMaster *gameMaster
+	if _, ok := nilMaster.buffStatic(10041000); ok {
+		t.Fatal("a nil master has static parameters")
+	}
+}
+
+func TestLoadGameMasterDatabaseToleratesMasterWithoutBuffStaticTables(t *testing.T) {
+	path := buildMasterDatabaseFixture(t)
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("CREATE TABLE buff(id TEXT PRIMARY KEY)"); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("INSERT INTO buff VALUES('70001')"); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	master, err := loadGameMasterDatabase(path, "zh-TW")
+	if err != nil {
+		t.Fatalf("an older master with only buff.id must still load: %v", err)
+	}
+	if !master.hasBuffDefinition(70001) {
+		t.Fatal("buff definition lost")
+	}
+	if static, ok := master.buffStatic(70001); ok && (static.hasDuration || static.hasStackLimit || len(static.tags) > 0) {
+		t.Fatalf("static parameters appeared without their tables: %+v", static)
+	}
+}
+
+func TestLoadGameMasterDatabaseLoadsLocalizedBuffTermsAsCorrelatedNames(t *testing.T) {
+	path := buildMasterDatabaseFixture(t)
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range []string{
+		"CREATE TABLE buff(id TEXT PRIMARY KEY)",
+		"INSERT INTO buff VALUES('10041000'),('10061000')",
+		"CREATE TABLE term(id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT NOT NULL)",
+		"INSERT INTO term VALUES('850009','Term850009_Title','Term850009_Desc'),('850012','Term850012_Title','Term850012_Desc')",
+		"CREATE TABLE term_locale(id TEXT NOT NULL, locale TEXT NOT NULL, name TEXT NOT NULL, name_text_key TEXT NOT NULL, description TEXT NOT NULL, description_text_key TEXT NOT NULL, PRIMARY KEY(id, locale))",
+		"INSERT INTO term_locale VALUES('850009','zh-TW','風蝕效應','Term850009_Title','持續時造成<color=Wind>氣動傷害</color>','Term850009_Desc')," +
+			"('850009','en-US','Aero Erosion','Term850009_Title','deals <color=Wind>Aero damage</color>','Term850009_Desc')," +
+			"('850012','zh-TW','虛湮效應','Term850012_Title','降低防禦','Term850012_Desc')",
+		"CREATE TABLE buff_term_ref(buff_id TEXT PRIMARY KEY, term_id TEXT NOT NULL, evidence_status TEXT NOT NULL)",
+		// 10061000 is only HYPOTHESIS and 70001 has no buff row: neither may become a name.
+		"INSERT INTO buff_term_ref VALUES('10041000','850009','CORRELATED'),('10061000','850012','HYPOTHESIS'),('70001','850009','CORRELATED')",
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			db.Close()
+			t.Fatal(err)
+		}
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	traditional, err := loadGameMasterDatabase(path, "zh-TW")
+	if err != nil {
+		t.Fatal(err)
+	}
+	term, ok := traditional.buffTerm(10041000)
+	if !ok || term.name != "風蝕效應" || term.termID != 850009 || term.status != resolutionCorrelated {
+		t.Fatalf("zh-TW term = %+v, ok=%t", term, ok)
+	}
+	if term.description != "持續時造成氣動傷害" {
+		t.Fatalf("rich-text markup was not removed from the description: %q", term.description)
+	}
+	if _, ok := traditional.buffTerm(10061000); ok {
+		t.Fatal("a HYPOTHESIS relation became a name")
+	}
+	if _, ok := traditional.buffTerm(70001); ok {
+		t.Fatal("a relation without a buff row became a name")
+	}
+	english, err := loadGameMasterDatabase(path, "en-US")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if term, _ := english.buffTerm(10041000); term.name != "Aero Erosion" {
+		t.Fatalf("en-US term = %+v", term)
+	}
+	var nilMaster *gameMaster
+	if _, ok := nilMaster.buffTerm(10041000); ok {
+		t.Fatal("a nil master has terms")
+	}
+}

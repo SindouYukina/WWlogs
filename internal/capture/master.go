@@ -79,6 +79,10 @@ type gameMaster struct {
 	concomitantVisionSummonSkills map[uint64]struct{}
 	// buffDefinitions holds normalized buff.Id keys for exact static-definition lookups.
 	buffDefinitions map[uint64]struct{}
+	// buffStatics holds the static parameters of a buff row that a live timer or display may quote.
+	buffStatics map[uint64]buffStaticParameters
+	// buffTerms holds the official glossary text tied to a buff row through buff_term_ref.
+	buffTerms map[uint64]effectTermRecord
 	// shieldDefinitions holds normalized shield.Id keys for ShieldUpdateNotify references.
 	shieldDefinitions map[uint64]struct{}
 	// commonBullets holds CDT_CommonBulletData row keys with their developer label.
@@ -226,6 +230,45 @@ func (m *gameMaster) hasBuffDefinition(id uint64) bool {
 	}
 	_, ok := m.buffDefinitions[id]
 	return ok
+}
+
+// buffStaticParameters are the definition fields of one buff row. They describe the
+// definition, never a live instance, and carry no official display name.
+type buffStaticParameters struct {
+	durationPolicy    int64
+	hasDurationPolicy bool
+	stackLimit        uint64
+	hasStackLimit     bool
+	durationSeconds   float64
+	hasDuration       bool
+	tags              []string
+}
+
+// effectTermRecord is the localized glossary term of an element-ailment buff row. The link comes
+// from the row's GameplayTag, so it is correlated evidence and never an engine-keyed name.
+type effectTermRecord struct {
+	termID      uint64
+	name        string
+	description string
+	status      resolutionStatus
+}
+
+// buffTerm returns the glossary term tied to a buff row, in the master locale.
+func (m *gameMaster) buffTerm(id uint64) (effectTermRecord, bool) {
+	if m == nil {
+		return effectTermRecord{}, false
+	}
+	value, ok := m.buffTerms[id]
+	return value, ok
+}
+
+// buffStatic returns the static parameters of an exact buff row.
+func (m *gameMaster) buffStatic(id uint64) (buffStaticParameters, bool) {
+	if m == nil {
+		return buffStaticParameters{}, false
+	}
+	value, ok := m.buffStatics[id]
+	return value, ok
 }
 
 // hasShieldDefinition reports whether shield has a normalized row with this key.

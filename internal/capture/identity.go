@@ -19,6 +19,9 @@ const (
 	resolutionCorrelated resolutionStatus = "CORRELATED"
 	resolutionHypothesis resolutionStatus = "HYPOTHESIS"
 	resolutionUnknown    resolutionStatus = "UNKNOWN"
+	// resolutionNotApplicable marks a role that the event structurally does not have, as
+	// opposed to a role that exists but could not be resolved.
+	resolutionNotApplicable resolutionStatus = "NOT_APPLICABLE"
 )
 
 // runtimeEntity keeps the network entity identity separate from its static
