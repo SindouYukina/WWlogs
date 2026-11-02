@@ -274,11 +274,15 @@ func defaultRuntimePath(relativePath string) string {
 func resolveRuntimePath(relativePath, executablePath, workingDirectory string) string {
 	var candidates []string
 	if executablePath != "" {
-		executableDirectory := filepath.Dir(executablePath)
-		candidates = append(candidates, filepath.Join(executableDirectory, relativePath))
-		parentDirectory := filepath.Dir(executableDirectory)
-		if parentDirectory != executableDirectory {
-			candidates = append(candidates, filepath.Join(parentDirectory, relativePath))
+		directory := filepath.Dir(executablePath)
+		// Search only a few executable ancestors so nested development builds can find repository data.
+		for depth := 0; depth < 3; depth++ {
+			candidates = append(candidates, filepath.Join(directory, relativePath))
+			parentDirectory := filepath.Dir(directory)
+			if parentDirectory == directory {
+				break
+			}
+			directory = parentDirectory
 		}
 	}
 	if workingDirectory != "" {
