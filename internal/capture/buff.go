@@ -142,6 +142,21 @@ type buffLifecycleAuditRow struct {
 	Reason                                 *uint64          `json:"reasonRaw,omitempty"`
 	ServerID                               *uint64          `json:"serverId,omitempty"`
 	UnknownFieldNumbers                    []uint64         `json:"unknownFieldNumbers,omitempty"`
+	// The fields below appear only on rows decoded from outbound client pushes and the
+	// server requests they answer; server notify rows keep their earlier layout.
+	EvidenceSource           EffectEvidence `json:"evidenceSource,omitempty"`
+	CombatCommonPreMessageID *uint64        `json:"combatCommonPreMessageId,omitempty"`
+	// ClientTimeStamp is CombatCommon.TimeStamp of a client push, in seconds on the client's own clock.
+	ClientTimeStamp *float32 `json:"clientTimeStamp,omitempty"`
+	// ClientReasonRaw is the client's free-text reason string, kept verbatim as developer evidence.
+	ClientReasonRaw     string           `json:"clientReasonRaw,omitempty"`
+	ErrorCode           *uint64          `json:"errorCodeRaw,omitempty"`
+	RequestLinkedID     *uint64          `json:"requestLinkedId,omitempty"`
+	RequestLinkStatus   resolutionStatus `json:"requestLinkStatus,omitempty"`
+	RequestLinkEvidence string           `json:"requestLinkEvidence,omitempty"`
+	// consoleSuppressed marks a client stack report that changed neither the stack nor the
+	// linked effect; it still reaches the tracker and JSONL.
+	consoleSuppressed bool
 }
 
 const buffLifecycleSchemaVersion = 6
@@ -484,32 +499,10 @@ func (p *processor) handleInnerBuffLifecycleMessage(frame gameFrame, innerFieldN
 		row.TargetStatus = resolutionCorrelated
 		row.TargetEvidence = "Gameplay-effect TargetEntityId matches CombatCommon.EntityId on this event"
 	}
-	if row.InstigatorID != nil {
-		identity := resolveEntityIdentity(p.entities, p.masters, *row.InstigatorID)
-		if identity.HasCharacter {
-			characterID := identity.Character.ID
-			row.InstigatorCharacterCandidateID = &characterID
-			row.InstigatorCharacterCandidateName = identity.Character.Name
-			row.InstigatorCharacterCandidateStatus = identity.CharacterStatus
-			row.InstigatorCharacterCandidateNameStatus = resolutionStatus(identity.Character.NameStatus)
-			row.InstigatorCharacterCandidateEvidence = "Raw InstigatorId matches a session runtime EntityId that resolves to a Character master; provider attribution requires the correlated gameplay-effect path"
-			if row.EventKind == "GAMEPLAY_EFFECT_APPLY" &&
-				row.TargetStatus == resolutionCorrelated &&
-				identity.CharacterStatus == resolutionVerified {
-				providerID := identity.Character.ID
-				row.ProviderCharacterID = &providerID
-				row.ProviderStatus = resolutionCorrelated
-				row.InstigatorStatus = resolutionCorrelated
-				row.ProviderEvidence = "ApplyGameplayEffectNotify InstigatorId resolves through this session's runtime Entity to a verified Character; this event's explicit target matches CombatCommon.EntityId"
-				row.InstigatorEvidence = row.ProviderEvidence
-				if identity.Character.Name != "" && identity.Character.NameStatus == string(resolutionVerified) {
-					row.ProviderName = identity.Character.Name
-					row.ProviderNameStatus = resolutionCorrelated
-				}
-			}
-		}
-	}
+	p.linkLifecycleInstigator(&row, row.EventKind == "GAMEPLAY_EFFECT_APPLY" && row.TargetStatus == resolutionCorrelated,
+		"this event's explicit target matches CombatCommon.EntityId")
 	row.SessionNumber = p.sessionNumber
+	p.rememberServerBuffRequest(row)
 	p.linkBuffLifecycleDefinition(&row)
 	p.linkBuffLifecycleGenericAndHandle(&row)
 	p.linkBuffLifecycleOwners(&row)
@@ -523,6 +516,38 @@ func (p *processor) handleInnerBuffLifecycleMessage(frame gameFrame, innerFieldN
 	p.writeStructuredEventJSONL(row)
 	p.writeBuffLifecycleConsole(row)
 	return nil
+}
+
+// linkLifecycleInstigator names the character behind a raw InstigatorId. The provider
+// fields are set only when providerEligible (the row's holder is established) and the
+// instigator resolves to a verified character; holderBasis completes the evidence text.
+func (p *processor) linkLifecycleInstigator(row *buffLifecycleAuditRow, providerEligible bool, holderBasis string) {
+	if row.InstigatorID == nil {
+		return
+	}
+	identity := resolveEntityIdentity(p.entities, p.masters, *row.InstigatorID)
+	if !identity.HasCharacter {
+		return
+	}
+	characterID := identity.Character.ID
+	row.InstigatorCharacterCandidateID = &characterID
+	row.InstigatorCharacterCandidateName = identity.Character.Name
+	row.InstigatorCharacterCandidateStatus = identity.CharacterStatus
+	row.InstigatorCharacterCandidateNameStatus = resolutionStatus(identity.Character.NameStatus)
+	row.InstigatorCharacterCandidateEvidence = "Raw InstigatorId matches a session runtime EntityId that resolves to a Character master; provider attribution requires the correlated gameplay-effect path"
+	if !providerEligible || identity.CharacterStatus != resolutionVerified {
+		return
+	}
+	providerID := identity.Character.ID
+	row.ProviderCharacterID = &providerID
+	row.ProviderStatus = resolutionCorrelated
+	row.InstigatorStatus = resolutionCorrelated
+	row.ProviderEvidence = row.MessageName + " InstigatorId resolves through this session's runtime Entity to a verified Character; " + holderBasis
+	row.InstigatorEvidence = row.ProviderEvidence
+	if identity.Character.Name != "" && identity.Character.NameStatus == string(resolutionVerified) {
+		row.ProviderName = identity.Character.Name
+		row.ProviderNameStatus = resolutionCorrelated
+	}
 }
 
 // linkBuffLifecycleOwners attaches the named owners of the Buff id this row is tied to.
@@ -550,6 +575,11 @@ type buffHandleKey struct {
 type buffHandleEntry struct {
 	id         uint64
 	definition bool
+	// client marks a handle created by a client apply report.
+	client bool
+	// stack is the last stack count reported for a client handle; it only decides console output.
+	stack    uint64
+	hasStack bool
 }
 
 func lifecycleEntity(row *buffLifecycleAuditRow) (uint64, bool) {
@@ -573,7 +603,7 @@ func (p *processor) linkBuffLifecycleGenericAndHandle(row *buffLifecycleAuditRow
 	}
 	entityID, hasEntity := lifecycleEntity(row)
 	switch row.EventKind {
-	case "BUFF_APPLY_REQUEST_NOTIFY", "GAMEPLAY_EFFECT_APPLY":
+	case "BUFF_APPLY_REQUEST_NOTIFY", "GAMEPLAY_EFFECT_APPLY", "CLIENT_EFFECT_APPLY_REPORT":
 		if row.ID == nil {
 			return
 		}
@@ -587,7 +617,7 @@ func (p *processor) linkBuffLifecycleGenericAndHandle(row *buffLifecycleAuditRow
 			row.GenericIDDefinitionID = &definitionID
 			row.GenericIDDefinitionEvidence = "The untyped Id of this apply message has an exact normalized buff.id row; namespace evidence is capture-internal (see the lifecycle Id namespace audit), not a typed BuffId field. Static row reference only: application effect and uptime are unresolved"
 		}
-		if row.EventKind == "GAMEPLAY_EFFECT_APPLY" && row.HandleID != nil && hasEntity {
+		if (row.EventKind == "GAMEPLAY_EFFECT_APPLY" || row.EventKind == "CLIENT_EFFECT_APPLY_REPORT") && row.HandleID != nil && hasEntity {
 			if p.buffHandles == nil {
 				p.buffHandles = make(map[buffHandleKey]buffHandleEntry)
 			}
@@ -598,20 +628,32 @@ func (p *processor) linkBuffLifecycleGenericAndHandle(row *buffLifecycleAuditRow
 				}
 			} else {
 				p.buffHandleOrder = append(p.buffHandleOrder, key)
-				p.buffHandles[key] = buffHandleEntry{id: *row.ID, definition: found}
+				entry := buffHandleEntry{id: *row.ID, definition: found, client: row.EventKind == "CLIENT_EFFECT_APPLY_REPORT"}
+				if row.StackCount != nil {
+					entry.stack, entry.hasStack = *row.StackCount, true
+				}
+				p.buffHandles[key] = entry
 			}
 			for len(p.buffHandleOrder) > maxBuffHandles {
 				delete(p.buffHandles, p.buffHandleOrder[0])
 				p.buffHandleOrder = p.buffHandleOrder[1:]
 			}
 		}
-	case "BUFF_DURATION_CHANGE", "BUFF_STACK_COUNT_CHANGE", "GAMEPLAY_EFFECT_REMOVE", "BUFF_REMOVE_REQUEST_NOTIFY":
+	case "BUFF_DURATION_CHANGE", "BUFF_STACK_COUNT_CHANGE", "GAMEPLAY_EFFECT_REMOVE", "BUFF_REMOVE_REQUEST_NOTIFY",
+		"CLIENT_EFFECT_STACK_REPORT", "CLIENT_EFFECT_REMOVE_REPORT":
 		if row.HandleID == nil || !hasEntity {
 			return
 		}
 		row.HandleLinkedStatus = resolutionUnknown
 		row.HandleLinkedEvidence = "No earlier ApplyGameplayEffect with this (session, entity, handle) was observed"
-		entry, ok := p.buffHandles[buffHandleKey{p.sessionNumber, entityID, *row.HandleID}]
+		key := buffHandleKey{p.sessionNumber, entityID, *row.HandleID}
+		entry, ok := p.buffHandles[key]
+		if ok && entry.id != 0 && row.EventKind == "CLIENT_EFFECT_STACK_REPORT" && row.StackCount != nil {
+			// The client repeats a stack push on every refresh; only a changed count is console-worthy.
+			row.consoleSuppressed = entry.hasStack && entry.stack == *row.StackCount
+			entry.stack, entry.hasStack = *row.StackCount, true
+			p.buffHandles[key] = entry
+		}
 		switch {
 		case !ok:
 		case entry.id == 0:
@@ -620,6 +662,9 @@ func (p *processor) linkBuffLifecycleGenericAndHandle(row *buffLifecycleAuditRow
 			linked := entry.id
 			row.HandleLinkedID = &linked
 			row.HandleLinkedEvidence = "Same (session, entity, handle) as an earlier ApplyGameplayEffectNotify; the Id is inherited from that apply message"
+			if entry.client {
+				row.HandleLinkedEvidence = "Same (session, entity, handle) as an earlier client ApplyGameplayEffectPush; the Id is inherited from that apply report"
+			}
 			row.HandleLinkedStatus = resolutionCorrelated
 			if !entry.definition {
 				row.HandleLinkedStatus = resolutionUnknown
