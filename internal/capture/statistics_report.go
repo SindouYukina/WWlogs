@@ -17,6 +17,9 @@ type statisticsReport struct {
 	DamageSpanDPS   DPSResult
 	Rolling5sDPS    DPSResult
 	Rolling10sDPS   DPSResult
+	EncounterState  EncounterState
+	EncounterDPS    DPSResult
+	Encounters      int
 	ActiveEffects   int
 	EffectApplies   uint64
 	EffectRemoves   uint64
@@ -41,6 +44,9 @@ func (p *processor) currentStatisticsReport() statisticsReport {
 		DamageSpanDPS:   damage.DamageSpanDPS,
 		Rolling5sDPS:    damage.Rolling5sDPS,
 		Rolling10sDPS:   damage.Rolling10sDPS,
+		EncounterState:  damage.Encounters.State,
+		EncounterDPS:    damage.EncounterDPS,
+		Encounters:      len(damage.Encounters.Completed) + int(damage.Encounters.CompletedDropped),
 		ActiveEffects:   len(effects.Effects),
 		EffectApplies:   effects.Counters.Applies,
 		EffectRemoves:   effects.Counters.Removes,
@@ -54,6 +60,12 @@ func (r statisticsReport) String() string {
 	fmt.Fprintf(&b, "damage_dealt=%d damage_taken=%d outgoing_events=%d incoming_events=%d unattributed_events=%d players=%d",
 		r.DamageDealt, r.DamageTaken, r.OutgoingEvents, r.IncomingEvents, r.Unattributed, r.Players)
 	fmt.Fprintf(&b, " span_dps=%s rolling_5s_dps=%s rolling_10s_dps=%s", formatDPS(r.DamageSpanDPS), formatDPS(r.Rolling5sDPS), formatDPS(r.Rolling10sDPS))
+	confidence := r.EncounterDPS.Confidence
+	if confidence == "" {
+		confidence = "none"
+	}
+	fmt.Fprintf(&b, " encounter_state=%s encounter_dps=%s encounter_confidence=%s encounters=%d",
+		r.EncounterState, formatDPS(r.EncounterDPS), confidence, r.Encounters)
 	fmt.Fprintf(&b, " active_effects=%d effect_applies=%d effect_removes=%d", r.ActiveEffects, r.EffectApplies, r.EffectRemoves)
 	return b.String()
 }

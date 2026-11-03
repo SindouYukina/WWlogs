@@ -152,6 +152,8 @@
     "internal/capture/central_shield_refs_test.go": "tests/capture/shield_refs_test.go",
     "tests/capture/skill_refs_test.go": "",
     "internal/capture/central_skill_refs_test.go": "tests/capture/skill_refs_test.go",
+    "tests/capture/statistics_report_test.go": "",
+    "internal/capture/central_statistics_report_test.go": "tests/capture/statistics_report_test.go",
     "tests/capture/summary_test.go": "",
     "internal/capture/central_summary_test.go": "tests/capture/summary_test.go",
     "tests/capture/summon_owner_dev_test.go": "",
