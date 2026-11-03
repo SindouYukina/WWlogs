@@ -14,6 +14,12 @@ func (p *processor) writeBuffLifecycleConsole(row buffLifecycleAuditRow) {
 	if !p.showAllEffectEvents && !combatConsoleVisible(row) {
 		return
 	}
+	if holder, ok := lifecycleEntity(&row); ok {
+		row.holderName = p.verifiedCharacterName(holder)
+	}
+	if row.InstigatorID != nil {
+		row.sourceName = p.verifiedCharacterName(*row.InstigatorID)
+	}
 	line := formatBuffLifecycleConsole(row)
 	if fields := p.effectSemanticConsoleFields(row); fields != "" {
 		line += " " + fields
@@ -29,6 +35,19 @@ func (p *processor) writeBuffLifecycleConsole(row buffLifecycleAuditRow) {
 			fmt.Fprintf(p.diagnostic, "effect_event_stdout_flush_error=%v\n", err)
 		}
 	}
+}
+
+// verifiedCharacterName returns the character name of a runtime entity when both the character link
+// and the name are verified, and an empty string otherwise.
+func (p *processor) verifiedCharacterName(entityID uint64) string {
+	if p == nil || p.entities == nil || entityID == 0 {
+		return ""
+	}
+	identity := resolveEntityIdentity(p.entities, p.masters, entityID)
+	if !identity.HasCharacter || identity.CharacterStatus != resolutionVerified || identity.Character.NameStatus != string(resolutionVerified) {
+		return ""
+	}
+	return identity.Character.Name
 }
 
 // combatConsoleVisible is the default console policy: a lifecycle change of a combat effect that
@@ -86,11 +105,17 @@ func formatBuffLifecycleConsole(row buffLifecycleAuditRow) string {
 	case "CLIENT_EFFECT_APPLY_REPORT", "CLIENT_EFFECT_STACK_REPORT", "CLIENT_EFFECT_REMOVE_REPORT":
 		if holder, ok := clientEffectHolder(row); ok {
 			parts = append(parts, fmt.Sprintf("holder=%d", holder), "holderStatus="+string(resolutionCorrelated))
+			if row.holderName != "" {
+				parts = append(parts, "holderName="+row.holderName)
+			}
 		} else {
 			appendID("holderCandidate", row.CombatCommonEntityID)
 			parts = append(parts, "holderStatus="+string(resolutionUnknown))
 		}
 		appendID("instigator", row.InstigatorID)
+		if row.InstigatorID != nil && row.sourceName != "" {
+			parts = append(parts, "instigatorName="+row.sourceName)
+		}
 		if row.HandleLinkedStatus != "" {
 			parts = append(parts, "handleLinkedStatus="+string(row.HandleLinkedStatus))
 		}
@@ -126,7 +151,13 @@ func formatBuffLifecycleConsole(row buffLifecycleAuditRow) string {
 		return strings.Join(parts, " ")
 	}
 	appendID("target", row.TargetEntityID)
+	if row.TargetEntityID != nil && row.holderName != "" {
+		parts = append(parts, "targetName="+row.holderName)
+	}
 	appendID("instigator", row.InstigatorID)
+	if row.InstigatorID != nil && row.sourceName != "" {
+		parts = append(parts, "instigatorName="+row.sourceName)
+	}
 	if row.TargetEntityID != nil {
 		parts = append(parts, "targetStatus="+string(row.TargetStatus))
 	} else if row.CombatCommonEntityID != nil {

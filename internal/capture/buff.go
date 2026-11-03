@@ -163,6 +163,8 @@ type buffLifecycleAuditRow struct {
 	consoleSuppressed bool
 	// playerRelated reports that the holder or the source is a local-team entity.
 	playerRelated bool
+	// holderName and sourceName are verified character names for the console, resolved at print time.
+	holderName, sourceName string
 }
 
 // classifyLifecycleRow classifies a row from the definition class of its effect and the relations of

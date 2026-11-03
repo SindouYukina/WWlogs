@@ -125,3 +125,23 @@ func TestEffectConsoleReevaluatesTheTeamWhenTheLocalAnchorArrivesLater(t *testin
 		t.Fatalf("remove after the anchor was not printed:\n%s", stdout.String())
 	}
 }
+
+func TestEffectConsoleNamesVerifiedCharacters(t *testing.T) {
+	p := newClientEffectTestProcessor()
+	p.masters = classifiedTestMaster()
+	p.masters.characters = map[uint64]masterRecord{
+		1312: {ID: 1312, Name: "Holder Role", Status: string(resolutionVerified), NameStatus: string(resolutionVerified)},
+		1505: {ID: 1505, Name: "Source Role", Status: string(resolutionVerified), NameStatus: string(resolutionUnknown)},
+	}
+	var stdout bytes.Buffer
+	p.stdout, p.showEffectEvents = &stdout, true
+	deliverClientPush(t, p, 0, clientPushBody(testCombatCommon{entityID: 100}, 9, clientApplyPayload(268436801, 12, 102, 1, 12)))
+	line := stdout.String()
+	if !strings.Contains(line, "holder=100 holderStatus=CORRELATED holderName=Holder Role") {
+		t.Fatalf("verified holder name missing:\n%s", line)
+	}
+	// The source character link is verified but its name is not, so no name is shown.
+	if strings.Contains(line, "instigatorName=") {
+		t.Fatalf("unverified name printed:\n%s", line)
+	}
+}
