@@ -242,6 +242,11 @@ type buffStaticParameters struct {
 	durationSeconds   float64
 	hasDuration       bool
 	tags              []string
+	// attribute is buff.game_attribute_id, the protocol EAttributeType the row's modifier changes;
+	// hasModifier reports at least one buff_modifier_magnitude row for it.
+	attribute    uint64
+	hasAttribute bool
+	hasModifier  bool
 }
 
 // effectTermRecord is the localized glossary term of an element-ailment buff row. The link comes

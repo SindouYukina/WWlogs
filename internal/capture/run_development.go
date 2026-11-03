@@ -165,7 +165,8 @@ func Main() {
 	statusFile := flag.String("status-file", "", "Write live capture status as JSON to the specified path")
 	maxPCAPBytes := flag.Int64("max-pcap-bytes", 0, "Limit live PCAP size and stop before exceeding the limit")
 	liveDiagnosticOut := flag.String("live-diagnostic-out", "", "Optionally write one bounded-rate JSONL damage and effect snapshot per second")
-	showEffectEvents := flag.Bool("show-effect-events", true, "Print raw gameplay-effect lifecycle events during live capture")
+	showEffectEvents := flag.Bool("show-effect-events", true, "Print combat gameplay-effect lifecycle events during live capture")
+	showAllEffectEvents := flag.Bool("show-all-effect-events", false, "Diagnostic: print every decoded gameplay-effect message during live capture, including unknown and non-combat effects, instant effects, requests and refreshes")
 	flag.Usage = func() {
 		fmt.Fprintf(flag.CommandLine.Output(), "WWlogs %s\nUsage: WWlogs [options]\n\nOptions:\n", versioninfo.Current().Product.DevelopmentLine)
 		flag.PrintDefaults()
@@ -372,6 +373,7 @@ func Main() {
 	}
 	processor := newProcessor(rsaKey, stdout, diagnosticTarget, auditWriter)
 	processor.showEffectEvents = *showEffectEvents && *pcapIn == ""
+	processor.showAllEffectEvents = *showAllEffectEvents
 	processor.masters = masters
 	processor.research = *research
 	if buffSnapshotFile != nil {

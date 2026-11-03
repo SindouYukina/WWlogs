@@ -177,7 +177,13 @@ type EffectApplyEvent struct {
 	// DefinitionLinked reports an exact static buff row for EffectID.
 	DefinitionLinked bool
 	// Static carries the definition parameters of that row, when linked.
-	Static         *EffectStaticInfo
+	Static *EffectStaticInfo
+	// CombatClass and CombatBasis classify the definition; empty means unknown.
+	CombatClass EffectCombatClass
+	CombatBasis string
+	// HolderMonster and SourceMonster report ends resolved as monsters, for the runtime combat rules.
+	HolderMonster  bool
+	SourceMonster  bool
 	SourceEntityID uint64
 	HasSource      bool
 	HolderRelation EffectEntityRelation
@@ -270,8 +276,12 @@ type EffectInstanceSnapshot struct {
 	Lifecycle      EffectLifecycle      `json:"lifecycle"`
 	Origin         EffectOrigin         `json:"origin"`
 	// Evidence is the message family that created the instance; a server REMOVE or a client report may end it later.
-	Evidence        EffectEvidence `json:"evidence"`
-	FirstObservedAt time.Time      `json:"firstObservedAt"`
+	Evidence EffectEvidence `json:"evidence"`
+	// CombatClass says whether the effect is evidently part of combat; CombatBasis names the evidence.
+	// unknown means no evidence either way and is never a statement that the effect is harmless.
+	CombatClass     EffectCombatClass `json:"combatClass"`
+	CombatBasis     string            `json:"combatBasis"`
+	FirstObservedAt time.Time         `json:"firstObservedAt"`
 	// AppliedAt is set only for origin apply; a snapshot-origin instance has an unknown application time.
 	AppliedAt     *time.Time `json:"appliedAt,omitempty"`
 	LastUpdatedAt time.Time  `json:"lastUpdatedAt"`
@@ -325,6 +335,10 @@ type effectInstance struct {
 	hasStack         bool
 	origin           EffectOrigin
 	evidence         EffectEvidence
+	combatClass      EffectCombatClass
+	combatBasis      string
+	holderMonster    bool
+	sourceMonster    bool
 	firstObservedAt  time.Time
 	lastUpdatedAt    time.Time
 	hasDuration      bool
@@ -504,7 +518,9 @@ func (t *EffectTracker) ObserveApply(event EffectApplyEvent) {
 		source: event.SourceEntityID, hasSource: event.HasSource,
 		holderRelation: normalizeEffectRelation(event.HolderRelation), sourceRelation: normalizeEffectRelation(event.SourceRelation),
 		stack: event.StackCount, hasStack: event.HasStackCount,
-		origin: origin, evidence: evidence, firstObservedAt: event.ObservedAt, lastUpdatedAt: event.ObservedAt,
+		origin: origin, evidence: evidence, combatClass: event.CombatClass, combatBasis: event.CombatBasis,
+		holderMonster: event.HolderMonster, sourceMonster: event.SourceMonster,
+		firstObservedAt: event.ObservedAt, lastUpdatedAt: event.ObservedAt,
 		insertionOrdinal: t.ordinal,
 	}
 	t.setBasisLocked(instance, event.ObservedAt, basis, duration, hasDuration)
@@ -1015,6 +1031,14 @@ func (t *EffectTracker) instanceSnapshotLocked(instance *effectInstance, query C
 		id := instance.source
 		snapshot.SourceEntityID = &id
 	}
+	class, basis := instance.combatClass, instance.combatBasis
+	if class == "" {
+		class, basis = EffectCombatClassUnknown, effectCombatBasisNoEvidence
+	}
+	snapshot.CombatClass, snapshot.CombatBasis = classifyEffectInstance(class, basis, effectParties{
+		holder: instance.holderRelation, source: instance.sourceRelation,
+		holderMonster: instance.holderMonster, sourceMonster: instance.sourceMonster,
+	})
 	if instance.hasStack {
 		count := instance.stack
 		snapshot.StackCount = &count

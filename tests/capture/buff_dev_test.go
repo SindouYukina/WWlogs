@@ -579,7 +579,9 @@ func TestBuffLifecycleDefinitionLookupUsesOnlyTypedBuffID(t *testing.T) {
 func TestWriteBuffLifecycleConsoleEmitsBuffEvent(t *testing.T) {
 	var stdout, diagnostic bytes.Buffer
 	p := newProcessor(nil, &stdout, &diagnostic, nil)
-	p.showEffectEvents = true
+	// The row has no combat classification, so only the diagnostic console prints it; the default
+	// combat policy is covered by TestDefaultEffectConsoleShowsOnlyCombatLifecycleOfTheLocalTeam.
+	p.showEffectEvents, p.showAllEffectEvents = true, true
 	buffID := uint64(70001)
 	p.writeBuffLifecycleConsole(buffLifecycleAuditRow{
 		EventKind: "GAMEPLAY_EFFECT_REMOVE", BuffID: &buffID, BuffDefinitionStatus: resolutionUnknown,

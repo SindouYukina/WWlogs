@@ -8,7 +8,10 @@ import (
 )
 
 func (p *processor) writeBuffLifecycleConsole(row buffLifecycleAuditRow) {
-	if p == nil || !p.showEffectEvents || p.stdout == nil || row.consoleSuppressed {
+	if p == nil || !p.showEffectEvents || p.stdout == nil {
+		return
+	}
+	if !p.showAllEffectEvents && !combatConsoleVisible(row) {
 		return
 	}
 	line := formatBuffLifecycleConsole(row)
@@ -28,6 +31,28 @@ func (p *processor) writeBuffLifecycleConsole(row buffLifecycleAuditRow) {
 	}
 }
 
+// combatConsoleVisible is the default console policy: a lifecycle change of a combat effect that
+// involves the local team. Everything else stays in the tracker and the JSONL and is printed only with
+// -show-all-effect-events: unknown and non-combat effects, effects between non-player entities,
+// instant effects (no lifecycle to show), server buff requests and the client's answers (the apply or
+// remove they cause is printed instead), duration refreshes and stack messages that change nothing.
+func combatConsoleVisible(row buffLifecycleAuditRow) bool {
+	switch row.EventKind {
+	case "GAMEPLAY_EFFECT_APPLY", "CLIENT_EFFECT_APPLY_REPORT":
+		if row.HandleID == nil || !validEffectHandle(*row.HandleID) {
+			return false
+		}
+	case "GAMEPLAY_EFFECT_REMOVE", "CLIENT_EFFECT_REMOVE_REPORT":
+	case "BUFF_STACK_COUNT_CHANGE", "CLIENT_EFFECT_STACK_REPORT":
+		if row.consoleSuppressed {
+			return false
+		}
+	default:
+		return false
+	}
+	return row.CombatClass == EffectCombatClassCombat && row.playerRelated
+}
+
 func formatBuffLifecycleConsole(row buffLifecycleAuditRow) string {
 	parts := []string{"BuffEvent"}
 	if !row.Timestamp.IsZero() {
@@ -43,6 +68,10 @@ func formatBuffLifecycleConsole(row buffLifecycleAuditRow) string {
 	if row.EvidenceSource == EffectEvidenceClientReport {
 		// The local client's own report: authoritative for its team, never acknowledged by the server.
 		parts = append(parts, "evidence=CLIENT_REPORTED")
+	}
+	if row.CombatClass != "" {
+		parts = append(parts, "combatClass="+strings.ToUpper(string(row.CombatClass)), "combatBasis="+row.CombatClassBasis,
+			fmt.Sprintf("localTeam=%t", row.playerRelated))
 	}
 	appendID := func(label string, value *uint64) {
 		if value != nil {

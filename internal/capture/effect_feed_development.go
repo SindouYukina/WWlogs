@@ -30,7 +30,25 @@ func (p *processor) effectSemanticConsoleFields(row buffLifecycleAuditRow) strin
 	if info == nil {
 		info = &EffectStaticInfo{}
 	}
-	return formatEffectSemanticFields(effectID, info)
+	fields := formatEffectSemanticFields(effectID, info)
+	if owner := featureOwner(resolveBuffOwners(p.masters, effectID)); owner != nil {
+		fields += fmt.Sprintf(" owner=%q ownerKind=%s", owner.Name, owner.Kind)
+	}
+	return fields
+}
+
+// featureOwner returns the first named game feature that lists the effect id. A role observation is
+// skipped: it names only the role that carried the effect, not the feature that grants it.
+func featureOwner(owners *buffOwnersJSON) *buffOwnerText {
+	if owners == nil {
+		return nil
+	}
+	for i := range owners.Owners {
+		if owners.Owners[i].Kind != "role_observation" {
+			return &owners.Owners[i]
+		}
+	}
+	return nil
 }
 
 // formatEffectSemanticFields renders the static definition of a linked effect id.

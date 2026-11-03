@@ -585,15 +585,19 @@ func loadSQLiteBuffStaticParameters(db *sql.DB, master *gameMaster) error {
 	if err != nil {
 		return err
 	}
-	if hasPolicy || hasLimit {
-		rows, err := db.Query("SELECT id, " + nullableColumn(hasPolicy, "duration_policy") + ", " + nullableColumn(hasLimit, "stack_limit_count") + " FROM buff")
+	hasAttribute, err := masterColumnExists(db, "buff", "game_attribute_id")
+	if err != nil {
+		return err
+	}
+	if hasPolicy || hasLimit || hasAttribute {
+		rows, err := db.Query("SELECT id, " + nullableColumn(hasPolicy, "duration_policy") + ", " + nullableColumn(hasLimit, "stack_limit_count") + ", " + nullableColumn(hasAttribute, "game_attribute_id") + " FROM buff")
 		if err != nil {
 			return fmt.Errorf("query Buff static parameters: %w", err)
 		}
 		for rows.Next() {
 			var raw string
-			var policy, limit sql.NullInt64
-			if err := rows.Scan(&raw, &policy, &limit); err != nil {
+			var policy, limit, attribute sql.NullInt64
+			if err := rows.Scan(&raw, &policy, &limit, &attribute); err != nil {
 				rows.Close()
 				return fmt.Errorf("read Buff static parameters: %w", err)
 			}
@@ -609,6 +613,9 @@ func loadSQLiteBuffStaticParameters(db *sql.DB, master *gameMaster) error {
 			if limit.Valid && limit.Int64 >= 0 {
 				entry.stackLimit, entry.hasStackLimit = uint64(limit.Int64), true
 			}
+			if attribute.Valid && attribute.Int64 > 0 {
+				entry.attribute, entry.hasAttribute = uint64(attribute.Int64), true
+			}
 			statics[id] = entry
 		}
 		if err := rows.Err(); err != nil {
@@ -621,6 +628,9 @@ func loadSQLiteBuffStaticParameters(db *sql.DB, master *gameMaster) error {
 		return err
 	}
 	if err := loadBuffGrantedTags(db, statics); err != nil {
+		return err
+	}
+	if err := loadBuffModifierPresence(db, statics); err != nil {
 		return err
 	}
 	master.buffStatics = make(map[uint64]buffStaticParameters, len(statics))
@@ -728,6 +738,34 @@ func loadBuffMagnitudes(db *sql.DB, statics map[uint64]buffStaticParameters) err
 		statics[id] = entry
 	}
 	return nil
+}
+
+// loadBuffModifierPresence marks rows that list at least one modifier magnitude. The value itself is
+// not kept: a magnitude can be a raw amount, a percentage or a calculation input, and nothing here needs it.
+func loadBuffModifierPresence(db *sql.DB, statics map[uint64]buffStaticParameters) error {
+	exists, err := masterTableExists(db, "buff_modifier_magnitude")
+	if err != nil || !exists {
+		return err
+	}
+	rows, err := db.Query("SELECT DISTINCT owner_id FROM buff_modifier_magnitude")
+	if err != nil {
+		return fmt.Errorf("query Buff modifier magnitudes: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var raw string
+		if err := rows.Scan(&raw); err != nil {
+			return fmt.Errorf("read Buff modifier magnitude: %w", err)
+		}
+		id, err := parseMasterID(raw, "buff_modifier_magnitude.owner_id")
+		if err != nil {
+			return err
+		}
+		entry := statics[id]
+		entry.hasModifier = true
+		statics[id] = entry
+	}
+	return rows.Err()
 }
 
 // maxBuffStaticTags bounds the tag paths kept for one buff row.
