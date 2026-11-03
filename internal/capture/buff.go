@@ -154,9 +154,26 @@ type buffLifecycleAuditRow struct {
 	RequestLinkedID     *uint64          `json:"requestLinkedId,omitempty"`
 	RequestLinkStatus   resolutionStatus `json:"requestLinkStatus,omitempty"`
 	RequestLinkEvidence string           `json:"requestLinkEvidence,omitempty"`
-	// consoleSuppressed marks a client stack report that changed neither the stack nor the
-	// linked effect; it still reaches the tracker and JSONL.
+	// CombatClass classifies the effect the row is about (its apply Id or the Id inherited through
+	// the handle); CombatClassBasis names the evidence. Absent when no effect Id is known.
+	CombatClass      EffectCombatClass `json:"combatClass,omitempty"`
+	CombatClassBasis string            `json:"combatClassBasis,omitempty"`
+	// consoleSuppressed marks a stack report that changed neither the stack nor the linked
+	// effect; it still reaches the tracker and JSONL.
 	consoleSuppressed bool
+	// playerRelated reports that the holder or the source is a local-team entity.
+	playerRelated bool
+}
+
+// classifyLifecycleRow classifies a row from the definition class of its effect and the relations of
+// its holder and source as known now.
+func (p *processor) classifyLifecycleRow(row *buffLifecycleAuditRow, class EffectCombatClass, basis string, holder uint64, hasHolder bool, source uint64, hasSource bool) {
+	parties := effectParties{holder: EffectRelationUnknown, source: EffectRelationUnknown}
+	if hasHolder {
+		parties = p.effectPartiesFor(holder, source, hasSource)
+	}
+	row.CombatClass, row.CombatClassBasis = classifyEffectInstance(class, basis, parties)
+	row.playerRelated = localEffectRelation(parties.holder) || localEffectRelation(parties.source)
 }
 
 const buffLifecycleSchemaVersion = 6
@@ -577,6 +594,12 @@ type buffHandleEntry struct {
 	definition bool
 	// client marks a handle created by a client apply report.
 	client bool
+	// class and basis classify the definition; source is the apply row's instigator. Later rows
+	// re-evaluate the runtime rules with the relations known at their own time.
+	class     EffectCombatClass
+	basis     string
+	source    uint64
+	hasSource bool
 	// stack is the last stack count reported for a client handle; it only decides console output.
 	stack    uint64
 	hasStack bool
@@ -617,6 +640,12 @@ func (p *processor) linkBuffLifecycleGenericAndHandle(row *buffLifecycleAuditRow
 			row.GenericIDDefinitionID = &definitionID
 			row.GenericIDDefinitionEvidence = "The untyped Id of this apply message has an exact normalized buff.id row; namespace evidence is capture-internal (see the lifecycle Id namespace audit), not a typed BuffId field. Static row reference only: application effect and uptime are unresolved"
 		}
+		definitionClass, definitionBasis := p.effectDefinitionClass(*row.ID)
+		var source uint64
+		if row.InstigatorID != nil {
+			source = *row.InstigatorID
+		}
+		p.classifyLifecycleRow(row, definitionClass, definitionBasis, entityID, hasEntity, source, row.InstigatorID != nil && source != 0)
 		if (row.EventKind == "GAMEPLAY_EFFECT_APPLY" || row.EventKind == "CLIENT_EFFECT_APPLY_REPORT") && row.HandleID != nil && hasEntity {
 			if p.buffHandles == nil {
 				p.buffHandles = make(map[buffHandleKey]buffHandleEntry)
@@ -628,7 +657,8 @@ func (p *processor) linkBuffLifecycleGenericAndHandle(row *buffLifecycleAuditRow
 				}
 			} else {
 				p.buffHandleOrder = append(p.buffHandleOrder, key)
-				entry := buffHandleEntry{id: *row.ID, definition: found, client: row.EventKind == "CLIENT_EFFECT_APPLY_REPORT"}
+				entry := buffHandleEntry{id: *row.ID, definition: found, client: row.EventKind == "CLIENT_EFFECT_APPLY_REPORT",
+					class: definitionClass, basis: definitionBasis, source: source, hasSource: row.InstigatorID != nil && source != 0}
 				if row.StackCount != nil {
 					entry.stack, entry.hasStack = *row.StackCount, true
 				}
@@ -648,8 +678,8 @@ func (p *processor) linkBuffLifecycleGenericAndHandle(row *buffLifecycleAuditRow
 		row.HandleLinkedEvidence = "No earlier ApplyGameplayEffect with this (session, entity, handle) was observed"
 		key := buffHandleKey{p.sessionNumber, entityID, *row.HandleID}
 		entry, ok := p.buffHandles[key]
-		if ok && entry.id != 0 && row.EventKind == "CLIENT_EFFECT_STACK_REPORT" && row.StackCount != nil {
-			// The client repeats a stack push on every refresh; only a changed count is console-worthy.
+		if ok && entry.id != 0 && (row.EventKind == "CLIENT_EFFECT_STACK_REPORT" || row.EventKind == "BUFF_STACK_COUNT_CHANGE") && row.StackCount != nil {
+			// A stack message repeats on every refresh; only a changed count is console-worthy.
 			row.consoleSuppressed = entry.hasStack && entry.stack == *row.StackCount
 			entry.stack, entry.hasStack = *row.StackCount, true
 			p.buffHandles[key] = entry
@@ -666,6 +696,7 @@ func (p *processor) linkBuffLifecycleGenericAndHandle(row *buffLifecycleAuditRow
 				row.HandleLinkedEvidence = "Same (session, entity, handle) as an earlier client ApplyGameplayEffectPush; the Id is inherited from that apply report"
 			}
 			row.HandleLinkedStatus = resolutionCorrelated
+			p.classifyLifecycleRow(row, entry.class, entry.basis, entityID, true, entry.source, entry.hasSource)
 			if !entry.definition {
 				row.HandleLinkedStatus = resolutionUnknown
 				row.HandleLinkedEvidence += "; that Id has no exact buff.id row"

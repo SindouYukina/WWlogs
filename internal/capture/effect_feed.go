@@ -103,6 +103,7 @@ func (p *processor) observeEffectLifecycle(row buffLifecycleAuditRow) {
 			if event.DefinitionLinked {
 				event.Static = p.effectStaticInfo(*row.ID)
 			}
+			event.CombatClass, event.CombatBasis = p.effectDefinitionClass(*row.ID)
 		}
 		if row.InstigatorID != nil && *row.InstigatorID != 0 {
 			event.SourceEntityID, event.HasSource = *row.InstigatorID, true
@@ -111,6 +112,7 @@ func (p *processor) observeEffectLifecycle(row buffLifecycleAuditRow) {
 		if row.StackCount != nil {
 			event.StackCount, event.HasStackCount = *row.StackCount, true
 		}
+		event.HolderMonster, event.SourceMonster = p.effectMonsterEntity(event.HolderEntityID), event.HasSource && p.effectMonsterEntity(event.SourceEntityID)
 		p.effects.ObserveApply(event)
 		p.effects.RefreshRelations(row.SessionNumber, holder, p.effectEntityRelation)
 	case "GAMEPLAY_EFFECT_REMOVE":
@@ -169,6 +171,7 @@ func (p *processor) observeClientEffectReport(row buffLifecycleAuditRow) {
 			if event.DefinitionLinked {
 				event.Static = p.effectStaticInfo(*row.ID)
 			}
+			event.CombatClass, event.CombatBasis = p.effectDefinitionClass(*row.ID)
 		}
 		if row.InstigatorID != nil && *row.InstigatorID != 0 {
 			event.SourceEntityID, event.HasSource = *row.InstigatorID, true
@@ -177,6 +180,7 @@ func (p *processor) observeClientEffectReport(row buffLifecycleAuditRow) {
 		if row.StackCount != nil {
 			event.StackCount, event.HasStackCount = *row.StackCount, true
 		}
+		event.HolderMonster, event.SourceMonster = p.effectMonsterEntity(event.HolderEntityID), event.HasSource && p.effectMonsterEntity(event.SourceEntityID)
 		p.effects.ObserveApply(event)
 	case "CLIENT_EFFECT_STACK_REPORT":
 		event := EffectUpdateEvent{
@@ -225,6 +229,7 @@ func (p *processor) observeEffectSnapshot(frame gameFrame, record rawBuffSnapsho
 		if event.DefinitionLinked {
 			event.Static = p.effectStaticInfo(record.ID)
 		}
+		event.CombatClass, event.CombatBasis = p.effectDefinitionClass(record.ID)
 	}
 	if record.HasInstigatorID && record.InstigatorID != 0 {
 		event.SourceEntityID, event.HasSource = record.InstigatorID, true
@@ -241,6 +246,7 @@ func (p *processor) observeEffectSnapshot(frame gameFrame, record rawBuffSnapsho
 		remaining := float64(record.Remaining)
 		event.RemainingSeconds = &remaining
 	}
+	event.HolderMonster, event.SourceMonster = p.effectMonsterEntity(event.HolderEntityID), event.HasSource && p.effectMonsterEntity(event.SourceEntityID)
 	p.effects.ObserveSnapshot(event)
 	p.effects.RefreshRelations(p.sessionNumber, entityID, p.effectEntityRelation)
 }

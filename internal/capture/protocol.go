@@ -146,6 +146,7 @@ type processor struct {
 	stdout                    io.Writer
 	diagnostic                io.Writer
 	showEffectEvents          bool
+	showAllEffectEvents       bool
 	audit                     io.Writer
 	encounterSummary          diagWriter
 	combatEventsJSONL         diagWriter

@@ -79,8 +79,14 @@ func newClientEffectTestProcessor() *processor {
 	addTestPlayerRoleGroupEntity(p, 100, 7, 1312)
 	addTestPlayerRoleGroupEntity(p, 101, 7, 1311)
 	addTestPlayerRoleGroupEntity(p, 102, 7, 1505)
-	addTestRuntimeEntity(p, 200, func(entity *runtimeEntity) { entity.monsterID, entity.hasMonsterID = 9001, true })
-	addTestRuntimeEntity(p, 201, func(entity *runtimeEntity) { entity.monsterID, entity.hasMonsterID = 9002, true })
+	monster := func(id uint64) func(*runtimeEntity) {
+		return func(entity *runtimeEntity) {
+			entity.monsterID, entity.hasMonsterID = id, true
+			entity.entityTypeCode, entity.hasEntityType = entityTypeMonster, true
+		}
+	}
+	addTestRuntimeEntity(p, 200, monster(9001))
+	addTestRuntimeEntity(p, 201, monster(9002))
 	p.observeLocalRoleEntity(100)
 	return p
 }
