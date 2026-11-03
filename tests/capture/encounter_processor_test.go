@@ -132,3 +132,63 @@ func TestEncounterLongQuietBattleStaysOpen(t *testing.T) {
 		t.Fatalf("a quiet period inside a server-declared battle must not end the encounter: %+v", snapshot.Encounters)
 	}
 }
+
+// Gameplay effects are game state, not statistics: they neither open nor close encounters, and an effect that
+// outlives an encounter stays tracked across the boundary.
+func TestEffectMessagesDoNotChangeEncounters(t *testing.T) {
+	p := newEncounterTestProcessor()
+	p.sessionNumber = 1
+	p.observeSceneJoin(singlePlayerJoinScene(42), encounterAt(1))
+	deliver := func(seconds float64, body []byte) {
+		t.Helper()
+		if err := p.handleCombatReceivePackNotify(gameFrame{commandID: 25706, direction: "in", timestamp: encounterAt(seconds)}, body); err != nil {
+			t.Fatal(err)
+		}
+	}
+	deliver(5, effectPackBody(200, 5, effectApplyPayload(1, 42, 200, 100, 1, 60, 60)))
+	if snapshot := p.damageStatisticsSnapshot().Encounters; snapshot.State != EncounterIdle {
+		t.Fatalf("an effect application must not open an encounter: %+v", snapshot)
+	}
+	deliver(10, battleStateReceivePack(true, 42))
+	p.damageStatistics.addCombatEvent(testEncounterRecord(CombatFlowLocalOutgoing, 100, 11))
+	deliver(12, effectPackBody(200, 5, effectApplyPayload(2, 43, 200, 100, 1, 3, 3)))
+	deliver(14, battleStateReceivePack(false, 42))
+	p.observeEncounterClock(encounterAt(20))
+	encounter := requireOneCompleted(t, p.damageStatisticsSnapshot())
+	if encounter.Outcome != EncounterOutcomeConfirmed || !encounter.StartedAt.Equal(encounterAt(10)) || !encounter.EndedAt.Equal(encounterAt(14)) {
+		t.Fatalf("effects inside the battle must not move its boundaries: %+v", encounter)
+	}
+	effects := p.effects.SnapshotAt(CaptureQueryTime{CaptureSessionID: p.effects.captureSessionID, Timestamp: encounterAt(20)})
+	if len(effects.Effects) == 0 || effects.Counters.Applies != 2 {
+		t.Fatalf("effect tracking must continue across the encounter boundary: %+v", effects)
+	}
+	deliver(25, effectPackBody(200, 6, effectRemovePayload(1, 200, 100)))
+	if snapshot := p.damageStatisticsSnapshot().Encounters; snapshot.State != EncounterIdle || len(snapshot.Completed) != 1 {
+		t.Fatalf("an effect removal must not open or reopen an encounter: %+v", snapshot)
+	}
+	if removed := p.effects.Snapshot().Counters.Removes; removed != 1 {
+		t.Fatalf("the removal must reach the effect tracker, got %d removes", removed)
+	}
+}
+
+// The kill shot and the exit signal share a frame in captures, so an event at exactly the exit time belongs to
+// the ending encounter; an event after it waits in the prelude.
+func TestEncounterEventAtExitTimeStaysInEncounter(t *testing.T) {
+	statistics := NewDamageStatistics()
+	statistics.observeBattleState(true, encounterAt(10), 1)
+	outgoing(statistics, 100, 12)
+	statistics.observeBattleState(false, encounterAt(15), 1)
+	if assignment := statistics.addCombatEvent(testEncounterRecord(CombatFlowLocalOutgoing, 50, 15)); assignment != encounterIDFor(statistics, 1) {
+		t.Fatalf("a hit at the exit time must join the ending encounter, got %q", assignment)
+	}
+	if assignment := statistics.addCombatEvent(testEncounterRecord(CombatFlowLocalOutgoing, 7, 15.5)); assignment != encounterAssignmentPrelude {
+		t.Fatalf("a hit after the exit must wait outside the ending encounter, got %q", assignment)
+	}
+	statistics.observeCaptureTime(encounterAt(19))
+	snapshot := statistics.Snapshot()
+	encounter := requireOneCompleted(t, snapshot)
+	if encounter.Totals.DamageDealt != 150 || snapshot.Encounters.OutsideEncounters.DamageDealt != 7 {
+		t.Fatalf("unexpected split at the exit frame: encounter=%+v outside=%+v", encounter.Totals, snapshot.Encounters.OutsideEncounters)
+	}
+	assertEncounterTotalsConserved(t, snapshot)
+}
