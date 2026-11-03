@@ -120,8 +120,6 @@
     "internal/capture/central_profile_development_test.go": "tests/capture/profile_development_test.go",
     "tests/capture/profile_public_test.go": "",
     "internal/capture/central_profile_public_test.go": "tests/capture/profile_public_test.go",
-    "tests/capture/project_root_dev_test.go": "",
-    "internal/capture/central_project_root_dev_test.go": "tests/capture/project_root_dev_test.go",
     "tests/capture/protocol_dev_test.go": "",
     "internal/capture/central_protocol_dev_test.go": "tests/capture/protocol_dev_test.go",
     "tests/capture/protocol_test.go": "",

@@ -5,7 +5,6 @@ package capture
 import (
 	"bufio"
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -62,14 +61,17 @@ func optionalFileWriter(file *os.File) io.Writer {
 	return file
 }
 
-// defaultLiveCaptureOutputBundle creates a new run directory under the project-root logs directory.
-// An existing run directory is never reused or overwritten.
-func defaultLiveCaptureOutputBundle(logsDirectory string, now time.Time) (liveCaptureOutputBundle, error) {
-	if logsDirectory == "" {
-		return liveCaptureOutputBundle{}, errors.New("diagnostic logs directory is not set")
+func defaultLiveCaptureOutputBundle(localAppData string, now time.Time) (liveCaptureOutputBundle, error) {
+	if localAppData == "" {
+		var err error
+		localAppData, err = os.UserCacheDir()
+		if err != nil {
+			return liveCaptureOutputBundle{}, fmt.Errorf("resolve local capture directory: %w", err)
+		}
 	}
-	if err := os.MkdirAll(logsDirectory, 0o700); err != nil {
-		return liveCaptureOutputBundle{}, fmt.Errorf("create diagnostic logs directory: %w", err)
+	spoolRoot := filepath.Join(localAppData, "WWlogs", "capture-spool")
+	if err := os.MkdirAll(spoolRoot, 0o700); err != nil {
+		return liveCaptureOutputBundle{}, fmt.Errorf("create local capture spool: %w", err)
 	}
 	baseRunID := "LIVE_" + now.Local().Format("20060102_150405")
 	var directory string
@@ -78,7 +80,7 @@ func defaultLiveCaptureOutputBundle(logsDirectory string, now time.Time) (liveCa
 		if suffix > 0 {
 			runID = fmt.Sprintf("%s_%d", baseRunID, suffix)
 		}
-		directory = filepath.Join(logsDirectory, runID)
+		directory = filepath.Join(spoolRoot, runID)
 		if err := os.Mkdir(directory, 0o700); err == nil {
 			break
 		} else if !os.IsExist(err) {
@@ -191,11 +193,7 @@ func Main() {
 		*summonOwnerOutPath, *frameArchiveOut, *commandCensusOut, *clientVersionOut, *statusFile,
 		*liveDiagnosticOut,
 	) {
-		logsDirectory, err := diagnosticLogsDirectory()
-		if err != nil {
-			fatal("resolve diagnostic logs directory", err)
-		}
-		bundle, err := defaultLiveCaptureOutputBundle(logsDirectory, time.Now())
+		bundle, err := defaultLiveCaptureOutputBundle(os.Getenv("LOCALAPPDATA"), time.Now())
 		if err != nil {
 			fatal("create default live capture output", err)
 		}
