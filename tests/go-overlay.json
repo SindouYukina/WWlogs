@@ -42,6 +42,8 @@
     "internal/capture/central_client_push_test.go": "tests/capture/client_push_test.go",
     "tests/capture/client_version_test.go": "",
     "internal/capture/central_client_version_test.go": "tests/capture/client_version_test.go",
+    "tests/capture/combat_event_model_test.go": "",
+    "internal/capture/central_combat_event_model_test.go": "tests/capture/combat_event_model_test.go",
     "tests/capture/combat_notify_audit_test.go": "",
     "internal/capture/central_combat_notify_audit_test.go": "tests/capture/combat_notify_audit_test.go",
     "tests/capture/combat_state_dev_test.go": "",

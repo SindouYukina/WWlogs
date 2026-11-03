@@ -10,6 +10,9 @@ import (
 
 const maxCombatStatisticsEntities = 8192
 
+// maxStatisticsAppliedKeys bounds the idempotency set; it equals maxConsumedRPCIDs.
+const maxStatisticsAppliedKeys = maxConsumedRPCIDs
+
 // maxRollingDamageEvents prevents unusually dense captures from consuming unbounded memory.
 const maxRollingDamageEvents = 32768
 
@@ -72,25 +75,27 @@ type DamageStatisticsSnapshot struct {
 	// CaptureSessionID is process-local and stays fixed for this statistics owner.
 	CaptureSessionID uint64 `json:"captureSessionId"`
 	// StatisticsIntervalID starts at 1 and advances whenever Reset begins a new interval.
-	StatisticsIntervalID       uint64                       `json:"statisticsIntervalId"`
-	DamageDealt                int64                        `json:"damageDealt"`
-	DamageTaken                int64                        `json:"damageTaken"`
-	OutgoingEvents             uint64                       `json:"outgoingEvents"`
-	IncomingEvents             uint64                       `json:"incomingEvents"`
-	UnattributedOutgoingDamage int64                        `json:"unattributedOutgoingDamage"`
-	UnattributedIncomingDamage int64                        `json:"unattributedIncomingDamage"`
-	UnattributedOutgoingEvents uint64                       `json:"unattributedOutgoingEvents"`
-	UnattributedIncomingEvents uint64                       `json:"unattributedIncomingEvents"`
-	UngroupedDamageDealt       int64                        `json:"ungroupedDamageDealt"`
-	UngroupedDamageTaken       int64                        `json:"ungroupedDamageTaken"`
-	UngroupedOutgoingEvents    uint64                       `json:"ungroupedOutgoingEvents"`
-	UngroupedIncomingEvents    uint64                       `json:"ungroupedIncomingEvents"`
-	ByPlayerEntity             []PlayerEntityDamageSnapshot `json:"byPlayerEntity"`
-	EncounterDPS               DPSResult                    `json:"encounterDps"`
-	GameTimeDPS                DPSResult                    `json:"gameTimeDps"`
-	DamageSpanDPS              DPSResult                    `json:"damageSpanDps"`
-	Rolling5sDPS               DPSResult                    `json:"rolling5sDps"`
-	Rolling10sDPS              DPSResult                    `json:"rolling10sDps"`
+	StatisticsIntervalID       uint64 `json:"statisticsIntervalId"`
+	DamageDealt                int64  `json:"damageDealt"`
+	DamageTaken                int64  `json:"damageTaken"`
+	OutgoingEvents             uint64 `json:"outgoingEvents"`
+	IncomingEvents             uint64 `json:"incomingEvents"`
+	UnattributedOutgoingDamage int64  `json:"unattributedOutgoingDamage"`
+	UnattributedIncomingDamage int64  `json:"unattributedIncomingDamage"`
+	UnattributedOutgoingEvents uint64 `json:"unattributedOutgoingEvents"`
+	UnattributedIncomingEvents uint64 `json:"unattributedIncomingEvents"`
+	UngroupedDamageDealt       int64  `json:"ungroupedDamageDealt"`
+	UngroupedDamageTaken       int64  `json:"ungroupedDamageTaken"`
+	UngroupedOutgoingEvents    uint64 `json:"ungroupedOutgoingEvents"`
+	UngroupedIncomingEvents    uint64 `json:"ungroupedIncomingEvents"`
+	// DuplicateEvents counts records rejected in this interval because their response key was already applied.
+	DuplicateEvents uint64                       `json:"duplicateEvents"`
+	ByPlayerEntity  []PlayerEntityDamageSnapshot `json:"byPlayerEntity"`
+	EncounterDPS    DPSResult                    `json:"encounterDps"`
+	GameTimeDPS     DPSResult                    `json:"gameTimeDps"`
+	DamageSpanDPS   DPSResult                    `json:"damageSpanDps"`
+	Rolling5sDPS    DPSResult                    `json:"rolling5sDps"`
+	Rolling10sDPS   DPSResult                    `json:"rolling10sDps"`
 }
 
 type rollingDamageEvent struct {
@@ -130,6 +135,10 @@ type DamageStatistics struct {
 	rollingSessionNumber       int
 	hasRollingSession          bool
 	rollingUnavailableReason   string
+	duplicateEvents            uint64
+	// appliedKeys outlives Reset: a repeated response must not re-enter a later interval either.
+	appliedKeys     map[CombatEventKey]struct{}
+	appliedKeyOrder []CombatEventKey
 }
 
 // NewDamageStatistics creates an empty damage statistics accumulator.
@@ -229,7 +238,8 @@ func (s *DamageStatistics) snapshotLocked() DamageStatisticsSnapshot {
 		UnattributedOutgoingEvents: s.unattributedOutgoingEvents, UnattributedIncomingEvents: s.unattributedIncomingEvents,
 		UngroupedDamageDealt: s.ungroupedDamageDealt, UngroupedDamageTaken: s.ungroupedDamageTaken,
 		UngroupedOutgoingEvents: s.ungroupedOutgoingEvents, UngroupedIncomingEvents: s.ungroupedIncomingEvents,
-		ByPlayerEntity: make([]PlayerEntityDamageSnapshot, 0, len(s.entities)),
+		DuplicateEvents: s.duplicateEvents,
+		ByPlayerEntity:  make([]PlayerEntityDamageSnapshot, 0, len(s.entities)),
 	}
 	for _, entity := range s.entities {
 		snapshot.ByPlayerEntity = append(snapshot.ByPlayerEntity, entity)
@@ -311,6 +321,7 @@ func (s *DamageStatistics) resetLocked() {
 	s.rollingSessionNumber = 0
 	s.hasRollingSession = false
 	s.rollingUnavailableReason = ""
+	s.duplicateEvents = 0
 }
 
 func (p *processor) damageStatisticsSnapshot() DamageStatisticsSnapshot {
@@ -360,39 +371,63 @@ func (p *processor) snapshotAndResetDamageStatisticsAt(query CaptureQueryTime) D
 
 // addDamageEvent receives only events that passed response validation and RPC deduplication.
 func (s *DamageStatistics) addDamageEvent(event combatEvent, sourceRelation, targetRelation playerRelation) {
-	if s == nil || event.EventTypeCandidate != "DAMAGE_CANDIDATE" || event.Damage <= 0 ||
-		!event.HasSourceEntity || event.SourceEntityID == 0 || !event.HasTargetEntity || event.TargetEntityID == 0 {
+	record, ok := normalizeCombatEvent(event, sourceRelation, targetRelation)
+	if !ok {
 		return
 	}
+	s.addCombatEvent(record)
+}
 
+// addCombatEvent applies one normalized record. Only damage enters these totals; healing stays out because HPS
+// has no verified semantics. A record whose key was already applied is counted as a duplicate and ignored.
+func (s *DamageStatistics) addCombatEvent(record CombatEventRecord) {
+	if s == nil || record.Kind != CombatEventDamage || record.Amount <= 0 {
+		return
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.entities == nil {
 		s.entities = make(map[combatStatisticsKey]PlayerEntityDamageSnapshot)
 	}
-	switch {
-	case sourceRelation == playerRelationLocal && targetRelation == playerRelationUnrelated:
-		s.damageDealt += event.Damage
+	if record.Key.hasIdentity() {
+		if _, seen := s.appliedKeys[record.Key]; seen {
+			s.duplicateEvents++
+			return
+		}
+		s.rememberAppliedKeyLocked(record.Key)
+	}
+	session := record.Key.ProtocolSession
+	switch record.Flow {
+	case CombatFlowLocalOutgoing:
+		s.damageDealt += record.Amount
 		s.outgoingEvents++
-		s.addOutgoingDamageTime(event.SessionNumber, event.Timestamp)
-		s.addRollingDamageEventLocked(event.SessionNumber, event.Timestamp, event.Damage)
-		s.addEntityDamage(event.SessionNumber, event.SourceEntityID, event.Source.Lifecycle.ReusedAfterRemove, event.Damage, true, event.Timestamp)
-	case sourceRelation == playerRelationUnrelated && targetRelation == playerRelationLocal:
-		s.damageTaken += event.Damage
+		s.addOutgoingDamageTime(session, record.ObservedAt)
+		s.addRollingDamageEventLocked(session, record.ObservedAt, record.Amount)
+		s.addEntityDamage(session, record.Source.EntityID, record.Source.EntityGeneration, record.Amount, true, record.ObservedAt)
+	case CombatFlowLocalIncoming:
+		s.damageTaken += record.Amount
 		s.incomingEvents++
-		s.addEntityDamage(event.SessionNumber, event.TargetEntityID, event.Target.Lifecycle.ReusedAfterRemove, event.Damage, false, event.Timestamp)
-	case sourceRelation == playerRelationLocal && targetRelation == playerRelationUnknown:
-		s.unattributedOutgoingDamage += event.Damage
+		s.addEntityDamage(session, record.Target.EntityID, record.Target.EntityGeneration, record.Amount, false, record.ObservedAt)
+	case CombatFlowUnattributedOutgoing:
+		s.unattributedOutgoingDamage += record.Amount
 		s.unattributedOutgoingEvents++
-	case sourceRelation == playerRelationUnknown && targetRelation == playerRelationLocal:
-		s.unattributedIncomingDamage += event.Damage
+	case CombatFlowUnattributedIncoming:
+		s.unattributedIncomingDamage += record.Amount
 		s.unattributedIncomingEvents++
-	case sourceRelation != playerRelationUnrelated && targetRelation == playerRelationUnrelated:
-		s.unattributedOutgoingDamage += event.Damage
-		s.unattributedOutgoingEvents++
-	case sourceRelation == playerRelationUnrelated && targetRelation != playerRelationUnrelated:
-		s.unattributedIncomingDamage += event.Damage
-		s.unattributedIncomingEvents++
+	}
+}
+
+// rememberAppliedKeyLocked keeps a bounded FIFO of applied keys. The bound matches the RPC consumed set, so an
+// evicted key could also be re-admitted there; both layers then agree on what counts as a repeat.
+func (s *DamageStatistics) rememberAppliedKeyLocked(key CombatEventKey) {
+	if s.appliedKeys == nil {
+		s.appliedKeys = make(map[CombatEventKey]struct{})
+	}
+	s.appliedKeys[key] = struct{}{}
+	s.appliedKeyOrder = append(s.appliedKeyOrder, key)
+	for len(s.appliedKeys) > maxStatisticsAppliedKeys && len(s.appliedKeyOrder) > 0 {
+		delete(s.appliedKeys, s.appliedKeyOrder[0])
+		s.appliedKeyOrder = s.appliedKeyOrder[1:]
 	}
 }
 
