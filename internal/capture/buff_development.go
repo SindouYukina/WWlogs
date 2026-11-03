@@ -8,7 +8,7 @@ import (
 )
 
 func (p *processor) writeBuffLifecycleConsole(row buffLifecycleAuditRow) {
-	if p == nil || !p.showEffectEvents || p.stdout == nil {
+	if p == nil || !p.showEffectEvents || p.stdout == nil || row.consoleSuppressed {
 		return
 	}
 	line := formatBuffLifecycleConsole(row)
@@ -40,6 +40,10 @@ func formatBuffLifecycleConsole(row buffLifecycleAuditRow) string {
 	case "BUFF_APPLY_REQUEST_NOTIFY", "BUFF_REMOVE_BY_ID_REQUEST_NOTIFY":
 		parts = append(parts, "effectState=UNCONFIRMED")
 	}
+	if row.EvidenceSource == EffectEvidenceClientReport {
+		// The local client's own report: authoritative for its team, never acknowledged by the server.
+		parts = append(parts, "evidence=CLIENT_REPORTED")
+	}
 	appendID := func(label string, value *uint64) {
 		if value != nil {
 			parts = append(parts, fmt.Sprintf("%s=%d", label, *value))
@@ -49,6 +53,49 @@ func formatBuffLifecycleConsole(row buffLifecycleAuditRow) string {
 	appendID("id", row.ID)
 	appendID("handle", row.HandleID)
 	appendID("handleLinkedId", row.HandleLinkedID)
+	switch row.EventKind {
+	case "CLIENT_EFFECT_APPLY_REPORT", "CLIENT_EFFECT_STACK_REPORT", "CLIENT_EFFECT_REMOVE_REPORT":
+		if holder, ok := clientEffectHolder(row); ok {
+			parts = append(parts, fmt.Sprintf("holder=%d", holder), "holderStatus="+string(resolutionCorrelated))
+		} else {
+			appendID("holderCandidate", row.CombatCommonEntityID)
+			parts = append(parts, "holderStatus="+string(resolutionUnknown))
+		}
+		appendID("instigator", row.InstigatorID)
+		if row.HandleLinkedStatus != "" {
+			parts = append(parts, "handleLinkedStatus="+string(row.HandleLinkedStatus))
+		}
+		if row.EventKind == "CLIENT_EFFECT_REMOVE_REPORT" {
+			removal := "EXPIRED"
+			if row.IsPrematureRemoval != nil && *row.IsPrematureRemoval {
+				removal = "PREMATURE"
+			}
+			parts = append(parts, "removal="+removal)
+		}
+		appendID("stack", row.StackCount)
+		if row.DurationSeconds != nil {
+			parts = append(parts, fmt.Sprintf("duration_s=%.3f", *row.DurationSeconds))
+		}
+		if row.GenericIDDefinitionStatus != "" {
+			parts = append(parts, "idReferenceStatus="+string(row.GenericIDDefinitionStatus))
+		}
+		return strings.Join(parts, " ")
+	case "BUFF_APPLY_REQUEST_RESPONSE", "BUFF_REMOVE_BY_ID_REQUEST_RESPONSE":
+		appendID("commonEntity", row.CombatCommonEntityID)
+		appendID("requestId", row.RequestLinkedID)
+		parts = append(parts, "requestLinkStatus="+string(row.RequestLinkStatus))
+		// ErrorCode 0 is Success in the protocol enum and is omitted on the wire.
+		if row.ErrorCode == nil || *row.ErrorCode == 0 {
+			parts = append(parts, "result=ACCEPTED")
+		} else {
+			parts = append(parts, "result=ERROR")
+			appendID("errorCode", row.ErrorCode)
+		}
+		if row.IsActive != nil {
+			parts = append(parts, fmt.Sprintf("active=%t", *row.IsActive))
+		}
+		return strings.Join(parts, " ")
+	}
 	appendID("target", row.TargetEntityID)
 	appendID("instigator", row.InstigatorID)
 	if row.TargetEntityID != nil {

@@ -50,6 +50,25 @@ const (
 	EffectLifecycleEstimatedExpired EffectLifecycle = "estimated_expired"
 	// EffectLifecycleHolderRemoved means the holder entity was removed; the effect removal itself is inferred.
 	EffectLifecycleHolderRemoved EffectLifecycle = "holder_removed"
+	// EffectLifecycleReportedRemoved means the local client reported an early removal
+	// (RemoveGameplayEffectPush with IsPrematureRemoval) for the same handle. The client
+	// owns its team's effects, but the server does not acknowledge the report.
+	EffectLifecycleReportedRemoved EffectLifecycle = "reported_removed"
+	// EffectLifecycleReportedExpired means the local client reported a removal without
+	// IsPrematureRemoval, which every observed natural expiry used.
+	EffectLifecycleReportedExpired EffectLifecycle = "reported_expired"
+)
+
+// EffectEvidence names the message family that reported an effect instance. The
+// server confirms its own notifies and snapshots; the local client reports the
+// effects it applies to the entities it controls in outbound combat pushes, and
+// the server does not echo those reports back.
+type EffectEvidence string
+
+const (
+	EffectEvidenceServerNotify   EffectEvidence = "server_notify"
+	EffectEvidenceServerSnapshot EffectEvidence = "server_snapshot"
+	EffectEvidenceClientReport   EffectEvidence = "client_report"
 )
 
 // EffectRemainingStatus qualifies RemainingSeconds.
@@ -142,11 +161,13 @@ const (
 	EffectSemanticNameCorrelated EffectSemanticStatus = "definition_linked_name_correlated"
 )
 
-// EffectApplyEvent is a server-confirmed gameplay-effect APPLY on one holder, or
-// (with Origin snapshot) a snapshot row that reports an already existing instance.
+// EffectApplyEvent is a gameplay-effect APPLY on one holder, or (with Origin
+// snapshot) a snapshot row that reports an already existing instance.
 type EffectApplyEvent struct {
 	// Origin defaults to EffectOriginApply.
-	Origin           EffectOrigin
+	Origin EffectOrigin
+	// Evidence defaults to server_notify for an apply and server_snapshot for a snapshot.
+	Evidence         EffectEvidence
 	SessionNumber    int
 	HolderEntityID   uint64
 	HolderGeneration uint64
@@ -182,13 +203,17 @@ type EffectUpdateEvent struct {
 	ObservedAt       time.Time
 }
 
-// EffectRemoveEvent is a server-confirmed gameplay-effect REMOVE.
+// EffectRemoveEvent is a gameplay-effect REMOVE for one handle.
 type EffectRemoveEvent struct {
 	SessionNumber    int
 	HolderEntityID   uint64
 	HolderGeneration uint64
 	HandleID         uint64
 	ObservedAt       time.Time
+	// Evidence defaults to server_notify. A client_report removal ends the instance as
+	// reported_removed when Premature is true and as reported_expired otherwise.
+	Evidence  EffectEvidence
+	Premature bool
 }
 
 // EffectCounters report how input was handled. A non-zero counter next to a
@@ -237,14 +262,16 @@ type EffectInstanceSnapshot struct {
 	// SemanticStatus is never complete: the official name is unresolved for every effect.
 	SemanticStatus EffectSemanticStatus `json:"semanticStatus"`
 	// Static holds the linked definition's parameters; it is a copy and may be nil.
-	Static          *EffectStaticInfo    `json:"static,omitempty"`
-	SourceEntityID  *uint64              `json:"sourceEntityId,omitempty"`
-	SourceRelation  EffectEntityRelation `json:"sourceRelation"`
-	Polarity        EffectPolarity       `json:"polarity"`
-	StackCount      *uint64              `json:"stackCount,omitempty"`
-	Lifecycle       EffectLifecycle      `json:"lifecycle"`
-	Origin          EffectOrigin         `json:"origin"`
-	FirstObservedAt time.Time            `json:"firstObservedAt"`
+	Static         *EffectStaticInfo    `json:"static,omitempty"`
+	SourceEntityID *uint64              `json:"sourceEntityId,omitempty"`
+	SourceRelation EffectEntityRelation `json:"sourceRelation"`
+	Polarity       EffectPolarity       `json:"polarity"`
+	StackCount     *uint64              `json:"stackCount,omitempty"`
+	Lifecycle      EffectLifecycle      `json:"lifecycle"`
+	Origin         EffectOrigin         `json:"origin"`
+	// Evidence is the message family that created the instance; a server REMOVE or a client report may end it later.
+	Evidence        EffectEvidence `json:"evidence"`
+	FirstObservedAt time.Time      `json:"firstObservedAt"`
 	// AppliedAt is set only for origin apply; a snapshot-origin instance has an unknown application time.
 	AppliedAt     *time.Time `json:"appliedAt,omitempty"`
 	LastUpdatedAt time.Time  `json:"lastUpdatedAt"`
@@ -297,6 +324,7 @@ type effectInstance struct {
 	stack            uint64
 	hasStack         bool
 	origin           EffectOrigin
+	evidence         EffectEvidence
 	firstObservedAt  time.Time
 	lastUpdatedAt    time.Time
 	hasDuration      bool
@@ -418,6 +446,13 @@ func (t *EffectTracker) ObserveApply(event EffectApplyEvent) {
 	if origin == "" {
 		origin = EffectOriginApply
 	}
+	evidence := event.Evidence
+	if evidence == "" {
+		evidence = EffectEvidenceServerNotify
+		if origin == EffectOriginSnapshot {
+			evidence = EffectEvidenceServerSnapshot
+		}
+	}
 	if !t.acceptSessionLocked(event.SessionNumber) {
 		return
 	}
@@ -449,6 +484,7 @@ func (t *EffectTracker) ObserveApply(event EffectApplyEvent) {
 			} else {
 				t.counters.DuplicateApplies++
 				existing.origin = EffectOriginApply
+				existing.evidence = evidence
 			}
 			t.updateLocked(existing, event.ObservedAt, event.StackCount, event.HasStackCount, basis, duration, hasDuration, true)
 			return
@@ -468,7 +504,7 @@ func (t *EffectTracker) ObserveApply(event EffectApplyEvent) {
 		source: event.SourceEntityID, hasSource: event.HasSource,
 		holderRelation: normalizeEffectRelation(event.HolderRelation), sourceRelation: normalizeEffectRelation(event.SourceRelation),
 		stack: event.StackCount, hasStack: event.HasStackCount,
-		origin: origin, firstObservedAt: event.ObservedAt, lastUpdatedAt: event.ObservedAt,
+		origin: origin, evidence: evidence, firstObservedAt: event.ObservedAt, lastUpdatedAt: event.ObservedAt,
 		insertionOrdinal: t.ordinal,
 	}
 	t.setBasisLocked(instance, event.ObservedAt, basis, duration, hasDuration)
@@ -549,9 +585,9 @@ func (t *EffectTracker) ObserveRemove(event EffectRemoveEvent) {
 			return
 		}
 		if i := t.endedByHolderRemovalLocked(key); i >= 0 {
-			// The server confirms the REMOVE after it removed the holder entity.
+			// The REMOVE arrives after the server removed the holder entity.
 			t.counters.LateMessages++
-			t.ended[i].Lifecycle = EffectLifecycleConfirmedRemoved
+			t.ended[i].Lifecycle = removeLifecycle(event)
 			t.ended[i].EndedAt = event.ObservedAt
 			t.ended[i].ExpiryDeltaSeconds = nil
 			return
@@ -569,9 +605,21 @@ func (t *EffectTracker) ObserveRemove(event EffectRemoveEvent) {
 	}
 	t.advanceHighWaterLocked(event.ObservedAt)
 	t.counters.Removes++
-	t.endLocked(instance, EffectLifecycleConfirmedRemoved, event.ObservedAt)
+	t.endLocked(instance, removeLifecycle(event), event.ObservedAt)
 	if !event.ObservedAt.IsZero() {
 		t.addTombstoneLocked(key, event.ObservedAt)
+	}
+}
+
+// removeLifecycle keeps a server-confirmed removal apart from a client report.
+func removeLifecycle(event EffectRemoveEvent) EffectLifecycle {
+	switch {
+	case event.Evidence != EffectEvidenceClientReport:
+		return EffectLifecycleConfirmedRemoved
+	case event.Premature:
+		return EffectLifecycleReportedRemoved
+	default:
+		return EffectLifecycleReportedExpired
 	}
 }
 
@@ -945,7 +993,7 @@ func (t *EffectTracker) instanceSnapshotLocked(instance *effectInstance, query C
 		HolderRelation: instance.holderRelation, SourceRelation: instance.sourceRelation,
 		DefinitionStatus: string(resolutionUnknown), SemanticStatus: EffectSemanticDefinitionUnresolved,
 		Polarity: EffectPolarityUnclassified, Lifecycle: EffectLifecycleActive,
-		Origin: instance.origin, FirstObservedAt: instance.firstObservedAt, LastUpdatedAt: instance.lastUpdatedAt,
+		Origin: instance.origin, Evidence: instance.evidence, FirstObservedAt: instance.firstObservedAt, LastUpdatedAt: instance.lastUpdatedAt,
 	}
 	if instance.origin == EffectOriginApply {
 		appliedAt := instance.firstObservedAt

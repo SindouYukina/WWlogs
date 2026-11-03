@@ -16,7 +16,7 @@ import (
 func (p *processor) effectSemanticConsoleFields(row buffLifecycleAuditRow) string {
 	var effectID uint64
 	switch {
-	case row.EventKind == "GAMEPLAY_EFFECT_APPLY" && row.ID != nil:
+	case (row.EventKind == "GAMEPLAY_EFFECT_APPLY" || row.EventKind == "CLIENT_EFFECT_APPLY_REPORT") && row.ID != nil:
 		effectID = *row.ID
 	case row.HandleLinkedID != nil && row.HandleLinkedStatus == resolutionCorrelated:
 		effectID = *row.HandleLinkedID

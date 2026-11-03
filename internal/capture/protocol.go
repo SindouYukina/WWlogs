@@ -178,6 +178,8 @@ type processor struct {
 	bulletHandles             map[bulletHandleKey]bulletHandleEntry
 	buffHandles               map[buffHandleKey]buffHandleEntry
 	buffHandleOrder           []buffHandleKey
+	serverBuffRequests        map[serverBuffRequestKey]serverBuffRequest
+	serverBuffRequestOrder    []serverBuffRequestKey
 	bulletHandleOrder         []bulletHandleKey
 	combatActionRequests      map[combatActionRequestKey]combatActionRequest
 	combatActionOrder         []combatActionRequestKey
@@ -476,6 +478,10 @@ func (p *processor) handleFrame(frame gameFrame) {
 		}
 	case 19470:
 		p.handleDamageRequests(frame, plain)
+		if err := p.handleClientEffectPushes(frame, plain); err != nil {
+			p.stats.parseErrors++
+			fmt.Fprintf(p.diagnostic, "client_effect_push_parse_error=%v\n", err)
+		}
 	case 20332:
 		p.handleDamageResponses(plain)
 		if err := p.handleEmbeddedCombatReceivePackNotify(frame, plain); err != nil {

@@ -77,8 +77,9 @@ func float64Pointer(value *float32) *float64 {
 }
 
 // observeEffectLifecycle feeds one decoded lifecycle row to the effect tracker.
-// Only server-side gameplay-effect messages carry a handle: apply and remove
-// requests identify no instance and never create tracked state.
+// Gameplay-effect notifies and the local client's effect reports carry a handle;
+// server apply and remove requests and the client's answers to them identify no
+// instance by themselves and never create tracked state.
 func (p *processor) observeEffectLifecycle(row buffLifecycleAuditRow) {
 	if p == nil || p.effects == nil {
 		return
@@ -139,7 +140,67 @@ func (p *processor) observeEffectLifecycle(row buffLifecycleAuditRow) {
 		}
 		p.effects.ObserveUpdate(event)
 		p.effects.RefreshRelations(row.SessionNumber, holder, p.effectEntityRelation)
+	case "CLIENT_EFFECT_APPLY_REPORT", "CLIENT_EFFECT_STACK_REPORT", "CLIENT_EFFECT_REMOVE_REPORT":
+		p.observeClientEffectReport(row)
 	}
+}
+
+// observeClientEffectReport feeds an outbound effect report of the local client. The
+// report is the client's own state change, not a server confirmation, and the tracker
+// keeps it labelled client_report.
+func (p *processor) observeClientEffectReport(row buffLifecycleAuditRow) {
+	holder, ok := clientEffectHolder(row)
+	if !ok || row.HandleID == nil {
+		p.effects.NoteSkippedUncorrelatedHolder()
+		return
+	}
+	generation := p.effectHolderGeneration(holder)
+	switch row.EventKind {
+	case "CLIENT_EFFECT_APPLY_REPORT":
+		event := EffectApplyEvent{
+			Evidence: EffectEvidenceClientReport, SessionNumber: row.SessionNumber,
+			HolderEntityID: holder, HolderGeneration: generation, HandleID: *row.HandleID,
+			HolderRelation: p.effectEntityRelation(holder), SourceRelation: EffectRelationUnknown,
+			DurationSeconds: float64Pointer(row.DurationSeconds), ObservedAt: row.Timestamp,
+		}
+		if row.ID != nil {
+			event.EffectID, event.HasEffectID = *row.ID, true
+			event.DefinitionLinked = p.masters.hasBuffDefinition(*row.ID)
+			if event.DefinitionLinked {
+				event.Static = p.effectStaticInfo(*row.ID)
+			}
+		}
+		if row.InstigatorID != nil && *row.InstigatorID != 0 {
+			event.SourceEntityID, event.HasSource = *row.InstigatorID, true
+			event.SourceRelation = p.effectEntityRelation(*row.InstigatorID)
+		}
+		if row.StackCount != nil {
+			event.StackCount, event.HasStackCount = *row.StackCount, true
+		}
+		p.effects.ObserveApply(event)
+	case "CLIENT_EFFECT_STACK_REPORT":
+		event := EffectUpdateEvent{
+			SessionNumber: row.SessionNumber, HolderEntityID: holder, HolderGeneration: generation,
+			HandleID: *row.HandleID, ObservedAt: row.Timestamp,
+		}
+		// The push carries the full duration it restarts; observed natural expiries follow
+		// the last such push plus its duration on the client clock. NotRefreshDuration
+		// keeps the running estimate.
+		if row.NotRefreshDuration == nil || !*row.NotRefreshDuration {
+			event.DurationSeconds = float64Pointer(row.DurationSeconds)
+		}
+		if row.StackCount != nil {
+			event.StackCount, event.HasStackCount = *row.StackCount, true
+		}
+		p.effects.ObserveUpdate(event)
+	case "CLIENT_EFFECT_REMOVE_REPORT":
+		p.effects.ObserveRemove(EffectRemoveEvent{
+			SessionNumber: row.SessionNumber, HolderEntityID: holder, HolderGeneration: generation,
+			HandleID: *row.HandleID, ObservedAt: row.Timestamp,
+			Evidence: EffectEvidenceClientReport, Premature: row.IsPrematureRemoval != nil && *row.IsPrematureRemoval,
+		})
+	}
+	p.effects.RefreshRelations(row.SessionNumber, holder, p.effectEntityRelation)
 }
 
 // observeEffectSnapshot feeds one FightBuffInformation row of an EntityActiveResponse.
