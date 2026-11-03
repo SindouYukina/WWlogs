@@ -187,13 +187,19 @@ type encounterTracker struct {
 	droppedTotals    EncounterTotals
 	discardedEmpty   uint64
 	// prelude holds events seen out of battle while the battle-state signal governs boundaries.
-	prelude            []CombatEventRecord
-	outside            EncounterTotals
-	eventsWithoutTime  uint64
-	signalKnown        bool
-	inBattle           bool
-	highWater          time.Time
-	battleStateSignals uint64
+	prelude           []CombatEventRecord
+	outside           EncounterTotals
+	eventsWithoutTime uint64
+	signalKnown       bool
+	inBattle          bool
+	highWater         time.Time
+	// boundaryFloor is the end of the latest encounter that ended in this interval (or the interval's start).
+	// No later encounter may include an event at or before it, so two encounters never share a time span even
+	// when a response arrives late or out of order.
+	boundaryFloor time.Time
+	// boundaryFloorSession is the protocol session the floor belongs to; 0 applies it to every session.
+	boundaryFloorSession int
+	battleStateSignals   uint64
 	// unanchoredBattleStateSignals counts signals rejected because their PlayerId was not proven local.
 	unanchoredBattleStateSignals uint64
 	recordTransitions            bool
@@ -209,6 +215,8 @@ func newEncounterTracker(captureSessionID, intervalID uint64) *encounterTracker 
 func (t *encounterTracker) nextInterval(intervalID uint64) *encounterTracker {
 	next := newEncounterTracker(t.captureSessionID, intervalID)
 	next.signalKnown, next.inBattle, next.highWater = t.signalKnown, t.inBattle, t.highWater
+	// Events observed before the reset belong to the old interval and cannot start or extend an encounter here.
+	next.boundaryFloor = t.highWater
 	next.recordTransitions = t.recordTransitions
 	return next
 }
@@ -304,30 +312,26 @@ func (t *encounterTracker) observeEvent(record CombatEventRecord) string {
 		t.interrupt(record.ObservedAt, encounterEndSessionChange)
 	}
 	confirmed := isConfirmedActivity(record.Flow)
-	if t.current != nil {
-		switch t.current.state {
-		case EncounterActive:
-			if record.ObservedAt.Before(t.current.startAt) {
-				if t.current.startAt.Sub(record.ObservedAt) > encounterPreRollWindow {
-					t.outside.add(record)
-					return encounterAssignmentOutside
-				}
-				if confirmed {
-					t.current.startAt, t.current.startBasis = record.ObservedAt, encounterStartFirstActivity
-				}
-			}
-			t.addToCurrent(record)
-			return t.encounterID(t.current.sequence)
-		case EncounterEndingCandidate:
-			if !record.ObservedAt.After(t.current.endAt) {
-				t.addToCurrent(record)
-				return t.encounterID(t.current.sequence)
-			}
-			t.addPrelude(record)
-			return encounterAssignmentPrelude
-		}
+	if t.belowBoundaryFloor(record) {
+		// The event belongs to a span an earlier encounter (or interval) already closed.
+		t.outside.add(record)
+		return encounterAssignmentOutside
 	}
-	if t.signalKnown && !t.inBattle {
+	if t.current != nil && (t.current.state == EncounterActive || !record.ObservedAt.After(t.current.endAt)) {
+		if record.ObservedAt.Before(t.current.startAt) {
+			if t.current.startAt.Sub(record.ObservedAt) > encounterPreRollWindow {
+				t.outside.add(record)
+				return encounterAssignmentOutside
+			}
+			if confirmed {
+				t.current.startAt, t.current.startBasis = record.ObservedAt, encounterStartFirstActivity
+			}
+		}
+		t.addToCurrent(record)
+		return t.encounterID(t.current.sequence)
+	}
+	if t.current != nil || (t.signalKnown && !t.inBattle) {
+		// After an exit (ENDING_CANDIDATE) or out of battle, an event waits for a re-entry or a new enter.
 		t.addPrelude(record)
 		return encounterAssignmentPrelude
 	}
@@ -338,6 +342,15 @@ func (t *encounterTracker) observeEvent(record CombatEventRecord) string {
 	t.open(record.ObservedAt, record.Key.ProtocolSession, encounterStartFirstActivity, false)
 	t.addToCurrent(record)
 	return t.encounterID(t.current.sequence)
+}
+
+// belowBoundaryFloor reports whether an event falls at or before the end of an earlier encounter of its own
+// protocol session. Events of a newer session are not compared with an older session's floor.
+func (t *encounterTracker) belowBoundaryFloor(record CombatEventRecord) bool {
+	if t.boundaryFloor.IsZero() || (t.boundaryFloorSession != 0 && t.boundaryFloorSession != record.Key.ProtocolSession) {
+		return false
+	}
+	return !record.ObservedAt.After(t.boundaryFloor)
 }
 
 func (t *encounterTracker) addPrelude(record CombatEventRecord) {
@@ -377,7 +390,8 @@ func (t *encounterTracker) open(at time.Time, protocolSession int, basis string,
 // before the start moves the start back to that activity; older events go to the outside totals.
 func (t *encounterTracker) absorbPrelude() {
 	for _, record := range t.prelude {
-		if t.current.startAt.Sub(record.ObservedAt) > encounterPreRollWindow || record.Key.ProtocolSession != t.current.protocolSession {
+		if t.current.startAt.Sub(record.ObservedAt) > encounterPreRollWindow || record.Key.ProtocolSession != t.current.protocolSession ||
+			t.belowBoundaryFloor(record) {
 			t.outside.add(record)
 			continue
 		}
@@ -495,6 +509,9 @@ func (t *encounterTracker) finish(decidedAt time.Time, interruptBasis string) {
 	wasCandidate := record.state == EncounterEndingCandidate
 	record.state = EncounterFinished
 	record.endDecidedAt = decidedAt
+	if record.endAt.After(t.boundaryFloor) {
+		t.boundaryFloor, t.boundaryFloorSession = record.endAt, record.protocolSession
+	}
 	var outcome EncounterOutcome
 	switch {
 	case wasCandidate && record.startConfirmed:
@@ -537,6 +554,11 @@ func (t *encounterTracker) snapshotOf(record *encounterRecord, outcome Encounter
 	}
 	switch record.state {
 	case EncounterActive:
+		// A query older than the newest observed capture time cannot shorten a live encounter: the damage already
+		// counted was observed by then, so the end is never placed before it.
+		if query.Before(t.highWater) {
+			query = t.highWater
+		}
 		snapshot.EncounterDPS = encounterDPS(record, query, "live")
 	case EncounterEndingCandidate:
 		snapshot.EncounterDPS = encounterDPS(record, record.endAt, "ending_candidate")

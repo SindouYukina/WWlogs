@@ -17,6 +17,7 @@ import (
 // same processor and datagram entry point as the executables, twice per capture, and checks that:
 //   - both replays produce the same encounter segmentation and statistics (replay idempotency),
 //   - the encounter partition (completed + open + outside + evicted) adds up to the interval totals,
+//   - encounters of one protocol session never share a time span,
 //   - every confirmed encounter ends exactly at an accepted battle-state exit signal.
 //
 // It writes one canonical JSON file per capture for review. It is skipped unless WWLOGS_ENCOUNTER_REPLAY_OUT is
@@ -96,6 +97,7 @@ func TestEncounterReplayCollector(t *testing.T) {
 				t.Fatalf("two replays of the same capture produced different results")
 			}
 			assertEncounterTotalsConserved(t, first.Statistics)
+			assertEncountersDoNotOverlap(t, first.Statistics)
 			assertConfirmedEndsAtSignals(t, first)
 			data := equivalenceMarshal(t, first)
 			if err := os.WriteFile(filepath.Join(out, capture.name+".encounters.json"), data, 0o600); err != nil {
