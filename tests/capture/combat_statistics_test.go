@@ -430,9 +430,16 @@ func TestDamageStatisticsDamageSpanDPSUsesConfirmedOutgoingDamage(t *testing.T) 
 		got.Duration != 2*time.Second || got.Value != 150 || !got.StartObservedAt.Equal(time.Unix(10, 0)) || !got.EndObservedAt.Equal(time.Unix(12, 0)) {
 		t.Fatalf("damage-span DPS did not use the full confirmed outgoing range: %+v", snapshot)
 	}
-	if snapshot.EncounterDPS.Status != DPSStatusUnavailable || snapshot.EncounterDPS.Value != 0 ||
-		snapshot.GameTimeDPS.Status != DPSStatusUnavailable || snapshot.GameTimeDPS.Value != 0 {
-		t.Fatalf("unavailable time models were exposed as calculated: %+v", snapshot)
+	if snapshot.GameTimeDPS.Status != DPSStatusUnavailable || snapshot.GameTimeDPS.Value != 0 {
+		t.Fatalf("game-time DPS has no verified timer source and must stay unavailable: %+v", snapshot)
+	}
+	// Without battle-state signals the encounter is open from the first confirmed activity; its live value is
+	// evaluated at the newest observed capture time and is labeled live, not final.
+	encounter := snapshot.EncounterDPS
+	if encounter.Status != DPSStatusAvailable || encounter.Confidence != "live" || encounter.Damage != 300 ||
+		!encounter.StartObservedAt.Equal(time.Unix(10, 0)) || !encounter.EndObservedAt.Equal(time.Unix(12, 0)) || encounter.Value != 150 ||
+		snapshot.Encounters.Current == nil || snapshot.Encounters.Current.StartConfirmed || snapshot.Encounters.Current.Totals.DamageTaken != 9000 {
+		t.Fatalf("encounter DPS must be the live value of the open encounter: %+v", snapshot.Encounters)
 	}
 }
 

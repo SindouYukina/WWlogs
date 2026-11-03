@@ -98,6 +98,7 @@ func defaultLiveCaptureOutputBundle(localAppData string, now time.Time) (liveCap
 		effectState:      filepath.Join(directory, "effect-state-final.json"),
 		status:           filepath.Join(directory, "status.json"),
 		encounterSummary: filepath.Join(directory, "encounter-summary.md"),
+		encounterEvents:  filepath.Join(directory, "encounter-events.jsonl"),
 	}, nil
 }
 
@@ -164,6 +165,7 @@ func Main() {
 	stopFile := flag.String("stop-file", "", "Stop live capture cleanly when the specified file appears")
 	statusFile := flag.String("status-file", "", "Write live capture status as JSON to the specified path")
 	maxPCAPBytes := flag.Int64("max-pcap-bytes", 0, "Limit live PCAP size and stop before exceeding the limit")
+	encounterOut := flag.String("encounter-out", "", "Optionally write battle-state signals, normalized combat records with their encounter assignment, and encounter transitions as JSONL")
 	liveDiagnosticOut := flag.String("live-diagnostic-out", "", "Optionally write one bounded-rate JSONL damage and effect snapshot per second")
 	showEffectEvents := flag.Bool("show-effect-events", true, "Print combat gameplay-effect lifecycle events during live capture")
 	showAllEffectEvents := flag.Bool("show-all-effect-events", false, "Diagnostic: print every decoded gameplay-effect message during live capture, including unknown and non-combat effects, instant effects, requests and refreshes")
@@ -192,7 +194,7 @@ func Main() {
 		*buffOverlapOut, *effectStateOut, *combatStateOutPath, *hpStateOutPath, *damagePushOutPath,
 		*skillRefOutPath, *bulletRefOutPath, *shieldRefOutPath, *partRefOutPath, *clientPushOutPath,
 		*summonOwnerOutPath, *frameArchiveOut, *commandCensusOut, *clientVersionOut, *statusFile,
-		*liveDiagnosticOut,
+		*liveDiagnosticOut, *encounterOut,
 	) {
 		bundle, err := defaultLiveCaptureOutputBundle(os.Getenv("LOCALAPPDATA"), time.Now())
 		if err != nil {
@@ -207,6 +209,7 @@ func Main() {
 		*effectStateOut = bundle.effectState
 		*statusFile = bundle.status
 		*encounterSummaryOut = bundle.encounterSummary
+		*encounterOut = bundle.encounterEvents
 		if !flagWasSet("duration") {
 			*duration = 20 * time.Minute
 		}
@@ -381,6 +384,22 @@ func Main() {
 	}
 	if buffEventFile != nil {
 		processor.buffLifecycle = buffEventFile
+	}
+	if *encounterOut != "" {
+		if dir := filepath.Dir(*encounterOut); dir != "." {
+			if err := os.MkdirAll(dir, 0o700); err != nil {
+				fatal("create encounter output directory", err)
+			}
+		}
+		encounterFile, err := os.Create(*encounterOut)
+		if err != nil {
+			fatal("create encounter output", err)
+		}
+		defer encounterFile.Close()
+		encounterWriter := bufio.NewWriter(encounterFile)
+		defer encounterWriter.Flush()
+		processor.encounterOut = encounterWriter
+		processor.damageStatistics.recordEncounterTransitions(true)
 	}
 	if encounterSummaryFile != nil {
 		processor.encounterSummary = encounterSummaryFile
@@ -854,6 +873,8 @@ func Main() {
 	}
 
 finished:
+	processor.finishCapture()
+	processor.writeEncounterFinal()
 	writeLiveDiagnostic(time.Now(), true)
 	if statsResult, statsErr := handle.Stats(); statsErr == nil && statsResult != nil {
 		stats.kernelDrops = statsResult.PacketsDropped

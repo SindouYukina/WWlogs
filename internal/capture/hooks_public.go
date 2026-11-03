@@ -5,12 +5,25 @@ package capture
 import (
 	"database/sql"
 	"io"
+	"time"
 )
 
 // Public builds have no diagnostic outputs. Each function below is implemented in a wwdev file
 // and is a no-op here so that shared code can call it unconditionally.
 
 func (p *processor) writeStructuredEventJSONL(event any) {
+}
+
+func (p *processor) writeBattleStateSignal(at time.Time, container string, signal playerBattleStateSignal, anchor string) {
+}
+
+func (p *processor) writeCombatEventRecord(record CombatEventRecord, assignment string) {
+}
+
+func (p *processor) flushEncounterTransitions() {
+}
+
+func (p *processor) writeEncounterFinal() {
 }
 
 func (p *processor) writeBuffLifecycleConsole(row buffLifecycleAuditRow) {
