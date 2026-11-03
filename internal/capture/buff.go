@@ -470,6 +470,12 @@ func (p *processor) handleCombatReceivePackNotify(frame gameFrame, body []byte) 
 						return fmt.Errorf("write CombatNotifyData audit field %d: %w", notification.number, err)
 					}
 				}
+				if notification.number == combatNotifyPlayerBattleState && notification.wire == 2 {
+					if err := p.handlePlayerBattleState(frame, combatNotifyContainer(frame.commandID), notification.data); err != nil {
+						return err
+					}
+					continue
+				}
 				schemaCommandID, supported := combatNotifyBuffSchemaCommands[notification.number]
 				if !supported || notification.wire != 2 {
 					continue

@@ -93,6 +93,7 @@ type liveCaptureOutputBundle struct {
 	effectState      string
 	status           string
 	encounterSummary string
+	encounterEvents  string
 }
 
 func findDeviceByIP(ip string) (string, error) {

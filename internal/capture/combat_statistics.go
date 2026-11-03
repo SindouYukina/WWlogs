@@ -62,6 +62,9 @@ type DPSResult struct {
 	Value           float64       `json:"value"`
 	StartObservedAt time.Time     `json:"startObservedAt,omitempty"`
 	EndObservedAt   time.Time     `json:"endObservedAt,omitempty"`
+	// Confidence is set on Encounter DPS only: live, ending_candidate, confirmed, inferred, interrupted, or
+	// incomplete. Only confirmed and inferred describe a finished encounter with an observed end.
+	Confidence string `json:"confidence,omitempty"`
 }
 
 // CaptureQueryTime binds an explicit timestamp from a capture clock domain to its capture session.
@@ -96,6 +99,8 @@ type DamageStatisticsSnapshot struct {
 	DamageSpanDPS   DPSResult                    `json:"damageSpanDps"`
 	Rolling5sDPS    DPSResult                    `json:"rolling5sDps"`
 	Rolling10sDPS   DPSResult                    `json:"rolling10sDps"`
+	// Encounters partitions this interval's events into encounters; EncounterDPS above is its headline value.
+	Encounters EncounterTrackerSnapshot `json:"encounters"`
 }
 
 type rollingDamageEvent struct {
@@ -139,14 +144,18 @@ type DamageStatistics struct {
 	// appliedKeys outlives Reset: a repeated response must not re-enter a later interval either.
 	appliedKeys     map[CombatEventKey]struct{}
 	appliedKeyOrder []CombatEventKey
+	// encounters is replaced, not cleared, on Reset so encounter IDs carry the new interval.
+	encounters *encounterTracker
 }
 
 // NewDamageStatistics creates an empty damage statistics accumulator.
 func NewDamageStatistics() *DamageStatistics {
+	captureSessionID := captureSessionSequence.Add(1)
 	return &DamageStatistics{
-		captureSessionID:     captureSessionSequence.Add(1),
+		captureSessionID:     captureSessionID,
 		statisticsIntervalID: 1,
 		entities:             make(map[combatStatisticsKey]PlayerEntityDamageSnapshot),
+		encounters:           newEncounterTracker(captureSessionID, 1),
 	}
 }
 
@@ -173,6 +182,10 @@ func (s *DamageStatistics) SnapshotAt(query CaptureQueryTime) DamageStatisticsSn
 
 func (s *DamageStatistics) snapshotAtLocked(query CaptureQueryTime) DamageStatisticsSnapshot {
 	snapshot := s.snapshotLocked()
+	if query.CaptureSessionID == s.captureSessionID && !query.Timestamp.IsZero() {
+		snapshot.Encounters = s.encounters.snapshot(query.Timestamp)
+		snapshot.EncounterDPS = snapshot.Encounters.headlineDPS()
+	}
 	reason := s.validateRollingQueryLocked(query)
 	if reason != "" {
 		snapshot.Rolling5sDPS = unavailableRollingDPS(reason)
@@ -244,7 +257,8 @@ func (s *DamageStatistics) snapshotLocked() DamageStatisticsSnapshot {
 	for _, entity := range s.entities {
 		snapshot.ByPlayerEntity = append(snapshot.ByPlayerEntity, entity)
 	}
-	snapshot.EncounterDPS = DPSResult{Status: DPSStatusUnavailable, Reason: "encounter_boundaries_unavailable"}
+	snapshot.Encounters = s.encounters.snapshot(time.Time{})
+	snapshot.EncounterDPS = snapshot.Encounters.headlineDPS()
 	snapshot.GameTimeDPS = DPSResult{Status: DPSStatusUnavailable, Reason: "official_timer_duration_unavailable"}
 	snapshot.DamageSpanDPS = s.damageSpanDPSLocked()
 	snapshot.Rolling5sDPS = unavailableRollingDPS("query_time_required")
@@ -322,6 +336,7 @@ func (s *DamageStatistics) resetLocked() {
 	s.hasRollingSession = false
 	s.rollingUnavailableReason = ""
 	s.duplicateEvents = 0
+	s.encounters = s.encounters.nextInterval(s.statisticsIntervalID)
 }
 
 func (p *processor) damageStatisticsSnapshot() DamageStatisticsSnapshot {
@@ -334,7 +349,8 @@ func (p *processor) damageStatisticsSnapshot() DamageStatisticsSnapshot {
 func emptyDamageStatisticsSnapshot() DamageStatisticsSnapshot {
 	return DamageStatisticsSnapshot{
 		ByPlayerEntity: []PlayerEntityDamageSnapshot{},
-		EncounterDPS:   DPSResult{Status: DPSStatusUnavailable, Reason: "encounter_boundaries_unavailable"},
+		EncounterDPS:   DPSResult{Status: DPSStatusUnavailable, Reason: "no_encounter_observed"},
+		Encounters:     EncounterTrackerSnapshot{State: EncounterIdle, BattleState: "unknown", Completed: []EncounterSnapshot{}},
 		GameTimeDPS:    DPSResult{Status: DPSStatusUnavailable, Reason: "official_timer_duration_unavailable"},
 		DamageSpanDPS:  DPSResult{Status: DPSStatusInsufficientData, Reason: "no_confirmed_outgoing_damage"},
 		Rolling5sDPS:   unavailableRollingDPS("query_time_required"),
@@ -378,11 +394,18 @@ func (s *DamageStatistics) addDamageEvent(event combatEvent, sourceRelation, tar
 	s.addCombatEvent(record)
 }
 
-// addCombatEvent applies one normalized record. Only damage enters these totals; healing stays out because HPS
-// has no verified semantics. A record whose key was already applied is counted as a duplicate and ignored.
-func (s *DamageStatistics) addCombatEvent(record CombatEventRecord) {
+// Statistics-level assignments for records that never reach the encounter tracker.
+const (
+	statisticsAssignmentDuplicate  = "duplicate"
+	statisticsAssignmentNotCounted = "not_counted"
+)
+
+// addCombatEvent applies one normalized record and returns its encounter assignment. Only damage enters these
+// totals; healing stays out because HPS has no verified semantics. A record whose key was already applied is
+// counted as a duplicate and ignored.
+func (s *DamageStatistics) addCombatEvent(record CombatEventRecord) string {
 	if s == nil || record.Kind != CombatEventDamage || record.Amount <= 0 {
-		return
+		return statisticsAssignmentNotCounted
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -392,7 +415,7 @@ func (s *DamageStatistics) addCombatEvent(record CombatEventRecord) {
 	if record.Key.hasIdentity() {
 		if _, seen := s.appliedKeys[record.Key]; seen {
 			s.duplicateEvents++
-			return
+			return statisticsAssignmentDuplicate
 		}
 		s.rememberAppliedKeyLocked(record.Key)
 	}
@@ -415,6 +438,7 @@ func (s *DamageStatistics) addCombatEvent(record CombatEventRecord) {
 		s.unattributedIncomingDamage += record.Amount
 		s.unattributedIncomingEvents++
 	}
+	return s.encounters.observeEvent(record)
 }
 
 // rememberAppliedKeyLocked keeps a bounded FIFO of applied keys. The bound matches the RPC consumed set, so an

@@ -211,6 +211,10 @@ type processor struct {
 	effects                   *EffectTracker
 	census                    *commandCensus
 	sessionNumber             int
+	encounterOut              diagWriter
+	// scenePlayerIDs lists the players of the current scene; it anchors battle-state signals before the
+	// local role report does.
+	scenePlayerIDs []uint64
 }
 
 func newProcessor(rsaKey *staticRSA, stdout, diagnostic, audit io.Writer) *processor {
@@ -384,6 +388,7 @@ func isImplementedCommand(commandID uint16) bool {
 func (p *processor) handleFrame(frame gameFrame) {
 	p.archiveFrame(frame)
 	p.currentFrameTime = frame.timestamp
+	p.observeEncounterClock(frame.timestamp)
 	var censusEntry *commandCensusEntry
 	if p.census != nil {
 		censusEntry = p.census.observeFrame(frame, p.sessionNumber)
@@ -403,6 +408,11 @@ func (p *processor) handleFrame(frame gameFrame) {
 		}
 		p.sessionNumber++
 		p.playerRelevance.reset()
+		p.scenePlayerIDs = nil
+		if p.damageStatistics != nil {
+			p.damageStatistics.observeSessionChange(frame.timestamp)
+			p.flushEncounterTransitions()
+		}
 		if p.census != nil && p.sessionNumber > p.census.sessions {
 			p.census.sessions = p.sessionNumber
 		}
@@ -520,6 +530,7 @@ func (p *processor) handleFrame(frame gameFrame) {
 			return
 		}
 		p.playerRelevance.resetSceneEntities()
+		p.observeSceneJoin(plain, frame.timestamp)
 		p.effects.EndLiveState()
 		p.backfillAvailableSummaryCredits()
 		p.sourceRoles.reset()
