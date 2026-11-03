@@ -8,7 +8,8 @@
   Every step reports PASS, FAIL, NOT RUN, or BLOCKED. Nothing is reported as PASS unless it executed.
 
   Steps that need local-only material (privateKey.pem, archived PCAP captures) are NOT RUN, not PASS, when
-  that material is missing. Pass -PcapDirectory to add the replay regression and the public output audit.
+  that material is missing. Pass -PcapDirectory to add the replay regression, the public output audit, and the
+  encounter replay (determinism and partition) through an embedded-key development test binary.
 #>
 param(
     # Directory that contains archived *.pcap files. Local and private; never read from the repository.
@@ -79,11 +80,11 @@ try {
 
                 # Public output surface: no diagnostic flags, no diagnostic strings, no PCAP writer symbols.
                 $help = (& $publicExe -h 2>&1) -join "`n"
-                $flagLeak = @('pcap-out', 'event-jsonl-out', 'buff-event-out', 'status-file', 'research', 'live-diagnostic-out', 'frame-archive-out', 'protocol-schema') | Where-Object { $help -match "-$_\b" }
+                $flagLeak = @('pcap-out', 'event-jsonl-out', 'buff-event-out', 'status-file', 'research', 'live-diagnostic-out', 'frame-archive-out', 'protocol-schema', 'encounter-out') | Where-Object { $help -match "-$_\b" }
                 Set-Result 'public flags' $(if (-not $flagLeak) { 'PASS' } else { 'FAIL' }) $(if ($flagLeak) { "exposes: $($flagLeak -join ', ')" })
                 $bytes = [IO.File]::ReadAllBytes($publicExe)
                 $latin = [Text.Encoding]::GetEncoding(28591).GetString($bytes)
-                $stringLeak = @('combat-events.jsonl', 'dps-effects.jsonl', 'buff-events.jsonl', 'status.json', 'capture-spool', 'LIVE_DIAGNOSTIC_SNAPSHOT', 'event-jsonl-out', 'pcapgo') | Where-Object { $latin.Contains($_) }
+                $stringLeak = @('combat-events.jsonl', 'dps-effects.jsonl', 'buff-events.jsonl', 'status.json', 'capture-spool', 'LIVE_DIAGNOSTIC_SNAPSHOT', 'event-jsonl-out', 'pcapgo', 'encounter-events.jsonl', 'BATTLE_STATE_SIGNAL', 'COMBAT_EVENT_RECORD', 'ENCOUNTER_TRANSITION') | Where-Object { $latin.Contains($_) }
                 Set-Result 'public binary strings' $(if (-not $stringLeak) { 'PASS' } else { 'FAIL' }) $(if ($stringLeak) { "contains: $($stringLeak -join ', ')" })
 
                 # 4. Optional replay regression against private archived captures.
@@ -107,6 +108,36 @@ try {
                         if ($created -ne 0 -or -not $publicLine -or $publicLine -ne $developmentLine) { $failures += $pcap.Name }
                     }
                     Set-Result 'replay: public output audit + statistics equality' $(if ($pcaps.Count -gt 0 -and $failures.Count -eq 0) { 'PASS' } elseif ($pcaps.Count -eq 0) { 'NOT RUN' } else { 'FAIL' }) "$($pcaps.Count) captures$(if ($failures) { "; failed: $($failures -join ', ')" })"
+
+                    # 5. Encounter replay: every capture twice through the development test binary; segmentation and
+                    # statistics must repeat exactly and the encounter partition must add up to the interval totals.
+                    if ($pcaps.Count -eq 0) {
+                        Set-Result 'replay: encounter determinism + partition' 'NOT RUN' 'no captures'
+                    } else {
+                        $testBinary = Join-Path $buildDirectory 'capture-dev.test.exe'
+                        $testBuild = Invoke-Go @('run', './scripts/embed-key.go', '-profile', 'development', '-test-binary', './internal/capture', '-o', $testBinary)
+                        if ($testBuild.Code -ne 0) {
+                            Set-Result 'replay: encounter determinism + partition' 'FAIL' $testBuild.Output.Trim()
+                        } else {
+                            $listPath = Join-Path $buildDirectory 'encounter-pcaps.txt'
+                            $root = (Resolve-Path -LiteralPath $PcapDirectory).ProviderPath
+                            $lines = foreach ($pcap in $pcaps) {
+                                $name = $pcap.FullName.Substring($root.Length).TrimStart([char]'\', [char]'/') -replace '[\\/]', '__'
+                                "$name|$($pcap.FullName)"
+                            }
+                            Set-Content -LiteralPath $listPath -Value $lines -Encoding utf8
+                            $env:WWLOGS_ENCOUNTER_REPLAY_OUT = Join-Path $buildDirectory 'encounter-replay'
+                            $env:WWLOGS_ENCOUNTER_REPLAY_PCAPS = $listPath
+                            $env:WWLOGS_ENCOUNTER_REPLAY_MASTER_DB = Join-Path $repoRoot 'data/master_data.db'
+                            try {
+                                $encounterOut = & $testBinary '-test.run' '^TestEncounterReplayCollector$' '-test.count' '1' 2>&1
+                                $encounterCode = $LASTEXITCODE
+                            } finally {
+                                Remove-Item Env:WWLOGS_ENCOUNTER_REPLAY_OUT, Env:WWLOGS_ENCOUNTER_REPLAY_PCAPS, Env:WWLOGS_ENCOUNTER_REPLAY_MASTER_DB -ErrorAction SilentlyContinue
+                            }
+                            Set-Result 'replay: encounter determinism + partition' $(if ($encounterCode -eq 0) { 'PASS' } else { 'FAIL' }) "$($pcaps.Count) captures$(if ($encounterCode -ne 0) { '; ' + (($encounterOut | Select-Object -Last 20) -join ' ') })"
+                        }
+                    }
                 }
             }
         } finally {
