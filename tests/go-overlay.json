@@ -78,6 +78,8 @@
     "internal/capture/central_effect_state_test.go": "tests/capture/effect_state_test.go",
     "tests/capture/empty_body_test.go": "",
     "internal/capture/central_empty_body_test.go": "tests/capture/empty_body_test.go",
+    "tests/capture/encounter_boundary_test.go": "",
+    "internal/capture/central_encounter_boundary_test.go": "tests/capture/encounter_boundary_test.go",
     "tests/capture/encounter_processor_test.go": "",
     "internal/capture/central_encounter_processor_test.go": "tests/capture/encounter_processor_test.go",
     "tests/capture/encounter_replay_dev_test.go": "",
