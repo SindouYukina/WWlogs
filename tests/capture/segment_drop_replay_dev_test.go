@@ -59,18 +59,26 @@ type segmentDropCase struct {
 	TransportState     string `json:"transportState"`
 	IntervalIntegrity  string `json:"intervalIntegrity"`
 	NonIntactEncounter int    `json:"nonIntactEncounters"`
+	// Phase 2: out-of-order pairing, per-entity revalidation and role reconciliation.
+	RevalidatedEvents  uint64  `json:"revalidatedEvents"`
+	PairedOutOfOrder   uint64  `json:"pairedOutOfOrder"`
+	MaxOutOfOrderMs    float64 `json:"maxOutOfOrderWaitMs"`
+	UnpairedResponses  uint64  `json:"unpairedResponses"`
+	DuplicateEvents    uint64  `json:"duplicateEvents"`
+	UnassignedRoleLost int64   `json:"unassignedRoleDamageDelta"`
 }
 
 type segmentDropSummary struct {
-	Name             string            `json:"name"`
-	BaselineFrames   int               `json:"baselineFrames"`
-	BaselineDamage   int64             `json:"baselineDamageDealt"`
-	BaselineSkips    int               `json:"baselineGapsSkipped"`
-	Cases            []segmentDropCase `json:"cases"`
-	MaxFramesLost    int               `json:"maxFramesLost"`
-	MidFrameCases    int               `json:"midFrameCases"`
-	BoundaryCases    int               `json:"boundaryCases"`
-	OutboundExactAll bool              `json:"outboundLostFrameEstimateExact"`
+	Name             string             `json:"name"`
+	BaselineFrames   int                `json:"baselineFrames"`
+	BaselineDamage   int64              `json:"baselineDamageDealt"`
+	BaselineSkips    int                `json:"baselineGapsSkipped"`
+	BaselinePairing  RPCPairingSnapshot `json:"baselinePairing"`
+	Cases            []segmentDropCase  `json:"cases"`
+	MaxFramesLost    int                `json:"maxFramesLost"`
+	MidFrameCases    int                `json:"midFrameCases"`
+	BoundaryCases    int                `json:"boundaryCases"`
+	OutboundExactAll bool               `json:"outboundLostFrameEstimateExact"`
 }
 
 func TestSegmentDropReplayCollector(t *testing.T) {
@@ -148,6 +156,7 @@ type segmentDropRun struct {
 	statistics DamageStatisticsSnapshot
 	transport  TransportHealthSnapshot
 	context    ContextValiditySnapshot
+	pairing    RPCPairingSnapshot
 	stats      captureStats
 }
 
@@ -156,7 +165,12 @@ func runSegmentDrops(t *testing.T, masters *gameMaster, key *staticRSA, capture 
 	baseline, pushes := segmentDropReplay(t, masters, key, capture.path, nil)
 	summary := segmentDropSummary{
 		Name: capture.name, BaselineFrames: len(baseline.frames), BaselineDamage: baseline.statistics.DamageDealt,
-		BaselineSkips: baseline.stats.kcpGapsSkipped, OutboundExactAll: true,
+		BaselineSkips: baseline.stats.kcpGapsSkipped, BaselinePairing: baseline.pairing, OutboundExactAll: true,
+	}
+	assertRoleTotalsReconcile(t, baseline.statistics)
+	baselineRoles := map[uint64]RoleDamageSnapshot{}
+	for _, role := range baseline.statistics.Roles {
+		baselineRoles[role.RoleID] = role
 	}
 	known := make(map[string]int, len(baseline.frames))
 	for _, frame := range baseline.frames {
@@ -197,6 +211,16 @@ func runSegmentDrops(t *testing.T, masters *gameMaster, key *staticRSA, capture 
 			s.DamageDealt+s.UnattributedOutgoingDamage > b.DamageDealt+b.UnattributedOutgoingDamage {
 			t.Errorf("drop %+v invented damage: dealt %d/%d taken %d/%d", drop, s.DamageDealt, b.DamageDealt, s.DamageTaken, b.DamageTaken)
 		}
+		if s.DuplicateEvents > b.DuplicateEvents {
+			t.Errorf("drop %+v applied a repeated response key: duplicates %d/%d", drop, s.DuplicateEvents, b.DuplicateEvents)
+		}
+		assertRoleTotalsReconcile(t, s)
+		for _, role := range s.Roles {
+			if base := baselineRoles[role.RoleID]; role.DamageDealt > base.DamageDealt || role.DamageTaken > base.DamageTaken {
+				t.Errorf("drop %+v credited role %d with more than the unmodified replay: dealt %d/%d taken %d/%d",
+					drop, role.RoleID, role.DamageDealt, base.DamageDealt, role.DamageTaken, base.DamageTaken)
+			}
+		}
 		var health TransportDirectionHealth
 		for _, direction := range run.transport.Directions {
 			if direction.Direction == drop.direction {
@@ -229,6 +253,10 @@ func runSegmentDrops(t *testing.T, masters *gameMaster, key *staticRSA, capture 
 			LostFramesUnknown: health.LostFramesUnknown, DamageDealtLost: b.DamageDealt - s.DamageDealt,
 			DowngradedEvents: run.context.DowngradedEvents, TransportState: string(run.transport.State),
 			IntervalIntegrity: string(s.Integrity.Status), NonIntactEncounter: nonIntact,
+			RevalidatedEvents: run.context.RevalidatedEvents, PairedOutOfOrder: run.pairing.PairedOutOfOrder,
+			MaxOutOfOrderMs: run.pairing.MaxOutOfOrderWaitMs, DuplicateEvents: s.DuplicateEvents,
+			UnpairedResponses:  run.pairing.UnpairedExpired + run.pairing.UnpairedEvicted + run.pairing.UnpairedSessionChange + run.pairing.UnpairedCaptureEnd,
+			UnassignedRoleLost: b.UnassignedRole.DamageDealt - s.UnassignedRole.DamageDealt,
 		}
 		if drop.direction == "out" && baselineLosses == 0 && (health.LostFramesUnknown != 0 || int(health.EstimatedLostFrames) != lost) {
 			summary.OutboundExactAll = false
@@ -318,7 +346,7 @@ func segmentDropReplay(t *testing.T, masters *gameMaster, key *staticRSA, path s
 		}
 		sort.Slice(pushes[stream], func(i, j int) bool { return pushes[stream][i] < pushes[stream][j] })
 	}
-	return segmentDropRun{frames: frames, statistics: statistics, transport: p.transportHealthSnapshot(), context: p.context.snapshot(), stats: stats}, pushes
+	return segmentDropRun{frames: frames, statistics: statistics, transport: p.transportHealthSnapshot(), context: p.context.snapshot(), pairing: p.rpcPairingSnapshot(), stats: stats}, pushes
 }
 
 // filterKCPSegments returns payload without the PUSH segments listed in drop and records the PUSH sequences seen.

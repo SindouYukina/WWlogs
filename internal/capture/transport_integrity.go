@@ -326,6 +326,10 @@ type ContextValiditySnapshot struct {
 	State            ContextState               `json:"state"`
 	Components       []ContextComponentSnapshot `json:"components"`
 	DowngradedEvents uint64                     `json:"downgradedEvents"`
+	// RevalidatedEvents counts local events kept local while attribution was suspect, because the client referenced
+	// their local entity after the loss began; ClientReferencedEntities is the size of that evidence set.
+	RevalidatedEvents        uint64 `json:"revalidatedEvents"`
+	ClientReferencedEntities int    `json:"clientReferencedEntities"`
 }
 
 type contextComponent struct {
@@ -359,6 +363,51 @@ type contextValidity struct {
 	ongoingInbound                              int
 	lastInboundLossEnd                          time.Time
 	downgradedEvents                            uint64
+	// clientReferenced holds the entities the local client named in its own DamageExecuteRequests since the latest
+	// inbound loss began. See revalidatesEntity.
+	clientReferenced  map[uint64]struct{}
+	referencedOrder   []uint64
+	revalidatedEvents uint64
+}
+
+// maxClientReferencedEntities bounds the per-entity revalidation set; the oldest reference is forgotten first, which
+// only makes the gate more conservative.
+const maxClientReferencedEntities = 8192
+
+// observeClientReference records that the client referenced an entity while attribution is suspect.
+func (c *contextValidity) observeClientReference(entityIDs ...uint64) {
+	if !c.attribution.suspect {
+		return
+	}
+	if c.clientReferenced == nil {
+		c.clientReferenced = make(map[uint64]struct{})
+	}
+	for _, id := range entityIDs {
+		if id == 0 {
+			continue
+		}
+		if _, ok := c.clientReferenced[id]; ok {
+			continue
+		}
+		c.clientReferenced[id] = struct{}{}
+		c.referencedOrder = append(c.referencedOrder, id)
+		for len(c.referencedOrder) > maxClientReferencedEntities {
+			delete(c.clientReferenced, c.referencedOrder[0])
+			c.referencedOrder = c.referencedOrder[1:]
+		}
+	}
+}
+
+// revalidatesEntity reports whether the client has referenced entityID since the latest inbound loss began.
+//
+// Evidence (research note transport-recovery-backlog, Phase 2B): in 21 archived captures (42 protocol sessions, 73
+// scene joins, 3,858 entity adds) no EntityId was ever reused for a different entity inside a protocol session: 65 IDs
+// came back after being absent, all with the same configuration and kind, and no local role EntityId ever came back.
+// A client request naming an EntityId after the loss therefore names the same entity the registry knew before it, and
+// a local classification built on that entity still holds. Without such a reference the event stays unattributed.
+func (c *contextValidity) revalidatesEntity(entityID uint64) bool {
+	_, ok := c.clientReferenced[entityID]
+	return ok
 }
 
 var contextComponentOrder = []string{contextAttribution, contextEntities, contextBattleState, contextEffects}
@@ -380,6 +429,8 @@ func (c *contextValidity) component(name string) *contextComponent {
 // reports describe its current role, and a missed report does not change which entities are local.
 func (c *contextValidity) invalidate(direction string, at time.Time, reason string) {
 	if direction == "in" {
+		// References made before this loss are not evidence about it.
+		c.clientReferenced, c.referencedOrder = nil, nil
 		c.ongoingInbound++
 		c.attribution.invalidate(at, reason)
 		c.entities.invalidate(at, reason)
@@ -407,6 +458,8 @@ func (c *contextValidity) inboundEvidenceUsable(at time.Time) bool {
 
 // resetForScene revalidates everything at a scene join or protocol session start: both rebuild the runtime context.
 func (c *contextValidity) resetForScene(at time.Time, basis string) {
+	// A new scene assigns new EntityIds; references to the old ones prove nothing about it.
+	c.clientReferenced, c.referencedOrder = nil, nil
 	for _, name := range contextComponentOrder {
 		component := c.component(name)
 		if name == contextEffects || c.inboundEvidenceUsable(at) || basis == contextBasisSessionStart {
@@ -419,7 +472,8 @@ func (c *contextValidity) resetForScene(at time.Time, basis string) {
 }
 
 func (c *contextValidity) snapshot() ContextValiditySnapshot {
-	snapshot := ContextValiditySnapshot{State: ContextValid, DowngradedEvents: c.downgradedEvents}
+	snapshot := ContextValiditySnapshot{State: ContextValid, DowngradedEvents: c.downgradedEvents,
+		RevalidatedEvents: c.revalidatedEvents, ClientReferencedEntities: len(c.clientReferenced)}
 	for _, name := range contextComponentOrder {
 		component := c.component(name)
 		entry := ContextComponentSnapshot{
@@ -486,8 +540,16 @@ func (p *processor) gateAttribution(record CombatEventRecord) CombatEventRecord 
 	}
 	switch record.Flow {
 	case CombatFlowLocalOutgoing:
+		if p.context.revalidatesEntity(record.Source.EntityID) {
+			p.context.revalidatedEvents++
+			return record
+		}
 		record.Flow = CombatFlowUnattributedOutgoing
 	case CombatFlowLocalIncoming:
+		if p.context.revalidatesEntity(record.Target.EntityID) {
+			p.context.revalidatedEvents++
+			return record
+		}
 		record.Flow = CombatFlowUnattributedIncoming
 	default:
 		return record

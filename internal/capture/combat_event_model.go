@@ -82,6 +82,9 @@ type CombatEventRecord struct {
 	// ContextDowngrade is set when a local flow was kept unattributed because local-player attribution was suspect
 	// after a transport loss; Flow and Confidence then hold the unattributed classification.
 	ContextDowngrade string `json:"contextDowngrade,omitempty"`
+	// SourceRole and TargetRole credit a confirmed local endpoint to a role by runtime evidence; nil means none.
+	SourceRole *CombatRole `json:"sourceRole,omitempty"`
+	TargetRole *CombatRole `json:"targetRole,omitempty"`
 }
 
 func (r playerRelation) String() string {

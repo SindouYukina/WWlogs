@@ -107,6 +107,10 @@ type DamageStatisticsSnapshot struct {
 	Encounters EncounterTrackerSnapshot `json:"encounters"`
 	// Integrity is the integrity of this interval's totals (the same value as Encounters.Integrity).
 	Integrity DataIntegrity `json:"integrity"`
+	// Roles credits DamageDealt and DamageTaken to local roles; UnassignedRole holds the confirmed local damage without
+	// role evidence. Together they add up to DamageDealt and DamageTaken exactly (role_aggregation.go).
+	Roles          []RoleDamageSnapshot `json:"roles"`
+	UnassignedRole UnassignedRoleTotals `json:"unassignedRole"`
 }
 
 type rollingDamageEvent struct {
@@ -142,7 +146,6 @@ type DamageStatistics struct {
 	rollingEvents              []rollingDamageEvent
 	rollingHighWater           time.Time
 	rollingRetentionStart      time.Time
-	rollingLastQuery           time.Time
 	rollingSessionNumber       int
 	hasRollingSession          bool
 	rollingUnavailableReason   string
@@ -154,6 +157,7 @@ type DamageStatistics struct {
 	encounters *encounterTracker
 	// lastDowngradeAt is the capture time of the newest event kept unattributed by the attribution context gate.
 	lastDowngradeAt time.Time
+	roles           roleAggregate
 }
 
 // NewDamageStatistics creates an empty damage statistics accumulator.
@@ -177,14 +181,15 @@ func (s *DamageStatistics) Snapshot() DamageStatisticsSnapshot {
 	return s.snapshotLocked()
 }
 
-// SnapshotAt returns statistics and rolling DPS for an explicit timestamp from this capture session.
-// The timestamp must use the same clock domain as the capture events; backwards queries are unavailable.
+// SnapshotAt returns statistics and rolling DPS for an explicit timestamp from this capture session. The timestamp
+// must use the same clock domain as the capture events. A query reads only: any number of readers may query at any
+// times, in any order, without affecting each other or later queries.
 func (s *DamageStatistics) SnapshotAt(query CaptureQueryTime) DamageStatisticsSnapshot {
 	if s == nil {
 		return emptyDamageStatisticsSnapshot()
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.snapshotAtLocked(query)
 }
 
@@ -201,8 +206,6 @@ func (s *DamageStatistics) snapshotAtLocked(query CaptureQueryTime) DamageStatis
 		snapshot.Rolling10sDPS = unavailableRollingDPS(reason)
 		return snapshot
 	}
-	s.rollingLastQuery = query.Timestamp
-	s.advanceRollingRetentionLocked(query.Timestamp)
 	snapshot.Rolling5sDPS = s.rollingDPSLocked(query.Timestamp, rollingFiveSecondWindow)
 	snapshot.Rolling10sDPS = s.rollingDPSLocked(query.Timestamp, rollingTenSecondWindow)
 	return snapshot
@@ -216,10 +219,6 @@ func (s *DamageStatistics) validateRollingQueryLocked(query CaptureQueryTime) st
 		return "query_time_unavailable"
 	case s.rollingUnavailableReason != "":
 		return s.rollingUnavailableReason
-	case !s.rollingLastQuery.IsZero() && query.Timestamp.Before(s.rollingLastQuery):
-		return "query_time_moved_backwards"
-	case !s.rollingRetentionStart.IsZero() && query.Timestamp.Before(s.rollingRetentionStart):
-		return "query_before_retained_window"
 	default:
 		return ""
 	}
@@ -228,6 +227,10 @@ func (s *DamageStatistics) validateRollingQueryLocked(query CaptureQueryTime) st
 func (s *DamageStatistics) rollingDPSLocked(queryTime time.Time, window time.Duration) DPSResult {
 	result := DPSResult{Duration: window, StartObservedAt: queryTime.Add(-window), EndObservedAt: queryTime}
 	start := result.StartObservedAt
+	if !s.rollingRetentionStart.IsZero() && start.Before(s.rollingRetentionStart) {
+		// Events before the retention start were discarded as newer ones arrived; this window can no longer be summed.
+		return unavailableRollingDPS("query_before_retained_window")
+	}
 	var total int64
 	for _, event := range s.rollingEvents {
 		if !event.observedAt.After(start) || event.observedAt.After(queryTime) {
@@ -273,6 +276,7 @@ func (s *DamageStatistics) snapshotLocked() DamageStatisticsSnapshot {
 	snapshot.Encounters = s.encounters.snapshot(time.Time{})
 	snapshot.EncounterDPS = snapshot.Encounters.headlineDPS()
 	snapshot.Integrity = snapshot.Encounters.Integrity
+	snapshot.Roles, snapshot.UnassignedRole = s.roles.snapshot()
 	snapshot.GameTimeDPS = DPSResult{Status: DPSStatusUnavailable, Reason: "official_timer_duration_unavailable"}
 	snapshot.DamageSpanDPS = s.damageSpanDPSLocked()
 	snapshot.Rolling5sDPS = unavailableRollingDPS("query_time_required")
@@ -345,12 +349,12 @@ func (s *DamageStatistics) resetLocked() {
 	s.rollingEvents = nil
 	s.rollingHighWater = time.Time{}
 	s.rollingRetentionStart = time.Time{}
-	s.rollingLastQuery = time.Time{}
 	s.rollingSessionNumber = 0
 	s.hasRollingSession = false
 	s.rollingUnavailableReason = ""
 	s.duplicateEvents = 0
 	s.lastDowngradeAt = time.Time{}
+	s.roles = roleAggregate{}
 	s.encounters = s.encounters.nextInterval(s.statisticsIntervalID)
 }
 
@@ -367,6 +371,7 @@ func emptyDamageStatisticsSnapshot() DamageStatisticsSnapshot {
 		EncounterDPS:   DPSResult{Status: DPSStatusUnavailable, Reason: "no_encounter_observed"},
 		Encounters:     EncounterTrackerSnapshot{State: EncounterIdle, BattleState: "unknown", Completed: []EncounterSnapshot{}, Integrity: intactIntegrity()},
 		Integrity:      intactIntegrity(),
+		Roles:          []RoleDamageSnapshot{},
 		GameTimeDPS:    DPSResult{Status: DPSStatusUnavailable, Reason: "official_timer_duration_unavailable"},
 		DamageSpanDPS:  DPSResult{Status: DPSStatusInsufficientData, Reason: "no_confirmed_outgoing_damage"},
 		Rolling5sDPS:   unavailableRollingDPS("query_time_required"),
@@ -441,6 +446,7 @@ func (s *DamageStatistics) addCombatEvent(record CombatEventRecord) string {
 			s.lastDowngradeAt = record.ObservedAt
 		}
 	}
+	s.roles.add(record)
 	session := record.Key.ProtocolSession
 	switch record.Flow {
 	case CombatFlowLocalOutgoing:

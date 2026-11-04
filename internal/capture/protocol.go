@@ -220,6 +220,7 @@ type processor struct {
 	transport    transportMonitor
 	context      contextValidity
 	captureLayer captureLayerState
+	pairing      rpcPairingState
 }
 
 func newProcessor(rsaKey *staticRSA, stdout, diagnostic, audit io.Writer) *processor {
@@ -404,6 +405,7 @@ func isImplementedCommand(commandID uint16) bool {
 func (p *processor) handleFrame(frame gameFrame) {
 	p.archiveFrame(frame)
 	p.currentFrameTime = frame.timestamp
+	p.observePairingClock(frame.timestamp)
 	p.observeEncounterClock(frame.timestamp)
 	var censusEntry *commandCensusEntry
 	if p.census != nil {
@@ -705,6 +707,8 @@ func (p *processor) handleProtoKeyResponse(body []byte) error {
 	p.consumed = make(map[uint64]uint64)
 	p.consumedOrder = nil
 	p.consumedSequence = 0
+	// RPC ids restart with the session: a held response can never pair with a request of the new session.
+	p.discardHeldResponses(&p.pairing.sessionChange)
 	p.entities.reset()
 	p.playerRelevance.reset()
 	p.effects.EndLiveState()
@@ -721,6 +725,7 @@ func (p *processor) handleProtoKeyResponse(body []byte) error {
 }
 
 func (p *processor) handleDamageRequests(frame gameFrame, body []byte) {
+	p.expireHeldResponses()
 	outer, err := parseProtoFields(body)
 	if err != nil {
 		p.stats.parseErrors++
@@ -826,7 +831,12 @@ func (p *processor) handleDamageRequests(frame gameFrame, body []byte) {
 				}
 			}
 			p.writePartReference(frame, rpcID, identity)
+			if identity.hasAttackerEntityID || identity.hasTargetEntityID {
+				p.context.observeClientReference(identity.attackerEntityID, identity.targetEntityID)
+			}
 			p.rememberPending(rpcID, identity)
+			// A response that arrived before this request (the outbound stream was delayed) is paired now.
+			p.pairHeldResponse(rpcID)
 		}
 	}
 }
@@ -874,6 +884,7 @@ func (p *processor) rememberConsumed(rpcID uint64) {
 }
 
 func (p *processor) handleDamageResponses(body []byte) {
+	p.expireHeldResponses()
 	outer, err := parseProtoFields(body)
 	if err != nil {
 		p.stats.parseErrors++
@@ -937,9 +948,11 @@ func (p *processor) handleOneDamageResult(rpcID uint64, payload []byte) {
 	}
 	request, matched := p.pending[rpcID]
 	if !matched {
-		p.stats.unpairedResponses++
+		// The request may still be on its way on the other stream; hold the response instead of dropping it.
+		p.holdDamageResponse(rpcID, payload)
 		return
 	}
+	p.pairing.paired++
 	fields, err := parseProtoFields(payload)
 	if err != nil {
 		p.stats.parseErrors++
