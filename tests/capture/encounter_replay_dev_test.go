@@ -98,6 +98,7 @@ func TestEncounterReplayCollector(t *testing.T) {
 			}
 			assertEncounterTotalsConserved(t, first.Statistics)
 			assertEncountersDoNotOverlap(t, first.Statistics)
+			assertRoleTotalsReconcile(t, first.Statistics)
 			assertConfirmedEndsAtSignals(t, first)
 			data := equivalenceMarshal(t, first)
 			if err := os.WriteFile(filepath.Join(out, capture.name+".encounters.json"), data, 0o600); err != nil {
