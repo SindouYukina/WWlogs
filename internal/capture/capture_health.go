@@ -1,6 +1,7 @@
 package capture
 
 import (
+	"fmt"
 	"strconv"
 	"time"
 
@@ -44,6 +45,79 @@ type CaptureLayerHealth struct {
 	ApplicationDropped CaptureCounter `json:"applicationDropped"`
 	DiagnosticDropped  CaptureCounter `json:"diagnosticDropped"`
 	StatsSampledAt     time.Time      `json:"statsSampledAt,omitempty"`
+	// DeliveryDelay is loop receive time minus the Npcap timestamp; ProcessedDelay is the time decoding of the packet
+	// finished minus the Npcap timestamp. Both use the host clock and exist only for live capture.
+	DeliveryDelay  CaptureLatency `json:"deliveryDelay"`
+	ProcessedDelay CaptureLatency `json:"processedDelay"`
+}
+
+// CaptureLatency summarizes a delay histogram. Percentiles are bucket upper bounds (a value of 20 means at most
+// 20 ms), so they never understate the delay.
+type CaptureLatency struct {
+	Status  string  `json:"status"`
+	Samples uint64  `json:"samples"`
+	P50ms   float64 `json:"p50AtMostMs"`
+	P95ms   float64 `json:"p95AtMostMs"`
+	P99ms   float64 `json:"p99AtMostMs"`
+	MaxMs   float64 `json:"maxMs"`
+}
+
+// captureLatencyBounds are the histogram bucket upper bounds; the last bucket holds everything above 5 s.
+var captureLatencyBounds = [...]time.Duration{
+	time.Millisecond, 2 * time.Millisecond, 5 * time.Millisecond, 10 * time.Millisecond, 20 * time.Millisecond,
+	50 * time.Millisecond, 100 * time.Millisecond, 200 * time.Millisecond, 500 * time.Millisecond, time.Second,
+	2 * time.Second, 5 * time.Second,
+}
+
+// latencyHistogram is a fixed-size histogram: recording a packet allocates nothing.
+type latencyHistogram struct {
+	counts [len(captureLatencyBounds) + 1]uint64
+	total  uint64
+	max    time.Duration
+}
+
+func (h *latencyHistogram) observe(delay time.Duration) {
+	if delay < 0 {
+		// The two timestamps come from different host clock reads; a tiny negative value means "no delay".
+		delay = 0
+	}
+	index := len(captureLatencyBounds)
+	for i, bound := range captureLatencyBounds {
+		if delay <= bound {
+			index = i
+			break
+		}
+	}
+	h.counts[index]++
+	h.total++
+	if delay > h.max {
+		h.max = delay
+	}
+}
+
+func (h latencyHistogram) summary(live bool) CaptureLatency {
+	if !live {
+		return CaptureLatency{Status: CaptureCounterNotApplicable}
+	}
+	if h.total == 0 {
+		return CaptureLatency{Status: CaptureCounterUnavailable}
+	}
+	percentile := func(p float64) float64 {
+		rank := uint64(p*float64(h.total) + 0.999999)
+		var seen uint64
+		for i, count := range h.counts {
+			seen += count
+			if seen >= rank {
+				if i < len(captureLatencyBounds) {
+					return float64(captureLatencyBounds[i]) / float64(time.Millisecond)
+				}
+				return float64(h.max) / float64(time.Millisecond)
+			}
+		}
+		return float64(h.max) / float64(time.Millisecond)
+	}
+	return CaptureLatency{Status: CaptureCounterAvailable, Samples: h.total, P50ms: percentile(0.50), P95ms: percentile(0.95),
+		P99ms: percentile(0.99), MaxMs: float64(h.max) / float64(time.Millisecond)}
 }
 
 // captureStatsSampleInterval spaces pcap_stats calls; the counters only need to be current to about a second.
@@ -58,6 +132,7 @@ type captureLayerState struct {
 	sampledAt           time.Time
 	evictedSegments     uint64
 	diagnosticDropCount func() uint64
+	delivery, processed latencyHistogram
 }
 
 func (p *processor) observeCaptureSource(live bool) {
@@ -69,6 +144,18 @@ func (p *processor) observeCaptureSource(live bool) {
 
 func (p *processor) observePacketRead() {
 	p.captureLayer.packetsRead++
+}
+
+// observePacketTiming records, for live capture only, how long a packet waited between its Npcap timestamp and the
+// loop (received) and until its decoding finished (processed). Replay timestamps are historical and are not used.
+func (p *processor) observePacketTiming(captured, received, processed time.Time) {
+	if !p.captureLayer.live || captured.IsZero() {
+		return
+	}
+	p.captureLayer.delivery.observe(received.Sub(captured))
+	if !processed.IsZero() {
+		p.captureLayer.processed.observe(processed.Sub(captured))
+	}
 }
 
 // sampleCaptureStats reads the Npcap counters at most once per captureStatsSampleInterval of wall-clock time.
@@ -112,6 +199,8 @@ func (p *processor) captureLayerHealth() CaptureLayerHealth {
 		health.KernelReceived = CaptureCounter{Status: CaptureCounterUnavailable, Reason: reason}
 		health.KernelDropped = CaptureCounter{Status: CaptureCounterUnavailable, Reason: reason}
 	}
+	health.DeliveryDelay = state.delivery.summary(state.live)
+	health.ProcessedDelay = state.processed.summary(state.live)
 	if state.diagnosticDropCount != nil {
 		health.DiagnosticDropped = CaptureCounter{Status: CaptureCounterAvailable, Value: state.diagnosticDropCount()}
 	}
@@ -123,4 +212,15 @@ func formatCaptureCounter(counter CaptureCounter) string {
 		return counter.Status
 	}
 	return strconv.FormatUint(counter.Value, 10)
+}
+
+// captureLatencyLine formats both delay summaries for development diagnostics.
+func captureLatencyLine(health CaptureLayerHealth) string {
+	format := func(latency CaptureLatency) string {
+		if latency.Status != CaptureCounterAvailable {
+			return latency.Status
+		}
+		return fmt.Sprintf("samples:%d/p50<=%gms/p95<=%gms/p99<=%gms/max:%.1fms", latency.Samples, latency.P50ms, latency.P95ms, latency.P99ms, latency.MaxMs)
+	}
+	return fmt.Sprintf("capture_latency source=%s delivery=%s processed=%s", health.Source, format(health.DeliveryDelay), format(health.ProcessedDelay))
 }

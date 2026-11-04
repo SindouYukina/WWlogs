@@ -17,7 +17,6 @@ import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
-	"github.com/google/gopacket/pcapgo"
 
 	"wwlogs/internal/buildinfo"
 	"wwlogs/internal/versioninfo"
@@ -161,6 +160,7 @@ func Main() {
 	commandCensusOut := flag.String("command-census-out", "", "Write local protocol commands and decode results as JSON")
 	clientVersionOut := flag.String("client-version-out", "", "Write version metadata observed after the first handshake")
 	preflight := flag.Bool("preflight", false, "Check whether the specified Npcap interface can be opened and filtered")
+	captureImmediate := flag.Bool("capture-immediate", true, "Open the live Npcap handle in immediate mode; false restores batched delivery for latency comparison")
 	filter := flag.String("filter", "", "Optionally specify a BPF filter; defaults to the configured UDP port range")
 	stopFile := flag.String("stop-file", "", "Stop live capture cleanly when the specified file appears")
 	statusFile := flag.String("status-file", "", "Write live capture status as JSON to the specified path")
@@ -241,6 +241,8 @@ func Main() {
 	if filterExpression == "" {
 		filterExpression = fmt.Sprintf("udp and portrange %d-%d", *minPort, *maxPort)
 	}
+	captureConfig := defaultLiveCaptureConfig()
+	captureConfig.Immediate = *captureImmediate
 	masters, err := loadGameMasterDatabase(*masterDatabase, *masterLocale)
 	if err != nil {
 		fatal("load combat master SQLite", err)
@@ -250,7 +252,7 @@ func Main() {
 		if err != nil {
 			fatal("find Npcap adapter", err)
 		}
-		handle, err := pcap.OpenLive(device, 65535, false, time.Second)
+		handle, applied, err := openLiveCapture(device, captureConfig)
 		if err != nil {
 			fatal("open Npcap adapter", err)
 		}
@@ -258,7 +260,7 @@ func Main() {
 		if err := handle.SetBPFFilter(filterExpression); err != nil {
 			fatal("set capture filter", err)
 		}
-		fmt.Fprintf(os.Stderr, "capture_preflight=PASS adapter=%s local_ipv4=%s filter=%q master_sha256=%s locale=%s\n", device, *ip, filterExpression, masters.manifest.SourceHash, masters.locale)
+		fmt.Fprintf(os.Stderr, "capture_preflight=PASS adapter=%s local_ipv4=%s filter=%q master_sha256=%s locale=%s %s\n", device, *ip, filterExpression, masters.manifest.SourceHash, masters.locale, applied)
 		return
 	}
 	if (*stopFile != "" || *statusFile != "" || *maxPCAPBytes > 0) && (*pcapIn != "" || *pcapOut == "") {
@@ -282,7 +284,15 @@ func Main() {
 		fmt.Fprintf(consoleLog, "Live capture output directory: %s\n", defaultOutputDirectory)
 	}
 	stdout := bufio.NewWriter(stdoutTarget)
-	defer stdout.Flush()
+	// diagnostics owns the per-event sinks once the capture starts. A target whose writer was abandoned at stop is
+	// never flushed or written here, so a stuck writer and this goroutine never share a buffer.
+	var diagnostics *diagnosticPipeline
+	runID := newDiagnosticRunID(time.Now())
+	defer func() {
+		if diagnostics.released(stdout) {
+			stdout.Flush()
+		}
+	}()
 	var auditFile *os.File
 	var auditWriter io.Writer
 	if *auditOut != "" {
@@ -397,7 +407,11 @@ func Main() {
 		}
 		defer encounterFile.Close()
 		encounterWriter := bufio.NewWriter(encounterFile)
-		defer encounterWriter.Flush()
+		defer func() {
+			if diagnostics.released(encounterWriter) {
+				encounterWriter.Flush()
+			}
+		}()
 		processor.encounterOut = encounterWriter
 		processor.damageStatistics.recordEncounterTransitions(true)
 	}
@@ -430,6 +444,9 @@ func Main() {
 		ownerWriter := bufio.NewWriter(ownerFile)
 		processor.summonOwnerOut = ownerWriter
 		defer func() {
+			if !diagnostics.released(ownerWriter) {
+				return
+			}
 			if err := ownerWriter.Flush(); err != nil {
 				fmt.Fprintf(os.Stderr, "summon owner flush error: %v\n", err)
 			}
@@ -452,6 +469,9 @@ func Main() {
 		skillWriter := bufio.NewWriter(skillFile)
 		processor.skillRefOut = skillWriter
 		defer func() {
+			if !diagnostics.released(skillWriter) {
+				return
+			}
 			if err := skillWriter.Flush(); err != nil {
 				fmt.Fprintf(os.Stderr, "skill reference flush error: %v\n", err)
 			}
@@ -474,6 +494,9 @@ func Main() {
 		bulletWriter := bufio.NewWriter(bulletFile)
 		processor.bulletRefOut = bulletWriter
 		defer func() {
+			if !diagnostics.released(bulletWriter) {
+				return
+			}
 			if err := bulletWriter.Flush(); err != nil {
 				fmt.Fprintf(os.Stderr, "bullet reference flush error: %v\n", err)
 			}
@@ -496,6 +519,9 @@ func Main() {
 		shieldWriter := bufio.NewWriter(shieldFile)
 		processor.shieldRefOut = shieldWriter
 		defer func() {
+			if !diagnostics.released(shieldWriter) {
+				return
+			}
 			if err := shieldWriter.Flush(); err != nil {
 				fmt.Fprintf(os.Stderr, "shield reference flush error: %v\n", err)
 			}
@@ -518,6 +544,9 @@ func Main() {
 		partWriter := bufio.NewWriter(partFile)
 		processor.partRefOut = partWriter
 		defer func() {
+			if !diagnostics.released(partWriter) {
+				return
+			}
 			if err := partWriter.Flush(); err != nil {
 				fmt.Fprintf(os.Stderr, "part reference flush error: %v\n", err)
 			}
@@ -540,6 +569,9 @@ func Main() {
 		clientWriter := bufio.NewWriter(clientFile)
 		processor.clientPushOut = clientWriter
 		defer func() {
+			if !diagnostics.released(clientWriter) {
+				return
+			}
 			if err := clientWriter.Flush(); err != nil {
 				fmt.Fprintf(os.Stderr, "client push flush error: %v\n", err)
 			}
@@ -562,6 +594,9 @@ func Main() {
 		pushWriter := bufio.NewWriter(pushFile)
 		processor.damagePushOut = pushWriter
 		defer func() {
+			if !diagnostics.released(pushWriter) {
+				return
+			}
 			if err := pushWriter.Flush(); err != nil {
 				fmt.Fprintf(os.Stderr, "damage push flush error: %v\n", err)
 			}
@@ -584,6 +619,9 @@ func Main() {
 		stateWriter := bufio.NewWriter(stateFile)
 		processor.combatStateOut = stateWriter
 		defer func() {
+			if !diagnostics.released(stateWriter) {
+				return
+			}
 			if err := stateWriter.Flush(); err != nil {
 				fmt.Fprintf(os.Stderr, "combat state flush error: %v\n", err)
 			}
@@ -606,6 +644,9 @@ func Main() {
 		hpWriter := bufio.NewWriter(hpFile)
 		processor.hpStateOut = hpWriter
 		defer func() {
+			if !diagnostics.released(hpWriter) {
+				return
+			}
 			if err := hpWriter.Flush(); err != nil {
 				fmt.Fprintf(os.Stderr, "hp state flush error: %v\n", err)
 			}
@@ -628,6 +669,9 @@ func Main() {
 		schemaWriter := bufio.NewWriter(schemaFile)
 		processor.schemaDecodeOut = schemaWriter
 		defer func() {
+			if !diagnostics.released(schemaWriter) {
+				return
+			}
 			if err := schemaWriter.Flush(); err != nil {
 				fmt.Fprintf(os.Stderr, "schema decode flush error: %v\n", err)
 			}
@@ -650,6 +694,9 @@ func Main() {
 		roleConfigWriter := bufio.NewWriter(roleConfigFile)
 		processor.roleConfigOut = roleConfigWriter
 		defer func() {
+			if !diagnostics.released(roleConfigWriter) {
+				return
+			}
 			if err := roleConfigWriter.Flush(); err != nil {
 				fmt.Fprintf(os.Stderr, "role config flush error: %v\n", err)
 			}
@@ -664,7 +711,7 @@ func Main() {
 		processor.census = newCommandCensus()
 	}
 	// Every per-event diagnostic sink now writes from its own goroutine; the capture loop only queues records.
-	diagnostics := newDiagnosticPipeline(*pcapIn == "")
+	diagnostics = newDiagnosticPipeline(*pcapIn == "")
 	flushers := map[io.Writer]func() error{stdout: stdout.Flush}
 	if frameArchiveWriter != nil {
 		flushers[frameArchiveWriter] = frameArchiveWriter.Flush
@@ -687,10 +734,12 @@ func Main() {
 		if err != nil {
 			fatal("find Npcap adapter", err)
 		}
-		handle, err = pcap.OpenLive(device, 65535, false, time.Second)
+		var applied liveCaptureApplied
+		handle, applied, err = openLiveCapture(device, captureConfig)
 		if err != nil {
 			fatal("open Npcap adapter", err)
 		}
+		fmt.Fprintf(os.Stderr, "capture_handle %s\n", applied)
 	}
 	defer handle.Close()
 
@@ -698,26 +747,14 @@ func Main() {
 		fatal("set capture filter", err)
 	}
 
-	var pcapFile *os.File
-	var pcapWriter *pcapgo.Writer
-	var pcapSink io.Writer
+	// The development PCAP queues packet records whole; a write failure disables it without stopping the analysis, and
+	// its integrity record says whether the file is complete.
+	var developmentPCAP *diagnosticPCAP
 	if *pcapOut != "" {
-		if dir := filepath.Dir(*pcapOut); dir != "." {
-			if err := os.MkdirAll(dir, 0o755); err != nil {
-				fatal("create PCAP directory", err)
-			}
-		}
-		pcapFile, err = os.OpenFile(*pcapOut, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+		developmentPCAP, err = openDiagnosticPCAP(*pcapOut, handle.LinkType(), runID, diagnostics, time.Now(), nil)
 		if err != nil {
 			fatal("create PCAP", err)
 		}
-		defer pcapFile.Close()
-		pcapWriter = pcapgo.NewWriter(pcapFile)
-		if err := pcapWriter.WriteFileHeader(65535, handle.LinkType()); err != nil {
-			fatal("write PCAP header", err)
-		}
-		// Packet records are queued whole; a write failure disables the PCAP without stopping the analysis.
-		pcapSink = diagnostics.wrap("pcap", pcapFile, nil, diagnosticPCAPCapacityBytes)
 	}
 
 	if *pcapIn == "" {
@@ -821,6 +858,7 @@ func Main() {
 		status.KernelDrops = stats.kernelDrops
 		status.PCAPBytes = currentPCAPBytes
 		status.DiagnosticDroppedRecords = diagnostics.droppedRecords()
+		status.RunID = runID
 		data, err := json.Marshal(status)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "capture_status_write_error=%v\n", err)
@@ -877,17 +915,18 @@ func Main() {
 			fmt.Fprintf(os.Stderr, "offline packet read warning: %v\n", packetErr)
 			continue
 		}
-		if pcapWriter != nil {
+		if developmentPCAP != nil {
 			recordBytes := int64(16 + len(packet.Data()))
 			if *maxPCAPBytes > 0 && currentPCAPBytes+recordBytes > *maxPCAPBytes {
 				stopReason = "size_limit"
 				goto finished
 			}
-			_, _ = pcapSink.Write(pcapPacketRecord(packet.Metadata().CaptureInfo, packet.Data()))
+			developmentPCAP.writePacket(packet.Metadata().CaptureInfo, packet.Data())
 			currentPCAPBytes += recordBytes
 		}
+		receivedAt := time.Now()
 		processor.observePacketRead()
-		processor.sampleCaptureStats(handle, time.Now(), false)
+		processor.sampleCaptureStats(handle, receivedAt, false)
 		udpLayer := packet.Layer(layers.LayerTypeUDP)
 		if udpLayer == nil {
 			continue
@@ -895,7 +934,9 @@ func Main() {
 		udp := udpLayer.(*layers.UDP)
 		stats.udpPackets++
 		direction := packetDirection(packet, *ip, udp, *minPort, *maxPort)
-		consumeDatagram(udp.Payload, direction, packet.Metadata().CaptureInfo.Timestamp, streams, processor, &stats)
+		capturedAt := packet.Metadata().CaptureInfo.Timestamp
+		consumeDatagram(udp.Payload, direction, capturedAt, streams, processor, &stats)
+		processor.observePacketTiming(capturedAt, receivedAt, time.Now())
 		writeLiveDiagnostic(time.Now(), false)
 		writeStatus("RUNNING", "")
 	}
@@ -913,19 +954,21 @@ finished:
 	if statsResult, statsErr := handle.Stats(); statsErr == nil && statsResult != nil {
 		stats.kernelDrops = statsResult.PacketsDropped
 	}
-	if pcapFile != nil {
-		if err := pcapFile.Sync(); err != nil {
-			fmt.Fprintf(os.Stderr, "pcap_sync_error=%v\n", err)
-		}
+	var pcapIntegrity *diagnosticPCAPIntegrity
+	if developmentPCAP != nil {
+		record := developmentPCAP.finish(time.Now(), stopReason, processor.captureLayerHealth().KernelDropped)
+		pcapIntegrity = &record
 	}
 	writeStatus("STOPPED", stopReason)
-	if err := stdout.Flush(); err != nil {
-		fmt.Fprintf(os.Stderr, "stdout flush warning: %v\n", err)
+	if diagnostics.released(stdout) {
+		if err := stdout.Flush(); err != nil {
+			fmt.Fprintf(os.Stderr, "stdout flush warning: %v\n", err)
+		}
 	}
 	if err := processor.writeEncounterSummary(); err != nil {
 		fatal("write encounter summary", err)
 	}
-	if frameArchiveWriter != nil {
+	if frameArchiveWriter != nil && diagnostics.released(frameArchiveWriter) {
 		if err := frameArchiveWriter.Flush(); err != nil {
 			fatal("flush frame archive", err)
 		}
@@ -980,7 +1023,11 @@ finished:
 	processor.printSummary(diagnosticTarget)
 	fmt.Fprintf(diagnosticTarget, "statistics_final %s\n", processor.currentStatisticsReport())
 	fmt.Fprintln(diagnosticTarget, transportHealthLine(streams, stats))
-	fmt.Fprintln(diagnosticTarget, diagnosticPipelineLine(pipelineStats))
+	fmt.Fprintln(diagnosticTarget, diagnosticPipelineLine(runID, pipelineStats))
+	fmt.Fprintln(diagnosticTarget, captureLatencyLine(processor.captureLayerHealth()))
+	if pcapIntegrity != nil {
+		fmt.Fprintln(diagnosticTarget, pcapIntegrity.line())
+	}
 	fmt.Fprintf(diagnosticTarget, "capture_finished udp=%d kcp_push=%d kcp_ordered=%d kcp_messages=%d protocol_frames=%d bad_crc=%d malformed_frames=%d kernel_drops=%d duration=%s\n",
 		stats.udpPackets, stats.kcpPush, stats.kcpOrdered, stats.kcpMessages, stats.frames, stats.badCRC, stats.malformed, stats.kernelDrops, time.Since(started).Round(time.Millisecond))
 	if *commandCensusOut != "" {
