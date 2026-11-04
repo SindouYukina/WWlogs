@@ -945,6 +945,7 @@ finished:
 	}
 	processor.printSummary(diagnosticTarget)
 	fmt.Fprintf(diagnosticTarget, "statistics_final %s\n", processor.currentStatisticsReport())
+	fmt.Fprintln(diagnosticTarget, transportHealthLine(streams, stats))
 	fmt.Fprintf(diagnosticTarget, "capture_finished udp=%d kcp_push=%d kcp_ordered=%d kcp_messages=%d protocol_frames=%d bad_crc=%d malformed_frames=%d kernel_drops=%d duration=%s\n",
 		stats.udpPackets, stats.kcpPush, stats.kcpOrdered, stats.kcpMessages, stats.frames, stats.badCRC, stats.malformed, stats.kernelDrops, time.Since(started).Round(time.Millisecond))
 	if *commandCensusOut != "" {
