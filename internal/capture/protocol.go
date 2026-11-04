@@ -216,9 +216,10 @@ type processor struct {
 	// local role report does.
 	scenePlayerIDs []uint64
 	// kcpStreams is the capture loop's KCP stream table, read for transport health snapshots.
-	kcpStreams map[string]*stream
-	transport  transportMonitor
-	context    contextValidity
+	kcpStreams   map[string]*stream
+	transport    transportMonitor
+	context      contextValidity
+	captureLayer captureLayerState
 }
 
 func newProcessor(rsaKey *staticRSA, stdout, diagnostic, audit io.Writer) *processor {

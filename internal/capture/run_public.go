@@ -110,6 +110,7 @@ func Main() {
 	}
 
 	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
+	processor.observeCaptureSource(*pcapIn == "")
 	streams := make(map[string]*stream)
 	stats := captureStats{}
 	started := time.Now()
@@ -156,6 +157,7 @@ loop:
 		packet, packetErr := packetSource.NextPacket()
 		if packetErr != nil {
 			if packetErr == pcap.NextErrorTimeoutExpired {
+				processor.sampleCaptureStats(handle, time.Now(), false)
 				report(time.Now(), false)
 				continue
 			}
@@ -169,6 +171,8 @@ loop:
 			fmt.Fprintf(os.Stderr, "offline packet read warning: %v\n", packetErr)
 			continue
 		}
+		processor.observePacketRead()
+		processor.sampleCaptureStats(handle, time.Now(), false)
 		udpLayer := packet.Layer(layers.LayerTypeUDP)
 		if udpLayer == nil {
 			continue
@@ -180,6 +184,7 @@ loop:
 		report(time.Now(), false)
 	}
 	finishTransport(streams, processor, &stats)
+	processor.sampleCaptureStats(handle, time.Now(), true)
 	processor.finishCapture()
 	report(time.Now(), true)
 	fmt.Fprintf(os.Stderr, "capture_finished reason=%s udp=%d duration=%s\n", stopReason, stats.udpPackets, time.Since(started).Round(time.Millisecond))

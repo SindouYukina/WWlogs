@@ -500,11 +500,15 @@ func (p *processor) gateAttribution(record CombatEventRecord) CombatEventRecord 
 
 // DataIntegritySnapshot is the read-only trust view for consumers such as the public console and a future UI.
 type DataIntegritySnapshot struct {
+	Capture    CaptureLayerHealth      `json:"capture"`
 	Transport  TransportHealthSnapshot `json:"transport"`
 	Context    ContextValiditySnapshot `json:"context"`
 	Statistics DataIntegrity           `json:"statistics"`
 }
 
 func (p *processor) dataIntegritySnapshot(statistics DamageStatisticsSnapshot) DataIntegritySnapshot {
-	return DataIntegritySnapshot{Transport: p.transportHealthSnapshot(), Context: p.context.snapshot(), Statistics: statistics.Integrity}
+	return DataIntegritySnapshot{
+		Capture: p.captureLayerHealth(), Transport: p.transportHealthSnapshot(), Context: p.context.snapshot(),
+		Statistics: statistics.Integrity,
+	}
 }
