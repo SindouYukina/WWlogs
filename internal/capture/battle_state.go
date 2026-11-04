@@ -136,7 +136,12 @@ func (p *processor) observeEncounterClock(at time.Time) {
 
 // finishCapture closes the encounter tracker when a capture or replay ends.
 func (p *processor) finishCapture() {
-	if p == nil || p.damageStatistics == nil {
+	if p == nil {
+		return
+	}
+	// No request can arrive after the capture: responses still held stay unpaired.
+	p.discardHeldResponses(&p.pairing.captureEnd)
+	if p.damageStatistics == nil {
 		return
 	}
 	p.damageStatistics.finishCapture()
