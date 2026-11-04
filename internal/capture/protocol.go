@@ -831,6 +831,9 @@ func (p *processor) handleDamageRequests(frame gameFrame, body []byte) {
 				}
 			}
 			p.writePartReference(frame, rpcID, identity)
+			if identity.hasAttackerEntityID || identity.hasTargetEntityID {
+				p.context.observeClientReference(identity.attackerEntityID, identity.targetEntityID)
+			}
 			p.rememberPending(rpcID, identity)
 			// A response that arrived before this request (the outbound stream was delayed) is paired now.
 			p.pairHeldResponse(rpcID)
