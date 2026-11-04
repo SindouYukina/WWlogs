@@ -142,6 +142,8 @@ func equivalenceReplay(t *testing.T, inputs equivalenceInputs, masters *gameMast
 			after(stats.udpPackets, p)
 		}
 	}
+	// The executables flush open KCP gaps when a capture ends; replays do the same.
+	finishTransport(streams, p, &stats)
 	return p, stats
 }
 

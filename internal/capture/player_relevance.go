@@ -121,6 +121,7 @@ func (p *processor) observeLocalRoleEntity(entityID uint64) {
 	}
 	p.playerRelevance.observeRoleEntity(entityID)
 	p.playerRelevance.reconcileLocalPlayers(p.entities)
+	p.observeContextLocalRole(entityID, p.currentFrameTime)
 	p.refreshEffectRelations()
 }
 

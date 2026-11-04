@@ -215,6 +215,10 @@ type processor struct {
 	// scenePlayerIDs lists the players of the current scene; it anchors battle-state signals before the
 	// local role report does.
 	scenePlayerIDs []uint64
+	// kcpStreams is the capture loop's KCP stream table, read for transport health snapshots.
+	kcpStreams map[string]*stream
+	transport  transportMonitor
+	context    contextValidity
 }
 
 func newProcessor(rsaKey *staticRSA, stdout, diagnostic, audit io.Writer) *processor {
@@ -236,25 +240,46 @@ func newProcessor(rsaKey *staticRSA, stdout, diagnostic, audit io.Writer) *proce
 	}
 }
 
+// frameParseResult reports one pass over an application byte stream. Desync is set when a frame candidate failed its
+// length, header, or CRC checks: the frame boundary can no longer be trusted, so parsing stops one byte past the bad
+// candidate and the caller resynchronizes instead of trusting the declared length (see resynchronizeStream).
+type frameParseResult struct {
+	frames, badCRC, malformed, consumed int
+	desync                              bool
+	desyncReason                        string
+}
+
+// parseFrames parses complete frames from buffer. It stops at the first framing failure; see frameParseResult.
 func parseFrames(buffer []byte, direction string, spans []applicationSpan, p *processor) (int, int, int, int) {
-	frames, badCRC, malformed := 0, 0, 0
+	result := parseFrameStream(buffer, direction, spans, p, nil)
+	return result.frames, result.badCRC, result.malformed, result.consumed
+}
+
+func parseFrameStream(buffer []byte, direction string, spans []applicationSpan, p *processor, state *stream) frameParseResult {
+	var result frameParseResult
 	applicationOffset := 0
-	consumed := 0
 	var previousValid *frameBoundaryObservation
-	var pendingCRCIndexes []int
+	var localCRCIndexes []int
+	pendingCRCIndexes := &localCRCIndexes
+	if state != nil {
+		pendingCRCIndexes = &state.pendingCRCCensus
+	}
+	desync := func(reason string) frameParseResult {
+		result.desync, result.desyncReason = true, reason
+		result.consumed++
+		return result
+	}
 	for len(buffer) >= 3 {
+		consumed := result.consumed
 		timestamp := applicationTimestampAt(spans, consumed)
 		payloadLen := int(binary.LittleEndian.Uint16(buffer[:2]))
 		total := payloadLen + 3
 		if total < 14 {
-			buffer = buffer[1:]
-			consumed++
-			malformed++
+			result.malformed++
 			if p.census != nil {
-				p.census.malformed("short_or_unaligned_frame_candidate", timestamp, applicationOffset, uint16(payloadLen), len(buffer)+1)
+				p.census.malformed("short_or_unaligned_frame_candidate", timestamp, applicationOffset, uint16(payloadLen), len(buffer))
 			}
-			applicationOffset++
-			continue
+			return desync(frameDesyncMalformed)
 		}
 		if len(buffer) < total {
 			break
@@ -267,14 +292,11 @@ func parseFrames(buffer []byte, direction string, spans []applicationSpan, p *pr
 			offset += 2
 		}
 		if offset+6 > total {
-			buffer = buffer[total:]
-			consumed += total
-			malformed++
+			result.malformed++
 			if p.census != nil {
 				p.census.malformed("truncated_command_header", timestamp, applicationOffset, uint16(payloadLen), total)
 			}
-			applicationOffset += total
-			continue
+			return desync(frameDesyncMalformed)
 		}
 		commandID := binary.LittleEndian.Uint16(frame[offset : offset+2])
 		receivedCRC := binary.LittleEndian.Uint32(frame[offset+2 : offset+6])
@@ -282,14 +304,11 @@ func parseFrames(buffer []byte, direction string, spans []applicationSpan, p *pr
 		var compressedLength uint32
 		if compressed {
 			if bodyStart+4 > total {
-				buffer = buffer[total:]
-				consumed += total
-				malformed++
+				result.malformed++
 				if p.census != nil {
 					p.census.malformed("truncated_compression_length", timestamp, applicationOffset, uint16(payloadLen), total)
 				}
-				applicationOffset += total
-				continue
+				return desync(frameDesyncMalformed)
 			}
 			compressedLength = binary.LittleEndian.Uint32(frame[bodyStart : bodyStart+4])
 			bodyStart += 4
@@ -310,24 +329,11 @@ func parseFrames(buffer []byte, direction string, spans []applicationSpan, p *pr
 					PreviousValid: previousValid,
 				}
 				if index := p.census.failedCRC(observation); index >= 0 {
-					pendingCRCIndexes = append(pendingCRCIndexes, index)
+					*pendingCRCIndexes = append(*pendingCRCIndexes, index)
 				}
 			}
-			buffer = buffer[total:]
-			badCRC++
-			consumed += total
-			applicationOffset += total
-			continue
-		}
-		if bodyStart > total {
-			buffer = buffer[total:]
-			consumed += total
-			malformed++
-			if p.census != nil {
-				p.census.malformed("body_offset_exceeds_frame", timestamp, applicationOffset, uint16(payloadLen), total)
-			}
-			applicationOffset += total
-			continue
+			result.badCRC++
+			return desync(frameDesyncCRC)
 		}
 		var token uint16
 		if messageType != 4 {
@@ -346,20 +352,29 @@ func parseFrames(buffer []byte, direction string, spans []applicationSpan, p *pr
 		}
 		boundary := frameBoundaryObservation{Offset: applicationOffset, MessageType: messageType, Sequence: current.sequence, Token: token, CommandID: commandID, FrameLength: total}
 		if p.census != nil {
-			for _, index := range pendingCRCIndexes {
+			for _, index := range *pendingCRCIndexes {
 				p.census.setNextValidFrame(index, boundary)
 			}
 		}
-		pendingCRCIndexes = nil
+		*pendingCRCIndexes = nil
+		if state != nil {
+			state.lastFrameSequence, state.hasFrameSequence = current.sequence, true
+		}
 		p.handleFrame(current)
-		frames++
+		result.frames++
 		previousValid = &boundary
 		buffer = buffer[total:]
-		consumed += total
+		result.consumed += total
 		applicationOffset += total
 	}
-	return frames, badCRC, malformed, consumed
+	return result
 }
+
+// Reasons a frame parse lost its boundary.
+const (
+	frameDesyncCRC       = "frame_crc_mismatch"
+	frameDesyncMalformed = "frame_header_malformed"
+)
 
 func applicationTimestampAt(spans []applicationSpan, offset int) time.Time {
 	for _, span := range spans {
@@ -409,6 +424,7 @@ func (p *processor) handleFrame(frame gameFrame) {
 		p.sessionNumber++
 		p.playerRelevance.reset()
 		p.scenePlayerIDs = nil
+		p.observeContextSessionStart(frame.timestamp)
 		if p.damageStatistics != nil {
 			p.damageStatistics.observeSessionChange(frame.timestamp)
 			p.flushEncounterTransitions()
@@ -530,6 +546,7 @@ func (p *processor) handleFrame(frame gameFrame) {
 			return
 		}
 		p.playerRelevance.resetSceneEntities()
+		p.observeContextSceneJoin(frame.timestamp)
 		p.observeSceneJoin(plain, frame.timestamp)
 		p.effects.EndLiveState()
 		p.backfillAvailableSummaryCredits()

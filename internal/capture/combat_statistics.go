@@ -51,6 +51,10 @@ const (
 	DPSStatusInsufficientData DPSStatus = "insufficient_data"
 	DPSStatusUnavailable      DPSStatus = "unavailable"
 	DPSStatusInvalidDuration  DPSStatus = "invalid_duration"
+	// DPSStatusLowerBound: Value is computed, but events in its range may have been lost; the true value is not lower.
+	DPSStatusLowerBound DPSStatus = "lower_bound"
+	// DPSStatusUnreliable: a boundary or the extent of a loss is unknown, so no Value is reported.
+	DPSStatusUnreliable DPSStatus = "unreliable"
 )
 
 // DPSResult reports a calculation and the evidence state that supports it.
@@ -101,6 +105,8 @@ type DamageStatisticsSnapshot struct {
 	Rolling10sDPS   DPSResult                    `json:"rolling10sDps"`
 	// Encounters partitions this interval's events into encounters; EncounterDPS above is its headline value.
 	Encounters EncounterTrackerSnapshot `json:"encounters"`
+	// Integrity is the integrity of this interval's totals (the same value as Encounters.Integrity).
+	Integrity DataIntegrity `json:"integrity"`
 }
 
 type rollingDamageEvent struct {
@@ -146,6 +152,8 @@ type DamageStatistics struct {
 	appliedKeyOrder []CombatEventKey
 	// encounters is replaced, not cleared, on Reset so encounter IDs carry the new interval.
 	encounters *encounterTracker
+	// lastDowngradeAt is the capture time of the newest event kept unattributed by the attribution context gate.
+	lastDowngradeAt time.Time
 }
 
 // NewDamageStatistics creates an empty damage statistics accumulator.
@@ -185,6 +193,7 @@ func (s *DamageStatistics) snapshotAtLocked(query CaptureQueryTime) DamageStatis
 	if query.CaptureSessionID == s.captureSessionID && !query.Timestamp.IsZero() {
 		snapshot.Encounters = s.encounters.snapshot(query.Timestamp)
 		snapshot.EncounterDPS = snapshot.Encounters.headlineDPS()
+		snapshot.Integrity = snapshot.Encounters.Integrity
 	}
 	reason := s.validateRollingQueryLocked(query)
 	if reason != "" {
@@ -235,6 +244,10 @@ func (s *DamageStatistics) rollingDPSLocked(queryTime time.Time, window time.Dur
 		return unavailableRollingDPS("non_finite_result")
 	}
 	result.Status = DPSStatusAvailable
+	// The window has a fixed length, so missing events only lower the sum: the value is a lower bound.
+	if reason := s.windowIntegrityLocked(start, queryTime); reason != "" {
+		result.Status, result.Reason = DPSStatusLowerBound, reason
+	}
 	return result
 }
 
@@ -259,6 +272,7 @@ func (s *DamageStatistics) snapshotLocked() DamageStatisticsSnapshot {
 	}
 	snapshot.Encounters = s.encounters.snapshot(time.Time{})
 	snapshot.EncounterDPS = snapshot.Encounters.headlineDPS()
+	snapshot.Integrity = snapshot.Encounters.Integrity
 	snapshot.GameTimeDPS = DPSResult{Status: DPSStatusUnavailable, Reason: "official_timer_duration_unavailable"}
 	snapshot.DamageSpanDPS = s.damageSpanDPSLocked()
 	snapshot.Rolling5sDPS = unavailableRollingDPS("query_time_required")
@@ -336,6 +350,7 @@ func (s *DamageStatistics) resetLocked() {
 	s.hasRollingSession = false
 	s.rollingUnavailableReason = ""
 	s.duplicateEvents = 0
+	s.lastDowngradeAt = time.Time{}
 	s.encounters = s.encounters.nextInterval(s.statisticsIntervalID)
 }
 
@@ -350,7 +365,8 @@ func emptyDamageStatisticsSnapshot() DamageStatisticsSnapshot {
 	return DamageStatisticsSnapshot{
 		ByPlayerEntity: []PlayerEntityDamageSnapshot{},
 		EncounterDPS:   DPSResult{Status: DPSStatusUnavailable, Reason: "no_encounter_observed"},
-		Encounters:     EncounterTrackerSnapshot{State: EncounterIdle, BattleState: "unknown", Completed: []EncounterSnapshot{}},
+		Encounters:     EncounterTrackerSnapshot{State: EncounterIdle, BattleState: "unknown", Completed: []EncounterSnapshot{}, Integrity: intactIntegrity()},
+		Integrity:      intactIntegrity(),
 		GameTimeDPS:    DPSResult{Status: DPSStatusUnavailable, Reason: "official_timer_duration_unavailable"},
 		DamageSpanDPS:  DPSResult{Status: DPSStatusInsufficientData, Reason: "no_confirmed_outgoing_damage"},
 		Rolling5sDPS:   unavailableRollingDPS("query_time_required"),
@@ -418,6 +434,12 @@ func (s *DamageStatistics) addCombatEvent(record CombatEventRecord) string {
 			return statisticsAssignmentDuplicate
 		}
 		s.rememberAppliedKeyLocked(record.Key)
+	}
+	if record.ContextDowngrade != "" {
+		s.encounters.contextDowngraded++
+		if record.ObservedAt.After(s.lastDowngradeAt) {
+			s.lastDowngradeAt = record.ObservedAt
+		}
 	}
 	session := record.Key.ProtocolSession
 	switch record.Flow {
@@ -557,8 +579,36 @@ func (s *DamageStatistics) damageSpanDPSLocked() DPSResult {
 			return result
 		}
 		result.Status, result.Value = DPSStatusAvailable, value
+		s.applySpanIntegrityLocked(&result)
 	}
 	return result
+}
+
+// applySpanIntegrityLocked qualifies Damage-span DPS. A loss strictly inside the observed span only removes events, so
+// the value is a lower bound. A loss that reaches either end may have removed the true first or last event, which
+// would change the span itself, so the value is withheld.
+func (s *DamageStatistics) applySpanIntegrityLocked(result *DPSResult) {
+	t := s.encounters
+	inside, outside := false, false
+	for _, id := range t.lossOrder {
+		loss, ok := t.losses[id]
+		if !ok {
+			continue
+		}
+		if loss.ended && loss.from.After(result.StartObservedAt) && loss.to.Before(result.EndObservedAt) {
+			inside = true
+		} else {
+			outside = true
+		}
+	}
+	switch {
+	case outside || t.lossesEvicted:
+		result.Status, result.Reason, result.Value = DPSStatusUnreliable, "transport_loss_at_span_boundary", 0
+	case inside:
+		result.Status, result.Reason = DPSStatusLowerBound, "transport_loss_in_span"
+	case !s.lastDowngradeAt.IsZero():
+		result.Status, result.Reason = DPSStatusLowerBound, "attribution_context_suspect_in_span"
+	}
 }
 
 func (s *DamageStatistics) addEntityDamage(sessionNumber int, entityID, entityGeneration uint64, amount int64, outgoing bool, observedAt time.Time) {

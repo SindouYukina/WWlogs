@@ -85,14 +85,17 @@ func TestParseFramesChecksCompressedCRCAfterLengthPrefix(t *testing.T) {
 	}
 }
 
+// A CRC mismatch means the frame boundary can no longer be trusted: parsing stops one byte past the candidate and
+// reports a desync so the stream resynchronizes (Phase 1B; earlier the whole declared length was skipped).
 func TestParseFramesRejectsCompressedCRCIncludingLengthPrefix(t *testing.T) {
 	frame := makeTransportTestFrame(true, true)
 	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
 	span := []applicationSpan{{length: len(frame)}}
 
-	frames, badCRC, malformed, consumed := parseFrames(frame, "in", span, p)
-	if frames != 0 || badCRC != 1 || malformed != 0 || consumed != len(frame) {
-		t.Fatalf("parse result = frames:%d crc:%d malformed:%d consumed:%d", frames, badCRC, malformed, consumed)
+	result := parseFrameStream(frame, "in", span, p, nil)
+	if result.frames != 0 || result.badCRC != 1 || result.malformed != 0 || result.consumed != 1 || !result.desync ||
+		result.desyncReason != frameDesyncCRC {
+		t.Fatalf("parse result = %+v", result)
 	}
 }
 

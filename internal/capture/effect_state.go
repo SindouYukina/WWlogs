@@ -122,6 +122,9 @@ const (
 	effectReasonSessionMismatch      = "capture_session_mismatch"
 	effectReasonQueryBeforeUpdate    = "query_before_observation"
 	effectReasonCapacityExceeded     = "capacity_exceeded"
+	// effectReasonTransportLoss: lifecycle messages may have been lost; instances not updated since may be stale and
+	// effects applied during the loss may be missing.
+	effectReasonTransportLoss = "transport_loss"
 )
 
 // EffectStaticInfo is the static Master definition of an effect id. It describes the
@@ -291,6 +294,9 @@ type EffectInstanceSnapshot struct {
 	RemainingReason       string                `json:"remainingReason,omitempty"`
 	RemainingSeconds      *float64              `json:"remainingSeconds,omitempty"`
 	ExpectedExpiry        *time.Time            `json:"expectedExpiry,omitempty"`
+	// StaleSinceTransportLoss is set when no message updated the instance since a transport loss began; its
+	// removal or refresh may have been lost.
+	StaleSinceTransportLoss bool `json:"staleSinceTransportLoss,omitempty"`
 }
 
 // EffectEndedSnapshot records a bounded history entry for an instance that left the active set.
@@ -372,6 +378,8 @@ type EffectTracker struct {
 	highWater        time.Time
 	capacityExceeded bool
 	ordinal          uint64
+	// lossAt is the start of the latest transport loss since the live state was last rebuilt.
+	lossAt time.Time
 }
 
 // NewEffectTracker creates an empty tracker bound to a capture session ID.
@@ -719,6 +727,22 @@ func (t *EffectTracker) NoteSkippedUncorrelatedHolder() {
 	t.mu.Unlock()
 }
 
+// MarkTransportLoss records that lifecycle messages after at may have been lost. The tracked set is reported as
+// degraded until the next scene or session boundary rebuilds it; no instance is removed or invented.
+func (t *EffectTracker) MarkTransportLoss(at time.Time) {
+	if t == nil {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if at.IsZero() {
+		at = t.highWater
+	}
+	if t.lossAt.IsZero() || at.After(t.lossAt) {
+		t.lossAt = at
+	}
+}
+
 // EndLiveState drops every live instance at a scene or session boundary, where
 // runtime entity and handle IDs stop being comparable. Counters and the
 // statistics interval are unchanged.
@@ -909,6 +933,7 @@ func (t *EffectTracker) clearTrackedLocked() {
 	t.excluded = nil
 	t.excludedOrder = nil
 	t.capacityExceeded = false
+	t.lossAt = time.Time{}
 }
 
 func (t *EffectTracker) endLocked(instance *effectInstance, lifecycle EffectLifecycle, at time.Time) {
@@ -993,11 +1018,18 @@ func (t *EffectTracker) snapshotLocked(query CaptureQueryTime, rejection string)
 		queryTime := query.Timestamp
 		snapshot.QueryTime = &queryTime
 	}
-	if t.capacityExceeded {
+	switch {
+	case t.capacityExceeded:
 		snapshot.Status, snapshot.Reason = EffectSnapshotDegraded, effectReasonCapacityExceeded
+	case !t.lossAt.IsZero():
+		snapshot.Status, snapshot.Reason = EffectSnapshotDegraded, effectReasonTransportLoss
 	}
 	for _, instance := range t.sortedInstancesLocked() {
-		snapshot.Effects = append(snapshot.Effects, t.instanceSnapshotLocked(instance, query, rejection))
+		entry := t.instanceSnapshotLocked(instance, query, rejection)
+		if !t.lossAt.IsZero() && !instance.lastUpdatedAt.After(t.lossAt) {
+			entry.StaleSinceTransportLoss = true
+		}
+		snapshot.Effects = append(snapshot.Effects, entry)
 	}
 	return snapshot
 }

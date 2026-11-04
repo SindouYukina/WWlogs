@@ -24,6 +24,12 @@ type statisticsReport struct {
 	EffectApplies   uint64
 	EffectRemoves   uint64
 	EffectSnapshots EffectSnapshotStatus
+	// Trust: transport delivery, local-player attribution context, the integrity of the headline encounter, and of
+	// the interval totals. They are separate on purpose; none of them implies another.
+	Transport          TransportState
+	Context            ContextState
+	EncounterIntegrity string
+	DataIntegrity      IntegrityStatus
 }
 
 // currentStatisticsReport reads the statistics at the last observed capture frame time. Rolling windows
@@ -34,6 +40,13 @@ func (p *processor) currentStatisticsReport() statisticsReport {
 		damage = p.damageStatisticsSnapshotAt(CaptureQueryTime{CaptureSessionID: damage.CaptureSessionID, Timestamp: observedAt})
 	}
 	effects := p.effectSnapshotAtLastFrame()
+	trust := p.dataIntegritySnapshot(damage)
+	encounterIntegrity := "none"
+	if damage.Encounters.Current != nil {
+		encounterIntegrity = string(damage.Encounters.Current.Integrity.Status)
+	} else if n := len(damage.Encounters.Completed); n > 0 {
+		encounterIntegrity = string(damage.Encounters.Completed[n-1].Integrity.Status)
+	}
 	return statisticsReport{
 		DamageDealt:     damage.DamageDealt,
 		DamageTaken:     damage.DamageTaken,
@@ -51,6 +64,11 @@ func (p *processor) currentStatisticsReport() statisticsReport {
 		EffectApplies:   effects.Counters.Applies,
 		EffectRemoves:   effects.Counters.Removes,
 		EffectSnapshots: effects.Status,
+		Transport:       trust.Transport.State,
+		Context:         trust.Context.State,
+		DataIntegrity:   trust.Statistics.Status,
+
+		EncounterIntegrity: encounterIntegrity,
 	}
 }
 
@@ -67,12 +85,19 @@ func (r statisticsReport) String() string {
 	fmt.Fprintf(&b, " encounter_state=%s encounter_dps=%s encounter_confidence=%s encounters=%d",
 		r.EncounterState, formatDPS(r.EncounterDPS), confidence, r.Encounters)
 	fmt.Fprintf(&b, " active_effects=%d effect_applies=%d effect_removes=%d", r.ActiveEffects, r.EffectApplies, r.EffectRemoves)
+	fmt.Fprintf(&b, " transport=%s context=%s encounter_integrity=%s data_integrity=%s",
+		strings.ToLower(string(r.Transport)), strings.ToLower(string(r.Context)), strings.ToLower(r.EncounterIntegrity),
+		strings.ToLower(string(r.DataIntegrity)))
 	return b.String()
 }
 
 func formatDPS(result DPSResult) string {
-	if result.Status != DPSStatusAvailable {
-		return string(result.Status)
+	switch result.Status {
+	case DPSStatusAvailable:
+		return fmt.Sprintf("%.1f", result.Value)
+	case DPSStatusLowerBound:
+		// A lower bound is shown with its status so it cannot be read as a complete value.
+		return fmt.Sprintf("lower_bound:%.1f", result.Value)
 	}
-	return fmt.Sprintf("%.1f", result.Value)
+	return string(result.Status)
 }

@@ -873,6 +873,7 @@ func Main() {
 	}
 
 finished:
+	finishTransport(streams, processor, &stats)
 	processor.finishCapture()
 	processor.writeEncounterFinal()
 	writeLiveDiagnostic(time.Now(), true)

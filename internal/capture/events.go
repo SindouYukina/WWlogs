@@ -394,6 +394,7 @@ func (event *combatEvent) resolveEventType(masters *gameMaster) {
 func (p *processor) writeDamageEvent(event combatEvent) bool {
 	sourceRelation, targetRelation, visible := p.playerRelevantDamageEvent(event)
 	if record, ok := normalizeCombatEvent(event, sourceRelation, targetRelation); ok && p.damageStatistics != nil {
+		record = p.gateAttribution(record)
 		assignment := p.damageStatistics.addCombatEvent(record)
 		p.writeCombatEventRecord(record, assignment)
 		p.flushEncounterTransitions()
