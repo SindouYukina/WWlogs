@@ -67,7 +67,7 @@ func Main() {
 		if err != nil {
 			fatal("find Npcap adapter", err)
 		}
-		handle, err := pcap.OpenLive(device, 65535, false, time.Second)
+		handle, applied, err := openLiveCapture(device, defaultLiveCaptureConfig())
 		if err != nil {
 			fatal("open Npcap adapter", err)
 		}
@@ -75,7 +75,7 @@ func Main() {
 		if err := handle.SetBPFFilter(filterExpression); err != nil {
 			fatal("set capture filter", err)
 		}
-		fmt.Fprintf(os.Stderr, "capture_preflight=PASS adapter=%s local_ipv4=%s filter=%q\n", device, *ip, filterExpression)
+		fmt.Fprintf(os.Stderr, "capture_preflight=PASS adapter=%s local_ipv4=%s filter=%q %s\n", device, *ip, filterExpression, applied)
 		return
 	}
 	rsaKey, err := loadEmbeddedPrivateKey()
@@ -99,10 +99,12 @@ func Main() {
 		if err != nil {
 			fatal("find Npcap adapter", err)
 		}
-		handle, err = pcap.OpenLive(device, 65535, false, time.Second)
+		var applied liveCaptureApplied
+		handle, applied, err = openLiveCapture(device, defaultLiveCaptureConfig())
 		if err != nil {
 			fatal("open Npcap adapter", err)
 		}
+		fmt.Fprintf(os.Stderr, "capture_handle %s\n", applied)
 	}
 	defer handle.Close()
 	if err := handle.SetBPFFilter(filterExpression); err != nil {
@@ -171,8 +173,9 @@ loop:
 			fmt.Fprintf(os.Stderr, "offline packet read warning: %v\n", packetErr)
 			continue
 		}
+		receivedAt := time.Now()
 		processor.observePacketRead()
-		processor.sampleCaptureStats(handle, time.Now(), false)
+		processor.sampleCaptureStats(handle, receivedAt, false)
 		udpLayer := packet.Layer(layers.LayerTypeUDP)
 		if udpLayer == nil {
 			continue
@@ -180,7 +183,9 @@ loop:
 		udp := udpLayer.(*layers.UDP)
 		stats.udpPackets++
 		direction := publicPacketDirection(packet, *ip, udp, *minPort, *maxPort)
-		consumeDatagram(udp.Payload, direction, packet.Metadata().CaptureInfo.Timestamp, streams, processor, &stats)
+		capturedAt := packet.Metadata().CaptureInfo.Timestamp
+		consumeDatagram(udp.Payload, direction, capturedAt, streams, processor, &stats)
+		processor.observePacketTiming(capturedAt, receivedAt, time.Now())
 		report(time.Now(), false)
 	}
 	finishTransport(streams, processor, &stats)

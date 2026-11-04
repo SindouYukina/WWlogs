@@ -74,6 +74,8 @@ type captureRunStatus struct {
 	// DiagnosticDroppedRecords counts development diagnostic records dropped because a sink queue was full or its
 	// writer failed. It is unrelated to packet loss.
 	DiagnosticDroppedRecords uint64 `json:"diagnosticDroppedRecords"`
+	// RunID identifies the run; the PCAP integrity record and the diagnostic pipeline line carry the same ID.
+	RunID string `json:"runId,omitempty"`
 }
 
 type liveDiagnosticSnapshot struct {
