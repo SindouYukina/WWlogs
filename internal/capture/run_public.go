@@ -179,6 +179,7 @@ loop:
 		consumeDatagram(udp.Payload, direction, packet.Metadata().CaptureInfo.Timestamp, streams, processor, &stats)
 		report(time.Now(), false)
 	}
+	finishTransport(streams, processor, &stats)
 	processor.finishCapture()
 	report(time.Now(), true)
 	fmt.Fprintf(os.Stderr, "capture_finished reason=%s udp=%d duration=%s\n", stopReason, stats.udpPackets, time.Since(started).Round(time.Millisecond))

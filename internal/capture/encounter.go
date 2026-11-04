@@ -126,7 +126,10 @@ type EncounterSnapshot struct {
 	LastActivityAt  time.Time       `json:"lastActivityAt,omitempty"`
 	Reentries       uint64          `json:"reentries"`
 	Totals          EncounterTotals `json:"totals"`
-	EncounterDPS    DPSResult       `json:"encounterDps"`
+	// Integrity is the completeness of the data inside the boundaries; EncounterDPS is a lower bound when it is
+	// DEGRADED and withheld when it is UNRELIABLE.
+	Integrity    DataIntegrity `json:"integrity"`
+	EncounterDPS DPSResult     `json:"encounterDps"`
 }
 
 // EncounterTrackerSnapshot is the encounter view of one statistics interval.
@@ -145,6 +148,8 @@ type EncounterTrackerSnapshot struct {
 	BattleStateSignals uint64          `json:"battleStateSignals"`
 	// UnanchoredBattleStateSignals were rejected because their PlayerId was not proven to be the local player.
 	UnanchoredBattleStateSignals uint64 `json:"unanchoredBattleStateSignals"`
+	// Integrity is the integrity of this interval's totals.
+	Integrity DataIntegrity `json:"integrity"`
 }
 
 // EncounterTransition is one lifecycle change, reported to development diagnostics.
@@ -172,6 +177,7 @@ type encounterRecord struct {
 	lastActivity    time.Time
 	reentries       uint64
 	totals          EncounterTotals
+	integrity       encounterIntegrityState
 }
 
 // encounterTracker owns the encounter lifecycle of one statistics interval. It is driven only by capture-observed
@@ -204,6 +210,17 @@ type encounterTracker struct {
 	unanchoredBattleStateSignals uint64
 	recordTransitions            bool
 	transitions                  []EncounterTransition
+	// completedIntegrity is aligned with completed; completed snapshots hold the DPS before integrity is applied.
+	completedIntegrity []encounterIntegrityState
+	// losses is the transport loss table of this interval (plus losses still ongoing when it began).
+	losses        map[uint64]*statisticsLoss
+	lossOrder     []uint64
+	lossesEvicted bool
+	// openGaps holds, per stream, the capture time after which data waits behind a gap.
+	openGaps map[string]time.Time
+	// battleStateUnverified is set after an inbound loss until a battle-state signal or scene boundary re-establishes it.
+	battleStateUnverified bool
+	contextDowngraded     uint64
 }
 
 func newEncounterTracker(captureSessionID, intervalID uint64) *encounterTracker {
@@ -218,6 +235,19 @@ func (t *encounterTracker) nextInterval(intervalID uint64) *encounterTracker {
 	// Events observed before the reset belong to the old interval and cannot start or extend an encounter here.
 	next.boundaryFloor = t.highWater
 	next.recordTransitions = t.recordTransitions
+	// A loss still in progress keeps removing data from the new interval; a delayed stream stays delayed.
+	for _, id := range t.ongoingLossIDs() {
+		loss := *t.losses[id]
+		next.beginLoss(id, loss.direction, loss.from)
+		next.losses[id].failed = loss.failed
+	}
+	for key, since := range t.openGaps {
+		if next.openGaps == nil {
+			next.openGaps = make(map[string]time.Time)
+		}
+		next.openGaps[key] = since
+	}
+	next.battleStateUnverified = t.battleStateUnverified
 	return next
 }
 
@@ -363,6 +393,9 @@ func (t *encounterTracker) addPrelude(record CombatEventRecord) {
 
 func (t *encounterTracker) addToCurrent(record CombatEventRecord) {
 	t.current.totals.add(record)
+	if record.ContextDowngrade != "" {
+		t.current.integrity.contextDowngraded++
+	}
 	if !isConfirmedActivity(record.Flow) {
 		return
 	}
@@ -382,6 +415,12 @@ func (t *encounterTracker) open(at time.Time, protocolSession int, basis string,
 	}
 	if basis == encounterStartBattleState {
 		t.current.battleEntered = at
+	} else if t.battleStateUnverified {
+		// An inbound loss may have hidden the signal that actually started this fight.
+		t.current.integrity.battleStateUnverified = true
+	}
+	for _, id := range t.ongoingLossIDs() {
+		t.current.integrity.addLoss(id)
 	}
 	t.emit("opened", t.current, at, basis, nil)
 }
@@ -533,12 +572,16 @@ func (t *encounterTracker) finish(decidedAt time.Time, interruptBasis string) {
 		return
 	}
 	snapshot := t.snapshotOf(record, outcome, time.Time{})
+	base := snapshot
+	base.EncounterDPS = encounterDPS(record, record.endAt, outcomeConfidence(outcome))
 	if len(t.completed) >= maxCompletedEncounters {
 		t.droppedTotals.merge(t.completed[0].Totals)
 		t.completed = t.completed[1:]
+		t.completedIntegrity = t.completedIntegrity[1:]
 		t.completedDropped++
 	}
-	t.completed = append(t.completed, snapshot)
+	t.completed = append(t.completed, base)
+	t.completedIntegrity = append(t.completedIntegrity, record.integrity)
 	detail := snapshot
 	t.emit("finished", record, decidedAt, record.endBasis, &detail)
 }
@@ -552,6 +595,7 @@ func (t *encounterTracker) snapshotOf(record *encounterRecord, outcome Encounter
 		BattleEntered: record.battleEntered, EndedAt: record.endAt, EndBasis: record.endBasis, EndDecidedAt: record.endDecidedAt,
 		FirstActivityAt: record.firstActivity, LastActivityAt: record.lastActivity, Reentries: record.reentries, Totals: record.totals,
 	}
+	var extra []string
 	switch record.state {
 	case EncounterActive:
 		// A query older than the newest observed capture time cannot shorten a live encounter: the damage already
@@ -560,11 +604,19 @@ func (t *encounterTracker) snapshotOf(record *encounterRecord, outcome Encounter
 			query = t.highWater
 		}
 		snapshot.EncounterDPS = encounterDPS(record, query, "live")
+		if t.gapOpenAt(query) {
+			extra = append(extra, riskTransportGapOpen)
+		}
 	case EncounterEndingCandidate:
 		snapshot.EncounterDPS = encounterDPS(record, record.endAt, "ending_candidate")
+		if t.gapOpenAt(record.endAt) {
+			extra = append(extra, riskTransportGapOpen)
+		}
 	default:
 		snapshot.EncounterDPS = encounterDPS(record, record.endAt, outcomeConfidence(outcome))
 	}
+	snapshot.Integrity = t.integrityFrom(record.integrity, extra...)
+	snapshot.EncounterDPS = applyIntegrityToDPS(snapshot.EncounterDPS, snapshot.Integrity)
 	return snapshot
 }
 
@@ -613,10 +665,11 @@ func (t *encounterTracker) snapshot(query time.Time) EncounterTrackerSnapshot {
 	}
 	snapshot := EncounterTrackerSnapshot{
 		State: EncounterIdle, BattleState: "unknown",
-		Completed:        append([]EncounterSnapshot(nil), t.completed...),
+		Completed:        t.renderCompleted(),
 		CompletedDropped: t.completedDropped, CompletedDroppedTotals: t.droppedTotals, DiscardedEmpty: t.discardedEmpty,
 		OutsideEncounters: t.outside, EventsWithoutTime: t.eventsWithoutTime, BattleStateSignals: t.battleStateSignals,
 		UnanchoredBattleStateSignals: t.unanchoredBattleStateSignals,
+		Integrity:                    t.intervalIntegrity(),
 	}
 	if snapshot.Completed == nil {
 		snapshot.Completed = []EncounterSnapshot{}
@@ -635,6 +688,21 @@ func (t *encounterTracker) snapshot(query time.Time) EncounterTrackerSnapshot {
 		snapshot.Current, snapshot.State = &current, t.current.state
 	}
 	return snapshot
+}
+
+// renderCompleted copies the finished encounters with their current integrity: a loss reported after an encounter
+// finished can still mark it.
+func (t *encounterTracker) renderCompleted() []EncounterSnapshot {
+	if len(t.completed) == 0 {
+		return nil
+	}
+	rendered := make([]EncounterSnapshot, len(t.completed))
+	for i, base := range t.completed {
+		rendered[i] = base
+		rendered[i].Integrity = t.integrityFrom(t.completedIntegrity[i])
+		rendered[i].EncounterDPS = applyIntegrityToDPS(base.EncounterDPS, rendered[i].Integrity)
+	}
+	return rendered
 }
 
 // headlineDPS is the Encounter DPS shown at the top level: the open encounter's live value, otherwise the most

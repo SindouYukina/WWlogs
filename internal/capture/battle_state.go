@@ -72,6 +72,7 @@ func (p *processor) handlePlayerBattleState(frame gameFrame, container string, b
 		p.damageStatistics.observeUnanchoredBattleState()
 		return nil
 	}
+	p.observeContextBattleSignal(frame.timestamp)
 	p.damageStatistics.observeBattleState(signal.inBattle, frame.timestamp, p.sessionNumber)
 	p.flushEncounterTransitions()
 	return nil

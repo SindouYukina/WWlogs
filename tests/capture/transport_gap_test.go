@@ -49,18 +49,23 @@ func TestKCPReorderingFillsTheGapAndDeliversInOrder(t *testing.T) {
 	}
 }
 
+// While a gap is younger than kcpGapSkipTimeout the stream waits: later segments are held and the gap is visible.
+// (Phase 1B added the timeout; before it the stream waited forever.)
 func TestKCPUnfilledGapStallsTheStreamAndStaysVisible(t *testing.T) {
 	p, streams, stats := newTransportGapHarness()
 	sendTransportGapFrame(p, streams, stats, 0, 0)
 	for sequence := uint32(2); sequence < 10; sequence++ {
-		sendTransportGapFrame(p, streams, stats, sequence, time.Duration(sequence)*time.Second)
+		sendTransportGapFrame(p, streams, stats, sequence, time.Duration(sequence)*100*time.Millisecond)
 	}
-	if stats.frames != 1 || stats.kcpGapsFilled != 0 {
-		t.Fatalf("frames after an unfilled gap = %+v", *stats)
+	if stats.frames != 1 || stats.kcpGapsFilled != 0 || stats.kcpGapsSkipped != 0 {
+		t.Fatalf("frames while an unfilled gap waits = %+v", *stats)
 	}
 	health := summarizeKCPTransport(streams)
-	if health.OpenGaps != 1 || health.PendingSegments != 8 || !health.OldestGapSince.Equal(transportGapBase.Add(2*time.Second)) {
-		t.Fatalf("stalled stream health = %+v", health)
+	if health.OpenGaps != 1 || health.PendingSegments != 8 || !health.OldestGapSince.Equal(transportGapBase.Add(200*time.Millisecond)) {
+		t.Fatalf("waiting stream health = %+v", health)
+	}
+	if got := p.transportHealthSnapshot().State; got != TransportGapDetected {
+		t.Fatalf("transport state while waiting = %s, want %s", got, TransportGapDetected)
 	}
 	line := transportHealthLine(streams, *stats)
 	for _, want := range []string{"kcp_open_gaps=1", "kcp_pending_segments=8", "kcp_gaps_opened=1", "kcp_gaps_filled=0"} {
@@ -73,16 +78,16 @@ func TestKCPUnfilledGapStallsTheStreamAndStaysVisible(t *testing.T) {
 func TestKCPSecondHoleAfterAFilledGapOpensANewGap(t *testing.T) {
 	p, streams, stats := newTransportGapHarness()
 	sendTransportGapFrame(p, streams, stats, 0, 0)
-	sendTransportGapFrame(p, streams, stats, 3, time.Second)
-	sendTransportGapFrame(p, streams, stats, 1, 2*time.Second) // 2 is still missing
+	sendTransportGapFrame(p, streams, stats, 3, 100*time.Millisecond)
+	sendTransportGapFrame(p, streams, stats, 1, 200*time.Millisecond) // 2 is still missing
 	if stats.frames != 2 || stats.kcpGapsOpened != 2 || stats.kcpGapsFilled != 1 {
 		t.Fatalf("after the first hole filled = %+v", *stats)
 	}
-	if health := summarizeKCPTransport(streams); health.OpenGaps != 1 || !health.OldestGapSince.Equal(transportGapBase.Add(time.Second)) {
+	if health := summarizeKCPTransport(streams); health.OpenGaps != 1 || !health.OldestGapSince.Equal(transportGapBase.Add(100*time.Millisecond)) {
 		t.Fatalf("second hole health = %+v", health)
 	}
-	sendTransportGapFrame(p, streams, stats, 2, 3*time.Second)
-	if stats.frames != 4 || stats.kcpGapsFilled != 2 || stats.kcpMaxGapWait != 2*time.Second {
+	sendTransportGapFrame(p, streams, stats, 2, 300*time.Millisecond)
+	if stats.frames != 4 || stats.kcpGapsFilled != 2 || stats.kcpMaxGapWait != 200*time.Millisecond || stats.kcpGapsSkipped != 0 {
 		t.Fatalf("after both holes filled = %+v", *stats)
 	}
 }
@@ -99,6 +104,8 @@ func TestKCPDuplicatesAndRetransmissionsAreDeliveredOnce(t *testing.T) {
 	}
 }
 
+// Pending never exceeds maxPendingKCPSegments. Since Phase 1B a full buffer skips the gap at once instead of dropping
+// newer segments, so delivery resumes immediately.
 func TestKCPPendingIsBoundedBehindAnUnfilledGap(t *testing.T) {
 	p, streams, stats := newTransportGapHarness()
 	sendTransportGapFrame(p, streams, stats, 0, 0)
@@ -107,12 +114,13 @@ func TestKCPPendingIsBoundedBehindAnUnfilledGap(t *testing.T) {
 		sendTransportGapFrame(p, streams, stats, uint32(2+i), time.Millisecond)
 	}
 	state := streams["00000009/in"]
-	if len(state.pending) != maxPendingKCPSegments || stats.kcpPendingOverflow != extra || stats.kcpPendingPeak != maxPendingKCPSegments {
-		t.Fatalf("pending=%d overflow=%d peak=%d, want %d/%d/%d", len(state.pending), stats.kcpPendingOverflow,
-			stats.kcpPendingPeak, maxPendingKCPSegments, extra, maxPendingKCPSegments)
+	if len(state.pending) != 0 || stats.kcpPendingOverflow != 1 || stats.kcpPendingPeak != maxPendingKCPSegments ||
+		stats.kcpGapsSkipped != 1 || stats.kcpSegmentsSkipped != 1 {
+		t.Fatalf("pending=%d overflow=%d peak=%d skipped=%d/%d", len(state.pending), stats.kcpPendingOverflow,
+			stats.kcpPendingPeak, stats.kcpGapsSkipped, stats.kcpSegmentsSkipped)
 	}
-	if stats.frames != 1 {
-		t.Fatalf("frames delivered past the gap = %d, want 1", stats.frames)
+	if want := 1 + maxPendingKCPSegments + extra; stats.frames != want {
+		t.Fatalf("frames delivered after the forced skip = %d, want %d", stats.frames, want)
 	}
 }
 
