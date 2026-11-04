@@ -146,10 +146,16 @@ func TestDamageStatisticsRollingWindowBoundsAndExpiry(t *testing.T) {
 	if snapshot.Rolling5sDPS.Damage != 30 || snapshot.Rolling10sDPS.Damage != 50 {
 		t.Fatalf("window boundaries were not left-open and right-closed: 5s=%+v 10s=%+v", snapshot.Rolling5sDPS, snapshot.Rolling10sDPS)
 	}
+	// A quiet window reads zero over its full length. Since Phase 2 queries do not prune: history is trimmed when
+	// newer events arrive, never by a reader.
 	quiet := rollingSnapshotAt(statistics, base.Add(21*time.Second))
 	if quiet.Rolling5sDPS.Status != DPSStatusAvailable || quiet.Rolling5sDPS.Damage != 0 || quiet.Rolling5sDPS.Value != 0 ||
-		quiet.Rolling10sDPS.Damage != 0 || len(statistics.rollingEvents) != 0 {
-		t.Fatalf("quiet query did not expire old events to zero: %+v retained=%d", quiet, len(statistics.rollingEvents))
+		quiet.Rolling10sDPS.Damage != 0 || quiet.Rolling10sDPS.Duration != 10*time.Second {
+		t.Fatalf("quiet query did not read zero over the full window: %+v", quiet)
+	}
+	addStatisticsOutgoingDamage(statistics, 1, 5, base.Add(21*time.Second))
+	if len(statistics.rollingEvents) != 1 {
+		t.Fatalf("a newer event must trim history older than the 10 s window: retained=%d", len(statistics.rollingEvents))
 	}
 }
 
@@ -165,6 +171,7 @@ func TestDamageStatisticsRollingEventsAcceptOutOfOrderAndEqualTimes(t *testing.T
 	}
 }
 
+// Since Phase 2 an earlier query is answered like any other: readers do not share a query cursor.
 func TestDamageStatisticsRollingFutureEventsAreExcludedAndQueryCannotGoBackwards(t *testing.T) {
 	statistics := NewDamageStatistics()
 	base := time.Unix(400, 0)
@@ -178,8 +185,8 @@ func TestDamageStatisticsRollingFutureEventsAreExcludedAndQueryCannotGoBackwards
 		t.Fatalf("event was not included at its timestamp: %+v", later.Rolling5sDPS)
 	}
 	backwards := rollingSnapshotAt(statistics, base.Add(4*time.Second))
-	if backwards.Rolling5sDPS.Status != DPSStatusUnavailable || backwards.Rolling5sDPS.Reason != "query_time_moved_backwards" {
-		t.Fatalf("backwards query did not return an explicit unavailable result: %+v", backwards.Rolling5sDPS)
+	if backwards.Rolling5sDPS.Status != DPSStatusAvailable || backwards.Rolling5sDPS.Damage != 0 {
+		t.Fatalf("an earlier query must see only events up to its own time: %+v", backwards.Rolling5sDPS)
 	}
 	forwardAgain := rollingSnapshotAt(statistics, base.Add(6*time.Second))
 	if forwardAgain.Rolling5sDPS.Status != DPSStatusAvailable || forwardAgain.Rolling5sDPS.Damage != 25 {
@@ -243,7 +250,7 @@ func TestDamageStatisticsRollingResetAndSnapshotAndResetPreserveCopies(t *testin
 	}
 	statistics.Reset()
 	reset := statistics.Snapshot()
-	if reset.StatisticsIntervalID != 3 || reset.DamageDealt != 0 || len(statistics.rollingEvents) != 0 || !statistics.rollingLastQuery.IsZero() {
+	if reset.StatisticsIntervalID != 3 || reset.DamageDealt != 0 || len(statistics.rollingEvents) != 0 || !statistics.rollingRetentionStart.IsZero() {
 		t.Fatalf("Reset did not clear window state and advance interval: %+v", reset)
 	}
 	if before.Rolling5sDPS.Damage != 90 || before.UnattributedOutgoingDamage != 12 || before.StatisticsIntervalID != 1 {

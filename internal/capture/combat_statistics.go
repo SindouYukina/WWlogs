@@ -142,7 +142,6 @@ type DamageStatistics struct {
 	rollingEvents              []rollingDamageEvent
 	rollingHighWater           time.Time
 	rollingRetentionStart      time.Time
-	rollingLastQuery           time.Time
 	rollingSessionNumber       int
 	hasRollingSession          bool
 	rollingUnavailableReason   string
@@ -177,14 +176,15 @@ func (s *DamageStatistics) Snapshot() DamageStatisticsSnapshot {
 	return s.snapshotLocked()
 }
 
-// SnapshotAt returns statistics and rolling DPS for an explicit timestamp from this capture session.
-// The timestamp must use the same clock domain as the capture events; backwards queries are unavailable.
+// SnapshotAt returns statistics and rolling DPS for an explicit timestamp from this capture session. The timestamp
+// must use the same clock domain as the capture events. A query reads only: any number of readers may query at any
+// times, in any order, without affecting each other or later queries.
 func (s *DamageStatistics) SnapshotAt(query CaptureQueryTime) DamageStatisticsSnapshot {
 	if s == nil {
 		return emptyDamageStatisticsSnapshot()
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.snapshotAtLocked(query)
 }
 
@@ -201,8 +201,6 @@ func (s *DamageStatistics) snapshotAtLocked(query CaptureQueryTime) DamageStatis
 		snapshot.Rolling10sDPS = unavailableRollingDPS(reason)
 		return snapshot
 	}
-	s.rollingLastQuery = query.Timestamp
-	s.advanceRollingRetentionLocked(query.Timestamp)
 	snapshot.Rolling5sDPS = s.rollingDPSLocked(query.Timestamp, rollingFiveSecondWindow)
 	snapshot.Rolling10sDPS = s.rollingDPSLocked(query.Timestamp, rollingTenSecondWindow)
 	return snapshot
@@ -216,10 +214,6 @@ func (s *DamageStatistics) validateRollingQueryLocked(query CaptureQueryTime) st
 		return "query_time_unavailable"
 	case s.rollingUnavailableReason != "":
 		return s.rollingUnavailableReason
-	case !s.rollingLastQuery.IsZero() && query.Timestamp.Before(s.rollingLastQuery):
-		return "query_time_moved_backwards"
-	case !s.rollingRetentionStart.IsZero() && query.Timestamp.Before(s.rollingRetentionStart):
-		return "query_before_retained_window"
 	default:
 		return ""
 	}
@@ -228,6 +222,10 @@ func (s *DamageStatistics) validateRollingQueryLocked(query CaptureQueryTime) st
 func (s *DamageStatistics) rollingDPSLocked(queryTime time.Time, window time.Duration) DPSResult {
 	result := DPSResult{Duration: window, StartObservedAt: queryTime.Add(-window), EndObservedAt: queryTime}
 	start := result.StartObservedAt
+	if !s.rollingRetentionStart.IsZero() && start.Before(s.rollingRetentionStart) {
+		// Events before the retention start were discarded as newer ones arrived; this window can no longer be summed.
+		return unavailableRollingDPS("query_before_retained_window")
+	}
 	var total int64
 	for _, event := range s.rollingEvents {
 		if !event.observedAt.After(start) || event.observedAt.After(queryTime) {
@@ -345,7 +343,6 @@ func (s *DamageStatistics) resetLocked() {
 	s.rollingEvents = nil
 	s.rollingHighWater = time.Time{}
 	s.rollingRetentionStart = time.Time{}
-	s.rollingLastQuery = time.Time{}
 	s.rollingSessionNumber = 0
 	s.hasRollingSession = false
 	s.rollingUnavailableReason = ""
