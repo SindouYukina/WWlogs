@@ -172,6 +172,8 @@
     "internal/capture/central_timeline_collector_test.go": "tests/capture/timeline_collector_test.go",
     "tests/capture/timer_test.go": "",
     "internal/capture/central_timer_test.go": "tests/capture/timer_test.go",
+    "tests/capture/transport_gap_test.go": "",
+    "internal/capture/central_transport_gap_test.go": "tests/capture/transport_gap_test.go",
     "tests/capture/transport_test.go": "",
     "internal/capture/central_transport_test.go": "tests/capture/transport_test.go",
     "tests/capture/vehicle_contributor_dev_test.go": "",

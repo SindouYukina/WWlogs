@@ -32,7 +32,16 @@ type stream struct {
 	want              byte
 	applicationBuffer []byte
 	applicationSpans  []applicationSpan
+	// gapOpen is set while a later segment waits for the missing sequence next; gapSince is the capture time of the
+	// segment that first revealed the gap. Delivery stays strictly in order: a gap that never fills stalls the stream.
+	gapOpen  bool
+	gapSince time.Time
 }
+
+// maxPendingKCPSegments bounds the out-of-order segments one KCP stream holds while it waits for a missing sequence.
+// Contiguous captures never held more than a handful; a stream past the bound is stalled behind an unfilled gap, and
+// further segments are counted and dropped instead of growing memory for the rest of the capture.
+const maxPendingKCPSegments = 4096
 
 type captureStats struct {
 	udpPackets  int
@@ -46,6 +55,22 @@ type captureStats struct {
 	badCRC      int
 	malformed   int
 	kernelDrops int
+	// KCP delivery health. A filled gap is reordering or a captured retransmission; an open gap at the end of a
+	// capture means every later segment of that stream was never delivered.
+	kcpDuplicates        int // segments already delivered or already pending
+	kcpOutOfOrder        int // segments buffered ahead of a missing sequence
+	kcpGapsOpened        int
+	kcpGapsFilled        int
+	kcpMaxGapWait        time.Duration // longest capture-time wait of a filled gap
+	kcpPendingPeak       int
+	kcpPendingOverflow   int // segments dropped because the stream already held maxPendingKCPSegments
+	kcpFragmentResets    int // a fragment that does not continue the message being assembled
+	kcpFragmentTailDrops int // a final fragment that arrives before the message has all of its fragments
+}
+
+// kcpSequenceBefore compares KCP sequence numbers with 32-bit wraparound, as KCP itself does.
+func kcpSequenceBefore(a, b uint32) bool {
+	return int32(a-b) < 0
 }
 
 type captureRunStatus struct {
@@ -173,10 +198,37 @@ func consumeDatagram(payload []byte, direction string, capturedAt time.Time, str
 			state.initialized = true
 			state.next = seq
 		}
-		if seq < state.next {
+		if kcpSequenceBefore(seq, state.next) {
+			stats.kcpDuplicates++
 			continue
 		}
+		if _, exists := state.pending[seq]; exists {
+			stats.kcpDuplicates++
+			continue
+		}
+		if seq != state.next {
+			if len(state.pending) >= maxPendingKCPSegments {
+				stats.kcpPendingOverflow++
+				continue
+			}
+			stats.kcpOutOfOrder++
+			if !state.gapOpen {
+				state.gapOpen, state.gapSince = true, capturedAt
+				stats.kcpGapsOpened++
+			}
+		}
 		state.pending[seq] = segment{data: data, fragments: fragments, timestamp: capturedAt}
+		if len(state.pending) > stats.kcpPendingPeak {
+			stats.kcpPendingPeak = len(state.pending)
+		}
+		if seq == state.next && state.gapOpen {
+			// The missing sequence arrived: the gap was reordering or a captured retransmission.
+			stats.kcpGapsFilled++
+			if wait := capturedAt.Sub(state.gapSince); wait > stats.kcpMaxGapWait {
+				stats.kcpMaxGapWait = wait
+			}
+			state.gapOpen, state.gapSince = false, time.Time{}
+		}
 		for {
 			part, found := state.pending[state.next]
 			if !found {
@@ -186,18 +238,26 @@ func consumeDatagram(payload []byte, direction string, capturedAt time.Time, str
 			state.next++
 			stats.kcpOrdered++
 			if part.fragments > 0 {
-				if len(state.assembling) == 0 {
+				switch {
+				case len(state.assembling) == 0:
 					state.assembling = append(state.assembling, part.data)
 					state.assemblingAt = part.timestamp
-				} else if part.fragments == state.want {
+				case part.fragments == state.want:
 					state.assembling = append(state.assembling, part.data)
-				} else {
-					state.assembling = nil
-					state.assemblingAt = time.Time{}
+				default:
+					// The message being assembled cannot complete; this fragment can only begin another one.
+					stats.kcpFragmentResets++
+					state.assembling = [][]byte{part.data}
+					state.assemblingAt = part.timestamp
 				}
-				if len(state.assembling) > 0 {
-					state.want = part.fragments - 1
-				}
+				state.want = part.fragments - 1
+				continue
+			}
+			if len(state.assembling) > 0 && state.want != 0 {
+				// A final fragment while earlier fragments are still expected belongs to an incomplete message.
+				stats.kcpFragmentTailDrops++
+				state.assembling = nil
+				state.assemblingAt = time.Time{}
 				continue
 			}
 			app := part.data
@@ -215,10 +275,64 @@ func consumeDatagram(payload []byte, direction string, capturedAt time.Time, str
 			stats.kcpMessages++
 			processApplicationData(app, appTimestamp, direction, streams, state, processor, stats)
 		}
+		if len(state.pending) > 0 && !state.gapOpen {
+			// Delivery stopped at another missing sequence; it is a new gap, open since its earliest waiting segment.
+			state.gapOpen, state.gapSince = true, earliestPendingTimestamp(state.pending)
+			stats.kcpGapsOpened++
+		}
 	}
 	if !hasKCP && len(payload) > 0 {
 		stats.nonKCPUDP++
 	}
+}
+
+func earliestPendingTimestamp(pending map[uint32]segment) time.Time {
+	var earliest time.Time
+	for _, part := range pending {
+		if earliest.IsZero() || part.timestamp.Before(earliest) {
+			earliest = part.timestamp
+		}
+	}
+	return earliest
+}
+
+// kcpTransportHealth summarizes KCP delivery at one moment. OpenGaps counts streams stalled behind a missing
+// sequence; their later segments are not delivered, so events after OldestGapSince are absent from every statistic.
+type kcpTransportHealth struct {
+	Streams         int
+	OpenGaps        int
+	PendingSegments int
+	OldestGapSince  time.Time
+}
+
+func summarizeKCPTransport(streams map[string]*stream) kcpTransportHealth {
+	var health kcpTransportHealth
+	for _, state := range streams {
+		health.Streams++
+		health.PendingSegments += len(state.pending)
+		if !state.gapOpen {
+			continue
+		}
+		health.OpenGaps++
+		if health.OldestGapSince.IsZero() || state.gapSince.Before(health.OldestGapSince) {
+			health.OldestGapSince = state.gapSince
+		}
+	}
+	return health
+}
+
+// transportHealthLine formats KCP delivery counters for development diagnostics. It carries counts and one capture
+// time only: no conversation IDs, sequences, or payload bytes.
+func transportHealthLine(streams map[string]*stream, stats captureStats) string {
+	health := summarizeKCPTransport(streams)
+	oldest := "none"
+	if !health.OldestGapSince.IsZero() {
+		oldest = health.OldestGapSince.UTC().Format(time.RFC3339Nano)
+	}
+	return fmt.Sprintf("transport_health kcp_streams=%d kcp_open_gaps=%d kcp_oldest_open_gap=%s kcp_pending_segments=%d kcp_pending_peak=%d kcp_pending_overflow=%d kcp_out_of_order=%d kcp_duplicates=%d kcp_gaps_opened=%d kcp_gaps_filled=%d kcp_max_gap_wait=%s kcp_fragment_resets=%d kcp_fragment_tail_drops=%d",
+		health.Streams, health.OpenGaps, oldest, health.PendingSegments, stats.kcpPendingPeak, stats.kcpPendingOverflow,
+		stats.kcpOutOfOrder, stats.kcpDuplicates, stats.kcpGapsOpened, stats.kcpGapsFilled, stats.kcpMaxGapWait,
+		stats.kcpFragmentResets, stats.kcpFragmentTailDrops)
 }
 
 const maxApplicationFrameLength = int(^uint16(0)) + 3
