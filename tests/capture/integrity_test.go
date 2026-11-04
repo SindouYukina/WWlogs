@@ -368,7 +368,7 @@ func TestEffectSnapshotDegradedAfterTransportLoss(t *testing.T) {
 func TestStatisticsLineShowsTrustFields(t *testing.T) {
 	p := newIntegrityProcessor()
 	line := p.currentStatisticsReport().String()
-	if !strings.HasSuffix(line, "transport=healthy context=valid encounter_integrity=none data_integrity=intact") {
+	if !strings.Contains(line, " transport=healthy context=valid encounter_integrity=none data_integrity=intact kernel_drops=unavailable") {
 		t.Fatalf("statistics line without loss = %q", line)
 	}
 	p.damageStatistics.observeBattleState(true, encounterAt(10), 1)

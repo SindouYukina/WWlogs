@@ -52,6 +52,8 @@ const (
 	kcpSkipGapTimeout   = "gap_timeout"
 	kcpSkipPendingLimit = "pending_limit"
 	kcpSkipCaptureEnd   = "capture_end"
+	// kcpLossStreamEvicted: a stream left the bounded table while data still waited behind its gap.
+	kcpLossStreamEvicted = "stream_evicted"
 )
 
 type segment struct {
@@ -176,6 +178,15 @@ func evictIdlestStream(streams map[string]*stream, processor *processor, stats *
 	}
 	stats.kcpStreamsEvicted++
 	stats.kcpEvictedPendingSegments += len(oldest.pending)
+	processor.captureLayer.evictedSegments += uint64(len(oldest.pending))
+	if oldest.gapOpen {
+		closeKCPGap(oldest, processor)
+	}
+	if len(oldest.pending) > 0 && !oldest.recovery.active {
+		// Data waiting behind a gap is discarded with the stream: that is a loss, and it can never recover.
+		oldest.recovery.active = true
+		oldest.recovery.lossID = processor.beginTransportLoss(oldest.direction, oldest.lastDeliveredAt, oldest.lastActivityAt, kcpLossStreamEvicted, len(oldest.pending))
+	}
 	if oldest.recovery.active {
 		// The episode can never finish; it stays reported as an unrecovered loss.
 		processor.failTransportLoss(oldest.recovery.lossID, oldest.direction)

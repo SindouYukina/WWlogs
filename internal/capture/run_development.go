@@ -663,6 +663,13 @@ func Main() {
 	if *commandCensusOut != "" {
 		processor.census = newCommandCensus()
 	}
+	// Every per-event diagnostic sink now writes from its own goroutine; the capture loop only queues records.
+	diagnostics := newDiagnosticPipeline(*pcapIn == "")
+	flushers := map[io.Writer]func() error{stdout: stdout.Flush}
+	if frameArchiveWriter != nil {
+		flushers[frameArchiveWriter] = frameArchiveWriter.Flush
+	}
+	restoreDiagnostics := wrapProcessorDiagnostics(processor, diagnostics, flushers)
 	fmt.Fprintf(os.Stderr, "master_data_loaded database=%s sha256=%s locale=%s characters=%d monsters=%d skills=%d damage=%d\n",
 		masters.databasePath, masters.manifest.SourceHash, masters.locale,
 		len(masters.characters), len(masters.monsters), len(masters.skills), len(masters.damage))
@@ -693,6 +700,7 @@ func Main() {
 
 	var pcapFile *os.File
 	var pcapWriter *pcapgo.Writer
+	var pcapSink io.Writer
 	if *pcapOut != "" {
 		if dir := filepath.Dir(*pcapOut); dir != "." {
 			if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -708,6 +716,8 @@ func Main() {
 		if err := pcapWriter.WriteFileHeader(65535, handle.LinkType()); err != nil {
 			fatal("write PCAP header", err)
 		}
+		// Packet records are queued whole; a write failure disables the PCAP without stopping the analysis.
+		pcapSink = diagnostics.wrap("pcap", pcapFile, nil, diagnosticPCAPCapacityBytes)
 	}
 
 	if *pcapIn == "" {
@@ -717,6 +727,8 @@ func Main() {
 	}
 
 	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
+	processor.observeCaptureSource(*pcapIn == "")
+	processor.captureLayer.diagnosticDropCount = diagnostics.droppedRecords
 	streams := make(map[string]*stream)
 	stats := captureStats{}
 	started := time.Now()
@@ -736,13 +748,15 @@ func Main() {
 			fmt.Fprintf(os.Stderr, "live_diagnostic_disabled error=%v\n", err)
 		}
 	}
+	var liveDiagnosticSink io.Writer
 	if liveDiagnosticFile != nil {
 		defer liveDiagnosticFile.Close()
+		liveDiagnosticSink = diagnostics.wrap("live-diagnostics", liveDiagnosticFile, nil, diagnosticSinkCapacityBytes)
 	}
 	lastLiveDiagnostic := time.Time{}
 	lastDiagnosticCaptureTime := time.Time{}
 	writeLiveDiagnostic := func(now time.Time, final bool) {
-		if liveDiagnosticFile == nil || (!final && !lastLiveDiagnostic.IsZero() && now.Sub(lastLiveDiagnostic) < liveDiagnosticInterval) {
+		if liveDiagnosticSink == nil || (!final && !lastLiveDiagnostic.IsZero() && now.Sub(lastLiveDiagnostic) < liveDiagnosticInterval) {
 			return
 		}
 		previousSampleAt := lastLiveDiagnostic
@@ -759,10 +773,9 @@ func Main() {
 			snapshot.CaptureTimestampAdvanceSeconds = &captureAdvance
 		}
 		lastDiagnosticCaptureTime = snapshot.CaptureObservedAt
-		if err := writeLiveDiagnosticSnapshot(liveDiagnosticFile, snapshot); err != nil {
+		if err := writeLiveDiagnosticSnapshot(liveDiagnosticSink, snapshot); err != nil {
 			fmt.Fprintf(os.Stderr, "live_diagnostic_disabled error=%v\n", err)
-			_ = liveDiagnosticFile.Close()
-			liveDiagnosticFile = nil
+			liveDiagnosticSink = nil
 			return
 		}
 	}
@@ -785,6 +798,10 @@ func Main() {
 		status.DeadlineAt = started.Add(*duration)
 	}
 	lastStatusWrite := time.Time{}
+	var statusWriter *latestFileWriter
+	if *statusFile != "" {
+		statusWriter = newLatestFileWriter(*statusFile)
+	}
 	writeStatus := func(state, reason string) {
 		if *statusFile == "" {
 			return
@@ -803,12 +820,22 @@ func Main() {
 		status.UDPPackets = stats.udpPackets
 		status.KernelDrops = stats.kernelDrops
 		status.PCAPBytes = currentPCAPBytes
+		status.DiagnosticDroppedRecords = diagnostics.droppedRecords()
 		data, err := json.Marshal(status)
-		if err == nil {
-			err = os.WriteFile(*statusFile, data, 0o600)
-		}
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "capture_status_write_error=%v\n", err)
+			return
+		}
+		if state == "RUNNING" {
+			statusWriter.submit(data)
+			return
+		}
+		// The final status is written once the run is over, so waiting for it costs no packets.
+		if err := statusWriter.close(data, diagnosticFlushTimeout); err != nil {
+			fmt.Fprintf(os.Stderr, "capture_status_write_error=%v\n", err)
+		}
+		if count, last := statusWriter.errors(); count > 0 {
+			fmt.Fprintf(os.Stderr, "capture_status_write_errors=%d last=%q\n", count, last)
 		}
 	}
 	writeStatus("RUNNING", "")
@@ -835,6 +862,7 @@ func Main() {
 		packet, packetErr := packetSource.NextPacket()
 		if packetErr != nil {
 			if packetErr == pcap.NextErrorTimeoutExpired {
+				processor.sampleCaptureStats(handle, time.Now(), false)
 				writeStatus("RUNNING", "")
 				writeLiveDiagnostic(time.Now(), false)
 				continue
@@ -855,11 +883,11 @@ func Main() {
 				stopReason = "size_limit"
 				goto finished
 			}
-			if err := pcapWriter.WritePacket(packet.Metadata().CaptureInfo, packet.Data()); err != nil {
-				fatal("write captured PCAP packet", err)
-			}
+			_, _ = pcapSink.Write(pcapPacketRecord(packet.Metadata().CaptureInfo, packet.Data()))
 			currentPCAPBytes += recordBytes
 		}
+		processor.observePacketRead()
+		processor.sampleCaptureStats(handle, time.Now(), false)
 		udpLayer := packet.Layer(layers.LayerTypeUDP)
 		if udpLayer == nil {
 			continue
@@ -874,9 +902,14 @@ func Main() {
 
 finished:
 	finishTransport(streams, processor, &stats)
+	processor.sampleCaptureStats(handle, time.Now(), true)
 	processor.finishCapture()
 	processor.writeEncounterFinal()
 	writeLiveDiagnostic(time.Now(), true)
+	// Drain the asynchronous sinks before the synchronous end-of-run summaries use the same files directly.
+	diagnostics.finishCapture()
+	pipelineStats := diagnostics.close(diagnosticFlushTimeout)
+	restoreDiagnostics()
 	if statsResult, statsErr := handle.Stats(); statsErr == nil && statsResult != nil {
 		stats.kernelDrops = statsResult.PacketsDropped
 	}
@@ -947,6 +980,7 @@ finished:
 	processor.printSummary(diagnosticTarget)
 	fmt.Fprintf(diagnosticTarget, "statistics_final %s\n", processor.currentStatisticsReport())
 	fmt.Fprintln(diagnosticTarget, transportHealthLine(streams, stats))
+	fmt.Fprintln(diagnosticTarget, diagnosticPipelineLine(pipelineStats))
 	fmt.Fprintf(diagnosticTarget, "capture_finished udp=%d kcp_push=%d kcp_ordered=%d kcp_messages=%d protocol_frames=%d bad_crc=%d malformed_frames=%d kernel_drops=%d duration=%s\n",
 		stats.udpPackets, stats.kcpPush, stats.kcpOrdered, stats.kcpMessages, stats.frames, stats.badCRC, stats.malformed, stats.kernelDrops, time.Since(started).Round(time.Millisecond))
 	if *commandCensusOut != "" {

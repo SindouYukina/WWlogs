@@ -30,6 +30,8 @@ type statisticsReport struct {
 	Context            ContextState
 	EncounterIntegrity string
 	DataIntegrity      IntegrityStatus
+	// KernelDrops is the Npcap driver drop counter, or unavailable (offline replay, failed sampling).
+	KernelDrops CaptureCounter
 }
 
 // currentStatisticsReport reads the statistics at the last observed capture frame time. Rolling windows
@@ -69,6 +71,7 @@ func (p *processor) currentStatisticsReport() statisticsReport {
 		DataIntegrity:   trust.Statistics.Status,
 
 		EncounterIntegrity: encounterIntegrity,
+		KernelDrops:        trust.Capture.KernelDropped,
 	}
 }
 
@@ -85,9 +88,9 @@ func (r statisticsReport) String() string {
 	fmt.Fprintf(&b, " encounter_state=%s encounter_dps=%s encounter_confidence=%s encounters=%d",
 		r.EncounterState, formatDPS(r.EncounterDPS), confidence, r.Encounters)
 	fmt.Fprintf(&b, " active_effects=%d effect_applies=%d effect_removes=%d", r.ActiveEffects, r.EffectApplies, r.EffectRemoves)
-	fmt.Fprintf(&b, " transport=%s context=%s encounter_integrity=%s data_integrity=%s",
+	fmt.Fprintf(&b, " transport=%s context=%s encounter_integrity=%s data_integrity=%s kernel_drops=%s",
 		strings.ToLower(string(r.Transport)), strings.ToLower(string(r.Context)), strings.ToLower(r.EncounterIntegrity),
-		strings.ToLower(string(r.DataIntegrity)))
+		strings.ToLower(string(r.DataIntegrity)), formatCaptureCounter(r.KernelDrops))
 	return b.String()
 }
 

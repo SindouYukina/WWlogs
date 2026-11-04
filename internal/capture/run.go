@@ -71,6 +71,9 @@ type captureRunStatus struct {
 	MaxPCAPBytes int64            `json:"maxPcapBytes"`
 	UDPPackets   int              `json:"udpPackets"`
 	KernelDrops  int              `json:"kernelDrops"`
+	// DiagnosticDroppedRecords counts development diagnostic records dropped because a sink queue was full or its
+	// writer failed. It is unrelated to packet loss.
+	DiagnosticDroppedRecords uint64 `json:"diagnosticDroppedRecords"`
 }
 
 type liveDiagnosticSnapshot struct {
