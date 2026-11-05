@@ -9,6 +9,10 @@ import (
 // maxDamageOwnerRows bounds how many owners one damage event carries; ownerCount keeps the full number.
 const maxDamageOwnerRows = 5
 
+// Materialize the text keys once so SQLite can index the join without changing
+// how IDs from different SQLite storage types compare.
+const damageOwnerIDs = `WITH damage_ids(id) AS MATERIALIZED (SELECT CAST(id AS TEXT) FROM damage) `
+
 // damageOwnerJSONL is one static owner of a DamageId: a skill that lists the DamageId in its damage references, or a
 // Buff whose extra-effect parameters name it. The owner is a master-table reference, not the runtime attacker.
 type damageOwnerJSONL struct {
@@ -33,8 +37,8 @@ func loadSQLiteDamageOwners(db *sql.DB, locale string, master *gameMaster) error
 	if err != nil || !exists {
 		return err
 	}
-	rows, err := db.Query(`SELECT CAST(d.damage_id AS TEXT),CAST(d.skill_id AS TEXT),COALESCE(CAST(r.id AS TEXT),'') FROM skill_damage_ref d
-		JOIN damage x ON CAST(x.id AS TEXT)=CAST(d.damage_id AS TEXT)
+	rows, err := db.Query(damageOwnerIDs + `SELECT CAST(d.damage_id AS TEXT),CAST(d.skill_id AS TEXT),COALESCE(CAST(r.id AS TEXT),'') FROM skill_damage_ref d
+		JOIN damage_ids x ON x.id=CAST(d.damage_id AS TEXT)
 		LEFT JOIN skill s ON CAST(s.id AS TEXT)=CAST(d.skill_id AS TEXT)
 		LEFT JOIN roleinfo r ON CAST(r.skill_id AS TEXT)=CAST(s.skill_group_id AS TEXT)`)
 	if err != nil {
@@ -74,8 +78,8 @@ func loadSQLiteDamageOwners(db *sql.DB, locale string, master *gameMaster) error
 	if err != nil || !buffExists {
 		return err
 	}
-	buffRows, err := db.Query(`SELECT DISTINCT CAST(p.value AS TEXT),CAST(p.owner_id AS TEXT) FROM buff_extra_effect_parameters p
-		JOIN damage x ON CAST(x.id AS TEXT)=CAST(p.value AS TEXT)`)
+	buffRows, err := db.Query(damageOwnerIDs + `SELECT DISTINCT CAST(p.value AS TEXT),CAST(p.owner_id AS TEXT) FROM buff_extra_effect_parameters p
+		JOIN damage_ids x ON x.id=CAST(p.value AS TEXT)`)
 	if err != nil {
 		return fmt.Errorf("query buff damage owners: %w", err)
 	}
