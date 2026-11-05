@@ -89,17 +89,13 @@
 .notice { padding: 12px 16px; border: 1px solid #fbbf2440; border-radius: 8px; font-size: 13px; }
 @media (max-width: 760px) { .workspace { padding: 16px; } .app-header { padding: 16px; } .metric-value { font-size: 23px; } }
 
-/* Overlay-only layout. Wails handles native drag and edge resize; input remains enabled. */
-body[data-view="overlay"] { margin:0; padding:6px; overflow:hidden; }
+/* Wails gives edge resize priority over drag. Keep the transparent gutter inside the drag region. */
+body[data-view="overlay"] { --wails-draggable:drag; margin:0; padding:6px; overflow:hidden; user-select:none; }
 .combat-overlay { position:relative; height:calc(100vh - 12px); display:flex; flex-direction:column; border:1px solid #ffffff24; border-radius:12px; background:#111820ed; color:#eef3f5; box-shadow:0 5px 18px #0006; font-size:12px; }
-.overlay-hide { --wails-draggable:no-drag; padding:0 7px; border-radius:5px; font-size:22px; line-height:24px; cursor:pointer; color:#b5c1cc; }
-.overlay-hide:hover { background:#ffffff18; color:white; }
 .overlay-content { flex:1; min-height:0; overflow:auto; padding:12px 14px; scrollbar-width:none; }
 .overlay-content::-webkit-scrollbar { display:none; }
-.overlay-controls { position:absolute; top:5px; right:7px; z-index:1; display:flex; gap:3px; opacity:0; transition:opacity .15s; }
-.combat-overlay:hover .overlay-controls,.combat-overlay:focus-within .overlay-controls { opacity:1; }
-.overlay-drag { --wails-draggable:drag; cursor:move; user-select:none; padding:3px 8px; border-radius:5px; background:#111820ed; }
-.overlay-content > [data-field="banner"] { max-width:calc(100% - 65px); }
+/* Wails checks the target's client size. Hit the scroll container even over inline text. */
+.overlay-content * { pointer-events:none; }
 .overlay-encounter-title { display:flex; flex-wrap:wrap; justify-content:space-between; gap:5px; margin:12px 0 8px; color:#a8b6c4; font-size:10px; }
 .combat-overlay .metric-primary .metric-value { font-size:40px; }
 .combat-overlay .metric-value { font-size:21px; }

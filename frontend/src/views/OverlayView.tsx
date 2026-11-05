@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { host } from "@/lib/host"
 import { dataState, numberText, damageContributors, type Connection, type Effect, type Snapshot } from "@/lib/snapshot"
 import { effectRemaining, relevantEffect, snapshotStale } from "@/lib/effects"
 import { statusText } from "@/i18n"
@@ -30,10 +29,6 @@ export function OverlayView({snapshot,connection}:{snapshot:Snapshot|null;connec
     return role?roleName(role):effect.holderRoleId!==undefined?t("unknownRole",{ns:"common",id:effect.holderRoleId}):state(effect.holderRelation)
   }
   return <div className="combat-overlay" data-field="overlay" data-locale={snapshot?.locale}>
-    <div className="overlay-controls">
-      <div className="overlay-drag" title={t("drag")} aria-label={t("drag")}>⋮⋮</div>
-      <button className="overlay-hide" aria-label={t("hide")} onClick={()=>void host.setOverlayVisible(false)}>×</button>
-    </div>
     <div className="overlay-content">
       <StateBanner connection={connection} state={dataState(snapshot)} snapshot={snapshot} stale={snapshotStale(snapshot,now)}/>
       <div className="overlay-encounter-title"><span>{t(view?.encounters.current?"currentEncounter":encounter?"lastEncounter":"encounter",{ns:"dashboard"})} · {statusText(view?.encounters.state)}</span><span data-field="encounter-elapsed">{t("duration",{ns:"common",time:elapsed})}</span></div>
