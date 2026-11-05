@@ -43,6 +43,7 @@ func trackOverlay(app *application.App, window *application.WebviewWindow, store
 	var timer *time.Timer
 	closed := false
 	var ready atomic.Bool
+	var restore sync.Once
 	initialBounds := OverlayBounds{Width: 440, Height: 640}
 	if saved := store.current().Settings.Overlay; saved != nil {
 		initialBounds = *saved
@@ -75,7 +76,7 @@ func trackOverlay(app *application.App, window *application.WebviewWindow, store
 		}
 	}
 	changed := func(*application.WindowEvent) {
-		// Native construction emits temporary minimum sizes before ApplicationStarted.
+		// Native construction emits temporary minimum sizes before the window runtime is ready.
 		if !ready.Load() {
 			return
 		}
@@ -98,12 +99,15 @@ func trackOverlay(app *application.App, window *application.WebviewWindow, store
 	}
 	window.OnWindowEvent(events.Common.WindowDidMove, changed)
 	window.OnWindowEvent(events.Common.WindowDidResize, changed)
-	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
-		bounds := fitOverlay(initialBounds, areas())
-		window.SetSize(bounds.Width, bounds.Height)
-		window.SetPosition(bounds.X, bounds.Y)
-		ready.Store(true)
-		changed(nil)
+	// ApplicationStarted can precede native window construction on Windows. RuntimeReady follows it.
+	window.OnWindowEvent(events.Common.WindowRuntimeReady, func(*application.WindowEvent) {
+		restore.Do(func() {
+			bounds := fitOverlay(initialBounds, areas())
+			window.SetSize(bounds.Width, bounds.Height)
+			window.SetPosition(bounds.X, bounds.Y)
+			ready.Store(true)
+			changed(nil)
+		})
 	})
 	// Wails refreshes its inventory on display changes; compare the small DIP list outside the capture path.
 	ctx, cancel := context.WithCancel(context.Background())
