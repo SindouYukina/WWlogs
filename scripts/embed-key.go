@@ -20,6 +20,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tc-hib/winres"
+
 	"wwlogs/internal/keyembed"
 )
 
@@ -152,6 +154,15 @@ var (
 			return err
 		}
 	}
+	var iconResources *winres.ResourceSet
+	if *testBinary == "" {
+		resources, resourcePath, err := windowsIconResource(repositoryRoot, buildPackage)
+		if err != nil {
+			return err
+		}
+		defer os.Remove(resourcePath)
+		iconResources = resources
+	}
 	overlayData, err := json.Marshal(struct {
 		Replace map[string]string
 	}{Replace: replacements})
@@ -196,6 +207,9 @@ var (
 	if err := verifyBuildIdentity(temporaryExecutable, *profileFlag, version, commit); err != nil {
 		return err
 	}
+	if err := verifyWindowsIcon(temporaryExecutable, iconResources); err != nil {
+		return err
+	}
 	if err := installExecutable(temporaryExecutable, outputPath); err != nil {
 		return fmt.Errorf("install verified executable: %w", err)
 	}
@@ -209,6 +223,63 @@ var (
 	fmt.Fprintf(os.Stdout, "Executable SHA-256: %s\n", digest)
 	fmt.Fprintln(os.Stdout, "Plaintext RSA PEM/DER scan: PASS")
 	fmt.Fprintln(os.Stdout, "Build identity check: PASS")
+	fmt.Fprintln(os.Stdout, "Embedded Windows icon check: PASS")
+	return nil
+}
+
+func windowsIconResource(repositoryRoot, buildPackage string) (*winres.ResourceSet, string, error) {
+	iconFile, err := os.Open(filepath.Join(repositoryRoot, "build", "windows", "icon.ico"))
+	if err != nil {
+		return nil, "", fmt.Errorf("open Windows application icon: %w", err)
+	}
+	defer iconFile.Close()
+	icon, err := winres.LoadICO(iconFile)
+	if err != nil {
+		return nil, "", fmt.Errorf("decode Windows application icon: %w", err)
+	}
+	resources := &winres.ResourceSet{}
+	// Wails v3 uses group ID 3 for window icons; Explorer uses the first icon group.
+	if err := resources.SetIcon(winres.ID(3), icon); err != nil {
+		return nil, "", fmt.Errorf("set Windows application icon: %w", err)
+	}
+	var object bytes.Buffer
+	if err := resources.WriteObject(&object, winres.ArchAMD64); err != nil {
+		return nil, "", fmt.Errorf("generate Windows icon resource: %w", err)
+	}
+	// Go's packer does not apply overlays to syso files. Reserve the main package's
+	// resource path exclusively so concurrent builds cannot overwrite or reuse it.
+	path := filepath.Join(repositoryRoot, filepath.FromSlash(buildPackage), "wwlogs_windows_amd64.syso")
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return nil, "", fmt.Errorf("reserve Windows icon resource (another build or interrupted build may own it): %w", err)
+	}
+	_, writeErr := file.Write(object.Bytes())
+	closeErr := file.Close()
+	if err := errors.Join(writeErr, closeErr); err != nil {
+		os.Remove(path)
+		return nil, "", fmt.Errorf("write Windows icon resource: %w", err)
+	}
+	return resources, path, nil
+}
+
+func verifyWindowsIcon(path string, expected *winres.ResourceSet) error {
+	executable, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("open executable icon resources: %w", err)
+	}
+	defer executable.Close()
+	actual, err := winres.LoadFromEXE(executable)
+	if err != nil {
+		return fmt.Errorf("read executable icon resources: %w", err)
+	}
+	var mismatch bool
+	expected.Walk(func(typeID, resourceID winres.Identifier, language uint16, data []byte) bool {
+		mismatch = !bytes.Equal(data, actual.Get(typeID, resourceID, language))
+		return !mismatch
+	})
+	if mismatch {
+		return errors.New("executable icon resources do not match build/windows/icon.ico")
+	}
 	return nil
 }
 

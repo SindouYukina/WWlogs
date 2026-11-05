@@ -12,6 +12,8 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+# embed-key generates and verifies the shared build/windows/icon.ico as an embedded Windows resource.
+# Keep source assets outside bin; only temporary generated resources are cleaned after a build.
 $repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).ProviderPath
 $arguments = @('run', './scripts/embed-key.go', '-profile', $Profile.ToLowerInvariant(), '-target', $Target.ToLowerInvariant())
 if ($Output -ne '') {
