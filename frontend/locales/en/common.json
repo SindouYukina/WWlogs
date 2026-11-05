@@ -1,5 +1,6 @@
 {
   "diagnosticsIncomplete": "Development recording is incomplete or unavailable. Check local storage and diagnostic status.",
+  "attributionIncomplete": "Role breakdown is incomplete. Total damage is retained.",
   "roleTitle": "Role",
   "appSubtitle": "Combat analysis",
   "dashboard": "Dashboard",

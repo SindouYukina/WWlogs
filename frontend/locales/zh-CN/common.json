@@ -1,5 +1,6 @@
 {
   "diagnosticsIncomplete": "开发诊断录制不完整或无法启用，请检查本地容量与诊断状态。",
+  "attributionIncomplete": "角色伤害明细尚不完整，总伤害仍完整保留。",
   "roleTitle": "角色",
   "appSubtitle": "战斗分析",
   "dashboard": "战斗总览",

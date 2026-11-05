@@ -117,7 +117,7 @@ export function DesktopView({snapshot,connection,changeLocale}:{snapshot:Snapsho
         {(error||overlay.error)&&<p role="alert" className="mt-3 text-sm text-destructive">{c("operationFailed")}</p>}
         {service?.lastError&&<p role="alert" className="mt-3 text-sm text-destructive">{c("captureFailed")}</p>}
       </CardContent></Card></section>
-      <main>{page==="dashboard"?<CombatDashboard view={snapshot?.view??null} stopped={service?.state==="stopped"||service?.state==="error"}/>:<div className="mx-auto max-w-3xl space-y-5">
+      <main>{page==="dashboard"?<CombatDashboard diagnostics={service?.app.profile==="development"} view={snapshot?.view??null} stopped={service?.state==="stopped"||service?.state==="error"}/>:<div className="mx-auto max-w-3xl space-y-5">
         <div><h2 className="text-xl font-semibold">{s("title")}</h2><p className="mt-1 text-sm text-muted-foreground">{s("description")}</p></div>
         <Card><CardHeader><CardTitle>{s("language")}</CardTitle></CardHeader><CardContent>
           <label className="sr-only" htmlFor="locale">{s("language")}</label><select id="locale" className="adapter-select" data-field="locale" disabled={!connected||languagePending} value={snapshot?.locale??manifest.fallbackLocale} onChange={event=>void language(event.target.value)}>{manifest.supportedLocales.map(locale=><option key={locale} value={locale}>{manifest.languages[locale as keyof typeof manifest.languages].label}</option>)}</select><p className="mt-2 text-xs text-muted-foreground">{s("languageHint")}</p>

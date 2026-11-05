@@ -97,6 +97,7 @@ export interface Encounter {
   dps: DPS
   roles: Role[]
   unassignedRole: UnassignedRole
+  unassignedRoleShare?: number
 }
 
 export interface Effect {
@@ -154,6 +155,7 @@ export interface ViewSnapshot {
   encounters: { state: string; battleState: string; current?: Encounter; recent: Encounter[]; completedTotal: number }
   roles: Role[]
   unassignedRole: UnassignedRole
+  unassignedRoleShare?: number
   effects: { status: string; reason?: string; active: Effect[]; recentEnded: Effect[]; omitted: number }
 }
 

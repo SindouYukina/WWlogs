@@ -25,7 +25,7 @@ export function DPSMetric({label,dps,field,prominent=false}:{label:string;dps?:D
   </div>
 }
 
-export function CombatDashboard({view,stopped}:{view:ViewSnapshot|null;stopped:boolean}) {
+export function CombatDashboard({view,stopped,diagnostics=false}:{view:ViewSnapshot|null;stopped:boolean;diagnostics?:boolean}) {
   const {t,i18n}=useTranslation(["dashboard","common"])
   const c=(key:string)=>t(key,{ns:"common"})
   const num=(value:number|undefined)=>numberText(value,i18n.language)
@@ -61,10 +61,11 @@ export function CombatDashboard({view,stopped}:{view:ViewSnapshot|null;stopped:b
             <td><div className="tabular-nums">{num(role.damageDealt)} <span className="text-xs text-muted-foreground">{role.damageShare===undefined?"—":new Intl.NumberFormat(i18n.language,{style:"percent",maximumFractionDigits:1}).format(role.damageShare)}</span></div><div className="contribution-track" aria-hidden="true"><div style={{width:`${Math.min(100,(role.damageShare??0)*100)}%`}}/></div></td>
             <td className="tabular-nums text-muted-foreground">{num(role.directDamage)}<div>{num(role.summonDamage)}</div></td><td>{num(role.damageTaken)}</td>
           </tr>)}
-          {view&&<tr><td>{c("unassigned")}<div className="mt-1 text-xs text-muted-foreground">{t("localOwner")}</div></td><td data-field="unassigned">{num(view.unassignedRole.damageDealt)}</td><td>—</td><td>{num(view.unassignedRole.damageTaken)}</td></tr>}
+          {diagnostics&&view&&<tr><td>{c("unassigned")}<div className="mt-1 text-xs text-muted-foreground">{t("localOwner")}</div></td><td data-field="unassigned">{num(view.unassignedRole.damageDealt)}<div>{t("events",{count:view.unassignedRole.outgoingEvents})} · {view.unassignedRoleShare===undefined?"—":new Intl.NumberFormat(i18n.language,{style:"percent",maximumFractionDigits:1}).format(view.unassignedRoleShare)}</div></td><td>—</td><td>{num(view.unassignedRole.damageTaken)}</td></tr>}
           {roles.length===0&&<tr><td colSpan={4} className="empty-state">{t("noRoles")}</td></tr>}
           </tbody></table>
-          <div className="mt-4 rounded-lg border border-dashed p-3 text-xs text-muted-foreground"><span className="font-medium text-foreground">{t("unknownOwnership")}</span><div className="mt-1">{t("unknownTotals",{out:num(view?.statistics.unattributed.outgoingDamage),in:num(view?.statistics.unattributed.incomingDamage)})}</div><p className="mt-1">{t("unknownNote")}</p></div>
+          {view&&(view.unassignedRole.outgoingEvents>0||view.statistics.unattributed.outgoingEvents>0)&&<p className="mt-3 text-xs text-warning" data-field="attribution-incomplete">{c("attributionIncomplete")}</p>}
+          {diagnostics&&<div data-field="unknown-ownership" className="mt-4 rounded-lg border border-dashed p-3 text-xs text-muted-foreground"><span className="font-medium text-foreground">{t("unknownOwnership")}</span><div className="mt-1">{t("unknownTotals",{out:num(view?.statistics.unattributed.outgoingDamage),in:num(view?.statistics.unattributed.incomingDamage)})}</div><p className="mt-1">{t("unknownNote")}</p></div>}
         </CardContent>
       </Card>
       <Card><CardHeader><div className="flex items-center justify-between gap-2"><CardTitle>{c("integrity")}</CardTitle><span data-field="integrity"><IntegrityBadge status={view?.health.dataIntegrity}/></span></div><p className="text-xs text-muted-foreground">{t("interval")}</p></CardHeader>
@@ -72,7 +73,7 @@ export function CombatDashboard({view,stopped}:{view:ViewSnapshot|null;stopped:b
           <p className="text-muted-foreground">{!view?c("waiting"):t(integrity?.status==="INTACT"?"intactNote":integrity?.status==="DEGRADED"?"degradedNote":"unreliableNote")}</p>
           <dl className="detail-list"><dt>{c("context")}</dt><dd data-field="context">{statusText(view?.health.context.state)}</dd><dt>{c("transport")}</dt><dd data-field="transport">{statusText(view?.health.transport.state)}</dd><dt>{t("transportLosses")}</dt><dd>{num(integrity?.transportLosses)}</dd><dt>{t("unrecovered")}</dt><dd>{num(integrity?.unrecoveredLosses)}</dd><dt>{t("downgraded")}</dt><dd>{num(integrity?.contextDowngradedEvents)}</dd></dl>
           {view?.health.context.state==="SUSPECT"&&<p className="rounded-md border border-warning/30 p-3 text-xs text-warning">{t("suspectNote")}</p>}
-          <details className="border-t pt-3"><summary className="cursor-pointer text-xs text-muted-foreground">{t("details")}</summary><dl className="detail-list mt-3 text-xs"><dt>{t("drops")}</dt><dd>{view?.health.capture.kernelDropped.status==="available"?num(view.health.capture.kernelDropped.value):c("unknown")}</dd><dt>{t("paired")}</dt><dd>{view?`${view.health.rpcPairing.paired} / ${view.health.rpcPairing.requests}`:"—"}</dd><dt>{t("finished")}</dt><dd data-field="encounters-finished">{num(view?.encounters.completedTotal)}</dd><dt>{t("interval")}</dt><dd data-field="interval">{view?`${view.captureSessionId}.${view.statisticsIntervalId}`:"—"}</dd></dl></details>
+          {diagnostics&&<details className="border-t pt-3"><summary className="cursor-pointer text-xs text-muted-foreground">{t("details")}</summary><dl className="detail-list mt-3 text-xs"><dt>{t("drops")}</dt><dd>{view?.health.capture.kernelDropped.status==="available"?num(view.health.capture.kernelDropped.value):c("unknown")}</dd><dt>{t("paired")}</dt><dd>{view?`${view.health.rpcPairing.paired} / ${view.health.rpcPairing.requests}`:"—"}</dd><dt>{t("finished")}</dt><dd data-field="encounters-finished">{num(view?.encounters.completedTotal)}</dd><dt>{t("interval")}</dt><dd data-field="interval">{view?`${view.captureSessionId}.${view.statisticsIntervalId}`:"—"}</dd></dl></details>}
         </CardContent>
       </Card>
     </div>
