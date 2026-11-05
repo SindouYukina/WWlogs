@@ -221,6 +221,9 @@ type processor struct {
 	context      contextValidity
 	captureLayer captureLayerState
 	pairing      rpcPairingState
+	// intervalPerProtocolSession starts a new statistics interval at every game handshake after the first, so one
+	// interval never mixes protocol sessions. Application hosts set it; the CLI keeps one interval per capture.
+	intervalPerProtocolSession bool
 }
 
 func newProcessor(rsaKey *staticRSA, stdout, diagnostic, audit io.Writer) *processor {
@@ -428,10 +431,7 @@ func (p *processor) handleFrame(frame gameFrame) {
 		p.playerRelevance.reset()
 		p.scenePlayerIDs = nil
 		p.observeContextSessionStart(frame.timestamp)
-		if p.damageStatistics != nil {
-			p.damageStatistics.observeSessionChange(frame.timestamp)
-			p.flushEncounterTransitions()
-		}
+		p.startProtocolSessionStatistics(frame.timestamp)
 		if p.census != nil && p.sessionNumber > p.census.sessions {
 			p.census.sessions = p.sessionNumber
 		}
@@ -1149,4 +1149,17 @@ func parseProtoFields(data []byte) ([]protoField, error) {
 		fields = append(fields, field)
 	}
 	return fields, nil
+}
+
+// startProtocolSessionStatistics closes the previous protocol session's encounters at a game handshake and, for an
+// application host, starts a new statistics interval for the new protocol session.
+func (p *processor) startProtocolSessionStatistics(at time.Time) {
+	if p.damageStatistics == nil {
+		return
+	}
+	p.damageStatistics.observeSessionChange(at)
+	p.flushEncounterTransitions()
+	if p.intervalPerProtocolSession && p.sessionNumber > 1 {
+		p.damageStatistics.Reset()
+	}
 }

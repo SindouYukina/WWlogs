@@ -34,3 +34,7 @@
 /dist/
 /capture-spool/
 /.claude/
+
+# Local frontend installs and builds; product builds use a temporary copy outside the repository
+/frontend/node_modules/
+/frontend/dist/
