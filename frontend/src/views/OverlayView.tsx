@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { host } from "@/lib/host"
-import { dataState, numberText, type Connection, type Effect, type Snapshot } from "@/lib/snapshot"
+import { dataState, numberText, damageContributors, type Connection, type Effect, type Snapshot } from "@/lib/snapshot"
 import { effectRemaining, relevantEffect, snapshotStale } from "@/lib/effects"
 import { statusText } from "@/i18n"
-import { DPSMetric, IntegrityBadge, roleName } from "./CombatDashboard"
+import { DPSMetric, IntegrityBadge, roleName, contributorName } from "./CombatDashboard"
 import { StateBanner } from "./StateBanner"
 
 export function OverlayView({snapshot,connection}:{snapshot:Snapshot|null;connection:Connection}) {
@@ -17,7 +17,7 @@ export function OverlayView({snapshot,connection}:{snapshot:Snapshot|null;connec
   const diagnostics=snapshot?.service.app.profile==="development"
   const view=snapshot?.view
   const encounter=view?.encounters.current??view?.encounters.recent.at(-1)
-  const roles=[...(encounter?.roles??[])].sort((a,b)=>b.damageDealt-a.damageDealt)
+  const contributors=damageContributors(encounter?.roles??[],encounter?.vehicle)
   const effects=(view?.effects.active??[]).filter(relevantEffect)
   const ended=(view?.effects.recentEnded??[]).filter(relevantEffect).slice(-3).reverse()
   const scope=`${view?.captureSessionId}.${view?.statisticsIntervalId}`
@@ -44,12 +44,12 @@ export function OverlayView({snapshot,connection}:{snapshot:Snapshot|null;connec
       {view?.health.dataIntegrity!==undefined&&view.health.dataIntegrity!=="INTACT"&&<p className="overlay-warning">{t(view.health.dataIntegrity==="DEGRADED"?"degradedNote":"unreliableNote",{ns:"dashboard"})}</p>}
       <section className="overlay-section" aria-label={t("roles",{ns:"dashboard"})}>
         <h2>{t("roles",{ns:"dashboard"})}</h2><div data-field="roles">
-          {roles.map(role=><div className="overlay-role" key={`${scope}-${encounter?.encounterId}-${role.playerId}-${role.roleId}`}>
-            <div className="overlay-role-heading"><span className="truncate" title={roleName(role)}>{roleName(role)}</span><span>{num(role.damageDealt)} <small>{role.damageShare===undefined?"—":new Intl.NumberFormat(i18n.language,{style:"percent",maximumFractionDigits:1}).format(role.damageShare)}</small></span></div>
-            <div className="contribution-track" aria-hidden="true"><div style={{width:`${Math.min(100,(role.damageShare??0)*100)}%`}}/></div>
-            {role.damageTaken>0&&<div className="overlay-role-taken">{c("taken")}: {num(role.damageTaken)}</div>}
+          {contributors.map(row=><div className="overlay-role" data-field={row.vehicle?"vehicle":undefined} key={`${scope}-${encounter?.encounterId}-${row.key}`}>
+            <div className="overlay-role-heading"><span className="truncate" title={contributorName(row)}>{contributorName(row)}</span><span>{num(row.damageDealt)} <small>{row.damageShare===undefined?"—":new Intl.NumberFormat(i18n.language,{style:"percent",maximumFractionDigits:1}).format(row.damageShare)}</small></span></div>
+            <div className="contribution-track" aria-hidden="true"><div style={{width:`${Math.min(100,(row.damageShare??0)*100)}%`}}/></div>
+            {row.damageTaken>0&&<div className="overlay-role-taken">{c("taken")}: {num(row.damageTaken)}</div>}
           </div>)}
-          {roles.length===0&&<p className="overlay-empty">{t("noRoles",{ns:"dashboard"})}</p>}
+          {contributors.length===0&&<p className="overlay-empty">{t("noRoles",{ns:"dashboard"})}</p>}
           {diagnostics&&encounter&&<div className="overlay-unassigned" data-field="unassigned"><span>{c("unassigned")}</span><span>{num(encounter.unassignedRole.damageDealt)} · {t("events",{ns:"dashboard",count:encounter.unassignedRole.outgoingEvents})} · {encounter.unassignedRoleShare===undefined?"—":new Intl.NumberFormat(i18n.language,{style:"percent",maximumFractionDigits:1}).format(encounter.unassignedRoleShare)}</span></div>}
         </div>
       </section>

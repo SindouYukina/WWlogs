@@ -1,7 +1,9 @@
 {
+  "motorcycle": "Motorcycle",
+  "vehicle": "Vehicle",
   "diagnosticsIncomplete": "Development recording is incomplete or unavailable. Check local storage and diagnostic status.",
   "attributionIncomplete": "Role breakdown is incomplete. Total damage is retained.",
-  "roleTitle": "Role",
+  "roleTitle": "Contributor",
   "appSubtitle": "Combat analysis",
   "dashboard": "Dashboard",
   "settings": "Settings",

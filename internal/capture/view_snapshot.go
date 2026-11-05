@@ -31,11 +31,12 @@ type ViewSnapshot struct {
 	Roles               []ViewRole           `json:"roles"`
 	UnassignedRole      UnassignedRoleTotals `json:"unassignedRole"`
 	UnassignedRoleShare *float64             `json:"unassignedRoleShare,omitempty"`
+	Vehicle             *ViewVehicle         `json:"vehicle,omitempty"`
 	Effects             ViewEffects          `json:"effects"`
 }
 
 // ViewSnapshotSchemaVersion changes whenever a field changes meaning or is removed.
-const ViewSnapshotSchemaVersion = 1
+const ViewSnapshotSchemaVersion = 2
 
 // View bounds keep a snapshot small regardless of how long a session runs.
 const (
@@ -136,6 +137,7 @@ type ViewEncounter struct {
 	Roles               []ViewRole           `json:"roles"`
 	UnassignedRole      UnassignedRoleTotals `json:"unassignedRole"`
 	UnassignedRoleShare *float64             `json:"unassignedRoleShare,omitempty"`
+	Vehicle             *ViewVehicle         `json:"vehicle,omitempty"`
 }
 
 // ViewRole is one local role's totals. Name comes from the Master database for the selected locale; it is empty with
@@ -240,6 +242,7 @@ func (p *processor) viewSnapshot() ViewSnapshot {
 		Roles:               p.viewRoles(statistics.Roles, statistics.DamageDealt),
 		UnassignedRole:      statistics.UnassignedRole,
 		UnassignedRoleShare: unassignedRoleShare(statistics.UnassignedRole, statistics.DamageDealt),
+		Vehicle:             viewVehicle(statistics.Vehicle, statistics.DamageDealt),
 		Effects:             p.viewEffects(),
 	}
 	return view
@@ -294,6 +297,7 @@ func (p *processor) viewEncounter(encounter EncounterSnapshot) ViewEncounter {
 		Integrity: cloneIntegrity(encounter.Integrity), DPS: viewDPS(encounter.EncounterDPS),
 		Roles: p.viewRoles(encounter.Roles, encounter.Totals.DamageDealt), UnassignedRole: encounter.UnassignedRole,
 		UnassignedRoleShare: unassignedRoleShare(encounter.UnassignedRole, encounter.Totals.DamageDealt),
+		Vehicle:             viewVehicle(encounter.Vehicle, encounter.Totals.DamageDealt),
 	}
 	end := encounter.EndedAt
 	if end.IsZero() {
@@ -455,4 +459,22 @@ func cloneFloat64(value *float64) *float64 {
 	}
 	copied := *value
 	return &copied
+}
+
+// ViewVehicle projects one contributor with the unchanged confirmed-local share denominator.
+type ViewVehicle struct {
+	VehicleDamageSnapshot
+	DamageShare *float64 `json:"damageShare,omitempty"`
+}
+
+func viewVehicle(vehicle *VehicleDamageSnapshot, total int64) *ViewVehicle {
+	if vehicle == nil {
+		return nil
+	}
+	view := &ViewVehicle{VehicleDamageSnapshot: *vehicle}
+	if total > 0 {
+		share := float64(vehicle.DamageDealt) / float64(total)
+		view.DamageShare = &share
+	}
+	return view
 }

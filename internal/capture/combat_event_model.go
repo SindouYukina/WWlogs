@@ -82,7 +82,9 @@ type CombatEventRecord struct {
 	// ContextDowngrade is set when a local flow was kept unattributed because local-player attribution was suspect
 	// after a transport loss; Flow and Confidence then hold the unattributed classification.
 	ContextDowngrade string `json:"contextDowngrade,omitempty"`
-	// SourceRole and TargetRole credit a confirmed local endpoint to a role by runtime evidence; nil means none.
+	// VehicleKind classifies a local vehicle contribution without changing source or role evidence.
+	VehicleKind string `json:"vehicleKind,omitempty"`
+	// SourceRole and TargetRole preserve runtime role evidence independently of contributor classification.
 	SourceRole *CombatRole `json:"sourceRole,omitempty"`
 	TargetRole *CombatRole `json:"targetRole,omitempty"`
 }

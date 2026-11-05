@@ -107,10 +107,11 @@ type DamageStatisticsSnapshot struct {
 	Encounters EncounterTrackerSnapshot `json:"encounters"`
 	// Integrity is the integrity of this interval's totals (the same value as Encounters.Integrity).
 	Integrity DataIntegrity `json:"integrity"`
-	// Roles credits DamageDealt and DamageTaken to local roles; UnassignedRole holds the confirmed local damage without
-	// role evidence. Together they add up to DamageDealt and DamageTaken exactly (role_aggregation.go).
-	Roles          []RoleDamageSnapshot `json:"roles"`
-	UnassignedRole UnassignedRoleTotals `json:"unassignedRole"`
+	// Roles and Vehicle split confirmed local damage by contributor; UnassignedRole retains unsupported sources.
+	// Together they add up to DamageDealt and DamageTaken exactly (role_aggregation.go).
+	Roles          []RoleDamageSnapshot   `json:"roles"`
+	UnassignedRole UnassignedRoleTotals   `json:"unassignedRole"`
+	Vehicle        *VehicleDamageSnapshot `json:"vehicle,omitempty"`
 }
 
 type rollingDamageEvent struct {
@@ -277,6 +278,7 @@ func (s *DamageStatistics) snapshotLocked() DamageStatisticsSnapshot {
 	snapshot.EncounterDPS = snapshot.Encounters.headlineDPS()
 	snapshot.Integrity = snapshot.Encounters.Integrity
 	snapshot.Roles, snapshot.UnassignedRole = s.roles.snapshot()
+	snapshot.Vehicle = s.roles.vehicleSnapshot()
 	snapshot.GameTimeDPS = DPSResult{Status: DPSStatusUnavailable, Reason: "official_timer_duration_unavailable"}
 	snapshot.DamageSpanDPS = s.damageSpanDPSLocked()
 	snapshot.Rolling5sDPS = unavailableRollingDPS("query_time_required")

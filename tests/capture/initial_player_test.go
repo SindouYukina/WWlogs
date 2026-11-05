@@ -188,10 +188,10 @@ func TestVehicleFirstAttackUsesExplicitInitialPlayerIdentity(t *testing.T) {
 	event := testDamageEvent(p, 300, 200)
 	event.EventTypeCandidate = "DAMAGE_CANDIDATE"
 	event.Damage = 321
-	event.DamageContributorCandidate = &damageContributorCandidate{ActorType: "Vehicle", Status: resolutionCorrelated}
+	event.DamageContributorCandidate = &damageContributorCandidate{Kind: vehicleKindMotorcycle, ActorType: "Vehicle", EntityType: "BattleVehicle", Status: resolutionCorrelated}
 	p.writeDamageEvent(event)
 	s := p.damageStatisticsSnapshot()
-	if s.DamageDealt != 321 || s.OutgoingEvents != 1 || s.UnassignedRole.DamageDealt != 321 || len(s.Roles) != 0 || p.stats.playerRoleReports != 0 {
+	if s.DamageDealt != 321 || s.OutgoingEvents != 1 || s.UnassignedRole.DamageDealt != 0 || s.Vehicle == nil || s.Vehicle.DamageDealt != 321 || len(s.Roles) != 0 || p.stats.playerRoleReports != 0 {
 		t.Fatal("initial vehicle damage was lost or forced into a character role")
 	}
 }

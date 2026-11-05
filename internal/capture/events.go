@@ -398,6 +398,9 @@ func (p *processor) writeDamageEvent(event combatEvent) bool {
 		switch record.Flow {
 		case CombatFlowLocalOutgoing:
 			record.SourceRole = p.localRoleForEntity(event.SourceEntityID, event.Source)
+			if candidate := event.DamageContributorCandidate; candidate != nil && candidate.Kind == vehicleKindMotorcycle && candidate.ActorType == "Vehicle" && candidate.EntityType == "BattleVehicle" && candidate.Status == resolutionCorrelated {
+				record.VehicleKind = candidate.Kind
+			}
 		case CombatFlowLocalIncoming:
 			record.TargetRole = p.localRoleForEntity(event.TargetEntityID, event.Target)
 		}

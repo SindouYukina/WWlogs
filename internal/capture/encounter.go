@@ -130,9 +130,10 @@ type EncounterSnapshot struct {
 	// DEGRADED and withheld when it is UNRELIABLE.
 	Integrity    DataIntegrity `json:"integrity"`
 	EncounterDPS DPSResult     `json:"encounterDps"`
-	// Roles and UnassignedRole split Totals.DamageDealt and Totals.DamageTaken by local role (role_aggregation.go).
-	Roles          []RoleDamageSnapshot `json:"roles"`
-	UnassignedRole UnassignedRoleTotals `json:"unassignedRole"`
+	// Roles, Vehicle, and UnassignedRole partition confirmed local damage (role_aggregation.go).
+	Roles          []RoleDamageSnapshot   `json:"roles"`
+	UnassignedRole UnassignedRoleTotals   `json:"unassignedRole"`
+	Vehicle        *VehicleDamageSnapshot `json:"vehicle,omitempty"`
 }
 
 // EncounterTrackerSnapshot is the encounter view of one statistics interval.
@@ -601,6 +602,7 @@ func (t *encounterTracker) snapshotOf(record *encounterRecord, outcome Encounter
 		FirstActivityAt: record.firstActivity, LastActivityAt: record.lastActivity, Reentries: record.reentries, Totals: record.totals,
 	}
 	snapshot.Roles, snapshot.UnassignedRole = record.roles.snapshot()
+	snapshot.Vehicle = record.roles.vehicleSnapshot()
 	var extra []string
 	switch record.state {
 	case EncounterActive:

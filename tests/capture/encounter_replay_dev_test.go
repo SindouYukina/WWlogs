@@ -5,12 +5,15 @@ package capture
 import (
 	"bufio"
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 // This file is the development-profile, test-only PCAP replay for the encounter lifecycle. It replays archived captures through the
@@ -32,12 +35,17 @@ import (
 //	WWLOGS_ENCOUNTER_REPLAY_MASTER_DB  Master SQLite database
 
 type encounterReplayResult struct {
-	Name       string                   `json:"name"`
-	UDPPackets int                      `json:"udpPackets"`
-	Statistics DamageStatisticsSnapshot `json:"statistics"`
-	Signals    []encounterReplaySignal  `json:"battleStateSignals"`
-	Unassigned []combatEventRecordLine  `json:"unassignedRoleEvents"`
-	Evidence   []combatEventJSONL       `json:"unassignedRoleEvidence"`
+	Name            string                   `json:"name"`
+	UDPPackets      int                      `json:"udpPackets"`
+	Statistics      DamageStatisticsSnapshot `json:"statistics"`
+	Signals         []encounterReplaySignal  `json:"battleStateSignals"`
+	Unassigned      []combatEventRecordLine  `json:"unassignedRoleEvents"`
+	Evidence        []combatEventJSONL       `json:"unassignedRoleEvidence"`
+	VehicleRecords  []combatEventRecordLine  `json:"vehicleEvents"`
+	VehicleEvidence []combatEventJSONL       `json:"vehicleEvidence"`
+	RawFactsSHA256  string                   `json:"rawFactsSha256"`
+	RawFactsCount   int                      `json:"rawFactsCount"`
+	Pairing         RPCPairingSnapshot       `json:"pairing"`
 }
 
 const encounterReplayTimeLayout = "2006-01-02T15:04:05.000000000Z07:00"
@@ -128,18 +136,41 @@ func encounterReplayOnce(t *testing.T, inputs equivalenceInputs, masters *gameMa
 	}, nil)
 	p.finishCapture()
 	var signals []encounterReplaySignal
-	var unassigned []combatEventRecordLine
+	var unassigned, vehicleRecords []combatEventRecordLine
+	vehicleKeys := map[CombatEventKey]bool{}
 	keys := map[CombatEventKey]bool{}
 	for _, line := range bytes.Split(diagnostics.Bytes(), []byte{10}) {
 		var row combatEventRecordLine
-		if json.Unmarshal(line, &row) == nil && row.Type == "COMBAT_EVENT_RECORD" && row.Kind == CombatEventDamage && row.Flow == CombatFlowLocalOutgoing && row.SourceRole == nil {
+		if json.Unmarshal(line, &row) == nil && row.Type == "COMBAT_EVENT_RECORD" && row.Kind == CombatEventDamage && row.Flow == CombatFlowLocalOutgoing && row.VehicleKind == vehicleKindMotorcycle {
+			vehicleRecords = append(vehicleRecords, row)
+			vehicleKeys[row.Key] = true
+		}
+		if json.Unmarshal(line, &row) == nil && row.Type == "COMBAT_EVENT_RECORD" && row.Kind == CombatEventDamage && row.Flow == CombatFlowLocalOutgoing && row.SourceRole == nil && row.VehicleKind != vehicleKindMotorcycle {
 			unassigned = append(unassigned, row)
 			keys[row.Key] = true
 		}
 	}
-	var evidence []combatEventJSONL
+	var evidence, vehicleEvidence []combatEventJSONL
+	factsHash := sha256.New()
+	factsCount := 0
 	for _, line := range bytes.Split(rawEvents.Bytes(), []byte{10}) {
 		var row combatEventJSONL
+		if json.Unmarshal(line, &row) == nil {
+			if vehicleKeys[CombatEventKey{ProtocolSession: row.SessionNumber, RPCID: row.RPCID}] {
+				vehicleEvidence = append(vehicleEvidence, row)
+			}
+			if row.Raw.ServerResultRaw != nil {
+				fact := struct {
+					EventType     string              `json:"eventType"`
+					Timestamp     time.Time           `json:"timestamp"`
+					SessionNumber int                 `json:"sessionNumber"`
+					RPCID         uint64              `json:"rpcId"`
+					Raw           combatEventRawJSONL `json:"raw"`
+				}{row.EventType, row.Timestamp.UTC().Truncate(time.Microsecond), row.SessionNumber, row.RPCID, row.Raw}
+				_ = json.NewEncoder(factsHash).Encode(fact)
+				factsCount++
+			}
+		}
 		if json.Unmarshal(line, &row) == nil && keys[CombatEventKey{ProtocolSession: row.SessionNumber, RPCID: row.RPCID}] {
 			evidence = append(evidence, row)
 		}
@@ -152,9 +183,19 @@ func encounterReplayOnce(t *testing.T, inputs equivalenceInputs, masters *gameMa
 		signals = append(signals, encounterReplaySignal{InBattle: row.InBattle, At: row.ObservedAt.Format(encounterReplayTimeLayout), Accepted: row.Accepted})
 	}
 	normalizer := newEquivalenceNormalizer(p)
+	for i := range unassigned {
+		if _, rest, found := strings.Cut(unassigned[i].Assignment, "-"); found {
+			unassigned[i].Assignment = "1-" + rest
+		}
+	}
+	for i := range vehicleRecords {
+		if _, rest, found := strings.Cut(vehicleRecords[i].Assignment, "-"); found {
+			vehicleRecords[i].Assignment = "1-" + rest
+		}
+	}
 	statistics := normalizer.damage(p.damageStatisticsSnapshot())
 	normalizeEncounterIDs(&statistics, normalizer.base)
-	return encounterReplayResult{Name: capture.name, UDPPackets: stats.udpPackets, Statistics: statistics, Signals: signals, Unassigned: unassigned, Evidence: evidence}
+	return encounterReplayResult{Name: capture.name, UDPPackets: stats.udpPackets, Statistics: statistics, Signals: signals, Unassigned: unassigned, Evidence: evidence, VehicleRecords: vehicleRecords, VehicleEvidence: vehicleEvidence, RawFactsSHA256: hex.EncodeToString(factsHash.Sum(nil)), RawFactsCount: factsCount, Pairing: p.rpcPairingSnapshot()}
 }
 
 // normalizeEncounterIDs removes the process-local capture session sequence from encounter identities.

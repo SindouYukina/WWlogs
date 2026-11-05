@@ -1,7 +1,9 @@
 {
+  "motorcycle": "摩托車",
+  "vehicle": "載具",
   "diagnosticsIncomplete": "開發診斷錄製不完整或無法啟用，請檢查本機容量與診斷狀態。",
   "attributionIncomplete": "角色傷害明細尚不完整，總傷害仍完整保留。",
-  "roleTitle": "角色",
+  "roleTitle": "傷害來源",
   "appSubtitle": "戰鬥分析",
   "dashboard": "戰鬥總覽",
   "settings": "設定",

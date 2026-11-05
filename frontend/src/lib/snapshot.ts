@@ -96,6 +96,7 @@ export interface Encounter {
   integrity: DataIntegrity
   dps: DPS
   roles: Role[]
+  vehicle?: Vehicle
   unassignedRole: UnassignedRole
   unassignedRoleShare?: number
 }
@@ -154,6 +155,7 @@ export interface ViewSnapshot {
   }
   encounters: { state: string; battleState: string; current?: Encounter; recent: Encounter[]; completedTotal: number }
   roles: Role[]
+  vehicle?: Vehicle
   unassignedRole: UnassignedRole
   unassignedRoleShare?: number
   effects: { status: string; reason?: string; active: Effect[]; recentEnded: Effect[]; omitted: number }
@@ -204,4 +206,28 @@ export function numberText(value: number | undefined, locale = "en-US"): string 
 // roleLabel never invents a name: an unresolved RoleId is shown as UNKNOWN with its raw id.
 export function roleLabel(role: Role): string {
   return role.nameStatus === "VERIFIED" && role.name !== "" ? role.name : `UNKNOWN (${role.roleId})`
+}
+
+// Vehicle rows are contributors, never synthetic Role IDs or character identities.
+export interface Vehicle {
+ kind: string
+ evidence: string
+ damageDealt: number
+ outgoingEvents: number
+ damageShare?: number
+}
+
+export interface DamageContributor {
+ key: string
+ role?: Role
+ vehicle?: Vehicle
+ damageDealt: number
+ damageTaken: number
+ damageShare?: number
+}
+
+export function damageContributors(roles: Role[], vehicle?: Vehicle): DamageContributor[] {
+ const rows: DamageContributor[] = roles.map(role=>({key:`role-${role.playerId}-${role.roleId}`,role,damageDealt:role.damageDealt,damageTaken:role.damageTaken,damageShare:role.damageShare}))
+ if(vehicle)rows.push({key:`vehicle-${vehicle.kind}`,vehicle,damageDealt:vehicle.damageDealt,damageTaken:0,damageShare:vehicle.damageShare})
+ return rows.sort((a,b)=>b.damageDealt-a.damageDealt)
 }
