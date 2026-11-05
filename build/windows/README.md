@@ -1,4 +1,10 @@
-# Windows application icon
+# Windows build
+
+Use the Go toolchain specified in `go.mod` and the exact Node.js and npm versions in `frontend/package.json`. For a portable Windows setup, unpack the matching Node.js x64 distribution under `%LOCALAPPDATA%\WWlogs\toolchain`, then install the pinned npm release into that Node directory with `npm install --global --prefix <node-directory> npm@<pinned-version>`. The build runs `npm ci` in a temporary directory using the committed lockfile. Both profiles use the same dependencies. The Wails CLI is optional. If used, match its version to the Go module and `@wailsio/runtime`.
+
+For VS Code, install the recommended TypeScript 7 extension and run `npm ci` in `frontend` to use the workspace language service. The production build installs its own dependencies from the lockfile.
+
+## Application icon
 
 `icon.ico` is the canonical, Git-managed WWlogs logo for both build profiles and both executable targets. Keep this source asset here, outside disposable output directories; do not add version suffixes or check in generated `.syso` files.
 
