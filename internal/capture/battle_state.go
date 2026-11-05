@@ -43,7 +43,7 @@ func decodePlayerBattleStateChange(body []byte) (playerBattleStateSignal, error)
 }
 
 // battleStateAnchor accepts a signal only when its PlayerId is the local player: either the PlayerId anchored by
-// the local role report, or, before that anchor exists, the only player listed in the current scene. Signals for
+// BasicInfoNotify or the local role report, or, before that anchor exists, the only player in the current scene. Signals for
 // any other player, or without a PlayerId, are rejected.
 func (p *processor) battleStateAnchor(signal playerBattleStateSignal) string {
 	if !signal.hasPlayerID || p.playerRelevance == nil {
