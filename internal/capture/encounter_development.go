@@ -9,7 +9,7 @@ import (
 )
 
 // encounterDiagnosticSchemaVersion identifies the layout of the encounter diagnostic JSONL lines.
-const encounterDiagnosticSchemaVersion = 1
+const encounterDiagnosticSchemaVersion = 2
 
 type battleStateSignalLine struct {
 	SchemaVersion   int       `json:"schemaVersion"`

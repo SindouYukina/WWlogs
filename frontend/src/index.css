@@ -91,12 +91,15 @@
 
 /* Overlay-only layout. Wails handles native drag and edge resize; input remains enabled. */
 body[data-view="overlay"] { margin:0; padding:6px; overflow:hidden; }
-.combat-overlay { height:calc(100vh - 12px); display:flex; flex-direction:column; border:1px solid #ffffff24; border-radius:12px; background:#111820ed; color:#eef3f5; box-shadow:0 5px 18px #0006; font-size:12px; }
-.overlay-header { --wails-draggable:drag; flex:none; display:flex; gap:10px; align-items:center; padding:10px 14px; border-bottom:1px solid #ffffff18; cursor:move; user-select:none; }
-.overlay-header-title { color:#a8b6c4; flex:1; font-size:11px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.combat-overlay { position:relative; height:calc(100vh - 12px); display:flex; flex-direction:column; border:1px solid #ffffff24; border-radius:12px; background:#111820ed; color:#eef3f5; box-shadow:0 5px 18px #0006; font-size:12px; }
 .overlay-hide { --wails-draggable:no-drag; padding:0 7px; border-radius:5px; font-size:22px; line-height:24px; cursor:pointer; color:#b5c1cc; }
 .overlay-hide:hover { background:#ffffff18; color:white; }
-.overlay-content { flex:1; min-height:0; overflow:auto; padding:12px 14px; scrollbar-width:thin; }
+.overlay-content { flex:1; min-height:0; overflow:auto; padding:12px 14px; scrollbar-width:none; }
+.overlay-content::-webkit-scrollbar { display:none; }
+.overlay-controls { position:absolute; top:5px; right:7px; z-index:1; display:flex; gap:3px; opacity:0; transition:opacity .15s; }
+.combat-overlay:hover .overlay-controls,.combat-overlay:focus-within .overlay-controls { opacity:1; }
+.overlay-drag { --wails-draggable:drag; cursor:move; user-select:none; padding:3px 8px; border-radius:5px; background:#111820ed; }
+.overlay-content > [data-field="banner"] { max-width:calc(100% - 65px); }
 .overlay-encounter-title { display:flex; flex-wrap:wrap; justify-content:space-between; gap:5px; margin:12px 0 8px; color:#a8b6c4; font-size:10px; }
 .combat-overlay .metric-primary .metric-value { font-size:40px; }
 .combat-overlay .metric-value { font-size:21px; }

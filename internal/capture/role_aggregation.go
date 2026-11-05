@@ -14,10 +14,11 @@ import "sort"
 // An event is credited to a role only by runtime evidence: its local endpoint is a role entity whose PlayerSceneGroup
 // mapping names the local player and a RoleId, or it is a summon whose verified SummonerId chain ends at such an
 // entity. Static skill-to-role tables, names, and fixed IDs are never used. Confirmed local damage without that
-// evidence stays in the unassigned bucket; unattributed and excluded damage never enters this aggregation.
+// evidence is a separate vehicle contributor when its runtime vehicle chain is known; otherwise it stays in the
+// unassigned bucket. Unattributed and excluded damage never enters this aggregation.
 //
 // Invariants (checked by tests and by the encounter replay collector):
-//   sum(Roles.DamageDealt) + UnassignedRole.DamageDealt == DamageDealt (confirmed local outgoing), events likewise;
+//   sum(Roles.DamageDealt) + Vehicle.DamageDealt + UnassignedRole.DamageDealt == DamageDealt (confirmed local outgoing), events likewise;
 //   sum(Roles.DamageTaken) + UnassignedRole.DamageTaken == DamageTaken (confirmed local incoming), events likewise;
 //   per role, DirectDamage + SummonDamage == DamageDealt;
 //   the same holds per encounter against its Totals.
@@ -93,7 +94,15 @@ type RoleDamageSnapshot struct {
 	IncomingEvents uint64 `json:"incomingEvents"`
 }
 
-// UnassignedRoleTotals is confirmed local damage without evidence for a role.
+// VehicleDamageSnapshot is a local motorcycle contributor, not a character or a replacement of raw source identity.
+type VehicleDamageSnapshot struct {
+	Kind           string `json:"kind"`
+	Evidence       string `json:"evidence"`
+	DamageDealt    int64  `json:"damageDealt"`
+	OutgoingEvents uint64 `json:"outgoingEvents"`
+}
+
+// UnassignedRoleTotals is confirmed local damage without a role or recognized vehicle contributor.
 type UnassignedRoleTotals struct {
 	DamageDealt    int64  `json:"damageDealt"`
 	OutgoingEvents uint64 `json:"outgoingEvents"`
@@ -109,6 +118,7 @@ const maxAggregatedRoles = 256
 type roleKey struct{ playerID, roleID uint64 }
 
 type roleAggregate struct {
+	vehicle    VehicleDamageSnapshot
 	roles      map[roleKey]*RoleDamageSnapshot
 	unassigned UnassignedRoleTotals
 }
@@ -137,6 +147,13 @@ func (a *roleAggregate) entry(role *CombatRole) *RoleDamageSnapshot {
 func (a *roleAggregate) add(record CombatEventRecord) {
 	switch record.Flow {
 	case CombatFlowLocalOutgoing:
+		if record.VehicleKind == vehicleKindMotorcycle {
+			a.vehicle.Kind = vehicleKindMotorcycle
+			a.vehicle.Evidence = string(resolutionCorrelated)
+			a.vehicle.DamageDealt += record.Amount
+			a.vehicle.OutgoingEvents++
+			return
+		}
 		entry := a.entry(record.SourceRole)
 		if entry == nil {
 			a.unassigned.DamageDealt += record.Amount
@@ -175,4 +192,13 @@ func (a *roleAggregate) snapshot() ([]RoleDamageSnapshot, UnassignedRoleTotals) 
 		return roles[i].RoleID < roles[j].RoleID
 	})
 	return roles, a.unassigned
+}
+
+// vehicleSnapshot returns a copy scoped to the same interval or encounter as the role aggregate.
+func (a *roleAggregate) vehicleSnapshot() *VehicleDamageSnapshot {
+	if a.vehicle.OutgoingEvents == 0 {
+		return nil
+	}
+	copied := a.vehicle
+	return &copied
 }

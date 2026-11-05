@@ -1,8 +1,10 @@
 package capture
 
-// damageContributorCandidate records a correlated non-character source that can
-// be displayed separately while preserving the server-reported attacker entity.
+const vehicleKindMotorcycle = "motorcycle"
+
+// damageContributorCandidate records a correlated non-character source while preserving the raw attacker.
 type damageContributorCandidate struct {
+	Kind             string           `json:"kind"`
 	ActorType        string           `json:"actorType"`
 	EntityType       string           `json:"entityType"`
 	FollowerConfigID uint64           `json:"followerSummonConfigId"`
@@ -61,6 +63,7 @@ func resolveVehicleDamageContributorCandidate(resolver *entityResolver, masters 
 	}
 	return &damageContributorCandidate{
 		Name:             name,
+		Kind:             vehicleKindMotorcycle,
 		ActorType:        "Vehicle",
 		EntityType:       vehicle.EntityType,
 		FollowerConfigID: vehicle.ConfigID,

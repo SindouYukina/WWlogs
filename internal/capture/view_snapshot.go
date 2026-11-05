@@ -25,16 +25,18 @@ type ViewSnapshot struct {
 	// Final is set on the last snapshot of a capture session, after the capture finished.
 	Final bool `json:"final"`
 
-	Health         ViewHealth           `json:"health"`
-	Statistics     ViewStatistics       `json:"statistics"`
-	Encounters     ViewEncounters       `json:"encounters"`
-	Roles          []ViewRole           `json:"roles"`
-	UnassignedRole UnassignedRoleTotals `json:"unassignedRole"`
-	Effects        ViewEffects          `json:"effects"`
+	Health              ViewHealth           `json:"health"`
+	Statistics          ViewStatistics       `json:"statistics"`
+	Encounters          ViewEncounters       `json:"encounters"`
+	Roles               []ViewRole           `json:"roles"`
+	UnassignedRole      UnassignedRoleTotals `json:"unassignedRole"`
+	UnassignedRoleShare *float64             `json:"unassignedRoleShare,omitempty"`
+	Vehicle             *ViewVehicle         `json:"vehicle,omitempty"`
+	Effects             ViewEffects          `json:"effects"`
 }
 
 // ViewSnapshotSchemaVersion changes whenever a field changes meaning or is removed.
-const ViewSnapshotSchemaVersion = 1
+const ViewSnapshotSchemaVersion = 2
 
 // View bounds keep a snapshot small regardless of how long a session runs.
 const (
@@ -61,6 +63,7 @@ type ViewCaptureHealth struct {
 	KernelDropped      CaptureCounter `json:"kernelDropped"`
 	ApplicationDropped CaptureCounter `json:"applicationDropped"`
 	DeliveryDelay      CaptureLatency `json:"deliveryDelay"`
+	DiagnosticDropped  CaptureCounter `json:"diagnosticDropped"`
 }
 
 // ViewRPCPairing is the pairing counter subset the UI needs.
@@ -118,21 +121,23 @@ type ViewEncounters struct {
 
 // ViewEncounter is one encounter.
 type ViewEncounter struct {
-	ElapsedSeconds  *float64             `json:"elapsedSeconds,omitempty"`
-	EncounterID     string               `json:"encounterId"`
-	Sequence        uint64               `json:"sequence"`
-	ProtocolSession int                  `json:"protocolSession"`
-	State           EncounterState       `json:"state"`
-	Outcome         EncounterOutcome     `json:"outcome"`
-	StartedAt       time.Time            `json:"startedAt"`
-	StartBasis      string               `json:"startBasis"`
-	EndedAt         time.Time            `json:"endedAt"`
-	EndBasis        string               `json:"endBasis,omitempty"`
-	Totals          EncounterTotals      `json:"totals"`
-	Integrity       DataIntegrity        `json:"integrity"`
-	DPS             ViewDPS              `json:"dps"`
-	Roles           []ViewRole           `json:"roles"`
-	UnassignedRole  UnassignedRoleTotals `json:"unassignedRole"`
+	ElapsedSeconds      *float64             `json:"elapsedSeconds,omitempty"`
+	EncounterID         string               `json:"encounterId"`
+	Sequence            uint64               `json:"sequence"`
+	ProtocolSession     int                  `json:"protocolSession"`
+	State               EncounterState       `json:"state"`
+	Outcome             EncounterOutcome     `json:"outcome"`
+	StartedAt           time.Time            `json:"startedAt"`
+	StartBasis          string               `json:"startBasis"`
+	EndedAt             time.Time            `json:"endedAt"`
+	EndBasis            string               `json:"endBasis,omitempty"`
+	Totals              EncounterTotals      `json:"totals"`
+	Integrity           DataIntegrity        `json:"integrity"`
+	DPS                 ViewDPS              `json:"dps"`
+	Roles               []ViewRole           `json:"roles"`
+	UnassignedRole      UnassignedRoleTotals `json:"unassignedRole"`
+	UnassignedRoleShare *float64             `json:"unassignedRoleShare,omitempty"`
+	Vehicle             *ViewVehicle         `json:"vehicle,omitempty"`
 }
 
 // ViewRole is one local role's totals. Name comes from the Master database for the selected locale; it is empty with
@@ -208,7 +213,7 @@ func (p *processor) viewSnapshot() ViewSnapshot {
 		Health: ViewHealth{
 			Capture: ViewCaptureHealth{
 				Source: capture.Source, PacketsRead: capture.PacketsRead, KernelReceived: capture.KernelReceived,
-				KernelDropped: capture.KernelDropped, ApplicationDropped: capture.ApplicationDropped, DeliveryDelay: capture.DeliveryDelay,
+				KernelDropped: capture.KernelDropped, ApplicationDropped: capture.ApplicationDropped, DeliveryDelay: capture.DeliveryDelay, DiagnosticDropped: capture.DiagnosticDropped,
 			},
 			Transport:     cloneTransportHealth(p.transportHealthSnapshot()),
 			Context:       cloneContextValidity(p.context.snapshot()),
@@ -233,10 +238,12 @@ func (p *processor) viewSnapshot() ViewSnapshot {
 			Rolling5sDPS:    viewDPS(statistics.Rolling5sDPS),
 			Rolling10sDPS:   viewDPS(statistics.Rolling10sDPS),
 		},
-		Encounters:     p.viewEncounters(statistics.Encounters),
-		Roles:          p.viewRoles(statistics.Roles, statistics.DamageDealt),
-		UnassignedRole: statistics.UnassignedRole,
-		Effects:        p.viewEffects(),
+		Encounters:          p.viewEncounters(statistics.Encounters),
+		Roles:               p.viewRoles(statistics.Roles, statistics.DamageDealt),
+		UnassignedRole:      statistics.UnassignedRole,
+		UnassignedRoleShare: unassignedRoleShare(statistics.UnassignedRole, statistics.DamageDealt),
+		Vehicle:             viewVehicle(statistics.Vehicle, statistics.DamageDealt),
+		Effects:             p.viewEffects(),
 	}
 	return view
 }
@@ -289,6 +296,8 @@ func (p *processor) viewEncounter(encounter EncounterSnapshot) ViewEncounter {
 		EndedAt: encounter.EndedAt, EndBasis: encounter.EndBasis, Totals: encounter.Totals,
 		Integrity: cloneIntegrity(encounter.Integrity), DPS: viewDPS(encounter.EncounterDPS),
 		Roles: p.viewRoles(encounter.Roles, encounter.Totals.DamageDealt), UnassignedRole: encounter.UnassignedRole,
+		UnassignedRoleShare: unassignedRoleShare(encounter.UnassignedRole, encounter.Totals.DamageDealt),
+		Vehicle:             viewVehicle(encounter.Vehicle, encounter.Totals.DamageDealt),
 	}
 	end := encounter.EndedAt
 	if end.IsZero() {
@@ -299,6 +308,15 @@ func (p *processor) viewEncounter(encounter EncounterSnapshot) ViewEncounter {
 		view.ElapsedSeconds = &elapsed
 	}
 	return view
+}
+
+// unassignedRoleShare uses the same confirmed-local denominator as the role rows.
+func unassignedRoleShare(unassigned UnassignedRoleTotals, total int64) *float64 {
+	if total <= 0 {
+		return nil
+	}
+	share := float64(unassigned.DamageDealt) / float64(total)
+	return &share
 }
 
 func (p *processor) viewRoles(roles []RoleDamageSnapshot, total int64) []ViewRole {
@@ -441,4 +459,22 @@ func cloneFloat64(value *float64) *float64 {
 	}
 	copied := *value
 	return &copied
+}
+
+// ViewVehicle projects one contributor with the unchanged confirmed-local share denominator.
+type ViewVehicle struct {
+	VehicleDamageSnapshot
+	DamageShare *float64 `json:"damageShare,omitempty"`
+}
+
+func viewVehicle(vehicle *VehicleDamageSnapshot, total int64) *ViewVehicle {
+	if vehicle == nil {
+		return nil
+	}
+	view := &ViewVehicle{VehicleDamageSnapshot: *vehicle}
+	if total > 0 {
+		share := float64(vehicle.DamageDealt) / float64(total)
+		view.DamageShare = &share
+	}
+	return view
 }

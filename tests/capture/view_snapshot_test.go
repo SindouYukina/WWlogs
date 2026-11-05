@@ -161,3 +161,23 @@ func TestViewElapsedUsesCaptureBoundariesAndWithholdsUnreliableTime(t *testing.T
 		t.Fatal("uncertain boundaries produced a precise elapsed time")
 	}
 }
+
+func TestUnassignedShareRetainsConfirmedDenominator(t *testing.T) {
+	if unassignedRoleShare(UnassignedRoleTotals{}, 0) != nil {
+		t.Fatal("empty denominator has a share")
+	}
+	share := unassignedRoleShare(UnassignedRoleTotals{DamageDealt: 25}, 100)
+	if share == nil || *share != 0.25 {
+		t.Fatal("unassigned share changed confirmed denominator")
+	}
+	p := newViewTestProcessor()
+	addTestRuntimeEntity(p, 150, nil)
+	p.observeLocalRoleEntity(150)
+	writeTestDamage(p, 100, 200, 1, 75)
+	writeTestDamage(p, 150, 200, 2, 25)
+	view := p.viewSnapshot()
+	assertRoleTotalsReconcile(t, p.damageStatistics.Snapshot())
+	if view.Statistics.DamageDealt != 100 || view.UnassignedRole.DamageDealt != 25 || view.UnassignedRole.OutgoingEvents != 1 || view.UnassignedRoleShare == nil || *view.UnassignedRoleShare != 0.25 || *view.Roles[0].DamageShare != 0.75 {
+		t.Fatal("view hid or reassigned local damage")
+	}
+}

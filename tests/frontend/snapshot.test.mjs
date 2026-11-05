@@ -45,3 +45,18 @@ test("late core and locale responses cannot overwrite newer state",()=>{
   assert.equal(snapshotSupersedes(current,current),false)
   assert.equal(snapshotSupersedes({sequence:11,localeRevision:3},current,4),false)
 })
+
+import {damageContributors} from "../../frontend/src/lib/snapshot.ts"
+test("motorcycle is a separate contributor using Go shares without a synthetic Role ID",()=>{
+ const role={playerId:1,roleId:42,damageDealt:75,damageTaken:9,damageShare:0.75}
+ const vehicle={kind:"motorcycle",evidence:"CORRELATED",damageDealt:25,outgoingEvents:2,damageShare:0.25}
+ const rows=damageContributors([role],vehicle)
+ assert.equal(rows.length,2)
+ assert.equal(rows[0].role,role)
+ assert.equal(rows[1].vehicle,vehicle)
+ assert.equal(rows[1].role,undefined)
+ assert.equal(rows[1].damageShare,0.25)
+ assert.equal(rows[0].damageShare,0.75)
+ assert.equal(damageContributors([],vehicle)[0].key,"vehicle-motorcycle")
+ assert.equal(damageContributors([role]).length,1)
+})

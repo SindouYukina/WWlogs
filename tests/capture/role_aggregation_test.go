@@ -9,10 +9,14 @@ import (
 // assertRoleTotalsReconcile checks the role aggregation invariants for an interval and every retained encounter.
 func assertRoleTotalsReconcile(t *testing.T, snapshot DamageStatisticsSnapshot) {
 	t.Helper()
-	check := func(scope string, roles []RoleDamageSnapshot, unassigned UnassignedRoleTotals, dealt, taken int64, outgoing, incoming uint64) {
+	check := func(scope string, roles []RoleDamageSnapshot, unassigned UnassignedRoleTotals, vehicle *VehicleDamageSnapshot, dealt, taken int64, outgoing, incoming uint64) {
 		t.Helper()
 		sumDealt, sumTaken := unassigned.DamageDealt, unassigned.DamageTaken
 		sumOutgoing, sumIncoming := unassigned.OutgoingEvents, unassigned.IncomingEvents
+		if vehicle != nil {
+			sumDealt += vehicle.DamageDealt
+			sumOutgoing += vehicle.OutgoingEvents
+		}
 		for _, role := range roles {
 			if role.DirectDamage+role.SummonDamage != role.DamageDealt {
 				t.Fatalf("%s role %d/%d: direct %d + summon %d != dealt %d", scope, role.PlayerID, role.RoleID, role.DirectDamage, role.SummonDamage, role.DamageDealt)
@@ -27,13 +31,13 @@ func assertRoleTotalsReconcile(t *testing.T, snapshot DamageStatisticsSnapshot) 
 				scope, sumDealt, sumTaken, sumOutgoing, sumIncoming, dealt, taken, outgoing, incoming)
 		}
 	}
-	check("interval", snapshot.Roles, snapshot.UnassignedRole, snapshot.DamageDealt, snapshot.DamageTaken, snapshot.OutgoingEvents, snapshot.IncomingEvents)
+	check("interval", snapshot.Roles, snapshot.UnassignedRole, snapshot.Vehicle, snapshot.DamageDealt, snapshot.DamageTaken, snapshot.OutgoingEvents, snapshot.IncomingEvents)
 	encounters := snapshot.Encounters.Completed
 	if snapshot.Encounters.Current != nil {
 		encounters = append(append([]EncounterSnapshot(nil), encounters...), *snapshot.Encounters.Current)
 	}
 	for _, e := range encounters {
-		check("encounter "+e.EncounterID, e.Roles, e.UnassignedRole, e.Totals.DamageDealt, e.Totals.DamageTaken, e.Totals.OutgoingEvents, e.Totals.IncomingEvents)
+		check("encounter "+e.EncounterID, e.Roles, e.UnassignedRole, e.Vehicle, e.Totals.DamageDealt, e.Totals.DamageTaken, e.Totals.OutgoingEvents, e.Totals.IncomingEvents)
 	}
 }
 
@@ -271,5 +275,94 @@ func TestRoleAggregationNeverCreditsUnknownEntity(t *testing.T) {
 	p := newPairingTestProcessor()
 	if role := p.localRoleForEntity(999, entityIdentity{}); role != nil {
 		t.Fatalf("an entity without a record was credited: %+v", role)
+	}
+}
+
+func TestMotorcycleContributionIsIndependentOfCharacterCredit(t *testing.T) {
+	p := newPairingTestProcessor()
+	event := testDamageEvent(p, 100, 200)
+	event.EventTypeCandidate, event.Damage, event.RPCID = "DAMAGE_CANDIDATE", 100, 1
+	event.DamageContributorCandidate = &damageContributorCandidate{Kind: vehicleKindMotorcycle, ActorType: "Vehicle", EntityType: "BattleVehicle", Status: resolutionCorrelated}
+	p.writeDamageEvent(event)
+	p.writeDamageEvent(event)
+	writeTestDamage(p, 100, 200, 2, 50)
+	got := p.damageStatistics.Snapshot()
+	assertRoleTotalsReconcile(t, got)
+	role := roleOf(t, got, 1409)
+	if got.DamageDealt != 150 || got.OutgoingEvents != 2 || got.DuplicateEvents != 1 || got.Vehicle == nil || got.Vehicle.DamageDealt != 100 || got.Vehicle.OutgoingEvents != 1 || role.DamageDealt != 50 || got.UnassignedRole.DamageDealt != 0 {
+		t.Fatal("vehicle duplicated or replaced character damage")
+	}
+	if event.SourceEntityID != 100 || event.DamageContributorCandidate.Status != resolutionCorrelated {
+		t.Fatal("vehicle classification changed raw source or evidence")
+	}
+	view := p.viewSnapshot()
+	if view.Vehicle == nil || view.Vehicle.DamageShare == nil || *view.Vehicle.DamageShare != 100.0/150.0 || *view.Roles[0].DamageShare != 50.0/150.0 {
+		t.Fatal("vehicle changed the share denominator")
+	}
+	got.Vehicle.DamageDealt = 999
+	if p.damageStatistics.Snapshot().Vehicle.DamageDealt != 100 {
+		t.Fatal("vehicle snapshot aliases mutable state")
+	}
+	p.damageStatistics.Reset()
+	if p.damageStatistics.Snapshot().Vehicle != nil {
+		t.Fatal("vehicle survived interval reset")
+	}
+}
+
+func TestMotorcycleContributionRequiresLocalFlowAndRecognizedEvidence(t *testing.T) {
+	for _, scenario := range []string{"unknown_class", "unknown_evidence", "suspect_context", "other_player"} {
+		t.Run(scenario, func(t *testing.T) {
+			p := newPairingTestProcessor()
+			addTestRuntimeEntity(p, 150, nil)
+			p.observeLocalRoleEntity(150)
+			event := testDamageEvent(p, 150, 200)
+			event.EventTypeCandidate, event.Damage, event.RPCID = "DAMAGE_CANDIDATE", 70, 1
+			event.DamageContributorCandidate = &damageContributorCandidate{Kind: vehicleKindMotorcycle, ActorType: "Vehicle", EntityType: "BattleVehicle", Status: resolutionCorrelated}
+			switch scenario {
+			case "unknown_class":
+				event.DamageContributorCandidate.Kind = "unresolved"
+			case "unknown_evidence":
+				event.DamageContributorCandidate.Status = resolutionUnknown
+			case "suspect_context":
+				p.context.invalidate("in", pairingAt(1), "test_gap")
+			case "other_player":
+				addTestPlayerRoleGroupEntity(p, 102, 88, 1312)
+				event = testDamageEvent(p, 102, 200)
+				event.EventTypeCandidate, event.Damage, event.RPCID = "DAMAGE_CANDIDATE", 70, 1
+				event.DamageContributorCandidate = &damageContributorCandidate{Kind: vehicleKindMotorcycle, ActorType: "Vehicle", EntityType: "BattleVehicle", Status: resolutionCorrelated}
+			}
+			p.writeDamageEvent(event)
+			got := p.damageStatistics.Snapshot()
+			assertRoleTotalsReconcile(t, got)
+			if got.Vehicle != nil {
+				t.Fatal("unsupported or nonlocal event entered motorcycle totals")
+			}
+			if scenario == "unknown_class" || scenario == "unknown_evidence" {
+				if got.UnassignedRole.DamageDealt != 70 || got.DamageDealt != 70 {
+					t.Fatal("unassigned local damage was hidden")
+				}
+			} else if got.DamageDealt != 0 {
+				t.Fatal("unconfirmed event entered confirmed totals")
+			}
+		})
+	}
+}
+
+func TestMotorcycleContributionIsScopedToEncounters(t *testing.T) {
+	statistics := NewDamageStatistics()
+	statistics.observeBattleState(true, encounterAt(0), 1)
+	record := testEncounterRecord(CombatFlowLocalOutgoing, 40, 1)
+	record.VehicleKind = vehicleKindMotorcycle
+	statistics.addCombatEvent(record)
+	statistics.observeBattleState(false, encounterAt(2), 1)
+	statistics.observeBattleState(true, encounterAt(20), 1)
+	record = testEncounterRecord(CombatFlowLocalOutgoing, 60, 21)
+	record.VehicleKind = vehicleKindMotorcycle
+	record.ObservedAt = encounterAt(21)
+	statistics.addCombatEvent(record)
+	got := statistics.SnapshotAt(CaptureQueryTime{CaptureSessionID: statistics.captureSessionID, Timestamp: encounterAt(21)})
+	assertRoleTotalsReconcile(t, got)
+	if got.Vehicle == nil || got.Vehicle.DamageDealt != 100 || len(got.Encounters.Completed) != 1 || got.Encounters.Completed[0].Vehicle == nil || got.Encounters.Completed[0].Vehicle.DamageDealt != 40 || got.Encounters.Current == nil || got.Encounters.Current.Vehicle == nil || got.Encounters.Current.Vehicle.DamageDealt != 60 {
+		t.Fatal("motorcycle totals leaked across encounters")
 	}
 }
