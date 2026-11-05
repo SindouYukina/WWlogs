@@ -1,6 +1,7 @@
 import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
 import "./index.css"
+import "./i18n"
 import { useSnapshot } from "@/lib/useSnapshot"
 import { DesktopView } from "@/views/DesktopView"
 import { OverlayView } from "@/views/OverlayView"
@@ -10,10 +11,10 @@ const viewName = new URLSearchParams(window.location.search).get("view") === "ov
 document.body.dataset.view = viewName
 
 function App() {
-  const { snapshot, connection } = useSnapshot()
+  const { snapshot, connection, changeLocale } = useSnapshot()
   return viewName === "overlay"
     ? <OverlayView snapshot={snapshot} connection={connection} />
-    : <DesktopView snapshot={snapshot} connection={connection} />
+    : <DesktopView snapshot={snapshot} connection={connection} changeLocale={changeLocale} />
 }
 
 createRoot(document.getElementById("root")!).render(

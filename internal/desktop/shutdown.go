@@ -30,7 +30,13 @@ func (g *shutdownGate) request() {
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), shutdownWaitLimit)
 			defer cancel()
-			g.err = g.stop(ctx)
+			result := make(chan error, 1)
+			go func() { result <- g.stop(ctx) }()
+			select {
+			case g.err = <-result:
+			case <-ctx.Done():
+				g.err = ctx.Err()
+			}
 			if g.err != nil {
 				fmt.Fprintln(os.Stderr, "WWlogs shutdown: capture cleanup deadline exceeded; unfinished diagnostics are incomplete")
 			}

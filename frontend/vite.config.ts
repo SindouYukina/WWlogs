@@ -1,10 +1,14 @@
 import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
 import { defineConfig } from "vite"
+import manifest from "./locales/manifest.json" with { type: "json" }
 
 // One project for both windows: index.html selects the Desktop or Overlay view from ?view=.
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), {
+    name: "bundled-locale-manifest",
+    generateBundle() { this.emitFile({ type: "asset", fileName: "locales/manifest.json", source: JSON.stringify(manifest) }) },
+  }],
   resolve: {
     alias: { "@": "/src" },
   },

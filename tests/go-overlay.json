@@ -227,6 +227,12 @@
     "tests/desktop/shutdown_test.go": "",
     "internal/desktop/central_shutdown_test.go": "tests/desktop/shutdown_test.go",
     "tests/desktop/settings_test.go": "",
-    "internal/desktop/central_settings_test.go": "tests/desktop/settings_test.go"
+    "internal/desktop/central_settings_test.go": "tests/desktop/settings_test.go",
+    "tests/capture/display_names_test.go": "",
+    "internal/capture/central_display_names_test.go": "tests/capture/display_names_test.go",
+    "tests/desktop/locales_test.go": "",
+    "internal/desktop/central_locales_test.go": "tests/desktop/locales_test.go",
+    "tests/desktop/projection_test.go": "",
+    "internal/desktop/central_projection_test.go": "tests/desktop/projection_test.go"
   }
 }

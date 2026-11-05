@@ -63,20 +63,54 @@ func Main() {
 // Run starts the application and blocks until it quits. The capture is stopped and its resources released before
 // Run returns.
 func Run(options Options) error {
-	masters, err := capture.LoadMasterData(options.MasterDatabase, options.Locale)
-	if err != nil {
-		return fmt.Errorf("load combat Master database: %w", err)
-	}
 	assets, _, err := frontendFS()
 	if err != nil {
 		return err
 	}
+	catalog, err := readLocaleCatalog(assets)
+	if err != nil {
+		return err
+	}
+	settings := loadSettings(settingsPath(), catalog)
+	if options.Locale != "" {
+		locale := options.Locale
+		// Preserve older desktop CLI aliases using only the bundled manifest's Master mapping.
+		if !catalog.valid(locale) {
+			for _, candidate := range catalog.SupportedLocales {
+				language := catalog.Languages[candidate]
+				if language.MasterLocale == locale {
+					locale = candidate
+					break
+				}
+			}
+		}
+		if _, err := settings.setLocale(locale); err != nil {
+			return err
+		}
+	}
+	masters, err := capture.LoadMasterData(options.MasterDatabase, catalog.Languages[settings.current().Settings.Locale].MasterLocale)
+	if err != nil {
+		return fmt.Errorf("load combat Master database: %w", err)
+	}
+	resolver, err := capture.OpenDisplayResolver(options.MasterDatabase)
+	if err != nil {
+		return err
+	}
+	defer resolver.Close()
 	captureService := service.NewCaptureService(service.SessionOpener(masters))
-	settings := loadSettings(settingsPath())
 	var overlay *application.WebviewWindow
 	bridge := &Bridge{capture: captureService, defaults: options.Session, settings: settings, overlay: func() *application.WebviewWindow { return overlay }}
+	bridge.catalog = catalog
+	bridge.projection = &displayProjection{resolver: resolver}
 	var app *application.App
-	shutdown := newShutdownGate(captureService.Shutdown, func() { app.Quit() })
+	var flushOverlay func()
+	shutdown := newShutdownGate(func(ctx context.Context) error {
+		err := captureService.Shutdown(ctx)
+		if flushOverlay != nil {
+			flushOverlay()
+		}
+		return err
+	}, func() { app.Quit() })
 	bridge.shutdown = shutdown
 
 	app = application.New(application.Options{
@@ -104,8 +138,12 @@ func Run(options Options) error {
 	overlay = app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Name:           overlayWindowName,
 		Title:          "WWlogs Overlay",
-		Width:          380,
-		Height:         240,
+		Width:          440,
+		Height:         640,
+		MinWidth:       320,
+		MinHeight:      360,
+		MaxWidth:       1200,
+		MaxHeight:      1600,
 		URL:            "/?view=overlay",
 		Frameless:      true,
 		AlwaysOnTop:    true,
@@ -116,6 +154,7 @@ func Run(options Options) error {
 		// transparent area.
 		Windows: application.WindowsWindow{HiddenOnTaskbar: true, DisableFramelessWindowDecorations: true},
 	})
+	flushOverlay = trackOverlay(app, overlay, settings)
 	// Closing the Desktop window quits the application, including the hidden overlay.
 	desktop.RegisterHook(events.Common.WindowClosing, func(event *application.WindowEvent) {
 		if !shutdown.ready.Load() {

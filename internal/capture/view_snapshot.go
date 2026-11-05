@@ -2,6 +2,7 @@ package capture
 
 import (
 	"hash/fnv"
+	"sort"
 	"strconv"
 	"time"
 )
@@ -117,6 +118,7 @@ type ViewEncounters struct {
 
 // ViewEncounter is one encounter.
 type ViewEncounter struct {
+	ElapsedSeconds  *float64             `json:"elapsedSeconds,omitempty"`
 	EncounterID     string               `json:"encounterId"`
 	Sequence        uint64               `json:"sequence"`
 	ProtocolSession int                  `json:"protocolSession"`
@@ -136,23 +138,25 @@ type ViewEncounter struct {
 // ViewRole is one local role's totals. Name comes from the Master database for the selected locale; it is empty with
 // NameStatus UNKNOWN when the RoleId has no verified name.
 type ViewRole struct {
-	PlayerID       uint64 `json:"playerId"`
-	RoleID         uint64 `json:"roleId"`
-	Name           string `json:"name"`
-	NameStatus     string `json:"nameStatus"`
-	DamageDealt    int64  `json:"damageDealt"`
-	DirectDamage   int64  `json:"directDamage"`
-	SummonDamage   int64  `json:"summonDamage"`
-	OutgoingEvents uint64 `json:"outgoingEvents"`
-	DamageTaken    int64  `json:"damageTaken"`
-	IncomingEvents uint64 `json:"incomingEvents"`
+	PlayerID       uint64   `json:"playerId"`
+	RoleID         uint64   `json:"roleId"`
+	Name           string   `json:"name"`
+	NameStatus     string   `json:"nameStatus"`
+	DamageDealt    int64    `json:"damageDealt"`
+	DamageShare    *float64 `json:"damageShare,omitempty"`
+	DirectDamage   int64    `json:"directDamage"`
+	SummonDamage   int64    `json:"summonDamage"`
+	OutgoingEvents uint64   `json:"outgoingEvents"`
+	DamageTaken    int64    `json:"damageTaken"`
+	IncomingEvents uint64   `json:"incomingEvents"`
 }
 
 // ViewEffects is the tracked effect state at the capture time.
 type ViewEffects struct {
-	Status EffectSnapshotStatus `json:"status"`
-	Reason string               `json:"reason,omitempty"`
-	Active []ViewEffect         `json:"active"`
+	Status      EffectSnapshotStatus `json:"status"`
+	Reason      string               `json:"reason,omitempty"`
+	Active      []ViewEffect         `json:"active"`
+	RecentEnded []ViewEffect         `json:"recentEnded"`
 	// Omitted counts tracked instances not listed because of maxViewEffects.
 	Omitted int `json:"omitted"`
 }
@@ -163,10 +167,13 @@ type ViewEffect struct {
 	Key      string  `json:"key"`
 	EffectID *uint64 `json:"effectId,omitempty"`
 	TermName string  `json:"termName,omitempty"`
+	TermID   *uint64 `json:"termId,omitempty"`
 	// TermStatus is the evidence level of the TermName link; it is never stronger than correlated.
 	TermStatus       string                `json:"termStatus,omitempty"`
 	HolderRelation   EffectEntityRelation  `json:"holderRelation"`
 	HolderRoleID     *uint64               `json:"holderRoleId,omitempty"`
+	HolderName       string                `json:"holderName,omitempty"`
+	HolderNameStatus string                `json:"holderNameStatus,omitempty"`
 	SourceRelation   EffectEntityRelation  `json:"sourceRelation"`
 	Polarity         EffectPolarity        `json:"polarity"`
 	CombatClass      EffectCombatClass     `json:"combatClass"`
@@ -179,6 +186,8 @@ type ViewEffect struct {
 	RemainingSeconds *float64              `json:"remainingSeconds,omitempty"`
 	ExpectedExpiry   *time.Time            `json:"expectedExpiry,omitempty"`
 	Stale            bool                  `json:"stale,omitempty"`
+	Evidence         EffectEvidence        `json:"evidence"`
+	EndedAt          *time.Time            `json:"endedAt,omitempty"`
 }
 
 // viewSnapshot builds the UI view at the newest capture time. It runs on the capture goroutine.
@@ -225,7 +234,7 @@ func (p *processor) viewSnapshot() ViewSnapshot {
 			Rolling10sDPS:   viewDPS(statistics.Rolling10sDPS),
 		},
 		Encounters:     p.viewEncounters(statistics.Encounters),
-		Roles:          p.viewRoles(statistics.Roles),
+		Roles:          p.viewRoles(statistics.Roles, statistics.DamageDealt),
 		UnassignedRole: statistics.UnassignedRole,
 		Effects:        p.viewEffects(),
 	}
@@ -274,16 +283,25 @@ func (p *processor) viewEncounters(encounters EncounterTrackerSnapshot) ViewEnco
 }
 
 func (p *processor) viewEncounter(encounter EncounterSnapshot) ViewEncounter {
-	return ViewEncounter{
+	view := ViewEncounter{
 		EncounterID: encounter.EncounterID, Sequence: encounter.Sequence, ProtocolSession: encounter.ProtocolSession,
 		State: encounter.State, Outcome: encounter.Outcome, StartedAt: encounter.StartedAt, StartBasis: encounter.StartBasis,
 		EndedAt: encounter.EndedAt, EndBasis: encounter.EndBasis, Totals: encounter.Totals,
 		Integrity: cloneIntegrity(encounter.Integrity), DPS: viewDPS(encounter.EncounterDPS),
-		Roles: p.viewRoles(encounter.Roles), UnassignedRole: encounter.UnassignedRole,
+		Roles: p.viewRoles(encounter.Roles, encounter.Totals.DamageDealt), UnassignedRole: encounter.UnassignedRole,
 	}
+	end := encounter.EndedAt
+	if end.IsZero() {
+		end = p.currentFrameTime
+	}
+	if encounter.Integrity.Status != IntegrityUnreliable && !encounter.StartedAt.IsZero() && !end.IsZero() && !end.Before(encounter.StartedAt) {
+		elapsed := end.Sub(encounter.StartedAt).Seconds()
+		view.ElapsedSeconds = &elapsed
+	}
+	return view
 }
 
-func (p *processor) viewRoles(roles []RoleDamageSnapshot) []ViewRole {
+func (p *processor) viewRoles(roles []RoleDamageSnapshot, total int64) []ViewRole {
 	view := make([]ViewRole, 0, len(roles))
 	for _, role := range roles {
 		name, status := p.roleDisplayName(role.RoleID)
@@ -292,6 +310,10 @@ func (p *processor) viewRoles(roles []RoleDamageSnapshot) []ViewRole {
 			DamageDealt: role.DamageDealt, DirectDamage: role.DirectDamage, SummonDamage: role.SummonDamage,
 			OutgoingEvents: role.OutgoingEvents, DamageTaken: role.DamageTaken, IncomingEvents: role.IncomingEvents,
 		})
+		if total > 0 {
+			share := float64(role.DamageDealt) / float64(total)
+			view[len(view)-1].DamageShare = &share
+		}
 	}
 	return view
 }
@@ -314,6 +336,24 @@ func (p *processor) viewEffects() ViewEffects {
 		return ViewEffects{Status: EffectSnapshotComplete, Active: []ViewEffect{}}
 	}
 	snapshot := p.effectSnapshotAtLastFrame()
+	// Keep local combat effects ahead of unrelated instances when the curated view reaches its bound.
+	priority := func(effect EffectInstanceSnapshot) int {
+		local := effect.HolderRelation == EffectRelationLocalRole || effect.HolderRelation == EffectRelationLocalOwned || effect.SourceRelation == EffectRelationLocalRole || effect.SourceRelation == EffectRelationLocalOwned
+		if !local {
+			return 5
+		}
+		if effect.CombatClass == EffectCombatClassNonCombat {
+			return 4
+		}
+		if effect.Lifecycle != EffectLifecycleActive {
+			return 3
+		}
+		if effect.CombatClass == EffectCombatClassCombat {
+			return 0
+		}
+		return 1
+	}
+	sort.SliceStable(snapshot.Effects, func(i, j int) bool { return priority(snapshot.Effects[i]) < priority(snapshot.Effects[j]) })
 	view := ViewEffects{Status: snapshot.Status, Reason: snapshot.Reason, Active: []ViewEffect{}}
 	for _, effect := range snapshot.Effects {
 		if len(view.Active) == maxViewEffects {
@@ -321,6 +361,18 @@ func (p *processor) viewEffects() ViewEffects {
 			continue
 		}
 		view.Active = append(view.Active, p.viewEffect(effect))
+	}
+	endedEffects := snapshot.RecentEnded
+	if len(endedEffects) > 12 {
+		endedEffects = endedEffects[len(endedEffects)-12:]
+	}
+	for _, ended := range endedEffects {
+		effect := p.viewEffect(ended.EffectInstanceSnapshot)
+		// An ended holder's ID may already have been reused. Do not resolve its past role from current entities.
+		effect.HolderRoleID = nil
+		at := ended.EndedAt
+		effect.EndedAt = &at
+		view.RecentEnded = append(view.RecentEnded, effect)
 	}
 	return view
 }
@@ -341,6 +393,7 @@ func (p *processor) viewEffect(effect EffectInstanceSnapshot) ViewEffect {
 		RemainingStatus:  effect.RemainingStatus,
 		RemainingSeconds: cloneFloat64(effect.RemainingSeconds),
 		Stale:            effect.StaleSinceTransportLoss,
+		Evidence:         effect.Evidence,
 	}
 	if effect.ExpectedExpiry != nil {
 		expiry := *effect.ExpectedExpiry
@@ -349,6 +402,8 @@ func (p *processor) viewEffect(effect EffectInstanceSnapshot) ViewEffect {
 	if effect.Static != nil && effect.Static.Term != nil {
 		view.TermName = effect.Static.Term.Name
 		view.TermStatus = effect.Static.Term.Status
+		id := effect.Static.Term.TermID
+		view.TermID = &id
 	}
 	if effect.HolderRelation == EffectRelationLocalRole || effect.HolderRelation == EffectRelationLocalOwned {
 		if role := p.localRoleForEntity(effect.HolderEntityID, entityIdentity{}); role != nil {
