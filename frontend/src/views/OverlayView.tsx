@@ -68,7 +68,7 @@ export function OverlayView({snapshot,connection}:{snapshot:Snapshot|null;connec
         {(effects.length>12||(view?.effects.omitted??0)>0)&&<p className="overlay-empty">{t("omitted",{count:Math.max(0,effects.length-12)+(view?.effects.omitted??0)})}</p>}
         {ended.length>0&&<details className="overlay-ended"><summary>{t("recent")}</summary>{ended.map(effect=><div key={`${scope}-${effect.key}-${effect.endedAt}`}><span className="truncate">{effectName(effect)}</span><span>{state(effect.lifecycle)}</span></div>)}</details>}
       </section>
-      <footer className="overlay-footer"><span>{t("snapshot",{ns:"dashboard",id:snapshot?.sequence??"—"})}</span><span data-field="sequence">{scope}</span></footer>
+      <footer className="overlay-footer"><span data-field="sequence">{t("snapshot",{ns:"dashboard",id:snapshot?.sequence??"—"})}</span></footer>
     </div>
   </div>
 }
