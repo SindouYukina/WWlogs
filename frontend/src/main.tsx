@@ -9,6 +9,11 @@ import { OverlayView } from "@/views/OverlayView"
 // Both windows load this page; the Go host opens the Desktop window at ?view=desktop and the Overlay at ?view=overlay.
 const viewName = new URLSearchParams(window.location.search).get("view") === "overlay" ? "overlay" : "desktop"
 document.body.dataset.view = viewName
+if (viewName === "overlay") {
+  for (const eventType of ["contextmenu", "dragstart"]) {
+    document.body.addEventListener(eventType, event => event.preventDefault())
+  }
+}
 
 function App() {
   const { snapshot, connection, changeLocale } = useSnapshot()
