@@ -213,7 +213,7 @@ type processor struct {
 	sessionNumber             int
 	encounterOut              diagWriter
 	// scenePlayerIDs lists the players of the current scene; it anchors battle-state signals before the
-	// local role report does.
+	// explicit local-player identity does.
 	scenePlayerIDs []uint64
 	// kcpStreams is the capture loop's KCP stream table, read for transport health snapshots.
 	kcpStreams   map[string]*stream
@@ -399,7 +399,7 @@ func crc32IEEE(data []byte) uint32 {
 // handleFrame. Other commands are only counted and inspected by the census.
 func isImplementedCommand(commandID uint16) bool {
 	switch commandID {
-	case 103, 116, 19470, 20332, 25706, 17250, 17286, 18559, 25185, 17769, 28030, 28481, 26702, 25830, 18345, 20358, 17893, 22102, 29363, 16974:
+	case 103, 116, 15380, 19470, 20332, 25706, 17250, 17286, 18559, 25185, 17769, 28030, 28481, 26702, 25830, 18345, 20358, 17893, 22102, 29363, 16974:
 		return true
 	}
 	return false
@@ -445,7 +445,7 @@ func (p *processor) handleFrame(frame gameFrame) {
 		}
 		return
 	}
-	if ((frame.commandID == 103 || frame.commandID == 116 || frame.commandID == 19470 || frame.commandID == 28481) && frame.direction != "out") || ((frame.commandID == 20332 || frame.commandID == 25706 || frame.commandID == 17250 || frame.commandID == 17286 || frame.commandID == 18559 || frame.commandID == 25185 || frame.commandID == 17769 || frame.commandID == 28030 || frame.commandID == 26702 || frame.commandID == 25830 || frame.commandID == 18345 || frame.commandID == 20358 || frame.commandID == 17893 || frame.commandID == 22102 || frame.commandID == 29363 || frame.commandID == 16974) && frame.direction != "in") {
+	if ((frame.commandID == 103 || frame.commandID == 116 || frame.commandID == 19470 || frame.commandID == 28481) && frame.direction != "out") || ((frame.commandID == 15380 || frame.commandID == 20332 || frame.commandID == 25706 || frame.commandID == 17250 || frame.commandID == 17286 || frame.commandID == 18559 || frame.commandID == 25185 || frame.commandID == 17769 || frame.commandID == 28030 || frame.commandID == 26702 || frame.commandID == 25830 || frame.commandID == 18345 || frame.commandID == 20358 || frame.commandID == 17893 || frame.commandID == 22102 || frame.commandID == 29363 || frame.commandID == 16974) && frame.direction != "in") {
 		p.stats.otherFrameDirections++
 		if censusEntry != nil {
 			censusEntry.FailureReasons["direction differs from implemented schema"]++
@@ -500,6 +500,12 @@ func (p *processor) handleFrame(frame gameFrame) {
 	p.archiveSummonOwnerFrame(frame, plain)
 	parseErrorsBefore := p.stats.parseErrors
 	switch frame.commandID {
+	case 15380:
+		if err := p.observeLocalPlayerInfo(plain); err != nil {
+			p.stats.parseErrors++
+			fmt.Fprintf(p.diagnostic, "local_player_info_parse_error=%v\n", err)
+			return
+		}
 	case 103, 116:
 		if err := p.observeClientVersion(frame.commandID, plain); err != nil {
 			p.stats.parseErrors++

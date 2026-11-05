@@ -1,5 +1,46 @@
 package capture
 
+import "fmt"
+
+// observeLocalPlayerInfo consumes the receiving player's explicit BasicInfoNotify.Id.
+// A scene owner or an arbitrary EntityPb.PlayerId is not a substitute for this identity.
+func (p *processor) observeLocalPlayerInfo(body []byte) error {
+	if p.sessionNumber == 0 {
+		return nil
+	}
+	fields, err := parseProtoFields(body)
+	if err != nil {
+		return fmt.Errorf("parse BasicInfoNotify: %w", err)
+	}
+	var playerID uint64
+	seen := false
+	for _, field := range fields {
+		if field.number != 15 { // BasicInfoNotify.Id, int32
+			continue
+		}
+		if field.wire != 0 || field.value > 0x7fffffff || (seen && playerID != field.value) {
+			return fmt.Errorf("invalid local player identity in BasicInfoNotify")
+		}
+		playerID, seen = field.value, true
+	}
+	if !seen || playerID == 0 {
+		return nil
+	}
+	if p.playerRelevance == nil {
+		p.playerRelevance = newPlayerRelevanceResolver()
+	}
+	if len(p.playerRelevance.localPlayerIDs) != 0 && !p.playerRelevance.isLocalPlayerID(playerID) {
+		return fmt.Errorf("conflicting local player identity in BasicInfoNotify")
+	}
+	if p.playerRelevance.localPlayerIDs == nil {
+		p.playerRelevance.localPlayerIDs = make(map[uint64]struct{})
+	}
+	p.playerRelevance.localPlayerIDs[playerID] = struct{}{}
+	p.refreshEffectRelations()
+	// Identity evidence alone does not repair scene/entity context invalidated by transport loss.
+	return nil
+}
+
 const maxTrackedLocalRoleEntities = 8192
 
 // playerRelation describes what the capture can establish about one runtime
@@ -13,9 +54,9 @@ const (
 	playerRelationUnrelated
 )
 
-// playerRelevanceResolver anchors local role entities to PlayerIds observed in
-// verified scene role groups. It does not infer ownership from a character ID,
-// damage request, or skill name.
+// playerRelevanceResolver anchors the receiving player through BasicInfoNotify,
+// or through a local role report joined to a verified scene role group. It does
+// not infer ownership from a character ID, damage request, or skill name.
 type playerRelevanceResolver struct {
 	roleEntities   map[uint64]struct{}
 	localPlayerIDs map[uint64]struct{}
