@@ -2,6 +2,8 @@
 /AGENTS.md
 /HANDOFF.md
 /bin/*
+/cmd/capture/wwlogs_windows_amd64.syso
+/cmd/desktop/wwlogs_windows_amd64.syso
 !/bin/
 /docs/
 /research/
