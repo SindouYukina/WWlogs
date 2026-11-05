@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -41,6 +42,11 @@ func trackOverlay(app *application.App, window *application.WebviewWindow, store
 	var mu sync.Mutex
 	var timer *time.Timer
 	closed := false
+	var ready atomic.Bool
+	initialBounds := OverlayBounds{Width: 440, Height: 640}
+	if saved := store.current().Settings.Overlay; saved != nil {
+		initialBounds = *saved
+	}
 	areas := func() []application.Rect {
 		result := []application.Rect{}
 		for _, screen := range app.Screen.GetAll() {
@@ -69,6 +75,10 @@ func trackOverlay(app *application.App, window *application.WebviewWindow, store
 		}
 	}
 	changed := func(*application.WindowEvent) {
+		// Native construction emits temporary minimum sizes before ApplicationStarted.
+		if !ready.Load() {
+			return
+		}
 		mu.Lock()
 		defer mu.Unlock()
 		if closed {
@@ -89,13 +99,11 @@ func trackOverlay(app *application.App, window *application.WebviewWindow, store
 	window.OnWindowEvent(events.Common.WindowDidMove, changed)
 	window.OnWindowEvent(events.Common.WindowDidResize, changed)
 	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
-		bounds := OverlayBounds{Width: 440, Height: 640}
-		if store.current().Settings.Overlay != nil {
-			bounds = *store.current().Settings.Overlay
-		}
-		bounds = fitOverlay(bounds, areas())
+		bounds := fitOverlay(initialBounds, areas())
 		window.SetSize(bounds.Width, bounds.Height)
 		window.SetPosition(bounds.X, bounds.Y)
+		ready.Store(true)
+		changed(nil)
 	})
 	// Wails refreshes its inventory on display changes; compare the small DIP list outside the capture path.
 	ctx, cancel := context.WithCancel(context.Background())
@@ -108,6 +116,9 @@ func trackOverlay(app *application.App, window *application.WebviewWindow, store
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
+				if !ready.Load() {
+					continue
+				}
 				current := fmt.Sprint(areas())
 				if current != previous {
 					previous = current
@@ -128,7 +139,7 @@ func trackOverlay(app *application.App, window *application.WebviewWindow, store
 			timer.Stop()
 		}
 		mu.Unlock()
-		if persist {
+		if persist && ready.Load() {
 			save()
 		}
 	}
