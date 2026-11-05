@@ -17,11 +17,14 @@ export interface Settings {
   version: number
   defaultAdapterIPv4: string
   showOverlayOnStartup: boolean
+  locale: string
+  overlay?: { x: number; y: number; width: number; height: number }
 }
 
 export interface SettingsState {
   settings: Settings
   warning?: string
+  localeRevision: number
 }
 
 export const host = {
@@ -34,4 +37,6 @@ export const host = {
   overlayVisible: () => call<boolean>("OverlayVisible"),
   getSettings: () => call<SettingsState>("GetSettings"),
   saveSettings: (settings: Settings) => call<SettingsState>("SaveSettings", settings),
+  setLocale: (locale: string) => call<SettingsState>("SetLocale", locale),
+  resetOverlayPosition: () => call<void>("ResetOverlayPosition"),
 }

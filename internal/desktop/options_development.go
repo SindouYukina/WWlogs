@@ -18,7 +18,7 @@ func parseOptions(arguments []string, output io.Writer) (Options, error) {
 	flags := flag.NewFlagSet("WWlogs-dev", flag.ContinueOnError)
 	flags.SetOutput(output)
 	masterDatabase := flags.String("master-db", capture.DefaultMasterDatabasePath(), "Read-only combat ID Master SQLite database")
-	locale := flags.String("locale", "zh-TW", "Locale for Master display names: zh-TW, zh-CN, en-US, ja-JP, or ko-KR")
+	locale := flags.String("locale", "", "Initial global display locale; approved bundled locales only (overrides saved preference)")
 	flags.Bool("version", false, "Print the WWlogs version and build identity")
 	ip := flags.String("ip", "", "Local IPv4 address: preselects the capture interface and decides packet direction in replay")
 	replay := flags.String("replay", "", "Development: replay this PCAP through the host instead of capturing live; starts automatically")

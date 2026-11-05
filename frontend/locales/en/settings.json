@@ -1,0 +1,21 @@
+{
+  "title": "Settings",
+  "description": "Preferences for this Windows user.",
+  "language": "Language",
+  "languageHint": "Applies immediately to both windows and Master names.",
+  "startup": "Startup preferences",
+  "defaultAdapter": "Default network interface",
+  "chooseAtLaunch": "Choose at each launch",
+  "adapterHint": "Preselected on launch. Capture always starts manually.",
+  "showOnStartup": "Show overlay on startup",
+  "visibilityHint": "Use capture controls to change current visibility.",
+  "save": "Save preferences",
+  "saving": "Saving…",
+  "saved": "Preferences saved.",
+  "unsaved": "Unsaved changes",
+  "storage": "Stored in %LOCALAPPDATA%\\WWlogs\\settings.json.",
+  "invalid": "Settings could not be loaded safely. Defaults are in use.",
+  "saveFailed": "Preferences could not be saved. Previous settings are preserved.",
+  "resetOverlay": "Reset overlay position",
+  "geometryHint": "Drag the overlay header; resize from its edges. Position and size save automatically."
+}

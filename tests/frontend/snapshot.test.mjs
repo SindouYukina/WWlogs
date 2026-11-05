@@ -34,3 +34,14 @@ test("missing, degraded, suspect and stopped snapshots stay distinct", () => {
   snapshot.service.state = "stopped"
   assert.equal(dataState(snapshot), "not_capturing")
 })
+
+import { snapshotSupersedes } from "../../frontend/src/lib/snapshot.ts"
+test("late core and locale responses cannot overwrite newer state",()=>{
+  const current={sequence:10,localeRevision:3}
+  assert.equal(snapshotSupersedes({sequence:10,localeRevision:4},current),true)
+  assert.equal(snapshotSupersedes({sequence:11,localeRevision:3},current),true)
+  assert.equal(snapshotSupersedes({sequence:11,localeRevision:2},current),false)
+  assert.equal(snapshotSupersedes({sequence:9,localeRevision:4},current),false)
+  assert.equal(snapshotSupersedes(current,current),false)
+  assert.equal(snapshotSupersedes({sequence:11,localeRevision:3},current,4),false)
+})

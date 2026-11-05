@@ -1,35 +1,74 @@
-import { dataState, dpsText, numberText, roleLabel, type Connection, type Snapshot } from "@/lib/snapshot"
+import { useEffect, useState } from "react"
+import { useTranslation } from "react-i18next"
+import { host } from "@/lib/host"
+import { dataState, numberText, type Connection, type Effect, type Snapshot } from "@/lib/snapshot"
+import { effectRemaining, relevantEffect, snapshotStale } from "@/lib/effects"
+import { statusText } from "@/i18n"
+import { DPSMetric, IntegrityBadge, roleName } from "./CombatDashboard"
 import { StateBanner } from "./StateBanner"
 
-// OverlayView is the Phase 3 overlay: the same snapshot as the Desktop view, drawn on a transparent window. Layout,
-// dragging, and click-through belong to later phases.
-export function OverlayView({ snapshot, connection }: { snapshot: Snapshot | null; connection: Connection }) {
-  const view = snapshot?.view ?? null
-  const encounter = view?.encounters.current ?? view?.encounters.recent.at(-1)
-  return (
-    <div className="m-2 flex flex-col gap-1 rounded-lg bg-black/60 p-3 text-sm text-white" data-field="overlay">
-      <div className="flex items-center justify-between gap-2">
-        <span className="font-semibold">WWlogs</span>
-        <StateBanner connection={connection} state={dataState(snapshot)} snapshot={snapshot} />
-      </div>
-      <div className="flex justify-between">
-        <span>Encounter DPS</span>
-        <span data-field="encounter-dps">{dpsText(encounter?.dps ?? view?.statistics.encounterDps)}</span>
-      </div>
-      <div className="flex justify-between">
-        <span>Rolling 5 s</span>
-        <span>{dpsText(view?.statistics.rolling5sDps)}</span>
-      </div>
-      {(encounter?.roles ?? view?.roles ?? []).map((role) => (
-        <div key={`${role.playerId}-${role.roleId}`} className="flex justify-between text-xs">
-          <span>{roleLabel(role)}</span>
-          <span>{numberText(role.damageDealt)}</span>
+export function OverlayView({snapshot,connection}:{snapshot:Snapshot|null;connection:Connection}) {
+  const {t,i18n}=useTranslation(["overlay","common","dashboard"])
+  const [now,setNow]=useState(Date.now())
+  useEffect(()=>{const timer=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(timer)},[])
+  const c=(key:string)=>t(key,{ns:"common"})
+  const num=(value:number|undefined)=>numberText(value,i18n.language)
+  const state=(value:string)=>i18n.exists(`state.${value}`,{ns:"overlay"})?t(`state.${value}`):c("unknown")
+  const view=snapshot?.view
+  const encounter=view?.encounters.current??view?.encounters.recent.at(-1)
+  const roles=[...(encounter?.roles??[])].sort((a,b)=>b.damageDealt-a.damageDealt)
+  const effects=(view?.effects.active??[]).filter(relevantEffect)
+  const ended=(view?.effects.recentEnded??[]).filter(relevantEffect).slice(-3).reverse()
+  const scope=`${view?.captureSessionId}.${view?.statisticsIntervalId}`
+  const duration=encounter?.elapsedSeconds
+  const elapsed=duration!==undefined&&duration>=0?`${Math.floor(duration/60)}:${String(Math.floor(duration%60)).padStart(2,"0")}`:"—"
+  const effectName=(effect:Effect)=>effect.termName&&effect.termStatus==="VERIFIED"?effect.termName:t("unknownEffect",{id:effect.effectId??"—"})
+  const target=(effect:Effect)=>{
+    if(effect.holderName&&effect.holderNameStatus==="VERIFIED")return effect.holderName
+    const role=effect.holderRoleId===undefined?undefined:view?.roles.find(role=>role.roleId===effect.holderRoleId)
+    return role?roleName(role):effect.holderRoleId!==undefined?t("unknownRole",{ns:"common",id:effect.holderRoleId}):state(effect.holderRelation)
+  }
+  return <div className="combat-overlay" data-field="overlay" data-locale={snapshot?.locale}>
+    <header className="overlay-header" title={t("drag")}>
+      <span className="font-semibold">WWlogs</span><span className="overlay-header-title">{t("title")}</span>
+      <button className="overlay-hide" aria-label={t("hide")} onClick={()=>void host.setOverlayVisible(false)}>×</button>
+    </header>
+    <div className="overlay-content">
+      <StateBanner connection={connection} state={dataState(snapshot)} snapshot={snapshot} stale={snapshotStale(snapshot,now)}/>
+      <div className="overlay-encounter-title"><span>{t(view?.encounters.current?"currentEncounter":encounter?"lastEncounter":"encounter",{ns:"dashboard"})} · {statusText(view?.encounters.state)}</span><span data-field="encounter-elapsed">{t("duration",{ns:"common",time:elapsed})}</span></div>
+      <DPSMetric label={c("encounterDps")} dps={encounter?.dps??view?.statistics.encounterDps} field="encounter-dps" prominent/>
+      <div className="overlay-rolling"><DPSMetric label={c("rolling5")} dps={view?.statistics.rolling5sDps} field="rolling5-dps"/><DPSMetric label={c("rolling10")} dps={view?.statistics.rolling10sDps} field="rolling10-dps"/></div>
+      <div className="overlay-total"><span>{t("confirmedDamage",{ns:"dashboard"})} · {t("interval",{ns:"dashboard"})}</span><strong data-field="damage-dealt">{num(view?.statistics.damageDealt)}</strong></div>
+      <div className="overlay-health"><IntegrityBadge status={encounter?.integrity.status??view?.health.dataIntegrity}/><span data-field="context">{c("context")}: {statusText(view?.health.context.state)}</span><span data-field="transport">{c("transport")}: {statusText(view?.health.transport.state)}</span></div>
+      {view?.health.dataIntegrity!==undefined&&view.health.dataIntegrity!=="INTACT"&&<p className="overlay-warning">{t(view.health.dataIntegrity==="DEGRADED"?"degradedNote":"unreliableNote",{ns:"dashboard"})}</p>}
+      <section className="overlay-section" aria-label={t("roles",{ns:"dashboard"})}>
+        <h2>{t("roles",{ns:"dashboard"})}</h2><div data-field="roles">
+          {roles.map(role=><div className="overlay-role" key={`${scope}-${encounter?.encounterId}-${role.playerId}-${role.roleId}`}>
+            <div className="overlay-role-heading"><span className="truncate" title={roleName(role)}>{roleName(role)}</span><span>{num(role.damageDealt)} <small>{role.damageShare===undefined?"—":new Intl.NumberFormat(i18n.language,{style:"percent",maximumFractionDigits:1}).format(role.damageShare)}</small></span></div>
+            <div className="contribution-track" aria-hidden="true"><div style={{width:`${Math.min(100,(role.damageShare??0)*100)}%`}}/></div>
+            {role.damageTaken>0&&<div className="overlay-role-taken">{c("taken")}: {num(role.damageTaken)}</div>}
+          </div>)}
+          {roles.length===0&&<p className="overlay-empty">{t("noRoles",{ns:"dashboard"})}</p>}
+          {encounter&&<div className="overlay-unassigned" data-field="unassigned"><span>{c("unassigned")}</span><span>{num(encounter.unassignedRole.damageDealt)}</span></div>}
         </div>
-      ))}
-      <div className="flex justify-between text-xs text-white/60">
-        <span data-field="sequence">#{snapshot?.sequence ?? 0}</span>
-        <span data-field="damage-dealt">{numberText(view?.statistics.damageDealt)}</span>
-      </div>
+      </section>
+      <section className="overlay-section" aria-label={t("effects")}>
+        <h2>{t("effects")}</h2><p className="overlay-timer-hint">{t("timerHint")}</p>
+        <div className="overlay-effects" data-field="effects">{effects.slice(0,12).map(effect=>{
+          const remaining=effectRemaining(effect,snapshot,connection,now)
+          const updated=effect.lastUpdatedAt!==effect.firstObservedAt
+          return <div className="overlay-effect" key={`${scope}-${effect.key}`} data-effect={effect.key}>
+            <div className="overlay-effect-heading"><span className="truncate" title={effectName(effect)}>{effectName(effect)}</span><strong data-field="effect-remaining" data-status={remaining===undefined?"unknown":"estimated"}>{remaining===undefined?"—":`~ ${t("seconds",{ns:"common",value:new Intl.NumberFormat(i18n.language,{maximumFractionDigits:1}).format(remaining)})}`}</strong></div>
+            {effect.termName&&effect.termStatus!=="VERIFIED"&&<p className="overlay-candidate">{effect.termName} · {t("termCandidate")}</p>}
+            <div className="overlay-effect-meta"><span>{state(effect.polarity)}</span><span>{t("stacks",{count:effect.stackCount??c("unknown")})}</span><span>{t("target",{name:target(effect)})}</span></div>
+            <div className="overlay-effect-meta"><span>{state(effect.lifecycle==="active"&&updated?"updated":effect.lifecycle)}</span><span>{state(effect.evidence)}</span></div>
+          </div>
+        })}</div>
+        {effects.length===0&&<p className="overlay-empty">{t("noEffects")}</p>}
+        {(effects.length>12||(view?.effects.omitted??0)>0)&&<p className="overlay-empty">{t("omitted",{count:Math.max(0,effects.length-12)+(view?.effects.omitted??0)})}</p>}
+        {ended.length>0&&<details className="overlay-ended"><summary>{t("recent")}</summary>{ended.map(effect=><div key={`${scope}-${effect.key}-${effect.endedAt}`}><span className="truncate">{effectName(effect)}</span><span>{state(effect.lifecycle)}</span></div>)}</details>}
+      </section>
+      <footer className="overlay-footer"><span data-field="sequence">{t("snapshot",{ns:"dashboard",id:snapshot?.sequence??"—"})}</span></footer>
     </div>
-  )
+  </div>
 }

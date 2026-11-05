@@ -1,0 +1,150 @@
+package desktop
+
+import (
+	"context"
+	"fmt"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
+)
+
+func validOverlayBounds(b OverlayBounds) bool {
+	return b.Width >= 320 && b.Width <= 1200 && b.Height >= 360 && b.Height <= 1600 && b.X >= -100000 && b.X <= 100000 && b.Y >= -100000 && b.Y <= 100000
+}
+
+// fitOverlay uses Wails DIP work areas and keeps the entire window reachable after a display change.
+func fitOverlay(bounds OverlayBounds, areas []application.Rect) OverlayBounds {
+	if !validOverlayBounds(bounds) {
+		bounds = OverlayBounds{Width: 440, Height: 640}
+	}
+	if len(areas) == 0 {
+		return bounds
+	}
+	chosen := areas[0]
+	for _, area := range areas {
+		if bounds.X >= area.X && bounds.X < area.X+area.Width && bounds.Y >= area.Y && bounds.Y < area.Y+area.Height {
+			chosen = area
+			break
+		}
+	}
+	bounds.Width = min(bounds.Width, chosen.Width)
+	bounds.Height = min(bounds.Height, chosen.Height)
+	bounds.X = max(chosen.X, min(bounds.X, chosen.X+chosen.Width-bounds.Width))
+	bounds.Y = max(chosen.Y, min(bounds.Y, chosen.Y+chosen.Height-bounds.Height))
+	return bounds
+}
+
+// trackOverlay debounces disk writes; shutdown flushes the final bounds and cancels its timer.
+func trackOverlay(app *application.App, window *application.WebviewWindow, store *settingsStore) func(bool) {
+	var mu sync.Mutex
+	var timer *time.Timer
+	closed := false
+	var ready atomic.Bool
+	var restore sync.Once
+	initialBounds := OverlayBounds{Width: 440, Height: 640}
+	if saved := store.current().Settings.Overlay; saved != nil {
+		initialBounds = *saved
+	}
+	areas := func() []application.Rect {
+		result := []application.Rect{}
+		for _, screen := range app.Screen.GetAll() {
+			result = append(result, screen.WorkArea)
+		}
+		return result
+	}
+	read := func() OverlayBounds {
+		x, y := window.Position()
+		w, h := window.Size()
+		return OverlayBounds{x, y, w, h}
+	}
+	save := func() {
+		if err := store.setOverlay(read()); err != nil {
+			store.mu.Lock()
+			store.state.Warning = "overlay_save_failed"
+			store.mu.Unlock()
+		}
+	}
+	constrain := func() {
+		current := read()
+		fitted := fitOverlay(current, areas())
+		if fitted != current {
+			window.SetSize(fitted.Width, fitted.Height)
+			window.SetPosition(fitted.X, fitted.Y)
+		}
+	}
+	changed := func(*application.WindowEvent) {
+		// Native construction emits temporary minimum sizes before the window runtime is ready.
+		if !ready.Load() {
+			return
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		if closed {
+			return
+		}
+		if timer != nil {
+			timer.Stop()
+		}
+		timer = time.AfterFunc(400*time.Millisecond, func() {
+			mu.Lock()
+			active := !closed
+			mu.Unlock()
+			if active {
+				save()
+			}
+		})
+	}
+	window.OnWindowEvent(events.Common.WindowDidMove, changed)
+	window.OnWindowEvent(events.Common.WindowDidResize, changed)
+	// ApplicationStarted can precede native window construction on Windows. RuntimeReady follows it.
+	window.OnWindowEvent(events.Common.WindowRuntimeReady, func(*application.WindowEvent) {
+		restore.Do(func() {
+			bounds := fitOverlay(initialBounds, areas())
+			window.SetSize(bounds.Width, bounds.Height)
+			window.SetPosition(bounds.X, bounds.Y)
+			ready.Store(true)
+			changed(nil)
+		})
+	})
+	// Wails refreshes its inventory on display changes; compare the small DIP list outside the capture path.
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		ticker := time.NewTicker(2 * time.Second)
+		defer ticker.Stop()
+		previous := ""
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if !ready.Load() {
+					continue
+				}
+				current := fmt.Sprint(areas())
+				if current != previous {
+					previous = current
+					constrain()
+				}
+			}
+		}
+	}()
+	return func(persist bool) {
+		cancel()
+		mu.Lock()
+		if closed {
+			mu.Unlock()
+			return
+		}
+		closed = true
+		if timer != nil {
+			timer.Stop()
+		}
+		mu.Unlock()
+		if persist && ready.Load() {
+			save()
+		}
+	}
+}

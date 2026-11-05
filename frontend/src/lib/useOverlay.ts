@@ -7,6 +7,7 @@ export function useOverlay() {
   const [visible, setVisible] = useState<boolean | null>(null)
   const [pending, setPending] = useState(false)
   const [error, setError] = useState("")
+  const [warning,setWarning]=useState("")
   const revision = useRef(0)
   const changing = useRef(false)
   const mounted = useRef(false)
@@ -18,8 +19,8 @@ export function useOverlay() {
       const version = revision.current
       if (!changing.current) {
         try {
-          const actual = await host.overlayVisible()
-          if (!cancelled && version === revision.current) { setVisible(actual); setError("") }
+          const [actual,settings] = await Promise.all([host.overlayVisible(),host.getSettings()])
+          if (!cancelled && version === revision.current) { setVisible(actual); setWarning(settings.warning??""); setError("") }
         } catch {
           if (!cancelled && version === revision.current) { setVisible(null); setError("Overlay status is unavailable.") }
         }
@@ -45,5 +46,5 @@ export function useOverlay() {
       if (mounted.current) setPending(false)
     }
   }
-  return { visible, pending, error, toggle }
+  return { visible, pending, error, warning, toggle }
 }

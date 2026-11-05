@@ -134,3 +134,30 @@ func TestViewSnapshotsRepeatExactly(t *testing.T) {
 		t.Fatal("two views of the same state differ")
 	}
 }
+
+func TestViewRoleSharesUseConfirmedIntervalTotals(t *testing.T) {
+	p := newViewTestProcessor()
+	addTestPlayerRoleGroupEntity(p, 101, 77, 1508, true)
+	pairingFrame(p, 1)
+	writeTestDamage(p, 100, 200, 1, 120)
+	writeTestDamage(p, 101, 200, 2, 30)
+	view := p.viewSnapshot()
+	for _, role := range view.Roles {
+		if role.DamageShare == nil || *role.DamageShare != float64(role.DamageDealt)/150 {
+			t.Fatal("role share does not use confirmed totals")
+		}
+	}
+}
+
+func TestViewElapsedUsesCaptureBoundariesAndWithholdsUnreliableTime(t *testing.T) {
+	p := newViewTestProcessor()
+	encounter := EncounterSnapshot{StartedAt: pairingAt(1), EndedAt: pairingAt(11), Integrity: intactIntegrity()}
+	view := p.viewEncounter(encounter)
+	if view.ElapsedSeconds == nil || *view.ElapsedSeconds != 10 {
+		t.Fatal("elapsed time did not use capture boundaries")
+	}
+	encounter.Integrity.Status = IntegrityUnreliable
+	if p.viewEncounter(encounter).ElapsedSeconds != nil {
+		t.Fatal("uncertain boundaries produced a precise elapsed time")
+	}
+}

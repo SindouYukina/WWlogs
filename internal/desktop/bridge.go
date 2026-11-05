@@ -16,11 +16,13 @@ import (
 // returns snapshots as JSON copies, so no window ever holds a reference to Go state. Every window calls it on its
 // own schedule; a slow window only receives fewer snapshots.
 type Bridge struct {
-	capture  *service.CaptureService
-	defaults capture.SessionConfig
-	overlay  func() *application.WebviewWindow
-	shutdown *shutdownGate
-	settings *settingsStore
+	capture    *service.CaptureService
+	defaults   capture.SessionConfig
+	overlay    func() *application.WebviewWindow
+	shutdown   *shutdownGate
+	settings   *settingsStore
+	catalog    localeCatalog
+	projection *displayProjection
 }
 
 // snapshotWaitLimit bounds one NextSnapshot call; an unchanged snapshot returned at the limit is a heartbeat.
@@ -40,6 +42,17 @@ func (b *Bridge) GetSettings() SettingsState { return b.settings.current() }
 // SaveSettings persists supported preferences in the current Windows user's data directory.
 func (b *Bridge) SaveSettings(value Settings) (SettingsState, error) { return b.settings.save(value) }
 
+// SetLocale persists the single global display locale without touching capture or statistics.
+func (b *Bridge) SetLocale(locale string) (SettingsState, error) { return b.settings.setLocale(locale) }
+
+// ResetOverlayPosition recovers an overlay after a display configuration change.
+func (b *Bridge) ResetOverlayPosition() {
+	if w := b.overlay(); w != nil {
+		w.SetSize(440, 640)
+		w.Center()
+	}
+}
+
 // NextSnapshot returns the newest snapshot once its sequence is greater than after, or the current one after about
 // a second. The returned JSON is a copy.
 func (b *Bridge) NextSnapshot(ctx context.Context, after uint64) (json.RawMessage, error) {
@@ -49,12 +62,12 @@ func (b *Bridge) NextSnapshot(ctx context.Context, after uint64) (json.RawMessag
 	if err != nil && !errors.Is(err, context.DeadlineExceeded) {
 		return nil, err
 	}
-	return snapshot.JSON()
+	return b.projection.encode(snapshot, b.settings.current(), b.catalog)
 }
 
 // CurrentSnapshot returns the newest snapshot without waiting.
 func (b *Bridge) CurrentSnapshot() (json.RawMessage, error) {
-	return b.capture.Publisher().Latest().JSON()
+	return b.projection.encode(b.capture.Publisher().Latest(), b.settings.current(), b.catalog)
 }
 
 // ListAdapters lists the Npcap IPv4 interfaces.

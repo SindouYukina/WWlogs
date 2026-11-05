@@ -14,20 +14,31 @@ const settingsVersion = 1
 
 // Settings contains only supported user preferences, never capture or diagnostic internals.
 type Settings struct {
-	Version              int    `json:"version"`
-	DefaultAdapterIPv4   string `json:"defaultAdapterIPv4"`
-	ShowOverlayOnStartup bool   `json:"showOverlayOnStartup"`
+	Version              int            `json:"version"`
+	DefaultAdapterIPv4   string         `json:"defaultAdapterIPv4"`
+	ShowOverlayOnStartup bool           `json:"showOverlayOnStartup"`
+	Locale               string         `json:"locale"`
+	Overlay              *OverlayBounds `json:"overlay,omitempty"`
+}
+
+type OverlayBounds struct {
+	X      int `json:"x"`
+	Y      int `json:"y"`
+	Width  int `json:"width"`
+	Height int `json:"height"`
 }
 
 type SettingsState struct {
-	Settings Settings `json:"settings"`
-	Warning  string   `json:"warning,omitempty"`
+	Settings       Settings `json:"settings"`
+	Warning        string   `json:"warning,omitempty"`
+	LocaleRevision uint64   `json:"localeRevision"`
 }
 
 type settingsStore struct {
-	mu    sync.Mutex
-	path  string
-	state SettingsState
+	mu      sync.Mutex
+	path    string
+	state   SettingsState
+	catalog localeCatalog
 }
 
 func settingsPath() string {
@@ -54,14 +65,14 @@ func validateSettings(value Settings) error {
 	return nil
 }
 
-func loadSettings(path string) *settingsStore {
-	store := &settingsStore{path: path, state: SettingsState{Settings: Settings{Version: settingsVersion}}}
+func loadSettings(path string, catalog localeCatalog) *settingsStore {
+	store := &settingsStore{path: path, catalog: catalog, state: SettingsState{Settings: Settings{Version: settingsVersion, Locale: catalog.FallbackLocale}, LocaleRevision: 1}}
 	file, err := os.Open(path)
 	if errors.Is(err, os.ErrNotExist) && path != "" {
 		return store
 	}
 	if err != nil {
-		store.state.Warning = "Settings could not be read. Defaults are in use."
+		store.state.Warning = "settings_read_failed"
 		return store
 	}
 	defer file.Close()
@@ -81,8 +92,15 @@ func loadSettings(path string) *settingsStore {
 		err = errors.New("invalid settings size")
 	}
 	if err != nil {
-		store.state.Warning = "Settings are invalid or unsupported. Defaults are in use; save to replace them."
+		store.state.Warning = "settings_invalid"
 		return store
+	}
+	if !catalog.valid(value.Locale) {
+		value.Locale = catalog.FallbackLocale
+	}
+	if value.Overlay != nil && !validOverlayBounds(*value.Overlay) {
+		value.Overlay = nil
+		store.state.Warning = "overlay_geometry_reset"
 	}
 	store.state.Settings = value
 	return store
@@ -91,16 +109,61 @@ func loadSettings(path string) *settingsStore {
 func (s *settingsStore) current() SettingsState {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.state
+	state := s.state
+	if state.Settings.Overlay != nil {
+		bounds := *state.Settings.Overlay
+		state.Settings.Overlay = &bounds
+	}
+	return state
 }
 
 // save replaces the file only after a complete, validated write. Failed writes preserve the previous preferences.
 func (s *settingsStore) save(value Settings) (SettingsState, error) {
+	if value.Locale != "" && !s.catalog.valid(value.Locale) {
+		return SettingsState{}, errors.New("unsupported_locale")
+	}
 	if err := validateSettings(value); err != nil {
 		return SettingsState{}, err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	// Locale and geometry have dedicated updates; a stale Settings form must not overwrite either.
+	value.Locale = s.state.Settings.Locale
+	value.Overlay = s.state.Settings.Overlay
+	return s.writeLocked(value)
+}
+
+func (s *settingsStore) setLocale(locale string) (SettingsState, error) {
+	if !s.catalog.valid(locale) {
+		return SettingsState{}, errors.New("unsupported_locale")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	value := s.state.Settings
+	value.Locale = locale
+	return s.writeLocked(value)
+}
+
+func (s *settingsStore) setOverlay(bounds OverlayBounds) error {
+	if !validOverlayBounds(bounds) {
+		return errors.New("invalid_overlay_bounds")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.state.Settings.Overlay != nil && *s.state.Settings.Overlay == bounds {
+		return nil
+	}
+	value := s.state.Settings
+	value.Overlay = &bounds
+	if s.state.Warning == "settings_invalid" || s.state.Warning == "settings_read_failed" {
+		s.state.Settings.Overlay = &bounds
+		return nil
+	}
+	_, err := s.writeLocked(value)
+	return err
+}
+
+func (s *settingsStore) writeLocked(value Settings) (SettingsState, error) {
 	if s.path == "" {
 		return s.state, errors.New("the user settings directory is unavailable")
 	}
@@ -130,6 +193,10 @@ func (s *settingsStore) save(value Settings) (SettingsState, error) {
 	if err := os.Rename(temporary, s.path); err != nil {
 		return s.state, errors.New("could not replace settings; previous preferences were preserved")
 	}
-	s.state = SettingsState{Settings: value}
+	revision := s.state.LocaleRevision
+	if value.Locale != s.state.Settings.Locale {
+		revision++
+	}
+	s.state = SettingsState{Settings: value, LocaleRevision: revision}
 	return s.state, nil
 }

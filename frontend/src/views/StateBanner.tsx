@@ -1,30 +1,18 @@
 import { Badge } from "@/components/ui/badge"
+import { useTranslation } from "react-i18next"
 import type { Connection, DataState, Snapshot } from "@/lib/snapshot"
 
-// StateBanner names why the numbers may be missing or untrusted. Both views use it, so the wording stays the same.
-export function StateBanner({ connection, state, snapshot }: { connection: Connection; state: DataState; snapshot: Snapshot | null }) {
-  if (connection === "disconnected") {
-    return <Badge variant="destructive" data-field="banner">Disconnected from the WWlogs host</Badge>
-  }
-  if (connection === "connecting") {
-    return <Badge variant="secondary" data-field="banner">Connecting…</Badge>
-  }
-  switch (state) {
-    case "not_capturing":
-      return (
-        <Badge variant="secondary" data-field="banner">
-          {snapshot?.service.state === "error" ? `Capture error: ${snapshot.service.lastError ?? "unknown"}` : `Not capturing (${snapshot?.service.state ?? "stopped"})`}
-        </Badge>
-      )
-    case "no_data":
-      return <Badge variant="secondary" data-field="banner">Waiting for data</Badge>
-    case "no_encounter":
-      return <Badge variant="outline" data-field="banner">No encounter yet</Badge>
-    case "untrusted":
-      return <Badge variant="destructive" data-field="banner">Data not reliable: transport or attribution loss</Badge>
-    case "degraded":
-      return <Badge variant="outline" className="border-warning/40 text-warning" data-field="banner">Degraded · lower bounds</Badge>
-    default:
-      return <Badge variant="outline" data-field="banner">Live</Badge>
-  }
+export function StateBanner({connection,state,snapshot,stale=false}:{connection:Connection;state:DataState;snapshot:Snapshot|null;stale?:boolean}) {
+  const {t}=useTranslation("common")
+  let text=t("live"),variant:"outline"|"secondary"|"destructive"="outline"
+  if(connection==="disconnected"){text=t("disconnected");variant="destructive"}
+  else if(connection==="connecting"){text=t("connecting");variant="secondary"}
+  else if(stale){text=t("stale");variant="destructive"}
+  else if(snapshot?.service.state==="error"){text=t("captureFailed");variant="destructive"}
+  else if(state==="not_capturing"){text=t("notCapturing");variant="secondary"}
+  else if(state==="no_data")text=t("waiting")
+  else if(state==="no_encounter")text=t("noEncounter")
+  else if(state==="untrusted"){text=t("untrusted");variant="destructive"}
+  else if(state==="degraded")text=t("degraded")
+  return <Badge variant={variant} className="whitespace-normal text-left" data-field="banner">{text}</Badge>
 }

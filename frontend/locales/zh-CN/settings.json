@@ -1,0 +1,21 @@
+{
+  "title": "设置",
+  "description": "此 Windows 用户的偏好设置。",
+  "language": "语言",
+  "languageHint": "立即应用到两个窗口与游戏名称。",
+  "startup": "启动偏好",
+  "defaultAdapter": "默认网络接口",
+  "chooseAtLaunch": "每次启动时选择",
+  "adapterHint": "启动时预选，采集仍需手动开始。",
+  "showOnStartup": "启动时显示 Overlay",
+  "visibilityHint": "当前显示状态请使用上方控制按钮调整。",
+  "save": "保存偏好",
+  "saving": "保存中…",
+  "saved": "偏好设置已保存。",
+  "unsaved": "尚未保存",
+  "storage": "保存于 %LOCALAPPDATA%\\WWlogs\\settings.json。",
+  "invalid": "设置无法安全加载，已使用默认值。",
+  "saveFailed": "偏好保存失败，原设置已保留。",
+  "resetOverlay": "重置 Overlay 位置",
+  "geometryHint": "拖动 Overlay 标题栏，从边缘调整大小；位置和尺寸会自动保存。"
+}

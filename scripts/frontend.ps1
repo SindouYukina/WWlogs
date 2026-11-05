@@ -40,9 +40,11 @@ if ($nodeVersion -notmatch '^v24\.') {
     throw "Node.js $nodeVersion at $nodeHome is not 24.x; the frontend toolchain is pinned to Node.js 24 LTS"
 }
 $env:PATH = "$nodeHome;$env:PATH"
+& (Join-Path $nodeHome 'node.exe') (Join-Path $repoRoot 'frontend/locales/validate.mjs')
+if ($LASTEXITCODE -ne 0) { throw 'Bundled localization validation failed' }
 
 # Pure formatting and trust-state checks use Node's built-in runner and tracked sources only.
-& (Join-Path $nodeHome 'node.exe') --test (Join-Path $repoRoot 'tests/frontend/snapshot.test.mjs')
+& (Join-Path $nodeHome 'node.exe') --test (Get-ChildItem (Join-Path $repoRoot 'tests/frontend') -Filter '*.test.mjs' | Select-Object -ExpandProperty FullName)
 if ($LASTEXITCODE -ne 0) { throw "frontend behavior tests failed ($LASTEXITCODE)" }
 
 if ($Action -eq 'Build') {
