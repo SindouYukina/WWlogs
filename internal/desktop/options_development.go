@@ -24,15 +24,18 @@ func parseOptions(arguments []string, output io.Writer) (Options, error) {
 	replay := flags.String("replay", "", "Development: replay this PCAP through the host instead of capturing live; starts automatically")
 	pacing := flags.Float64("replay-pacing", 1, "Development: replay speed factor (1 = capture speed, 0 = as fast as possible)")
 	autoStart := flags.Bool("autostart", false, "Development: start live capture on -ip when the windows open")
-	diagnostics := flags.Bool("capture-diagnostics", false, "Development: record each live session to the local diagnostic PCAP spool")
+	diagnostics := flags.Bool("capture-diagnostics", true, "Development: record live PCAP and diagnostics to the local spool (default true; replay does not record)")
 	showOverlay := flags.Bool("overlay", false, "Development: show the overlay window at start")
 	debugPort := flags.Int("webview-debug-port", 0, "Development: open the WebView2 remote debugging port for automated UI checks")
 	publishInterval := flags.Duration("publish-interval", capture.DefaultPublishInterval, "Development: minimum time between UI snapshots (at least 100ms)")
 	if err := flags.Parse(arguments); err != nil {
 		return Options{}, err
 	}
-	if *replay != "" && *diagnostics {
+	if *replay != "" && *diagnostics && flagsWereSet(flags, "capture-diagnostics") {
 		return Options{}, errors.New("-capture-diagnostics applies to live capture only")
+	}
+	if *replay != "" {
+		*diagnostics = false
 	}
 	if *publishInterval < capture.MinPublishInterval {
 		*publishInterval = capture.MinPublishInterval
@@ -48,6 +51,16 @@ func parseOptions(arguments []string, output io.Writer) (Options, error) {
 		ShowOverlay:      *showOverlay,
 		WebviewDebugPort: *debugPort,
 	}, nil
+}
+
+func flagsWereSet(flags *flag.FlagSet, name string) bool {
+	set := false
+	flags.Visit(func(f *flag.Flag) {
+		if f.Name == name {
+			set = true
+		}
+	})
+	return set
 }
 
 // webviewArguments opens the WebView2 remote debugging port when requested, for automated UI checks.

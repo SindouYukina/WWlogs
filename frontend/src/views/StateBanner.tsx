@@ -14,5 +14,5 @@ export function StateBanner({connection,state,snapshot,stale=false}:{connection:
   else if(state==="no_encounter")text=t("noEncounter")
   else if(state==="untrusted"){text=t("untrusted");variant="destructive"}
   else if(state==="degraded")text=t("degraded")
-  return <Badge variant={variant} className="whitespace-normal text-left" data-field="banner">{text}</Badge>
+  return <><Badge variant={variant} className="whitespace-normal text-left" data-field="banner">{text}</Badge>{snapshot?.service.app.profile==="development"&&(snapshot.service.session?.diagnosticsWarning||(snapshot.view?.health.capture.diagnosticDropped?.value??0)>0)&&<p className="overlay-warning text-warning" data-field="diagnostics-incomplete">{t("diagnosticsIncomplete")}</p>}</>
 }

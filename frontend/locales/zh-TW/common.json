@@ -1,4 +1,5 @@
 {
+  "diagnosticsIncomplete": "開發診斷錄製不完整或無法啟用，請檢查本機容量與診斷狀態。",
   "roleTitle": "角色",
   "appSubtitle": "戰鬥分析",
   "dashboard": "戰鬥總覽",

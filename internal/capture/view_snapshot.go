@@ -61,6 +61,7 @@ type ViewCaptureHealth struct {
 	KernelDropped      CaptureCounter `json:"kernelDropped"`
 	ApplicationDropped CaptureCounter `json:"applicationDropped"`
 	DeliveryDelay      CaptureLatency `json:"deliveryDelay"`
+	DiagnosticDropped  CaptureCounter `json:"diagnosticDropped"`
 }
 
 // ViewRPCPairing is the pairing counter subset the UI needs.
@@ -208,7 +209,7 @@ func (p *processor) viewSnapshot() ViewSnapshot {
 		Health: ViewHealth{
 			Capture: ViewCaptureHealth{
 				Source: capture.Source, PacketsRead: capture.PacketsRead, KernelReceived: capture.KernelReceived,
-				KernelDropped: capture.KernelDropped, ApplicationDropped: capture.ApplicationDropped, DeliveryDelay: capture.DeliveryDelay,
+				KernelDropped: capture.KernelDropped, ApplicationDropped: capture.ApplicationDropped, DeliveryDelay: capture.DeliveryDelay, DiagnosticDropped: capture.DiagnosticDropped,
 			},
 			Transport:     cloneTransportHealth(p.transportHealthSnapshot()),
 			Context:       cloneContextValidity(p.context.snapshot()),

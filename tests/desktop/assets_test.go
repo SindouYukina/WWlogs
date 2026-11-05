@@ -3,9 +3,11 @@ package desktop
 import (
 	"archive/zip"
 	"bytes"
+	"io"
 	"io/fs"
 	"strings"
 	"testing"
+	"wwlogs/internal/buildinfo"
 )
 
 func TestFrontendFallbackWithoutArchive(t *testing.T) {
@@ -44,5 +46,29 @@ func TestFrontendArchiveIsServed(t *testing.T) {
 	frontendArchive = []byte("not a zip")
 	if _, _, err := frontendFS(); err == nil {
 		t.Fatal("a corrupt archive was accepted")
+	}
+}
+
+func TestDiagnosticDefaultsFollowProfileWithoutAutostart(t *testing.T) {
+	options, err := parseOptions(nil, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := buildinfo.Current().Profile == buildinfo.ProfileDevelopment
+	if options.AutoStart || options.Session.Diagnostics != want {
+		t.Fatalf("defaults: autostart=%v diagnostics=%v want=%v", options.AutoStart, options.Session.Diagnostics, want)
+	}
+	if want {
+		replay, err := parseOptions([]string{"-replay", "sample.pcap"}, io.Discard)
+		if err != nil || replay.Session.Diagnostics || !replay.AutoStart {
+			t.Fatalf("replay defaults: %+v %v", replay, err)
+		}
+		if _, err := parseOptions([]string{"-replay", "sample.pcap", "-capture-diagnostics=true"}, io.Discard); err == nil {
+			t.Fatal("explicit replay recording accepted")
+		}
+	} else {
+		if _, err := parseOptions([]string{"-capture-diagnostics=true"}, io.Discard); err == nil {
+			t.Fatal("Public accepted recording switch")
+		}
 	}
 }

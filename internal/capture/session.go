@@ -60,6 +60,8 @@ type SessionInfo struct {
 	Handle string `json:"handle,omitempty"`
 	// Diagnostics reports whether Development diagnostics are recorded for this session.
 	Diagnostics bool `json:"diagnostics"`
+	// DiagnosticsWarning reports a failed diagnostic setup without stopping combat analysis.
+	DiagnosticsWarning string `json:"diagnosticsWarning,omitempty"`
 }
 
 // SessionResult is how a session ended.
@@ -155,8 +157,14 @@ func OpenSession(cfg SessionConfig, masters *MasterData) (*Session, error) {
 	}
 	session.diagnostics, err = openSessionDiagnostics(cfg.Diagnostics, session.handle.LinkType())
 	if err != nil {
-		session.handle.Close()
-		return nil, err
+		var setupError *diagnosticSetupError
+		if !errors.As(err, &setupError) {
+			session.handle.Close()
+			return nil, err
+		}
+		session.info.Diagnostics = false
+		session.info.DiagnosticsWarning = "Development diagnostics are unavailable; this session cannot be replayed."
+		session.diagnostics, _ = openSessionDiagnostics(false, session.handle.LinkType())
 	}
 	p := newProcessor(key, io.Discard, io.Discard, nil)
 	p.masters = masters.masters

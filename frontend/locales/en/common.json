@@ -1,4 +1,5 @@
 {
+  "diagnosticsIncomplete": "Development recording is incomplete or unavailable. Check local storage and diagnostic status.",
   "roleTitle": "Role",
   "appSubtitle": "Combat analysis",
   "dashboard": "Dashboard",

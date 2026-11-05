@@ -1,4 +1,5 @@
 {
+  "diagnosticsIncomplete": "開発用記録が不完全、または利用できません。ローカル容量と診断状態を確認してください。",
   "roleTitle": "キャラクター",
   "appSubtitle": "戦闘分析",
   "dashboard": "ダッシュボード",

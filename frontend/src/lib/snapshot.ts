@@ -34,6 +34,7 @@ export interface SessionInfo {
   source: "live" | "replay"
   localIPv4: string
   handle?: string
+  diagnosticsWarning?: string
   diagnostics: boolean
 }
 
@@ -131,7 +132,7 @@ export interface ViewSnapshot {
   captureObservedAt: string
   final: boolean
   health: {
-    capture: { source: string; packetsRead: number; kernelDropped: { status: string; value: number } }
+    capture: { source: string; packetsRead: number; kernelDropped: { status: string; value: number }; diagnosticDropped?: { status: string; value: number } }
     transport: { state: string }
     context: { state: "VALID" | "SUSPECT"; downgradedEvents: number; revalidatedEvents: number }
     dataIntegrity: IntegrityStatus
