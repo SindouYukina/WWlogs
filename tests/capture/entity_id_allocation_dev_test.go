@@ -33,11 +33,11 @@ type entityIDAllocation struct {
 	LocalRoleEntities     int    `json:"localRoleEntities"`
 	LocalRoleIDsAcrossScn int    `json:"localRoleEntityIdsKeptAcrossScenes"`
 	// Reappeared counts IDs that were absent (removed or left out of a scene snapshot) and later present again.
-	Reappeared             int `json:"reappearedAfterAbsence"`
-	ReappearedOtherConfig  int `json:"reappearedWithDifferentConfig"`
-	ReappearedOtherKind    int `json:"reappearedAsDifferentKind"`
-	LocalRoleIDReappeared  int `json:"localRoleIdsReappeared"`
-	LocalRoleIDAsNonLocal  int `json:"localRoleIdsLaterNonLocal"`
+	Reappeared            int `json:"reappearedAfterAbsence"`
+	ReappearedOtherConfig int `json:"reappearedWithDifferentConfig"`
+	ReappearedOtherKind   int `json:"reappearedAsDifferentKind"`
+	LocalRoleIDReappeared int `json:"localRoleIdsReappeared"`
+	LocalRoleIDAsNonLocal int `json:"localRoleIdsLaterNonLocal"`
 }
 
 func TestEntityIDAllocationCollector(t *testing.T) {
