@@ -103,11 +103,11 @@ func Run(options Options) error {
 	bridge.catalog = catalog
 	bridge.projection = &displayProjection{resolver: resolver}
 	var app *application.App
-	var flushOverlay func()
+	var flushOverlay func(bool)
 	shutdown := newShutdownGate(func(ctx context.Context) error {
 		err := captureService.Shutdown(ctx)
 		if flushOverlay != nil {
-			flushOverlay()
+			flushOverlay(true)
 		}
 		return err
 	}, func() { app.Quit() })
@@ -155,6 +155,8 @@ func Run(options Options) error {
 		Windows: application.WindowsWindow{HiddenOnTaskbar: true, DisableFramelessWindowDecorations: true},
 	})
 	flushOverlay = trackOverlay(app, overlay, settings)
+	// Cancel placement timers on startup failure as well; native teardown already persisted successful runs.
+	defer flushOverlay(false)
 	// Closing the Desktop window quits the application, including the hidden overlay.
 	desktop.RegisterHook(events.Common.WindowClosing, func(event *application.WindowEvent) {
 		if !shutdown.ready.Load() {

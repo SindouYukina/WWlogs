@@ -37,7 +37,7 @@ func fitOverlay(bounds OverlayBounds, areas []application.Rect) OverlayBounds {
 }
 
 // trackOverlay debounces disk writes; shutdown flushes the final bounds and cancels its timer.
-func trackOverlay(app *application.App, window *application.WebviewWindow, store *settingsStore) func() {
+func trackOverlay(app *application.App, window *application.WebviewWindow, store *settingsStore) func(bool) {
 	var mu sync.Mutex
 	var timer *time.Timer
 	closed := false
@@ -116,14 +116,20 @@ func trackOverlay(app *application.App, window *application.WebviewWindow, store
 			}
 		}
 	}()
-	return func() {
+	return func(persist bool) {
 		cancel()
 		mu.Lock()
+		if closed {
+			mu.Unlock()
+			return
+		}
 		closed = true
 		if timer != nil {
 			timer.Stop()
 		}
 		mu.Unlock()
-		save()
+		if persist {
+			save()
+		}
 	}
 }
