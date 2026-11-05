@@ -22,6 +22,8 @@ export function StateBanner({ connection, state, snapshot }: { connection: Conne
       return <Badge variant="outline" data-field="banner">No encounter yet</Badge>
     case "untrusted":
       return <Badge variant="destructive" data-field="banner">Data not reliable: transport or attribution loss</Badge>
+    case "degraded":
+      return <Badge variant="outline" className="border-warning/40 text-warning" data-field="banner">Degraded · lower bounds</Badge>
     default:
       return <Badge variant="outline" data-field="banner">Live</Badge>
   }

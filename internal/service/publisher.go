@@ -6,6 +6,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"sync"
 	"time"
 
@@ -43,7 +44,10 @@ type Publisher struct {
 	latest   *Snapshot
 	sequence uint64
 	changed  chan struct{}
+	closed   bool
 }
+
+var ErrPublisherClosed = errors.New("snapshot publisher is closed")
 
 // NewPublisher returns a Publisher holding an initial stopped snapshot.
 func NewPublisher(initial Status) *Publisher {
@@ -56,6 +60,9 @@ func NewPublisher(initial Status) *Publisher {
 func (p *Publisher) publish(status Status, view *capture.ViewSnapshot) *Snapshot {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if p.closed {
+		return p.latest
+	}
 	p.sequence++
 	snapshot := &Snapshot{Sequence: p.sequence, PublishedAt: time.Now(), Service: status, View: view}
 	p.latest = snapshot
@@ -79,8 +86,11 @@ func (p *Publisher) Latest() *Snapshot {
 func (p *Publisher) Next(ctx context.Context, after uint64) (*Snapshot, error) {
 	for {
 		p.mu.Lock()
-		latest, changed := p.latest, p.changed
+		latest, changed, closed := p.latest, p.changed, p.closed
 		p.mu.Unlock()
+		if closed {
+			return latest, ErrPublisherClosed
+		}
 		if latest.Sequence > after {
 			return latest, nil
 		}
@@ -89,5 +99,15 @@ func (p *Publisher) Next(ctx context.Context, after uint64) (*Snapshot, error) {
 		case <-ctx.Done():
 			return latest, ctx.Err()
 		}
+	}
+}
+
+// Close releases long-poll readers and prevents further publications. It is idempotent.
+func (p *Publisher) Close() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if !p.closed {
+		p.closed = true
+		close(p.changed)
 	}
 }

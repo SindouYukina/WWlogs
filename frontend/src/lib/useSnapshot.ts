@@ -17,7 +17,7 @@ export function useSnapshot(): { snapshot: Snapshot | null; connection: Connecti
           const next = await host.nextSnapshot(after)
           if (cancelled) return
           setConnection("connected")
-          if (next.sequence !== after) {
+          if (next.sequence > after) {
             after = next.sequence
             setSnapshot(next)
           }

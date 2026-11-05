@@ -19,18 +19,26 @@ type Bridge struct {
 	capture  *service.CaptureService
 	defaults capture.SessionConfig
 	overlay  func() *application.WebviewWindow
+	shutdown *shutdownGate
+	settings *settingsStore
 }
 
 // snapshotWaitLimit bounds one NextSnapshot call; an unchanged snapshot returned at the limit is a heartbeat.
 const snapshotWaitLimit = time.Second
 
-// stopWaitLimit bounds StopCapture and the shutdown stop.
+// stopWaitLimit bounds an interactive StopCapture request; native shutdown allows a separate drain budget.
 const stopWaitLimit = 10 * time.Second
 
 // StartRequest is a capture start from the UI.
 type StartRequest struct {
 	LocalIPv4 string `json:"localIPv4"`
 }
+
+// GetSettings returns validated preferences and a recoverable startup warning, if any.
+func (b *Bridge) GetSettings() SettingsState { return b.settings.current() }
+
+// SaveSettings persists supported preferences in the current Windows user's data directory.
+func (b *Bridge) SaveSettings(value Settings) (SettingsState, error) { return b.settings.save(value) }
 
 // NextSnapshot returns the newest snapshot once its sequence is greater than after, or the current one after about
 // a second. The returned JSON is a copy.
@@ -90,9 +98,12 @@ func (b *Bridge) OverlayVisible() bool {
 	return window != nil && window.IsVisible()
 }
 
-// ServiceShutdown stops the capture when the application quits, so the handle and writers are released first.
+// ServiceShutdown is a fallback for startup failure and non-window exits. Normal native exits use shutdownGate first.
 func (b *Bridge) ServiceShutdown() error {
-	ctx, cancel := context.WithTimeout(context.Background(), stopWaitLimit)
+	if b.shutdown != nil && b.shutdown.ready.Load() {
+		return b.shutdown.err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), shutdownWaitLimit)
 	defer cancel()
-	return b.capture.Stop(ctx)
+	return b.capture.Shutdown(ctx)
 }

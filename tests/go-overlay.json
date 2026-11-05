@@ -223,6 +223,10 @@
     "tests/capture/vehicle_summary_test.go": "",
     "internal/capture/central_vehicle_summary_test.go": "tests/capture/vehicle_summary_test.go",
     "tests/capture/wire_census_test.go": "",
-    "internal/capture/central_wire_census_test.go": "tests/capture/wire_census_test.go"
+    "internal/capture/central_wire_census_test.go": "tests/capture/wire_census_test.go",
+    "tests/desktop/shutdown_test.go": "",
+    "internal/desktop/central_shutdown_test.go": "tests/desktop/shutdown_test.go",
+    "tests/desktop/settings_test.go": "",
+    "internal/desktop/central_settings_test.go": "tests/desktop/settings_test.go"
   }
 }

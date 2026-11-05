@@ -56,6 +56,7 @@ type Opener func(cfg capture.SessionConfig) (Session, error)
 var (
 	ErrBusy        = errors.New("a capture session is already starting, running, or stopping")
 	ErrStopTimeout = errors.New("the capture session did not stop before the deadline")
+	ErrClosed      = errors.New("the capture service is shutting down")
 )
 
 // CaptureService runs at most one capture session at a time and publishes its snapshots. All methods are safe for
@@ -73,6 +74,7 @@ type CaptureService struct {
 	cancel     context.CancelFunc
 	done       chan struct{} // closed when the current session goroutine has released everything
 	stopAsked  bool          // Stop arrived while the session was still opening
+	closed     bool
 }
 
 // NewCaptureService creates a stopped service using open to create sessions.
@@ -111,6 +113,10 @@ func (s *CaptureService) Status() Status {
 // returns ErrBusy and changes nothing.
 func (s *CaptureService) Start(cfg capture.SessionConfig) error {
 	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		return ErrClosed
+	}
 	switch s.status.State {
 	case StateStarting, StateRunning, StateStopping:
 		s.mu.Unlock()
@@ -129,26 +135,31 @@ func (s *CaptureService) Start(cfg capture.SessionConfig) error {
 	session, err := s.open(cfg)
 
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if err != nil {
 		s.status = Status{State: StateError, LastError: err.Error(), App: s.identity}
-		close(done)
 		s.publishLocked()
+		close(done)
+		s.mu.Unlock()
 		return err
 	}
 	info := session.Info()
 	if s.stopAsked {
+		// Close may drain diagnostic writers; never hold the lifecycle lock while waiting.
+		s.mu.Unlock()
 		session.Close()
+		s.mu.Lock()
 		s.status = Status{State: StateStopped, Session: &info, App: s.identity,
 			LastResult: &capture.SessionResult{StopReason: capture.StopReasonRequested}}
-		close(done)
 		s.publishLocked()
+		close(done)
+		s.mu.Unlock()
 		return nil
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	s.cancel = cancel
 	s.status = Status{State: StateRunning, Session: &info, StartedAt: time.Now(), App: s.identity}
 	s.publishLocked()
+	s.mu.Unlock()
 	go s.run(ctx, generation, session, done)
 	return nil
 }
@@ -190,14 +201,18 @@ func (s *CaptureService) Stop(ctx context.Context) error {
 	switch s.status.State {
 	case StateStarting:
 		s.stopAsked = true
+		s.status.State = StateStopping
+		s.publishLocked()
 	case StateRunning:
 		s.status.State = StateStopping
 		s.cancel()
 		s.publishLocked()
 	case StateStopping:
 	default:
-		s.mu.Unlock()
-		return nil
+		if done == nil {
+			s.mu.Unlock()
+			return nil
+		}
 	}
 	s.mu.Unlock()
 	select {
@@ -206,6 +221,17 @@ func (s *CaptureService) Stop(ctx context.Context) error {
 	case <-ctx.Done():
 		return ErrStopTimeout
 	}
+}
+
+// Shutdown rejects new starts, stops the session within ctx, and wakes all snapshot readers.
+// On timeout diagnostic sessions remain unfinished, never falsely marked complete.
+func (s *CaptureService) Shutdown(ctx context.Context) error {
+	s.mu.Lock()
+	s.closed = true
+	s.mu.Unlock()
+	err := s.Stop(ctx)
+	s.publisher.Close()
+	return err
 }
 
 // publishLocked publishes the current status with the current view. The caller holds s.mu.
