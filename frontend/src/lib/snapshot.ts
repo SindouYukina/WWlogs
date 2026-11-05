@@ -143,7 +143,7 @@ export interface ViewSnapshot {
 export type Connection = "connecting" | "connected" | "disconnected"
 
 // The display state of a snapshot, from most to least usable.
-export type DataState = "live" | "untrusted" | "no_encounter" | "not_capturing" | "no_data"
+export type DataState = "live" | "degraded" | "untrusted" | "no_encounter" | "not_capturing" | "no_data"
 
 // dataState classifies what the UI may show. It never upgrades data: an untrusted interval stays untrusted.
 export function dataState(snapshot: Snapshot | null): DataState {
@@ -157,6 +157,7 @@ export function dataState(snapshot: Snapshot | null): DataState {
   if (view.health.dataIntegrity === "UNRELIABLE" || view.health.context.state !== "VALID") {
     return "untrusted"
   }
+  if (view.health.dataIntegrity === "DEGRADED") return "degraded"
   if (!view.encounters.current && view.encounters.recent.length === 0) {
     return "no_encounter"
   }
@@ -168,9 +169,9 @@ export function dpsText(dps: DPS | undefined): string {
   if (!dps) return "—"
   switch (dps.status) {
     case "available":
-      return Math.round(dps.value).toLocaleString("en-US")
+      return Number.isFinite(dps.value) ? Math.round(dps.value).toLocaleString("en-US") : "unavailable"
     case "lower_bound":
-      return `≥ ${Math.round(dps.value).toLocaleString("en-US")}`
+      return Number.isFinite(dps.value) ? `≥ ${Math.round(dps.value).toLocaleString("en-US")}` : "unavailable"
     default:
       return dps.status
   }
@@ -182,5 +183,5 @@ export function numberText(value: number | undefined): string {
 
 // roleLabel never invents a name: an unresolved RoleId is shown as UNKNOWN with its raw id.
 export function roleLabel(role: Role): string {
-  return role.name !== "" ? role.name : `UNKNOWN (${role.roleId})`
+  return role.nameStatus === "VERIFIED" && role.name !== "" ? role.name : `UNKNOWN (${role.roleId})`
 }

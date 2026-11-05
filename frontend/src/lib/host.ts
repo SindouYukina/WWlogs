@@ -13,6 +13,17 @@ export interface Adapter {
   description: string
 }
 
+export interface Settings {
+  version: number
+  defaultAdapterIPv4: string
+  showOverlayOnStartup: boolean
+}
+
+export interface SettingsState {
+  settings: Settings
+  warning?: string
+}
+
 export const host = {
   nextSnapshot: (after: number) => call<Snapshot>("NextSnapshot", after),
   currentSnapshot: () => call<Snapshot>("CurrentSnapshot"),
@@ -21,4 +32,6 @@ export const host = {
   stopCapture: () => call<void>("StopCapture"),
   setOverlayVisible: (visible: boolean) => call<boolean>("SetOverlayVisible", visible),
   overlayVisible: () => call<boolean>("OverlayVisible"),
+  getSettings: () => call<SettingsState>("GetSettings"),
+  saveSettings: (settings: Settings) => call<SettingsState>("SaveSettings", settings),
 }

@@ -41,6 +41,10 @@ if ($nodeVersion -notmatch '^v24\.') {
 }
 $env:PATH = "$nodeHome;$env:PATH"
 
+# Pure formatting and trust-state checks use Node's built-in runner and tracked sources only.
+& (Join-Path $nodeHome 'node.exe') --test (Join-Path $repoRoot 'tests/frontend/snapshot.test.mjs')
+if ($LASTEXITCODE -ne 0) { throw "frontend behavior tests failed ($LASTEXITCODE)" }
+
 if ($Action -eq 'Build') {
     if ($OutDir -eq '') { throw '-OutDir is required for Build' }
     $OutDir = [IO.Path]::GetFullPath($OutDir)
