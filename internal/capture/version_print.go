@@ -16,3 +16,8 @@ func printVersion(w io.Writer) {
 	fmt.Fprintf(w, "Working tree modified: %s\n", identity.Dirty)
 	printVersionDetails(w)
 }
+
+// PrintVersion prints the build identity for another executable of this product, such as the desktop host.
+func PrintVersion(w io.Writer) {
+	printVersion(w)
+}
