@@ -21,13 +21,19 @@ type fakeSession struct {
 	release   chan struct{}
 	runErr    error
 	burst     int
+	closeWait <-chan struct{}
 }
 
 func (f *fakeSession) Info() capture.SessionInfo {
 	return capture.SessionInfo{CaptureSessionID: f.id, Source: "replay"}
 }
 
-func (f *fakeSession) Close() { f.closes.Add(1) }
+func (f *fakeSession) Close() {
+	f.closes.Add(1)
+	if f.closeWait != nil {
+		<-f.closeWait
+	}
+}
 
 func (f *fakeSession) Run(ctx context.Context, publish func(capture.ViewSnapshot)) (capture.SessionResult, error) {
 	f.runs.Add(1)
@@ -247,5 +253,95 @@ func waitFor(t *testing.T, condition func() bool) {
 			t.Fatal("condition not reached")
 		}
 		time.Sleep(time.Millisecond)
+	}
+}
+
+func TestShutdownRejectsRestartAndClosesReaders(t *testing.T) {
+	session := &fakeSession{id: 1}
+	s, opened := newTestService(session)
+	if err := s.Start(capture.SessionConfig{}); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := s.Shutdown(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Start(capture.SessionConfig{}); !errors.Is(err, ErrClosed) {
+		t.Fatalf("restart: %v", err)
+	}
+	if opened.Load() != 1 {
+		t.Fatal("shutdown reopened a source")
+	}
+	if _, err := s.Publisher().Next(ctx, s.Publisher().Latest().Sequence); !errors.Is(err, ErrPublisherClosed) {
+		t.Fatalf("reader: %v", err)
+	}
+	if err := s.Shutdown(ctx); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestShutdownTimeoutNeverClaimsStopped(t *testing.T) {
+	session := &fakeSession{id: 1, ignoreCtx: true, release: make(chan struct{})}
+	s, _ := newTestService(session)
+	if err := s.Start(capture.SessionConfig{}); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	if err := s.Shutdown(ctx); !errors.Is(err, ErrStopTimeout) {
+		t.Fatalf("shutdown: %v", err)
+	}
+	if s.Status().State != StateStopping || s.Status().LastResult != nil {
+		t.Fatal("unfinished session claimed complete")
+	}
+	close(session.release)
+	stop(t, s)
+}
+
+func TestShutdownDuringOpenDoesNotWaitOnLifecycleLock(t *testing.T) {
+	opening, finishOpen, finishClose := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	session := &fakeSession{id: 1, closeWait: finishClose}
+	s := NewCaptureService(func(capture.SessionConfig) (Session, error) {
+		close(opening)
+		<-finishOpen
+		return session, nil
+	})
+	started := make(chan error, 1)
+	go func() { started <- s.Start(capture.SessionConfig{}) }()
+	<-opening
+	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Millisecond)
+	defer cancel()
+	stopped := make(chan error, 1)
+	go func() { stopped <- s.Shutdown(ctx) }()
+	deadline := time.After(time.Second)
+	for s.Status().State != StateStopping {
+		select {
+		case <-deadline:
+			t.Fatal("shutdown did not enter stopping")
+		default:
+			time.Sleep(time.Millisecond)
+		}
+	}
+	close(finishOpen)
+	select {
+	case err := <-stopped:
+		if !errors.Is(err, ErrStopTimeout) {
+			t.Errorf("shutdown: %v", err)
+		}
+	case <-time.After(time.Second):
+		close(finishClose)
+		t.Fatal("session.Close blocked the shutdown deadline")
+	}
+	if err := s.Start(capture.SessionConfig{}); !errors.Is(err, ErrClosed) {
+		t.Errorf("restart: %v", err)
+	}
+	close(finishClose)
+	if err := <-started; err != nil {
+		t.Fatal(err)
+	}
+	stop(t, s)
+	if session.runs.Load() != 0 || session.closes.Load() != 1 {
+		t.Fatal("opening session ran or closed more than once")
 	}
 }

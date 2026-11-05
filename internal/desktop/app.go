@@ -4,6 +4,7 @@
 package desktop
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -71,14 +72,19 @@ func Run(options Options) error {
 		return err
 	}
 	captureService := service.NewCaptureService(service.SessionOpener(masters))
+	settings := loadSettings(settingsPath())
 	var overlay *application.WebviewWindow
-	bridge := &Bridge{capture: captureService, defaults: options.Session, overlay: func() *application.WebviewWindow { return overlay }}
+	bridge := &Bridge{capture: captureService, defaults: options.Session, settings: settings, overlay: func() *application.WebviewWindow { return overlay }}
+	var app *application.App
+	shutdown := newShutdownGate(captureService.Shutdown, func() { app.Quit() })
+	bridge.shutdown = shutdown
 
-	app := application.New(application.Options{
+	app = application.New(application.Options{
 		Name:        "WWlogs",
 		Description: "Wuthering Waves combat analyzer",
 		Services:    []application.Service{application.NewService(bridge)},
 		Assets:      application.AssetOptions{Handler: application.AssetFileServerFS(assets)},
+		ShouldQuit:  shutdown.shouldQuit,
 		Windows: application.WindowsOptions{
 			WebviewUserDataPath:   webviewUserDataPath(),
 			AdditionalBrowserArgs: webviewArguments(options),
@@ -104,19 +110,25 @@ func Run(options Options) error {
 		Frameless:      true,
 		AlwaysOnTop:    true,
 		BackgroundType: application.BackgroundTypeTransparent,
-		Hidden:         !options.ShowOverlay,
+		Hidden:         !(options.ShowOverlay || settings.current().Settings.ShowOverlayOnStartup),
 		// Mouse click-through is deliberately not enabled in this phase: the overlay takes mouse input.
 		// Without the frameless decorations Windows keeps no caption, frame, shadow, or rounded corners around the
 		// transparent area.
 		Windows: application.WindowsWindow{HiddenOnTaskbar: true, DisableFramelessWindowDecorations: true},
 	})
 	// Closing the Desktop window quits the application, including the hidden overlay.
-	desktop.OnWindowEvent(events.Common.WindowClosing, func(*application.WindowEvent) {
-		app.Quit()
+	desktop.RegisterHook(events.Common.WindowClosing, func(event *application.WindowEvent) {
+		if !shutdown.ready.Load() {
+			event.Cancel()
+			shutdown.request()
+		}
 	})
 	// A close request on the overlay (for example Alt+F4) only hides it, so the Desktop window can show it again.
 	// Quit destroys windows directly and is not affected.
 	overlay.RegisterHook(events.Common.WindowClosing, func(event *application.WindowEvent) {
+		if shutdown.ready.Load() {
+			return
+		}
 		overlay.Hide()
 		event.Cancel()
 	})
@@ -129,7 +141,14 @@ func Run(options Options) error {
 			}()
 		})
 	}
-	return app.Run()
+	err = app.Run()
+	if shutdown.ready.Load() {
+		return errors.Join(err, shutdown.err)
+	}
+	// Run may also return after a startup failure, before any native close request.
+	ctx, cancel := context.WithTimeout(context.Background(), shutdownWaitLimit)
+	defer cancel()
+	return errors.Join(err, captureService.Shutdown(ctx))
 }
 
 // webviewUserDataPath keeps WebView2 profile data under %LOCALAPPDATA%\WWlogs instead of beside the executable.
