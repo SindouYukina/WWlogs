@@ -1,6 +1,7 @@
 package main
 
 import (
+	"archive/zip"
 	"bytes"
 	"crypto/sha256"
 	"crypto/x509"
@@ -11,11 +12,13 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"wwlogs/internal/keyembed"
 )
@@ -33,6 +36,8 @@ func run() error {
 	versionFlag := flag.String("version", "", "product version to embed (default: the version registered in internal/versioninfo)")
 	requireClean := flag.Bool("require-clean", false, "fail when the Git working tree has uncommitted changes to tracked files")
 	testBinary := flag.String("test-binary", "", "build a test binary of this package (for example ./internal/capture) carrying the encrypted key payload and the committed test overlay, instead of the executable; requires -o")
+	targetFlag := flag.String("target", "capture", "executable to build: capture (console analyzer) or desktop (Wails desktop host; requires -frontend-dist)")
+	frontendDist := flag.String("frontend-dist", "", "built frontend directory to embed into the desktop host; must be outside the repository (scripts/frontend.ps1 -Action Build)")
 	flag.Parse()
 	if flag.NArg() != 0 {
 		return errors.New("unexpected positional arguments")
@@ -46,10 +51,30 @@ func run() error {
 	default:
 		return fmt.Errorf("unknown profile %q: use public or development", *profileFlag)
 	}
+	var buildPackage string
+	switch *targetFlag {
+	case "capture":
+		buildPackage = "./cmd/capture"
+	case "desktop":
+		buildPackage = "./cmd/desktop"
+		if *testBinary != "" {
+			return errors.New("-test-binary builds packages, not the desktop target")
+		}
+		if *frontendDist == "" {
+			return errors.New("-target desktop requires -frontend-dist")
+		}
+		// Wails' production tag removes DevTools and the dev-server hook; the Development profile keeps Wails debug mode.
+		if *profileFlag == "public" {
+			buildTags = []string{"-tags", "production"}
+		}
+	default:
+		return fmt.Errorf("unknown target %q: use capture or desktop", *targetFlag)
+	}
 	if *outputFlag == "" && *testBinary == "" {
-		*outputFlag = filepath.Join("bin", "WWlogs.exe")
+		name := map[string]string{"capture": "WWlogs", "desktop": "WWlogs-Desktop"}[*targetFlag]
+		*outputFlag = filepath.Join("bin", name+".exe")
 		if *profileFlag == "development" {
-			*outputFlag = filepath.Join("bin", "WWlogs-dev.exe")
+			*outputFlag = filepath.Join("bin", name+"-dev.exe")
 		}
 	}
 	version := *versionFlag
@@ -111,6 +136,14 @@ var (
 	replacements := map[string]string{
 		filepath.Join(repositoryRoot, "internal", "capture", "key_payload.go"): generatedSourcePath,
 	}
+	if *targetFlag == "desktop" {
+		archiveSourcePath, err := writeFrontendArchiveSource(repositoryRoot, *frontendDist)
+		if err != nil {
+			return err
+		}
+		defer os.Remove(archiveSourcePath)
+		replacements[filepath.Join(repositoryRoot, "internal", "desktop", "frontend_archive.go")] = archiveSourcePath
+	}
 	if *testBinary != "" {
 		if *outputFlag == "" {
 			return errors.New("-test-binary requires -o")
@@ -143,9 +176,13 @@ var (
 	ldflags := "-X wwlogs/internal/buildinfo.injectedVersion=" + version +
 		" -X wwlogs/internal/buildinfo.injectedCommit=" + commit +
 		" -X wwlogs/internal/buildinfo.injectedDirty=" + dirty
+	if *targetFlag == "desktop" {
+		// A GUI subsystem executable opens no console window; -version still writes to redirected output.
+		ldflags += " -H windowsgui"
+	}
 	// -buildvcs=false keeps the result independent of Git being reachable; the identity is injected above.
 	buildArgs := append([]string{"build", "-trimpath", "-buildvcs=false"}, buildTags...)
-	buildArgs = append(buildArgs, "-ldflags", ldflags, "-overlay", overlayPath, "-o", temporaryExecutable, "./cmd/capture")
+	buildArgs = append(buildArgs, "-ldflags", ldflags, "-overlay", overlayPath, "-o", temporaryExecutable, buildPackage)
 	build := exec.Command("go", buildArgs...)
 	build.Dir = repositoryRoot
 	build.Stdout = os.Stdout
@@ -405,4 +442,58 @@ func buildTestBinary(root, pkg, outputPath, overlayPath string, buildTags []stri
 	fmt.Fprintf(os.Stdout, "Test binary SHA-256: %s\n", digest)
 	fmt.Fprintln(os.Stdout, "Plaintext RSA PEM/DER scan: PASS")
 	return nil
+}
+
+// writeFrontendArchiveSource zips the built frontend in dist into a temporary Go source file that replaces
+// internal/desktop/frontend_archive.go through the build overlay. The directory must be outside the repository so a
+// product build never reads ignored or untracked repository content. Entries are sorted and carry a fixed time, so the
+// same build output gives the same archive.
+func writeFrontendArchiveSource(root, dist string) (string, error) {
+	dist, err := filepath.Abs(dist)
+	if err != nil {
+		return "", fmt.Errorf("resolve frontend directory: %w", err)
+	}
+	if relative, err := filepath.Rel(root, dist); err == nil && !strings.HasPrefix(relative, "..") {
+		return "", fmt.Errorf("frontend directory %s is inside the repository; build it with scripts/frontend.ps1 -OutDir outside the repository", dist)
+	}
+	if _, err := os.Stat(filepath.Join(dist, "index.html")); err != nil {
+		return "", fmt.Errorf("frontend directory has no index.html: %w", err)
+	}
+	var files []string
+	if err := filepath.WalkDir(dist, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.Type().IsRegular() {
+			files = append(files, path)
+		}
+		return nil
+	}); err != nil {
+		return "", fmt.Errorf("list frontend files: %w", err)
+	}
+	var archive bytes.Buffer
+	writer := zip.NewWriter(&archive)
+	modified := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	for _, path := range files {
+		relative, err := filepath.Rel(dist, path)
+		if err != nil {
+			return "", err
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return "", fmt.Errorf("read frontend file: %w", err)
+		}
+		entry, err := writer.CreateHeader(&zip.FileHeader{Name: filepath.ToSlash(relative), Method: zip.Deflate, Modified: modified})
+		if err != nil {
+			return "", err
+		}
+		if _, err := entry.Write(data); err != nil {
+			return "", err
+		}
+	}
+	if err := writer.Close(); err != nil {
+		return "", fmt.Errorf("write frontend archive: %w", err)
+	}
+	source := fmt.Sprintf("package desktop\n\n// Generated by scripts/embed-key.go from the built frontend; never committed.\nvar frontendArchive = []byte(%q)\n", archive.String())
+	return writeTemporaryFile(os.TempDir(), "wwlogs-frontend-archive-*.go", []byte(source))
 }

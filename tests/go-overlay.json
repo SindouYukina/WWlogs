@@ -210,6 +210,8 @@
     "internal/service/central_publisher_test.go": "tests/service/publisher_test.go",
     "tests/service/capture_service_test.go": "",
     "internal/service/central_capture_service_test.go": "tests/service/capture_service_test.go",
+    "tests/desktop/assets_test.go": "",
+    "internal/desktop/central_assets_test.go": "tests/desktop/assets_test.go",
     "tests/capture/transport_gap_test.go": "",
     "internal/capture/central_transport_gap_test.go": "tests/capture/transport_gap_test.go",
     "tests/capture/transport_test.go": "",
