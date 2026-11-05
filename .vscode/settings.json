@@ -8,5 +8,7 @@
   "go.testFlags": [
     "-overlay=tests/go-overlay.json",
     "-tags=wwdev"
-  ]
+  ],
+  "typescript.tsdk": "frontend/node_modules/typescript/lib",
+  "typescript.enablePromptUseWorkspaceTsdk": true
 }
