@@ -15,3 +15,8 @@ test("missing keys, extra keys and changed placeholders fail resource validation
  assert.throws(()=>validateTranslation(base,{message:"目標 {{target}}",empty:"無"}))
  assert.throws(()=>validateTranslation(base,{...base,unexpected:"extra"}))
 })
+
+import enCommon from "../../frontend/locales/en/common.json" with {type:"json"}
+test("transport failure and encounter-confidence machine codes have translations",()=>{
+ for(const code of ["HEALTHY","GAP_DETECTED","RECOVERING","RECOVERED","UNRECOVERABLE","INFERRED","INTERRUPTED"]) assert.ok(enCommon.state[code],`missing status ${code}`)
+})

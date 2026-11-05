@@ -44,7 +44,7 @@
     "RECOVERED": "Recovered",
     "GAP_DETECTED": "Gap detected",
     "RECOVERING": "Recovering",
-    "UNRECOVERED": "Not recovered",
+    "UNRECOVERABLE": "Recovery failed",
     "IDLE": "Idle",
     "ACTIVE": "Active",
     "ENDING_CANDIDATE": "Ending",

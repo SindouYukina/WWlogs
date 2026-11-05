@@ -44,7 +44,7 @@
     "RECOVERED": "復旧済み",
     "GAP_DETECTED": "欠落を検出",
     "RECOVERING": "復旧中",
-    "UNRECOVERED": "未復旧",
+    "UNRECOVERABLE": "復旧不可",
     "IDLE": "待機",
     "ACTIVE": "戦闘中",
     "ENDING_CANDIDATE": "終了を確認中",

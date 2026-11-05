@@ -44,7 +44,7 @@
     "RECOVERED": "복구됨",
     "GAP_DETECTED": "누락 감지",
     "RECOVERING": "복구 중",
-    "UNRECOVERED": "미복구",
+    "UNRECOVERABLE": "복구 불가",
     "IDLE": "대기",
     "ACTIVE": "전투 중",
     "ENDING_CANDIDATE": "종료 확인 중",

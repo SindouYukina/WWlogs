@@ -21,5 +21,6 @@ export default i18n
 export function statusText(value: string | undefined): string {
   if(!value) return i18n.t("unknown")
   const key=`state.${value}`
-  return i18n.exists(key) ? i18n.t(key) : i18n.t("unknown")
+  const canonical=`state.${value.toUpperCase()}`
+  return i18n.exists(key) ? i18n.t(key) : i18n.exists(canonical) ? i18n.t(canonical) : i18n.t("unknown")
 }

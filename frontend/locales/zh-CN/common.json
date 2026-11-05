@@ -44,7 +44,7 @@
     "RECOVERED": "已恢复",
     "GAP_DETECTED": "检测到缺口",
     "RECOVERING": "恢复中",
-    "UNRECOVERED": "未恢复",
+    "UNRECOVERABLE": "无法恢复",
     "IDLE": "空闲",
     "ACTIVE": "战斗中",
     "ENDING_CANDIDATE": "等待战斗结束确认",
