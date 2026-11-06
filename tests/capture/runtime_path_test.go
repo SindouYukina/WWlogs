@@ -8,10 +8,10 @@ import (
 
 func TestResolveRuntimePathUsesExecutableLayoutBeforeWorkingDirectory(t *testing.T) {
 	root := t.TempDir()
-	binDirectory := filepath.Join(root, "bin")
+	outputDirectory := filepath.Join(root, "dist")
 	dataDirectory := filepath.Join(root, "data")
 	workingDirectory := filepath.Join(root, "elsewhere")
-	for _, directory := range []string{binDirectory, dataDirectory, workingDirectory} {
+	for _, directory := range []string{outputDirectory, dataDirectory, workingDirectory} {
 		if err := os.MkdirAll(directory, 0o700); err != nil {
 			t.Fatal(err)
 		}
@@ -28,7 +28,7 @@ func TestResolveRuntimePathUsesExecutableLayoutBeforeWorkingDirectory(t *testing
 		t.Fatal(err)
 	}
 
-	got := resolveRuntimePath(filepath.Join("data", "master_data.db"), filepath.Join(binDirectory, "WWlogs.exe"), workingDirectory)
+	got := resolveRuntimePath(filepath.Join("data", "master_data.db"), filepath.Join(outputDirectory, "WWlogs.exe"), workingDirectory)
 	if got != masterPath {
 		t.Fatalf("resolveRuntimePath() = %q, want executable-relative path %q", got, masterPath)
 	}
