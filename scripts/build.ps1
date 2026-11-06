@@ -5,7 +5,7 @@ param(
     # Capture builds the console analyzer; Desktop builds the Wails desktop host with the embedded frontend.
     [ValidateSet('Capture', 'Desktop')]
     [string]$Target = 'Capture',
-    # Optional output path; defaults to bin\WWlogs[-Desktop].exe (Public) or bin\WWlogs[-Desktop]-dev.exe (Development).
+    # Optional output path; defaults to dist\WWlogs[-Desktop].exe (Public) or dist\WWlogs[-Desktop]-dev.exe (Development).
     [string]$Output = '',
     # Fail when tracked files have uncommitted changes. Use this for any executable that is distributed.
     [switch]$RequireClean

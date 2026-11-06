@@ -4,6 +4,8 @@ Use the Go toolchain specified in `go.mod` and the exact Node.js and npm version
 
 For VS Code, install the recommended TypeScript 7 extension and run `npm ci` in `frontend` to use the workspace language service. The production build installs its own dependencies from the lockfile.
 
+Build output defaults to `dist/`. Use `-Output` to choose another location.
+
 ## Application icon
 
 `icon.ico` is the canonical, Git-managed WWlogs logo for both build profiles and both executable targets. Keep this source asset here, outside disposable output directories; do not add version suffixes or check in generated `.syso` files.

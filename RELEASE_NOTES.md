@@ -1,5 +1,7 @@
 # WWlogs v0.2.1
 
+> 本頁保留歷史發行紀錄及當時的建置指令。現行流程見 [Windows 建置規範](build/windows/README.md)。
+
 日期：2026-11-01（Asia/Tokyo）
 狀態：GitHub Release `v0.2.1` 已發布於恢復的 private repository；資產已上傳並驗證 SHA-256。
 
