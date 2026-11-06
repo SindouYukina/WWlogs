@@ -37,7 +37,8 @@ Push-Location $repoRoot
 try {
     # 1. gofmt. Compare after stripping CR so a CRLF checkout does not read as a formatting difference.
     $unformatted = @()
-    $goFiles = @(& rg --files cmd internal scripts tests -g '*.go' | Sort-Object)
+    # Git lists tracked and new unignored files, and it is the one tool this script can already rely on.
+    $goFiles = @(& git ls-files --cached --others --exclude-standard -- cmd internal scripts tests | Where-Object { $_ -like '*.go' -and (Test-Path -LiteralPath $_) } | Sort-Object)
     foreach ($file in $goFiles) {
         $text = (Get-Content -LiteralPath $file -Raw) -replace "`r", ''
         $formatted = $text | & gofmt 2>$null
