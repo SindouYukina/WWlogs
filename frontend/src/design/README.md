@@ -35,6 +35,8 @@ A theme is a set of tokens, not a set of components: palette, surfaces, ornament
 
 ## Typography
 
+The product typeface is Inter with Noto Sans CJK, in both build profiles and on every surface. The Typography Showcase compares other candidates for development; it is not a product setting. The Licenses page in Settings lists exactly the fonts in `fonts/`, so a bundled font and its license file change together.
+
 Use the roles `.ww-type-display`, `.ww-type-ui`, `.ww-type-small` and `.ww-type-data` (or `.ww-num`). Fonts come from the executable; the system is used only for glyphs outside the bundled subset, through the language's own system font so regional forms stay correct. `-webkit-font-smoothing` has no effect on Windows and must not be added. Avoid text filters and scale transforms on text. Licenses for bundled fonts are in `fonts/LICENSES/` and must accompany any release.
 
 ## Listening status

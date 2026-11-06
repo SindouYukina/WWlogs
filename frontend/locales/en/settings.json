@@ -43,7 +43,8 @@
     "combatOverlay": "Combat Overlay",
     "effectsOverlay": "Effects Overlay",
     "capture": "Capture",
-    "about": "WWlogs"
+    "about": "WWlogs",
+    "licenses": "Licenses"
   },
   "sections": {
     "language": "Language",
@@ -51,7 +52,8 @@
     "window": "Window",
     "look": "Appearance",
     "capture": "Network capture",
-    "about": "Version"
+    "about": "Version",
+    "fontLicenses": "Font licenses"
   },
   "showWindow": "Show this overlay",
   "alwaysOnTop": "Always on top",
@@ -70,5 +72,27 @@
   "increase": "Increase",
   "buildCommit": "Source commit",
   "buildProfile": "Build profile",
-  "geometryReset": "Saved overlay placement was invalid and has been reset."
+  "geometryReset": "Saved overlay placement was invalid and has been reset.",
+  "licenses": {
+    "intro": "The fonts built into this application and their licenses. License terms are shown in their original language and are not translated.",
+    "usage": "Used for",
+    "faces": "Typefaces",
+    "version": "Version",
+    "authors": "Authors",
+    "copyright": "Copyright",
+    "license": "License",
+    "links": "Links",
+    "showText": "Show full license",
+    "hideText": "Hide full license",
+    "linkFailed": "The browser could not be opened. Go to the address manually.",
+    "usageOf": {
+      "inter": "Latin characters and numbers",
+      "noto": "Traditional Chinese, Simplified Chinese, Japanese and Korean"
+    },
+    "link": {
+      "project": "Official project",
+      "fontSource": "Font file source",
+      "license": "License website"
+    }
+  }
 }

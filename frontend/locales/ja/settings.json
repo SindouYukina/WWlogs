@@ -43,7 +43,8 @@
     "combatOverlay": "戦闘オーバーレイ",
     "effectsOverlay": "効果オーバーレイ",
     "capture": "ネットワークキャプチャ",
-    "about": "WWlogs"
+    "about": "WWlogs",
+    "licenses": "ライセンス"
   },
   "sections": {
     "language": "言語",
@@ -51,7 +52,8 @@
     "window": "ウィンドウ",
     "look": "外観",
     "capture": "ネットワークキャプチャ",
-    "about": "バージョン情報"
+    "about": "バージョン情報",
+    "fontLicenses": "フォントのライセンス"
   },
   "showWindow": "このオーバーレイを表示",
   "alwaysOnTop": "常に最前面に表示",
@@ -70,5 +72,27 @@
   "increase": "増やす",
   "buildCommit": "ソースコミット",
   "buildProfile": "ビルド種別",
-  "geometryReset": "オーバーレイの位置データが無効だったため、既定に戻しました。"
+  "geometryReset": "オーバーレイの位置データが無効だったため、既定に戻しました。",
+  "licenses": {
+    "intro": "このアプリに内蔵されているフォントとそのライセンスです。ライセンス条項は原文のまま表示し、翻訳版はありません。",
+    "usage": "用途",
+    "faces": "書体",
+    "version": "バージョン",
+    "authors": "作者",
+    "copyright": "著作権表示",
+    "license": "ライセンス",
+    "links": "リンク",
+    "showText": "全文を表示",
+    "hideText": "全文を隠す",
+    "linkFailed": "ブラウザーを開けませんでした。アドレスに直接アクセスしてください。",
+    "usageOf": {
+      "inter": "ラテン文字と数字",
+      "noto": "繁体字中国語、簡体字中国語、日本語、韓国語"
+    },
+    "link": {
+      "project": "公式プロジェクト",
+      "fontSource": "フォントファイルの入手元",
+      "license": "ライセンスの公式サイト"
+    }
+  }
 }

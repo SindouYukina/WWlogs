@@ -33,6 +33,8 @@ export interface SettingsController {
   checkEnvironment: () => void
   npcapDownload: NpcapDownloadState
   openNpcapDownload: () => void
+  /** Opens one of the Licenses page's official links in the browser. The host accepts only those addresses. */
+  openLicenseLink: (url: string) => Promise<void>
   overlays: OverlayStates | undefined
   updateOverlay: (kind: OverlayKind, change: OverlayChange) => void
   resetOverlay: (kind: OverlayKind) => void
@@ -135,6 +137,7 @@ export function useLiveSettings(snapshot: Snapshot | null, connected: boolean, c
     checkEnvironment,
     npcapDownload: download,
     openNpcapDownload,
+    openLicenseLink: host.openLicenseLink,
     overlays: snapshot?.overlays,
     updateOverlay: (kind, change) => guard(host.updateOverlay(kind, change)),
     resetOverlay: kind => guard(host.resetOverlay(kind)),
