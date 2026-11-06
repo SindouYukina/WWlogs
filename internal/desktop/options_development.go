@@ -22,7 +22,7 @@ import (
 func parseOptions(arguments []string, output io.Writer) (Options, error) {
 	flags := flag.NewFlagSet("WWlogs-dev", flag.ContinueOnError)
 	flags.SetOutput(output)
-	masterDatabase := flags.String("master-db", capture.DefaultMasterDatabasePath(), "Read-only combat ID Master SQLite database")
+	masterDatabase := flags.String("master-db", "", "Development: use an explicit read-only Master SQLite database for testing (default: embedded)")
 	locale := flags.String("locale", "", "Initial global display locale; approved bundled locales only (overrides saved preference)")
 	flags.Bool("version", false, "Print the WWlogs version and build identity")
 	ip := flags.String("ip", "", "Local IPv4 address: preselects the capture interface and decides packet direction in replay")
@@ -36,7 +36,7 @@ func parseOptions(arguments []string, output io.Writer) (Options, error) {
 	showcase := flags.Bool("showcase", false, "Development: open the Motion Showcase (mock data only) instead of the Desktop view")
 	showcaseOverlays := flags.Bool("showcase-overlays", false, "Development: with -showcase, also open its transparent Overlay windows")
 	webviewArgs := flags.String("webview-args", "", "Development: extra WebView2 browser arguments for rendering experiments, separated by spaces")
-	assetRoot := flags.String("asset-root", "", "Development: directory that contains game/ images; Development builds carry no images, so none are served without it")
+	assetRoot := flags.String("asset-root", "", "Development: explicitly override embedded game images with a directory that contains game/")
 	fontRoot := flags.String("font-root", "", "Development: directory that contains local Showcase font candidates; nothing is served without it")
 	simulateEnvironment := flags.String("simulate-capture-environment", "", "Development: comma-separated states, one per check, for UI checks; the last repeats and \"ready\" is the real check")
 	npcapOffline := flags.Bool("simulate-npcap-offline", false, "Development: make the official Npcap sources unreachable, for UI checks")

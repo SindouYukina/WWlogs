@@ -45,7 +45,7 @@ func TestEncounterSummarySeparatesCreditedDamageHealingAndOwnerCandidates(t *tes
 	}
 	text := output.String()
 	for _, want := range []string{
-		"Combat master: master_data.db (Global, zh-TW, SHA-256 " + strings.Repeat("a", 64) + ")",
+		"Combat master: external test override: master_data.db (Global, zh-TW, SHA-256 " + strings.Repeat("a", 64) + ")",
 		"no Echo or summon attribution is inferred here",
 		"DAMAGE_CANDIDATE: Damage master CalculateType 0",
 		"Damage candidates: 300",

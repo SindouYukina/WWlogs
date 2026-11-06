@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -145,43 +144,6 @@ func packetDirection(packet gopacket.Packet, localIPv4 string, udp *layers.UDP, 
 		return "in"
 	}
 	return "out"
-}
-
-func defaultMasterDatabasePath() string {
-	return defaultRuntimePath(filepath.Join("data", "master_data.db"))
-}
-
-func defaultRuntimePath(relativePath string) string {
-	executable, _ := os.Executable()
-	workingDirectory, _ := os.Getwd()
-	return resolveRuntimePath(relativePath, executable, workingDirectory)
-}
-
-func resolveRuntimePath(relativePath, executablePath, workingDirectory string) string {
-	var candidates []string
-	if executablePath != "" {
-		directory := filepath.Dir(executablePath)
-		// Search only a few executable ancestors so nested development builds can find repository data.
-		for depth := 0; depth < 3; depth++ {
-			candidates = append(candidates, filepath.Join(directory, relativePath))
-			parentDirectory := filepath.Dir(directory)
-			if parentDirectory == directory {
-				break
-			}
-			directory = parentDirectory
-		}
-	}
-	if workingDirectory != "" {
-		candidates = append(candidates, filepath.Join(workingDirectory, relativePath))
-	} else {
-		candidates = append(candidates, relativePath)
-	}
-	for _, candidate := range candidates {
-		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
-			return candidate
-		}
-	}
-	return relativePath
 }
 
 func promptLocalIPv4(input io.Reader, output io.Writer) (string, error) {

@@ -37,7 +37,8 @@ Push-Location $repoRoot
 try {
     # 1. gofmt. Compare after stripping CR so a CRLF checkout does not read as a formatting difference.
     $unformatted = @()
-    foreach ($file in (& git ls-files '*.go')) {
+    $goFiles = @(& rg --files cmd internal scripts tests -g '*.go' | Sort-Object)
+    foreach ($file in $goFiles) {
         $text = (Get-Content -LiteralPath $file -Raw) -replace "`r", ''
         $formatted = $text | & gofmt 2>$null
         if (($formatted -join "`n").TrimEnd() -ne $text.TrimEnd()) { $unformatted += $file }
@@ -125,7 +126,7 @@ try {
                     Set-Result 'desktop build (Public + Development)' $(if ($desktopPublic.Code -eq 0 -and $desktopDevelopment.Code -eq 0) { 'PASS' } else { 'FAIL' }) $(if ($desktopPublic.Code -ne 0) { $desktopPublic.Output.Trim() } elseif ($desktopDevelopment.Code -ne 0) { $desktopDevelopment.Output.Trim() })
                     if ($desktopPublic.Code -eq 0) {
                         $desktopHelp = (& $desktopPublicExe -h 2>&1) -join "`n"
-                        $desktopFlagLeak = @('replay', 'replay-pacing', 'autostart', 'capture-diagnostics', 'webview-debug-port', 'publish-interval', 'overlay', 'showcase', 'showcase-overlays', 'asset-root', 'font-root', 'webview-args', 'simulate-capture-environment', 'simulate-npcap-offline', 'record-browser-url') | Where-Object { $desktopHelp -match "-$_\b" }
+                        $desktopFlagLeak = @('replay', 'replay-pacing', 'autostart', 'capture-diagnostics', 'webview-debug-port', 'publish-interval', 'overlay', 'showcase', 'showcase-overlays', 'asset-root', 'font-root', 'master-db', 'webview-args', 'simulate-capture-environment', 'simulate-npcap-offline', 'record-browser-url') | Where-Object { $desktopHelp -match "-$_\b" }
                         $desktopLatin = [Text.Encoding]::GetEncoding(28591).GetString([IO.File]::ReadAllBytes($desktopPublicExe))
                         $desktopStringLeak = @('combat-events.jsonl', 'dps-effects.jsonl', 'buff-events.jsonl', 'status.json', 'capture-spool', 'LIVE_DIAGNOSTIC_SNAPSHOT', 'event-jsonl-out', 'pcapgo', 'encounter-events.jsonl', 'BATTLE_STATE_SIGNAL', 'COMBAT_EVENT_RECORD', 'ENCOUNTER_TRANSITION', 'remote-debugging-port=%d') | Where-Object { $desktopLatin.Contains($_) }
                         $desktopProblems = @()
@@ -133,16 +134,20 @@ try {
                         if ($desktopStringLeak) { $desktopProblems += "strings: $($desktopStringLeak -join ', ')" }
                         Set-Result 'desktop public flags + strings' $(if ($desktopProblems.Count -eq 0) { 'PASS' } else { 'FAIL' }) ($desktopProblems -join '; ')
 
-                        # The executables must really carry what the profile promises: every distinct manifest image in
-                        # Public, none in Development.
+                        # Both desktop profiles must carry the same distinct manifest images.
                         $blobPattern = [regex]'blobs/[0-9a-f]{64}'
                         $packedBlobs = [Collections.Generic.HashSet[string]]::new()
                         foreach ($match in $blobPattern.Matches($desktopLatin)) { [void]$packedBlobs.Add($match.Value) }
                         $wantedBlobs = @($assetManifest.entries | ForEach-Object { "blobs/$($_.sha256)" } | Sort-Object -Unique)
                         $absentBlobs = @($wantedBlobs | Where-Object { -not $packedBlobs.Contains($_) })
-                        $developmentBlobs = if ($desktopDevelopment.Code -eq 0) { $blobPattern.Matches([Text.Encoding]::GetEncoding(28591).GetString([IO.File]::ReadAllBytes($desktopDevelopmentExe))).Count } else { -1 }
-                        $imagesOk = $wantedBlobs.Count -gt 0 -and $absentBlobs.Count -eq 0 -and $packedBlobs.Count -eq $wantedBlobs.Count -and $developmentBlobs -eq 0
-                        Set-Result 'desktop embedded images' $(if ($imagesOk) { 'PASS' } else { 'FAIL' }) "Public $($packedBlobs.Count)/$($wantedBlobs.Count) distinct images, Development $developmentBlobs"
+                        $developmentBlobs = [Collections.Generic.HashSet[string]]::new()
+                        if ($desktopDevelopment.Code -eq 0) {
+                            $developmentLatin = [Text.Encoding]::GetEncoding(28591).GetString([IO.File]::ReadAllBytes($desktopDevelopmentExe))
+                            foreach ($match in $blobPattern.Matches($developmentLatin)) { [void]$developmentBlobs.Add($match.Value) }
+                        }
+                        $developmentAbsent = @($wantedBlobs | Where-Object { -not $developmentBlobs.Contains($_) })
+                        $imagesOk = $wantedBlobs.Count -gt 0 -and $absentBlobs.Count -eq 0 -and $packedBlobs.Count -eq $wantedBlobs.Count -and $developmentAbsent.Count -eq 0 -and $developmentBlobs.Count -eq $wantedBlobs.Count
+                        Set-Result 'desktop embedded images' $(if ($imagesOk) { 'PASS' } else { 'FAIL' }) "Public $($packedBlobs.Count)/$($wantedBlobs.Count), Development $($developmentBlobs.Count)/$($wantedBlobs.Count) distinct images"
                     }
                 }
 
@@ -158,8 +163,8 @@ try {
                         $before = @(Get-ChildItem -LiteralPath $isolated -Force -Recurse).Count
                         Push-Location $isolated
                         try {
-                            $publicOut = & $publicExe -ip $ReplayIp -master-db (Join-Path $repoRoot 'data/master_data.db') -pcap-in $pcap.FullName 2>&1
-                            $developmentOut = & $developmentExe -ip $ReplayIp -master-db (Join-Path $repoRoot 'data/master_data.db') -pcap-in $pcap.FullName 2>&1
+                            $publicOut = & $publicExe -ip $ReplayIp -pcap-in $pcap.FullName 2>&1
+                            $developmentOut = & $developmentExe -ip $ReplayIp -pcap-in $pcap.FullName 2>&1
                         } finally { Pop-Location }
                         $created = @(Get-ChildItem -LiteralPath $isolated -Force -Recurse).Count - $before
                         $publicLine = ($publicOut | Where-Object { "$_" -like 'statistics_final *' }) -replace '^statistics_final ', ''

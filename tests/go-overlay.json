@@ -1,5 +1,6 @@
 {
   "Replace": {
+    "internal/capture/master_data.db": "data/master_data.db",
     "tests/keyembed/embedded_test.go": "",
     "internal/keyembed/central_embedded_test.go": "tests/keyembed/embedded_test.go",
     "tests/buildinfo/buildinfo_test.go": "",
@@ -64,6 +65,8 @@
     "internal/capture/central_damage_push_event_test.go": "tests/capture/damage_push_event_test.go",
     "tests/capture/damage_push_test.go": "",
     "internal/capture/central_damage_push_test.go": "tests/capture/damage_push_test.go",
+    "tests/capture/embedded_master_test.go": "",
+    "internal/capture/central_embedded_master_test.go": "tests/capture/embedded_master_test.go",
     "tests/capture/damage_rpc_schema_test.go": "",
     "internal/capture/central_damage_rpc_schema_test.go": "tests/capture/damage_rpc_schema_test.go",
     "tests/capture/effect_combat_class_test.go": "",
@@ -146,8 +149,6 @@
     "internal/capture/central_readable_labels_test.go": "tests/capture/readable_labels_test.go",
     "tests/capture/role_config_test.go": "",
     "internal/capture/central_role_config_test.go": "tests/capture/role_config_test.go",
-    "tests/capture/runtime_path_test.go": "",
-    "internal/capture/central_runtime_path_test.go": "tests/capture/runtime_path_test.go",
     "tests/capture/schema_decode_dev_test.go": "",
     "internal/capture/central_schema_decode_dev_test.go": "tests/capture/schema_decode_dev_test.go",
     "tests/capture/schema_decode_test.go": "",

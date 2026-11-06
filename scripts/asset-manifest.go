@@ -4,7 +4,7 @@
 //
 //	go run scripts/asset-manifest.go -client "Steam build 25950293" -resource 3.7.17
 //
-// Without flags it keeps the recorded game version. The manifest is the only input of the Public image pack, so review
+// Without flags it keeps the recorded game version. The manifest is the only input of each profile's image pack, so review
 // its diff before committing it.
 package main
 

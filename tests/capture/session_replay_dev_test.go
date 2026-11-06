@@ -112,6 +112,7 @@ func TestSessionReplayCollector(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer masters.Close()
 	if err := os.MkdirAll(out, 0o700); err != nil {
 		t.Fatal(err)
 	}
