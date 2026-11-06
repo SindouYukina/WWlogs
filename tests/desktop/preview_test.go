@@ -14,6 +14,9 @@ func TestGameAssetRouteResolvesConfigurationIDsOnly(t *testing.T) {
 	source := fstest.MapFS{
 		"game/characters/1205/avatar.webp": &fstest.MapFile{Data: []byte("avatar")},
 		"game/buffs/10010000/icon.webp":    &fstest.MapFile{Data: []byte("buff")},
+		"fonts/manifest.json":              &fstest.MapFile{Data: []byte("{}")},
+		"fonts/sarasa/a.woff2":             &fstest.MapFile{Data: []byte("font")},
+		"game/secret.txt":                  &fstest.MapFile{Data: []byte("secret")},
 	}
 	frontend := http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(response, "frontend") })
 	handler := withGameAssets(frontend, source)
@@ -31,6 +34,11 @@ func TestGameAssetRouteResolvesConfigurationIDsOnly(t *testing.T) {
 		{"/game-assets/unknown-kind/1205", http.StatusNotFound, ""},
 		{"/game-assets/character-avatar", http.StatusNotFound, ""},
 		{"/index.html", http.StatusOK, "frontend"},
+		{"/preview-fonts/manifest.json", http.StatusOK, "{}"},
+		{"/preview-fonts/sarasa/a.woff2", http.StatusOK, "font"},
+		{"/preview-fonts/../game/secret.txt", http.StatusNotFound, ""},
+		{"/preview-fonts/sarasa/a.exe", http.StatusNotFound, ""},
+		{"/preview-fonts/missing.woff2", http.StatusNotFound, ""},
 	} {
 		recorder := httptest.NewRecorder()
 		handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, test.path, nil))

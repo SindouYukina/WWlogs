@@ -17,5 +17,28 @@
   "invalid": "Settings could not be loaded safely. Defaults are in use.",
   "saveFailed": "Preferences could not be saved. Previous settings are preserved.",
   "resetOverlay": "Reset overlay position",
-  "geometryHint": "Drag the overlay header; resize from its edges. Position and size save automatically."
+  "geometryHint": "Drag the overlay header; resize from its edges. Position and size save automatically.",
+  "appearance": "Appearance",
+  "theme": "Theme",
+  "themeHint": "Applies immediately to every window and is saved for next time.",
+  "reduceMotion": "Reduce motion",
+  "reduceMotionHint": "Turns off transitions. Windows' own animation setting is also respected.",
+  "themes": {
+    "electro": {
+      "name": "Electro",
+      "character": "Suoming"
+    },
+    "aero": {
+      "name": "Aero",
+      "character": "Cartethyia"
+    },
+    "havoc": {
+      "name": "Havoc",
+      "character": "Chisa"
+    },
+    "glacio": {
+      "name": "Glacio",
+      "character": "Carlotta"
+    }
+  }
 }

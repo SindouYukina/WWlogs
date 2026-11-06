@@ -43,6 +43,8 @@ type Options struct {
 	ShowcaseOverlays bool
 	// GameAssetRoot is an explicitly supplied directory for game images. Empty means no images are served.
 	GameAssetRoot string
+	// WebviewArguments are extra browser arguments for rendering experiments; only Development flags can set them.
+	WebviewArguments []string
 }
 
 // Main parses the command line and runs the host until the Desktop window closes.
@@ -113,6 +115,11 @@ func Run(options Options) error {
 	bridge := &Bridge{capture: captureService, defaults: options.Session, settings: settings, overlay: func() *application.WebviewWindow { return overlay }}
 	bridge.catalog = catalog
 	bridge.projection = &displayProjection{resolver: resolver}
+	// The process list is read only while a capture is running; nothing polls while the application is idle.
+	bridge.process = &service.GameProcessWatcher{}
+	watcherContext, stopWatcher := context.WithCancel(context.Background())
+	defer stopWatcher()
+	go bridge.process.Run(watcherContext, func() bool { return captureService.Status().State == service.StateRunning })
 	var app *application.App
 	var flushOverlay func(bool)
 	shutdown := newShutdownGate(func(ctx context.Context) error {

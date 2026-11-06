@@ -36,6 +36,14 @@ test("Showcase language bundles have the same keys", () => {
   assert.deepEqual([...flatten(read("zh-TW.json"))].sort(), [...flatten(read("en.json"))].sort())
 })
 
+test("the typography specimen has real text in every language", () => {
+  for (const locale of ["zh-CN", "ja", "ko"]) {
+    const bundle = read(`${locale}.json`)
+    assert.ok(bundle.typography.sample && bundle.typography.glyphs && bundle.dashboard.title && bundle.combat.teamDps, locale)
+    assert.ok(/[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/.test(bundle.typography.sample), locale)
+  }
+})
+
 test("production views do not import the Showcase or mock data", () => {
   const files = ["frontend/src/views", "frontend/src/lib", "frontend/src/design", "frontend/src/design/components", "frontend/src/design/motion"]
     .flatMap(dir => readdirSync(dir, { withFileTypes: true }).filter(entry => entry.isFile() && /\.tsx?$/.test(entry.name)).map(entry => join(dir, entry.name)))

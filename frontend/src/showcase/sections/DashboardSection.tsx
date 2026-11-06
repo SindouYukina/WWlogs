@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { AnimatedNumber, Button, Card, CharacterAvatar, Chip, ContentSwitch, DamageBar, Icon, LiveChart, Reveal, Segmented, StackList, gameAssetUrl, type ChartSeries, type IconName } from "@/design"
+import { AnimatedNumber, Button, Card, CharacterAvatar, Chip, ContentSwitch, DamageBar, Icon, LiveChart, Reveal, Segmented, StackList, ThemeBackdrop, gameAssetUrl, type ChartSeries, type IconName, type ThemeId } from "@/design"
 import { combatRows, type CombatRowModel } from "@/lib/combat-view"
 import { snapshotStale } from "@/lib/effects"
 import type { FeedControls } from "../useMockFeed"
@@ -58,7 +58,7 @@ const SkillTable = memo(function SkillTable({ rows, color }: { rows: MockSkillRo
   </table>
 })
 
-export function DashboardSection({ controls, numberMode }: { controls: FeedControls; numberMode: "tween" | "roll" }) {
+export function DashboardSection({ controls, numberMode, theme }: { controls: FeedControls; numberMode: "tween" | "roll"; theme: ThemeId }) {
   const { t } = useTranslation("showcase")
   const format = useFormatters()
   const nameOf = useRoleNames()
@@ -79,7 +79,7 @@ export function DashboardSection({ controls, numberMode }: { controls: FeedContr
     return { key: row.key, label: nameOf(row), color: roleColor(row.roleId), values: Array.from({ length: historySlots }, (_, slot) => values[slot] ?? null) }
   }), [historyKey, rows.length, nameOf])
   const skills = selected?.roleId !== undefined ? skillsOf(selected.roleId) : []
-  return <div className="sd-layout">
+  return <div className="sd-stage ww-has-backdrop"><ThemeBackdrop theme={theme} intensity="art" /><div className="sd-layout">
     <Reveal className="sd-top">
       <div>
         <div className="ww-caps">{t("dashboard.encounter", { id: encounter?.sequence ?? "—" })}</div>
@@ -126,5 +126,5 @@ export function DashboardSection({ controls, numberMode }: { controls: FeedContr
         </Card>
       </Reveal>
     </div>
-  </div>
+  </div></div>
 }

@@ -1,0 +1,16 @@
+{
+  "combat": {
+    "teamDps": "队伍 DPS"
+  },
+  "dashboard": {
+    "title": "战斗摘要"
+  },
+  "settings": {
+    "releaseMemory": "闲置时释放内存",
+    "releaseMemoryHint": "闲置一段时间后销毁隐藏的界面。"
+  },
+  "typography": {
+    "sample": "WWlogs 被动监听《鸣潮》的战斗数据包。队伍 DPS 在 Phase 2 上升 12.5%；忌炎 Lv.90 的技能在 3.7 版造成 1,234 点伤害。",
+    "glyphs": "直骨角今令海画雪遍 戶閒黃"
+  }
+}

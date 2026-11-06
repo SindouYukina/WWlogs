@@ -1,7 +1,8 @@
 import { useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { Button, ContentSwitch, Icon, Segmented, Select, SettingsRow, SettingsSection, Sidebar, Slider, Stepper, Toggle, Tooltip, type SidebarGroupModel } from "@/design"
+import { Button, ContentSwitch, Icon, Segmented, Select, SettingsRow, SettingsSection, Sidebar, Slider, Stepper, ThemeBackdrop, ThemePicker, Toggle, Tooltip, type SidebarGroupModel, type ThemeId } from "@/design"
 import { manifest } from "@/i18n"
+import { useThemeDescriptions } from "@/lib/useListeningLabels"
 
 type Page = "general" | "combatOverlay" | "effectsOverlay" | "capture" | "appearance" | "about"
 
@@ -20,7 +21,6 @@ function GeneralPage() {
   const { t } = useTranslation("showcase")
   const [startup, setStartup] = useDemo(false)
   const [memory, setMemory] = useDemo(true)
-  const [theme, setTheme] = useDemo("dark")
   const [language, setLanguage] = useDemo("zh-TW")
   const [scale, setScale] = useDemo("100")
   const [display, setDisplay] = useDemo("primary")
@@ -33,7 +33,6 @@ function GeneralPage() {
       <SettingsRow title={t("settings.releaseMemory")} hint={<Hint text={t("settings.releaseMemoryHint")} />}><Toggle label={t("settings.releaseMemory")} checked={memory} onChange={setMemory} /></SettingsRow>
     </SettingsSection>
     <SettingsSection title={t("settings.sections.appearance")}>
-      <SettingsRow title={t("settings.theme")}><Segmented label={t("settings.theme")} value={theme} onChange={setTheme} options={[{ value: "system", label: t("settings.themeSystem") }, { value: "light", label: t("settings.themeLight") }, { value: "dark", label: t("settings.themeDark") }]} /></SettingsRow>
       <SettingsRow title={t("settings.language")}><Select label={t("settings.language")} value={language} onChange={setLanguage} options={manifest.supportedLocales.map(locale => ({ value: locale, label: manifest.languages[locale as keyof typeof manifest.languages].label }))} /></SettingsRow>
       <SettingsRow title={t("settings.scale")}><Select label={t("settings.scale")} value={scale} onChange={setScale} options={["90", "100", "110", "125", "150"].map(value => ({ value, label: `${value}%` }))} /></SettingsRow>
     </SettingsSection>
@@ -90,12 +89,17 @@ function CapturePage() {
   </SettingsSection>
 }
 
-function AppearancePage() {
-  const { t } = useTranslation("showcase")
-  const [reduce, setReduce] = useDemo(false)
-  return <SettingsSection title={t("settings.sections.motionPolicy")}>
-    <SettingsRow title={t("settings.reduceMotion")} description={t("settings.reduceMotionNote")}><Toggle label={t("settings.reduceMotion")} checked={reduce} onChange={setReduce} /></SettingsRow>
-  </SettingsSection>
+function AppearancePage({ theme, setTheme, reduced, setReduced }: AppearanceProps) {
+  const { t } = useTranslation(["showcase", "settings"])
+  const describe = useThemeDescriptions()
+  return <>
+    <SettingsSection title={t("settings:appearance")}>
+      <div className="ww-row-block"><ThemePicker label={t("settings:theme")} value={theme} onChange={setTheme} describe={describe} /></div>
+    </SettingsSection>
+    <SettingsSection title={t("settings.sections.motionPolicy")}>
+      <SettingsRow title={t("settings:reduceMotion")} description={t("settings:reduceMotionHint")}><Toggle label={t("settings:reduceMotion")} checked={reduced} onChange={setReduced} /></SettingsRow>
+    </SettingsSection>
+  </>
 }
 
 function AboutPage() {
@@ -105,7 +109,14 @@ function AboutPage() {
   </SettingsSection>
 }
 
-export function SettingsDemo() {
+interface AppearanceProps {
+  theme: ThemeId
+  setTheme: (theme: ThemeId) => void
+  reduced: boolean
+  setReduced: (reduced: boolean) => void
+}
+
+export function SettingsDemo(props: AppearanceProps) {
   const { t } = useTranslation("showcase")
   const [page, setPage] = useState<Page>("general")
   const previous = useRef<Page>("general")
@@ -121,6 +132,7 @@ export function SettingsDemo() {
     setPage(next)
   }
   return <div className="ww-settings">
+    <ThemeBackdrop theme={props.theme} intensity="ambient" />
     <Sidebar label={t("settings.title")} value={page} groups={groups} onChange={change} />
     <div className="ww-detail">
       <ContentSwitch contentKey={page} direction={direction} className="ww-detail-inner">
@@ -129,7 +141,7 @@ export function SettingsDemo() {
         {page === "combatOverlay" && <OverlayPage kind="combat" />}
         {page === "effectsOverlay" && <OverlayPage kind="effects" />}
         {page === "capture" && <CapturePage />}
-        {page === "appearance" && <AppearancePage />}
+        {page === "appearance" && <AppearancePage {...props} />}
         {page === "about" && <AboutPage />}
       </ContentSwitch>
     </div>

@@ -17,13 +17,22 @@ type displayProjection struct {
 	resolver *capture.DisplayResolver
 	source   *service.Snapshot
 	revision uint64
+	shell    projectedShell
 	encoded  json.RawMessage
 }
 
-func (p *displayProjection) encode(source *service.Snapshot, settings SettingsState, catalog localeCatalog) (json.RawMessage, error) {
+// projectedShell is host state published with every snapshot. A change reaches every window without a new core sequence.
+type projectedShell struct {
+	Listening    service.ListeningStatus `json:"listening"`
+	Theme        string                  `json:"theme"`
+	ReduceMotion bool                    `json:"reduceMotion"`
+}
+
+func (p *displayProjection) encode(source *service.Snapshot, settings SettingsState, catalog localeCatalog, listening service.ListeningStatus) (json.RawMessage, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.source == source && p.revision == settings.LocaleRevision {
+	shell := projectedShell{Listening: listening, Theme: effectiveTheme(settings.Settings), ReduceMotion: settings.Settings.ReduceMotion}
+	if p.source == source && p.revision == settings.LocaleRevision && p.shell == shell {
 		return append(json.RawMessage(nil), p.encoded...), nil
 	}
 	locale := settings.Settings.Locale
@@ -91,10 +100,11 @@ func (p *displayProjection) encode(source *service.Snapshot, settings SettingsSt
 		View           *capture.ViewSnapshot `json:"view"`
 		Locale         string                `json:"locale"`
 		LocaleRevision uint64                `json:"localeRevision"`
-	}{source.Sequence, source.PublishedAt, source.Service, view, locale, settings.LocaleRevision})
+		projectedShell
+	}{source.Sequence, source.PublishedAt, source.Service, view, locale, settings.LocaleRevision, shell})
 	if err != nil {
 		return nil, err
 	}
-	p.source, p.revision, p.encoded = source, settings.LocaleRevision, encoded
+	p.source, p.revision, p.shell, p.encoded = source, settings.LocaleRevision, shell, encoded
 	return append(json.RawMessage(nil), encoded...), nil
 }

@@ -37,7 +37,7 @@ func TestDisplayProjectionRelocalizesExistingSnapshotWithoutChangingCore(t *test
 	before, _ := json.Marshal(view)
 	source := &service.Snapshot{Sequence: 7, View: &view}
 	projection := &displayProjection{resolver: resolver}
-	first, err := projection.encode(source, store.current(), testLocaleCatalog())
+	first, err := projection.encode(source, store.current(), testLocaleCatalog(), service.ListeningStatus{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +45,7 @@ func TestDisplayProjectionRelocalizesExistingSnapshotWithoutChangingCore(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := projection.encode(source, state, testLocaleCatalog())
+	second, err := projection.encode(source, state, testLocaleCatalog(), service.ListeningStatus{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,7 +78,7 @@ func TestDisplayProjectionRelocalizesExistingSnapshotWithoutChangingCore(t *test
 		t.Fatal("projection mutated the core snapshot")
 	}
 	resolver.Close()
-	if _, err := projection.encode(source, state, testLocaleCatalog()); err != nil {
+	if _, err := projection.encode(source, state, testLocaleCatalog(), service.ListeningStatus{}); err != nil {
 		t.Fatal("unchanged projection missed its serialized cache")
 	}
 }

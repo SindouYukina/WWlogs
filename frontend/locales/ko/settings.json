@@ -17,5 +17,28 @@
   "invalid": "설정을 안전하게 불러올 수 없어 기본값을 사용합니다.",
   "saveFailed": "환경설정을 저장하지 못했습니다. 이전 설정은 유지됩니다.",
   "resetOverlay": "오버레이 위치 초기화",
-  "geometryHint": "오버레이 제목 표시줄을 드래그하고 가장자리에서 크기를 조절하세요. 위치와 크기는 자동 저장됩니다."
+  "geometryHint": "오버레이 제목 표시줄을 드래그하고 가장자리에서 크기를 조절하세요. 위치와 크기는 자동 저장됩니다.",
+  "appearance": "외관",
+  "theme": "테마",
+  "themeHint": "모든 창에 즉시 적용되며 다음 실행 시에도 유지됩니다.",
+  "reduceMotion": "동작 줄이기",
+  "reduceMotionHint": "전환 효과를 끕니다. Windows 애니메이션 설정도 따릅니다.",
+  "themes": {
+    "electro": {
+      "name": "전도",
+      "character": "쇄명"
+    },
+    "aero": {
+      "name": "기류",
+      "character": "카르티시아"
+    },
+    "havoc": {
+      "name": "인멸",
+      "character": "치사"
+    },
+    "glacio": {
+      "name": "응결",
+      "character": "카를로타"
+    }
+  }
 }

@@ -23,6 +23,8 @@ type Bridge struct {
 	settings   *settingsStore
 	catalog    localeCatalog
 	projection *displayProjection
+	listening  service.ListeningMonitor
+	process    *service.GameProcessWatcher
 }
 
 // snapshotWaitLimit bounds one NextSnapshot call; an unchanged snapshot returned at the limit is a heartbeat.
@@ -45,6 +47,11 @@ func (b *Bridge) SaveSettings(value Settings) (SettingsState, error) { return b.
 // SetLocale persists the single global display locale without touching capture or statistics.
 func (b *Bridge) SetLocale(locale string) (SettingsState, error) { return b.settings.setLocale(locale) }
 
+// SetAppearance persists the theme and motion preference; every window applies them from its next snapshot.
+func (b *Bridge) SetAppearance(theme string, reduceMotion bool) (SettingsState, error) {
+	return b.settings.setAppearance(theme, reduceMotion)
+}
+
 // ResetOverlayPosition recovers an overlay after a display configuration change.
 func (b *Bridge) ResetOverlayPosition() {
 	if w := b.overlay(); w != nil {
@@ -62,12 +69,26 @@ func (b *Bridge) NextSnapshot(ctx context.Context, after uint64) (json.RawMessag
 	if err != nil && !errors.Is(err, context.DeadlineExceeded) {
 		return nil, err
 	}
-	return b.projection.encode(snapshot, b.settings.current(), b.catalog)
+	return b.encode(snapshot)
 }
 
 // CurrentSnapshot returns the newest snapshot without waiting.
 func (b *Bridge) CurrentSnapshot() (json.RawMessage, error) {
-	return b.projection.encode(b.capture.Publisher().Latest(), b.settings.current(), b.catalog)
+	return b.encode(b.capture.Publisher().Latest())
+}
+
+func (b *Bridge) encode(snapshot *service.Snapshot) (json.RawMessage, error) {
+	return b.projection.encode(snapshot, b.settings.current(), b.catalog, b.listeningStatus(snapshot))
+}
+
+// listeningStatus is evaluated on every call, because silence changes the status while the snapshot stays the same.
+func (b *Bridge) listeningStatus(snapshot *service.Snapshot) service.ListeningStatus {
+	var process service.GameProcess
+	// A replay has no game process, so absence must not count as evidence.
+	if b.process != nil && (snapshot.Service.Session == nil || snapshot.Service.Session.Source != "replay") {
+		process = b.process.Latest()
+	}
+	return b.listening.Evaluate(snapshot.Service, snapshot.View, process, time.Now())
 }
 
 // ListAdapters lists the Npcap IPv4 interfaces.

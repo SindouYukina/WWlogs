@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { host } from "./host"
 import type { Connection, Snapshot } from "./snapshot"
-import { snapshotSupersedes } from "./snapshot"
+import { shellChanged, snapshotSupersedes } from "./snapshot"
 import i18n, { manifest } from "@/i18n"
+import { applyAppearance } from "@/design/appearance"
 
 // A single long-poll per window consumes the shared Go publisher. Locale revisions also order same-sequence copies.
 export function useSnapshot() {
@@ -13,7 +14,12 @@ export function useSnapshot() {
   const mounted=useRef(false)
   const accept=useCallback((next:Snapshot)=>{
     const previous=latest.current
-    if(!snapshotSupersedes(next,previous,minimumRevision.current)) return
+    applyAppearance(next.theme,next.reduceMotion===true)
+    if(!snapshotSupersedes(next,previous,minimumRevision.current)) {
+      // A heartbeat keeps the core sequence, but listening state and appearance may still have moved.
+      setSnapshot(current=>current&&next.sequence===current.sequence&&shellChanged(next,current)?{...current,listening:next.listening,theme:next.theme,reduceMotion:next.reduceMotion}:current)
+      return
+    }
     const locale=manifest.supportedLocales.includes(next.locale) ? next.locale : manifest.fallbackLocale
     // All resources are eager; language and names become visible in the same React batch.
     void i18n.changeLanguage(locale)

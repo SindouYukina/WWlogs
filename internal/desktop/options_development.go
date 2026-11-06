@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"strings"
 
 	"wwlogs/internal/capture"
 )
@@ -30,6 +31,7 @@ func parseOptions(arguments []string, output io.Writer) (Options, error) {
 	publishInterval := flags.Duration("publish-interval", capture.DefaultPublishInterval, "Development: minimum time between UI snapshots (at least 100ms)")
 	showcase := flags.Bool("showcase", false, "Development: open the Motion Showcase (mock data only) instead of the Desktop view")
 	showcaseOverlays := flags.Bool("showcase-overlays", false, "Development: with -showcase, also open its transparent Overlay windows")
+	webviewArgs := flags.String("webview-args", "", "Development: extra WebView2 browser arguments for rendering experiments, separated by spaces")
 	assetRoot := flags.String("asset-root", "", "Development: directory that contains game/ images for the Showcase; nothing is served without it")
 	if err := flags.Parse(arguments); err != nil {
 		return Options{}, err
@@ -59,6 +61,7 @@ func parseOptions(arguments []string, output io.Writer) (Options, error) {
 		Showcase:         *showcase,
 		ShowcaseOverlays: *showcaseOverlays,
 		GameAssetRoot:    *assetRoot,
+		WebviewArguments: strings.Fields(*webviewArgs),
 	}, nil
 }
 
@@ -74,8 +77,9 @@ func flagsWereSet(flags *flag.FlagSet, name string) bool {
 
 // webviewArguments opens the WebView2 remote debugging port when requested, for automated UI checks.
 func webviewArguments(options Options) []string {
-	if options.WebviewDebugPort <= 0 {
-		return nil
+	arguments := append([]string{}, options.WebviewArguments...)
+	if options.WebviewDebugPort > 0 {
+		arguments = append(arguments, fmt.Sprintf("--remote-debugging-port=%d", options.WebviewDebugPort))
 	}
-	return []string{fmt.Sprintf("--remote-debugging-port=%d", options.WebviewDebugPort)}
+	return arguments
 }

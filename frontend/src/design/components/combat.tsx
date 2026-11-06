@@ -108,12 +108,14 @@ export interface CombatPanelProps {
   numberMode?: "tween" | "roll"
   scope?: string
   alpha?: number
+  /** Compact listening status for the header; it never covers a number. */
+  status?: ReactNode
 }
 
 const rowKey = (row: CombatRowModel) => row.key
 
 /** The Combat Overlay surface, optimized for a three-character team. It takes engine-derived rows and owns no state. */
-export const CombatPanel = memo(function CombatPanel({ rows, elementOf, nameOf, subtitleOf, totalDamage, teamDps, time, state, stateLabel, note, labels, formatDps, formatDamage, formatShare, numberMode = "tween", scope = "", alpha }: CombatPanelProps) {
+export const CombatPanel = memo(function CombatPanel({ rows, elementOf, nameOf, subtitleOf, totalDamage, teamDps, time, state, stateLabel, note, labels, formatDps, formatDamage, formatShare, numberMode = "tween", scope = "", alpha, status }: CombatPanelProps) {
   const stale = state === "stale" || state === "untrusted"
   const ordered = [...rows].sort((a, b) => a.rank - b.rank)
   const style = alpha === undefined ? undefined : { "--ww-alpha-overlay": alpha, "--ww-alpha-overlay-strong": Math.min(1, alpha + 0.12) } as CSSProperties
@@ -121,7 +123,7 @@ export const CombatPanel = memo(function CombatPanel({ rows, elementOf, nameOf, 
     <header className="ww-combat-head">
       <div className="ww-combat-stat"><span>{labels.totalDamage}</span><b><AnimatedNumber value={totalDamage} format={formatDamage} mode={numberMode} scope={scope} stale={stale} /></b></div>
       <div className="ww-combat-stat" data-primary="true"><span>{labels.teamDps}</span><b><AnimatedNumber value={teamDps} format={formatDps} mode={numberMode} scope={scope} stale={stale} /></b></div>
-      <div className="ww-combat-time ww-num">{time}</div>
+      <div className="ww-combat-time ww-num">{status}{time}</div>
     </header>
     <div className="ww-combat-columns"><span>{labels.member}</span><span>{labels.dps}</span><span>{labels.damage}</span><span>{labels.share}</span></div>
     <div className="ww-combat-rows">

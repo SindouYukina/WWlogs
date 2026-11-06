@@ -1,9 +1,15 @@
 {
   "shell": {
     "title": "WWlogs Motion Showcase",
-    "subtitle": "v0.6.0 Phase 1 · Development only",
+    "subtitle": "v0.6.0 Phase 1.5 · Development only",
     "sections": "Showcase areas",
-    "section": { "combat": "Combat Overlay", "effects": "Effects Overlay", "dashboard": "Dashboard", "settings": "Settings" },
+    "section": {
+      "combat": "Combat Overlay",
+      "effects": "Effects Overlay",
+      "dashboard": "Dashboard",
+      "settings": "Settings",
+      "typography": "Typography"
+    },
     "mock": "MOCK DATA",
     "locale": "Language",
     "speed": "Motion speed",
@@ -14,7 +20,27 @@
     "gold": "Gold",
     "reduced": "Reduced motion",
     "showPerf": "Show frame stats",
-    "hidePerf": "Hide frame stats"
+    "hidePerf": "Hide frame stats",
+    "devTools": "DEV TOOLS",
+    "theme": "Theme",
+    "listening": "Listening",
+    "themes": {
+      "electro": "Electro",
+      "aero": "Aero",
+      "havoc": "Havoc",
+      "glacio": "Glacio"
+    },
+    "scenario": {
+      "active": "Active",
+      "establishing": "Establishing",
+      "waiting": "Waiting: no traffic",
+      "traffic_without_key": "Waiting: needs login",
+      "stale": "Stale",
+      "recovering": "Active: recovering",
+      "error": "Error",
+      "closed": "Game closed",
+      "off": "Capture off"
+    }
   },
   "controls": {
     "dataEvents": "Data events",
@@ -55,7 +81,13 @@
     "taken": "Taken {{value}}",
     "vehicleNote": "Vehicle contributor",
     "unassignedNote": "Attribution incomplete: {{value}} confirmed damage is not assigned to a character",
-    "state": { "combat": "IN COMBAT", "ended": "ENCOUNTER ENDED", "waiting": "WAITING", "stale": "DATA STALLED · NOT LIVE", "untrusted": "DATA UNRELIABLE" },
+    "state": {
+      "combat": "IN COMBAT",
+      "ended": "ENCOUNTER ENDED",
+      "waiting": "WAITING",
+      "stale": "DATA STALLED · NOT LIVE",
+      "untrusted": "DATA UNRELIABLE"
+    },
     "note": "Layout follows the ZMDLogs damage overlay, tuned for a three-member team. Per-character DPS is display-derived from damage and the encounter duration because the Snapshot has no per-role DPS field yet."
   },
   "effects": {
@@ -86,9 +118,30 @@
   },
   "settings": {
     "title": "Settings",
-    "groups": { "basic": "Basics", "overlays": "Overlays", "capture": "Capture", "about": "About" },
-    "pages": { "general": "General", "appearance": "Motion", "combatOverlay": "Combat Overlay", "effectsOverlay": "Effects Overlay", "capture": "Capture", "about": "WWlogs" },
-    "sections": { "startup": "Startup and resources", "appearance": "Appearance and language", "display": "Display position", "motion": "Hover and animation", "window": "Window", "look": "Appearance", "capture": "Network capture", "motionPolicy": "Motion" },
+    "groups": {
+      "basic": "Basics",
+      "overlays": "Overlays",
+      "capture": "Capture",
+      "about": "About"
+    },
+    "pages": {
+      "general": "General",
+      "appearance": "Appearance",
+      "combatOverlay": "Combat Overlay",
+      "effectsOverlay": "Effects Overlay",
+      "capture": "Capture",
+      "about": "WWlogs"
+    },
+    "sections": {
+      "startup": "Startup and resources",
+      "appearance": "Appearance and language",
+      "display": "Display position",
+      "motion": "Hover and animation",
+      "window": "Window",
+      "look": "Appearance",
+      "capture": "Network capture",
+      "motionPolicy": "Motion"
+    },
     "restoreDefaults": "Restore defaults",
     "startWithWindows": "Start with Windows",
     "releaseMemory": "Release memory when idle",
@@ -139,5 +192,39 @@
     "animations": "Running animations",
     "frameCallbacks": "JS frame callbacks",
     "dom": "DOM elements"
+  },
+  "typography": {
+    "sample": "WWlogs observes Wuthering Waves combat traffic passively. Team DPS rose 12.5% in Phase 2; Jiyan's Lv.90 skill dealt 1,234 damage at 3.7.",
+    "scheme": {
+      "inter-noto": "A · Inter + Noto Sans CJK (bundled)",
+      "sarasa": "B · Sarasa Gothic UI",
+      "misans": "C · MiSans",
+      "system": "Baseline · Segoe UI + system CJK"
+    },
+    "schemeLabel": "Typeface for pane {{pane}}",
+    "bundled": "Bundled",
+    "candidate": "Candidate",
+    "size": "{{value}} MB across {{count}} files",
+    "ascent": "ascent",
+    "descent": "descent",
+    "faces": "Font files",
+    "systemNote": "Uses whatever Windows provides. Shown only as a baseline; a release cannot depend on it.",
+    "unavailable": "Font files were not found. Start the Showcase with -asset-root pointing at the directory that holds fonts/.",
+    "tuning": "Tuning (applies to both panes)",
+    "weight": "Weight offset: {{value}}",
+    "weightLabel": "Weight offset",
+    "tracking": "Letter spacing offset: {{value}} em",
+    "trackingLabel": "Letter spacing offset",
+    "leading": "Line height offset: {{value}}",
+    "leadingLabel": "Line height offset",
+    "numericFace": "Numbers",
+    "followScheme": "Follow scheme",
+    "resetTuning": "Reset",
+    "wholePage": "Apply to the whole Showcase",
+    "wholePageNote": "Applies one scheme and the tuning above to every page, so Dashboard and Settings can be judged in place.",
+    "renderedNote": "Switch language in the top right. Static fonts such as Sarasa snap to their nearest weight. Actual rendered font names are verified over CDP in the Phase 1.5 run record.",
+    "loaded": "Loaded fonts: {{value}}",
+    "glyphs": "Rag Quick 0Oo 1Il AaGg 3.7",
+    "glyphsNote": "Regional glyph forms"
   }
 }

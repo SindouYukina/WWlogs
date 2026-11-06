@@ -72,5 +72,33 @@
     "requested": "依要求停止",
     "replay_end": "重播結束",
     "unknown": "未知"
+  },
+  "listening": {
+    "state": {
+      "off": "未擷取",
+      "waiting": "等待遊戲",
+      "establishing": "建立中",
+      "active": "監聽中",
+      "stale": "近期無資料",
+      "error": "擷取異常",
+      "closed": "遊戲已關閉"
+    },
+    "reason": {
+      "capture_off": "開始擷取後才會監聽遊戲流量",
+      "capture_starting": "正在啟動擷取",
+      "capture_failed": "網路擷取無法執行",
+      "no_game_traffic": "尚未偵測到遊戲流量",
+      "game_not_running": "遊戲尚未執行",
+      "handshake_in_progress": "正在讀取登入握手",
+      "traffic_without_key": "已看到遊戲流量，但錯過了登入。請重新登入遊戲",
+      "awaiting_login": "遊戲已重新啟動，等待登入",
+      "handshake_failed": "無法讀取登入握手",
+      "decrypt_failing": "無法解密遊戲資料",
+      "transport_unrecoverable": "封包復原失敗",
+      "receiving": "正在接收遊戲資料",
+      "transport_recovering": "正在從封包遺失中復原",
+      "no_recent_frames": "遊戲閒置中或連線暫停",
+      "game_process_ended": "遊戲程序已結束"
+    }
   }
 }

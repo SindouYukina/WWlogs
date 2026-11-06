@@ -1,4 +1,4 @@
-import type { Effect, Encounter, Role, Snapshot, UnassignedRole, Vehicle } from "../lib/snapshot"
+import type { Effect, Encounter, ListeningInfo, Role, Snapshot, UnassignedRole, Vehicle } from "../lib/snapshot"
 import { masterEffects, masterRoles } from "./master-fixture.ts"
 
 // Scripted numbers for visual review, shaped exactly like the engine's Snapshot so that the Showcase runs the same
@@ -6,6 +6,22 @@ import { masterEffects, masterRoles } from "./master-fixture.ts"
 // calculates real data, and it is never reachable from Public builds.
 
 export const historySlots = 61
+
+/** Every status a window must be able to show. The values are scripted; the real ones come from internal/service. */
+export const listeningScenarios = ["active", "establishing", "waiting", "traffic_without_key", "stale", "recovering", "error", "closed", "off"] as const
+export type ListeningScenario = (typeof listeningScenarios)[number]
+
+const scenarioStatus: Record<ListeningScenario, Pick<ListeningInfo, "state" | "reason">> = {
+  active: { state: "active", reason: "receiving" },
+  establishing: { state: "establishing", reason: "handshake_in_progress" },
+  waiting: { state: "waiting", reason: "no_game_traffic" },
+  traffic_without_key: { state: "waiting", reason: "traffic_without_key" },
+  stale: { state: "stale", reason: "no_recent_frames" },
+  recovering: { state: "active", reason: "transport_recovering" },
+  error: { state: "error", reason: "decrypt_failing" },
+  closed: { state: "closed", reason: "game_process_ended" },
+  off: { state: "off", reason: "capture_off" },
+}
 
 export interface MockSkillRow {
   skillId: number
@@ -77,6 +93,7 @@ export class MockFeed {
   private untrusted = false
   private lastPublish = Date.now()
   effectAuto = true
+  listeningScenario: ListeningScenario = "active"
   private clockMs = Date.UTC(2026, 10, 6, 9, 0, 0)
 
   constructor() {
@@ -337,6 +354,7 @@ export class MockFeed {
       localeRevision: 0,
       sequence: this.sequence,
       publishedAt: new Date(this.lastPublish).toISOString(),
+      listening: { ...scenarioStatus[this.listeningScenario], since: new Date(this.lastPublish).toISOString() },
       service: { state: "running", session: { captureSessionId: 1, source: "replay", localIPv4: "0.0.0.0", diagnostics: false }, app: { version: "showcase", commit: "mock", profile: "development" } },
       view: {
         schemaVersion: 1,
@@ -350,6 +368,7 @@ export class MockFeed {
           transport: { state: "SYNCED" },
           context: { state: "VALID", downgradedEvents: 0, revalidatedEvents: 0 },
           dataIntegrity: integrity.status,
+          session: { keyReady: true, handshakes: 1, handshakeErrors: 0, lastHandshakeFailed: false, framesObserved: 0, consecutiveDecryptFailures: 0 },
           rpcPairing: { requests: 0, paired: 0, pairedOutOfOrder: 0, unpaired: 0, heldResponses: 0 },
         },
         statistics: {

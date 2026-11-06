@@ -72,5 +72,33 @@
     "requested": "요청에 따라 중지",
     "replay_end": "리플레이 종료",
     "unknown": "알 수 없음"
+  },
+  "listening": {
+    "state": {
+      "off": "캡처 안 함",
+      "waiting": "게임 대기 중",
+      "establishing": "연결 확인 중",
+      "active": "수신 중",
+      "stale": "최근 데이터 없음",
+      "error": "캡처 문제",
+      "closed": "게임 종료됨"
+    },
+    "reason": {
+      "capture_off": "캡처를 시작하면 게임 트래픽을 수신합니다",
+      "capture_starting": "캡처를 시작하는 중",
+      "capture_failed": "네트워크 캡처를 실행할 수 없습니다",
+      "no_game_traffic": "아직 게임 트래픽이 없습니다",
+      "game_not_running": "게임이 실행 중이 아닙니다",
+      "handshake_in_progress": "로그인 핸드셰이크를 읽는 중",
+      "traffic_without_key": "트래픽은 보이지만 로그인을 놓쳤습니다. 게임에 다시 로그인하세요",
+      "awaiting_login": "게임이 다시 시작되었습니다. 로그인을 기다리는 중",
+      "handshake_failed": "로그인 핸드셰이크를 읽을 수 없습니다",
+      "decrypt_failing": "게임 데이터를 복호화할 수 없습니다",
+      "transport_unrecoverable": "패킷 복구에 실패했습니다",
+      "receiving": "게임 데이터 수신 중",
+      "transport_recovering": "패킷 손실에서 복구하는 중",
+      "no_recent_frames": "게임이 대기 중이거나 연결이 일시 중지되었습니다",
+      "game_process_ended": "게임 프로세스가 종료되었습니다"
+    }
   }
 }

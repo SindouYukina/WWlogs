@@ -1,10 +1,15 @@
 import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { activeFrameCallbacks } from "../design/motion/ticker.ts"
+import type { ThemeId } from "@/design"
 import type { FeedControls } from "./useMockFeed"
+import type { SchemeId } from "./typefaces"
 
 export interface PerfBridge {
-  setSection: (section: "combat" | "effects" | "dashboard" | "settings") => void
+  setSection: (section: "combat" | "effects" | "dashboard" | "settings" | "typography") => void
+  setTheme: (theme: ThemeId) => void
+  setScheme: (scheme: SchemeId) => void
+  setLocale: (locale: string) => void
   setNumberMode: (mode: "tween" | "roll") => void
   controls: () => FeedControls
 }

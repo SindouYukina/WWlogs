@@ -42,6 +42,23 @@ export const springs = {
 
 export type SpringName = keyof typeof springs
 
+export type MotionFlavor = "electro" | "aero" | "havoc" | "glacio"
+
+/**
+ * A theme changes the feel of interaction, not the motion system. Data and rank springs are never overridden, because
+ * how a bar or a rank moves must read the same in every theme.
+ */
+export const flavors: Readonly<Record<MotionFlavor, { time: number; springs: Partial<Record<"snappy" | "morph" | "gentle" | "lively", SpringParams>> }>> = {
+  /** Crisp with a small, confident settle. */
+  electro: { time: 1, springs: {} },
+  /** Long and floating, like cloth in wind. */
+  aero: { time: 1.14, springs: { snappy: { stiffness: 340, damping: 25, mass: 0.6 }, morph: { stiffness: 230, damping: 25, mass: 0.9 }, gentle: { stiffness: 190, damping: 25, mass: 0.95 }, lively: { stiffness: 270, damping: 18, mass: 0.7 } } },
+  /** Short and decisive, with no overshoot at all. */
+  havoc: { time: 0.8, springs: { snappy: { stiffness: 620, damping: 44, mass: 0.5 }, morph: { stiffness: 480, damping: 40, mass: 0.7 }, gentle: { stiffness: 420, damping: 40, mass: 0.8 }, lively: { stiffness: 560, damping: 38, mass: 0.5 } } },
+  /** Poised and even, slightly slower than the default. */
+  glacio: { time: 1.06, springs: { snappy: { stiffness: 370, damping: 29, mass: 0.6 }, morph: { stiffness: 265, damping: 29, mass: 0.9 }, gentle: { stiffness: 220, damping: 29, mass: 0.95 }, lively: { stiffness: 300, damping: 24, mass: 0.7 } } },
+}
+
 /** Natural frequency for counters that follow engine values. About 700 ms to settle after an update. */
 export const numberOmega = 11
 
@@ -59,16 +76,19 @@ export interface InstallOptions {
   /** Time multiplier for slow-motion review. 1 is the product speed. */
   scale?: number
   preference?: MotionPreference
+  flavor?: MotionFlavor
 }
 
 /** Every CSS variable the motion system defines. Pure, so that tests can check it without a DOM. */
-export function motionVariables({ scale = 1, preference = "full" }: InstallOptions = {}): Record<string, string> {
+export function motionVariables({ scale = 1, preference = "full", flavor = "electro" }: InstallOptions = {}): Record<string, string> {
   const reduced = preference === "reduced"
+  const feel = flavors[flavor]
   const time = (ms: number) => `${reduced ? 0 : Math.round(ms * scale)}ms`
   const variables: Record<string, string> = {}
-  for (const [name, ms] of Object.entries(durations)) variables[`--ww-dur-${name}`] = time(ms)
+  for (const [name, ms] of Object.entries(durations)) variables[`--ww-dur-${name}`] = time(ms * feel.time)
   for (const [name, value] of Object.entries(easings)) variables[`--ww-ease-${name}`] = value
-  for (const [name, params] of Object.entries(springs)) {
+  for (const [name, base] of Object.entries(springs)) {
+    const params = feel.springs[name as keyof typeof feel.springs] ?? base
     const curve = springCurve(params)
     variables[`--ww-spring-${name}`] = curve.easing
     variables[`--ww-spring-${name}-dur`] = time(curve.durationMs)

@@ -12,6 +12,24 @@ export interface Snapshot {
   publishedAt: string
   service: ServiceStatus
   view: ViewSnapshot | null
+  /** Host state published with every snapshot. It can change while the core sequence stays the same. */
+  listening?: ListeningInfo
+  theme?: string
+  reduceMotion?: boolean
+}
+
+export type ListeningStateName = "off" | "waiting" | "establishing" | "active" | "stale" | "error" | "closed"
+
+/** Classification only. The host never sends key material or anything derived from it. */
+export interface ListeningInfo {
+  state: ListeningStateName
+  reason: string
+  since: string
+}
+
+/** True when only host state differs, so the window updates it without treating the snapshot as new core data. */
+export function shellChanged(next: Pick<Snapshot, "listening" | "theme" | "reduceMotion">, previous: Pick<Snapshot, "listening" | "theme" | "reduceMotion">): boolean {
+  return next.listening?.state !== previous.listening?.state || next.listening?.reason !== previous.listening?.reason || next.theme !== previous.theme || next.reduceMotion !== previous.reduceMotion
 }
 
 // Locale changes may reproject the same core sequence; neither dimension may move backwards.
@@ -139,6 +157,7 @@ export interface ViewSnapshot {
     context: { state: "VALID" | "SUSPECT"; downgradedEvents: number; revalidatedEvents: number }
     dataIntegrity: IntegrityStatus
     rpcPairing: { requests: number; paired: number; pairedOutOfOrder: number; unpaired: number; heldResponses: number }
+    session: { keyReady: boolean; handshakes: number; handshakeErrors: number; lastHandshakeFailed: boolean; framesObserved: number; consecutiveDecryptFailures: number; firstFrameAgeSeconds?: number; frameIdleSeconds?: number }
   }
   statistics: {
     damageDealt: number

@@ -1,0 +1,16 @@
+{
+  "combat": {
+    "teamDps": "팀 DPS"
+  },
+  "dashboard": {
+    "title": "전투 요약"
+  },
+  "settings": {
+    "releaseMemory": "유휴 시 메모리 해제",
+    "releaseMemoryHint": "일정 시간 사용하지 않으면 숨겨진 화면을 제거합니다."
+  },
+  "typography": {
+    "sample": "WWlogs는 《명조》의 전투 패킷을 수동으로 관찰합니다. 팀 DPS는 Phase 2에서 12.5% 상승했고, 기염의 Lv.90 스킬은 3.7에서 1,234 피해를 입혔습니다.",
+    "glyphs": "한글 가나다라 마바사 아자차카 타파하"
+  }
+}

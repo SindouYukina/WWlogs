@@ -1,4 +1,4 @@
-import { useMemo } from "react"
+import { useMemo, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { BuffStatusItem, Button, Chip, StackList } from "@/design"
 import { effectRow, type EffectRowModel } from "@/lib/combat-view"
@@ -16,7 +16,7 @@ interface EffectView {
 const keyOf = (item: EffectView) => item.effect.key
 
 /** Rows come from the same trust gate as production: a stale or suspect snapshot yields no countdown. */
-export function EffectsPanel({ controls }: { controls: FeedControls }) {
+export function EffectsPanel({ controls, status }: { controls: FeedControls; status?: ReactNode }) {
   const { t, i18n } = useTranslation(["showcase", "overlay"])
   const format = useFormatters()
   const { snapshot } = controls.output
@@ -36,7 +36,7 @@ export function EffectsPanel({ controls }: { controls: FeedControls }) {
     return names?.[i18n.language] ?? names?.en
   }
   return <div className="ww-effects">
-    <div className="ww-effects-head"><span>{t("overlay:effects")}</span><span className="ww-num">{items.length}</span></div>
+    <div className="ww-effects-head"><span>{t("overlay:effects")}</span><span className="ww-effects-head-end">{status}<span className="ww-num">{items.length}</span></span></div>
     {items.length === 0 && <div className="ww-combat-empty" style={{ background: "var(--ww-surface-overlay)", borderRadius: "var(--ww-radius-md)" }}>{t("overlay:noEffects")}</div>}
     <StackList items={items} keyOf={keyOf} rowHeight={38} gap={5} renderItem={({ effect, row }) => {
       // Correlated glossary terms are shown as a related term beside the raw ID, never as the effect's confirmed name.
@@ -48,12 +48,12 @@ export function EffectsPanel({ controls }: { controls: FeedControls }) {
   </div>
 }
 
-export function EffectsSection({ controls }: { controls: FeedControls }) {
+export function EffectsSection({ controls, status }: { controls: FeedControls; status?: ReactNode }) {
   const { t } = useTranslation("showcase")
   const { apply, paused, setPaused } = controls
   return <div className="sc-demo">
     <div className="sc-stage" data-backdrop="effects">
-      <div className="sc-stage-overlay" style={{ width: 300 }}><EffectsPanel controls={controls} /></div>
+      <div className="sc-stage-overlay" style={{ width: 300 }}><EffectsPanel controls={controls} status={status} /></div>
     </div>
     <aside className="sc-controls">
       <h3>{t("controls.effectEvents")}</h3>

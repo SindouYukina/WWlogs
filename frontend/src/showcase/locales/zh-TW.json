@@ -1,9 +1,15 @@
 {
   "shell": {
     "title": "WWlogs 動畫展示",
-    "subtitle": "v0.6.0 Phase 1・僅限開發版",
+    "subtitle": "v0.6.0 Phase 1.5・僅限開發版",
     "sections": "展示區域",
-    "section": { "combat": "戰鬥 Overlay", "effects": "效果 Overlay", "dashboard": "儀表板", "settings": "設定" },
+    "section": {
+      "combat": "戰鬥 Overlay",
+      "effects": "效果 Overlay",
+      "dashboard": "儀表板",
+      "settings": "設定",
+      "typography": "字體"
+    },
     "mock": "模擬資料",
     "locale": "語言",
     "speed": "動畫速度",
@@ -14,7 +20,27 @@
     "gold": "鎏金",
     "reduced": "減少動態",
     "showPerf": "顯示影格統計",
-    "hidePerf": "隱藏影格統計"
+    "hidePerf": "隱藏影格統計",
+    "devTools": "開發工具",
+    "theme": "主題",
+    "listening": "監聽狀態",
+    "themes": {
+      "electro": "導電",
+      "aero": "氣動",
+      "havoc": "湮滅",
+      "glacio": "冷凝"
+    },
+    "scenario": {
+      "active": "運作中",
+      "establishing": "建立中",
+      "waiting": "等待：無流量",
+      "traffic_without_key": "等待：需重新登入",
+      "stale": "資料中斷",
+      "recovering": "運作中：復原傳輸",
+      "error": "異常",
+      "closed": "遊戲已關閉",
+      "off": "未擷取"
+    }
   },
   "controls": {
     "dataEvents": "資料事件",
@@ -55,7 +81,13 @@
     "taken": "承受 {{value}}",
     "vehicleNote": "載具貢獻者",
     "unassignedNote": "歸屬未完成：{{value}} 點已確認傷害尚未分配給角色",
-    "state": { "combat": "戰鬥中", "ended": "戰鬥已結束", "waiting": "等待中", "stale": "資料中斷・非即時", "untrusted": "資料不可靠" },
+    "state": {
+      "combat": "戰鬥中",
+      "ended": "戰鬥已結束",
+      "waiting": "等待中",
+      "stale": "資料中斷・非即時",
+      "untrusted": "資料不可靠"
+    },
     "note": "版面依 ZMDLogs 傷害 Overlay，針對三人隊伍調整。Snapshot 目前沒有逐角色 DPS 欄位，這裡的角色 DPS 是由傷害與戰鬥時長換算的顯示值。"
   },
   "effects": {
@@ -86,9 +118,30 @@
   },
   "settings": {
     "title": "設定",
-    "groups": { "basic": "基礎設定", "overlays": "Overlay", "capture": "擷取", "about": "關於" },
-    "pages": { "general": "一般", "appearance": "動態", "combatOverlay": "戰鬥 Overlay", "effectsOverlay": "效果 Overlay", "capture": "網路擷取", "about": "WWlogs" },
-    "sections": { "startup": "啟動與資源占用", "appearance": "外觀與語言", "display": "顯示位置", "motion": "懸停與動畫", "window": "視窗", "look": "外觀", "capture": "網路擷取", "motionPolicy": "動態" },
+    "groups": {
+      "basic": "基礎設定",
+      "overlays": "Overlay",
+      "capture": "擷取",
+      "about": "關於"
+    },
+    "pages": {
+      "general": "一般",
+      "appearance": "外觀",
+      "combatOverlay": "戰鬥 Overlay",
+      "effectsOverlay": "效果 Overlay",
+      "capture": "網路擷取",
+      "about": "WWlogs"
+    },
+    "sections": {
+      "startup": "啟動與資源占用",
+      "appearance": "外觀與語言",
+      "display": "顯示位置",
+      "motion": "懸停與動畫",
+      "window": "視窗",
+      "look": "外觀",
+      "capture": "網路擷取",
+      "motionPolicy": "動態"
+    },
     "restoreDefaults": "還原預設",
     "startWithWindows": "開機自動啟動",
     "releaseMemory": "閒置時釋放記憶體",
@@ -139,5 +192,39 @@
     "animations": "執行中動畫",
     "frameCallbacks": "JS 影格回呼",
     "dom": "DOM 元素數"
+  },
+  "typography": {
+    "sample": "WWlogs 被動監聽《鳴潮》的戰鬥封包。隊伍 DPS 在 Phase 2 上升 12.5%；忌炎 Lv.90 的技能在 3.7 版造成 1,234 點傷害。",
+    "scheme": {
+      "inter-noto": "A・Inter + Noto Sans CJK（已打包）",
+      "sarasa": "B・Sarasa Gothic UI",
+      "misans": "C・MiSans",
+      "system": "基準・Segoe UI + 系統中文字型"
+    },
+    "schemeLabel": "窗格 {{pane}} 的字體",
+    "bundled": "已打包",
+    "candidate": "候選",
+    "size": "{{count}} 個檔案，共 {{value}} MB",
+    "ascent": "ascent",
+    "descent": "descent",
+    "faces": "字型檔案",
+    "systemNote": "使用 Windows 內建字型，僅作為對照基準；正式版不能依賴。",
+    "unavailable": "找不到字型檔。請以 -asset-root 指向含 fonts/ 的目錄來啟動 Showcase。",
+    "tuning": "調校（同時套用兩個窗格）",
+    "weight": "字重偏移：{{value}}",
+    "weightLabel": "字重偏移",
+    "tracking": "字距偏移：{{value}} em",
+    "trackingLabel": "字距偏移",
+    "leading": "行高偏移：{{value}}",
+    "leadingLabel": "行高偏移",
+    "numericFace": "數字",
+    "followScheme": "跟隨方案",
+    "resetTuning": "重設",
+    "wholePage": "套用到整個 Showcase",
+    "wholePageNote": "把單一方案與上方調校套用到所有頁面，可直接在儀表板與設定頁判斷。",
+    "renderedNote": "語言可在右上角切換。Sarasa 等靜態字型會貼齊最接近的字重。實際渲染字型名稱已透過 CDP 驗證，記錄在 Phase 1.5 執行紀錄。",
+    "loaded": "已載入字型：{{value}}",
+    "glyphs": "直骨角今令海画雪遍 戶閒黃",
+    "glyphsNote": "地區字形"
   }
 }

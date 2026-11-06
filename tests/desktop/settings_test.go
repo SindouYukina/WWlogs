@@ -7,6 +7,39 @@ import (
 	"testing"
 )
 
+func TestAppearanceDefaultsPersistenceAndValidation(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "user", "settings.json")
+	store := loadSettings(path, testLocaleCatalog())
+	if theme := effectiveTheme(store.current().Settings); theme != "electro" {
+		t.Fatalf("first run theme = %q", theme)
+	}
+	if _, err := store.setAppearance("not-a-theme", false); err == nil {
+		t.Fatal("unknown theme accepted")
+	}
+	if _, err := store.setAppearance("havoc", true); err != nil {
+		t.Fatal(err)
+	}
+	reloaded := loadSettings(path, testLocaleCatalog()).current().Settings
+	if reloaded.Theme != "havoc" || !reloaded.ReduceMotion {
+		t.Fatalf("appearance not persisted: %+v", reloaded)
+	}
+	// A stale settings form must not undo the appearance.
+	form := reloaded
+	form.Theme, form.ReduceMotion, form.ShowOverlayOnStartup = "", false, true
+	state, err := store.save(form)
+	if err != nil || state.Settings.Theme != "havoc" || !state.Settings.ReduceMotion || !state.Settings.ShowOverlayOnStartup {
+		t.Fatalf("form save: %+v %v", state, err)
+	}
+	// A theme written by a newer version loads as the default instead of invalidating every preference.
+	if err := os.WriteFile(path, []byte(`{"version":1,"locale":"en","theme":"from-the-future"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	future := loadSettings(path, testLocaleCatalog()).current()
+	if future.Warning != "" || effectiveTheme(future.Settings) != "electro" {
+		t.Fatalf("future theme: %+v", future)
+	}
+}
+
 func TestSettingsRoundTripAndValidation(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "user", "settings.json")
 	store := loadSettings(path, testLocaleCatalog())

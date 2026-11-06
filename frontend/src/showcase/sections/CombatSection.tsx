@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react"
+import { useCallback, useMemo, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { Button, CombatPanel, Icon, Segmented, Slider, type CombatState } from "@/design"
 import { combatRows, type CombatRowModel } from "@/lib/combat-view"
@@ -41,7 +41,7 @@ export function useCombatPanelProps(controls: FeedControls, numberMode: "tween" 
   }
 }
 
-export function CombatSection({ controls, numberMode, setNumberMode }: { controls: FeedControls; numberMode: "tween" | "roll"; setNumberMode: (mode: "tween" | "roll") => void }) {
+export function CombatSection({ controls, numberMode, setNumberMode, status }: { controls: FeedControls; numberMode: "tween" | "roll"; setNumberMode: (mode: "tween" | "roll") => void; status?: ReactNode }) {
   const { t, i18n } = useTranslation("showcase")
   const [alpha, setAlpha] = useState(0.74)
   const props = useCombatPanelProps(controls, numberMode, alpha)
@@ -53,7 +53,7 @@ export function CombatSection({ controls, numberMode, setNumberMode }: { control
   }
   return <div className="sc-demo">
     <div className="sc-stage" data-backdrop="combat">
-      <div className="sc-stage-overlay" style={{ width: 470 }}><CombatPanel {...props} /></div>
+      <div className="sc-stage-overlay" style={{ width: 470 }}><CombatPanel {...props} status={status} /></div>
     </div>
     <aside className="sc-controls">
       <h3>{t("controls.dataEvents")}</h3>

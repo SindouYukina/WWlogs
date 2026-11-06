@@ -19,6 +19,8 @@ export interface Settings {
   showOverlayOnStartup: boolean
   locale: string
   overlay?: { x: number; y: number; width: number; height: number }
+  theme?: string
+  reduceMotion?: boolean
 }
 
 export interface SettingsState {
@@ -38,5 +40,6 @@ export const host = {
   getSettings: () => call<SettingsState>("GetSettings"),
   saveSettings: (settings: Settings) => call<SettingsState>("SaveSettings", settings),
   setLocale: (locale: string) => call<SettingsState>("SetLocale", locale),
+  setAppearance: (theme: string, reduceMotion: boolean) => call<SettingsState>("SetAppearance", theme, reduceMotion),
   resetOverlayPosition: () => call<void>("ResetOverlayPosition"),
 }

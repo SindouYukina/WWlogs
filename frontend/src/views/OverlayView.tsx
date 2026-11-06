@@ -4,6 +4,8 @@ import { dataState, numberText, damageContributors, type Connection, type Effect
 import { effectRemaining, relevantEffect, snapshotStale } from "@/lib/effects"
 import { statusText } from "@/i18n"
 import { DPSMetric, IntegrityBadge, roleName, contributorName } from "./CombatDashboard"
+import { ListeningStatus } from "@/design"
+import { useListeningLabels } from "@/lib/useListeningLabels"
 import { StateBanner } from "./StateBanner"
 
 export function OverlayView({snapshot,connection}:{snapshot:Snapshot|null;connection:Connection}) {
@@ -22,6 +24,8 @@ export function OverlayView({snapshot,connection}:{snapshot:Snapshot|null;connec
   const scope=`${view?.captureSessionId}.${view?.statisticsIntervalId}`
   const duration=encounter?.elapsedSeconds
   const elapsed=duration!==undefined&&duration>=0?`${Math.floor(duration/60)}:${String(Math.floor(duration%60)).padStart(2,"0")}`:"—"
+  const describeListening=useListeningLabels()
+  const listening=snapshot?.listening?describeListening(snapshot.listening):null
   const effectName=(effect:Effect)=>effect.termName&&effect.termStatus==="VERIFIED"?effect.termName:t("unknownEffect",{id:effect.effectId??"—"})
   const target=(effect:Effect)=>{
     if(effect.holderName&&effect.holderNameStatus==="VERIFIED")return effect.holderName
@@ -30,6 +34,7 @@ export function OverlayView({snapshot,connection}:{snapshot:Snapshot|null;connec
   }
   return <div className="combat-overlay" data-field="overlay" data-locale={snapshot?.locale}>
     <div className="overlay-content">
+      {snapshot?.listening&&listening&&<div className="overlay-listening" data-field="listening" data-state={snapshot.listening.state}><ListeningStatus state={snapshot.listening.state} label={listening.label} detail={listening.detail} variant="compact"/></div>}
       <StateBanner connection={connection} state={dataState(snapshot)} snapshot={snapshot} stale={snapshotStale(snapshot,now)}/>
       <div className="overlay-encounter-title"><span>{t(view?.encounters.current?"currentEncounter":encounter?"lastEncounter":"encounter",{ns:"dashboard"})} · {statusText(view?.encounters.state)}</span><span data-field="encounter-elapsed">{t("duration",{ns:"common",time:elapsed})}</span></div>
       <DPSMetric label={c("encounterDps")} dps={encounter?.dps??view?.statistics.encounterDps} field="encounter-dps" prominent/>

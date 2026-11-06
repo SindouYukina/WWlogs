@@ -72,5 +72,33 @@
     "requested": "操作により停止",
     "replay_end": "リプレイ終了",
     "unknown": "不明"
+  },
+  "listening": {
+    "state": {
+      "off": "キャプチャ停止中",
+      "waiting": "ゲーム待機中",
+      "establishing": "確立中",
+      "active": "監視中",
+      "stale": "最近のデータなし",
+      "error": "キャプチャ異常",
+      "closed": "ゲーム終了"
+    },
+    "reason": {
+      "capture_off": "キャプチャを開始するとゲーム通信を監視します",
+      "capture_starting": "キャプチャを開始しています",
+      "capture_failed": "ネットワークキャプチャを実行できません",
+      "no_game_traffic": "ゲーム通信はまだありません",
+      "game_not_running": "ゲームは起動していません",
+      "handshake_in_progress": "ログインのハンドシェイクを読み取り中",
+      "traffic_without_key": "通信は見えますが、ログインを取得できませんでした。再度ログインしてください",
+      "awaiting_login": "ゲームが再起動しました。ログインを待っています",
+      "handshake_failed": "ログインのハンドシェイクを読み取れません",
+      "decrypt_failing": "ゲームデータを復号できません",
+      "transport_unrecoverable": "パケットの復旧に失敗しました",
+      "receiving": "ゲームデータを受信中",
+      "transport_recovering": "パケットロスから復旧中",
+      "no_recent_frames": "ゲームが待機中か、接続が一時停止しています",
+      "game_process_ended": "ゲームプロセスが終了しました"
+    }
   }
 }

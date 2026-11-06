@@ -5,6 +5,7 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
+	"path"
 	"strconv"
 	"strings"
 
@@ -15,6 +16,9 @@ import (
 
 // gameAssetRoute is the URL prefix the frontend uses for images addressed by static configuration ID.
 const gameAssetRoute = "/game-assets/"
+
+// previewFontRoute serves Development comparison fonts from the same explicitly supplied directory.
+const previewFontRoute = "/preview-fonts/"
 
 var gameAssetKinds = map[string]assets.Kind{
 	"character-avatar":   assets.CharacterAvatar,
@@ -28,6 +32,10 @@ var gameAssetKinds = map[string]assets.Kind{
 func withGameAssets(next http.Handler, source fs.FS) http.Handler {
 	resolver := assets.NewResolver(source)
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if name, isFont := strings.CutPrefix(request.URL.Path, previewFontRoute); isFont {
+			servePreviewFont(response, request, source, name)
+			return
+		}
 		if !strings.HasPrefix(request.URL.Path, gameAssetRoute) {
 			next.ServeHTTP(response, request)
 			return
@@ -54,6 +62,26 @@ func withGameAssets(next http.Handler, source fs.FS) http.Handler {
 		_, _ = io.Copy(response, file)
 	})
 }
+
+// servePreviewFont serves only font files and the font manifest below fonts/. fs.ValidPath rejects any path escape.
+func servePreviewFont(response http.ResponseWriter, request *http.Request, source fs.FS, name string) {
+	contentType, known := previewFontTypes[path.Ext(name)]
+	full := path.Join("fonts", name)
+	if !known || !fs.ValidPath(full) || !fs.ValidPath(name) {
+		http.NotFound(response, request)
+		return
+	}
+	file, err := source.Open(full)
+	if err != nil {
+		http.NotFound(response, request)
+		return
+	}
+	defer file.Close()
+	response.Header().Set("Content-Type", contentType)
+	_, _ = io.Copy(response, file)
+}
+
+var previewFontTypes = map[string]string{".json": "application/json", ".woff2": "font/woff2", ".ttf": "font/ttf", ".otf": "font/otf"}
 
 // openShowcaseOverlays creates real frameless transparent windows for the Motion Showcase, so transparency, dragging and
 // multi-window cost can be judged in WebView2. They run mock data only and have no path to the capture service.

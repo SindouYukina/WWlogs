@@ -53,6 +53,8 @@ type ViewHealth struct {
 	DataIntegrity IntegrityStatus `json:"dataIntegrity"`
 	// RPCPairing reports damage request/response pairing; unpaired responses are never counted.
 	RPCPairing ViewRPCPairing `json:"rpcPairing"`
+	// Session is evidence about the game protocol session; it holds no key material.
+	Session ViewSessionHealth `json:"session"`
 }
 
 // ViewCaptureHealth is the capture-layer subset the UI needs.
@@ -217,6 +219,7 @@ func (p *processor) viewSnapshot() ViewSnapshot {
 			},
 			Transport:     cloneTransportHealth(p.transportHealthSnapshot()),
 			Context:       cloneContextValidity(p.context.snapshot()),
+			Session:       p.sessionHealthSnapshot(),
 			DataIntegrity: statistics.Integrity.Status,
 			RPCPairing: ViewRPCPairing{
 				Requests: pairing.Requests, Paired: pairing.Paired, PairedOutOfOrder: pairing.PairedOutOfOrder,

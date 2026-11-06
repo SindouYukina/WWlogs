@@ -126,6 +126,7 @@ type processor struct {
 	rsa                       *staticRSA
 	session                   []byte
 	sessionGeneration         uint64
+	sessionHealth             sessionHealthState
 	pending                   map[uint64]pendingDamageRequest
 	pendingOrder              []pendingRef
 	pendingHead               int
@@ -410,6 +411,7 @@ func (p *processor) handleFrame(frame gameFrame) {
 	p.currentFrameTime = frame.timestamp
 	p.observePairingClock(frame.timestamp)
 	p.observeEncounterClock(frame.timestamp)
+	p.sessionHealth.observeFrame(frame.timestamp)
 	var censusEntry *commandCensusEntry
 	if p.census != nil {
 		censusEntry = p.census.observeFrame(frame, p.sessionNumber)
@@ -418,12 +420,15 @@ func (p *processor) handleFrame(frame gameFrame) {
 		p.stats.handshakeFrames++
 		if err := p.handleProtoKeyResponse(frame.body); err != nil {
 			p.stats.handshakeErrors++
+			p.sessionHealth.lastHandshakeFailed = true
 			if censusEntry != nil {
 				censusEntry.FailureReasons["ProtoKeyResponse decode failed"]++
 			}
 			return
 		}
 		p.stats.handshakeOK++
+		p.sessionHealth.lastHandshakeFailed = false
+		p.sessionHealth.consecutiveDecryptFailures = 0
 		if censusEntry != nil {
 			censusEntry.DecodedFrames++
 		}
@@ -469,11 +474,13 @@ func (p *processor) handleFrame(frame gameFrame) {
 	plain, err := decryptGameBody(frame.sequence, frame.body, p.session)
 	if err != nil {
 		p.stats.decryptErrors++
+		p.sessionHealth.consecutiveDecryptFailures++
 		if censusEntry != nil {
 			censusEntry.FailureReasons["decrypt failed"]++
 		}
 		return
 	}
+	p.sessionHealth.consecutiveDecryptFailures = 0
 	if censusEntry != nil {
 		censusEntry.DecryptedFrames++
 	}

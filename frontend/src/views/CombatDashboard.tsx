@@ -53,7 +53,7 @@ export function CombatDashboard({view,stopped,diagnostics=false}:{view:ViewSnaps
       </CardContent>
     </Card>
     <div className="grid gap-4 sm:grid-cols-2">
-      <Card><CardContent className="pt-6"><div className="eyebrow">{t("confirmedDamage")} · {t("interval")}</div><div className="total-value text-emerald-300" data-field="damage-dealt">{num(view?.statistics.damageDealt)}</div><div className="metric-note">{t("events",{count:view?.statistics.outgoingEvents??0})}</div></CardContent></Card>
+      <Card><CardContent className="pt-6"><div className="eyebrow">{t("confirmedDamage")} · {t("interval")}</div><div className="total-value" style={{color:"var(--ww-hero-number)"}} data-field="damage-dealt">{num(view?.statistics.damageDealt)}</div><div className="metric-note">{t("events",{count:view?.statistics.outgoingEvents??0})}</div></CardContent></Card>
       <Card><CardContent className="pt-6"><div className="eyebrow">{t("damageTaken")} · {t("interval")}</div><div className="total-value" data-field="damage-taken">{num(view?.statistics.damageTaken)}</div><div className="metric-note">{t("events",{count:view?.statistics.incomingEvents??0})}</div></CardContent></Card>
     </div>
     <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.65fr)_minmax(270px,1fr)]">

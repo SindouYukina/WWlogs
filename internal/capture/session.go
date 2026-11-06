@@ -241,6 +241,9 @@ loop:
 			case readErr == pcap.NextErrorTimeoutExpired:
 				failingSince = time.Time{}
 				p.sampleCaptureStats(handle, time.Now(), false)
+				if live {
+					p.sessionHealth.observeClock(time.Now())
+				}
 				maybePublish(time.Now())
 				continue
 			case !live && readErr == io.EOF:
@@ -283,6 +286,9 @@ loop:
 		consumeDatagram(udp.Payload, direction, capturedAt, streams, p, &stats)
 		if live {
 			p.observePacketTiming(capturedAt, receivedAt, time.Now())
+			p.sessionHealth.observeClock(time.Now())
+		} else {
+			p.sessionHealth.observeClock(capturedAt)
 		}
 		maybePublish(time.Now())
 	}

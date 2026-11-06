@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { MockFeed, type MockOutput } from "./mock-feed.ts"
+import { MockFeed, type ListeningScenario, type MockOutput } from "./mock-feed.ts"
 
 export interface FeedControls {
   output: MockOutput
@@ -13,6 +13,8 @@ export interface FeedControls {
   apply: (change: (feed: MockFeed) => void) => void
   /** Wall clock used by freshness checks. Updated at 1 Hz, as in production views. */
   now: number
+  listeningScenario: ListeningScenario
+  setListeningScenario: (scenario: ListeningScenario) => void
 }
 
 export function useMockFeed(initialPublishMs = 250): FeedControls {
@@ -21,6 +23,7 @@ export function useMockFeed(initialPublishMs = 250): FeedControls {
   const [publishMs, setPublishMs] = useState(initialPublishMs)
   const [paused, setPaused] = useState(false)
   const [now, setNow] = useState(() => Date.now())
+  const [listeningScenario, setScenario] = useState<ListeningScenario>("active")
   const last = useRef(performance.now())
   useEffect(() => {
     if (paused) return
@@ -46,5 +49,10 @@ export function useMockFeed(initialPublishMs = 250): FeedControls {
     setOutput(feed.publish(0))
     setNow(Date.now())
   }, [feed])
-  return { output, feed, publishMs, setPublishMs, paused, setPaused, apply, now }
+  const setListeningScenario = useCallback((scenario: ListeningScenario) => {
+    feed.listeningScenario = scenario
+    setScenario(scenario)
+    setOutput(feed.publish(0))
+  }, [feed])
+  return { output, feed, publishMs, setPublishMs, paused, setPaused, apply, now, listeningScenario, setListeningScenario }
 }

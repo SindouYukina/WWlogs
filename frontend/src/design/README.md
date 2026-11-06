@@ -4,8 +4,12 @@ One design system serves the Desktop window, the Combat Overlay and the Effects 
 
 | Path | Responsibility |
 | --- | --- |
-| `tokens.css` | The only place for raw colors, type scales, spacing, radii, surfaces, shadows and alpha steps. |
-| `motion/tokens.ts` | The only place for durations, curves and spring parameters. They are installed as `--ww-*` CSS variables at startup. |
+| `tokens.css` | Every token, derived from a small set of theme inputs: colors, type scales, spacing, radii, surfaces, shadows and alpha steps. |
+| `themes.css` | The theme inputs for the four official themes. Status and character series colors are never overridden here. |
+| `themes/` | The theme ID registry and pre-processed character art. |
+| `typography.css`, `fonts/` | Bundled WOFF2 fonts, language stacks, and the Display, UI and Data text roles. |
+| `motion/tokens.ts` | The only place for durations, curves, spring parameters and per-theme motion flavors. They are installed as `--ww-*` CSS variables. |
+| `appearance.ts` | Applies the persisted theme and motion preference to a window. |
 | `motion/spring.ts` | Pure motion math: spring-to-`linear()` conversion, the counter follower, update planning and list presence. |
 | `motion/ticker.ts` | The single JavaScript animation clock, used by text counters only. |
 | `components.css` | Component styles. Values come from tokens. |
@@ -24,6 +28,18 @@ One design system serves the Desktop window, the Combat Overlay and the Effects 
 - Respect `prefers-reduced-motion`; `installMotionTokens` zeroes every motion token for it.
 - Development and Public builds share these components. Do not add profile-specific variants.
 
+## Themes
+
+A theme is a set of tokens, not a set of components: palette, surfaces, ornament, corner scale, chart grid, ambient background and motion flavor. Add a theme by adding its inputs to `themes.css`, its ID to `themes/registry.ts` and `validTheme` in `internal/desktop/settings.go`, its art under `themes/art/`, its motion flavor, and its names to every locale's `settings.json`. Art is pre-processed outside the product (blur, masking, desaturation), so the page paints one static image. Character series colors follow the character in every theme, and data and rank springs are not themed.
+
+## Typography
+
+Use the roles `.ww-type-display`, `.ww-type-ui`, `.ww-type-small` and `.ww-type-data` (or `.ww-num`). Fonts come from the executable; the system is used only for glyphs outside the bundled subset, through the language's own system font so regional forms stay correct. `-webkit-font-smoothing` has no effect on Windows and must not be added. Avoid text filters and scale transforms on text. Licenses for bundled fonts are in `fonts/LICENSES/` and must accompany any release.
+
+## Listening status
+
+`ListeningStatus` is the single status display. Its input is `Snapshot.listening` from `internal/service/listening.go`, a classification that contains no key material. Status colors are independent of themes, and the component plays one settle animation per state change and never loops.
+
 ## Motion Showcase (Development only)
 
 The Showcase lives in `../showcase/`. It uses mock data shaped like the engine Snapshot and the production adapter and trust-gating code. Public frontend builds define `__WWLOGS_SHOWCASE__` as false, so they contain neither its entry point nor its chunk, and `scripts/frontend.ps1` fails a Public build that does.
@@ -35,4 +51,4 @@ pwsh -NoProfile -File scripts/build.ps1 -Profile Development -Target Desktop
 work/dist/WWlogs-Desktop-dev.exe -showcase -asset-root <directory>
 ```
 
-Add `-showcase-overlays` to also open its real transparent Overlay windows. For fast iteration without the Go host, run `npm run dev` in `frontend/`, set `WWLOGS_ASSET_ROOT` to the same directory, and open `http://localhost:9245/?view=showcase`.
+The same directory may contain `fonts/` with the typeface comparison candidates; without them, only the bundled scheme and the system baseline can be compared. Add `-showcase-overlays` to also open its real transparent Overlay windows. For fast iteration without the Go host, run `npm run dev` in `frontend/`, set `WWLOGS_ASSET_ROOT` to the same directory, and open `http://localhost:9245/?view=showcase`.

@@ -1,0 +1,16 @@
+{
+  "combat": {
+    "teamDps": "チーム DPS"
+  },
+  "dashboard": {
+    "title": "戦闘サマリー"
+  },
+  "settings": {
+    "releaseMemory": "アイドル時にメモリを解放",
+    "releaseMemoryHint": "しばらく操作がないとき、非表示の画面を破棄します。"
+  },
+  "typography": {
+    "sample": "WWlogs は『鳴潮』の戦闘パケットを受動的に監視します。チーム DPS は Phase 2 で 12.5% 上昇し、忌炎の Lv.90 スキルは 3.7 で 1,234 ダメージを与えました。",
+    "glyphs": "直骨角今令海画雪遍 戶閒黃"
+  }
+}

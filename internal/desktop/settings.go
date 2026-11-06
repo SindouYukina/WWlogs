@@ -19,6 +19,29 @@ type Settings struct {
 	ShowOverlayOnStartup bool           `json:"showOverlayOnStartup"`
 	Locale               string         `json:"locale"`
 	Overlay              *OverlayBounds `json:"overlay,omitempty"`
+	// Theme is one of the official theme IDs; empty means the default theme.
+	Theme        string `json:"theme,omitempty"`
+	ReduceMotion bool   `json:"reduceMotion,omitempty"`
+}
+
+// defaultTheme is the brand theme used until the user chooses another.
+const defaultTheme = "electro"
+
+// validTheme lists stable, language-independent theme IDs. Frontend tokens use the same IDs.
+func validTheme(theme string) bool {
+	switch theme {
+	case "electro", "aero", "havoc", "glacio":
+		return true
+	}
+	return false
+}
+
+// effectiveTheme maps stored preferences to the theme to display. An unknown value from a newer version is not an error.
+func effectiveTheme(settings Settings) string {
+	if validTheme(settings.Theme) {
+		return settings.Theme
+	}
+	return defaultTheme
 }
 
 type OverlayBounds struct {
@@ -95,6 +118,9 @@ func loadSettings(path string, catalog localeCatalog) *settingsStore {
 		store.state.Warning = "settings_invalid"
 		return store
 	}
+	if value.Theme != "" && !validTheme(value.Theme) {
+		value.Theme = ""
+	}
 	if !catalog.valid(value.Locale) {
 		value.Locale = catalog.FallbackLocale
 	}
@@ -127,9 +153,23 @@ func (s *settingsStore) save(value Settings) (SettingsState, error) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	// Locale and geometry have dedicated updates; a stale Settings form must not overwrite either.
+	// Locale, geometry and appearance have dedicated updates; a stale Settings form must not overwrite them.
 	value.Locale = s.state.Settings.Locale
 	value.Overlay = s.state.Settings.Overlay
+	value.Theme = s.state.Settings.Theme
+	value.ReduceMotion = s.state.Settings.ReduceMotion
+	return s.writeLocked(value)
+}
+
+// setAppearance persists the theme and motion preference. Every window picks them up from its next snapshot.
+func (s *settingsStore) setAppearance(theme string, reduceMotion bool) (SettingsState, error) {
+	if !validTheme(theme) {
+		return SettingsState{}, errors.New("unsupported_theme")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	value := s.state.Settings
+	value.Theme, value.ReduceMotion = theme, reduceMotion
 	return s.writeLocked(value)
 }
 

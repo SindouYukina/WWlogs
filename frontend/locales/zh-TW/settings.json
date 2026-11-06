@@ -17,5 +17,28 @@
   "invalid": "設定無法安全載入，已使用預設值。",
   "saveFailed": "偏好儲存失敗，原設定已保留。",
   "resetOverlay": "重設 Overlay 位置",
-  "geometryHint": "拖曳 Overlay 標題列，從邊緣調整大小；位置與尺寸會自動儲存。"
+  "geometryHint": "拖曳 Overlay 標題列，從邊緣調整大小；位置與尺寸會自動儲存。",
+  "appearance": "外觀",
+  "theme": "主題",
+  "themeHint": "立即套用到所有視窗，下次啟動時保留。",
+  "reduceMotion": "減少動態",
+  "reduceMotionHint": "關閉過渡動畫。也會遵守 Windows 的動畫設定。",
+  "themes": {
+    "electro": {
+      "name": "導電",
+      "character": "鎖暝"
+    },
+    "aero": {
+      "name": "氣動",
+      "character": "卡提希婭"
+    },
+    "havoc": {
+      "name": "湮滅",
+      "character": "千咲"
+    },
+    "glacio": {
+      "name": "冷凝",
+      "character": "珂萊塔"
+    }
+  }
 }

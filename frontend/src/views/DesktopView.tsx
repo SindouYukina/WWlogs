@@ -8,6 +8,8 @@ import { useOverlay } from "@/lib/useOverlay"
 import { dataState, type Connection, type Snapshot } from "@/lib/snapshot"
 import { snapshotStale } from "@/lib/effects"
 import { manifest, statusText } from "@/i18n"
+import { ListeningStatus, ThemeBackdrop, ThemePicker, Toggle, resolveTheme, type ThemeId } from "@/design"
+import { useListeningLabels, useThemeDescriptions } from "@/lib/useListeningLabels"
 import { CombatDashboard } from "./CombatDashboard"
 import { StateBanner } from "./StateBanner"
 
@@ -44,6 +46,11 @@ export function DesktopView({snapshot,connection,changeLocale}:{snapshot:Snapsho
   const saveLock=useRef(false)
   const languageLock=useRef(false)
   const overlay=useOverlay()
+  const describeListening=useListeningLabels()
+  const describeTheme=useThemeDescriptions()
+  const theme=resolveTheme(snapshot?.theme)
+  const listening=snapshot?.listening?describeListening(snapshot.listening):null
+  const appearance=(nextTheme:ThemeId,reduceMotion:boolean)=>{setSettingsError(false);host.setAppearance(nextTheme,reduceMotion).catch(()=>setSettingsError(true))}
   const service=snapshot?.service
   const busy=service?.state==="starting"||service?.state==="running"||service?.state==="stopping"
   const connected=connection==="connected"
@@ -90,10 +97,11 @@ export function DesktopView({snapshot,connection,changeLocale}:{snapshot:Snapsho
     try{await changeLocale(locale)}catch{setSettingsError(true)}finally{languageLock.current=false;setLanguagePending(false)}
   }
 
-  return <div className="desktop-shell">
+  return <div className={page==="dashboard"?"desktop-shell ww-has-backdrop":"desktop-shell"}>
+    <ThemeBackdrop theme={theme} intensity={page==="dashboard"?"art":"ambient"}/>
     <header className="app-header">
       <div className="flex items-center gap-3"><div className="app-mark" aria-hidden="true">W</div><div><h1 className="text-lg font-semibold tracking-tight">WWlogs</h1><div className="text-xs text-muted-foreground">{c("appSubtitle")}</div></div></div>
-      <div className="flex flex-wrap items-center justify-end gap-3"><span className="text-xs text-muted-foreground" data-field="app">{service?`${service.app.version} · ${service.app.profile}`:c("connecting")}</span><StateBanner connection={connection} state={dataState(snapshot)} snapshot={snapshot} stale={snapshotStale(snapshot,now)}/></div>
+      <div className="flex flex-wrap items-center justify-end gap-3">{snapshot?.listening&&listening&&<span data-field="listening" data-state={snapshot.listening.state} data-reason={snapshot.listening.reason}><ListeningStatus state={snapshot.listening.state} label={listening.label} detail={listening.detail}/></span>}<span className="text-xs text-muted-foreground" data-field="app">{service?`${service.app.version} · ${service.app.profile}`:c("connecting")}</span><StateBanner connection={connection} state={dataState(snapshot)} snapshot={snapshot} stale={snapshotStale(snapshot,now)}/></div>
     </header>
     <div className="workspace">
       <nav className="page-nav" aria-label={c("dashboard")}>
@@ -107,7 +115,7 @@ export function DesktopView({snapshot,connection,changeLocale}:{snapshot:Snapsho
         <div className="flex flex-wrap items-end gap-3">
           <div className="min-w-56 flex-1"><label className="eyebrow mb-2 block" htmlFor="capture-adapter">{t("network")}</label><AdapterSelect id="capture-adapter" adapters={adapters} value={selected} onChange={setSelected} disabled={busy||action!==null||loading||refreshing}/></div>
           <Button variant="outline" disabled={!connected||refreshing||loading||busy||action!==null} onClick={()=>void refresh()}>{t(refreshing?"refreshing":"refresh")}</Button>
-          <Button className="bg-emerald-400 text-emerald-950 hover:bg-emerald-300" disabled={!connected||loading||busy||action!==null||!selectedAvailable} onClick={()=>void captureAction("start")}>{action==="start"||service?.state==="starting"?statusText("starting"):t("start")}</Button>
+          <Button className="bg-primary text-primary-foreground hover:opacity-90" disabled={!connected||loading||busy||action!==null||!selectedAvailable} onClick={()=>void captureAction("start")}>{action==="start"||service?.state==="starting"?statusText("starting"):t("start")}</Button>
           <Button variant="secondary" disabled={!connected||service?.state!=="running"||action!==null} onClick={()=>void captureAction("stop")}>{action==="stop"||service?.state==="stopping"?statusText("stopping"):t("stop")}</Button>
           <Button variant="outline" disabled={!connected||overlay.pending||overlay.visible===null} onClick={()=>void overlay.toggle()}>{t(overlay.visible?"hideOverlay":"showOverlay")}</Button>
         </div>
@@ -119,12 +127,16 @@ export function DesktopView({snapshot,connection,changeLocale}:{snapshot:Snapsho
       </CardContent></Card></section>
       <main>{page==="dashboard"?<CombatDashboard diagnostics={service?.app.profile==="development"} view={snapshot?.view??null} stopped={service?.state==="stopped"||service?.state==="error"}/>:<div className="mx-auto max-w-3xl space-y-5">
         <div><h2 className="text-xl font-semibold">{s("title")}</h2><p className="mt-1 text-sm text-muted-foreground">{s("description")}</p></div>
+        <Card><CardHeader><CardTitle>{s("appearance")}</CardTitle></CardHeader><CardContent className="space-y-4">
+          <div data-field="theme" data-theme={theme}><ThemePicker label={s("theme")} value={theme} describe={describeTheme} onChange={next=>appearance(next,snapshot?.reduceMotion===true)}/><p className="mt-2 text-xs text-muted-foreground">{s("themeHint")}</p></div>
+          <div className="flex items-center justify-between gap-4 border-t pt-4"><div><div className="text-sm font-medium">{s("reduceMotion")}</div><p className="mt-1 text-xs text-muted-foreground">{s("reduceMotionHint")}</p></div><Toggle label={s("reduceMotion")} checked={snapshot?.reduceMotion===true} onChange={value=>appearance(theme,value)}/></div>
+        </CardContent></Card>
         <Card><CardHeader><CardTitle>{s("language")}</CardTitle></CardHeader><CardContent>
           <label className="sr-only" htmlFor="locale">{s("language")}</label><select id="locale" className="adapter-select" data-field="locale" disabled={!connected||languagePending} value={snapshot?.locale??manifest.fallbackLocale} onChange={event=>void language(event.target.value)}>{manifest.supportedLocales.map(locale=><option key={locale} value={locale}>{manifest.languages[locale as keyof typeof manifest.languages].label}</option>)}</select><p className="mt-2 text-xs text-muted-foreground">{s("languageHint")}</p>
         </CardContent></Card>
         <Card><CardHeader><CardTitle>{s("startup")}</CardTitle></CardHeader><CardContent className="space-y-6">
           <div><label className="mb-2 block text-sm font-medium" htmlFor="default-adapter">{s("defaultAdapter")}</label><AdapterSelect id="default-adapter" adapters={adapters} value={settings.defaultAdapterIPv4} onChange={value=>{setSettings({...settings,defaultAdapterIPv4:value});setSaveMessage(false)}} disabled={loading||saving||saved===null} allowEmpty/><p className="mt-2 text-xs text-muted-foreground">{s("adapterHint")}</p></div>
-          <label className="flex items-start gap-3 text-sm"><input type="checkbox" className="mt-1 size-4 accent-emerald-400" checked={settings.showOverlayOnStartup} disabled={loading||saving||saved===null} onChange={event=>{setSettings({...settings,showOverlayOnStartup:event.target.checked});setSaveMessage(false)}}/><span>{s("showOnStartup")}<span className="mt-1 block text-xs text-muted-foreground">{s("visibilityHint")}</span></span></label>
+          <label className="flex items-start gap-3 text-sm"><input type="checkbox" className="mt-1 size-4 accent-primary" checked={settings.showOverlayOnStartup} disabled={loading||saving||saved===null} onChange={event=>{setSettings({...settings,showOverlayOnStartup:event.target.checked});setSaveMessage(false)}}/><span>{s("showOnStartup")}<span className="mt-1 block text-xs text-muted-foreground">{s("visibilityHint")}</span></span></label>
           <div><Button variant="outline" disabled={!connected} onClick={()=>void host.resetOverlayPosition().catch(()=>setSettingsError(true))}>{s("resetOverlay")}</Button><p className="mt-2 text-xs text-muted-foreground">{s("geometryHint")}</p></div>
           <div className="flex items-center gap-3 border-t pt-5"><Button disabled={!connected||saving||loading||saved===null||(!dirty&&!warning)} onClick={()=>void save()}>{s(saving?"saving":"save")}</Button>{dirty&&<Badge variant="outline">{s("unsaved")}</Badge>}</div>
           {saveMessage&&<p role="status" className="text-sm text-emerald-300">{s("saved")}</p>}{settingsError&&<p role="alert" className="text-sm text-destructive">{s("saveFailed")}</p>}

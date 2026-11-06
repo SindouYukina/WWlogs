@@ -59,6 +59,8 @@ func viewTotals(v ViewSnapshot) intervalTotals {
 func comparableView(v ViewSnapshot) ViewSnapshot {
 	v.CaptureSessionID = 0
 	v.Health.Capture = ViewCaptureHealth{}
+	// Frame ages depend on the clock of the capture loop, not on decoding. Every other session field is still compared.
+	v.Health.Session.FirstFrameAgeSeconds, v.Health.Session.FrameIdleSeconds = nil, nil
 	fix := func(e *ViewEncounter) {
 		if _, rest, ok := strings.Cut(e.EncounterID, "-"); ok {
 			e.EncounterID = rest

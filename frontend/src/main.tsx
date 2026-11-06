@@ -3,8 +3,12 @@ import { createRoot } from "react-dom/client"
 import "./index.css"
 import "./i18n"
 import { useSnapshot } from "@/lib/useSnapshot"
+import { applyAppearance } from "@/design/appearance"
 import { DesktopView } from "@/views/DesktopView"
 import { OverlayView } from "@/views/OverlayView"
+
+// The default theme applies before the first paint; the first snapshot then carries the saved one.
+applyAppearance(undefined, false)
 
 // Both windows load this page; the Go host opens the Desktop window at ?view=desktop and the Overlay at ?view=overlay.
 const parameters = new URLSearchParams(window.location.search)

@@ -16,12 +16,26 @@ const folders = {
   skill: ["skills", "icon.webp"],
 }
 
+const fontTypes = { ".json": "application/json", ".woff2": "font/woff2", ".ttf": "font/ttf", ".otf": "font/otf" }
+
 export function previewGameAssets() {
   return {
     name: "preview-game-assets",
     apply: "serve",
     configureServer(server) {
       const root = process.env.WWLOGS_ASSET_ROOT
+      server.middlewares.use("/preview-fonts", (request, response) => {
+        const name = (request.url ?? "").split("?")[0]
+        const match = /^\/([a-z-]+\/)?[a-zA-Z0-9._-]+\.(json|woff2|ttf|otf)$/.exec(name)
+        const file = root && match ? join(root, "fonts", name) : ""
+        if (!file || !existsSync(file)) {
+          response.statusCode = 404
+          response.end()
+          return
+        }
+        response.setHeader("Content-Type", fontTypes[name.slice(name.lastIndexOf("."))])
+        createReadStream(file).pipe(response)
+      })
       server.middlewares.use("/game-assets", (request, response) => {
         const match = /^\/([a-z-]+)\/([0-9]+)$/.exec(request.url ?? "")
         const folder = match && folders[match[1]]
