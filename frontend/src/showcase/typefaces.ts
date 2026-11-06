@@ -1,5 +1,5 @@
 // Development-only typeface schemes for side-by-side comparison. Bundled fonts are already registered by typography.css;
-// the others load from the explicit -asset-root directory, so they never enter a build.
+// the others load from the explicit -font-root directory, so they never enter a build.
 export type SchemeId = "inter-noto" | "sarasa" | "misans" | "system"
 
 export const schemeIds: SchemeId[] = ["inter-noto", "sarasa", "misans", "system"]

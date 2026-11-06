@@ -51,4 +51,4 @@ pwsh -NoProfile -File scripts/build.ps1 -Profile Development -Target Desktop
 work/dist/WWlogs-Desktop-dev.exe -showcase -asset-root <directory>
 ```
 
-The same directory may contain `fonts/` with the typeface comparison candidates; without them, only the bundled scheme and the system baseline can be compared. Add `-showcase-overlays` to also open its real transparent Overlay windows. For fast iteration without the Go host, run `npm run dev` in `frontend/`, set `WWLOGS_ASSET_ROOT` to the same directory, and open `http://localhost:9245/?view=showcase`.
+Pass `-font-root <directory>` separately to load local typeface candidates. The root contains `manifest.json` and one directory per scheme; it must not be placed under `assets/`. Without it, only the bundled scheme and system baseline can be compared. Add `-showcase-overlays` to also open its real transparent Overlay windows. For fast iteration without the Go host, run `npm run dev` in `frontend/`, set `WWLOGS_ASSET_ROOT` for game images and `WWLOGS_FONT_ROOT` to `work/fonts/candidates`, and open `http://localhost:9245/?view=showcase`.

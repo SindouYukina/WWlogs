@@ -209,7 +209,7 @@
     "descent": "descent",
     "faces": "Font files",
     "systemNote": "Uses whatever Windows provides. Shown only as a baseline; a release cannot depend on it.",
-    "unavailable": "Font files were not found. Start the Showcase with -asset-root pointing at the directory that holds fonts/.",
+    "unavailable": "Font files were not found. Start the Showcase with -font-root pointing at the directory that holds the candidate manifest and font folders.",
     "tuning": "Tuning (applies to both panes)",
     "weight": "Weight offset: {{value}}",
     "weightLabel": "Weight offset",

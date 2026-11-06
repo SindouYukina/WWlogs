@@ -209,7 +209,7 @@
     "descent": "descent",
     "faces": "字型檔案",
     "systemNote": "使用 Windows 內建字型，僅作為對照基準；正式版不能依賴。",
-    "unavailable": "找不到字型檔。請以 -asset-root 指向含 fonts/ 的目錄來啟動 Showcase。",
+    "unavailable": "找不到字型檔。請以 -font-root 指向含有候選字型清單與字型資料夾的目錄來啟動 Showcase。",
     "tuning": "調校（同時套用兩個窗格）",
     "weight": "字重偏移：{{value}}",
     "weightLabel": "字重偏移",

@@ -1,4 +1,7 @@
 # Private local files
+# Development-only font candidates and proprietary font sources stay local.
+/work/fonts/src/misans/
+/work/fonts/candidates/
 /AGENTS.md
 /HANDOFF.md
 /assets/

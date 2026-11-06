@@ -33,6 +33,7 @@ func parseOptions(arguments []string, output io.Writer) (Options, error) {
 	showcaseOverlays := flags.Bool("showcase-overlays", false, "Development: with -showcase, also open its transparent Overlay windows")
 	webviewArgs := flags.String("webview-args", "", "Development: extra WebView2 browser arguments for rendering experiments, separated by spaces")
 	assetRoot := flags.String("asset-root", "", "Development: directory that contains game/ images for the Showcase; nothing is served without it")
+	fontRoot := flags.String("font-root", "", "Development: directory that contains local Showcase font candidates; nothing is served without it")
 	if err := flags.Parse(arguments); err != nil {
 		return Options{}, err
 	}
@@ -44,6 +45,9 @@ func parseOptions(arguments []string, output io.Writer) (Options, error) {
 	}
 	if *showcaseOverlays && !*showcase {
 		return Options{}, errors.New("-showcase-overlays requires -showcase")
+	}
+	if *fontRoot != "" && !*showcase {
+		return Options{}, errors.New("-font-root requires -showcase")
 	}
 	if *publishInterval < capture.MinPublishInterval {
 		*publishInterval = capture.MinPublishInterval
@@ -61,6 +65,7 @@ func parseOptions(arguments []string, output io.Writer) (Options, error) {
 		Showcase:         *showcase,
 		ShowcaseOverlays: *showcaseOverlays,
 		GameAssetRoot:    *assetRoot,
+		PreviewFontRoot:  *fontRoot,
 		WebviewArguments: strings.Fields(*webviewArgs),
 	}, nil
 }

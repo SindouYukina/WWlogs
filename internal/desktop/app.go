@@ -43,6 +43,8 @@ type Options struct {
 	ShowcaseOverlays bool
 	// GameAssetRoot is an explicitly supplied directory for game images. Empty means no images are served.
 	GameAssetRoot string
+	// PreviewFontRoot is an explicitly supplied directory for Development Showcase font candidates.
+	PreviewFontRoot string
 	// WebviewArguments are extra browser arguments for rendering experiments; only Development flags can set them.
 	WebviewArguments []string
 }
@@ -79,6 +81,9 @@ func Run(options Options) error {
 	var assetHandler http.Handler = application.AssetFileServerFS(frontend)
 	if options.GameAssetRoot != "" {
 		assetHandler = withGameAssets(assetHandler, os.DirFS(options.GameAssetRoot))
+	}
+	if options.PreviewFontRoot != "" {
+		assetHandler = withPreviewFonts(assetHandler, os.DirFS(options.PreviewFontRoot))
 	}
 	catalog, err := readLocaleCatalog(frontend)
 	if err != nil {

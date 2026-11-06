@@ -7,8 +7,8 @@ export function showcaseEnabled(command) {
   return command === "serve" || process.env.WWLOGS_FRONTEND_PROFILE === "development"
 }
 
-// Mirrors internal/assets paths. The dev server has no Go host, so images come from a directory named explicitly by
-// WWLOGS_ASSET_ROOT; without it every image request is a 404 and components show their fallbacks.
+// The dev server has no Go host, so game images and preview fonts come from separate roots named explicitly by their
+// environment variables. Missing roots return 404 and components show their fallbacks.
 const folders = {
   "character-avatar": ["characters", "avatar.webp"],
   "character-portrait": ["characters", "portrait.webp"],
@@ -23,11 +23,11 @@ export function previewGameAssets() {
     name: "preview-game-assets",
     apply: "serve",
     configureServer(server) {
-      const root = process.env.WWLOGS_ASSET_ROOT
+      const root = process.env.WWLOGS_FONT_ROOT
       server.middlewares.use("/preview-fonts", (request, response) => {
         const name = (request.url ?? "").split("?")[0]
         const match = /^\/([a-z-]+\/)?[a-zA-Z0-9._-]+\.(json|woff2|ttf|otf)$/.exec(name)
-        const file = root && match ? join(root, "fonts", name) : ""
+        const file = root && match ? join(root, name.slice(1)) : ""
         if (!file || !existsSync(file)) {
           response.statusCode = 404
           response.end()
@@ -37,6 +37,7 @@ export function previewGameAssets() {
         createReadStream(file).pipe(response)
       })
       server.middlewares.use("/game-assets", (request, response) => {
+        const root = process.env.WWLOGS_ASSET_ROOT
         const match = /^\/([a-z-]+)\/([0-9]+)$/.exec(request.url ?? "")
         const folder = match && folders[match[1]]
         const file = root && folder ? join(root, "game", folder[0], match[2], folder[1]) : ""
