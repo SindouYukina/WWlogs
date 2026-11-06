@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { MockFeed, type ListeningScenario, type MockOutput } from "./mock-feed.ts"
+import { useTranslation } from "react-i18next"
+import type { CombatData } from "@/lib/combat-data"
+import { MockFeed, historySlots, type ListeningScenario, type MockOutput } from "./mock-feed.ts"
 
 export interface FeedControls {
+  /** The Mock provider's output, in the same contract the Live provider fills. */
+  data: CombatData
   output: MockOutput
   feed: MockFeed
   publishMs: number
@@ -18,7 +22,9 @@ export interface FeedControls {
 }
 
 export function useMockFeed(initialPublishMs = 250): FeedControls {
+  const { i18n } = useTranslation()
   const feed = useMemo(() => new MockFeed(), [])
+  feed.locale = i18n.language
   const [output, setOutput] = useState<MockOutput>(() => feed.publish(0.25))
   const [publishMs, setPublishMs] = useState(initialPublishMs)
   const [paused, setPaused] = useState(false)
@@ -26,10 +32,16 @@ export function useMockFeed(initialPublishMs = 250): FeedControls {
   const [listeningScenario, setScenario] = useState<ListeningScenario>("active")
   const last = useRef(performance.now())
   useEffect(() => {
+    // Names are resolved per locale, as the production display projection does.
+    const onLanguage = () => { setOutput(feed.publish(0)) }
+    i18n.on("languageChanged", onLanguage)
+    return () => i18n.off("languageChanged", onLanguage)
+  }, [feed, i18n])
+  useEffect(() => {
     if (paused) return
     last.current = performance.now()
     const timer = setInterval(() => {
-      // Hidden windows skip publishing, matching the policy proposed for production Overlay windows.
+      // Hidden windows skip publishing, matching the production windows.
       if (document.hidden) {
         last.current = performance.now()
         return
@@ -54,5 +66,14 @@ export function useMockFeed(initialPublishMs = 250): FeedControls {
     setScenario(scenario)
     setOutput(feed.publish(0))
   }, [feed])
-  return { output, feed, publishMs, setPublishMs, paused, setPaused, apply, now, listeningScenario, setListeningScenario }
+  const data = useMemo<CombatData>(() => ({
+    snapshot: output.snapshot,
+    connection: "connected",
+    now,
+    paused,
+    timeline: { slots: historySlots, series: output.history },
+    skillsOf: output.skillsOf,
+    tickMs: publishMs,
+  }), [output, now, paused, publishMs])
+  return { data, output, feed, publishMs, setPublishMs, paused, setPaused, apply, now, listeningScenario, setListeningScenario }
 }

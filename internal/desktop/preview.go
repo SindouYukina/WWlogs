@@ -93,27 +93,12 @@ var previewFontTypes = map[string]string{".json": "application/json", ".woff2": 
 // openShowcaseOverlays creates real frameless transparent windows for the Motion Showcase, so transparency, dragging and
 // multi-window cost can be judged in WebView2. They run mock data only and have no path to the capture service.
 func openShowcaseOverlays(app *application.App) {
-	for _, surface := range []struct {
-		name          string
-		width, height int
-		x, y          int
-	}{
-		{name: "combat", width: 486, height: 268, x: 60, y: 60},
-		{name: "effects", width: 320, height: 420, x: 60, y: 350},
-	} {
-		app.Window.NewWithOptions(application.WebviewWindowOptions{
-			Name:            "showcase-" + surface.name,
-			Title:           "WWlogs Showcase " + surface.name,
-			Width:           surface.width,
-			Height:          surface.height,
-			InitialPosition: application.WindowXY,
-			X:               surface.x,
-			Y:               surface.y,
-			URL:             "/?view=showcase&surface=" + surface.name,
-			Frameless:       true,
-			AlwaysOnTop:     true,
-			BackgroundType:  application.BackgroundTypeTransparent,
-			Windows:         application.WindowsWindow{HiddenOnTaskbar: true, DisableFramelessWindowDecorations: true},
-		})
+	for kind, spec := range overlaySpecs {
+		options := overlayWindowOptions(spec, "/?view=showcase&surface="+kind)
+		options.Name = "showcase-" + kind
+		options.Hidden = false
+		options.InitialPosition = application.WindowXY
+		options.X, options.Y = spec.offsetX, spec.offsetY
+		app.Window.NewWithOptions(options)
 	}
 }

@@ -1,7 +1,6 @@
 import { useMemo } from "react"
 import { useTranslation } from "react-i18next"
-import type { CombatRowModel } from "@/lib/combat-view"
-import { masterRoles } from "./master-fixture.ts"
+import type { CombatRowModel } from "./combat-view"
 
 export function useFormatters() {
   const { i18n } = useTranslation()
@@ -20,11 +19,7 @@ export function useFormatters() {
   }, [locale])
 }
 
-export function roleElement(roleId: number | undefined): number | undefined {
-  return masterRoles.find(role => role.roleId === roleId)?.elementId
-}
-
-const elementColor: Record<number, string> = {
+const elementColors: Record<number, string> = {
   1: "var(--ww-element-glacio)",
   2: "var(--ww-element-fusion)",
   3: "var(--ww-element-electro)",
@@ -33,18 +28,16 @@ const elementColor: Record<number, string> = {
   6: "var(--ww-element-havoc)",
 }
 
-export function roleColor(roleId: number | undefined): string {
-  return elementColor[roleElement(roleId) ?? -1] ?? "var(--ww-element-unknown)"
+/** A series color follows the character's Master element, never its rank. An unknown element stays neutral. */
+export function elementColor(elementId: number | undefined): string {
+  return elementColors[elementId ?? -1] ?? "var(--ww-element-unknown)"
 }
 
-/** Master names by locale. A missing name falls back to the same UNKNOWN form the production views use. */
-export function useRoleNames() {
-  const { t, i18n } = useTranslation(["common"])
-  const locale = i18n.language
-  return useMemo(() => (row: Pick<CombatRowModel, "kind" | "roleId">) => {
-    if (row.kind === "vehicle") return t("motorcycle", { ns: "common" })
-    const role = masterRoles.find(candidate => candidate.roleId === row.roleId)
-    const names = role?.names as Readonly<Record<string, string>> | undefined
-    return names?.[locale] ?? names?.en ?? t("unknownRole", { ns: "common", id: row.roleId })
-  }, [t, locale])
+/** The display name a row carries from the Master projection. A missing name shows UNKNOWN with the raw ID, never a guess. */
+export function useRowNames() {
+  const { t } = useTranslation("common")
+  return useMemo(() => (row: Pick<CombatRowModel, "kind" | "roleId" | "name">) => {
+    if (row.kind === "vehicle") return t("motorcycle")
+    return row.name ?? t("unknownRole", { id: row.roleId })
+  }, [t])
 }

@@ -1,26 +1,15 @@
 {
   "title": "设置",
-  "description": "此 Windows 用户的偏好设置。",
   "language": "语言",
   "languageHint": "立即应用到两个窗口与游戏名称。",
-  "startup": "启动偏好",
   "defaultAdapter": "默认网络接口",
   "chooseAtLaunch": "每次启动时选择",
   "adapterHint": "启动时预选，采集仍需手动开始。",
-  "showOnStartup": "启动时显示 Overlay",
-  "visibilityHint": "当前显示状态请使用上方控制按钮调整。",
-  "save": "保存偏好",
-  "saving": "保存中…",
-  "saved": "偏好设置已保存。",
-  "unsaved": "尚未保存",
   "storage": "保存于 %LOCALAPPDATA%\\WWlogs\\settings.json。",
   "invalid": "设置无法安全加载，已使用默认值。",
   "saveFailed": "偏好保存失败，原设置已保留。",
-  "resetOverlay": "重置 Overlay 位置",
-  "geometryHint": "拖动 Overlay 标题栏，从边缘调整大小；位置和尺寸会自动保存。",
   "appearance": "外观",
   "theme": "主题",
-  "themeHint": "立即应用到所有窗口，下次启动时保留。",
   "reduceMotion": "减少动态",
   "reduceMotionHint": "关闭过渡动画。也会遵守 Windows 的动画设置。",
   "themes": {
@@ -40,5 +29,45 @@
       "name": "冷凝",
       "character": "珂莱塔"
     }
-  }
+  },
+  "groups": {
+    "basic": "基础设置",
+    "overlays": "Overlay",
+    "capture": "捕获",
+    "about": "关于"
+  },
+  "pages": {
+    "general": "常规",
+    "appearance": "外观",
+    "combatOverlay": "战斗 Overlay",
+    "effectsOverlay": "效果 Overlay",
+    "capture": "网络捕获",
+    "about": "WWlogs"
+  },
+  "sections": {
+    "language": "语言",
+    "motion": "动态",
+    "window": "窗口",
+    "look": "外观",
+    "capture": "网络捕获",
+    "about": "版本信息"
+  },
+  "showWindow": "显示此 Overlay",
+  "alwaysOnTop": "保持在最上层",
+  "clickThrough": "鼠标穿透",
+  "clickThroughHint": "鼠标操作会直接传到下方的游戏。需要移动 Overlay 时，请使用下方的编辑模式。",
+  "editMode": "编辑模式",
+  "editModeHint": "暂时解除鼠标穿透，可拖动与调整大小；完成后恢复原本设置。",
+  "startEditing": "进入编辑",
+  "finishEditing": "完成编辑",
+  "position": "位置与尺寸",
+  "positionNote": "每个 Overlay 分开自动保存",
+  "resetPosition": "重置位置",
+  "opacity": "背景不透明度",
+  "opacityHint": "只影响面板背景，文字保持清晰。",
+  "decrease": "减少",
+  "increase": "增加",
+  "buildCommit": "源代码版本",
+  "buildProfile": "构建类型",
+  "geometryReset": "Overlay 的位置数据无效，已还原为默认位置。"
 }

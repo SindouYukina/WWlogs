@@ -1,7 +1,7 @@
 {
   "shell": {
     "title": "WWlogs Motion Showcase",
-    "subtitle": "v0.6.0 Phase 1.5 · Development only",
+    "subtitle": "Development only",
     "sections": "Showcase areas",
     "section": {
       "combat": "Combat Overlay",
@@ -209,7 +209,6 @@
     "descent": "descent",
     "faces": "Font files",
     "systemNote": "Uses whatever Windows provides. Shown only as a baseline; a release cannot depend on it.",
-    "unavailable": "Font files were not found. Start the Showcase with -font-root pointing at the directory that holds the candidate manifest and font folders.",
     "tuning": "Tuning (applies to both panes)",
     "weight": "Weight offset: {{value}}",
     "weightLabel": "Weight offset",
@@ -223,8 +222,26 @@
     "wholePage": "Apply to the whole Showcase",
     "wholePageNote": "Applies one scheme and the tuning above to every page, so Dashboard and Settings can be judged in place.",
     "renderedNote": "Switch language in the top right. Static fonts such as Sarasa snap to their nearest weight. Actual rendered font names are verified over CDP in the Phase 1.5 run record.",
-    "loaded": "Loaded fonts: {{value}}",
     "glyphs": "Rag Quick 0Oo 1Il AaGg 3.7",
-    "glyphsNote": "Regional glyph forms"
+    "glyphsNote": "Regional glyph forms",
+    "status": {
+      "baseline": "System baseline",
+      "loading": "Loading",
+      "loaded": "Loaded",
+      "no-root": "No font root",
+      "missing": "Missing",
+      "failed": "Load failed",
+      "partial": "Partial coverage",
+      "partialNote": "{{count}} characters fall back to a system font:",
+      "coverageUnknown": "Coverage not recorded in the manifest.",
+      "no-rootNote": "This comparison is unavailable: the candidate directory could not be read. Start the Showcase with -font-root, or use work/dev/Start-Showcase.ps1.",
+      "missingNote": "This comparison is unavailable: required font files are missing. Nothing is shown under this name, so a fallback font cannot pass for it.",
+      "failedNote": "This comparison is unavailable: a font file could not be requested or decoded. Nothing is shown under this name, so a fallback font cannot pass for it.",
+      "loadingNote": "Loading font files.",
+      "baselineNote": "System baseline",
+      "loadedNote": "Loaded",
+      "notApplied": "This scheme did not load, so the page stays on the bundled fonts.",
+      "recheck": "Check font files again"
+    }
   }
 }

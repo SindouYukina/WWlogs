@@ -1,26 +1,15 @@
 {
   "title": "Settings",
-  "description": "Preferences for this Windows user.",
   "language": "Language",
   "languageHint": "Applies immediately to both windows and Master names.",
-  "startup": "Startup preferences",
   "defaultAdapter": "Default network interface",
   "chooseAtLaunch": "Choose at each launch",
   "adapterHint": "Preselected on launch. Capture always starts manually.",
-  "showOnStartup": "Show overlay on startup",
-  "visibilityHint": "Use capture controls to change current visibility.",
-  "save": "Save preferences",
-  "saving": "Saving…",
-  "saved": "Preferences saved.",
-  "unsaved": "Unsaved changes",
   "storage": "Stored in %LOCALAPPDATA%\\WWlogs\\settings.json.",
   "invalid": "Settings could not be loaded safely. Defaults are in use.",
   "saveFailed": "Preferences could not be saved. Previous settings are preserved.",
-  "resetOverlay": "Reset overlay position",
-  "geometryHint": "Drag the overlay header; resize from its edges. Position and size save automatically.",
   "appearance": "Appearance",
   "theme": "Theme",
-  "themeHint": "Applies immediately to every window and is saved for next time.",
   "reduceMotion": "Reduce motion",
   "reduceMotionHint": "Turns off transitions. Windows' own animation setting is also respected.",
   "themes": {
@@ -40,5 +29,45 @@
       "name": "Glacio",
       "character": "Carlotta"
     }
-  }
+  },
+  "groups": {
+    "basic": "Basics",
+    "overlays": "Overlays",
+    "capture": "Capture",
+    "about": "About"
+  },
+  "pages": {
+    "general": "General",
+    "appearance": "Appearance",
+    "combatOverlay": "Combat Overlay",
+    "effectsOverlay": "Effects Overlay",
+    "capture": "Capture",
+    "about": "WWlogs"
+  },
+  "sections": {
+    "language": "Language",
+    "motion": "Motion",
+    "window": "Window",
+    "look": "Appearance",
+    "capture": "Network capture",
+    "about": "Version"
+  },
+  "showWindow": "Show this overlay",
+  "alwaysOnTop": "Always on top",
+  "clickThrough": "Mouse click-through",
+  "clickThroughHint": "Mouse input passes to the game underneath. To move the overlay, use Edit Mode below.",
+  "editMode": "Edit Mode",
+  "editModeHint": "Temporarily accepts the mouse so you can drag and resize. Your settings return when you finish.",
+  "startEditing": "Edit",
+  "finishEditing": "Finish editing",
+  "position": "Position and size",
+  "positionNote": "Saved automatically for each overlay",
+  "resetPosition": "Reset position",
+  "opacity": "Background opacity",
+  "opacityHint": "Affects the panel background only; text stays clear.",
+  "decrease": "Decrease",
+  "increase": "Increase",
+  "buildCommit": "Source commit",
+  "buildProfile": "Build profile",
+  "geometryReset": "Saved overlay placement was invalid and has been reset."
 }

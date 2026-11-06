@@ -4,9 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"sync"
 	"time"
-
-	"github.com/wailsapp/wails/v3/pkg/application"
 
 	"wwlogs/internal/capture"
 	"wwlogs/internal/service"
@@ -18,7 +17,8 @@ import (
 type Bridge struct {
 	capture    *service.CaptureService
 	defaults   capture.SessionConfig
-	overlay    func() *application.WebviewWindow
+	overlays   *overlayManager
+	shell      shellSignal
 	shutdown   *shutdownGate
 	settings   *settingsStore
 	catalog    localeCatalog
@@ -41,32 +41,59 @@ type StartRequest struct {
 // GetSettings returns validated preferences and a recoverable startup warning, if any.
 func (b *Bridge) GetSettings() SettingsState { return b.settings.current() }
 
-// SaveSettings persists supported preferences in the current Windows user's data directory.
-func (b *Bridge) SaveSettings(value Settings) (SettingsState, error) { return b.settings.save(value) }
+// SetDefaultAdapter persists the capture interface preselected at launch.
+func (b *Bridge) SetDefaultAdapter(ipv4 string) (SettingsState, error) {
+	return b.settings.setDefaultAdapter(ipv4)
+}
 
 // SetLocale persists the single global display locale without touching capture or statistics.
-func (b *Bridge) SetLocale(locale string) (SettingsState, error) { return b.settings.setLocale(locale) }
+func (b *Bridge) SetLocale(locale string) (SettingsState, error) {
+	state, err := b.settings.setLocale(locale)
+	b.shell.fire()
+	return state, err
+}
 
 // SetAppearance persists the theme and motion preference; every window applies them from its next snapshot.
 func (b *Bridge) SetAppearance(theme string, reduceMotion bool) (SettingsState, error) {
-	return b.settings.setAppearance(theme, reduceMotion)
+	state, err := b.settings.setAppearance(theme, reduceMotion)
+	b.shell.fire()
+	return state, err
 }
 
-// ResetOverlayPosition recovers an overlay after a display configuration change.
-func (b *Bridge) ResetOverlayPosition() {
-	if w := b.overlay(); w != nil {
-		w.SetSize(440, 640)
-		w.Center()
+// UpdateOverlay changes one Overlay's window properties. The other Overlay is not touched.
+func (b *Bridge) UpdateOverlay(kind string, change OverlayChange) (OverlayStates, error) {
+	if b.overlays == nil {
+		return OverlayStates{}, errors.New("overlays are unavailable")
 	}
+	return b.overlays.update(kind, change)
 }
 
-// NextSnapshot returns the newest snapshot once its sequence is greater than after, or the current one after about
-// a second. The returned JSON is a copy.
+// ResetOverlay returns one Overlay to its default position and size.
+func (b *Bridge) ResetOverlay(kind string) error {
+	if b.overlays == nil {
+		return errors.New("overlays are unavailable")
+	}
+	return b.overlays.reset(kind)
+}
+
+// NextSnapshot returns the newest snapshot once its sequence is greater than after, when host state changes, or the
+// current one after about a second. The returned JSON is a copy.
 func (b *Bridge) NextSnapshot(ctx context.Context, after uint64) (json.RawMessage, error) {
 	waitCtx, cancel := context.WithTimeout(ctx, snapshotWaitLimit)
 	defer cancel()
+	changed := b.shell.changed()
+	go func() {
+		select {
+		case <-changed:
+			cancel()
+		case <-waitCtx.Done():
+		}
+	}()
 	snapshot, err := b.capture.Publisher().Next(waitCtx, after)
-	if err != nil && !errors.Is(err, context.DeadlineExceeded) {
+	if err != nil && ctx.Err() == nil && (errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled)) {
+		err = nil
+	}
+	if err != nil {
 		return nil, err
 	}
 	return b.encode(snapshot)
@@ -78,7 +105,32 @@ func (b *Bridge) CurrentSnapshot() (json.RawMessage, error) {
 }
 
 func (b *Bridge) encode(snapshot *service.Snapshot) (json.RawMessage, error) {
-	return b.projection.encode(snapshot, b.settings.current(), b.catalog, b.listeningStatus(snapshot))
+	return b.projection.encode(snapshot, b.settings.current(), b.catalog, b.listeningStatus(snapshot), b.overlays.states())
+}
+
+// shellSignal wakes long-polling windows when host state changes, so a setting applies at once instead of at the next
+// heartbeat. Its zero value is ready to use.
+type shellSignal struct {
+	mu     sync.Mutex
+	signal chan struct{}
+}
+
+func (s *shellSignal) changed() <-chan struct{} {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.signal == nil {
+		s.signal = make(chan struct{})
+	}
+	return s.signal
+}
+
+func (s *shellSignal) fire() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.signal != nil {
+		close(s.signal)
+		s.signal = nil
+	}
 }
 
 // listeningStatus is evaluated on every call, because silence changes the status while the snapshot stays the same.
@@ -110,26 +162,6 @@ func (b *Bridge) StopCapture(ctx context.Context) error {
 	stopCtx, cancel := context.WithTimeout(ctx, stopWaitLimit)
 	defer cancel()
 	return b.capture.Stop(stopCtx)
-}
-
-// SetOverlayVisible shows or hides the overlay window.
-func (b *Bridge) SetOverlayVisible(visible bool) bool {
-	window := b.overlay()
-	if window == nil {
-		return false
-	}
-	if visible {
-		window.Show()
-	} else {
-		window.Hide()
-	}
-	return window.IsVisible()
-}
-
-// OverlayVisible reports whether the overlay window is shown.
-func (b *Bridge) OverlayVisible() bool {
-	window := b.overlay()
-	return window != nil && window.IsVisible()
 }
 
 // ServiceShutdown is a fallback for startup failure and non-window exits. Normal native exits use shutdownGate first.

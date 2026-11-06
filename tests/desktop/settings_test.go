@@ -23,12 +23,10 @@ func TestAppearanceDefaultsPersistenceAndValidation(t *testing.T) {
 	if reloaded.Theme != "havoc" || !reloaded.ReduceMotion {
 		t.Fatalf("appearance not persisted: %+v", reloaded)
 	}
-	// A stale settings form must not undo the appearance.
-	form := reloaded
-	form.Theme, form.ReduceMotion, form.ShowOverlayOnStartup = "", false, true
-	state, err := store.save(form)
-	if err != nil || state.Settings.Theme != "havoc" || !state.Settings.ReduceMotion || !state.Settings.ShowOverlayOnStartup {
-		t.Fatalf("form save: %+v %v", state, err)
+	// Other preferences have their own updates and must not undo the appearance.
+	state, err := store.setDefaultAdapter("127.0.0.1")
+	if err != nil || state.Settings.Theme != "havoc" || !state.Settings.ReduceMotion || state.Settings.DefaultAdapterIPv4 != "127.0.0.1" {
+		t.Fatalf("adapter update: %+v %v", state, err)
 	}
 	// A theme written by a newer version loads as the default instead of invalidating every preference.
 	if err := os.WriteFile(path, []byte(`{"version":1,"locale":"en","theme":"from-the-future"}`), 0o600); err != nil {
@@ -46,26 +44,22 @@ func TestSettingsRoundTripAndValidation(t *testing.T) {
 	if state := store.current(); state.Warning != "" || state.Settings.Version != 1 {
 		t.Fatalf("defaults: %+v", state)
 	}
-	wanted := Settings{Version: 1, Locale: "en", DefaultAdapterIPv4: "127.0.0.1", ShowOverlayOnStartup: true}
-	if _, err := store.save(wanted); err != nil {
+	if _, err := store.setDefaultAdapter("127.0.0.1"); err != nil {
 		t.Fatal(err)
 	}
-	if got := loadSettings(path, testLocaleCatalog()).current(); got.Warning != "" || got.Settings != wanted {
+	if got := loadSettings(path, testLocaleCatalog()).current(); got.Warning != "" || got.Settings.DefaultAdapterIPv4 != "127.0.0.1" {
 		t.Fatalf("reload: %+v", got)
 	}
-	invalid := wanted
-	invalid.DefaultAdapterIPv4 = "not-an-ip"
-	if _, err := store.save(invalid); err == nil {
+	if _, err := store.setDefaultAdapter("not-an-ip"); err == nil {
 		t.Fatal("invalid IPv4 accepted")
 	}
-	if got := loadSettings(path, testLocaleCatalog()).current().Settings; got != wanted {
+	if got := loadSettings(path, testLocaleCatalog()).current().Settings; got.DefaultAdapterIPv4 != "127.0.0.1" {
 		t.Fatal("failed save replaced preferences")
 	}
-	wanted.ShowOverlayOnStartup = false
-	if _, err := store.save(wanted); err != nil {
+	if _, err := store.setDefaultAdapter(""); err != nil {
 		t.Fatal(err)
 	}
-	if loadSettings(path, testLocaleCatalog()).current().Settings != wanted {
+	if loadSettings(path, testLocaleCatalog()).current().Settings.DefaultAdapterIPv4 != "" {
 		t.Fatal("existing file not replaced")
 	}
 }
@@ -77,7 +71,7 @@ func TestInvalidSettingsRecoverWithoutOverwritingEvidence(t *testing.T) {
 			t.Fatal(err)
 		}
 		state := loadSettings(path, testLocaleCatalog()).current()
-		if state.Warning == "" || state.Settings != (Settings{Version: 1, Locale: "en"}) {
+		if state.Warning == "" || state.Settings.Locale != "en" || state.Settings.DefaultAdapterIPv4 != "" || state.Settings.Overlays == nil || state.Settings.Overlays.Combat.Visible {
 			t.Fatalf("recovery: %+v", state)
 		}
 		content, _ := os.ReadFile(path)
@@ -94,11 +88,10 @@ func TestSettingsWriteFailureKeepsMemory(t *testing.T) {
 		t.Fatal(err)
 	}
 	store := loadSettings(filepath.Join(blocker, "settings.json"), testLocaleCatalog())
-	before := store.current()
-	if _, err := store.save(Settings{Version: 1, ShowOverlayOnStartup: true}); err == nil {
+	if _, err := store.setDefaultAdapter("127.0.0.1"); err == nil {
 		t.Fatal("write unexpectedly succeeded")
 	}
-	if store.current() != before {
+	if store.current().Settings.DefaultAdapterIPv4 != "" {
 		t.Fatal("failed write changed preferences")
 	}
 }

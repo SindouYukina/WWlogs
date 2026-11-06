@@ -37,7 +37,7 @@ func TestDisplayProjectionRelocalizesExistingSnapshotWithoutChangingCore(t *test
 	before, _ := json.Marshal(view)
 	source := &service.Snapshot{Sequence: 7, View: &view}
 	projection := &displayProjection{resolver: resolver}
-	first, err := projection.encode(source, store.current(), testLocaleCatalog(), service.ListeningStatus{})
+	first, err := projection.encode(source, store.current(), testLocaleCatalog(), service.ListeningStatus{}, OverlayStates{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +45,7 @@ func TestDisplayProjectionRelocalizesExistingSnapshotWithoutChangingCore(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := projection.encode(source, state, testLocaleCatalog(), service.ListeningStatus{})
+	second, err := projection.encode(source, state, testLocaleCatalog(), service.ListeningStatus{}, OverlayStates{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,7 +78,59 @@ func TestDisplayProjectionRelocalizesExistingSnapshotWithoutChangingCore(t *test
 		t.Fatal("projection mutated the core snapshot")
 	}
 	resolver.Close()
-	if _, err := projection.encode(source, state, testLocaleCatalog(), service.ListeningStatus{}); err != nil {
+	if _, err := projection.encode(source, state, testLocaleCatalog(), service.ListeningStatus{}, OverlayStates{}); err != nil {
 		t.Fatal("unchanged projection missed its serialized cache")
+	}
+}
+
+func TestShellChangeReencodesWithoutTouchingCoreSequence(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "master.db")
+	db, _ := sql.Open("sqlite", path)
+	if _, err := db.Exec("CREATE TABLE roleinfo_locale (id TEXT,locale TEXT,name TEXT,PRIMARY KEY(id,locale))"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("CREATE TABLE roleinfo (id TEXT PRIMARY KEY,element_id TEXT)"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("INSERT INTO roleinfo VALUES('42','3')"); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+	resolver, err := capture.OpenDisplayResolver(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resolver.Close()
+	store := loadSettings(filepath.Join(t.TempDir(), "settings.json"), testLocaleCatalog())
+	view := capture.ViewSnapshot{Roles: []capture.ViewRole{{RoleID: 42}, {RoleID: 77}}}
+	source := &service.Snapshot{Sequence: 7, View: &view}
+	projection := &displayProjection{resolver: resolver}
+	decode := func(raw []byte) (result struct {
+		Sequence uint64
+		View     capture.ViewSnapshot
+		Overlays OverlayStates
+	}) {
+		if err := json.Unmarshal(raw, &result); err != nil {
+			t.Fatal(err)
+		}
+		return result
+	}
+	first, err := projection.encode(source, store.current(), testLocaleCatalog(), service.ListeningStatus{}, OverlayStates{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := projection.encode(source, store.current(), testLocaleCatalog(), service.ListeningStatus{}, OverlayStates{Effects: OverlayState{Visible: true, Editing: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, b := decode(first), decode(second)
+	if a.Overlays.Effects.Visible || !b.Overlays.Effects.Editing || b.Overlays.Combat.Visible || a.Sequence != b.Sequence {
+		t.Fatalf("overlay shell: %+v %+v", a.Overlays, b.Overlays)
+	}
+	if b.View.Roles[0].ElementID != 3 || b.View.Roles[1].ElementID != 0 {
+		t.Fatalf("element lookup must be Master data or unknown: %+v", b.View.Roles)
+	}
+	if view.Roles[0].ElementID != 0 {
+		t.Fatal("projection mutated the core snapshot")
 	}
 }

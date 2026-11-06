@@ -370,3 +370,5 @@
 .ww-listening-label + .ww-listening-detail::before { content: "· "; }
 .ww-effects-head-end { display: inline-flex; align-items: center; gap: var(--ww-space-1_5); }
 .ww-row-block { padding-block: var(--ww-space-3); }
+/* Custom properties resolve where they are declared, so a surface that sets its own opacity has to derive these again. */
+.ww-combat, .ww-effects { --ww-surface-overlay: color-mix(in oklab, var(--ww-ink-950) calc(var(--ww-alpha-overlay) * 100%), transparent); --ww-surface-overlay-strong: color-mix(in oklab, var(--ww-ink-950) calc(var(--ww-alpha-overlay-strong) * 100%), transparent); }

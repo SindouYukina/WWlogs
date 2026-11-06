@@ -1,7 +1,7 @@
 {
   "shell": {
     "title": "WWlogs 動畫展示",
-    "subtitle": "v0.6.0 Phase 1.5・僅限開發版",
+    "subtitle": "僅限 Development",
     "sections": "展示區域",
     "section": {
       "combat": "戰鬥 Overlay",
@@ -209,7 +209,6 @@
     "descent": "descent",
     "faces": "字型檔案",
     "systemNote": "使用 Windows 內建字型，僅作為對照基準；正式版不能依賴。",
-    "unavailable": "找不到字型檔。請以 -font-root 指向含有候選字型清單與字型資料夾的目錄來啟動 Showcase。",
     "tuning": "調校（同時套用兩個窗格）",
     "weight": "字重偏移：{{value}}",
     "weightLabel": "字重偏移",
@@ -223,8 +222,26 @@
     "wholePage": "套用到整個 Showcase",
     "wholePageNote": "把單一方案與上方調校套用到所有頁面，可直接在儀表板與設定頁判斷。",
     "renderedNote": "語言可在右上角切換。Sarasa 等靜態字型會貼齊最接近的字重。實際渲染字型名稱已透過 CDP 驗證，記錄在 Phase 1.5 執行紀錄。",
-    "loaded": "已載入字型：{{value}}",
     "glyphs": "直骨角今令海画雪遍 戶閒黃",
-    "glyphsNote": "地區字形"
+    "glyphsNote": "地區字形",
+    "status": {
+      "baseline": "系統基準",
+      "loading": "載入中",
+      "loaded": "已載入",
+      "no-root": "未提供字體目錄",
+      "missing": "缺少字體",
+      "failed": "載入失敗",
+      "partial": "部分缺字",
+      "partialNote": "{{count}} 個字元改由系統字型繪製：",
+      "coverageUnknown": "清單未記錄字元覆蓋範圍。",
+      "no-rootNote": "無法比較：讀不到候選字體目錄。請以 -font-root 啟動 Showcase，或使用 work/dev/Start-Showcase.ps1。",
+      "missingNote": "無法比較：缺少必要的字體檔。此處不顯示任何內容，避免 Fallback 字型被當成此方案。",
+      "failedNote": "無法比較：字體檔無法請求或解碼。此處不顯示任何內容，避免 Fallback 字型被當成此方案。",
+      "loadingNote": "正在載入字體檔。",
+      "baselineNote": "系統基準",
+      "loadedNote": "已載入",
+      "notApplied": "此方案未載入成功，頁面維持內嵌字型。",
+      "recheck": "重新檢查字體檔"
+    }
   }
 }

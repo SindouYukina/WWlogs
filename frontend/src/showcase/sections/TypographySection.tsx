@@ -1,7 +1,8 @@
-import { memo, useEffect, useMemo, useState, type CSSProperties } from "react"
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react"
 import { useTranslation } from "react-i18next"
 import { Button, Card, Chip, DamageBar, Segmented, Select, SettingsRow, SettingsSection, Slider } from "@/design"
-import { loadFontManifest, schemeIds, schemeStacks, type FontManifest, type SchemeId } from "../typefaces"
+import { requiredFaces, schemeIds, schemeStacks, schemeUsable, uncoveredCharacters, type FontManifest, type SchemeId, type SchemeStatus } from "../typefaces"
+import type { FontSchemes } from "../useFontSchemes"
 import { masterRoles } from "../master-fixture.ts"
 
 export interface TypeTuning {
@@ -28,13 +29,13 @@ export function schemeStyle(scheme: SchemeId, locale: string, tuning: TypeTuning
 const SAMPLE_DPS = [21635, 12147, 6627, 2833]
 
 /** One compact page holding the text roles that matter: display numbers, data columns, UI prose and mixed text. */
-const Specimen = memo(function Specimen({ scheme, tuning, numericFace }: { scheme: SchemeId; tuning: TypeTuning; numericFace: "scheme" | "bahnschrift" }) {
+const Specimen = memo(function Specimen({ scheme, tuning, numericFace, textRef }: { scheme: SchemeId; tuning: TypeTuning; numericFace: "scheme" | "bahnschrift"; textRef: RefObject<HTMLDivElement | null> }) {
   const { t, i18n } = useTranslation("showcase")
   const locale = i18n.language
   const style = useMemo(() => schemeStyle(scheme, locale, tuning, numericFace), [scheme, locale, tuning, numericFace])
   const integer = useMemo(() => new Intl.NumberFormat(locale), [locale])
   const roles = masterRoles.slice(0, 3)
-  return <div className="ww-typeface-scope ft-specimen ww-type-ui" style={style as CSSProperties} lang={locale}>
+  return <div ref={textRef} className="ww-typeface-scope ft-specimen ww-type-ui" style={style as CSSProperties} lang={locale}>
     <div className="ft-hero">
       <span className="ww-type-small ft-label">{t("combat.teamDps")}</span>
       <span className="ww-num ww-type-display ft-hero-number">{integer.format(SAMPLE_DPS[0]!)}</span>
@@ -62,7 +63,7 @@ function SchemeFacts({ scheme, manifest }: { scheme: SchemeId; manifest: FontMan
   const { t } = useTranslation("showcase")
   const info = manifest?.[scheme]
   if (scheme === "system") return <p className="ft-facts">{t("typography.systemNote")}</p>
-  if (!info) return <p className="ft-facts">{t("typography.unavailable")}</p>
+  if (!info) return null
   const total = info.faces.reduce((sum, face) => sum + face.bytes, 0)
   const first = info.faces[0]
   return <div className="ft-facts">
@@ -73,7 +74,48 @@ function SchemeFacts({ scheme, manifest }: { scheme: SchemeId; manifest: FontMan
   </div>
 }
 
-export function TypographySection({ globalScheme, setGlobalScheme, numericFace, setNumericFace, tuning, setTuning }: {
+const statusTone: Record<SchemeStatus["kind"], "good" | "warn" | "critical" | "neutral"> = { baseline: "neutral", loading: "neutral", loaded: "good", "no-root": "critical", missing: "critical", failed: "critical" }
+
+/** States what is really on screen for this pane, so a fallback font can never pass for the scheme named above it. */
+function SchemeStatusLine({ scheme, status, uncovered }: { scheme: SchemeId; status: SchemeStatus; uncovered: readonly string[] | undefined }) {
+  const { t } = useTranslation("showcase")
+  const partial = status.kind === "loaded" && uncovered !== undefined && uncovered.length > 0
+  const label = partial ? t("typography.status.partial") : t(`typography.status.${status.kind}`)
+  const files = [...status.missing, ...status.failed]
+  return <div className="ft-status" data-field={`font-status-${scheme}`} data-status={partial ? "partial" : status.kind}>
+    <Chip tone={partial ? "warn" : statusTone[status.kind]} dot>{label}</Chip>
+    {files.length > 0 && <code>{files.join(", ")}</code>}
+    {partial && <span>{t("typography.status.partialNote", { count: uncovered.length })} <span className="ft-fallback-chars">{uncovered.slice(0, 24).join("")}</span></span>}
+    {status.kind === "loaded" && uncovered === undefined && scheme !== "inter-noto" && <span>{t("typography.status.coverageUnknown")}</span>}
+  </div>
+}
+
+function ComparePane({ paneKey, scheme, setScheme, options, fonts, tuning, numericFace }: { paneKey: string; scheme: SchemeId; setScheme: (scheme: SchemeId) => void; options: ReadonlyArray<{ value: SchemeId; label: string }>; fonts: FontSchemes; tuning: TypeTuning; numericFace: "scheme" | "bahnschrift" }) {
+  const { t, i18n } = useTranslation("showcase")
+  const status = fonts.statuses[scheme]
+  const { ensure } = fonts
+  useEffect(() => { ensure(scheme) }, [ensure, scheme])
+  const specimen = useRef<HTMLDivElement>(null)
+  const [uncovered, setUncovered] = useState<string[] | undefined>(undefined)
+  const usable = schemeUsable(status)
+  const faces = useMemo(() => requiredFaces(fonts.manifest, scheme, i18n.language), [fonts.manifest, scheme, i18n.language])
+  useLayoutEffect(() => {
+    const text = specimen.current?.textContent ?? ""
+    setUncovered(usable && scheme !== "system" ? uncoveredCharacters(text, faces) : undefined)
+  }, [usable, scheme, faces, i18n.language])
+  return <Card className="ft-pane">
+    <div className="ft-pane-head"><strong className="ft-pane-key">{paneKey}</strong><Select label={t("typography.schemeLabel", { pane: paneKey })} value={scheme} onChange={setScheme} options={options} /></div>
+    <SchemeStatusLine scheme={scheme} status={status} uncovered={uncovered} />
+    {usable
+      ? <Specimen scheme={scheme} tuning={tuning} numericFace={numericFace} textRef={specimen} />
+      : <div className="ft-unavailable">{t(`typography.status.${status.kind}Note`)}</div>}
+    <SchemeFacts scheme={scheme} manifest={fonts.manifest} />
+  </Card>
+}
+
+export function TypographySection({ fonts, paneSetter, globalScheme, setGlobalScheme, numericFace, setNumericFace, tuning, setTuning }: {
+  fonts: FontSchemes
+  paneSetter: { current: ((left: SchemeId, right: SchemeId) => void) | null }
   globalScheme: SchemeId
   setGlobalScheme: (scheme: SchemeId) => void
   numericFace: "scheme" | "bahnschrift"
@@ -84,29 +126,16 @@ export function TypographySection({ globalScheme, setGlobalScheme, numericFace, 
   const { t } = useTranslation("showcase")
   const [left, setLeft] = useState<SchemeId>("inter-noto")
   const [right, setRight] = useState<SchemeId>("misans")
-  const [manifest, setManifest] = useState<FontManifest | null>(null)
-  const [loadState, setLoadState] = useState("")
   useEffect(() => {
-    loadFontManifest().then(setManifest).catch(() => setManifest(null))
-  }, [])
-  useEffect(() => {
-    let cancelled = false
-    const report = () => { if (!cancelled) setLoadState([...document.fonts].filter(face => face.status === "loaded").map(face => face.family.replaceAll('"', "")).filter((value, index, all) => all.indexOf(value) === index).join(", ")) }
-    void document.fonts.ready.then(report)
-    document.fonts.addEventListener("loadingdone", report)
-    return () => {
-      cancelled = true
-      document.fonts.removeEventListener("loadingdone", report)
-    }
-  }, [])
+    paneSetter.current = (nextLeft, nextRight) => { setLeft(nextLeft); setRight(nextRight) }
+    return () => { paneSetter.current = null }
+  }, [paneSetter])
   const options = schemeIds.map(id => ({ value: id, label: t(`typography.scheme.${id}`) }))
+  const globalStatus = fonts.statuses[globalScheme]
   return <div className="ft-layout">
     <div className="ft-compare">
-      {[{ scheme: left, set: setLeft, key: "A" }, { scheme: right, set: setRight, key: "B" }].map(pane => <Card className="ft-pane" key={pane.key}>
-        <div className="ft-pane-head"><strong className="ft-pane-key">{pane.key}</strong><Select label={t("typography.schemeLabel", { pane: pane.key })} value={pane.scheme} onChange={pane.set} options={options} /></div>
-        <Specimen scheme={pane.scheme} tuning={tuning} numericFace={numericFace} />
-        <SchemeFacts scheme={pane.scheme} manifest={manifest} />
-      </Card>)}
+      <ComparePane paneKey="A" scheme={left} setScheme={setLeft} options={options} fonts={fonts} tuning={tuning} numericFace={numericFace} />
+      <ComparePane paneKey="B" scheme={right} setScheme={setRight} options={options} fonts={fonts} tuning={tuning} numericFace={numericFace} />
     </div>
     <aside className="sc-controls ft-controls">
       <SettingsSection title={t("typography.tuning")}>
@@ -119,9 +148,10 @@ export function TypographySection({ globalScheme, setGlobalScheme, numericFace, 
       <SettingsSection title={t("typography.wholePage")}>
         <p className="sc-note">{t("typography.wholePageNote")}</p>
         <div className="ft-global"><Select label={t("typography.wholePage")} value={globalScheme} onChange={setGlobalScheme} options={options} /></div>
+        {!schemeUsable(globalStatus) && globalStatus.kind !== "loading" && <p className="sc-note" data-field="font-global-blocked">{t("typography.status.notApplied")}</p>}
       </SettingsSection>
       <p className="sc-note">{t("typography.renderedNote")}</p>
-      <p className="sc-note ft-loaded">{t("typography.loaded", { value: loadState || "—" })}</p>
+      <Button size="sm" className="ft-recheck" onClick={fonts.recheck} data-field="font-recheck">{t("typography.status.recheck")}</Button>
     </aside>
   </div>
 }

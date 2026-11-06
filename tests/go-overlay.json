@@ -243,6 +243,8 @@
     "tests/capture/first_encounter_replay_dev_test.go": "",
     "internal/capture/central_first_encounter_replay_dev_test.go": "tests/capture/first_encounter_replay_dev_test.go",
     "tests/capture/initial_player_test.go": "",
-    "internal/capture/central_initial_player_test.go": "tests/capture/initial_player_test.go"
+    "internal/capture/central_initial_player_test.go": "tests/capture/initial_player_test.go",
+    "tests/desktop/overlay_test.go": "",
+    "internal/desktop/central_overlay_test.go": "tests/desktop/overlay_test.go"
   }
 }

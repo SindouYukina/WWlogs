@@ -1,3 +1,4 @@
+import type { SkillRow } from "../lib/combat-data"
 import type { Effect, Encounter, ListeningInfo, Role, Snapshot, UnassignedRole, Vehicle } from "../lib/snapshot"
 import { masterEffects, masterRoles } from "./master-fixture.ts"
 
@@ -23,19 +24,11 @@ const scenarioStatus: Record<ListeningScenario, Pick<ListeningInfo, "state" | "r
   off: { state: "off", reason: "capture_off" },
 }
 
-export interface MockSkillRow {
-  skillId: number
-  names: Readonly<Record<string, string>>
-  damage: number
-  hits: number
-  share: number
-}
-
 export interface MockOutput {
   snapshot: Snapshot
   /** The Snapshot has no per-role time series yet; see the Phase 1 gap list. */
   history: ReadonlyMap<number, ReadonlyArray<number | null>>
-  skillsOf: (roleId: number) => MockSkillRow[]
+  skillsOf: (roleId: number) => SkillRow[]
 }
 
 interface MockRole {
@@ -93,6 +86,8 @@ export class MockFeed {
   private untrusted = false
   private lastPublish = Date.now()
   effectAuto = true
+  /** Display names follow this locale, as the production display projection follows the global locale. */
+  locale = "en"
   listeningScenario: ListeningScenario = "active"
   private clockMs = Date.UTC(2026, 10, 6, 9, 0, 0)
 
@@ -276,13 +271,17 @@ export class MockFeed {
     if (effect?.stacks !== undefined) effect.stacks = effect.stacks % 3 + 1
   }
 
-  private skills(roleId: number): MockSkillRow[] {
+  private localized(names: Readonly<Record<string, string>> | undefined): string | undefined {
+    return names?.[this.locale] ?? names?.en
+  }
+
+  private skills(roleId: number): SkillRow[] {
     const master = masterRoles.find(role => role.roleId === roleId)
     const role = this.roles.find(candidate => candidate.roleId === roleId)
     if (!master || !role) return []
     return master.skills.map((skill, index) => {
       const damage = role.damage * (skillWeights[index] ?? 0)
-      return { skillId: skill.skillId, names: skill.names, damage, hits: Math.floor(damage / (skillHitSize[index] ?? 5000)), share: skillWeights[index] ?? 0 }
+      return { skillId: skill.skillId, name: this.localized(skill.names), damage, hits: Math.floor(damage / (skillHitSize[index] ?? 5000)), share: skillWeights[index] ?? 0 }
     })
   }
 
@@ -292,11 +291,13 @@ export class MockFeed {
     const vehicleDamage = this.vehicle?.damageDealt ?? 0
     const roleDamage = this.roles.reduce((sum, role) => sum + role.damage, 0)
     const confirmed = roleDamage + vehicleDamage + this.unassignedDamage
+    const masterOf = (roleId: number | undefined) => masterRoles.find(candidate => candidate.roleId === roleId)
     const roles: Role[] = this.roles.map(role => ({
       playerId: 1,
       roleId: role.roleId,
-      name: "",
+      name: this.localized(masterOf(role.roleId)?.names) ?? "",
       nameStatus: "VERIFIED",
+      elementId: masterOf(role.roleId)?.elementId,
       damageDealt: Math.round(role.damage),
       damageShare: confirmed > 0 ? role.damage / confirmed : undefined,
       directDamage: Math.round(role.damage * 0.92),
@@ -331,11 +332,13 @@ export class MockFeed {
     const active: Effect[] = [...this.effects.values()].map(effect => ({
       key: effect.key,
       effectId: effect.effectId,
-      termName: effect.termNames ? "pending" : undefined,
+      termName: this.localized(effect.termNames),
       termId: effect.termId,
       termStatus: effect.termNames ? "CORRELATED" : undefined,
       holderRelation: effect.holderRelation,
       holderRoleId: effect.holderRoleId,
+      holderName: this.localized(masterOf(effect.holderRoleId)?.names),
+      holderNameStatus: "VERIFIED",
       sourceRelation: "unknown",
       polarity: effect.polarity,
       combatClass: "combat",
@@ -350,7 +353,7 @@ export class MockFeed {
     }))
     const zeroDps = { status: "unavailable" as const, damage: 0, durationSeconds: 0, value: 0 }
     return {
-      locale: "en",
+      locale: this.locale,
       localeRevision: 0,
       sequence: this.sequence,
       publishedAt: new Date(this.lastPublish).toISOString(),

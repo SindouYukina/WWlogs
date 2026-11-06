@@ -14,14 +14,77 @@ const settingsVersion = 1
 
 // Settings contains only supported user preferences, never capture or diagnostic internals.
 type Settings struct {
-	Version              int            `json:"version"`
-	DefaultAdapterIPv4   string         `json:"defaultAdapterIPv4"`
-	ShowOverlayOnStartup bool           `json:"showOverlayOnStartup"`
-	Locale               string         `json:"locale"`
-	Overlay              *OverlayBounds `json:"overlay,omitempty"`
+	Version            int    `json:"version"`
+	DefaultAdapterIPv4 string `json:"defaultAdapterIPv4"`
+	Locale             string `json:"locale"`
+	// ShowOverlayOnStartup is read from v0.5 files only: it migrates to Overlays.Combat.Visible on load.
+	ShowOverlayOnStartup bool `json:"showOverlayOnStartup,omitempty"`
+	// Overlays keeps each Overlay's preferences separately. Nil in a file means it predates the two-window Overlay.
+	Overlays *OverlaySet `json:"overlays,omitempty"`
 	// Theme is one of the official theme IDs; empty means the default theme.
 	Theme        string `json:"theme,omitempty"`
 	ReduceMotion bool   `json:"reduceMotion,omitempty"`
+}
+
+// OverlaySet holds independent preferences per Overlay; a change to one never touches the other.
+type OverlaySet struct {
+	Combat  OverlayPreferences `json:"combat"`
+	Effects OverlayPreferences `json:"effects"`
+}
+
+// OverlayPreferences are the persisted properties of one Overlay window.
+type OverlayPreferences struct {
+	Visible      bool              `json:"visible"`
+	Opacity      int               `json:"opacity"`
+	AlwaysOnTop  bool              `json:"alwaysOnTop"`
+	ClickThrough bool              `json:"clickThrough"`
+	Placement    *OverlayPlacement `json:"placement,omitempty"`
+}
+
+// OverlayPlacement is in physical pixels, with the scale of the display it was saved on. Wails DIP coordinates are per
+// screen, so they are not stable across monitors with different scaling; Scale lets a restore keep the logical size.
+type OverlayPlacement struct {
+	X      int     `json:"x"`
+	Y      int     `json:"y"`
+	Width  int     `json:"width"`
+	Height int     `json:"height"`
+	Scale  float64 `json:"scale"`
+}
+
+func (p OverlayPreferences) state(editing bool) OverlayState {
+	return OverlayState{Visible: p.Visible, Opacity: p.Opacity, AlwaysOnTop: p.AlwaysOnTop, ClickThrough: p.ClickThrough, Editing: editing}
+}
+
+const minOverlayOpacity, maxOverlayOpacity = 20, 100
+
+func clampOpacity(value int) int {
+	return max(minOverlayOpacity, min(value, maxOverlayOpacity))
+}
+
+// defaultOverlayPreferences starts in click-through so a first-run Overlay cannot take clicks from the game; Edit Mode
+// in Settings is the way to move it.
+func defaultOverlayPreferences(kind string) OverlayPreferences {
+	return OverlayPreferences{Opacity: overlaySpecs[kind].defaultOpacity, AlwaysOnTop: true, ClickThrough: true}
+}
+
+func defaultOverlays() *OverlaySet {
+	return &OverlaySet{Combat: defaultOverlayPreferences(overlayCombat), Effects: defaultOverlayPreferences(overlayEffects)}
+}
+
+func validPlacement(p *OverlayPlacement) bool {
+	return p != nil && p.Scale > 0 && p.Scale <= 16 && p.Width > 0 && p.Width <= 20000 && p.Height > 0 && p.Height <= 20000 && p.X >= -200000 && p.X <= 200000 && p.Y >= -200000 && p.Y <= 200000
+}
+
+func normalizeOverlay(kind string, prefs *OverlayPreferences) (reset bool) {
+	if prefs.Opacity == 0 {
+		prefs.Opacity = defaultOverlayPreferences(kind).Opacity
+	}
+	prefs.Opacity = clampOpacity(prefs.Opacity)
+	if prefs.Placement != nil && !validPlacement(prefs.Placement) {
+		prefs.Placement = nil
+		return true
+	}
+	return false
 }
 
 // defaultTheme is the brand theme used until the user chooses another.
@@ -44,13 +107,6 @@ func effectiveTheme(settings Settings) string {
 	return defaultTheme
 }
 
-type OverlayBounds struct {
-	X      int `json:"x"`
-	Y      int `json:"y"`
-	Width  int `json:"width"`
-	Height int `json:"height"`
-}
-
 type SettingsState struct {
 	Settings       Settings `json:"settings"`
 	Warning        string   `json:"warning,omitempty"`
@@ -62,6 +118,8 @@ type settingsStore struct {
 	path    string
 	state   SettingsState
 	catalog localeCatalog
+	// dirty marks a change held in memory until the next write, such as an opacity slider drag.
+	dirty bool
 }
 
 func settingsPath() string {
@@ -89,7 +147,7 @@ func validateSettings(value Settings) error {
 }
 
 func loadSettings(path string, catalog localeCatalog) *settingsStore {
-	store := &settingsStore{path: path, catalog: catalog, state: SettingsState{Settings: Settings{Version: settingsVersion, Locale: catalog.FallbackLocale}, LocaleRevision: 1}}
+	store := &settingsStore{path: path, catalog: catalog, state: SettingsState{Settings: Settings{Version: settingsVersion, Locale: catalog.FallbackLocale, Overlays: defaultOverlays()}, LocaleRevision: 1}}
 	file, err := os.Open(path)
 	if errors.Is(err, os.ErrNotExist) && path != "" {
 		return store
@@ -124,8 +182,15 @@ func loadSettings(path string, catalog localeCatalog) *settingsStore {
 	if !catalog.valid(value.Locale) {
 		value.Locale = catalog.FallbackLocale
 	}
-	if value.Overlay != nil && !validOverlayBounds(*value.Overlay) {
-		value.Overlay = nil
+	if value.Overlays == nil {
+		// v0.5 had one Overlay with a different layout. Its visibility carries over; its geometry does not fit either window.
+		value.Overlays = defaultOverlays()
+		value.Overlays.Combat.Visible = value.ShowOverlayOnStartup
+	}
+	value.ShowOverlayOnStartup = false
+	combatReset := normalizeOverlay(overlayCombat, &value.Overlays.Combat)
+	effectsReset := normalizeOverlay(overlayEffects, &value.Overlays.Effects)
+	if combatReset || effectsReset {
 		store.state.Warning = "overlay_geometry_reset"
 	}
 	store.state.Settings = value
@@ -136,28 +201,45 @@ func (s *settingsStore) current() SettingsState {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	state := s.state
-	if state.Settings.Overlay != nil {
-		bounds := *state.Settings.Overlay
-		state.Settings.Overlay = &bounds
-	}
+	state.Settings.Overlays = copyOverlays(state.Settings.Overlays)
 	return state
 }
 
-// save replaces the file only after a complete, validated write. Failed writes preserve the previous preferences.
-func (s *settingsStore) save(value Settings) (SettingsState, error) {
-	if value.Locale != "" && !s.catalog.valid(value.Locale) {
-		return SettingsState{}, errors.New("unsupported_locale")
+func copyOverlays(set *OverlaySet) *OverlaySet {
+	if set == nil {
+		return nil
 	}
+	copied := *set
+	copied.Combat.Placement = copyPlacement(set.Combat.Placement)
+	copied.Effects.Placement = copyPlacement(set.Effects.Placement)
+	return &copied
+}
+
+func copyPlacement(placement *OverlayPlacement) *OverlayPlacement {
+	if placement == nil {
+		return nil
+	}
+	copied := *placement
+	return &copied
+}
+
+func (set *OverlaySet) of(kind string) *OverlayPreferences {
+	if kind == overlayEffects {
+		return &set.Effects
+	}
+	return &set.Combat
+}
+
+// setDefaultAdapter persists the interface preselected at launch. Every preference has its own update, so settings apply
+// at once and no stale form can overwrite another preference.
+func (s *settingsStore) setDefaultAdapter(ipv4 string) (SettingsState, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	value := s.state.Settings
+	value.DefaultAdapterIPv4 = ipv4
 	if err := validateSettings(value); err != nil {
 		return SettingsState{}, err
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	// Locale, geometry and appearance have dedicated updates; a stale Settings form must not overwrite them.
-	value.Locale = s.state.Settings.Locale
-	value.Overlay = s.state.Settings.Overlay
-	value.Theme = s.state.Settings.Theme
-	value.ReduceMotion = s.state.Settings.ReduceMotion
 	return s.writeLocked(value)
 }
 
@@ -184,23 +266,69 @@ func (s *settingsStore) setLocale(locale string) (SettingsState, error) {
 	return s.writeLocked(value)
 }
 
-func (s *settingsStore) setOverlay(bounds OverlayBounds) error {
-	if !validOverlayBounds(bounds) {
-		return errors.New("invalid_overlay_bounds")
-	}
+// overlay returns a copy of one Overlay's preferences.
+func (s *settingsStore) overlay(kind string) OverlayPreferences {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.state.Settings.Overlay != nil && *s.state.Settings.Overlay == bounds {
+	prefs := *s.state.Settings.Overlays.of(kind)
+	prefs.Placement = copyPlacement(prefs.Placement)
+	return prefs
+}
+
+// changeOverlay edits one Overlay's preferences. Without persist the change stays in memory until the next write.
+func (s *settingsStore) changeOverlay(kind string, persist bool, change func(*OverlayPreferences)) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !persist {
+		change(s.state.Settings.Overlays.of(kind))
+		s.dirty = true
 		return nil
 	}
 	value := s.state.Settings
-	value.Overlay = &bounds
-	if s.state.Warning == "settings_invalid" || s.state.Warning == "settings_read_failed" {
-		s.state.Settings.Overlay = &bounds
-		return nil
-	}
+	value.Overlays = copyOverlays(value.Overlays)
+	change(value.Overlays.of(kind))
 	_, err := s.writeLocked(value)
 	return err
+}
+
+// saveOverlayPlacement records where a window is. It runs on its own without a user request, so it must not replace a
+// settings file that could not be read; the placement then lasts for this session only.
+func (s *settingsStore) saveOverlayPlacement(kind string, placement OverlayPlacement) error {
+	if !validPlacement(&placement) {
+		return errors.New("invalid_overlay_placement")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	current := s.state.Settings.Overlays.of(kind).Placement
+	if current != nil && *current == placement && !s.dirty {
+		return nil
+	}
+	if s.state.Warning == "settings_invalid" || s.state.Warning == "settings_read_failed" {
+		s.state.Settings.Overlays.of(kind).Placement = &placement
+		return nil
+	}
+	value := s.state.Settings
+	value.Overlays = copyOverlays(value.Overlays)
+	value.Overlays.of(kind).Placement = &placement
+	_, err := s.writeLocked(value)
+	return err
+}
+
+// flush writes changes that were held in memory. It follows the same rule as saveOverlayPlacement for unreadable files.
+func (s *settingsStore) flush() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.dirty || s.state.Warning == "settings_invalid" || s.state.Warning == "settings_read_failed" {
+		return nil
+	}
+	_, err := s.writeLocked(s.state.Settings)
+	return err
+}
+
+func (s *settingsStore) setWarning(warning string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.state.Warning = warning
 }
 
 func (s *settingsStore) writeLocked(value Settings) (SettingsState, error) {
@@ -238,5 +366,6 @@ func (s *settingsStore) writeLocked(value Settings) (SettingsState, error) {
 		revision++
 	}
 	s.state = SettingsState{Settings: value, LocaleRevision: revision}
+	s.dirty = false
 	return s.state, nil
 }

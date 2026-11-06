@@ -1,26 +1,15 @@
 {
   "title": "설정",
-  "description": "이 Windows 사용자의 환경설정입니다.",
   "language": "언어",
   "languageHint": "두 창과 게임 명칭에 즉시 적용됩니다.",
-  "startup": "시작 환경설정",
   "defaultAdapter": "기본 네트워크 인터페이스",
   "chooseAtLaunch": "시작할 때마다 선택",
   "adapterHint": "시작할 때 미리 선택합니다. 캡처는 수동으로 시작합니다.",
-  "showOnStartup": "시작 시 오버레이 표시",
-  "visibilityHint": "현재 표시 상태는 위의 버튼으로 변경하세요.",
-  "save": "환경설정 저장",
-  "saving": "저장 중…",
-  "saved": "환경설정을 저장했습니다.",
-  "unsaved": "저장하지 않은 변경사항",
   "storage": "저장 위치: %LOCALAPPDATA%\\WWlogs\\settings.json.",
   "invalid": "설정을 안전하게 불러올 수 없어 기본값을 사용합니다.",
   "saveFailed": "환경설정을 저장하지 못했습니다. 이전 설정은 유지됩니다.",
-  "resetOverlay": "오버레이 위치 초기화",
-  "geometryHint": "오버레이 제목 표시줄을 드래그하고 가장자리에서 크기를 조절하세요. 위치와 크기는 자동 저장됩니다.",
   "appearance": "외관",
   "theme": "테마",
-  "themeHint": "모든 창에 즉시 적용되며 다음 실행 시에도 유지됩니다.",
   "reduceMotion": "동작 줄이기",
   "reduceMotionHint": "전환 효과를 끕니다. Windows 애니메이션 설정도 따릅니다.",
   "themes": {
@@ -40,5 +29,45 @@
       "name": "응결",
       "character": "카를로타"
     }
-  }
+  },
+  "groups": {
+    "basic": "기본 설정",
+    "overlays": "오버레이",
+    "capture": "캡처",
+    "about": "정보"
+  },
+  "pages": {
+    "general": "일반",
+    "appearance": "외관",
+    "combatOverlay": "전투 오버레이",
+    "effectsOverlay": "효과 오버레이",
+    "capture": "네트워크 캡처",
+    "about": "WWlogs"
+  },
+  "sections": {
+    "language": "언어",
+    "motion": "모션",
+    "window": "창",
+    "look": "외관",
+    "capture": "네트워크 캡처",
+    "about": "버전 정보"
+  },
+  "showWindow": "이 오버레이 표시",
+  "alwaysOnTop": "항상 위에 표시",
+  "clickThrough": "마우스 클릭 통과",
+  "clickThroughHint": "마우스 입력이 아래의 게임으로 전달됩니다. 오버레이를 옮기려면 아래의 편집 모드를 사용하세요.",
+  "editMode": "편집 모드",
+  "editModeHint": "일시적으로 마우스 입력을 받아 이동과 크기 조정을 할 수 있습니다. 완료하면 원래 설정으로 돌아갑니다.",
+  "startEditing": "편집 시작",
+  "finishEditing": "편집 완료",
+  "position": "위치와 크기",
+  "positionNote": "오버레이별로 자동 저장",
+  "resetPosition": "위치 초기화",
+  "opacity": "배경 불투명도",
+  "opacityHint": "패널 배경에만 적용되며 글자는 선명하게 유지됩니다.",
+  "decrease": "줄이기",
+  "increase": "늘리기",
+  "buildCommit": "소스 커밋",
+  "buildProfile": "빌드 유형",
+  "geometryReset": "오버레이 위치 데이터가 유효하지 않아 기본값으로 되돌렸습니다."
 }

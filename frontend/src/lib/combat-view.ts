@@ -1,4 +1,4 @@
-import type { Effect, Encounter, Role, Vehicle } from "./snapshot"
+import type { Effect, Encounter, Role, Vehicle, ViewSnapshot } from "./snapshot"
 
 // Adapts engine snapshot types to the row models the shared components render. Nothing here adds information: a value
 // the engine did not report stays undefined, and unresolved identities keep their raw IDs.
@@ -7,8 +7,13 @@ export interface CombatRowModel {
   key: string
   kind: "role" | "vehicle"
   roleId?: number
+  /** Static Master element; undefined means unknown. */
+  elementId?: number
   /** Null when the Master lookup is not VERIFIED; the UI must then show UNKNOWN with roleId. */
   name: string | null
+  /** Engine split of damage by direct hits and summons. Vehicles have no split. */
+  directDamage?: number
+  summonDamage?: number
   damage: number
   /** 0..1, or undefined when the engine did not report a share. */
   share?: number
@@ -29,7 +34,10 @@ function roleRow(role: Role, duration: number | undefined): Omit<CombatRowModel,
     key: `role-${role.playerId}-${role.roleId}`,
     kind: "role",
     roleId: role.roleId,
+    elementId: role.elementId,
     name: role.nameStatus === "VERIFIED" && role.name !== "" ? role.name : null,
+    directDamage: role.directDamage,
+    summonDamage: role.summonDamage,
     damage: role.damageDealt,
     share: role.damageShare,
     dps: duration === undefined ? undefined : role.damageDealt / duration,
@@ -51,11 +59,27 @@ function vehicleRow(vehicle: Vehicle, duration: number | undefined): Omit<Combat
 
 /** Rows keep a stable identity while their rank changes, which is what lets a rank swap animate instead of re-mount. */
 export function combatRows(encounter: Encounter): CombatRowModel[] {
-  const duration = usableDuration(encounter)
-  const rows = encounter.roles.map(role => roleRow(role, duration))
-  if (encounter.vehicle) rows.push(vehicleRow(encounter.vehicle, duration))
-  const ranked = [...rows].sort((a, b) => b.damage - a.damage || a.key.localeCompare(b.key))
-  return ranked.map((row, rank) => ({ ...row, rank }))
+  return ranked(encounter.roles, encounter.vehicle, usableDuration(encounter))
+}
+
+/** The capture interval's rows, for when no encounter exists yet. There is no encounter duration, so no per-role DPS. */
+export function intervalRows(view: Pick<ViewSnapshot, "roles" | "vehicle">): CombatRowModel[] {
+  return ranked(view.roles, view.vehicle, undefined)
+}
+
+function ranked(roles: readonly Role[], vehicle: Vehicle | undefined, duration: number | undefined): CombatRowModel[] {
+  const rows = roles.map(role => roleRow(role, duration))
+  if (vehicle) rows.push(vehicleRow(vehicle, duration))
+  const ordered = [...rows].sort((a, b) => b.damage - a.damage || a.key.localeCompare(b.key))
+  return ordered.map((row, rank) => ({ ...row, rank }))
+}
+
+/** Direct and summon shares of one row, or undefined when the engine reported no damage to split. */
+export function contributionShares(row: Pick<CombatRowModel, "directDamage" | "summonDamage">): { direct: number; summon: number } | undefined {
+  const direct = row.directDamage ?? 0
+  const summon = row.summonDamage ?? 0
+  const total = direct + summon
+  return total > 0 ? { direct: direct / total, summon: summon / total } : undefined
 }
 
 export type CountdownState =

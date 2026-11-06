@@ -1,0 +1,188 @@
+import { memo, useEffect, useMemo, useState, type ReactNode } from "react"
+import { useTranslation } from "react-i18next"
+import { AnimatedNumber, Card, CharacterAvatar, Chip, ContentSwitch, DamageBar, Icon, LiveChart, Reveal, Segmented, StackList, ThemeBackdrop, gameAssetUrl, type ChartSeries, type IconName, type ThemeId } from "@/design"
+import { dataChip, displayedEncounter, isFrozen, usableDps, type CombatData, type SkillRow } from "@/lib/combat-data"
+import { combatRows, contributionShares, intervalRows, type CombatRowModel } from "@/lib/combat-view"
+import { elementColor, useFormatters, useRowNames } from "@/lib/format"
+import { dpsText, type ViewSnapshot } from "@/lib/snapshot"
+import { statusText } from "@/i18n"
+
+interface StatProps {
+  icon: IconName
+  label: string
+  value: number | undefined
+  format: (value: number) => string
+  note?: string
+  scope: string
+  stale: boolean
+  hero?: boolean
+  numberMode: "tween" | "roll"
+  index: number
+  field: string
+  status?: string
+}
+
+const StatCard = memo(function StatCard({ icon, label, value, format, note, scope, stale, hero = false, numberMode, index, field, status }: StatProps) {
+  return <Reveal index={index} className={hero ? "ww-dash-stat-wrap ww-dash-stat-hero" : "ww-dash-stat-wrap"}>
+    <Card interactive className="ww-dash-stat">
+      <div className="ww-dash-stat-label"><Icon name={icon} size={14} />{label}</div>
+      <div className="ww-dash-stat-value" data-field={field} data-status={status}><AnimatedNumber value={value} format={format} mode={numberMode} scope={scope} stale={stale} /></div>
+      {note && <div className="ww-dash-stat-note">{note}</div>}
+    </Card>
+  </Reveal>
+})
+
+function RoleBoard({ rows, selected, onSelect, scope, stale, numberMode }: { rows: readonly CombatRowModel[]; selected: string; onSelect: (key: string) => void; scope: string; stale: boolean; numberMode: "tween" | "roll" }) {
+  const format = useFormatters()
+  const nameOf = useRowNames()
+  const ordered = useMemo(() => [...rows].sort((a, b) => a.rank - b.rank), [rows])
+  return <StackList items={ordered} keyOf={row => row.key} rowHeight={58} gap={6} renderItem={row => <div className="ww-dash-role" data-field={row.kind === "vehicle" ? "vehicle" : undefined} data-selected={row.key === selected} data-element={row.elementId} role="button" tabIndex={0} onClick={() => onSelect(row.key)} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") onSelect(row.key) }}>
+    <CharacterAvatar roleId={row.roleId} elementId={row.elementId} size={42} fallback={row.kind === "vehicle" ? <Icon name="bolt" size={18} /> : "?"} />
+    <div className="ww-dash-role-main">
+      <div className="ww-dash-role-line"><strong className="ww-truncate">{nameOf(row)}</strong><span className="ww-num ww-dash-role-dps"><AnimatedNumber value={row.dps} format={format.integer} mode={numberMode} scope={scope} stale={stale} /></span></div>
+      <DamageBar share={row.share} scope={scope} />
+      <div className="ww-dash-role-line ww-dash-role-sub"><span className="ww-num"><AnimatedNumber value={row.damage} format={format.integer} mode="tween" scope={scope} stale={stale} /></span><span className="ww-num">{row.share === undefined ? "—" : format.percent(row.share)}</span></div>
+    </div>
+  </div>} />
+}
+
+const SkillTable = memo(function SkillTable({ rows, color }: { rows: readonly SkillRow[]; color: string }) {
+  const { t } = useTranslation("dashboard")
+  const format = useFormatters()
+  return <table className="ww-dash-skills" style={{ "--ww-series": color } as React.CSSProperties}>
+    <thead><tr><th>{t("skill")}</th><th>{t("damageColumn")}</th><th>{t("hits")}</th><th>{t("shareColumn")}</th></tr></thead>
+    <tbody>{rows.map(row => <tr key={row.skillId}>
+      <td><span className="ww-dash-skill-name"><img src={gameAssetUrl("skill", row.skillId)} alt="" decoding="async" onError={event => { event.currentTarget.style.visibility = "hidden" }} /><span className="ww-truncate">{row.name ?? `#${row.skillId}`}</span></span></td>
+      <td className="ww-num"><AnimatedNumber value={row.damage} format={format.integer} /></td>
+      <td className="ww-num">{format.integer(row.hits)}</td>
+      <td><div className="ww-dash-skill-share"><DamageBar share={row.share} /><span className="ww-num">{format.percent(row.share)}</span></div></td>
+    </tr>)}</tbody>
+  </table>
+})
+
+/** The engine's own health report. Nothing here is computed in the frontend. */
+function IntegrityPanel({ view, diagnostics }: { view: ViewSnapshot | null; diagnostics: boolean }) {
+  const { t, i18n } = useTranslation(["dashboard", "common"])
+  const c = (key: string) => t(key, { ns: "common" })
+  const number = (value: number | undefined) => value === undefined ? "—" : value.toLocaleString(i18n.language)
+  const integrity = view?.statistics.integrity
+  return <div className="ww-dash-integrity">
+    <p className="ww-dash-empty-note" data-field="integrity" data-status={view?.health.dataIntegrity}>{!view ? c("waiting") : t(integrity?.status === "INTACT" ? "intactNote" : integrity?.status === "DEGRADED" ? "degradedNote" : "unreliableNote")}</p>
+    <dl className="ww-dash-facts">
+      <dt>{c("context")}</dt><dd data-field="context">{statusText(view?.health.context.state)}</dd>
+      <dt>{c("transport")}</dt><dd data-field="transport">{statusText(view?.health.transport.state)}</dd>
+      <dt>{t("transportLosses")}</dt><dd className="ww-num">{number(integrity?.transportLosses)}</dd>
+      <dt>{t("unrecovered")}</dt><dd className="ww-num">{number(integrity?.unrecoveredLosses)}</dd>
+      <dt>{t("downgraded")}</dt><dd className="ww-num">{number(integrity?.contextDowngradedEvents)}</dd>
+      {diagnostics && <>
+        <dt>{t("drops")}</dt><dd className="ww-num">{view?.health.capture.kernelDropped.status === "available" ? number(view.health.capture.kernelDropped.value) : c("unknown")}</dd>
+        <dt>{t("paired")}</dt><dd className="ww-num">{view ? `${number(view.health.rpcPairing.paired)} / ${number(view.health.rpcPairing.requests)}` : "—"}</dd>
+        <dt>{t("finished")}</dt><dd className="ww-num" data-field="encounters-finished">{number(view?.encounters.completedTotal)}</dd>
+        <dt>{c("unassigned")}</dt><dd className="ww-num" data-field="unassigned">{number(view?.unassignedRole.damageDealt)}</dd>
+        <dt>{t("unknownOwnership")}</dt><dd className="ww-num" data-field="unknown-ownership">{t("unknownTotals", { out: number(view?.statistics.unattributed.outgoingDamage), in: number(view?.statistics.unattributed.incomingDamage) })}</dd>
+      </>}
+    </dl>
+    {view?.health.context.state === "SUSPECT" && <p className="ww-dash-warning">{t("suspectNote")}</p>}
+  </div>
+}
+
+type DetailTab = "skills" | "contribution" | "integrity"
+
+export interface DashboardViewProps {
+  data: CombatData
+  theme: ThemeId
+  numberMode?: "tween" | "roll"
+  /** Extra controls beside the clock, for review surfaces. */
+  actions?: ReactNode
+}
+
+/**
+ * The one Dashboard. It renders only what its provider reports. A number without a source is shown as unavailable, and
+ * nothing is calculated here beyond formatting the engine's values.
+ */
+export function DashboardView({ data, theme, numberMode = "tween", actions }: DashboardViewProps) {
+  const { t, i18n } = useTranslation(["dashboard", "common"])
+  const c = (key: string) => t(key, { ns: "common" })
+  const format = useFormatters()
+  const nameOf = useRowNames()
+  const snapshot = data.snapshot
+  const view = snapshot?.view ?? null
+  const encounter = displayedEncounter(view)
+  const rows = useMemo(() => encounter ? combatRows(encounter) : view ? intervalRows(view) : [], [encounter, view])
+  const stale = isFrozen(data)
+  const chip = dataChip(data)
+  const scope = encounter?.encounterId ?? "none"
+  const [selectedKey, setSelected] = useState("")
+  const hasSkills = data.skillsOf !== undefined
+  const [tab, setTab] = useState<DetailTab>(hasSkills ? "skills" : "contribution")
+  const selected = rows.find(row => row.key === selectedKey) ?? rows[0]
+  useEffect(() => { if (selected && selected.key !== selectedKey) setSelected(selected.key) }, [selected, selectedKey])
+  const dps = encounter?.dps ?? view?.statistics.encounterDps
+  const lowerBound = dps?.status === "lower_bound"
+  // A lower bound is never shown as an exact value.
+  const dpsFormat = useMemo(() => lowerBound ? (value: number) => `≥ ${format.integer(value)}` : format.integer, [lowerBound, format])
+  const rollingText = (value: Parameters<typeof dpsText>[0]) => usableDps(value) ? dpsText(value, i18n.language) : "—"
+  const events = encounter ? encounter.roles.reduce((sum, role) => sum + role.outgoingEvents, (encounter.vehicle?.outgoingEvents ?? 0) + encounter.unassignedRole.outgoingEvents) : view?.statistics.outgoingEvents
+  const timeline = data.timeline
+  // The timeline changes once per second; the memo keeps the chart from re-rendering at the publish rate.
+  const timelineKey = timeline ? [...timeline.series.values()].map(series => `${series.length}:${series.at(-1) ?? ""}`).join() : ""
+  const series = useMemo<ChartSeries[]>(() => timeline ? rows.filter(row => row.kind === "role").sort((a, b) => (a.roleId ?? 0) - (b.roleId ?? 0)).map(row => {
+    const values = timeline.series.get(row.roleId ?? 0) ?? []
+    return { key: row.key, label: nameOf(row), color: elementColor(row.elementId), values: Array.from({ length: timeline.slots }, (_, slot) => values[slot] ?? null) }
+  }) : [], [timelineKey, rows.length, nameOf])
+  const skills = data.skillsOf && selected?.roleId !== undefined ? data.skillsOf(selected.roleId) : undefined
+  const shares = selected ? contributionShares(selected) : undefined
+  const attributionIncomplete = view !== null && (view.unassignedRole.outgoingEvents > 0 || view.statistics.unattributed.outgoingEvents > 0)
+  const diagnostics = snapshot?.service.app.profile === "development"
+  return <div className="ww-dash ww-has-backdrop"><ThemeBackdrop theme={theme} intensity="art" /><div className="ww-dash-layout">
+    <Reveal className="ww-dash-top">
+      <div>
+        <div className="ww-caps">{encounter ? t("encounterNumber", { id: encounter.sequence }) : c("noEncounter")}</div>
+        <h2 className="ww-dash-title">{t("summaryTitle")}</h2>
+      </div>
+      <div className="ww-dash-top-right">
+        <span data-field="encounter-state" data-state={view?.encounters.state}><Chip tone={chip.tone} dot>{c(chip.key)}</Chip></span>
+        <span className="ww-dash-clock ww-num" data-field="encounter-elapsed"><Icon name="clock" size={14} />{format.clock(encounter?.elapsedSeconds)}</span>
+        {actions}
+      </div>
+    </Reveal>
+    <div className="ww-dash-stats">
+      <StatCard index={0} hero icon="bolt" label={c("encounterDps")} field="encounter-dps" status={dps?.status ?? "unavailable"} value={usableDps(dps) ? dps?.value : undefined} format={dpsFormat} note={view ? t("rollingNote", { five: rollingText(view.statistics.rolling5sDps), ten: rollingText(view.statistics.rolling10sDps) }) : undefined} scope={scope} stale={stale} numberMode={numberMode} />
+      <StatCard index={1} icon="spark" label={t("confirmedDamage")} field="damage-dealt" value={encounter?.totals.damageDealt ?? view?.statistics.damageDealt} format={format.integer} note={t(encounter ? "damageNote" : "interval")} scope={scope} stale={stale} numberMode={numberMode} />
+      <StatCard index={2} icon="shield" label={t("damageTaken")} field="damage-taken" value={encounter?.totals.damageTaken ?? view?.statistics.damageTaken} format={format.integer} note={t(encounter ? "takenNote" : "interval")} scope={scope} stale={stale} numberMode={numberMode} />
+      <StatCard index={3} icon="list" label={t("eventsLabel")} field="events" value={events} format={format.integer} note={t("eventsNote")} scope={scope} stale={stale} numberMode={numberMode} />
+    </div>
+    <div className="ww-dash-main">
+      <Reveal index={4} className="ww-dash-board-wrap">
+        <Card className="ww-dash-board">
+          <div className="ww-dash-card-head"><h3>{t("ranking")}</h3></div>
+          <div data-field="roles">
+            {rows.length === 0 ? <p className="ww-dash-empty-note">{t("noRoles")}</p> : <RoleBoard rows={rows} selected={selected?.key ?? ""} onSelect={setSelected} scope={scope} stale={stale} numberMode={numberMode} />}
+          </div>
+          {attributionIncomplete && <p className="ww-dash-warning" data-field="attribution-incomplete">{c("attributionIncomplete")}</p>}
+          {selected?.roleId !== undefined && <ContentSwitch contentKey={selected.key} className="ww-dash-portrait"><img src={gameAssetUrl("character-portrait", selected.roleId)} alt="" decoding="async" onError={event => { event.currentTarget.style.display = "none" }} /></ContentSwitch>}
+        </Card>
+      </Reveal>
+      <Reveal index={5} className="ww-dash-detail-wrap">
+        <Card className="ww-dash-chart-card">
+          <div className="ww-dash-card-head"><h3>{t("timeline")}</h3>{!timeline && <Chip>{t("noSource")}</Chip>}</div>
+          <LiveChart series={series} slots={timeline?.slots ?? 61} height={190} formatValue={format.compact} formatSlot={slot => format.clock(slot)} emptyLabel={t(timeline ? "chartEmpty" : "timelineUnavailable")} ariaLabel={t("timeline")} />
+        </Card>
+        <Card className="ww-dash-detail">
+          <div className="ww-dash-card-head">
+            <h3>{selected ? nameOf(selected) : "—"}</h3>
+            <Segmented variant="underline" label={t("breakdown")} value={tab} onChange={setTab} options={[{ value: "skills", label: t("skills") }, { value: "contribution", label: t("contribution") }, { value: "integrity", label: c("integrity") }]} />
+          </div>
+          <ContentSwitch contentKey={`${tab}-${selected?.key ?? ""}`}>
+            {tab === "skills" && (skills === undefined ? <p className="ww-dash-empty-note">{t("skillsUnavailable")}</p> : <SkillTable rows={skills} color={elementColor(selected?.elementId)} />)}
+            {tab === "contribution" && (shares === undefined ? <p className="ww-dash-empty-note">{t("noContribution")}</p> : <div className="ww-dash-contribution" data-element={selected?.elementId}>
+              <div><span>{t("direct")}</span><b className="ww-num">{format.percent(shares.direct)}</b></div><DamageBar share={shares.direct} />
+              <div><span>{t("summon")}</span><b className="ww-num">{format.percent(shares.summon)}</b></div><DamageBar share={shares.summon} />
+            </div>)}
+            {tab === "integrity" && <IntegrityPanel view={view} diagnostics={diagnostics} />}
+          </ContentSwitch>
+        </Card>
+      </Reveal>
+    </div>
+  </div></div>
+}

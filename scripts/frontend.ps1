@@ -98,9 +98,10 @@ try {
                 Remove-Item Env:WWLOGS_FRONTEND_PROFILE -ErrorAction SilentlyContinue
             }
             if (-not (Test-Path -LiteralPath (Join-Path $OutDir 'index.html'))) { throw 'vite build produced no index.html' }
-            # Public output must not contain the Showcase. Its entry file name is the marker this check relies on.
-            if ($Profile -eq 'Public' -and (Get-ChildItem -LiteralPath $OutDir -Recurse -File | Where-Object { $_.Name -match '^ShowcaseApp' -or ($_.Extension -in '.js', '.css' -and (Select-String -LiteralPath $_.FullName -SimpleMatch -Quiet '__wwShowcase')) })) {
-                throw 'The Public frontend output contains the Development Showcase'
+            # Public output must not contain the Showcase, its mock data or its font tooling, whatever chunk they could land in.
+            $developmentMarkers = @('__wwShowcase', '/preview-fonts/', 'Mock adapter', 'mock-', 'font-recheck')
+            if ($Profile -eq 'Public' -and (Get-ChildItem -LiteralPath $OutDir -Recurse -File | Where-Object { $_.Name -match '^ShowcaseApp' -or ($_.Extension -in '.js', '.css', '.html' -and (Select-String -LiteralPath $_.FullName -SimpleMatch -Quiet -Pattern $developmentMarkers)) })) {
+                throw 'The Public frontend output contains Development-only Showcase material'
             }
             Write-Host "Frontend build ($Profile): PASS (Node.js $nodeVersion) -> $OutDir"
         }

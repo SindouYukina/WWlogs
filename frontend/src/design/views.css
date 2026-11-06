@@ -1,0 +1,92 @@
+/* Product view layouts: the Desktop window, the Dashboard and the Overlay windows. Values come from the design tokens. */
+html, body, #root { height: 100%; }
+
+/* ------------------------------ Desktop window ------------------------------ */
+body[data-view="desktop"] { margin: 0; background: var(--ww-surface-canvas); overflow: hidden; }
+.ww-app { display: flex; flex-direction: column; height: 100vh; background: var(--ww-surface-canvas); }
+.ww-app-header { display: grid; grid-template-columns: minmax(150px, 1fr) auto minmax(0, 2fr); align-items: center; gap: var(--ww-space-4); padding: var(--ww-space-2) var(--ww-space-5); background: var(--ww-surface-rail); border-bottom: 1px solid var(--ww-line-soft); }
+.ww-app-brand { display: flex; align-items: center; gap: var(--ww-space-3); min-width: 0; }
+.ww-app-brand > div { display: flex; flex-direction: column; line-height: 1.25; }
+.ww-app-brand strong { font-family: var(--ww-font-display); font-size: var(--ww-text-base); }
+.ww-app-brand span:not(.ww-app-mark) { font-size: var(--ww-text-2xs); color: var(--ww-text-3); }
+.ww-app-mark { display: grid; place-items: center; width: 30px; height: 30px; flex: none; border-radius: var(--ww-radius-md); background: linear-gradient(160deg, var(--ww-accent-fill-top), var(--ww-accent-fill-bottom)); box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.25); font-weight: var(--ww-weight-bold); color: var(--ww-on-accent); }
+.ww-app-tools { display: flex; align-items: center; justify-content: flex-end; gap: var(--ww-space-3); min-width: 0; }
+.ww-app-tools > [data-field="listening"] { min-width: 0; overflow: hidden; }
+.ww-app-tools .ww-listening-detail { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ww-app-overlays { display: flex; gap: var(--ww-space-1); flex: none; }
+.ww-app-capture { display: flex; align-items: center; gap: var(--ww-space-2); flex: none; }
+.ww-app-capture .ww-select-trigger { width: 180px; height: 30px; font-size: var(--ww-text-xs); }
+.ww-app-notices { display: flex; flex-direction: column; gap: var(--ww-space-1); padding: var(--ww-space-2) var(--ww-space-5); background: var(--ww-warn-soft); font-size: var(--ww-text-xs); color: var(--ww-warn); }
+.ww-app-notices > p { margin: 0; }
+.ww-app-notices > p[data-tone="critical"] { color: var(--ww-critical); }
+.ww-app-main { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+.ww-app-page { height: 100%; min-height: 0; }
+.ww-settings-notice { margin: 0 0 var(--ww-space-4); padding: var(--ww-space-2) var(--ww-space-3); border-radius: var(--ww-radius-md); background: var(--ww-warn-soft); font-size: var(--ww-text-sm); color: var(--ww-warn); }
+.ww-settings-notice[data-tone="critical"] { background: var(--ww-critical-soft); color: var(--ww-critical); }
+@media (max-width: 1240px) { .ww-app-tools .ww-listening-detail { display: none; } }
+
+/* ------------------------------ Dashboard ------------------------------ */
+.ww-dash { position: relative; height: 100%; background: var(--ww-surface-canvas); isolation: isolate; }
+.ww-dash-layout { display: flex; flex-direction: column; gap: var(--ww-space-3); height: 100%; padding: var(--ww-space-4) var(--ww-space-5); overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--ww-surface-4) transparent; }
+.ww-dash-top { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--ww-space-4); }
+.ww-dash-title { margin: 2px 0 0; font-family: var(--ww-font-display); font-size: var(--ww-text-xl); font-weight: var(--ww-weight-display); letter-spacing: calc(var(--ww-tracking-display) + var(--ww-tracking-shift)); }
+.ww-dash-top-right { display: flex; align-items: center; gap: var(--ww-space-3); }
+.ww-dash-clock { display: inline-flex; align-items: center; gap: var(--ww-space-1); font-size: var(--ww-text-lg); color: var(--ww-time); }
+.ww-dash-stats { display: grid; grid-template-columns: 1.5fr 1.15fr 1fr 1fr; gap: var(--ww-space-3); }
+.ww-dash-stat { padding: var(--ww-space-3) var(--ww-space-4); height: 100%; }
+.ww-dash-stat > .ww-card-body { display: flex; flex-direction: column; height: 100%; }
+.ww-dash-stat-note { margin-top: auto !important; padding-top: var(--ww-space-1); }
+.ww-dash-stat-wrap { min-width: 0; }
+.ww-dash-stat-label { display: flex; align-items: center; gap: var(--ww-space-1_5); font-size: var(--ww-text-xs); color: var(--ww-text-3); }
+.ww-dash-stat-value { margin-top: var(--ww-space-1); font-size: var(--ww-text-2xl); line-height: 1.15; }
+.ww-dash-stat-hero .ww-dash-stat-value { font-size: var(--ww-text-hero); line-height: 1.05; font-weight: var(--ww-weight-display); letter-spacing: var(--ww-tracking-display); color: var(--ww-hero-number); }
+.ww-dash-stat-note { margin-top: var(--ww-space-1); font-size: var(--ww-text-2xs); color: var(--ww-text-4); }
+.ww-dash-main { display: grid; grid-template-columns: minmax(280px, 0.8fr) minmax(0, 1.5fr); gap: var(--ww-space-3); flex: 1; min-height: 0; }
+.ww-dash-board-wrap, .ww-dash-detail-wrap { min-width: 0; }
+.ww-dash-detail-wrap { display: flex; flex-direction: column; gap: var(--ww-space-3); }
+.ww-dash-board { position: relative; height: 100%; min-height: 380px; padding: var(--ww-space-3) var(--ww-space-3) 0; overflow: hidden; }
+.ww-dash-board .ww-card-body { height: 100%; display: flex; flex-direction: column; }
+.ww-dash-chart-card, .ww-dash-detail { padding: var(--ww-space-3) var(--ww-space-4); }
+.ww-dash-card-head { display: flex; align-items: center; justify-content: space-between; gap: var(--ww-space-3); min-height: 28px; margin-bottom: var(--ww-space-2); }
+.ww-dash-card-head h3 { margin: 0; font-size: var(--ww-text-base); font-weight: var(--ww-weight-semibold); }
+.ww-dash-role { display: flex; align-items: center; gap: var(--ww-space-3); height: 100%; padding: 0 var(--ww-space-2); border-radius: var(--ww-radius-md); cursor: pointer; transition: background-color var(--ww-dur-fast) var(--ww-ease-standard); }
+.ww-dash-role:hover { background: var(--ww-surface-hover); }
+.ww-dash-role[data-selected="true"] { background: var(--ww-surface-selected); }
+.ww-dash-role:focus-visible { outline: none; box-shadow: var(--ww-focus-ring); }
+.ww-dash-role-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.ww-dash-role-line { display: flex; align-items: baseline; justify-content: space-between; gap: var(--ww-space-2); }
+.ww-dash-role-line strong { font-size: var(--ww-text-md); font-weight: var(--ww-weight-semibold); }
+.ww-dash-role-dps { font-size: var(--ww-text-lg); }
+.ww-dash-role-sub { font-size: var(--ww-text-2xs); color: var(--ww-text-3); }
+.ww-dash-portrait { position: relative; flex: 1; min-height: 110px; margin: var(--ww-space-2) calc(var(--ww-space-3) * -1) 0; overflow: hidden; }
+.ww-dash-portrait img { position: absolute; right: -8%; top: -6%; width: 92%; opacity: 0.5; -webkit-mask-image: linear-gradient(180deg, #000 40%, transparent 96%), linear-gradient(90deg, transparent, #000 35%); -webkit-mask-composite: source-in; mask-composite: intersect; }
+.ww-dash-skills { width: 100%; border-collapse: collapse; font-size: var(--ww-text-sm); }
+.ww-dash-skills th { padding: 0 var(--ww-space-2) var(--ww-space-1); font-size: var(--ww-text-2xs); font-weight: var(--ww-weight-medium); color: var(--ww-text-4); text-align: end; }
+.ww-dash-skills th:first-child { text-align: start; padding-inline-start: 0; }
+.ww-dash-skills td { padding: 5px var(--ww-space-2); border-top: 1px solid var(--ww-line-soft); text-align: end; }
+.ww-dash-skills td:first-child { padding-inline-start: 0; text-align: start; }
+.ww-dash-skill-name { display: flex; align-items: center; gap: var(--ww-space-2); min-width: 0; max-width: 240px; }
+.ww-dash-skill-name img { width: 22px; height: 22px; flex: none; }
+.ww-dash-skill-share { display: grid; grid-template-columns: minmax(60px, 1fr) 48px; align-items: center; gap: var(--ww-space-2); min-width: 130px; }
+.ww-dash-contribution { display: grid; gap: var(--ww-space-1_5); padding-block: var(--ww-space-2); font-size: var(--ww-text-sm); color: var(--ww-text-2); }
+.ww-dash-contribution > div:not(.ww-bar) { display: flex; justify-content: space-between; }
+
+.ww-dash-empty-note { margin: 0; padding-block: var(--ww-space-3); font-size: var(--ww-text-sm); color: var(--ww-text-3); }
+.ww-dash-warning { margin: var(--ww-space-2) 0 0; font-size: var(--ww-text-xs); color: var(--ww-warn); }
+.ww-dash-facts { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--ww-space-1) var(--ww-space-4); margin: 0; font-size: var(--ww-text-sm); }
+.ww-dash-facts dt { color: var(--ww-text-3); }
+.ww-dash-facts dd { margin: 0; text-align: end; }
+
+/* ------------------------------ Overlay windows ------------------------------ */
+body[data-view="overlay"] { margin: 0; background: transparent; overflow: hidden; user-select: none; }
+/* Wails reads this at mouse down: outside Edit Mode the window cannot be dragged. Edge resize has priority over drag, so
+   the transparent gutter stays inside the drag region. */
+body[data-view="overlay"][data-editing="true"] { --wails-draggable: drag; }
+.ww-overlay-surface { position: relative; height: 100vh; padding: var(--ww-space-2); overflow: hidden; user-select: none; }
+/* Wails checks the drag target's client size; keep hits on the surface even over inline text. */
+.ww-overlay-surface[data-editing="true"] * { pointer-events: none; }
+.ww-overlay-surface[data-editing="true"]::after { content: ""; position: absolute; inset: 2px; border: 1px dashed var(--ww-accent-bright); border-radius: var(--ww-radius-md); pointer-events: none; }
+.ww-overlay-edit { position: absolute; inset-inline: var(--ww-space-2); bottom: var(--ww-space-2); z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: var(--ww-space-2); padding: var(--ww-space-1) var(--ww-space-1) var(--ww-space-1) var(--ww-space-2); border-radius: var(--ww-radius-md); background: var(--ww-surface-3); box-shadow: var(--ww-shadow-popover); font-size: var(--ww-text-2xs); color: var(--ww-text-2); }
+.ww-overlay-edit .ww-btn { flex: none; pointer-events: auto; --wails-draggable: no-drag; }
+.ww-effects-empty { background: var(--ww-surface-overlay); border-radius: var(--ww-radius-md); }
+.ww-effects-omitted { padding-inline: var(--ww-space-1); font-size: var(--ww-text-2xs); color: var(--ww-text-3); }
