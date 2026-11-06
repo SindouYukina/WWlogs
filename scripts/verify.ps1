@@ -90,8 +90,12 @@ try {
                 # Desktop host: the frontend is typechecked and built outside the repository with the pinned Node.js 24,
                 # embedded into both profiles, and the Public desktop executable is audited like the console one.
                 $frontendDist = Join-Path $buildDirectory 'frontend-dist'
-                $frontendOutput = & (Join-Path $PSScriptRoot 'frontend.ps1') -Action Build -OutDir $frontendDist 2>&1 | Out-String
-                if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath (Join-Path $frontendDist 'index.html'))) {
+                $frontendDevelopmentDist = Join-Path $buildDirectory 'frontend-dist-development'
+                $frontendOutput = & (Join-Path $PSScriptRoot 'frontend.ps1') -Action Build -OutDir $frontendDist -Profile Public 2>&1 | Out-String
+                if ($LASTEXITCODE -eq 0) {
+                    $frontendOutput += & (Join-Path $PSScriptRoot 'frontend.ps1') -Action Build -OutDir $frontendDevelopmentDist -Profile Development 2>&1 | Out-String
+                }
+                if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath (Join-Path $frontendDist 'index.html')) -or -not (Test-Path -LiteralPath (Join-Path $frontendDevelopmentDist 'index.html'))) {
                     $state = if ($frontendOutput -match 'Node.js 24 was not found|is not 24\.x') { 'NOT RUN' } else { 'FAIL' }
                     Set-Result 'frontend typecheck + build' $state $frontendOutput.Trim()
                     Set-Result 'desktop build + audit' 'NOT RUN' 'frontend build did not complete'
@@ -100,11 +104,11 @@ try {
                     $desktopPublicExe = Join-Path $buildDirectory 'WWlogs-Desktop.exe'
                     $desktopDevelopmentExe = Join-Path $buildDirectory 'WWlogs-Desktop-dev.exe'
                     $desktopPublic = Invoke-Go @('run', './scripts/embed-key.go', '-profile', 'public', '-target', 'desktop', '-frontend-dist', $frontendDist, '-o', $desktopPublicExe)
-                    $desktopDevelopment = Invoke-Go @('run', './scripts/embed-key.go', '-profile', 'development', '-target', 'desktop', '-frontend-dist', $frontendDist, '-o', $desktopDevelopmentExe)
+                    $desktopDevelopment = Invoke-Go @('run', './scripts/embed-key.go', '-profile', 'development', '-target', 'desktop', '-frontend-dist', $frontendDevelopmentDist, '-o', $desktopDevelopmentExe)
                     Set-Result 'desktop build (Public + Development)' $(if ($desktopPublic.Code -eq 0 -and $desktopDevelopment.Code -eq 0) { 'PASS' } else { 'FAIL' }) $(if ($desktopPublic.Code -ne 0) { $desktopPublic.Output.Trim() } elseif ($desktopDevelopment.Code -ne 0) { $desktopDevelopment.Output.Trim() })
                     if ($desktopPublic.Code -eq 0) {
                         $desktopHelp = (& $desktopPublicExe -h 2>&1) -join "`n"
-                        $desktopFlagLeak = @('replay', 'replay-pacing', 'autostart', 'capture-diagnostics', 'webview-debug-port', 'publish-interval', 'overlay') | Where-Object { $desktopHelp -match "-$_\b" }
+                        $desktopFlagLeak = @('replay', 'replay-pacing', 'autostart', 'capture-diagnostics', 'webview-debug-port', 'publish-interval', 'overlay', 'showcase', 'showcase-overlays', 'asset-root') | Where-Object { $desktopHelp -match "-$_\b" }
                         $desktopLatin = [Text.Encoding]::GetEncoding(28591).GetString([IO.File]::ReadAllBytes($desktopPublicExe))
                         $desktopStringLeak = @('combat-events.jsonl', 'dps-effects.jsonl', 'buff-events.jsonl', 'status.json', 'capture-spool', 'LIVE_DIAGNOSTIC_SNAPSHOT', 'event-jsonl-out', 'pcapgo', 'encounter-events.jsonl', 'BATTLE_STATE_SIGNAL', 'COMBAT_EVENT_RECORD', 'ENCOUNTER_TRANSITION', 'remote-debugging-port=%d') | Where-Object { $desktopLatin.Contains($_) }
                         $desktopProblems = @()

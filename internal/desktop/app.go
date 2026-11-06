@@ -8,6 +8,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 
@@ -36,6 +37,12 @@ type Options struct {
 	// WebviewDebugPort opens the WebView2 remote debugging port. Only Development builds can set it or contain the
 	// browser argument (webviewArguments in options_development.go).
 	WebviewDebugPort int
+	// Showcase opens the Development Motion Showcase instead of the Desktop view. ShowcaseOverlays adds its real
+	// transparent windows. Public flags cannot set these, and Public frontend builds do not contain the Showcase.
+	Showcase         bool
+	ShowcaseOverlays bool
+	// GameAssetRoot is an explicitly supplied directory for game images. Empty means no images are served.
+	GameAssetRoot string
 }
 
 // Main parses the command line and runs the host until the Desktop window closes.
@@ -63,11 +70,15 @@ func Main() {
 // Run starts the application and blocks until it quits. The capture is stopped and its resources released before
 // Run returns.
 func Run(options Options) error {
-	assets, _, err := frontendFS()
+	frontend, _, err := frontendFS()
 	if err != nil {
 		return err
 	}
-	catalog, err := readLocaleCatalog(assets)
+	var assetHandler http.Handler = application.AssetFileServerFS(frontend)
+	if options.GameAssetRoot != "" {
+		assetHandler = withGameAssets(assetHandler, os.DirFS(options.GameAssetRoot))
+	}
+	catalog, err := readLocaleCatalog(frontend)
 	if err != nil {
 		return err
 	}
@@ -117,7 +128,7 @@ func Run(options Options) error {
 		Name:        "WWlogs",
 		Description: "Wuthering Waves combat analyzer",
 		Services:    []application.Service{application.NewService(bridge)},
-		Assets:      application.AssetOptions{Handler: application.AssetFileServerFS(assets)},
+		Assets:      application.AssetOptions{Handler: assetHandler},
 		ShouldQuit:  shutdown.shouldQuit,
 		Windows: application.WindowsOptions{
 			WebviewUserDataPath:   webviewUserDataPath(),
@@ -125,14 +136,18 @@ func Run(options Options) error {
 		},
 	})
 
+	desktopURL, desktopWidth, desktopHeight := "/?view=desktop", 1100, 720
+	if options.Showcase {
+		desktopURL, desktopWidth, desktopHeight = "/?view=showcase", 1360, 880
+	}
 	desktop := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Name:             desktopWindowName,
 		Title:            "WWlogs",
-		Width:            1100,
-		Height:           720,
+		Width:            desktopWidth,
+		Height:           desktopHeight,
 		MinWidth:         720,
 		MinHeight:        480,
-		URL:              "/?view=desktop",
+		URL:              desktopURL,
 		BackgroundColour: application.NewRGB(15, 17, 23),
 	})
 	overlay = app.Window.NewWithOptions(application.WebviewWindowOptions{
@@ -148,13 +163,21 @@ func Run(options Options) error {
 		Frameless:      true,
 		AlwaysOnTop:    true,
 		BackgroundType: application.BackgroundTypeTransparent,
-		Hidden:         !(options.ShowOverlay || settings.current().Settings.ShowOverlayOnStartup),
+		Hidden:         options.Showcase || !(options.ShowOverlay || settings.current().Settings.ShowOverlayOnStartup),
 		// Mouse click-through is deliberately not enabled in this phase: the overlay takes mouse input.
 		// Without the frameless decorations Windows keeps no caption, frame, shadow, or rounded corners around the
 		// transparent area.
 		Windows: application.WindowsWindow{HiddenOnTaskbar: true, DisableFramelessWindowDecorations: true},
 	})
-	flushOverlay = trackOverlay(app, overlay, settings)
+	if options.Showcase {
+		// The Showcase is a review surface: it must not rewrite the user's saved window placement.
+		flushOverlay = func(bool) {}
+		if options.ShowcaseOverlays {
+			openShowcaseOverlays(app)
+		}
+	} else {
+		flushOverlay = trackOverlay(app, overlay, settings)
+	}
 	// Cancel placement timers on startup failure as well; native teardown already persisted successful runs.
 	defer flushOverlay(false)
 	// Closing the Desktop window quits the application, including the hidden overlay.

@@ -29,7 +29,7 @@ try {
     if ($Target -eq 'Desktop') {
         # The frontend is built outside the repository and embedded through the build overlay.
         $frontendDist = Join-Path ([IO.Path]::GetTempPath()) ('wwlogs-frontend-dist-' + [Guid]::NewGuid().ToString('N'))
-        & (Join-Path $PSScriptRoot 'frontend.ps1') -Action Build -OutDir $frontendDist
+        & (Join-Path $PSScriptRoot 'frontend.ps1') -Action Build -OutDir $frontendDist -Profile $Profile
         $arguments += @('-frontend-dist', $frontendDist)
     }
     & go @arguments

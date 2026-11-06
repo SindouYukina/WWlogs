@@ -1,0 +1,158 @@
+/*
+ * WWlogs design tokens. This file is the only place that defines raw colors, type scales, spacing, radii, surfaces,
+ * shadows and alpha steps. Components reference --ww-* variables and never hard-code these values.
+ *
+ * Motion tokens (durations, curves, springs) are generated from design/motion/tokens.ts and installed on the root
+ * element at startup, because spring curves are computed.
+ *
+ * Themes override the semantic layer on [data-ww-theme]. Only the dark theme exists in this phase.
+ */
+:root,
+[data-ww-theme="dark"] {
+  color-scheme: dark;
+
+  /* Neutral ramp: slightly cool ink, taken from the logo's black and deep-blue details. */
+  --ww-ink-0: oklch(0.985 0.002 265);
+  --ww-ink-100: oklch(0.93 0.004 265);
+  --ww-ink-200: oklch(0.8 0.006 265);
+  --ww-ink-300: oklch(0.66 0.008 265);
+  --ww-ink-400: oklch(0.52 0.009 265);
+  --ww-ink-500: oklch(0.38 0.009 265);
+  --ww-ink-600: oklch(0.3 0.009 265);
+  --ww-ink-700: oklch(0.255 0.008 265);
+  --ww-ink-800: oklch(0.215 0.007 265);
+  --ww-ink-850: oklch(0.185 0.007 265);
+  --ww-ink-900: oklch(0.16 0.006 265);
+  --ww-ink-950: oklch(0.135 0.006 265);
+
+  /* Brand accent, derived from the logo's crimson. Accent presets only change the hue and chroma. */
+  --ww-accent-h: 16;
+  --ww-accent-c: 0.2;
+  --ww-accent: oklch(0.67 var(--ww-accent-c) var(--ww-accent-h));
+  --ww-accent-strong: oklch(0.6 var(--ww-accent-c) var(--ww-accent-h));
+  --ww-accent-bright: oklch(0.78 calc(var(--ww-accent-c) * 0.72) var(--ww-accent-h));
+  --ww-accent-soft: oklch(0.67 var(--ww-accent-c) var(--ww-accent-h) / 0.16);
+  --ww-accent-line: oklch(0.67 var(--ww-accent-c) var(--ww-accent-h) / 0.42);
+  --ww-on-accent: oklch(0.99 0.004 var(--ww-accent-h));
+  --ww-gold: oklch(0.83 0.095 85);
+  --ww-gold-soft: oklch(0.83 0.095 85 / 0.14);
+
+  /* Reserved status colors. They always ship with a label or icon and are never series colors. */
+  --ww-good: oklch(0.8 0.14 160);
+  --ww-good-soft: oklch(0.8 0.14 160 / 0.14);
+  --ww-warn: oklch(0.84 0.14 85);
+  --ww-warn-soft: oklch(0.84 0.14 85 / 0.14);
+  --ww-critical: oklch(0.72 0.18 38);
+  --ww-critical-soft: oklch(0.72 0.18 38 / 0.15);
+
+  /* Element series colors; validated for dark surfaces (OKLCH L 0.48-0.67, CVD delta E >= 8 on adjacent pairs). */
+  --ww-element-glacio: #2f9fd8;
+  --ww-element-fusion: #e0633a;
+  --ww-element-electro: #8f6fe8;
+  --ww-element-aero: #14a884;
+  --ww-element-spectro: #b48c1c;
+  --ww-element-havoc: #cc5a94;
+  --ww-element-unknown: oklch(0.52 0.009 265);
+
+  /* Semantic text. */
+  --ww-text: var(--ww-ink-0);
+  --ww-text-2: var(--ww-ink-200);
+  --ww-text-3: var(--ww-ink-300);
+  --ww-text-4: var(--ww-ink-400);
+
+  /* Surfaces, from the window canvas upward. */
+  --ww-surface-canvas: var(--ww-ink-900);
+  --ww-surface-rail: var(--ww-ink-950);
+  --ww-surface-1: var(--ww-ink-850);
+  --ww-surface-2: var(--ww-ink-800);
+  --ww-surface-3: var(--ww-ink-700);
+  --ww-surface-4: var(--ww-ink-600);
+  --ww-surface-hover: oklch(1 0 0 / 0.045);
+  --ww-surface-press: oklch(1 0 0 / 0.07);
+  --ww-surface-selected: oklch(1 0 0 / 0.085);
+
+  /* Hairlines. */
+  --ww-line-soft: oklch(1 0 0 / 0.065);
+  --ww-line: oklch(1 0 0 / 0.1);
+  --ww-line-strong: oklch(1 0 0 / 0.18);
+  --ww-sheen: oklch(1 0 0 / 0.06);
+
+  /* Transparency steps for Overlay surfaces. Overlays never use backdrop-filter: it cannot sample the game behind a
+     transparent window and it is the most expensive effect available. */
+  --ww-alpha-overlay-strong: 0.86;
+  --ww-alpha-overlay: 0.74;
+  --ww-alpha-overlay-subtle: 0.58;
+  --ww-overlay-ink: 0.145 0.008 265;
+  --ww-surface-overlay: oklch(var(--ww-overlay-ink) / var(--ww-alpha-overlay));
+  --ww-surface-overlay-strong: oklch(var(--ww-overlay-ink) / var(--ww-alpha-overlay-strong));
+  --ww-surface-overlay-subtle: oklch(var(--ww-overlay-ink) / var(--ww-alpha-overlay-subtle));
+
+  /* Elevation. Shadows are drawn once per element and never animated; hover lifts fade a pseudo-element. */
+  --ww-shadow-hairline: 0 0 0 1px var(--ww-line-soft);
+  --ww-shadow-card: inset 0 1px 0 var(--ww-sheen), 0 1px 2px oklch(0 0 0 / 0.4), 0 0 0 1px var(--ww-line-soft);
+  --ww-shadow-lift: inset 0 1px 0 var(--ww-sheen), 0 1px 2px oklch(0 0 0 / 0.45), 0 18px 40px -18px oklch(0 0 0 / 0.72), 0 0 0 1px var(--ww-line);
+  --ww-shadow-popover: inset 0 1px 0 var(--ww-sheen), 0 2px 6px oklch(0 0 0 / 0.4), 0 22px 48px -14px oklch(0 0 0 / 0.78), 0 0 0 1px var(--ww-line);
+  --ww-shadow-knob: 0 1px 2px oklch(0 0 0 / 0.5), 0 2px 6px oklch(0 0 0 / 0.28);
+  --ww-focus-ring: 0 0 0 2px var(--ww-surface-canvas), 0 0 0 4px var(--ww-accent-line);
+
+  /* Typography. System fonts only: bundled fonts would add megabytes for CJK coverage. */
+  --ww-font-ui: "Segoe UI Variable Text", "Segoe UI", "Microsoft JhengHei UI", "Microsoft YaHei UI", "Yu Gothic UI", "Malgun Gothic", system-ui, sans-serif;
+  --ww-font-display: "Segoe UI Variable Display", "Segoe UI", "Microsoft JhengHei UI", "Microsoft YaHei UI", "Yu Gothic UI", "Malgun Gothic", system-ui, sans-serif;
+  --ww-font-numeric: "Bahnschrift", "DIN Alternate", "Segoe UI Variable Text", "Segoe UI", sans-serif;
+  --ww-text-2xs: 10px;
+  --ww-text-xs: 11px;
+  --ww-text-sm: 12px;
+  --ww-text-md: 13px;
+  --ww-text-base: 14px;
+  --ww-text-lg: 16px;
+  --ww-text-xl: 20px;
+  --ww-text-2xl: 26px;
+  --ww-text-3xl: 34px;
+  --ww-text-hero: 46px;
+  --ww-weight-regular: 400;
+  --ww-weight-medium: 500;
+  --ww-weight-semibold: 600;
+  --ww-weight-bold: 700;
+  --ww-leading-tight: 1.2;
+  --ww-leading-normal: 1.5;
+  --ww-tracking-caps: 0.09em;
+  --ww-tracking-tight: -0.015em;
+
+  /* Spacing on a 4px grid with two half steps for dense Overlay layouts. */
+  --ww-space-0_5: 2px;
+  --ww-space-1: 4px;
+  --ww-space-1_5: 6px;
+  --ww-space-2: 8px;
+  --ww-space-3: 12px;
+  --ww-space-4: 16px;
+  --ww-space-5: 20px;
+  --ww-space-6: 24px;
+  --ww-space-8: 32px;
+  --ww-space-10: 40px;
+  --ww-space-12: 48px;
+
+  /* Radii. */
+  --ww-radius-xs: 4px;
+  --ww-radius-sm: 6px;
+  --ww-radius-md: 8px;
+  --ww-radius-lg: 12px;
+  --ww-radius-xl: 16px;
+  --ww-radius-full: 999px;
+
+  /* Component metrics that Overlay layouts rely on; list positions are computed from them. */
+  --ww-row-combat: 46px;
+  --ww-row-effect: 38px;
+  --ww-sidebar-width: 236px;
+}
+
+/* Accent presets for visual review. A production theme would set these same variables. */
+[data-ww-accent="tide"] { --ww-accent-h: 222; --ww-accent-c: 0.15; }
+[data-ww-accent="jade"] { --ww-accent-h: 172; --ww-accent-c: 0.12; }
+[data-ww-accent="gold"] { --ww-accent-h: 78; --ww-accent-c: 0.13; --ww-on-accent: oklch(0.2 0.03 78); }
+
+[data-element="1"] { --ww-series: var(--ww-element-glacio); }
+[data-element="2"] { --ww-series: var(--ww-element-fusion); }
+[data-element="3"] { --ww-series: var(--ww-element-electro); }
+[data-element="4"] { --ww-series: var(--ww-element-aero); }
+[data-element="5"] { --ww-series: var(--ww-element-spectro); }
+[data-element="6"] { --ww-series: var(--ww-element-havoc); }

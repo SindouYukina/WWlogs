@@ -14,7 +14,10 @@ param(
     [ValidateSet('Typecheck', 'Build')]
     [string]$Action = 'Build',
     # Output directory for Build; must be outside the repository.
-    [string]$OutDir = ''
+    [string]$OutDir = '',
+    # Public is the default so that forgetting the parameter can never bundle Development-only surfaces.
+    [ValidateSet('Public', 'Development')]
+    [string]$Profile = 'Public'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -87,10 +90,19 @@ try {
         } else {
             & $node $npm run --silent typecheck
             if ($LASTEXITCODE -ne 0) { throw "typecheck failed ($LASTEXITCODE)" }
-            & ./node_modules/.bin/vite.cmd build --outDir $OutDir --emptyOutDir --logLevel warn
-            if ($LASTEXITCODE -ne 0) { throw "vite build failed ($LASTEXITCODE)" }
+            $env:WWLOGS_FRONTEND_PROFILE = $Profile.ToLowerInvariant()
+            try {
+                & ./node_modules/.bin/vite.cmd build --outDir $OutDir --emptyOutDir --logLevel warn
+                if ($LASTEXITCODE -ne 0) { throw "vite build failed ($LASTEXITCODE)" }
+            } finally {
+                Remove-Item Env:WWLOGS_FRONTEND_PROFILE -ErrorAction SilentlyContinue
+            }
             if (-not (Test-Path -LiteralPath (Join-Path $OutDir 'index.html'))) { throw 'vite build produced no index.html' }
-            Write-Host "Frontend build: PASS (Node.js $nodeVersion) -> $OutDir"
+            # Public output must not contain the Showcase. Its entry file name is the marker this check relies on.
+            if ($Profile -eq 'Public' -and (Get-ChildItem -LiteralPath $OutDir -Recurse -File | Where-Object { $_.Name -match '^ShowcaseApp' -or ($_.Extension -in '.js', '.css' -and (Select-String -LiteralPath $_.FullName -SimpleMatch -Quiet '__wwShowcase')) })) {
+                throw 'The Public frontend output contains the Development Showcase'
+            }
+            Write-Host "Frontend build ($Profile): PASS (Node.js $nodeVersion) -> $OutDir"
         }
     } finally {
         Pop-Location

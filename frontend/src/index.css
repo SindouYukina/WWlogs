@@ -1,4 +1,7 @@
 @import "tailwindcss";
+/* The Showcase and the design system use scoped ww-* CSS; keep them out of the Public utility scan. */
+@source not "./showcase";
+@source not "./design";
 
 /* shadcn/ui theme tokens (new-york, neutral, dark). The overlay page overrides the page background to transparent. */
 :root {

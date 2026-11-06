@@ -28,6 +28,9 @@ func parseOptions(arguments []string, output io.Writer) (Options, error) {
 	showOverlay := flags.Bool("overlay", false, "Development: show the overlay window at start")
 	debugPort := flags.Int("webview-debug-port", 0, "Development: open the WebView2 remote debugging port for automated UI checks")
 	publishInterval := flags.Duration("publish-interval", capture.DefaultPublishInterval, "Development: minimum time between UI snapshots (at least 100ms)")
+	showcase := flags.Bool("showcase", false, "Development: open the Motion Showcase (mock data only) instead of the Desktop view")
+	showcaseOverlays := flags.Bool("showcase-overlays", false, "Development: with -showcase, also open its transparent Overlay windows")
+	assetRoot := flags.String("asset-root", "", "Development: directory that contains game/ images for the Showcase; nothing is served without it")
 	if err := flags.Parse(arguments); err != nil {
 		return Options{}, err
 	}
@@ -36,6 +39,9 @@ func parseOptions(arguments []string, output io.Writer) (Options, error) {
 	}
 	if *replay != "" {
 		*diagnostics = false
+	}
+	if *showcaseOverlays && !*showcase {
+		return Options{}, errors.New("-showcase-overlays requires -showcase")
 	}
 	if *publishInterval < capture.MinPublishInterval {
 		*publishInterval = capture.MinPublishInterval
@@ -50,6 +56,9 @@ func parseOptions(arguments []string, output io.Writer) (Options, error) {
 		AutoStart:        *autoStart || *replay != "",
 		ShowOverlay:      *showOverlay,
 		WebviewDebugPort: *debugPort,
+		Showcase:         *showcase,
+		ShowcaseOverlays: *showcaseOverlays,
+		GameAssetRoot:    *assetRoot,
 	}, nil
 }
 

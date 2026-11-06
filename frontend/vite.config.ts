@@ -2,10 +2,13 @@ import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
 import { defineConfig } from "vite"
 import manifest from "./locales/manifest.json" with { type: "json" }
+import { previewGameAssets, showcaseEnabled } from "./vite.env.mjs"
 
-// One project for both windows: index.html selects the Desktop or Overlay view from ?view=.
-export default defineConfig({
-  plugins: [react(), tailwindcss(), {
+// One project for all windows: index.html selects the view from ?view=.
+// With the Showcase disabled, dead-code elimination removes its chunk from the output entirely.
+export default defineConfig(({ command }) => ({
+  define: { __WWLOGS_SHOWCASE__: JSON.stringify(showcaseEnabled(command)) },
+  plugins: [react(), tailwindcss(), previewGameAssets(), {
     name: "bundled-locale-manifest",
     generateBundle() { this.emitFile({ type: "asset", fileName: "locales/manifest.json", source: JSON.stringify(manifest) }) },
   }],
@@ -18,4 +21,4 @@ export default defineConfig({
     sourcemap: false,
   },
   server: { port: 9245, strictPort: true },
-})
+}))
