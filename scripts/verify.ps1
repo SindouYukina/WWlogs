@@ -148,6 +148,26 @@ try {
                         $developmentAbsent = @($wantedBlobs | Where-Object { -not $developmentBlobs.Contains($_) })
                         $imagesOk = $wantedBlobs.Count -gt 0 -and $absentBlobs.Count -eq 0 -and $packedBlobs.Count -eq $wantedBlobs.Count -and $developmentAbsent.Count -eq 0 -and $developmentBlobs.Count -eq $wantedBlobs.Count
                         Set-Result 'desktop embedded images' $(if ($imagesOk) { 'PASS' } else { 'FAIL' }) "Public $($packedBlobs.Count)/$($wantedBlobs.Count), Development $($developmentBlobs.Count)/$($wantedBlobs.Count) distinct images"
+
+                        # Both executables carry the tracked Master byte for byte, and the same code reads it to the same answers.
+                        $trackedMaster = Join-Path $repoRoot 'data/master_data.db'
+                        $masterSize = (Get-Item -LiteralPath $trackedMaster).Length
+                        $masterHash = (Get-FileHash -LiteralPath $trackedMaster -Algorithm SHA256).Hash
+                        $embeddedHash = {
+                            param([string]$latin)
+                            $start = $latin.IndexOf("SQLite format 3$([char]0)", [StringComparison]::Ordinal)
+                            if ($start -lt 0 -or $start + $masterSize -gt $latin.Length) { return '' }
+                            $bytes = [Text.Encoding]::GetEncoding(28591).GetBytes($latin.Substring($start, $masterSize))
+                            return [BitConverter]::ToString([Security.Cryptography.SHA256]::HashData($bytes)).Replace('-', '')
+                        }
+                        $publicMaster = & $embeddedHash $desktopLatin
+                        $developmentMaster = if ($desktopDevelopment.Code -eq 0) { & $embeddedHash $developmentLatin } else { '' }
+                        $digests = foreach ($profile in @(@{ Name = 'Public'; Tags = @() }, @{ Name = 'Development'; Tags = @('-tags', 'wwdev') })) {
+                            $run = Invoke-Go (@('test', '-count=1', '-v', "-overlay=$overlay") + $profile.Tags + @('-run', '^TestMasterLookupDigest$', './internal/capture'))
+                            if ($run.Output -match 'master lookup digest: ([0-9a-f]{64})') { $Matches[1] } else { "missing-$($profile.Name)" }
+                        }
+                        $masterOk = $publicMaster -eq $masterHash -and $developmentMaster -eq $masterHash -and $digests[0] -eq $digests[1] -and $digests[0] -notlike 'missing-*'
+                        Set-Result 'master: embedded bytes + profile lookup parity' $(if ($masterOk) { 'PASS' } else { 'FAIL' }) "SHA-256 $($masterHash.Substring(0, 16)); lookup digest $($digests[0].Substring(0, 16))"
                     }
                 }
 

@@ -19,7 +19,7 @@ import (
 func TestFrontendFallbackWithoutArchive(t *testing.T) {
 	saved := frontendArchive
 	defer func() { frontendArchive = saved }()
-	frontendArchive = nil
+	frontendArchive = ""
 	assets, embedded, err := frontendFS()
 	if err != nil || embedded {
 		t.Fatalf("fallback: embedded=%t err=%v", embedded, err)
@@ -40,7 +40,7 @@ func TestFrontendArchiveIsServed(t *testing.T) {
 		_, _ = entry.Write([]byte(body))
 	}
 	_ = writer.Close()
-	frontendArchive = archive.Bytes()
+	frontendArchive = archive.String()
 	assets, embedded, err := frontendFS()
 	if err != nil || !embedded {
 		t.Fatalf("archive: embedded=%t err=%v", embedded, err)
@@ -49,7 +49,7 @@ func TestFrontendArchiveIsServed(t *testing.T) {
 		t.Fatalf("assets/app.js = %q, %v", script, err)
 	}
 
-	frontendArchive = []byte("not a zip")
+	frontendArchive = "not a zip"
 	if _, _, err := frontendFS(); err == nil {
 		t.Fatal("a corrupt archive was accepted")
 	}
