@@ -4,7 +4,6 @@
 /work/fonts/candidates/
 /AGENTS.md
 /HANDOFF.md
-/assets/
 /bin/
 /cmd/capture/wwlogs_windows_amd64.syso
 /cmd/desktop/wwlogs_windows_amd64.syso
@@ -13,6 +12,14 @@
 /logs/
 /references/
 /work/
+
+# Product game images: only WebP images, their manifest and its README are tracked under assets/, so caches, previews,
+# source extracts and anything else placed there stay local.
+/assets/**
+!/assets/**/
+!/assets/README.md
+!/assets/manifest.json
+!/assets/game/**/*.webp
 
 # Secrets and machine-local artifacts
 Thumbs.db
