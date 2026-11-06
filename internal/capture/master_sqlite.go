@@ -1,6 +1,7 @@
 package capture
 
 import (
+	"context"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
@@ -13,6 +14,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync/atomic"
 
 	_ "modernc.org/sqlite"
 )
@@ -21,21 +23,102 @@ var supportedMasterLocales = map[string]struct{}{
 	"zh-TW": {}, "zh-CN": {}, "en-US": {}, "ja-JP": {}, "ko-KR": {},
 }
 
+var embeddedMasterDatabaseSequence atomic.Uint64
+
+type sqliteDatabaseDeserializer interface {
+	Deserialize([]byte) error
+}
+
 func loadGameMasterDatabase(path, locale string) (*gameMaster, error) {
 	if _, ok := supportedMasterLocales[locale]; !ok {
 		return nil, fmt.Errorf("unsupported master locale %q", locale)
 	}
+	db, databasePath, hash, err := openMasterDatabase(path)
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+	return loadMasterDataFromDatabase(db, databasePath, hash, locale)
+}
+
+func openMasterDatabase(path string) (*sql.DB, string, string, error) {
+	if path == "" {
+		db, err := openEmbeddedMasterDatabase()
+		if err != nil {
+			return nil, "", "", err
+		}
+		digest := sha256.Sum256(embeddedMasterDatabase)
+		return db, "embedded", hex.EncodeToString(digest[:]), nil
+	}
+	return openFileMasterDatabase(path)
+}
+
+func masterDatabaseSourceLabel(databasePath string) string {
+	if databasePath == "embedded" {
+		return "embedded"
+	}
+	return "external test override"
+}
+
+func openEmbeddedMasterDatabase() (*sql.DB, error) {
+	if len(embeddedMasterDatabase) == 0 {
+		return nil, fmt.Errorf("embedded combat Master database is unavailable")
+	}
+	dsn := fmt.Sprintf("file:wwlogs-master-%d-%d?mode=memory&cache=shared", os.Getpid(), embeddedMasterDatabaseSequence.Add(1))
+	db, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		return nil, fmt.Errorf("open in-memory combat Master database: %w", err)
+	}
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+	conn, err := db.Conn(context.Background())
+	if err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("connect to in-memory combat Master database: %w", err)
+	}
+	err = conn.Raw(func(driverConn any) error {
+		deserializer, ok := driverConn.(sqliteDatabaseDeserializer)
+		if !ok {
+			return fmt.Errorf("SQLite driver does not support in-memory database deserialization")
+		}
+		return deserializer.Deserialize(embeddedMasterDatabase)
+	})
+	closeErr := conn.Close()
+	if err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("load embedded combat Master database into memory: %w", err)
+	}
+	if closeErr != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("release in-memory combat Master connection: %w", closeErr)
+	}
+	if _, err := db.Exec("PRAGMA query_only=ON"); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("make embedded combat Master database read-only: %w", err)
+	}
+	if _, err := db.Exec("PRAGMA cache_size=-8192"); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("limit embedded combat Master page cache: %w", err)
+	}
+	if err := db.Ping(); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("open embedded combat Master database: %w", err)
+	}
+	return db, nil
+}
+
+func openFileMasterDatabase(path string) (*sql.DB, string, string, error) {
 	info, err := os.Stat(path)
 	if err != nil {
-		return nil, fmt.Errorf("inspect master database: %w", err)
+		return nil, "", "", fmt.Errorf("inspect master database: %w", err)
 	}
 	if !info.Mode().IsRegular() {
-		return nil, fmt.Errorf("master database path is not a regular file: %s", path)
+		return nil, "", "", fmt.Errorf("master database path is not a regular file: %s", path)
 	}
 
 	absPath, err := filepath.Abs(path)
 	if err != nil {
-		return nil, fmt.Errorf("resolve master database path: %w", err)
+		return nil, "", "", fmt.Errorf("resolve master database path: %w", err)
 	}
 	uriPath := filepath.ToSlash(absPath)
 	if len(uriPath) >= 2 && uriPath[1] == ':' {
@@ -44,24 +127,30 @@ func loadGameMasterDatabase(path, locale string) (*gameMaster, error) {
 	dsn := (&url.URL{Scheme: "file", Path: uriPath}).String() + "?mode=ro"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
-		return nil, fmt.Errorf("open master database read-only: %w", err)
+		return nil, "", "", fmt.Errorf("open master database read-only: %w", err)
 	}
-	defer db.Close()
 	db.SetMaxOpenConns(1)
 	if _, err := db.Exec("PRAGMA query_only=ON"); err != nil {
-		return nil, fmt.Errorf("set master database query-only: %w", err)
+		_ = db.Close()
+		return nil, "", "", fmt.Errorf("set master database query-only: %w", err)
 	}
 	if err := db.Ping(); err != nil {
-		return nil, fmt.Errorf("open master database: %w", err)
+		_ = db.Close()
+		return nil, "", "", fmt.Errorf("open master database: %w", err)
 	}
 
 	hash, err := hashFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("hash master database: %w", err)
+		_ = db.Close()
+		return nil, "", "", fmt.Errorf("hash master database: %w", err)
 	}
+	return db, absPath, hash, nil
+}
+
+func loadMasterDataFromDatabase(db *sql.DB, databasePath, hash, locale string) (*gameMaster, error) {
 	master := &gameMaster{
 		manifest:                      masterManifest{Language: locale, ClientRegion: "Global", SourceHash: hash},
-		databasePath:                  absPath,
+		databasePath:                  databasePath,
 		locale:                        locale,
 		characters:                    make(map[uint64]masterRecord),
 		charactersSkin:                make(map[uint64]masterRecord),

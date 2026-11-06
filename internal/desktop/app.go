@@ -115,11 +115,8 @@ func Run(options Options) error {
 	if err != nil {
 		return fmt.Errorf("load combat Master database: %w", err)
 	}
-	resolver, err := capture.OpenDisplayResolver(options.MasterDatabase)
-	if err != nil {
-		return err
-	}
-	defer resolver.Close()
+	defer masters.Close()
+	resolver := masters.DisplayResolver()
 	captureService := service.NewCaptureService(service.SessionOpener(masters))
 	bridge := &Bridge{capture: captureService, defaults: options.Session, settings: settings}
 	bridge.catalog = catalog

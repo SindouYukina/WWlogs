@@ -560,7 +560,11 @@ func (p *processor) writeEncounterSummary() error {
 		return err
 	}
 	if p.masters != nil {
-		if _, err := fmt.Fprintf(p.encounterSummary, "\nCombat master: %s (Global, %s, SHA-256 %s)\n", filepath.Base(p.masters.databasePath), p.masters.locale, p.masters.manifest.SourceHash); err != nil {
+		source := masterDatabaseSourceLabel(p.masters.databasePath)
+		if p.masters.databasePath != "embedded" {
+			source += ": " + filepath.Base(p.masters.databasePath)
+		}
+		if _, err := fmt.Fprintf(p.encounterSummary, "\nCombat master: %s (Global, %s, SHA-256 %s)\n", source, p.masters.locale, p.masters.manifest.SourceHash); err != nil {
 			return err
 		}
 	}

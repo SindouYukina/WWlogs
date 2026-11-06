@@ -75,20 +75,45 @@ type SessionResult struct {
 // MasterData is a loaded, read-only Master database shared by sessions.
 type MasterData struct {
 	masters *gameMaster
+	display *DisplayResolver
 }
 
-// LoadMasterData loads the combat Master database for locale.
+// LoadMasterData loads the combat Master database for locale and retains its one read-only connection for display lookups.
 func LoadMasterData(path, locale string) (*MasterData, error) {
-	masters, err := loadGameMasterDatabase(path, locale)
+	if _, ok := supportedMasterLocales[locale]; !ok {
+		return nil, fmt.Errorf("unsupported master locale %q", locale)
+	}
+	db, databasePath, hash, err := openMasterDatabase(path)
 	if err != nil {
 		return nil, err
 	}
-	return &MasterData{masters: masters}, nil
+	masters, err := loadMasterDataFromDatabase(db, databasePath, hash, locale)
+	if err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	display, err := newDisplayResolver(db)
+	if err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	return &MasterData{masters: masters, display: display}, nil
 }
 
-// DefaultMasterDatabasePath resolves data/master_data.db next to the executable or the working directory.
-func DefaultMasterDatabasePath() string {
-	return defaultMasterDatabasePath()
+// DisplayResolver returns the locale-aware query resolver sharing this MasterData's SQLite connection.
+func (m *MasterData) DisplayResolver() *DisplayResolver {
+	if m == nil {
+		return nil
+	}
+	return m.display
+}
+
+// Close releases the read-only Master database shared by this data set and its display resolver.
+func (m *MasterData) Close() error {
+	if m == nil || m.display == nil {
+		return nil
+	}
+	return m.display.Close()
 }
 
 // Session is an opened capture session.
@@ -318,4 +343,3 @@ func waitUntil(ctx context.Context, deadline time.Time) bool {
 		return true
 	}
 }
-

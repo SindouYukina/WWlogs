@@ -82,9 +82,38 @@ func TestRepositoryAssetsMatchTheirManifest(t *testing.T) {
 	}
 }
 
+func TestPackResolverMatchesTrackedAssetsForEveryID(t *testing.T) {
+	root := filepath.Join("..", "..", "assets")
+	data, err := os.ReadFile(filepath.Join(root, "manifest.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := assets.ParseManifest(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var pack bytes.Buffer
+	if _, err := assets.WritePack(&pack, os.DirFS(root), manifest); err != nil {
+		t.Fatal(err)
+	}
+	fromEmbedded := assets.NewResolver(assets.NewPackFS(pack.String()))
+	fromDirectory := assets.NewResolver(os.DirFS(root))
+	for _, entry := range manifest.Entries {
+		key := keyFor(t, entry.Path)
+		packed, err := readResolved(fromEmbedded, key)
+		if err != nil {
+			t.Fatalf("embedded %s: %v", entry.Path, err)
+		}
+		listed, err := readResolved(fromDirectory, key)
+		if err != nil || !bytes.Equal(packed, listed) {
+			t.Fatalf("directory and embedded lookups differ for %s: %v", entry.Path, err)
+		}
+	}
+	t.Logf("resolved all %d manifest image IDs with byte parity", len(manifest.Entries))
+}
+
 // The artifact test reads the pack extracted from a built executable (work/ui-perf/extract_pack.py). It proves that every
-// image of the real Public artifact resolves through the shared Resolver, by ID, to the bytes the manifest lists, and to
-// the same bytes a Development -asset-root reads.
+// image of a built artifact resolves through the shared Resolver, by ID, to the bytes the manifest lists.
 func TestBuiltArtifactPackMatchesTheManifest(t *testing.T) {
 	packPath := os.Getenv("WWLOGS_ASSET_PACK")
 	if packPath == "" {

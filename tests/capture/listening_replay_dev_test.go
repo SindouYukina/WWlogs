@@ -45,6 +45,7 @@ func TestListeningReplayCollector(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer masters.Close()
 	reports := []listeningReplayReport{}
 	for _, capture := range readSegmentDropList(t, listPath) {
 		t.Run(capture.name, func(t *testing.T) {

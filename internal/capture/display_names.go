@@ -4,8 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"net/url"
-	"path/filepath"
 	"strconv"
 	"sync"
 )
@@ -28,21 +26,20 @@ type DisplayResolver struct {
 const maxDisplayNames = 2048
 
 func OpenDisplayResolver(path string) (*DisplayResolver, error) {
-	absolute, err := filepath.Abs(path)
+	db, _, _, err := openMasterDatabase(path)
 	if err != nil {
 		return nil, err
 	}
-	uri := filepath.ToSlash(absolute)
-	if len(uri) > 1 && uri[1] == ':' {
-		uri = "/" + uri
-	}
-	db, err := sql.Open("sqlite", (&url.URL{Scheme: "file", Path: uri}).String()+"?mode=ro")
+	resolver, err := newDisplayResolver(db)
 	if err != nil {
+		_ = db.Close()
 		return nil, err
 	}
-	db.SetMaxOpenConns(1)
-	if err = db.Ping(); err != nil {
-		db.Close()
+	return resolver, nil
+}
+
+func newDisplayResolver(db *sql.DB) (*DisplayResolver, error) {
+	if err := db.Ping(); err != nil {
 		return nil, errors.New("the display Master database is unavailable")
 	}
 	return &DisplayResolver{db: db, names: map[string]DisplayName{}}, nil

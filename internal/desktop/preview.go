@@ -29,9 +29,9 @@ var gameAssetKinds = map[string]assets.Kind{
 	"skill-config":       assets.SkillConfigIcon,
 }
 
-// gameAssetSource selects where images come from: a directory named on the command line, else the pack embedded in the
-// executable. Both feed the same resolver, so an ID means the same image either way. The host has no default directory
-// and never looks inside the repository on its own. No source means every image reports as missing.
+// gameAssetSource selects where images come from: an explicitly supplied Development directory, else the pack embedded
+// in the executable. Both feed the same resolver, so an ID means the same image either way. The host never searches the
+// repository for a default directory. No source means every image reports as missing.
 func gameAssetSource(root, pack string) fs.FS {
 	if root != "" {
 		return os.DirFS(root)

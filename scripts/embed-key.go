@@ -137,8 +137,22 @@ var (
 	}
 	defer os.Remove(generatedSourcePath)
 
+	masterDatabasePath := filepath.Join(repositoryRoot, "data", "master_data.db")
+	masterDatabaseInfo, err := os.Stat(masterDatabasePath)
+	if err != nil {
+		return fmt.Errorf("inspect tracked combat Master database build input: %w", err)
+	}
+	if !masterDatabaseInfo.Mode().IsRegular() || masterDatabaseInfo.Size() == 0 {
+		return errors.New("tracked combat Master database build input is not a non-empty regular file")
+	}
+	masterDatabaseHash, err := fileSHA256(masterDatabasePath)
+	if err != nil {
+		return fmt.Errorf("hash combat Master database build input: %w", err)
+	}
+	fmt.Fprintf(os.Stdout, "Master database: %d bytes, SHA-256 %s\n", masterDatabaseInfo.Size(), masterDatabaseHash)
 	replacements := map[string]string{
 		filepath.Join(repositoryRoot, "internal", "capture", "key_payload.go"): generatedSourcePath,
+		filepath.Join(repositoryRoot, "internal", "capture", "master_data.db"): masterDatabasePath,
 	}
 	if *targetFlag == "desktop" {
 		archiveSourcePath, err := writeFrontendArchiveSource(repositoryRoot, *frontendDist)
@@ -147,17 +161,14 @@ var (
 		}
 		defer os.Remove(archiveSourcePath)
 		replacements[filepath.Join(repositoryRoot, "internal", "desktop", "frontend_archive.go")] = archiveSourcePath
-		// Public carries its images. Development reads the same tree through an explicit -asset-root.
-		if *profileFlag == "public" {
-			packPath, packSourcePath, err := writeGameAssetPack(repositoryRoot)
-			if err != nil {
-				return err
-			}
-			defer os.Remove(packPath)
-			defer os.Remove(packSourcePath)
-			replacements[filepath.Join(repositoryRoot, "internal", "desktop", "game_asset_archive.go")] = packSourcePath
-			replacements[filepath.Join(repositoryRoot, "internal", "desktop", gameAssetPackName)] = packPath
+		packPath, packSourcePath, err := writeGameAssetPack(repositoryRoot)
+		if err != nil {
+			return err
 		}
+		defer os.Remove(packPath)
+		defer os.Remove(packSourcePath)
+		replacements[filepath.Join(repositoryRoot, "internal", "desktop", "game_asset_archive.go")] = packSourcePath
+		replacements[filepath.Join(repositoryRoot, "internal", "desktop", gameAssetPackName)] = packPath
 	}
 	if *testBinary != "" {
 		if *outputFlag == "" {
@@ -515,8 +526,11 @@ func mergeTestOverlay(root string, replacements map[string]string) error {
 		if to != "" {
 			absoluteTo = filepath.Join(root, filepath.FromSlash(to))
 		}
-		if _, exists := replacements[absoluteFrom]; exists {
-			return fmt.Errorf("test overlay replaces %s, which the key payload already replaces", from)
+		if existing, exists := replacements[absoluteFrom]; exists {
+			if existing == absoluteTo {
+				continue
+			}
+			return fmt.Errorf("test overlay replaces %s with a different source than the build overlay", from)
 		}
 		replacements[absoluteFrom] = absoluteTo
 	}

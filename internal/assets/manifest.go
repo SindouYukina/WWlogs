@@ -16,7 +16,7 @@ import (
 // ManifestSchema is the only assets/manifest.json layout this package reads.
 const ManifestSchema = 1
 
-// Manifest lists every game image that belongs to the product. It is the only input of the Public image pack, so a
+// Manifest lists every game image that belongs to the product. It is the only input of each profile's image pack, so a
 // file that is not listed cannot reach an executable, and a listed file that changed fails the build.
 type Manifest struct {
 	Schema int `json:"schema"`
