@@ -1,26 +1,16 @@
 {
   "title": "設定",
-  "description": "この Windows ユーザーの設定です。",
   "language": "言語",
   "languageHint": "両方のウィンドウとゲーム内名称に即時反映します。",
-  "startup": "起動時の設定",
   "defaultAdapter": "既定のインターフェース",
   "chooseAtLaunch": "起動時に選択",
   "adapterHint": "起動時に選択します。キャプチャは手動で開始します。",
-  "showOnStartup": "起動時にオーバーレイを表示",
-  "visibilityHint": "現在の表示状態は上部のボタンで変更できます。",
-  "save": "設定を保存",
-  "saving": "保存中…",
-  "saved": "設定を保存しました。",
-  "unsaved": "未保存の変更",
   "storage": "保存先：%LOCALAPPDATA%\\WWlogs\\settings.json。",
   "invalid": "設定を読み込めないため既定値を使用しています。",
   "saveFailed": "設定を保存できませんでした。以前の設定は保持されています。",
-  "resetOverlay": "オーバーレイの位置をリセット",
-  "geometryHint": "ヘッダーで移動、端でサイズ変更できます。位置とサイズは自動保存します。",
+  "loadFailed": "設定を読み込めませんでした。既定値を表示しています。",
   "appearance": "外観",
   "theme": "テーマ",
-  "themeHint": "すべてのウィンドウにすぐ適用され、次回も保持されます。",
   "reduceMotion": "動きを減らす",
   "reduceMotionHint": "トランジションをオフにします。Windows のアニメーション設定も尊重します。",
   "themes": {
@@ -40,5 +30,45 @@
       "name": "凝縮",
       "character": "カルロッタ"
     }
-  }
+  },
+  "groups": {
+    "basic": "基本設定",
+    "overlays": "オーバーレイ",
+    "capture": "キャプチャ",
+    "about": "このアプリについて"
+  },
+  "pages": {
+    "general": "一般",
+    "appearance": "外観",
+    "combatOverlay": "戦闘オーバーレイ",
+    "effectsOverlay": "効果オーバーレイ",
+    "capture": "ネットワークキャプチャ",
+    "about": "WWlogs"
+  },
+  "sections": {
+    "language": "言語",
+    "motion": "モーション",
+    "window": "ウィンドウ",
+    "look": "外観",
+    "capture": "ネットワークキャプチャ",
+    "about": "バージョン情報"
+  },
+  "showWindow": "このオーバーレイを表示",
+  "alwaysOnTop": "常に最前面に表示",
+  "clickThrough": "マウスクリックを透過",
+  "clickThroughHint": "マウス操作は下のゲームに届きます。オーバーレイを動かすには下の編集モードを使います。",
+  "editMode": "編集モード",
+  "editModeHint": "一時的にマウス操作を受け付け、移動とサイズ変更ができます。完了すると元の設定に戻ります。",
+  "startEditing": "編集を開始",
+  "finishEditing": "編集を完了",
+  "position": "位置とサイズ",
+  "positionNote": "オーバーレイごとに自動保存",
+  "resetPosition": "位置をリセット",
+  "opacity": "背景の不透明度",
+  "opacityHint": "パネルの背景のみに影響し、文字は鮮明なままです。",
+  "decrease": "減らす",
+  "increase": "増やす",
+  "buildCommit": "ソースコミット",
+  "buildProfile": "ビルド種別",
+  "geometryReset": "オーバーレイの位置データが無効だったため、既定に戻しました。"
 }

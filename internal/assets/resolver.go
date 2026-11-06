@@ -18,6 +18,7 @@ const (
 	BuffIcon                          // Buff.Id
 	EchoIcon                          // PhantomItem.Id
 	WeaponIcon                        // WeaponConf.Id
+	SkillConfigIcon                   // Skill.Id, a namespace separate from SkillDescription.Id
 )
 
 // Key selects an image using static configuration IDs. Entity IDs are not supported.
@@ -72,6 +73,8 @@ func (key Key) imagePath() (string, error) {
 		return variant + "/portrait.webp", nil
 	case SkillIcon:
 		return "game/skills/" + id + "/icon.webp", nil
+	case SkillConfigIcon:
+		return "game/skills/by-config/" + id + "/icon.webp", nil
 	case BuffIcon:
 		return "game/buffs/" + id + "/icon.webp", nil
 	case EchoIcon:

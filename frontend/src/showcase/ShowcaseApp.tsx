@@ -1,17 +1,20 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import "./showcase.css"
 import i18n, { manifest } from "@/i18n"
 import { host } from "@/lib/host"
-import { Button, Chip, CombatPanel, ContentSwitch, ListeningStatus, Segmented, Select, Toggle, applyAppearance, themeIds, type ThemeId } from "@/design"
+import { Button, Chip, ContentSwitch, Icon, ListeningStatus, Segmented, Select, Toggle, applyAppearance, themeIds, type ThemeId } from "@/design"
+import type { OverlayKind } from "@/lib/snapshot"
+import { DashboardView } from "@/views/DashboardView"
+import { OverlaySurface } from "@/views/OverlayWindow"
+import { SettingsView } from "@/views/SettingsView"
 import { useMockFeed, type FeedControls } from "./useMockFeed"
+import { useMockSettings } from "./useMockSettings"
 import { listeningScenarios, type ListeningScenario } from "./mock-feed.ts"
-import { CombatSection, useCombatPanelProps } from "./sections/CombatSection"
-import { EffectsPanel, EffectsSection } from "./sections/EffectsSection"
-import { DashboardSection } from "./sections/DashboardSection"
-import { SettingsDemo } from "./sections/SettingsSection"
+import { CombatSection } from "./sections/CombatSection"
+import { EffectsSection } from "./sections/EffectsSection"
 import { TypographySection, neutralTuning, schemeStyle, type TypeTuning } from "./sections/TypographySection"
-import { loadFontManifest, type SchemeId } from "./typefaces"
+import { useFontSchemes, type SchemeId } from "./useFontSchemes"
 import { useListeningLabels } from "@/lib/useListeningLabels"
 import { PerfPanel, type PerfBridge } from "./perf"
 import en from "./locales/en.json"
@@ -30,24 +33,21 @@ i18n.addResourceBundle("ko", "showcase", ko)
 type Section = "combat" | "effects" | "dashboard" | "settings" | "typography"
 const sections: Section[] = ["dashboard", "settings", "typography", "combat", "effects"]
 
-function StatusBadge({ controls, variant = "full" }: { controls: FeedControls; variant?: "full" | "compact" | "dot" }) {
+function StatusBadge({ controls }: { controls: FeedControls }) {
   const describe = useListeningLabels()
   const listening = controls.output.snapshot.listening
   if (!listening) return null
   const { label, detail } = describe(listening)
-  return <ListeningStatus state={listening.state} label={label} detail={detail} variant={variant} />
+  return <ListeningStatus state={listening.state} label={label} detail={detail} />
 }
 
-/** Bare transparent surfaces for real frameless windows opened by the -showcase host mode. */
-function OverlayWindow({ surface }: { surface: "combat" | "effects" }) {
+/** The production Overlay surface in a real frameless window, fed by the Mock provider. */
+function ReviewOverlayWindow({ surface }: { surface: OverlayKind }) {
   const controls = useMockFeed()
-  const props = useCombatPanelProps(controls, "tween")
   useEffect(() => {
     applyAppearance(new URLSearchParams(window.location.search).get("theme") ?? undefined, false)
   }, [])
-  return <div className="ww-root sc-window-surface" style={{ "--wails-draggable": "drag" } as CSSProperties}>
-    {surface === "combat" ? <CombatPanel {...props} status={<StatusBadge controls={controls} variant="compact" />} /> : <EffectsPanel controls={controls} status={<StatusBadge controls={controls} variant="dot" />} />}
-  </div>
+  return <OverlaySurface surface={surface} data={controls.data} draggable />
 }
 
 function Shell() {
@@ -61,33 +61,38 @@ function Shell() {
   const [speed, setSpeed] = useState("1")
   const [reduced, setReduced] = useState(false)
   const [theme, setTheme] = useState<ThemeId>(() => (new URLSearchParams(window.location.search).get("theme") as ThemeId | null) ?? "electro")
+  const mockSettings = useMockSettings(theme, setTheme, reduced, setReduced)
   const [perfOpen, setPerfOpen] = useState(false)
   const [scheme, setScheme] = useState<SchemeId>("inter-noto")
   const [numericFace, setNumericFace] = useState<"scheme" | "bahnschrift">("scheme")
   const [tuning, setTuning] = useState<TypeTuning>(neutralTuning)
+  const fonts = useFontSchemes(instance.language)
   useEffect(() => {
     applyAppearance(theme, reduced, Number(speed))
   }, [theme, reduced, speed])
-  useEffect(() => {
-    void loadFontManifest().catch(() => undefined)
-  }, [])
+  const { ensure: ensureScheme } = fonts
+  useEffect(() => { ensureScheme(scheme) }, [ensureScheme, scheme])
+  // A candidate that did not load must not be applied: the page would show a fallback font under its name.
+  const schemeUsable = fonts.usable(scheme)
   useEffect(() => {
     // The whole-page scheme overrides the root variables; clearing them returns to the bundled typography.css rules.
     const root = document.documentElement
-    const style = schemeStyle(scheme, instance.language, tuning, numericFace)
-    const neutral = scheme === "inter-noto" && numericFace === "scheme" && tuning === neutralTuning
+    const applied = schemeUsable ? scheme : "inter-noto"
+    const style = schemeStyle(applied, instance.language, tuning, numericFace)
+    const neutral = applied === "inter-noto" && numericFace === "scheme" && tuning === neutralTuning
     for (const [name, value] of Object.entries(style)) {
       if (neutral) root.style.removeProperty(name)
       else root.style.setProperty(name, value)
     }
     root.classList.toggle("ww-typeface-scope", !neutral)
-  }, [scheme, numericFace, tuning, instance.language])
+  }, [scheme, schemeUsable, numericFace, tuning, instance.language])
   useEffect(() => {
     document.documentElement.lang = instance.language
     const onChange = (language: string) => { document.documentElement.lang = language }
     instance.on("languageChanged", onChange)
     return () => instance.off("languageChanged", onChange)
   }, [instance])
+  const paneSetter = useRef<((left: SchemeId, right: SchemeId) => void) | null>(null)
   const direction = useRef<"forward" | "back">("forward")
   const previousSection = useRef(section)
   if (previousSection.current !== section) {
@@ -97,7 +102,9 @@ function Shell() {
   const controlsRef = useRef(controls)
   controlsRef.current = controls
   // Automation hook for the performance runner; it exists only in this Development-only chunk.
-  const bridge = useMemo<PerfBridge>(() => ({ setSection, setNumberMode, setTheme, setScheme, setLocale: locale => void instance.changeLanguage(locale), controls: () => controlsRef.current }), [instance])
+  const fontsRef = useRef(fonts)
+  fontsRef.current = fonts
+  const bridge = useMemo<PerfBridge>(() => ({ setSection, setNumberMode, setTheme, setScheme, setLocale: locale => void instance.changeLanguage(locale), controls: () => controlsRef.current, fontStatus: () => fontsRef.current.statuses, setPanes: (left, right) => paneSetter.current?.(left, right) }), [instance])
   useEffect(() => {
     (window as unknown as { __wwShowcase?: PerfBridge }).__wwShowcase = bridge
   }, [bridge])
@@ -120,11 +127,11 @@ function Shell() {
     </div>
     <main className="sc-main">
       <ContentSwitch contentKey={section} direction={direction.current} className="sc-section">
-        {section === "combat" && <CombatSection controls={controls} numberMode={numberMode} setNumberMode={setNumberMode} status={<StatusBadge controls={controls} variant="compact" />} />}
-        {section === "effects" && <EffectsSection controls={controls} status={<StatusBadge controls={controls} variant="dot" />} />}
-        {section === "dashboard" && <DashboardSection controls={controls} numberMode={numberMode} theme={theme} />}
-        {section === "settings" && <div className="sc-settings-frame"><SettingsDemo theme={theme} setTheme={setTheme} reduced={reduced} setReduced={setReduced} /></div>}
-        {section === "typography" && <TypographySection globalScheme={scheme} setGlobalScheme={setScheme} numericFace={numericFace} setNumericFace={setNumericFace} tuning={tuning} setTuning={setTuning} />}
+        {section === "combat" && <CombatSection controls={controls} numberMode={numberMode} setNumberMode={setNumberMode} />}
+        {section === "effects" && <EffectsSection controls={controls} />}
+        {section === "dashboard" && <DashboardView data={controls.data} numberMode={numberMode} theme={theme} actions={<Button size="sm" onClick={() => controls.apply(feed => feed.resetEncounter())}><Icon name="reset" size={13} />{t("controls.reset")}</Button>} />}
+        {section === "settings" && <div className="sc-settings-frame"><SettingsView controller={mockSettings} /></div>}
+        {section === "typography" && <TypographySection fonts={fonts} paneSetter={paneSetter} globalScheme={scheme} setGlobalScheme={setScheme} numericFace={numericFace} setNumericFace={setNumericFace} tuning={tuning} setTuning={setTuning} />}
       </ContentSwitch>
     </main>
     {perfOpen && <PerfPanel />}
@@ -137,5 +144,5 @@ export function ShowcaseApp() {
     // Read the saved language once for convenience; the Showcase never writes settings.
     host.getSettings().then(state => i18n.changeLanguage(state.settings.locale)).catch(() => i18n.changeLanguage("zh-TW"))
   }, [])
-  return surface === "combat" || surface === "effects" ? <OverlayWindow surface={surface} /> : <Shell />
+  return surface === "combat" || surface === "effects" ? <ReviewOverlayWindow surface={surface} /> : <Shell />
 }

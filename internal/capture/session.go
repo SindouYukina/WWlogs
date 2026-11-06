@@ -319,26 +319,3 @@ func waitUntil(ctx context.Context, deadline time.Time) bool {
 	}
 }
 
-// Adapter is an Npcap interface address that can carry game traffic.
-type Adapter struct {
-	IPv4        string `json:"ipv4"`
-	Description string `json:"description"`
-}
-
-// ListIPv4Adapters lists the IPv4 addresses of the Npcap interfaces.
-func ListIPv4Adapters() ([]Adapter, error) {
-	devices, err := pcap.FindAllDevs()
-	if err != nil {
-		return nil, fmt.Errorf("list Npcap network interfaces: %w", err)
-	}
-	adapters := []Adapter{}
-	for _, device := range devices {
-		for _, address := range device.Addresses {
-			if address.IP == nil || address.IP.To4() == nil {
-				continue
-			}
-			adapters = append(adapters, Adapter{IPv4: address.IP.String(), Description: device.Description})
-		}
-	}
-	return adapters, nil
-}

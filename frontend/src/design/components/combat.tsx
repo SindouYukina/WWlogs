@@ -1,6 +1,7 @@
 import { memo, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react"
 import { defaultTickMs } from "../motion/tokens.ts"
-import { gameAssetUrl } from "../assets"
+import { gameAssetUrl, type GameAssetKind } from "../assets"
+import { useGameAsset } from "../useGameAsset"
 import { AnimatedNumber } from "./AnimatedNumber"
 import { Icon } from "./Icon"
 import { StackList } from "./layout"
@@ -38,11 +39,19 @@ export interface CharacterAvatarProps {
 }
 
 export const CharacterAvatar = memo(function CharacterAvatar({ roleId, elementId, size = 34, fallback = "?" }: CharacterAvatarProps) {
-  const [loaded, setLoaded] = useState(false)
-  return <span className="ww-avatar" data-element={elementId} data-loaded={loaded} style={{ "--ww-avatar-size": `${size}px` } as CSSProperties}>
-    <span className="ww-avatar-fallback" aria-hidden="true">{fallback}</span>
-    {roleId !== undefined && <img src={gameAssetUrl("character-avatar", roleId)} alt="" decoding="async" draggable={false} onLoad={() => setLoaded(true)} onError={() => setLoaded(false)} />}
+  const url = roleId === undefined ? undefined : gameAssetUrl("character-avatar", roleId)
+  const { state, onLoad, onError } = useGameAsset(url)
+  return <span className="ww-avatar" data-element={elementId} data-loaded={state === "loaded"} data-asset-state={url && state} style={{ "--ww-avatar-size": `${size}px` } as CSSProperties}>
+    <span className="ww-avatar-fallback" aria-hidden="true">{state === "failed" ? "!" : fallback}</span>
+    {url && <img src={url} alt="" decoding="async" draggable={false} onLoad={onLoad} onError={onError} />}
   </span>
+})
+
+/** A game image that hides itself when it has none to show. It never falls back to another ID's image. */
+export const GameAssetImage = memo(function GameAssetImage({ kind, id }: { kind: GameAssetKind; id: number }) {
+  const url = gameAssetUrl(kind, id)
+  const { state, onLoad, onError } = useGameAsset(url)
+  return <img src={url} alt="" decoding="async" draggable={false} data-asset-state={state} style={state === "missing" || state === "failed" ? { visibility: "hidden" } : undefined} onLoad={onLoad} onError={onError} />
 })
 
 /** Changes a 0/1 attribute when trigger changes, restarting a CSS animation without a timer or a re-mount. */
@@ -169,7 +178,8 @@ export interface BuffStatusItemProps {
 const lowDefaultSeconds = 3
 
 export const BuffStatusItem = memo(function BuffStatusItem({ effect, title, unnamed, meta, remainingText, tickMs, lowSeconds = lowDefaultSeconds }: BuffStatusItemProps) {
-  const [iconFailed, setIconFailed] = useState(false)
+  const iconUrl = effect.effectId === undefined ? undefined : gameAssetUrl("buff", effect.effectId)
+  const icon = useGameAsset(iconUrl)
   const pulse = usePulse(effect.refreshToken)
   const stackPulse = usePulse(effect.stackCount)
   const { countdown } = effect
@@ -177,10 +187,10 @@ export const BuffStatusItem = memo(function BuffStatusItem({ effect, title, unna
   return <div className="ww-effect" data-polarity={effect.polarity} data-low={low} data-pulse={pulse} data-stale={effect.stale} title={title}>
     <BuffCountdown state={countdown} tickMs={tickMs} />
     <div className="ww-effect-sheen" />
-    <div className="ww-effect-icon">
-      {effect.effectId !== undefined && !iconFailed
-        ? <img src={gameAssetUrl("buff", effect.effectId)} alt="" decoding="async" draggable={false} onError={() => setIconFailed(true)} />
-        : <span className="ww-effect-icon-fallback"><Icon name="question" size={16} /></span>}
+    <div className="ww-effect-icon" data-asset-state={iconUrl && icon.state}>
+      {iconUrl && icon.state !== "missing" && icon.state !== "failed"
+        ? <img src={iconUrl} alt="" decoding="async" draggable={false} onLoad={icon.onLoad} onError={icon.onError} />
+        : <span className="ww-effect-icon-fallback"><Icon name={icon.state === "failed" ? "alert" : "question"} size={16} /></span>}
     </div>
     <div className="ww-effect-text"><span className="ww-effect-title ww-truncate" data-unnamed={unnamed}>{title}</span>{meta && <span className="ww-effect-meta ww-truncate">{meta}</span>}</div>
     <div className="ww-effect-trailing">

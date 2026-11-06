@@ -5,6 +5,7 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
+	"os"
 	"path"
 	"strconv"
 	"strings"
@@ -25,10 +26,24 @@ var gameAssetKinds = map[string]assets.Kind{
 	"character-portrait": assets.CharacterPortrait,
 	"buff":               assets.BuffIcon,
 	"skill":              assets.SkillIcon,
+	"skill-config":       assets.SkillConfigIcon,
 }
 
-// withGameAssets serves images through the shared resolver and everything else through next. The source is a directory
-// named on the command line; the host has no default location and never looks inside the repository on its own.
+// gameAssetSource selects where images come from: a directory named on the command line, else the pack embedded in the
+// executable. Both feed the same resolver, so an ID means the same image either way. The host has no default directory
+// and never looks inside the repository on its own. No source means every image reports as missing.
+func gameAssetSource(root, pack string) fs.FS {
+	if root != "" {
+		return os.DirFS(root)
+	}
+	if pack != "" {
+		return assets.NewPackFS(pack)
+	}
+	return nil
+}
+
+// withGameAssets serves images through the shared resolver and everything else through next. A route that names no image
+// answers 404 and an image that cannot be read answers 500, so the UI can tell the two apart.
 func withGameAssets(next http.Handler, source fs.FS) http.Handler {
 	resolver := assets.NewResolver(source)
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
@@ -93,27 +108,12 @@ var previewFontTypes = map[string]string{".json": "application/json", ".woff2": 
 // openShowcaseOverlays creates real frameless transparent windows for the Motion Showcase, so transparency, dragging and
 // multi-window cost can be judged in WebView2. They run mock data only and have no path to the capture service.
 func openShowcaseOverlays(app *application.App) {
-	for _, surface := range []struct {
-		name          string
-		width, height int
-		x, y          int
-	}{
-		{name: "combat", width: 486, height: 268, x: 60, y: 60},
-		{name: "effects", width: 320, height: 420, x: 60, y: 350},
-	} {
-		app.Window.NewWithOptions(application.WebviewWindowOptions{
-			Name:            "showcase-" + surface.name,
-			Title:           "WWlogs Showcase " + surface.name,
-			Width:           surface.width,
-			Height:          surface.height,
-			InitialPosition: application.WindowXY,
-			X:               surface.x,
-			Y:               surface.y,
-			URL:             "/?view=showcase&surface=" + surface.name,
-			Frameless:       true,
-			AlwaysOnTop:     true,
-			BackgroundType:  application.BackgroundTypeTransparent,
-			Windows:         application.WindowsWindow{HiddenOnTaskbar: true, DisableFramelessWindowDecorations: true},
-		})
+	for kind, spec := range overlaySpecs {
+		options := overlayWindowOptions(spec, "/?view=showcase&surface="+kind)
+		options.Name = "showcase-" + kind
+		options.Hidden = false
+		options.InitialPosition = application.WindowXY
+		options.X, options.Y = spec.offsetX, spec.offsetY
+		app.Window.NewWithOptions(options)
 	}
 }

@@ -1,64 +1,28 @@
-import { useCallback, useMemo, useState, type ReactNode } from "react"
+import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { Button, CombatPanel, Icon, Segmented, Slider, type CombatState } from "@/design"
-import { combatRows, type CombatRowModel } from "@/lib/combat-view"
-import { snapshotStale } from "@/lib/effects"
-import { dataState } from "@/lib/snapshot"
+import { Button, Icon, Segmented, Slider } from "@/design"
+import { displayedEncounter } from "@/lib/combat-data"
+import { combatRows } from "@/lib/combat-view"
+import { useRowNames } from "@/lib/format"
+import { CombatOverlayPanel } from "@/views/CombatOverlayPanel"
 import type { FeedControls } from "../useMockFeed"
-import { roleElement, useFormatters, useRoleNames } from "../format"
-import { masterRoles } from "../master-fixture.ts"
 
-/** Maps engine trust states onto the footer band. Stale or untrusted data is labeled, never animated as live. */
-export function useCombatPanelProps(controls: FeedControls, numberMode: "tween" | "roll", alpha?: number) {
+/** The production Combat Overlay with scripted events beside it. Only the controls belong to the Showcase. */
+export function CombatSection({ controls, numberMode, setNumberMode }: { controls: FeedControls; numberMode: "tween" | "roll"; setNumberMode: (mode: "tween" | "roll") => void }) {
   const { t } = useTranslation("showcase")
-  const format = useFormatters()
-  const nameOf = useRoleNames()
-  const { snapshot } = controls.output
-  const view = snapshot.view
-  const encounter = view?.encounters.current
-  const rows = useMemo(() => encounter ? combatRows(encounter) : [], [encounter])
-  const stale = snapshotStale(snapshot, controls.now) || controls.paused
-  const trust = dataState(snapshot)
-  const state: CombatState = trust === "untrusted" ? "untrusted" : stale ? "stale" : !encounter ? "waiting" : encounter.state === "ACTIVE" ? "combat" : "ended"
-  const usable = encounter?.dps.status === "available" || encounter?.dps.status === "lower_bound"
-  const elementOf = useCallback((row: CombatRowModel) => roleElement(row.roleId), [])
-  const subtitleOf = useCallback((row: CombatRowModel) => row.kind === "vehicle" ? t("combat.vehicleNote") : row.damageTaken > 0 ? t("combat.taken", { value: format.compact(row.damageTaken) }) : undefined, [t, format])
-  return {
-    rows, elementOf, nameOf, subtitleOf,
-    totalDamage: encounter?.totals.damageDealt,
-    teamDps: usable ? encounter?.dps.value : undefined,
-    time: format.clock(encounter?.elapsedSeconds),
-    state,
-    stateLabel: t(`combat.state.${state}`),
-    note: encounter && encounter.unassignedRole.outgoingEvents > 0 ? t("combat.unassignedNote", { value: format.integer(encounter.unassignedRole.damageDealt) }) : undefined,
-    labels: { totalDamage: t("combat.totalDamage"), teamDps: t("combat.teamDps"), member: t("combat.member"), dps: t("combat.dps"), damage: t("combat.damage"), share: t("combat.share"), empty: t("combat.empty") },
-    formatDps: format.integer,
-    formatDamage: format.integer,
-    formatShare: format.percent,
-    numberMode,
-    scope: encounter?.encounterId ?? "none",
-    alpha,
-  }
-}
-
-export function CombatSection({ controls, numberMode, setNumberMode, status }: { controls: FeedControls; numberMode: "tween" | "roll"; setNumberMode: (mode: "tween" | "roll") => void; status?: ReactNode }) {
-  const { t, i18n } = useTranslation("showcase")
+  const nameOf = useRowNames()
   const [alpha, setAlpha] = useState(0.74)
-  const props = useCombatPanelProps(controls, numberMode, alpha)
   const { apply, publishMs, setPublishMs, paused, setPaused } = controls
-  const active = props.rows.filter(row => row.kind === "role")
-  const nameOfRole = (roleId: number) => {
-    const names = masterRoles.find(role => role.roleId === roleId)?.names as Readonly<Record<string, string>> | undefined
-    return names?.[i18n.language] ?? names?.en ?? String(roleId)
-  }
+  const encounter = displayedEncounter(controls.data.snapshot?.view)
+  const active = useMemo(() => (encounter ? combatRows(encounter) : []).filter(row => row.kind === "role"), [encounter])
   return <div className="sc-demo">
     <div className="sc-stage" data-backdrop="combat">
-      <div className="sc-stage-overlay" style={{ width: 470 }}><CombatPanel {...props} status={status} /></div>
+      <div className="sc-stage-overlay" style={{ width: 470 }}><CombatOverlayPanel data={controls.data} numberMode={numberMode} alpha={alpha} /></div>
     </div>
     <aside className="sc-controls">
       <h3>{t("controls.dataEvents")}</h3>
       <div className="sc-button-grid">
-        {active.map(row => <Button key={row.key} size="sm" onClick={() => apply(feed => feed.burst(row.roleId ?? 0))}><Icon name="bolt" size={13} />{t("controls.burst", { name: nameOfRole(row.roleId ?? 0) })}</Button>)}
+        {active.map(row => <Button key={row.key} size="sm" onClick={() => apply(feed => feed.burst(row.roleId ?? 0))}><Icon name="bolt" size={13} />{t("controls.burst", { name: nameOf(row) })}</Button>)}
         <Button size="sm" onClick={() => apply(feed => feed.swapRanks())}>{t("controls.swap")}</Button>
         <Button size="sm" onClick={() => apply(feed => feed.replaceRole())}>{t("controls.replaceRole")}</Button>
         <Button size="sm" onClick={() => apply(feed => feed.toggleVehicle())}>{t("controls.vehicle")}</Button>
@@ -77,7 +41,7 @@ export function CombatSection({ controls, numberMode, setNumberMode, status }: {
       <h3>{t("controls.numberStyle")}</h3>
       <Segmented label={t("controls.numberStyle")} value={numberMode} options={[{ value: "tween", label: t("controls.tween") }, { value: "roll", label: t("controls.roll") }]} onChange={setNumberMode} />
       <h3>{t("controls.opacity")}</h3>
-      <div className="sc-slider-row"><Slider label={t("controls.opacity")} min={35} max={95} value={Math.round(alpha * 100)} onChange={value => setAlpha(value / 100)} /><span className="ww-num">{Math.round(alpha * 100)}%</span></div>
+      <div className="sc-slider-row"><Slider label={t("controls.opacity")} min={20} max={100} value={Math.round(alpha * 100)} onChange={value => setAlpha(value / 100)} /><span className="ww-num">{Math.round(alpha * 100)}%</span></div>
       <p className="sc-note">{t("combat.note")}</p>
     </aside>
   </div>

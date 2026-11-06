@@ -145,10 +145,12 @@ type ViewEncounter struct {
 // ViewRole is one local role's totals. Name comes from the Master database for the selected locale; it is empty with
 // NameStatus UNKNOWN when the RoleId has no verified name.
 type ViewRole struct {
-	PlayerID       uint64   `json:"playerId"`
-	RoleID         uint64   `json:"roleId"`
-	Name           string   `json:"name"`
-	NameStatus     string   `json:"nameStatus"`
+	PlayerID   uint64 `json:"playerId"`
+	RoleID     uint64 `json:"roleId"`
+	Name       string `json:"name"`
+	NameStatus string `json:"nameStatus"`
+	// ElementID is a Master lookup filled by the display projection; zero means unknown. It never affects statistics.
+	ElementID      uint64   `json:"elementId,omitempty"`
 	DamageDealt    int64    `json:"damageDealt"`
 	DamageShare    *float64 `json:"damageShare,omitempty"`
 	DirectDamage   int64    `json:"directDamage"`

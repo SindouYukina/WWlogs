@@ -2,30 +2,25 @@ import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
 import "./index.css"
 import "./i18n"
-import { useSnapshot } from "@/lib/useSnapshot"
 import { applyAppearance } from "@/design/appearance"
-import { DesktopView } from "@/views/DesktopView"
-import { OverlayView } from "@/views/OverlayView"
+import type { OverlayKind } from "@/lib/snapshot"
+import { DesktopApp } from "@/views/DesktopApp"
+import { OverlayWindow } from "@/views/OverlayWindow"
 
 // The default theme applies before the first paint; the first snapshot then carries the saved one.
 applyAppearance(undefined, false)
 
-// Both windows load this page; the Go host opens the Desktop window at ?view=desktop and the Overlay at ?view=overlay.
+// All windows load this page. The Go host opens the Desktop window at ?view=desktop and each Overlay at
+// ?view=overlay&surface=combat or effects.
 const parameters = new URLSearchParams(window.location.search)
-const viewName = parameters.get("view") === "overlay" ? "overlay" : "desktop"
 const showcase = __WWLOGS_SHOWCASE__ && parameters.get("view") === "showcase"
-document.body.dataset.view = showcase ? (parameters.has("surface") ? "showcase-overlay" : "showcase") : viewName
-if (viewName === "overlay") {
+const surfaceWindow = parameters.get("view") === "overlay" || (showcase && parameters.has("surface"))
+const surface: OverlayKind = parameters.get("surface") === "effects" ? "effects" : "combat"
+document.body.dataset.view = surfaceWindow ? "overlay" : showcase ? "showcase" : "desktop"
+if (surfaceWindow) {
   for (const eventType of ["contextmenu", "dragstart"]) {
     document.body.addEventListener(eventType, event => event.preventDefault())
   }
-}
-
-function App() {
-  const { snapshot, connection, changeLocale } = useSnapshot()
-  return viewName === "overlay"
-    ? <OverlayView snapshot={snapshot} connection={connection} />
-    : <DesktopView snapshot={snapshot} connection={connection} changeLocale={changeLocale} />
 }
 
 const root = createRoot(document.getElementById("root")!)
@@ -35,7 +30,7 @@ if (__WWLOGS_SHOWCASE__ && showcase) {
 } else {
   root.render(
     <StrictMode>
-      <App />
+      {surfaceWindow ? <OverlayWindow surface={surface} /> : <DesktopApp />}
     </StrictMode>,
   )
 }

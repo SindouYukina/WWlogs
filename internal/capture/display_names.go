@@ -76,11 +76,35 @@ func (r *DisplayResolver) Resolve(ctx context.Context, kind string, id uint64, l
 			break
 		}
 	}
+	r.remember(key, result)
+	return result, nil
+}
+
+// remember caches a lookup within the bound. The caller holds mu.
+func (r *DisplayResolver) remember(key string, value DisplayName) {
 	if len(r.order) >= maxDisplayNames {
 		delete(r.names, r.order[0])
 		r.order = r.order[1:]
 	}
-	r.names[key] = result
+	r.names[key] = value
 	r.order = append(r.order, key)
-	return result, nil
+}
+
+// RoleElement returns a role's static element ID from Master, or zero when it is unknown. It selects a display color
+// only, so a failed lookup is not an error: the UI then uses its neutral series color.
+func (r *DisplayResolver) RoleElement(ctx context.Context, roleID uint64) uint64 {
+	key := "element:" + strconv.FormatUint(roleID, 10)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if cached, ok := r.names[key]; ok {
+		element, _ := strconv.ParseUint(cached.Name, 10, 64)
+		return element
+	}
+	var text sql.NullString
+	if err := r.db.QueryRowContext(ctx, "SELECT element_id FROM roleinfo WHERE id=?", strconv.FormatUint(roleID, 10)).Scan(&text); err != nil {
+		text = sql.NullString{}
+	}
+	r.remember(key, DisplayName{Name: text.String})
+	element, _ := strconv.ParseUint(text.String, 10, 64)
+	return element
 }

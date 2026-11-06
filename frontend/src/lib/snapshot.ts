@@ -16,7 +16,23 @@ export interface Snapshot {
   listening?: ListeningInfo
   theme?: string
   reduceMotion?: boolean
+  overlays?: OverlayStates
+  settingsWarning?: string
 }
+
+export type OverlayKind = "combat" | "effects"
+
+/** One Overlay window. Editing is transient: it is never saved, so a restart returns to Normal Mode. */
+export interface OverlayState {
+  visible: boolean
+  /** Surface opacity in percent. Text stays fully readable. */
+  opacity: number
+  alwaysOnTop: boolean
+  clickThrough: boolean
+  editing: boolean
+}
+
+export type OverlayStates = Record<OverlayKind, OverlayState>
 
 export type ListeningStateName = "off" | "waiting" | "establishing" | "active" | "stale" | "error" | "closed"
 
@@ -28,8 +44,9 @@ export interface ListeningInfo {
 }
 
 /** True when only host state differs, so the window updates it without treating the snapshot as new core data. */
-export function shellChanged(next: Pick<Snapshot, "listening" | "theme" | "reduceMotion">, previous: Pick<Snapshot, "listening" | "theme" | "reduceMotion">): boolean {
-  return next.listening?.state !== previous.listening?.state || next.listening?.reason !== previous.listening?.reason || next.theme !== previous.theme || next.reduceMotion !== previous.reduceMotion
+export function shellChanged(next: Pick<Snapshot, "listening" | "theme" | "reduceMotion" | "overlays" | "settingsWarning">, previous: Pick<Snapshot, "listening" | "theme" | "reduceMotion" | "overlays" | "settingsWarning">): boolean {
+  return next.listening?.state !== previous.listening?.state || next.listening?.reason !== previous.listening?.reason || next.theme !== previous.theme || next.reduceMotion !== previous.reduceMotion || next.settingsWarning !== previous.settingsWarning
+    || JSON.stringify(next.overlays) !== JSON.stringify(previous.overlays)
 }
 
 // Locale changes may reproject the same core sequence; neither dimension may move backwards.
@@ -84,6 +101,8 @@ export interface Role {
   roleId: number
   name: string
   nameStatus: string
+  /** Static Master element, from the display projection. Absent means unknown. */
+  elementId?: number
   damageDealt: number
   damageShare?: number
   directDamage: number

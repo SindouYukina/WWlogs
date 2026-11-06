@@ -49,9 +49,26 @@ try {
     foreach ($profile in @(@{ Name = 'Public'; Tags = @() }, @{ Name = 'Development'; Tags = @('-tags', 'wwdev') })) {
         $vet = Invoke-Go (@('vet', "-overlay=$overlay") + $profile.Tags + $packages)
         Set-Result "go vet ($($profile.Name))" $(if ($vet.Code -eq 0) { 'PASS' } else { 'FAIL' }) $(if ($vet.Code -ne 0) { $vet.Output.Trim() })
-        $test = Invoke-Go (@('test', '-count=1', "-overlay=$overlay") + $profile.Tags + @('./cmd/capture', './internal/buildinfo', './internal/capture', './internal/service', './internal/desktop', './internal/keyembed', './tests/versioninfo'))
+        $test = Invoke-Go (@('test', '-count=1', "-overlay=$overlay") + $profile.Tags + @('./cmd/capture', './internal/buildinfo', './internal/capture', './internal/service', './internal/desktop', './internal/keyembed', './tests/assets', './tests/versioninfo'))
         Set-Result "go test ($($profile.Name))" $(if ($test.Code -eq 0) { 'PASS' } else { 'FAIL' }) $(if ($test.Code -ne 0) { $test.Output.Trim() })
     }
+
+    # Product images are under version control, and nothing else under assets/ is. Untracked or changed images fail here
+    # or in the pack, so a clean clone can always build the same images.
+    $assetManifest = Get-Content -LiteralPath 'assets/manifest.json' -Raw | ConvertFrom-Json
+    $listedAssets = @($assetManifest.entries | ForEach-Object { "assets/$($_.path)" }) + @('assets/README.md', 'assets/manifest.json')
+    $trackedAssets = @(& git ls-files -- assets)
+    $assetProblems = @()
+    $untrackedAssets = @($listedAssets | Where-Object { $_ -notin $trackedAssets })
+    $unlistedAssets = @($trackedAssets | Where-Object { $_ -notin $listedAssets })
+    if ($untrackedAssets.Count -gt 0) { $assetProblems += "$($untrackedAssets.Count) listed files are not tracked, first $($untrackedAssets[0])" }
+    if ($unlistedAssets.Count -gt 0) { $assetProblems += "$($unlistedAssets.Count) tracked files are not listed, first $($unlistedAssets[0])" }
+    foreach ($local in @('assets/game/local.tmp', 'assets/game/local.png', 'work/fonts/candidates/misans/local.ttf', 'work/fonts/src/misans/local.zip')) {
+        & git check-ignore -q -- $local
+        if ($LASTEXITCODE -ne 0) { $assetProblems += "$local is not ignored" }
+    }
+    if (@(& git ls-files -- work 'assets/**/*.ttf' 'assets/**/*.otf' 'assets/**/*.woff2').Count -gt 0) { $assetProblems += 'font candidates or work files are tracked' }
+    Set-Result 'game assets: version control' $(if ($assetProblems.Count -eq 0) { 'PASS' } else { 'FAIL' }) $(if ($assetProblems.Count -gt 0) { $assetProblems -join '; ' } else { "$($assetManifest.entries.Count) images" })
 
     # 3. Build both executables into a throw-away directory and audit them.
     $keyPath = Join-Path $repoRoot 'privateKey.pem'
@@ -108,13 +125,24 @@ try {
                     Set-Result 'desktop build (Public + Development)' $(if ($desktopPublic.Code -eq 0 -and $desktopDevelopment.Code -eq 0) { 'PASS' } else { 'FAIL' }) $(if ($desktopPublic.Code -ne 0) { $desktopPublic.Output.Trim() } elseif ($desktopDevelopment.Code -ne 0) { $desktopDevelopment.Output.Trim() })
                     if ($desktopPublic.Code -eq 0) {
                         $desktopHelp = (& $desktopPublicExe -h 2>&1) -join "`n"
-                        $desktopFlagLeak = @('replay', 'replay-pacing', 'autostart', 'capture-diagnostics', 'webview-debug-port', 'publish-interval', 'overlay', 'showcase', 'showcase-overlays', 'asset-root', 'font-root', 'webview-args') | Where-Object { $desktopHelp -match "-$_\b" }
+                        $desktopFlagLeak = @('replay', 'replay-pacing', 'autostart', 'capture-diagnostics', 'webview-debug-port', 'publish-interval', 'overlay', 'showcase', 'showcase-overlays', 'asset-root', 'font-root', 'webview-args', 'simulate-capture-environment', 'simulate-npcap-offline', 'record-browser-url') | Where-Object { $desktopHelp -match "-$_\b" }
                         $desktopLatin = [Text.Encoding]::GetEncoding(28591).GetString([IO.File]::ReadAllBytes($desktopPublicExe))
                         $desktopStringLeak = @('combat-events.jsonl', 'dps-effects.jsonl', 'buff-events.jsonl', 'status.json', 'capture-spool', 'LIVE_DIAGNOSTIC_SNAPSHOT', 'event-jsonl-out', 'pcapgo', 'encounter-events.jsonl', 'BATTLE_STATE_SIGNAL', 'COMBAT_EVENT_RECORD', 'ENCOUNTER_TRANSITION', 'remote-debugging-port=%d') | Where-Object { $desktopLatin.Contains($_) }
                         $desktopProblems = @()
                         if ($desktopFlagLeak) { $desktopProblems += "flags: $($desktopFlagLeak -join ', ')" }
                         if ($desktopStringLeak) { $desktopProblems += "strings: $($desktopStringLeak -join ', ')" }
                         Set-Result 'desktop public flags + strings' $(if ($desktopProblems.Count -eq 0) { 'PASS' } else { 'FAIL' }) ($desktopProblems -join '; ')
+
+                        # The executables must really carry what the profile promises: every distinct manifest image in
+                        # Public, none in Development.
+                        $blobPattern = [regex]'blobs/[0-9a-f]{64}'
+                        $packedBlobs = [Collections.Generic.HashSet[string]]::new()
+                        foreach ($match in $blobPattern.Matches($desktopLatin)) { [void]$packedBlobs.Add($match.Value) }
+                        $wantedBlobs = @($assetManifest.entries | ForEach-Object { "blobs/$($_.sha256)" } | Sort-Object -Unique)
+                        $absentBlobs = @($wantedBlobs | Where-Object { -not $packedBlobs.Contains($_) })
+                        $developmentBlobs = if ($desktopDevelopment.Code -eq 0) { $blobPattern.Matches([Text.Encoding]::GetEncoding(28591).GetString([IO.File]::ReadAllBytes($desktopDevelopmentExe))).Count } else { -1 }
+                        $imagesOk = $wantedBlobs.Count -gt 0 -and $absentBlobs.Count -eq 0 -and $packedBlobs.Count -eq $wantedBlobs.Count -and $developmentBlobs -eq 0
+                        Set-Result 'desktop embedded images' $(if ($imagesOk) { 'PASS' } else { 'FAIL' }) "Public $($packedBlobs.Count)/$($wantedBlobs.Count) distinct images, Development $developmentBlobs"
                     }
                 }
 

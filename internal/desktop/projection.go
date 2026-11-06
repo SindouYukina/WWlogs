@@ -26,12 +26,15 @@ type projectedShell struct {
 	Listening    service.ListeningStatus `json:"listening"`
 	Theme        string                  `json:"theme"`
 	ReduceMotion bool                    `json:"reduceMotion"`
+	Overlays     OverlayStates           `json:"overlays"`
+	// SettingsWarning is a recoverable settings problem to show in the Desktop window.
+	SettingsWarning string `json:"settingsWarning,omitempty"`
 }
 
-func (p *displayProjection) encode(source *service.Snapshot, settings SettingsState, catalog localeCatalog, listening service.ListeningStatus) (json.RawMessage, error) {
+func (p *displayProjection) encode(source *service.Snapshot, settings SettingsState, catalog localeCatalog, listening service.ListeningStatus, overlays OverlayStates) (json.RawMessage, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	shell := projectedShell{Listening: listening, Theme: effectiveTheme(settings.Settings), ReduceMotion: settings.Settings.ReduceMotion}
+	shell := projectedShell{Listening: listening, Theme: effectiveTheme(settings.Settings), ReduceMotion: settings.Settings.ReduceMotion, Overlays: overlays, SettingsWarning: settings.Warning}
 	if p.source == source && p.revision == settings.LocaleRevision && p.shell == shell {
 		return append(json.RawMessage(nil), p.encoded...), nil
 	}
@@ -48,6 +51,7 @@ func (p *displayProjection) encode(source *service.Snapshot, settings SettingsSt
 				projectionErr = err
 			}
 			result[i].Name, result[i].NameStatus = name.Name, name.Status
+			result[i].ElementID = p.resolver.RoleElement(ctx, result[i].RoleID)
 		}
 		return result
 	}

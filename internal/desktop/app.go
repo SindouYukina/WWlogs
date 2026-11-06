@@ -1,6 +1,7 @@
-// Package desktop is the Wails v3 application host: one Go process, one CaptureService, one Publisher, and two
-// windows (Desktop and Overlay) that load the same frontend with different views. All capture and statistics logic
-// stays in internal/capture and internal/service; this package only creates windows and exposes the Bridge.
+// Package desktop is the Wails v3 application host: one Go process, one CaptureService, one Publisher, and three
+// windows (Desktop, Combat Overlay and Effects Overlay) that load the same frontend with different views. All capture and
+// statistics logic stays in internal/capture and internal/service; this package only creates windows and exposes the
+// Bridge.
 package desktop
 
 import (
@@ -19,11 +20,8 @@ import (
 	"wwlogs/internal/service"
 )
 
-// Window names; the frontend selects its view from the URL, not from these names.
-const (
-	desktopWindowName = "desktop"
-	overlayWindowName = "overlay"
-)
+// desktopWindowName names the main window; the frontend selects its view from the URL, not from window names.
+const desktopWindowName = "desktop"
 
 // Options configure the host. Profile-specific flags fill them (options_public.go, options_development.go).
 type Options struct {
@@ -32,7 +30,7 @@ type Options struct {
 	Session        capture.SessionConfig
 	// AutoStart starts a capture with Session as soon as the windows exist.
 	AutoStart bool
-	// ShowOverlay shows the overlay at start; it is hidden otherwise.
+	// ShowOverlay shows both Overlays at start; otherwise each restores its saved visibility.
 	ShowOverlay bool
 	// WebviewDebugPort opens the WebView2 remote debugging port. Only Development builds can set it or contain the
 	// browser argument (webviewArguments in options_development.go).
@@ -41,12 +39,18 @@ type Options struct {
 	// transparent windows. Public flags cannot set these, and Public frontend builds do not contain the Showcase.
 	Showcase         bool
 	ShowcaseOverlays bool
-	// GameAssetRoot is an explicitly supplied directory for game images. Empty means no images are served.
+	// GameAssetRoot is an explicitly supplied directory for game images. Empty means the images embedded in the
+	// executable, if any. Only Development flags can set it.
 	GameAssetRoot string
 	// PreviewFontRoot is an explicitly supplied directory for Development Showcase font candidates.
 	PreviewFontRoot string
 	// WebviewArguments are extra browser arguments for rendering experiments; only Development flags can set them.
 	WebviewArguments []string
+	// EnvironmentProbe, NpcapTransport and OpenBrowser replace system access for controlled UI checks. Only Development
+	// flags can set them; nil means the real system.
+	EnvironmentProbe func() capture.CaptureEnvironment
+	NpcapTransport   http.RoundTripper
+	OpenBrowser      func(string) error
 }
 
 // Main parses the command line and runs the host until the Desktop window closes.
@@ -78,11 +82,12 @@ func Run(options Options) error {
 	if err != nil {
 		return err
 	}
-	var assetHandler http.Handler = application.AssetFileServerFS(frontend)
-	if options.GameAssetRoot != "" {
-		assetHandler = withGameAssets(assetHandler, os.DirFS(options.GameAssetRoot))
-	}
+	assetHandler := withGameAssets(application.AssetFileServerFS(frontend), gameAssetSource(options.GameAssetRoot, gameAssetArchive))
 	if options.PreviewFontRoot != "" {
+		// A wrong path is reported here and shows as Missing in the Showcase; it never stops the application.
+		if info, err := os.Stat(options.PreviewFontRoot); err != nil || !info.IsDir() {
+			fmt.Fprintln(os.Stderr, "WWlogs desktop: the -font-root directory was not found; font candidates will show as missing")
+		}
 		assetHandler = withPreviewFonts(assetHandler, os.DirFS(options.PreviewFontRoot))
 	}
 	catalog, err := readLocaleCatalog(frontend)
@@ -116,22 +121,24 @@ func Run(options Options) error {
 	}
 	defer resolver.Close()
 	captureService := service.NewCaptureService(service.SessionOpener(masters))
-	var overlay *application.WebviewWindow
-	bridge := &Bridge{capture: captureService, defaults: options.Session, settings: settings, overlay: func() *application.WebviewWindow { return overlay }}
+	bridge := &Bridge{capture: captureService, defaults: options.Session, settings: settings}
 	bridge.catalog = catalog
 	bridge.projection = &displayProjection{resolver: resolver}
+	environmentProbe := options.EnvironmentProbe
+	if environmentProbe == nil {
+		environmentProbe = capture.SystemEnvironmentProbe().Check
+	}
+	bridge.environment = newEnvironmentChecker(environmentProbe)
+	bridge.npcap = newNpcapDownloadResolver(options.NpcapTransport)
 	// The process list is read only while a capture is running; nothing polls while the application is idle.
 	bridge.process = &service.GameProcessWatcher{}
 	watcherContext, stopWatcher := context.WithCancel(context.Background())
 	defer stopWatcher()
 	go bridge.process.Run(watcherContext, func() bool { return captureService.Status().State == service.StateRunning })
 	var app *application.App
-	var flushOverlay func(bool)
 	shutdown := newShutdownGate(func(ctx context.Context) error {
 		err := captureService.Shutdown(ctx)
-		if flushOverlay != nil {
-			flushOverlay(true)
-		}
+		bridge.overlays.close(true)
 		return err
 	}, func() { app.Quit() })
 	bridge.shutdown = shutdown
@@ -147,8 +154,12 @@ func Run(options Options) error {
 			AdditionalBrowserArgs: webviewArguments(options),
 		},
 	})
+	bridge.openBrowser = options.OpenBrowser
+	if bridge.openBrowser == nil {
+		bridge.openBrowser = app.Browser.OpenURL
+	}
 
-	desktopURL, desktopWidth, desktopHeight := "/?view=desktop", 1100, 720
+	desktopURL, desktopWidth, desktopHeight := "/?view=desktop", 1280, 820
 	if options.Showcase {
 		desktopURL, desktopWidth, desktopHeight = "/?view=showcase", 1360, 880
 	}
@@ -157,56 +168,31 @@ func Run(options Options) error {
 		Title:            "WWlogs",
 		Width:            desktopWidth,
 		Height:           desktopHeight,
-		MinWidth:         720,
-		MinHeight:        480,
+		MinWidth:         980,
+		MinHeight:        620,
 		URL:              desktopURL,
 		BackgroundColour: application.NewRGB(15, 17, 23),
 	})
-	overlay = app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Name:           overlayWindowName,
-		Title:          "WWlogs Overlay",
-		Width:          440,
-		Height:         640,
-		MinWidth:       320,
-		MinHeight:      360,
-		MaxWidth:       1200,
-		MaxHeight:      1600,
-		URL:            "/?view=overlay",
-		Frameless:      true,
-		AlwaysOnTop:    true,
-		BackgroundType: application.BackgroundTypeTransparent,
-		Hidden:         options.Showcase || !(options.ShowOverlay || settings.current().Settings.ShowOverlayOnStartup),
-		// Mouse click-through is deliberately not enabled in this phase: the overlay takes mouse input.
-		// Without the frameless decorations Windows keeps no caption, frame, shadow, or rounded corners around the
-		// transparent area.
-		Windows: application.WindowsWindow{HiddenOnTaskbar: true, DisableFramelessWindowDecorations: true},
-	})
 	if options.Showcase {
-		// The Showcase is a review surface: it must not rewrite the user's saved window placement.
-		flushOverlay = func(bool) {}
+		// The Showcase is a review surface: it must not rewrite the user's saved windows or settings.
 		if options.ShowcaseOverlays {
 			openShowcaseOverlays(app)
 		}
 	} else {
-		flushOverlay = trackOverlay(app, overlay, settings)
+		bridge.overlays = newOverlayManager(app, settings, bridge.shell.fire, shutdown.requested.Load)
+		// Overlays are created on first use, so they are opened only after the application loop runs.
+		app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
+			go bridge.overlays.start(options.ShowOverlay)
+		})
+		// Cancel placement timers on startup failure as well; native teardown already persisted successful runs.
+		defer bridge.overlays.close(false)
 	}
-	// Cancel placement timers on startup failure as well; native teardown already persisted successful runs.
-	defer flushOverlay(false)
-	// Closing the Desktop window quits the application, including the hidden overlay.
+	// Closing the Desktop window quits the application, including any hidden Overlay.
 	desktop.RegisterHook(events.Common.WindowClosing, func(event *application.WindowEvent) {
 		if !shutdown.ready.Load() {
 			event.Cancel()
 			shutdown.request()
 		}
-	})
-	// A close request on the overlay (for example Alt+F4) only hides it, so the Desktop window can show it again.
-	// Quit destroys windows directly and is not affected.
-	overlay.RegisterHook(events.Common.WindowClosing, func(event *application.WindowEvent) {
-		if shutdown.ready.Load() {
-			return
-		}
-		overlay.Hide()
-		event.Cancel()
 	})
 	if options.AutoStart {
 		app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {

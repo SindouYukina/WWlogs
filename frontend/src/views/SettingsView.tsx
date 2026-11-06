@@ -1,0 +1,133 @@
+import { useEffect, useMemo, useRef, useState } from "react"
+import { useTranslation } from "react-i18next"
+import { Button, ContentSwitch, Icon, Select, SettingsRow, SettingsSection, Sidebar, Slider, Stepper, ThemeBackdrop, ThemePicker, Toggle, Tooltip, resolveTheme, type SidebarGroupModel } from "@/design"
+import { manifest } from "@/i18n"
+import { environmentNotice } from "@/lib/capture-environment"
+import type { SettingsController } from "@/lib/settings-controller"
+import type { OverlayKind } from "@/lib/snapshot"
+import { useThemeDescriptions } from "@/lib/useListeningLabels"
+
+type Page = "general" | "appearance" | "combatOverlay" | "effectsOverlay" | "capture" | "about"
+
+const pageOrder: Page[] = ["general", "appearance", "combatOverlay", "effectsOverlay", "capture", "about"]
+
+function Hint({ text }: { text: string }) {
+  return <Tooltip text={text}><Icon name="info" size={15} /></Tooltip>
+}
+
+function GeneralPage({ controller }: { controller: SettingsController }) {
+  const { t } = useTranslation("settings")
+  const options = manifest.supportedLocales.map(locale => ({ value: locale, label: manifest.languages[locale as keyof typeof manifest.languages].label }))
+  return <SettingsSection title={t("sections.language")}>
+    <SettingsRow title={t("language")} description={t("languageHint")}><span data-field="locale"><Select label={t("language")} value={controller.locale} onChange={controller.setLocale} options={options} /></span></SettingsRow>
+  </SettingsSection>
+}
+
+function AppearancePage({ controller }: { controller: SettingsController }) {
+  const { t } = useTranslation("settings")
+  const describe = useThemeDescriptions()
+  const theme = resolveTheme(controller.theme)
+  return <>
+    <SettingsSection title={t("appearance")}>
+      <div className="ww-row-block" data-field="theme" data-theme={theme}><ThemePicker label={t("theme")} value={theme} onChange={next => controller.setAppearance(next, controller.reduceMotion)} describe={describe} /></div>
+    </SettingsSection>
+    <SettingsSection title={t("sections.motion")}>
+      <SettingsRow title={t("reduceMotion")} description={t("reduceMotionHint")}><Toggle label={t("reduceMotion")} checked={controller.reduceMotion} onChange={value => controller.setAppearance(theme, value)} /></SettingsRow>
+    </SettingsSection>
+  </>
+}
+
+function OverlayPage({ kind, controller }: { kind: OverlayKind; controller: SettingsController }) {
+  const { t } = useTranslation("settings")
+  const state = controller.overlays?.[kind]
+  const change = controller.updateOverlay
+  // A slider moves faster than a round trip, so it shows its own value until the host has caught up.
+  const [draft, setDraft] = useState<number | null>(null)
+  const settle = useRef<ReturnType<typeof setTimeout>>(undefined)
+  useEffect(() => () => clearTimeout(settle.current), [])
+  const setOpacity = (opacity: number) => {
+    setDraft(opacity)
+    change(kind, { opacity })
+    clearTimeout(settle.current)
+    settle.current = setTimeout(() => setDraft(null), 500)
+  }
+  const opacity = draft ?? state?.opacity ?? 100
+  const disabled = !controller.connected || !state
+  return <div data-field={`overlay-settings-${kind}`}>
+    <SettingsSection title={t("sections.window")}>
+      <SettingsRow title={t("showWindow")}><Toggle label={t("showWindow")} disabled={disabled} checked={state?.visible === true} onChange={visible => change(kind, { visible })} /></SettingsRow>
+      <SettingsRow title={t("alwaysOnTop")}><Toggle label={t("alwaysOnTop")} disabled={disabled} checked={state?.alwaysOnTop === true} onChange={alwaysOnTop => change(kind, { alwaysOnTop })} /></SettingsRow>
+      <SettingsRow title={t("clickThrough")} hint={<Hint text={t("clickThroughHint")} />}><Toggle label={t("clickThrough")} disabled={disabled} checked={state?.clickThrough === true} onChange={clickThrough => change(kind, { clickThrough })} /></SettingsRow>
+      <SettingsRow title={t("editMode")} description={t("editModeHint")}><Button size="sm" variant={state?.editing ? "primary" : "secondary"} disabled={disabled} data-field="edit-toggle" onClick={() => change(kind, { editing: !state?.editing })}>{t(state?.editing ? "finishEditing" : "startEditing")}</Button></SettingsRow>
+      <SettingsRow title={t("position")} description={t("positionNote")}><Button size="sm" disabled={disabled} onClick={() => controller.resetOverlay(kind)}>{t("resetPosition")}</Button></SettingsRow>
+    </SettingsSection>
+    <SettingsSection title={t("sections.look")}>
+      <SettingsRow title={t("opacity")} description={t("opacityHint")}>
+        <Slider label={t("opacity")} min={20} max={100} value={opacity} onChange={setOpacity} />
+        <Stepper value={opacity} unit="%" step={5} min={20} max={100} onChange={setOpacity} decreaseLabel={t("decrease")} increaseLabel={t("increase")} />
+      </SettingsRow>
+    </SettingsSection>
+  </div>
+}
+
+function CapturePage({ controller }: { controller: SettingsController }) {
+  const { t } = useTranslation(["settings", "dashboard"])
+  const missing = controller.defaultAdapter !== "" && !controller.adapters.some(adapter => adapter.ipv4 === controller.defaultAdapter)
+  const options = [
+    { value: "", label: t("chooseAtLaunch") },
+    ...(missing ? [{ value: controller.defaultAdapter, label: `${controller.defaultAdapter} · ${t("missingInterface", { ns: "dashboard" })}` }] : []),
+    ...controller.adapters.map(adapter => ({ value: adapter.ipv4, label: `${adapter.ipv4} — ${adapter.description || t("network", { ns: "dashboard" })}` })),
+  ]
+  const notice = environmentNotice(controller.environment)
+  return <SettingsSection title={t("sections.capture")}>
+    <SettingsRow title={t("defaultAdapter")} description={t("adapterHint")}><Select label={t("defaultAdapter")} value={controller.defaultAdapter} onChange={controller.setDefaultAdapter} options={options} /></SettingsRow>
+    <SettingsRow title={t("network", { ns: "dashboard" })} description={notice ? t(`environment.${notice.key}.title`, { ns: "dashboard" }) : undefined}><Button size="sm" disabled={controller.checking} data-field="settings-environment-recheck" onClick={controller.checkEnvironment}>{t(controller.checking ? "environment.checking" : "environment.recheck", { ns: "dashboard" })}</Button></SettingsRow>
+  </SettingsSection>
+}
+
+function AboutPage({ controller }: { controller: SettingsController }) {
+  const { t } = useTranslation("settings")
+  const app = controller.app
+  return <SettingsSection title={t("sections.about")}>
+    <SettingsRow title="WWlogs" description={t("storage")}><span className="ww-num" data-field="app">{app?.version ?? "—"}</span></SettingsRow>
+    <SettingsRow title={t("buildCommit")}><span className="ww-num">{app?.commit.slice(0, 12) ?? "—"}</span></SettingsRow>
+    <SettingsRow title={t("buildProfile")}><span>{app?.profile ?? "—"}</span></SettingsRow>
+  </SettingsSection>
+}
+
+/** The one Settings view. Everything it shows is a working setting: a row without a backend does not exist here. */
+export function SettingsView({ controller }: { controller: SettingsController }) {
+  const { t } = useTranslation("settings")
+  const [page, setPage] = useState<Page>("general")
+  const previous = useRef<Page>("general")
+  const direction = pageOrder.indexOf(page) >= pageOrder.indexOf(previous.current) ? "forward" : "back"
+  const groups = useMemo<ReadonlyArray<SidebarGroupModel<Page>>>(() => [
+    { label: t("groups.basic"), items: [{ value: "general", label: t("pages.general"), icon: "sliders" }, { value: "appearance", label: t("pages.appearance"), icon: "palette" }] },
+    { label: t("groups.overlays"), items: [{ value: "combatOverlay", label: t("pages.combatOverlay"), icon: "overlay" }, { value: "effectsOverlay", label: t("pages.effectsOverlay"), icon: "spark" }] },
+    { label: t("groups.capture"), items: [{ value: "capture", label: t("pages.capture"), icon: "capture" }] },
+    { label: t("groups.about"), items: [{ value: "about", label: t("pages.about"), icon: "about" }] },
+  ], [t])
+  const change = (next: Page) => {
+    previous.current = page
+    setPage(next)
+  }
+  const warning = controller.warning === "overlay_save_failed" ? "saveFailed" : controller.warning === "overlay_geometry_reset" ? "geometryReset" : controller.warning ? "invalid" : ""
+  return <div className="ww-settings" data-field="settings" data-page={page}>
+    <ThemeBackdrop theme={resolveTheme(controller.theme)} intensity="ambient" />
+    <Sidebar label={t("title")} value={page} groups={groups} onChange={change} />
+    <div className="ww-detail">
+      <ContentSwitch contentKey={page} direction={direction} className="ww-detail-inner">
+        <div className="ww-detail-title"><h2>{t(`pages.${page}`)}</h2></div>
+        {warning && <p className="ww-settings-notice" role="status">{t(warning)}</p>}
+        {controller.loadFailed && <p className="ww-settings-notice" data-tone="critical" role="alert" data-field="settings-load-failed">{t("loadFailed")}</p>}
+        {controller.failed && <p className="ww-settings-notice" data-tone="critical" role="alert" data-field="settings-save-failed">{t("saveFailed")}</p>}
+        {page === "general" && <GeneralPage controller={controller} />}
+        {page === "appearance" && <AppearancePage controller={controller} />}
+        {page === "combatOverlay" && <OverlayPage kind="combat" controller={controller} />}
+        {page === "effectsOverlay" && <OverlayPage kind="effects" controller={controller} />}
+        {page === "capture" && <CapturePage controller={controller} />}
+        {page === "about" && <AboutPage controller={controller} />}
+      </ContentSwitch>
+    </div>
+  </div>
+}

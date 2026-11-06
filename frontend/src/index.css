@@ -4,7 +4,7 @@
 @source not "./showcase";
 @source not "./design";
 
-/* shadcn/ui component variables resolve to WWlogs tokens, so the current views follow the selected theme. */
+/* shadcn/ui component variables resolve to WWlogs tokens, so any component that uses them follows the selected theme. */
 :root {
   --radius: var(--ww-radius-lg);
   --background: var(--ww-surface-canvas);
@@ -57,72 +57,4 @@
   body {
     @apply bg-background text-foreground;
   }
-  body[data-view="overlay"] {
-    background: transparent;
-  }
 }
-
-/* Shared desktop primitives; the Overlay keeps its independent transparent surface. */
-.desktop-shell { position: relative; min-height: 100vh; background: var(--ww-surface-canvas); isolation: isolate; }
-.desktop-shell > .ww-backdrop { position: fixed; z-index: -1; }
-.app-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; padding: 18px 28px; border-bottom: 1px solid var(--border); background: color-mix(in oklab, var(--ww-surface-rail) 78%, transparent); }
-.app-mark { display: grid; place-items: center; width: 36px; height: 36px; border-radius: var(--ww-radius-md); background: linear-gradient(160deg, var(--ww-accent-fill-top), var(--ww-accent-fill-bottom)); color: var(--ww-on-accent); font-weight: 800; }
-.workspace { max-width: 1480px; margin: 0 auto; padding: 20px 28px 24px; display: flex; flex-direction: column; gap: 20px; }
-.page-nav { display: flex; align-items: center; gap: 6px; }
-.status-dot { width: 6px; height: 6px; border-radius: 50%; }
-.eyebrow { font-size: 11px; line-height: 1.5; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--muted-foreground); }
-.adapter-select { width: 100%; height: 36px; border-radius: 6px; border: 1px solid var(--input); background: var(--background); padding: 0 10px; font-size: 13px; text-overflow: ellipsis; }
-.adapter-select:focus-visible { outline: 2px solid var(--ww-accent-line); outline-offset: 2px; }
-.adapter-select:disabled { opacity: .5; }
-.metric-value { margin-top: 6px; font-size: 27px; line-height: 1.2; letter-spacing: -.03em; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-.metric-primary .metric-value { font-size: clamp(30px, 4vw, 46px); }
-.metric-note { margin-top: 6px; font-size: 11px; line-height: 1.6; color: var(--muted-foreground); }
-.total-value { margin-top: 8px; font-size: 30px; line-height: 1.2; letter-spacing: -.03em; font-weight: 600; font-variant-numeric: tabular-nums; }
-.role-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.role-table th { padding: 0 10px 12px; text-align: left; font-size: 11px; font-weight: 500; color: var(--muted-foreground); white-space: nowrap; }
-.role-table td { padding: 14px 10px; border-top: 1px solid var(--border); }
-.role-table th:first-child, .role-table td:first-child { padding-left: 0; }
-.role-table th:last-child, .role-table td:last-child { padding-right: 0; text-align: right; }
-.contribution-track { height: 3px; min-width: 95px; margin-top: 7px; border-radius: 4px; background: #ffffff0a; overflow: hidden; }
-.contribution-track > div { height: 100%; border-radius: inherit; background: var(--ww-accent-bright); }
-.detail-list { display: grid; grid-template-columns: 1fr minmax(0,1fr); gap: 10px 14px; }
-.detail-list dt { color: var(--muted-foreground); }
-.detail-list dd { text-align: right; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
-.empty-state { padding: 28px 10px !important; text-align: center; font-size: 12px; color: var(--muted-foreground); }
-.notice { padding: 12px 16px; border: 1px solid var(--ww-warn-soft); border-radius: 8px; font-size: 13px; }
-@media (max-width: 760px) { .workspace { padding: 16px; } .app-header { padding: 16px; } .metric-value { font-size: 23px; } }
-
-/* Wails gives edge resize priority over drag. Keep the transparent gutter inside the drag region. */
-body[data-view="overlay"] { --wails-draggable:drag; margin:0; padding:6px; overflow:hidden; user-select:none; }
-.combat-overlay { position:relative; height:calc(100vh - 12px); display:flex; flex-direction:column; border:1px solid var(--ww-line-strong); border-radius:var(--ww-radius-lg); background:var(--ww-surface-overlay-strong); color:var(--ww-text); box-shadow:0 5px 18px #0006; font-size:12px; }
-.overlay-content { flex:1; min-height:0; overflow:auto; padding:12px 14px; scrollbar-width:none; }
-.overlay-content::-webkit-scrollbar { display:none; }
-/* Wails checks the target's client size. Hit the scroll container even over inline text. */
-.overlay-content * { pointer-events:none; }
-.overlay-encounter-title { display:flex; flex-wrap:wrap; justify-content:space-between; gap:5px; margin:12px 0 8px; color:var(--ww-text-3); font-size:10px; }
-.overlay-listening { display:flex; justify-content:flex-end; margin-bottom:6px; }
-.combat-overlay .metric-primary .metric-value { font-size:40px; }
-.combat-overlay .metric-value { font-size:21px; }
-.combat-overlay .metric-note { font-size:10px; }
-.overlay-rolling { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:12px; margin-top:12px; }
-.overlay-total { display:flex; flex-wrap:wrap; justify-content:space-between; gap:6px; padding:12px 0 9px; font-variant-numeric:tabular-nums; }
-.overlay-total span { color:#a8b6c4; font-size:10px; }
-.overlay-health { display:flex; flex-wrap:wrap; gap:7px; align-items:center; font-size:10px; color:#a8b6c4; }
-.overlay-warning { color:#f3cc7a; font-size:10px; line-height:1.5; margin:7px 0; }
-.overlay-section { border-top:1px solid #ffffff18; margin-top:12px; padding-top:10px; }
-.overlay-section h2 { font-size:11px; font-weight:600; color:#cdd7df; margin-bottom:8px; }
-.overlay-role { margin-top:9px; }
-.overlay-role-heading,.overlay-effect-heading { display:flex; align-items:center; gap:9px; justify-content:space-between; font-variant-numeric:tabular-nums; }
-.overlay-role-heading > span:first-child,.overlay-effect-heading > span:first-child { min-width:0; flex:1; }
-.overlay-role-heading > span:last-child,.overlay-effect-heading > strong { flex:none; }
-.overlay-role-heading small { color:#8fa2b1; font-size:10px; margin-left:5px; }
-.overlay-role-taken,.overlay-timer-hint { font-size:10px; color:#8fa2b1; margin-top:4px; }
-.overlay-unassigned { display:flex; justify-content:space-between; gap:8px; margin-top:10px; color:#a8b6c4; font-size:10px; }
-.overlay-empty { color:#8fa2b1; font-size:11px; margin:8px 0; }
-.overlay-effect { margin-top:8px; padding:8px; border:1px solid #ffffff14; border-radius:7px; background:#ffffff04; }
-.overlay-effect-heading strong { color:var(--ww-accent-bright); font-size:11px; }
-.overlay-effect-meta { display:flex; flex-wrap:wrap; gap:4px 10px; color:#a0b1c0; font-size:10px; margin-top:4px; }
-.overlay-candidate { font-size:9px; color:#d9bb77; margin-top:3px; }
-.overlay-ended { font-size:10px; color:#8fa2b1; margin-top:10px; }
-.overlay-ended > div { display:flex; justify-content:space-between; gap:12px; margin-top:6px; }
-.overlay-footer { display:flex; gap:8px; justify-content:space-between; color:#657b8d; font-size:9px; margin-top:12px; }

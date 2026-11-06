@@ -1,0 +1,40 @@
+import { useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
+import type { ThemeId } from "@/design"
+import type { SettingsController } from "@/lib/settings-controller"
+import type { OverlayKind, OverlayStates } from "@/lib/snapshot"
+
+const initialOverlays: OverlayStates = {
+  combat: { visible: true, opacity: 74, alwaysOnTop: true, clickThrough: true, editing: false },
+  effects: { visible: true, opacity: 62, alwaysOnTop: true, clickThrough: true, editing: false },
+}
+
+/** Local demo state for the production Settings view. Nothing is read from or written to the user's real settings. */
+export function useMockSettings(theme: ThemeId, setTheme: (theme: ThemeId) => void, reduced: boolean, setReduced: (reduced: boolean) => void): SettingsController {
+  const { i18n } = useTranslation()
+  const [overlays, setOverlays] = useState(initialOverlays)
+  const [defaultAdapter, setDefaultAdapter] = useState("")
+  return useMemo(() => ({
+    locale: i18n.language,
+    setLocale: locale => void i18n.changeLanguage(locale),
+    theme,
+    reduceMotion: reduced,
+    setAppearance: (nextTheme, nextReduced) => { setTheme(nextTheme as ThemeId); setReduced(nextReduced) },
+    adapters: [{ ipv4: "192.0.2.10", description: "Mock adapter" }],
+    defaultAdapter,
+    setDefaultAdapter,
+    environment: "ready",
+    checking: false,
+    checkEnvironment: () => undefined,
+    npcapDownload: { info: null, resolving: false, opening: false, opened: false, openFailed: false },
+    openNpcapDownload: () => undefined,
+    overlays,
+    updateOverlay: (kind: OverlayKind, change) => setOverlays(current => ({ ...current, [kind]: { ...current[kind], ...change } })),
+    resetOverlay: () => undefined,
+    app: { version: "showcase", commit: "mock", profile: "development" },
+    failed: false,
+    loadFailed: false,
+    warning: "",
+    connected: true,
+  }), [i18n, i18n.language, theme, setTheme, reduced, setReduced, overlays, defaultAdapter])
+}

@@ -13,7 +13,7 @@ if (-not (Test-Path -LiteralPath $overlayPath -PathType Leaf)) {
     throw "Test overlay is missing: $overlayPath"
 }
 
-$packages = @('./cmd/capture', './internal/buildinfo', './internal/capture', './internal/service', './internal/desktop', './internal/keyembed', './tests/versioninfo')
+$packages = @('./cmd/capture', './internal/buildinfo', './internal/capture', './internal/service', './internal/desktop', './internal/keyembed', './tests/assets', './tests/versioninfo')
 $profiles = if ($Profile -eq 'Both') { @('Public', 'Development') } else { @($Profile) }
 
 Push-Location $repoRoot
