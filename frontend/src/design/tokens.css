@@ -176,6 +176,7 @@
   --ww-row-combat: 46px;
   --ww-row-effect: 38px;
   --ww-sidebar-width: 236px;
+  --ww-license-text-height: 320px;
 }
 
 [data-element="1"] { --ww-series: var(--ww-element-glacio); }

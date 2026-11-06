@@ -249,6 +249,10 @@
     "internal/desktop/central_overlay_test.go": "tests/desktop/overlay_test.go",
     "tests/capture/environment_test.go": "",
     "internal/capture/central_environment_test.go": "tests/capture/environment_test.go",
+    "tests/capture/embedded_master_vfs_test.go": "",
+    "internal/capture/central_embedded_master_vfs_test.go": "tests/capture/embedded_master_vfs_test.go",
+    "tests/desktop/licenses_test.go": "",
+    "internal/desktop/central_licenses_test.go": "tests/desktop/licenses_test.go",
     "tests/desktop/environment_test.go": "",
     "internal/desktop/central_environment_test.go": "tests/desktop/environment_test.go"
   }

@@ -33,6 +33,7 @@ export const host = {
   checkCaptureEnvironment: () => call<CaptureEnvironment>("CheckCaptureEnvironment"),
   npcapDownloadInfo: () => call<NpcapDownload>("NpcapDownloadInfo"),
   openNpcapDownload: () => call<NpcapDownload>("OpenNpcapDownload"),
+  openLicenseLink: (url: string) => call<void>("OpenLicenseLink", url),
   startCapture: (localIPv4: string) => call<void>("StartCapture", { localIPv4 }),
   stopCapture: () => call<void>("StopCapture"),
   getSettings: () => call<SettingsState>("GetSettings"),

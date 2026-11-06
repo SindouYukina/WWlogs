@@ -142,8 +142,11 @@ export interface SidebarItem<T extends string> {
 }
 
 export interface SidebarGroupModel<T extends string> {
+  /** Empty means the group has no heading. */
   label: string
   items: ReadonlyArray<SidebarItem<T>>
+  /** Keeps the group at the bottom of the rail, after everything else. */
+  pinned?: boolean
 }
 
 export interface SidebarProps<T extends string> {
@@ -166,10 +169,10 @@ export function Sidebar<T extends string>({ value, groups, onChange, label }: Si
     if (next) onChange(next.value)
   }, [groups, onChange, value])
   return <nav className="ww-side" aria-label={label} onKeyDown={onKeyDown}>
-    <div ref={container} style={{ position: "relative" }}>
+    <div ref={container} className="ww-side-rail">
       {box && <span className="ww-side-indicator" aria-hidden="true" data-ready={ready} style={{ height: box.size, transform: `translateY(${box.offset}px)` }} />}
-      {groups.map(group => <div className="ww-side-group" key={group.label}>
-        <div className="ww-side-label">{group.label}</div>
+      {groups.map(group => <div className="ww-side-group" data-pinned={group.pinned === true} key={group.label || "pinned"}>
+        {group.label && <div className="ww-side-label">{group.label}</div>}
         <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
           {group.items.map(item => <button key={item.value} type="button" className="ww-side-item" aria-current={item.value === value ? "page" : undefined} data-indicator-target={item.value === value} onClick={() => onChange(item.value)}><Icon name={item.icon} /><span className="ww-truncate">{item.label}</span></button>)}
         </div>

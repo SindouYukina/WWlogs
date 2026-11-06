@@ -43,7 +43,8 @@
     "combatOverlay": "战斗 Overlay",
     "effectsOverlay": "效果 Overlay",
     "capture": "网络捕获",
-    "about": "WWlogs"
+    "about": "WWlogs",
+    "licenses": "授权"
   },
   "sections": {
     "language": "语言",
@@ -51,7 +52,8 @@
     "window": "窗口",
     "look": "外观",
     "capture": "网络捕获",
-    "about": "版本信息"
+    "about": "版本信息",
+    "fontLicenses": "字体授权"
   },
   "showWindow": "显示此 Overlay",
   "alwaysOnTop": "保持在最上层",
@@ -70,5 +72,27 @@
   "increase": "增加",
   "buildCommit": "源代码版本",
   "buildProfile": "构建类型",
-  "geometryReset": "Overlay 的位置数据无效，已还原为默认位置。"
+  "geometryReset": "Overlay 的位置数据无效，已还原为默认位置。",
+  "licenses": {
+    "intro": "以下是本程序内置的字体与授权信息。授权条款以原文显示，不提供翻译版本。",
+    "usage": "用途",
+    "faces": "字型",
+    "version": "版本",
+    "authors": "作者",
+    "copyright": "版权声明",
+    "license": "授权条款",
+    "links": "链接",
+    "showText": "显示完整条款",
+    "hideText": "隐藏完整条款",
+    "linkFailed": "无法打开浏览器，请手动前往该网址。",
+    "usageOf": {
+      "inter": "拉丁字符与数字",
+      "noto": "繁体中文、简体中文、日文与韩文"
+    },
+    "link": {
+      "project": "官方项目",
+      "fontSource": "字型文件来源",
+      "license": "授权条款官方网站"
+    }
+  }
 }

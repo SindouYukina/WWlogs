@@ -1,7 +1,6 @@
 package capture
 
 import (
-	"context"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
@@ -14,19 +13,12 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"sync/atomic"
 
 	_ "modernc.org/sqlite"
 )
 
 var supportedMasterLocales = map[string]struct{}{
 	"zh-TW": {}, "zh-CN": {}, "en-US": {}, "ja-JP": {}, "ko-KR": {},
-}
-
-var embeddedMasterDatabaseSequence atomic.Uint64
-
-type sqliteDatabaseDeserializer interface {
-	Deserialize([]byte) error
 }
 
 func loadGameMasterDatabase(path, locale string) (*gameMaster, error) {
@@ -47,8 +39,12 @@ func openMasterDatabase(path string) (*sql.DB, string, string, error) {
 		if err != nil {
 			return nil, "", "", err
 		}
-		digest := sha256.Sum256(embeddedMasterDatabase)
-		return db, "embedded", hex.EncodeToString(digest[:]), nil
+		hash, err := embeddedMasterDatabaseHash()
+		if err != nil {
+			_ = db.Close()
+			return nil, "", "", fmt.Errorf("hash embedded combat Master database: %w", err)
+		}
+		return db, "embedded", hash, nil
 	}
 	return openFileMasterDatabase(path)
 }
@@ -60,51 +56,38 @@ func masterDatabaseSourceLabel(databasePath string) string {
 	return "external test override"
 }
 
+// openEmbeddedMasterDatabase opens the embedded file through the read-only VFS. immutable tells SQLite there is nothing to
+// lock or recover, and temp_store keeps sorting in memory because this file system cannot create files. The pragmas are
+// in the DSN so they hold for any connection the pool opens, and the page cache stays at SQLite's default bound.
 func openEmbeddedMasterDatabase() (*sql.DB, error) {
-	if len(embeddedMasterDatabase) == 0 {
+	if embeddedMasterDatabase == "" {
 		return nil, fmt.Errorf("embedded combat Master database is unavailable")
 	}
-	dsn := fmt.Sprintf("file:wwlogs-master-%d-%d?mode=memory&cache=shared", os.Getpid(), embeddedMasterDatabaseSequence.Add(1))
-	db, err := sql.Open("sqlite", dsn)
+	vfsName, err := embeddedMasterVFS()
 	if err != nil {
-		return nil, fmt.Errorf("open in-memory combat Master database: %w", err)
+		return nil, fmt.Errorf("register embedded combat Master file system: %w", err)
+	}
+	db, err := sql.Open("sqlite", "file:"+embeddedMasterDatabaseName+"?vfs="+vfsName+"&mode=ro&immutable=1&_pragma=query_only(1)&_pragma=temp_store(2)")
+	if err != nil {
+		return nil, fmt.Errorf("open embedded combat Master database: %w", err)
 	}
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
-	conn, err := db.Conn(context.Background())
-	if err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("connect to in-memory combat Master database: %w", err)
-	}
-	err = conn.Raw(func(driverConn any) error {
-		deserializer, ok := driverConn.(sqliteDatabaseDeserializer)
-		if !ok {
-			return fmt.Errorf("SQLite driver does not support in-memory database deserialization")
-		}
-		return deserializer.Deserialize(embeddedMasterDatabase)
-	})
-	closeErr := conn.Close()
-	if err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("load embedded combat Master database into memory: %w", err)
-	}
-	if closeErr != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("release in-memory combat Master connection: %w", closeErr)
-	}
-	if _, err := db.Exec("PRAGMA query_only=ON"); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("make embedded combat Master database read-only: %w", err)
-	}
-	if _, err := db.Exec("PRAGMA cache_size=-8192"); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("limit embedded combat Master page cache: %w", err)
-	}
 	if err := db.Ping(); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("open embedded combat Master database: %w", err)
 	}
 	return db, nil
+}
+
+// embeddedMasterDatabaseHash hashes in chunks, because converting the whole string would copy the database to the heap.
+func embeddedMasterDatabaseHash() (string, error) {
+	hash := sha256.New()
+	reader := struct{ io.Reader }{strings.NewReader(embeddedMasterDatabase)}
+	if _, err := io.CopyBuffer(hash, reader, make([]byte, 1<<16)); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(hash.Sum(nil)), nil
 }
 
 func openFileMasterDatabase(path string) (*sql.DB, string, string, error) {
@@ -1495,6 +1478,9 @@ func loadTemplateRelations(db *sql.DB, master *gameMaster) error {
 		return fmt.Errorf("query scene template relations: %w", err)
 	}
 	defer rows.Close()
+	// Almost every level entity has exactly one template, so entities of one template share one read-only slice instead of
+	// each holding a copy of the candidate. A second template on a key appends to a fresh slice, never to a shared one.
+	single := make(map[uint64][]sceneTemplateCandidate)
 	for rows.Next() {
 		var mapRaw, entityRaw, templateRaw string
 		if err := rows.Scan(&mapRaw, &entityRaw, &templateRaw); err != nil {
@@ -1517,7 +1503,17 @@ func loadTemplateRelations(db *sql.DB, master *gameMaster) error {
 			return fmt.Errorf("scene template relation references missing TemplateConfig Id %d", templateID)
 		}
 		key := sceneLevelKey{mapID: mapID, entityID: entityID}
-		master.sceneIdentity.levelTemplates[key] = append(master.sceneIdentity.levelTemplates[key], candidate)
+		existing, repeated := master.sceneIdentity.levelTemplates[key]
+		if repeated {
+			master.sceneIdentity.levelTemplates[key] = append(existing[:len(existing):len(existing)], candidate)
+			continue
+		}
+		shared, known := single[templateID]
+		if !known {
+			shared = []sceneTemplateCandidate{candidate}
+			single[templateID] = shared
+		}
+		master.sceneIdentity.levelTemplates[key] = shared
 	}
 	return rows.Err()
 }

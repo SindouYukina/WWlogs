@@ -43,7 +43,8 @@
     "combatOverlay": "전투 오버레이",
     "effectsOverlay": "효과 오버레이",
     "capture": "네트워크 캡처",
-    "about": "WWlogs"
+    "about": "WWlogs",
+    "licenses": "라이선스"
   },
   "sections": {
     "language": "언어",
@@ -51,7 +52,8 @@
     "window": "창",
     "look": "외관",
     "capture": "네트워크 캡처",
-    "about": "버전 정보"
+    "about": "버전 정보",
+    "fontLicenses": "글꼴 라이선스"
   },
   "showWindow": "이 오버레이 표시",
   "alwaysOnTop": "항상 위에 표시",
@@ -70,5 +72,27 @@
   "increase": "늘리기",
   "buildCommit": "소스 커밋",
   "buildProfile": "빌드 유형",
-  "geometryReset": "오버레이 위치 데이터가 유효하지 않아 기본값으로 되돌렸습니다."
+  "geometryReset": "오버레이 위치 데이터가 유효하지 않아 기본값으로 되돌렸습니다.",
+  "licenses": {
+    "intro": "이 앱에 내장된 글꼴과 라이선스 정보입니다. 라이선스 조항은 원문 그대로 표시하며 번역본은 제공하지 않습니다.",
+    "usage": "용도",
+    "faces": "서체",
+    "version": "버전",
+    "authors": "제작자",
+    "copyright": "저작권 고지",
+    "license": "라이선스",
+    "links": "링크",
+    "showText": "전체 조항 표시",
+    "hideText": "전체 조항 숨기기",
+    "linkFailed": "브라우저를 열 수 없습니다. 주소로 직접 이동하세요.",
+    "usageOf": {
+      "inter": "라틴 문자와 숫자",
+      "noto": "중국어 번체, 중국어 간체, 일본어, 한국어"
+    },
+    "link": {
+      "project": "공식 프로젝트",
+      "fontSource": "글꼴 파일 출처",
+      "license": "라이선스 공식 사이트"
+    }
+  }
 }

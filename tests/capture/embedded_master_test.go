@@ -29,7 +29,7 @@ func TestEmbeddedMasterMatchesTrackedReadOnlyDatabase(t *testing.T) {
 	}
 	sourceHash := sha256.Sum256(source)
 	wantHash := hex.EncodeToString(sourceHash[:])
-	if got := sha256.Sum256(embeddedMasterDatabase); got != sourceHash {
+	if got := sha256.Sum256([]byte(embeddedMasterDatabase)); got != sourceHash {
 		t.Fatal("embedded Master bytes differ from the tracked database")
 	}
 

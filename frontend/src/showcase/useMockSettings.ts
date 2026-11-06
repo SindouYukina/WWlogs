@@ -28,6 +28,7 @@ export function useMockSettings(theme: ThemeId, setTheme: (theme: ThemeId) => vo
     checkEnvironment: () => undefined,
     npcapDownload: { info: null, resolving: false, opening: false, opened: false, openFailed: false },
     openNpcapDownload: () => undefined,
+    openLicenseLink: () => Promise.resolve(),
     overlays,
     updateOverlay: (kind: OverlayKind, change) => setOverlays(current => ({ ...current, [kind]: { ...current[kind], ...change } })),
     resetOverlay: () => undefined,

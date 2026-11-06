@@ -6,10 +6,11 @@ import { environmentNotice } from "@/lib/capture-environment"
 import type { SettingsController } from "@/lib/settings-controller"
 import type { OverlayKind } from "@/lib/snapshot"
 import { useThemeDescriptions } from "@/lib/useListeningLabels"
+import { LicensesPage } from "./LicensesPage"
 
-type Page = "general" | "appearance" | "combatOverlay" | "effectsOverlay" | "capture" | "about"
+type Page = "general" | "appearance" | "combatOverlay" | "effectsOverlay" | "capture" | "about" | "licenses"
 
-const pageOrder: Page[] = ["general", "appearance", "combatOverlay", "effectsOverlay", "capture", "about"]
+const pageOrder: Page[] = ["general", "appearance", "combatOverlay", "effectsOverlay", "capture", "about", "licenses"]
 
 function Hint({ text }: { text: string }) {
   return <Tooltip text={text}><Icon name="info" size={15} /></Tooltip>
@@ -106,6 +107,7 @@ export function SettingsView({ controller }: { controller: SettingsController })
     { label: t("groups.overlays"), items: [{ value: "combatOverlay", label: t("pages.combatOverlay"), icon: "overlay" }, { value: "effectsOverlay", label: t("pages.effectsOverlay"), icon: "spark" }] },
     { label: t("groups.capture"), items: [{ value: "capture", label: t("pages.capture"), icon: "capture" }] },
     { label: t("groups.about"), items: [{ value: "about", label: t("pages.about"), icon: "about" }] },
+    { label: "", pinned: true, items: [{ value: "licenses", label: t("pages.licenses"), icon: "license" }] },
   ], [t])
   const change = (next: Page) => {
     previous.current = page
@@ -127,6 +129,7 @@ export function SettingsView({ controller }: { controller: SettingsController })
         {page === "effectsOverlay" && <OverlayPage kind="effects" controller={controller} />}
         {page === "capture" && <CapturePage controller={controller} />}
         {page === "about" && <AboutPage controller={controller} />}
+        {page === "licenses" && <LicensesPage openLink={controller.openLicenseLink} />}
       </ContentSwitch>
     </div>
   </div>

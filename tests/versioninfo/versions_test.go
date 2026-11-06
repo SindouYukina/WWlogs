@@ -9,7 +9,7 @@ import (
 
 func TestCurrentMetadataIsComplete(t *testing.T) {
 	value := versioninfo.Current()
-	if value.Product.DevelopmentLine != "v0.5.0" {
+	if value.Product.DevelopmentLine != "v0.6.0" {
 		t.Fatalf("unexpected product development line: %q", value.Product.DevelopmentLine)
 	}
 	if value.ObservedClient.GameVersion != "3.7.0" || value.ObservedClient.ResourceVersion != "3.7.17" {
