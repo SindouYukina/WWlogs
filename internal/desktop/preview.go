@@ -5,6 +5,7 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
+	"os"
 	"path"
 	"strconv"
 	"strings"
@@ -25,10 +26,24 @@ var gameAssetKinds = map[string]assets.Kind{
 	"character-portrait": assets.CharacterPortrait,
 	"buff":               assets.BuffIcon,
 	"skill":              assets.SkillIcon,
+	"skill-config":       assets.SkillConfigIcon,
 }
 
-// withGameAssets serves images through the shared resolver and everything else through next. The source is a directory
-// named on the command line; the host has no default location and never looks inside the repository on its own.
+// gameAssetSource selects where images come from: a directory named on the command line, else the pack embedded in the
+// executable. Both feed the same resolver, so an ID means the same image either way. The host has no default directory
+// and never looks inside the repository on its own. No source means every image reports as missing.
+func gameAssetSource(root, pack string) fs.FS {
+	if root != "" {
+		return os.DirFS(root)
+	}
+	if pack != "" {
+		return assets.NewPackFS(pack)
+	}
+	return nil
+}
+
+// withGameAssets serves images through the shared resolver and everything else through next. A route that names no image
+// answers 404 and an image that cannot be read answers 500, so the UI can tell the two apart.
 func withGameAssets(next http.Handler, source fs.FS) http.Handler {
 	resolver := assets.NewResolver(source)
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {

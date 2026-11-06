@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Button, ContentSwitch, Icon, Select, SettingsRow, SettingsSection, Sidebar, Slider, Stepper, ThemeBackdrop, ThemePicker, Toggle, Tooltip, resolveTheme, type SidebarGroupModel } from "@/design"
 import { manifest } from "@/i18n"
+import { environmentNotice } from "@/lib/capture-environment"
 import type { SettingsController } from "@/lib/settings-controller"
 import type { OverlayKind } from "@/lib/snapshot"
 import { useThemeDescriptions } from "@/lib/useListeningLabels"
@@ -77,9 +78,10 @@ function CapturePage({ controller }: { controller: SettingsController }) {
     ...(missing ? [{ value: controller.defaultAdapter, label: `${controller.defaultAdapter} · ${t("missingInterface", { ns: "dashboard" })}` }] : []),
     ...controller.adapters.map(adapter => ({ value: adapter.ipv4, label: `${adapter.ipv4} — ${adapter.description || t("network", { ns: "dashboard" })}` })),
   ]
+  const notice = environmentNotice(controller.environment)
   return <SettingsSection title={t("sections.capture")}>
     <SettingsRow title={t("defaultAdapter")} description={t("adapterHint")}><Select label={t("defaultAdapter")} value={controller.defaultAdapter} onChange={controller.setDefaultAdapter} options={options} /></SettingsRow>
-    <SettingsRow title={t("network", { ns: "dashboard" })}><Button size="sm" disabled={!controller.connected || controller.refreshing} onClick={controller.refreshAdapters}>{t(controller.refreshing ? "refreshing" : "refresh", { ns: "dashboard" })}</Button></SettingsRow>
+    <SettingsRow title={t("network", { ns: "dashboard" })} description={notice ? t(`environment.${notice.key}.title`, { ns: "dashboard" }) : undefined}><Button size="sm" disabled={controller.checking} data-field="settings-environment-recheck" onClick={controller.checkEnvironment}>{t(controller.checking ? "environment.checking" : "environment.recheck", { ns: "dashboard" })}</Button></SettingsRow>
   </SettingsSection>
 }
 
@@ -117,7 +119,8 @@ export function SettingsView({ controller }: { controller: SettingsController })
       <ContentSwitch contentKey={page} direction={direction} className="ww-detail-inner">
         <div className="ww-detail-title"><h2>{t(`pages.${page}`)}</h2></div>
         {warning && <p className="ww-settings-notice" role="status">{t(warning)}</p>}
-        {controller.failed && <p className="ww-settings-notice" data-tone="critical" role="alert">{t("saveFailed")}</p>}
+        {controller.loadFailed && <p className="ww-settings-notice" data-tone="critical" role="alert" data-field="settings-load-failed">{t("loadFailed")}</p>}
+        {controller.failed && <p className="ww-settings-notice" data-tone="critical" role="alert" data-field="settings-save-failed">{t("saveFailed")}</p>}
         {page === "general" && <GeneralPage controller={controller} />}
         {page === "appearance" && <AppearancePage controller={controller} />}
         {page === "combatOverlay" && <OverlayPage kind="combat" controller={controller} />}

@@ -1,11 +1,40 @@
 {
   "network": "網路介面",
   "selectInterface": "選擇網路介面",
-  "refresh": "重新整理",
-  "refreshing": "重新整理中…",
+  "environment": {
+    "checking": "正在檢查…",
+    "recheck": "重新檢查",
+    "download": "下載 Npcap",
+    "openPage": "開啟官方下載頁",
+    "opening": "正在開啟…",
+    "resolving": "正在取得官方版本資訊…",
+    "latestVersion": "官方最新版本：{{version}}",
+    "sourceUnconfirmed": "下載來源無法確認，將改為開啟 Npcap 官方下載頁。",
+    "openFailed": "無法開啟瀏覽器，請手動前往 npcap.com。",
+    "afterOpen": "安裝完成後請按「重新檢查」；若仍偵測不到，請重新啟動 WWlogs。",
+    "missing": {
+      "title": "尚未安裝 Npcap",
+      "body": "WWlogs 需要 Npcap 才能擷取遊戲網路資料。請先安裝官方版本，完成後重新檢查。"
+    },
+    "unavailable": {
+      "title": "Npcap 無法初始化",
+      "body": "偵測到 Npcap 元件，但目前無法使用。請重新安裝官方版本後重新檢查；若問題仍在，請重新啟動 WWlogs 或電腦。"
+    },
+    "noInterfaces": {
+      "title": "找不到可用的網路介面",
+      "body": "Npcap 已載入，但沒有回報任何網路介面。請確認網路卡已啟用後重新檢查；若 Npcap 僅限系統管理員使用，請以系統管理員身分開啟 WWlogs。"
+    },
+    "noIpv4": {
+      "title": "找不到符合條件的 IPv4 位址",
+      "body": "已找到網路介面，但都沒有 IPv4 位址。請確認網路連線後重新檢查。"
+    },
+    "checkFailed": {
+      "title": "檢查失敗",
+      "body": "無法完成 Npcap 與網路介面的檢查。請重新檢查；若問題仍在，請重新啟動 WWlogs。"
+    }
+  },
   "start": "開始擷取",
   "stop": "停止擷取",
-  "noInterfaces": "找不到 IPv4 介面，請檢查 Npcap 後重新整理。",
   "missingInterface": "所選介面不可用，請選擇其他網路介面。",
   "interval": "本次擷取區間",
   "encounterNumber": "第 {{id}} 場戰鬥",

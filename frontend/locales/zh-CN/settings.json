@@ -8,6 +8,7 @@
   "storage": "保存于 %LOCALAPPDATA%\\WWlogs\\settings.json。",
   "invalid": "设置无法安全加载，已使用默认值。",
   "saveFailed": "偏好保存失败，原设置已保留。",
+  "loadFailed": "偏好加载失败，当前显示默认值。",
   "appearance": "外观",
   "theme": "主题",
   "reduceMotion": "减少动态",

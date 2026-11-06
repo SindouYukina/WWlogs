@@ -1,11 +1,40 @@
 {
   "network": "Network interface",
   "selectInterface": "Select a network interface",
-  "refresh": "Refresh",
-  "refreshing": "Refreshing…",
+  "environment": {
+    "checking": "Checking…",
+    "recheck": "Check again",
+    "download": "Download Npcap",
+    "openPage": "Open official download page",
+    "opening": "Opening…",
+    "resolving": "Getting official version information…",
+    "latestVersion": "Latest official version: {{version}}",
+    "sourceUnconfirmed": "The download source could not be confirmed. The official Npcap download page will open instead.",
+    "openFailed": "The browser could not be opened. Go to npcap.com manually.",
+    "afterOpen": "After installing, select Check again. If Npcap is still not detected, restart WWlogs.",
+    "missing": {
+      "title": "Npcap is not installed",
+      "body": "WWlogs needs Npcap to capture game network data. Install the official version, then check again."
+    },
+    "unavailable": {
+      "title": "Npcap could not be initialized",
+      "body": "Npcap components were found but cannot be used right now. Reinstall the official version, then check again. If the problem remains, restart WWlogs or your computer."
+    },
+    "noInterfaces": {
+      "title": "No usable network interface",
+      "body": "Npcap is loaded but reported no network interfaces. Make sure a network adapter is enabled, then check again. If Npcap is restricted to administrators, open WWlogs as an administrator."
+    },
+    "noIpv4": {
+      "title": "No eligible IPv4 address",
+      "body": "Network interfaces were found, but none has an IPv4 address. Check your network connection, then check again."
+    },
+    "checkFailed": {
+      "title": "Check failed",
+      "body": "The check of Npcap and network interfaces did not finish. Check again. If the problem remains, restart WWlogs."
+    }
+  },
   "start": "Start capture",
   "stop": "Stop capture",
-  "noInterfaces": "No IPv4 interfaces found. Check Npcap, then refresh.",
   "missingInterface": "The selected interface is unavailable. Choose another interface.",
   "interval": "Capture interval",
   "encounterNumber": "Encounter #{{id}}",

@@ -8,6 +8,7 @@
   "storage": "儲存於 %LOCALAPPDATA%\\WWlogs\\settings.json。",
   "invalid": "設定無法安全載入，已使用預設值。",
   "saveFailed": "偏好儲存失敗，原設定已保留。",
+  "loadFailed": "偏好載入失敗，目前顯示預設值。",
   "appearance": "外觀",
   "theme": "主題",
   "reduceMotion": "減少動態",

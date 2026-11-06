@@ -25,6 +25,10 @@ type Bridge struct {
 	projection *displayProjection
 	listening  service.ListeningMonitor
 	process    *service.GameProcessWatcher
+	// environment and npcap answer the first-use questions; openBrowser hands a checked URL to the system browser.
+	environment *environmentChecker
+	npcap       *npcapDownloadResolver
+	openBrowser func(string) error
 }
 
 // snapshotWaitLimit bounds one NextSnapshot call; an unchanged snapshot returned at the limit is a heartbeat.
@@ -143,9 +147,25 @@ func (b *Bridge) listeningStatus(snapshot *service.Snapshot) service.ListeningSt
 	return b.listening.Evaluate(snapshot.Service, snapshot.View, process, time.Now())
 }
 
-// ListAdapters lists the Npcap IPv4 interfaces.
-func (b *Bridge) ListAdapters() ([]capture.Adapter, error) {
-	return capture.ListIPv4Adapters()
+// CheckCaptureEnvironment detects Npcap, enumerates its interfaces and classifies the result. Repeated calls during a
+// check share it, and no call touches a running capture.
+func (b *Bridge) CheckCaptureEnvironment(ctx context.Context) capture.CaptureEnvironment {
+	return b.environment.check(ctx)
+}
+
+// NpcapDownloadInfo returns the latest official installer, or the official download page when it cannot be confirmed.
+func (b *Bridge) NpcapDownloadInfo(ctx context.Context) NpcapDownload {
+	return b.npcap.resolve(ctx)
+}
+
+// OpenNpcapDownload hands the official installer URL to the user's browser. The frontend cannot choose the URL, and
+// WWlogs neither runs the installer nor keeps a copy of it.
+func (b *Bridge) OpenNpcapDownload(ctx context.Context) (NpcapDownload, error) {
+	download := b.npcap.resolve(ctx)
+	if !validNpcapURL(download.URL) {
+		return download, errors.New("the download address is not an official Npcap address")
+	}
+	return download, b.openBrowser(download.URL)
 }
 
 // StartCapture starts a live capture on the interface with request.LocalIPv4, using the host's other options.

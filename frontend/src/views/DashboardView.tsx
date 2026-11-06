@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
-import { AnimatedNumber, Card, CharacterAvatar, Chip, ContentSwitch, DamageBar, Icon, LiveChart, Reveal, Segmented, StackList, ThemeBackdrop, gameAssetUrl, type ChartSeries, type IconName, type ThemeId } from "@/design"
+import { AnimatedNumber, Card, CharacterAvatar, Chip, ContentSwitch, DamageBar, GameAssetImage, Icon, LiveChart, Reveal, Segmented, StackList, ThemeBackdrop, type ChartSeries, type IconName, type ThemeId } from "@/design"
 import { dataChip, displayedEncounter, isFrozen, usableDps, type CombatData, type SkillRow } from "@/lib/combat-data"
 import { combatRows, contributionShares, intervalRows, type CombatRowModel } from "@/lib/combat-view"
 import { elementColor, useFormatters, useRowNames } from "@/lib/format"
@@ -52,7 +52,7 @@ const SkillTable = memo(function SkillTable({ rows, color }: { rows: readonly Sk
   return <table className="ww-dash-skills" style={{ "--ww-series": color } as React.CSSProperties}>
     <thead><tr><th>{t("skill")}</th><th>{t("damageColumn")}</th><th>{t("hits")}</th><th>{t("shareColumn")}</th></tr></thead>
     <tbody>{rows.map(row => <tr key={row.skillId}>
-      <td><span className="ww-dash-skill-name"><img src={gameAssetUrl("skill", row.skillId)} alt="" decoding="async" onError={event => { event.currentTarget.style.visibility = "hidden" }} /><span className="ww-truncate">{row.name ?? `#${row.skillId}`}</span></span></td>
+      <td><span className="ww-dash-skill-name"><GameAssetImage kind="skill" id={row.skillId} /><span className="ww-truncate">{row.name ?? `#${row.skillId}`}</span></span></td>
       <td className="ww-num"><AnimatedNumber value={row.damage} format={format.integer} /></td>
       <td className="ww-num">{format.integer(row.hits)}</td>
       <td><div className="ww-dash-skill-share"><DamageBar share={row.share} /><span className="ww-num">{format.percent(row.share)}</span></div></td>
@@ -160,7 +160,7 @@ export function DashboardView({ data, theme, numberMode = "tween", actions }: Da
             {rows.length === 0 ? <p className="ww-dash-empty-note">{t("noRoles")}</p> : <RoleBoard rows={rows} selected={selected?.key ?? ""} onSelect={setSelected} scope={scope} stale={stale} numberMode={numberMode} />}
           </div>
           {attributionIncomplete && <p className="ww-dash-warning" data-field="attribution-incomplete">{c("attributionIncomplete")}</p>}
-          {selected?.roleId !== undefined && <ContentSwitch contentKey={selected.key} className="ww-dash-portrait"><img src={gameAssetUrl("character-portrait", selected.roleId)} alt="" decoding="async" onError={event => { event.currentTarget.style.display = "none" }} /></ContentSwitch>}
+          {selected?.roleId !== undefined && <ContentSwitch contentKey={selected.key} className="ww-dash-portrait"><GameAssetImage kind="character-portrait" id={selected.roleId} /></ContentSwitch>}
         </Card>
       </Reveal>
       <Reveal index={5} className="ww-dash-detail-wrap">

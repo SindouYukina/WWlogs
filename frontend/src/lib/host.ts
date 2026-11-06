@@ -1,4 +1,5 @@
 import { Call } from "@wailsio/runtime"
+import type { CaptureEnvironment, NpcapDownload } from "./capture-environment"
 import type { OverlayKind, OverlayState, OverlayStates, Snapshot } from "./snapshot"
 
 // Calls into the Go Bridge (internal/desktop.Bridge) by fully qualified name; no generated bindings are needed.
@@ -8,10 +9,7 @@ function call<T>(method: string, ...args: unknown[]): Promise<T> {
   return Call.ByName(bridge + method, ...args) as Promise<T>
 }
 
-export interface Adapter {
-  ipv4: string
-  description: string
-}
+export type { Adapter } from "./capture-environment"
 
 export interface Settings {
   version: number
@@ -32,7 +30,9 @@ export type OverlayChange = Partial<OverlayState>
 export const host = {
   nextSnapshot: (after: number) => call<Snapshot>("NextSnapshot", after),
   currentSnapshot: () => call<Snapshot>("CurrentSnapshot"),
-  listAdapters: () => call<Adapter[]>("ListAdapters"),
+  checkCaptureEnvironment: () => call<CaptureEnvironment>("CheckCaptureEnvironment"),
+  npcapDownloadInfo: () => call<NpcapDownload>("NpcapDownloadInfo"),
+  openNpcapDownload: () => call<NpcapDownload>("OpenNpcapDownload"),
   startCapture: (localIPv4: string) => call<void>("StartCapture", { localIPv4 }),
   stopCapture: () => call<void>("StopCapture"),
   getSettings: () => call<SettingsState>("GetSettings"),

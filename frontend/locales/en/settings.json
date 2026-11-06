@@ -8,6 +8,7 @@
   "storage": "Stored in %LOCALAPPDATA%\\WWlogs\\settings.json.",
   "invalid": "Settings could not be loaded safely. Defaults are in use.",
   "saveFailed": "Preferences could not be saved. Previous settings are preserved.",
+  "loadFailed": "Preferences could not be loaded. Defaults are shown.",
   "appearance": "Appearance",
   "theme": "Theme",
   "reduceMotion": "Reduce motion",

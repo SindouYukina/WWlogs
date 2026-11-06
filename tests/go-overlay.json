@@ -245,6 +245,10 @@
     "tests/capture/initial_player_test.go": "",
     "internal/capture/central_initial_player_test.go": "tests/capture/initial_player_test.go",
     "tests/desktop/overlay_test.go": "",
-    "internal/desktop/central_overlay_test.go": "tests/desktop/overlay_test.go"
+    "internal/desktop/central_overlay_test.go": "tests/desktop/overlay_test.go",
+    "tests/capture/environment_test.go": "",
+    "internal/capture/central_environment_test.go": "tests/capture/environment_test.go",
+    "tests/desktop/environment_test.go": "",
+    "internal/desktop/central_environment_test.go": "tests/desktop/environment_test.go"
   }
 }

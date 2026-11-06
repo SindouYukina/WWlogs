@@ -39,12 +39,18 @@ type Options struct {
 	// transparent windows. Public flags cannot set these, and Public frontend builds do not contain the Showcase.
 	Showcase         bool
 	ShowcaseOverlays bool
-	// GameAssetRoot is an explicitly supplied directory for game images. Empty means no images are served.
+	// GameAssetRoot is an explicitly supplied directory for game images. Empty means the images embedded in the
+	// executable, if any. Only Development flags can set it.
 	GameAssetRoot string
 	// PreviewFontRoot is an explicitly supplied directory for Development Showcase font candidates.
 	PreviewFontRoot string
 	// WebviewArguments are extra browser arguments for rendering experiments; only Development flags can set them.
 	WebviewArguments []string
+	// EnvironmentProbe, NpcapTransport and OpenBrowser replace system access for controlled UI checks. Only Development
+	// flags can set them; nil means the real system.
+	EnvironmentProbe func() capture.CaptureEnvironment
+	NpcapTransport   http.RoundTripper
+	OpenBrowser      func(string) error
 }
 
 // Main parses the command line and runs the host until the Desktop window closes.
@@ -76,10 +82,7 @@ func Run(options Options) error {
 	if err != nil {
 		return err
 	}
-	var assetHandler http.Handler = application.AssetFileServerFS(frontend)
-	if options.GameAssetRoot != "" {
-		assetHandler = withGameAssets(assetHandler, os.DirFS(options.GameAssetRoot))
-	}
+	assetHandler := withGameAssets(application.AssetFileServerFS(frontend), gameAssetSource(options.GameAssetRoot, gameAssetArchive))
 	if options.PreviewFontRoot != "" {
 		// A wrong path is reported here and shows as Missing in the Showcase; it never stops the application.
 		if info, err := os.Stat(options.PreviewFontRoot); err != nil || !info.IsDir() {
@@ -121,6 +124,12 @@ func Run(options Options) error {
 	bridge := &Bridge{capture: captureService, defaults: options.Session, settings: settings}
 	bridge.catalog = catalog
 	bridge.projection = &displayProjection{resolver: resolver}
+	environmentProbe := options.EnvironmentProbe
+	if environmentProbe == nil {
+		environmentProbe = capture.SystemEnvironmentProbe().Check
+	}
+	bridge.environment = newEnvironmentChecker(environmentProbe)
+	bridge.npcap = newNpcapDownloadResolver(options.NpcapTransport)
 	// The process list is read only while a capture is running; nothing polls while the application is idle.
 	bridge.process = &service.GameProcessWatcher{}
 	watcherContext, stopWatcher := context.WithCancel(context.Background())
@@ -145,6 +154,10 @@ func Run(options Options) error {
 			AdditionalBrowserArgs: webviewArguments(options),
 		},
 	})
+	bridge.openBrowser = options.OpenBrowser
+	if bridge.openBrowser == nil {
+		bridge.openBrowser = app.Browser.OpenURL
+	}
 
 	desktopURL, desktopWidth, desktopHeight := "/?view=desktop", 1280, 820
 	if options.Showcase {

@@ -14,6 +14,7 @@ const folders = {
   "character-portrait": ["characters", "portrait.webp"],
   buff: ["buffs", "icon.webp"],
   skill: ["skills", "icon.webp"],
+  "skill-config": ["skills/by-config", "icon.webp"],
 }
 
 const fontTypes = { ".json": "application/json", ".woff2": "font/woff2", ".ttf": "font/ttf", ".otf": "font/otf" }

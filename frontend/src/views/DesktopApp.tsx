@@ -2,11 +2,13 @@ import { useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Button, ContentSwitch, Icon, ListeningStatus, Segmented, Select, resolveTheme, type IconName } from "@/design"
 import { statusText } from "@/i18n"
+import { adapterUsable, environmentNotice } from "@/lib/capture-environment"
 import { host } from "@/lib/host"
 import { useLiveSettings } from "@/lib/settings-controller"
 import type { OverlayKind } from "@/lib/snapshot"
 import { useLiveCombatData } from "@/lib/useLiveCombatData"
 import { useListeningLabels } from "@/lib/useListeningLabels"
+import { CaptureEnvironmentNotice } from "./CaptureEnvironmentNotice"
 import { DashboardView } from "./DashboardView"
 import { SettingsView } from "./SettingsView"
 
@@ -24,7 +26,7 @@ export function DesktopApp() {
   const { data, changeLocale } = useLiveCombatData()
   const snapshot = data.snapshot
   const connected = data.connection === "connected"
-  const { controller, adaptersLoaded } = useLiveSettings(snapshot, connected, changeLocale)
+  const controller = useLiveSettings(snapshot, connected, changeLocale)
   const describeListening = useListeningLabels()
   const [page, setPage] = useState<Page>("dashboard")
   const [selected, setSelected] = useState<string | null>(null)
@@ -35,6 +37,7 @@ export function DesktopApp() {
   const service = snapshot?.service
   const busy = service?.state === "starting" || service?.state === "running" || service?.state === "stopping"
   const available = controller.adapters.some(item => item.ipv4 === adapter)
+  const usable = adapterUsable(controller.environment, controller.checking, controller.adapters, adapter)
   const capture = async (kind: "start" | "stop") => {
     if (actionLock.current) return
     actionLock.current = true
@@ -54,7 +57,7 @@ export function DesktopApp() {
   const listening = snapshot?.listening
   const listeningText = listening ? describeListening(listening) : null
   const adapterOptions = [
-    ...(adapter === "" ? [{ value: "", label: t("selectInterface") }] : []),
+    ...(adapter === "" ? [{ value: "", label: controller.environment === null ? t("environment.checking") : t("selectInterface") }] : []),
     ...(adapter !== "" && !available ? [{ value: adapter, label: `${adapter} · ${statusText("unavailable")}` }] : []),
     ...controller.adapters.map(item => ({ value: item.ipv4, label: `${item.ipv4} — ${item.description || t("network")}` })),
   ]
@@ -74,14 +77,14 @@ export function DesktopApp() {
           <Select label={t("network")} value={adapter} onChange={setSelected} options={adapterOptions} />
           {running || service?.state === "stopping"
             ? <Button size="sm" disabled={!connected || !running || action !== null} data-field="capture-stop" onClick={() => void capture("stop")}><Icon name="pause" size={13} />{action === "stop" || service?.state === "stopping" ? statusText("stopping") : t("stop")}</Button>
-            : <Button size="sm" variant="primary" disabled={!connected || !adaptersLoaded || busy || action !== null || !available} data-field="capture-start" onClick={() => void capture("start")}><Icon name="play" size={13} />{action === "start" || service?.state === "starting" ? statusText("starting") : t("start")}</Button>}
+            : <Button size="sm" variant="primary" disabled={!connected || busy || action !== null || !usable} data-field="capture-start" onClick={() => void capture("start")}><Icon name="play" size={13} />{action === "start" || service?.state === "starting" ? statusText("starting") : t("start")}</Button>}
         </div>
       </div>
     </header>
-    {(failed || service?.lastError || (adaptersLoaded && controller.adapters.length === 0)) && <div className="ww-app-notices">
+    {(failed || service?.lastError || environmentNotice(controller.environment)) && <div className="ww-app-notices">
       {failed && <p role="alert" data-tone="critical">{c("operationFailed")}</p>}
       {service?.lastError && <p role="alert" data-tone="critical">{c("captureFailed")}</p>}
-      {adaptersLoaded && controller.adapters.length === 0 && <p role="status">{t("noInterfaces")}</p>}
+      <CaptureEnvironmentNotice controller={controller} />
     </div>}
     <main className="ww-app-main">
       <ContentSwitch contentKey={page} direction={page === "settings" ? "forward" : "back"} className="ww-app-page">

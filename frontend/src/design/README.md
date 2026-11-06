@@ -51,7 +51,7 @@ Each window runs its own UI state and reads the one result the engine published;
 
 The Showcase lives in `../showcase/`. It adds a Mock provider, demo controls, a Typography Lab and frame statistics around the same product views. It has no copy of them. Public frontend builds define `__WWLOGS_SHOWCASE__` as false, so they contain neither its entry point nor its chunk, and `scripts/frontend.ps1` fails a Public build that does.
 
-Build and open it in the real WebView2 host. `-asset-root` is an explicit path to a directory that contains `game/`; without it, components show their fallbacks.
+Build and open it in the real WebView2 host. `-asset-root` is an explicit path to a directory that contains `game/`, normally `assets`; without it, components show their fallbacks. Public executables carry the same images through the same resolver (`assets/README.md`).
 
 ```powershell
 pwsh -NoProfile -File scripts/build.ps1 -Profile Development -Target Desktop

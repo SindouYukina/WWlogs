@@ -8,6 +8,7 @@
   "storage": "保存先：%LOCALAPPDATA%\\WWlogs\\settings.json。",
   "invalid": "設定を読み込めないため既定値を使用しています。",
   "saveFailed": "設定を保存できませんでした。以前の設定は保持されています。",
+  "loadFailed": "設定を読み込めませんでした。既定値を表示しています。",
   "appearance": "外観",
   "theme": "テーマ",
   "reduceMotion": "動きを減らす",
