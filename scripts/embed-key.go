@@ -34,7 +34,7 @@ func main() {
 }
 
 func run() error {
-	outputFlag := flag.String("o", "", "output executable path (defaults to dist/WWlogs[-Desktop][-dev].exe)")
+	outputFlag := flag.String("o", "", "output executable path (defaults to bin/WWlogs[-Desktop].exe for public or work/dist/WWlogs[-Desktop]-dev.exe for development)")
 	profileFlag := flag.String("profile", "public", "build profile: public (no raw diagnostic outputs) or development (full diagnostics)")
 	versionFlag := flag.String("version", "", "product version to embed (default: the version registered in internal/versioninfo)")
 	requireClean := flag.Bool("require-clean", false, "fail when the Git working tree has uncommitted changes to tracked files")
@@ -75,9 +75,9 @@ func run() error {
 	}
 	if *outputFlag == "" && *testBinary == "" {
 		name := map[string]string{"capture": "WWlogs", "desktop": "WWlogs-Desktop"}[*targetFlag]
-		*outputFlag = filepath.Join("dist", name+".exe")
+		*outputFlag = filepath.Join("bin", name+".exe")
 		if *profileFlag == "development" {
-			*outputFlag = filepath.Join("dist", name+"-dev.exe")
+			*outputFlag = filepath.Join("work", "dist", name+"-dev.exe")
 		}
 	}
 	version := *versionFlag

@@ -4,7 +4,7 @@ Use the Go toolchain specified in `go.mod` and the exact Node.js and npm version
 
 For VS Code, install the recommended TypeScript 7 extension and run `npm ci` in `frontend` to use the workspace language service. The production build installs its own dependencies from the lockfile.
 
-Build output defaults to `dist/`. Use `-Output` to choose another location.
+Public executables default to `bin/` and Development executables to `work/dist/`. Both directories are Git-ignored. Use `-Output` to choose another location.
 
 ## Application icon
 

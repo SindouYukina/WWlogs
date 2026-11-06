@@ -1,6 +1,7 @@
 # Private local files
 /AGENTS.md
 /HANDOFF.md
+/bin/
 /cmd/capture/wwlogs_windows_amd64.syso
 /cmd/desktop/wwlogs_windows_amd64.syso
 /docs/
@@ -31,7 +32,6 @@ Thumbs.db
 *.cap
 *.der
 *.bundle
-/dist/
 /capture-spool/
 /.claude/
 
