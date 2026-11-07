@@ -1,5 +1,5 @@
 import { memo, useEffect, useLayoutEffect, useRef } from "react"
-import { numberOmega } from "../motion/tokens.ts"
+import { motionReduced, numberOmega } from "../motion/tokens.ts"
 import { planNumberUpdate, stepCritical, type NumberState } from "../motion/spring.ts"
 import { animateFrames } from "../motion/ticker.ts"
 
@@ -47,7 +47,9 @@ function TweenNumber({ value, format, scope, stale, placeholder, className }: In
   }
 
   useLayoutEffect(() => {
-    const plan = planNumberUpdate(previous.current.value, value, previous.current.scope === scope, stale)
+    const planned = planNumberUpdate(previous.current.value, value, previous.current.scope === scope, stale)
+    // Reduced motion shows each engine value at once: the counter is decoration, the value itself is never delayed.
+    const plan = planned === "animate" && motionReduced() ? "snap" : planned
     previous.current = { value, scope }
     if (plan === "hide") {
       stop.current?.()
@@ -99,7 +101,8 @@ const Digit = memo(function Digit({ digit }: { digit: number }) {
 
 function RollingNumber({ value, format, scope, stale, placeholder, className }: InnerProps) {
   const previous = useRef<{ value: number | undefined; scope: string }>({ value: undefined, scope })
-  const plan = planNumberUpdate(previous.current.value, value, previous.current.scope === scope, stale)
+  const planned = planNumberUpdate(previous.current.value, value, previous.current.scope === scope, stale)
+  const plan = planned === "animate" && motionReduced() ? "snap" : planned
   useEffect(() => { previous.current = { value, scope } })
   if (plan === "hide") return <span className={className ? `ww-number ww-num ${className}` : "ww-number ww-num"} data-stale={stale}>{placeholder}</span>
   const text = format(value as number)

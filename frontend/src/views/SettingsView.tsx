@@ -100,7 +100,7 @@ function OverlayPage({ kind, controller }: { kind: OverlayKind; controller: Sett
     <SettingsSection title={t("sections.window")}>
       <SettingsRow title={t("showWindow")}><Toggle label={t("showWindow")} disabled={disabled} checked={state?.visible === true} onChange={visible => change(kind, { visible })} /></SettingsRow>
       <SettingsRow title={t("alwaysOnTop")}><Toggle label={t("alwaysOnTop")} disabled={disabled} checked={state?.alwaysOnTop === true} onChange={alwaysOnTop => change(kind, { alwaysOnTop })} /></SettingsRow>
-      <SettingsRow title={t("clickThrough")} hint={<Hint text={t("clickThroughHint")} />}><Toggle label={t("clickThrough")} disabled={disabled} checked={state?.clickThrough === true} onChange={clickThrough => change(kind, { clickThrough })} /></SettingsRow>
+      <SettingsRow title={t("clickThrough")} description={t("clickThroughHint")}><Toggle label={t("clickThrough")} disabled={disabled} checked={state?.clickThrough === true} onChange={clickThrough => change(kind, { clickThrough })} /></SettingsRow>
       <SettingsRow title={t("editMode")} description={t("editModeHint")}><Button size="sm" variant={state?.editing ? "primary" : "secondary"} disabled={disabled} data-field="edit-toggle" onClick={() => change(kind, { editing: !state?.editing })}>{t(state?.editing ? "finishEditing" : "startEditing")}</Button></SettingsRow>
       <SettingsRow title={t("position")} description={t("positionNote")}><Button size="sm" disabled={disabled} onClick={() => controller.resetOverlay(kind)}>{t("resetPosition")}</Button></SettingsRow>
     </SettingsSection>

@@ -15,7 +15,7 @@
   "appearance": "外觀",
   "theme": "主題",
   "reduceMotion": "減少動態",
-  "reduceMotionHint": "關閉過渡動畫。也會遵守 Windows 的動畫設定。",
+  "reduceMotionHint": "關閉過渡與數字滾動動畫，數值仍即時更新。也會遵守 Windows 的動畫設定。",
   "themes": {
     "electro": {
       "name": "導電",
@@ -64,7 +64,7 @@
   "showWindow": "顯示此 Overlay",
   "alwaysOnTop": "保持在最上層",
   "clickThrough": "滑鼠穿透",
-  "clickThroughHint": "滑鼠操作會直接傳到下方的遊戲。需要移動 Overlay 時，請使用下方的編輯模式。",
+  "clickThroughHint": "啟用後，滑鼠操作會穿透 Overlay，不影響遊戲操作。",
   "editMode": "編輯模式",
   "editModeHint": "暫時解除滑鼠穿透，可拖曳與調整大小；完成後恢復原本設定。",
   "startEditing": "進入編輯",

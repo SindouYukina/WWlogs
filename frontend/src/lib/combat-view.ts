@@ -75,6 +75,40 @@ function ranked(roles: readonly Role[], vehicle: Vehicle | undefined, duration: 
   return ordered.map((row, rank) => ({ ...row, rank }))
 }
 
+/** A ranking row the user picked, tied to the encounter (or capture interval) it was picked in. */
+export interface DetailSelection {
+  scope: string
+  key: string
+}
+
+/**
+ * The identity the detail selection belongs to: the engine's encounter ID (unique per capture session and statistics
+ * interval), or the capture interval itself before any encounter exists. Damage totals and snapshot sequence play no part.
+ */
+export function selectionScope(view: Pick<ViewSnapshot, "captureSessionId" | "statisticsIntervalId"> | null | undefined, encounter: Pick<Encounter, "encounterId"> | undefined): string {
+  if (encounter) return `encounter:${encounter.encounterId}`
+  return view ? `interval:${view.captureSessionId}-${view.statisticsIntervalId}` : "none"
+}
+
+/** The highest-ranked character with confirmed damage. Ties already follow the stable rank order; no damage, no row. */
+export function topRole(rows: readonly CombatRowModel[]): CombatRowModel | undefined {
+  let top: CombatRowModel | undefined
+  for (const row of rows) if (row.kind === "role" && row.damage > 0 && (top === undefined || row.rank < top.rank)) top = row
+  return top
+}
+
+/**
+ * The row the detail shows. A pick made in this scope stays while its row exists, whatever the ranking does; otherwise
+ * the detail follows the current top character. A pick from an earlier encounter never carries over.
+ */
+export function detailRow(rows: readonly CombatRowModel[], scope: string, manual: DetailSelection | null): { row: CombatRowModel | undefined; mode: "manual" | "auto" } {
+  if (manual && manual.scope === scope) {
+    const picked = rows.find(row => row.key === manual.key)
+    if (picked) return { row: picked, mode: "manual" }
+  }
+  return { row: topRole(rows), mode: "auto" }
+}
+
 /** The engine's skill split of one contributor. Names stay absent unless Master reports a VERIFIED official name. */
 export function skillBreakdown(contributor: { skills?: Skill[]; unassignedSkill?: UnassignedSkill }): SkillBreakdown | undefined {
   if (contributor.skills === undefined) return undefined
