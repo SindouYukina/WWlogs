@@ -120,10 +120,10 @@ function AboutPage({ controller }: { controller: SettingsController }) {
   const profile = app ? profileKey(app) : undefined
   const revision = app ? revisionText(app) : undefined
   return <SettingsSection title={t("sections.about")}>
-    <SettingsRow title={t("buildVersion")} description={t("storage")}><span className="ww-num" data-field="app-version">{app ? show(versionText(app)) : "—"}</span></SettingsRow>
-    <SettingsRow title={t("buildNumber")}><span className="ww-num" data-field="app-build-number" data-official={app?.official ? "true" : "false"}>{app ? show(buildNumberText(app)) : "—"}</span></SettingsRow>
+    <SettingsRow title={t("buildVersion")} description={t("storage")}><span className="ww-num ww-selectable" data-field="app-version">{app ? show(versionText(app)) : "—"}</span></SettingsRow>
+    <SettingsRow title={t("buildNumber")}><span className="ww-num ww-selectable" data-field="app-build-number" data-official={app?.official ? "true" : "false"}>{app ? show(buildNumberText(app)) : "—"}</span></SettingsRow>
     <SettingsRow title={t("buildProfile")}><span data-field="app-profile">{app ? (profile ? t(profile) : app.profile) : "—"}</span></SettingsRow>
-    <SettingsRow title={t("buildRevision")} description={revision?.note ? t(revision.note) : undefined}><span className="ww-num" data-field="app-revision" data-dirty={app?.dirty}>{revision ? show(revision.revision) : "—"}</span></SettingsRow>
+    <SettingsRow title={t("buildRevision")} description={revision?.note ? t(revision.note) : undefined}><span className="ww-num ww-selectable" data-field="app-revision" data-dirty={app?.dirty}>{revision ? show(revision.revision) : "—"}</span></SettingsRow>
   </SettingsSection>
 }
 
