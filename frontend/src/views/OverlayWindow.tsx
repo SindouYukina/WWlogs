@@ -31,7 +31,7 @@ export function OverlaySurface({ surface, data, opacity, editing = false, dragga
   }, [canDrag])
   const alpha = opacity === undefined ? undefined : opacity / 100
   return <div className="ww-root ww-overlay-surface" data-surface={surface} data-editing={canDrag} data-field="overlay" data-locale={data.snapshot?.locale}>
-    {surface === "combat" ? <CombatOverlayPanel data={data} alpha={alpha} numberMode={numberMode} /> : <EffectsOverlayPanel data={data} alpha={alpha} />}
+    {surface === "combat" ? <CombatOverlayPanel data={data} alpha={alpha} numberMode={numberMode} /> : <EffectsOverlayPanel data={data} alpha={alpha} fitHeight />}
     {editing && <div className="ww-overlay-edit" data-field="edit-bar">
       <span className="ww-truncate">{t("drag")}</span>
       <Button size="sm" variant="primary" onClick={onFinishEditing}>{t("finishEditing")}</Button>

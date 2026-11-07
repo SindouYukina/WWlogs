@@ -175,6 +175,8 @@
   /* Component metrics that Overlay layouts rely on; list positions are computed from them. */
   --ww-row-combat: 46px;
   --ww-row-effect: 38px;
+  --ww-row-effects-omitted: 18px;
+  --ww-overlay-edit-height: 36px;
   --ww-sidebar-width: 236px;
   --ww-license-text-height: 320px;
 }

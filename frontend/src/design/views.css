@@ -105,4 +105,9 @@ body[data-view="overlay"][data-editing="true"] { --wails-draggable: drag; }
 .ww-overlay-edit { position: absolute; inset-inline: var(--ww-space-2); bottom: var(--ww-space-2); z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: var(--ww-space-2); padding: var(--ww-space-1) var(--ww-space-1) var(--ww-space-1) var(--ww-space-2); border-radius: var(--ww-radius-md); background: var(--ww-surface-3); box-shadow: var(--ww-shadow-popover); font-size: var(--ww-text-2xs); color: var(--ww-text-2); }
 .ww-overlay-edit .ww-btn { flex: none; pointer-events: auto; --wails-draggable: no-drag; }
 .ww-effects-empty { background: var(--ww-surface-overlay); border-radius: var(--ww-radius-md); }
-.ww-effects-omitted { padding-inline: var(--ww-space-1); font-size: var(--ww-text-2xs); color: var(--ww-text-3); }
+.ww-effects-omitted { flex: none; height: var(--ww-row-effects-omitted); padding-inline: var(--ww-space-1); overflow: hidden; font-size: var(--ww-text-2xs); line-height: var(--ww-row-effects-omitted); color: var(--ww-text-3); text-overflow: ellipsis; white-space: nowrap; }
+/* A fitted panel fills its window, so its rows and the count of hidden effects are laid out against the real height. */
+.ww-effects[data-fit="true"] { height: 100%; min-height: 0; overflow: hidden; }
+.ww-effects[data-fit="true"] > * { flex: none; }
+.ww-effects[data-fit="true"] > .ww-stack { overflow-x: visible; overflow-y: clip; }
+.ww-overlay-surface[data-surface="effects"]:has(> .ww-overlay-edit) { padding-bottom: calc(var(--ww-space-2) * 2 + var(--ww-overlay-edit-height)); }

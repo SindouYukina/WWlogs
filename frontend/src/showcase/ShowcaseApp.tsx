@@ -44,10 +44,15 @@ function StatusBadge({ controls }: { controls: FeedControls }) {
 /** The production Overlay surface in a real frameless window, fed by the Mock provider. */
 function ReviewOverlayWindow({ surface }: { surface: OverlayKind }) {
   const controls = useMockFeed()
+  const [editing, setEditing] = useState(false)
   useEffect(() => {
     applyAppearance(new URLSearchParams(window.location.search).get("theme") ?? undefined, false)
   }, [])
-  return <OverlaySurface surface={surface} data={controls.data} draggable />
+  // Automation hook for Overlay checks; it exists only in this Development-only chunk.
+  useEffect(() => {
+    (window as unknown as { __wwOverlayControls?: FeedControls & { setEditing: typeof setEditing } }).__wwOverlayControls = { ...controls, setEditing }
+  })
+  return <OverlaySurface surface={surface} data={controls.data} editing={editing} draggable />
 }
 
 function Shell() {
