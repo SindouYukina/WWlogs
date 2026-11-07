@@ -6,11 +6,20 @@ import { dataState, type Connection, type DPS, type Encounter, type Snapshot, ty
 
 export interface SkillRow {
   skillId: number
-  /** Master display name; absent names show the raw ID. */
+  /** Official Master display name; absent names show the raw ID. */
   name?: string
   damage: number
-  hits: number
-  share: number
+  /** Server-confirmed, deduplicated damage events. Not a cast count. */
+  events: number
+  /** 0..1 of the same contributor's confirmed damage; undefined when that total is zero. */
+  share?: number
+}
+
+/** A contributor's skill split. Rows plus unassigned add up to the contributor's confirmed damage. */
+export interface SkillBreakdown {
+  rows: SkillRow[]
+  /** Confirmed damage of the contributor without a skill source; absent when there is none. */
+  unassigned?: { damage: number; events: number; share?: number }
 }
 
 export interface CombatTimeline {
@@ -34,8 +43,11 @@ export interface CombatData {
   paused?: boolean
   /** Absent means no backend source exists yet; the view shows that state instead of numbers. */
   timeline?: CombatTimeline
-  /** Absent means no backend source exists yet; the view shows that state instead of numbers. */
-  skillsOf?: (roleId: number) => SkillRow[]
+  /**
+   * Skill split of a ranking row (by its key). Absent means the provider has no skill source; undefined from the
+   * function means the engine reported no split for that row.
+   */
+  skillsOf?: (rowKey: string) => SkillBreakdown | undefined
   /** Publish interval used to pace countdown bars, when the provider knows it. */
   tickMs?: number
 }

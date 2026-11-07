@@ -207,6 +207,8 @@
     "internal/capture/central_context_revalidation_test.go": "tests/capture/context_revalidation_test.go",
     "tests/capture/role_aggregation_test.go": "",
     "internal/capture/central_role_aggregation_test.go": "tests/capture/role_aggregation_test.go",
+    "tests/capture/skill_breakdown_test.go": "",
+    "internal/capture/central_skill_breakdown_test.go": "tests/capture/skill_breakdown_test.go",
     "tests/capture/view_snapshot_test.go": "",
     "internal/capture/central_view_snapshot_test.go": "tests/capture/view_snapshot_test.go",
     "tests/capture/listening_replay_dev_test.go": "",

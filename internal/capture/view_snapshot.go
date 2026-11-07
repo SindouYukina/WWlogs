@@ -164,6 +164,27 @@ type ViewRole struct {
 	OutgoingEvents uint64   `json:"outgoingEvents"`
 	DamageTaken    int64    `json:"damageTaken"`
 	IncomingEvents uint64   `json:"incomingEvents"`
+	// Skills and UnassignedSkill split DamageDealt by DamageContext.SkillId; shares use DamageDealt as denominator.
+	Skills          []ViewSkill         `json:"skills"`
+	UnassignedSkill ViewUnassignedSkill `json:"unassignedSkill"`
+}
+
+// ViewSkill is one DamageContext.SkillId of a contributor. Name is the official Master skill name for the selected
+// locale, filled by the display projection; it is empty with NameStatus UNKNOWN when Master has none, and the UI then
+// shows the SkillId. Developer labels and unofficial translations are never used here.
+type ViewSkill struct {
+	SkillID        uint64   `json:"skillId"`
+	Name           string   `json:"name"`
+	NameStatus     string   `json:"nameStatus"`
+	DamageDealt    int64    `json:"damageDealt"`
+	DamageShare    *float64 `json:"damageShare,omitempty"`
+	OutgoingEvents uint64   `json:"outgoingEvents"`
+}
+
+// ViewUnassignedSkill is a contributor's confirmed damage without a skill row.
+type ViewUnassignedSkill struct {
+	UnassignedSkillTotals
+	DamageShare *float64 `json:"damageShare,omitempty"`
 }
 
 // ViewEffects is the tracked effect state at the capture time.
@@ -253,7 +274,7 @@ func (p *processor) viewSnapshot() ViewSnapshot {
 		Roles:               p.viewRoles(statistics.Roles, statistics.DamageDealt),
 		UnassignedRole:      statistics.UnassignedRole,
 		UnassignedRoleShare: unassignedRoleShare(statistics.UnassignedRole, statistics.DamageDealt),
-		Vehicle:             viewVehicle(statistics.Vehicle, statistics.DamageDealt),
+		Vehicle:             p.viewVehicle(statistics.Vehicle, statistics.DamageDealt),
 		Effects:             p.viewEffects(),
 	}
 	if p.damageStatistics != nil {
@@ -311,7 +332,7 @@ func (p *processor) viewEncounter(encounter EncounterSnapshot) ViewEncounter {
 		Integrity: cloneIntegrity(encounter.Integrity), DPS: viewDPS(encounter.EncounterDPS),
 		Roles: p.viewRoles(encounter.Roles, encounter.Totals.DamageDealt), UnassignedRole: encounter.UnassignedRole,
 		UnassignedRoleShare: unassignedRoleShare(encounter.UnassignedRole, encounter.Totals.DamageDealt),
-		Vehicle:             viewVehicle(encounter.Vehicle, encounter.Totals.DamageDealt),
+		Vehicle:             p.viewVehicle(encounter.Vehicle, encounter.Totals.DamageDealt),
 	}
 	end := encounter.EndedAt
 	if end.IsZero() {
@@ -342,12 +363,46 @@ func (p *processor) viewRoles(roles []RoleDamageSnapshot, total int64) []ViewRol
 			DamageDealt: role.DamageDealt, DirectDamage: role.DirectDamage, SummonDamage: role.SummonDamage,
 			OutgoingEvents: role.OutgoingEvents, DamageTaken: role.DamageTaken, IncomingEvents: role.IncomingEvents,
 		})
+		view[len(view)-1].Skills, view[len(view)-1].UnassignedSkill = p.viewSkills(role.Skills, role.UnassignedSkill, role.DamageDealt)
 		if total > 0 {
 			share := float64(role.DamageDealt) / float64(total)
 			view[len(view)-1].DamageShare = &share
 		}
 	}
 	return view
+}
+
+// viewSkills projects a contributor's skill split. Shares use the contributor's own confirmed damage, never the team's.
+func (p *processor) viewSkills(skills []SkillDamageSnapshot, unassigned UnassignedSkillTotals, total int64) ([]ViewSkill, ViewUnassignedSkill) {
+	share := func(amount int64) *float64 {
+		if total <= 0 {
+			return nil
+		}
+		value := float64(amount) / float64(total)
+		return &value
+	}
+	view := make([]ViewSkill, 0, len(skills))
+	for _, skill := range skills {
+		name, status := p.skillDisplayName(skill.SkillID)
+		view = append(view, ViewSkill{
+			SkillID: skill.SkillID, Name: name, NameStatus: status, DamageDealt: skill.DamageDealt,
+			DamageShare: share(skill.DamageDealt), OutgoingEvents: skill.OutgoingEvents,
+		})
+	}
+	return view, ViewUnassignedSkill{UnassignedSkillTotals: unassigned, DamageShare: share(unassigned.DamageDealt)}
+}
+
+// skillDisplayName returns the official Master name of a DamageContext.SkillId in the capture Master locale; the
+// desktop projection replaces it with the selected UI locale. Only a VERIFIED official name is shown.
+func (p *processor) skillDisplayName(skillID uint64) (string, string) {
+	if p.masters == nil {
+		return "", string(resolutionUnknown)
+	}
+	skill, ok := p.masters.damageSkill(skillID)
+	if !ok || skill.Name == "" || skill.NameStatus != string(resolutionVerified) {
+		return "", string(resolutionUnknown)
+	}
+	return skill.Name, skill.NameStatus
 }
 
 // roleDisplayName returns the Master name of a RoleId. A name is shown only when Master marks it verified; anything
@@ -479,13 +534,18 @@ func cloneFloat64(value *float64) *float64 {
 type ViewVehicle struct {
 	VehicleDamageSnapshot
 	DamageShare *float64 `json:"damageShare,omitempty"`
+	// Skills and UnassignedSkill shadow the embedded engine rows with their display projection.
+	Skills          []ViewSkill         `json:"skills"`
+	UnassignedSkill ViewUnassignedSkill `json:"unassignedSkill"`
 }
 
-func viewVehicle(vehicle *VehicleDamageSnapshot, total int64) *ViewVehicle {
+func (p *processor) viewVehicle(vehicle *VehicleDamageSnapshot, total int64) *ViewVehicle {
 	if vehicle == nil {
 		return nil
 	}
 	view := &ViewVehicle{VehicleDamageSnapshot: *vehicle}
+	view.VehicleDamageSnapshot.Skills = nil
+	view.Skills, view.UnassignedSkill = p.viewSkills(vehicle.Skills, vehicle.UnassignedSkill, vehicle.DamageDealt)
 	if total > 0 {
 		share := float64(vehicle.DamageDealt) / float64(total)
 		view.DamageShare = &share

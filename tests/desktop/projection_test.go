@@ -134,3 +134,81 @@ func TestShellChangeReencodesWithoutTouchingCoreSequence(t *testing.T) {
 		t.Fatal("projection mutated the core snapshot")
 	}
 }
+
+func TestDisplayProjectionRelocalizesSkillNamesWithoutChangingSkillStatistics(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "master.db")
+	db, _ := sql.Open("sqlite", path)
+	for _, statement := range []string{
+		"CREATE TABLE roleinfo_locale (id TEXT,locale TEXT,name TEXT,PRIMARY KEY(id,locale))",
+		"CREATE TABLE skilldescription_locale (id TEXT,locale TEXT,name TEXT,PRIMARY KEY(id,locale))",
+		// The UI skill-tree table holds a different name under the same number; it must not be used.
+		"CREATE TABLE skill_locale (id TEXT,locale TEXT,name TEXT,PRIMARY KEY(id,locale))",
+		"INSERT INTO skilldescription_locale VALUES('1409011','en-US','Strike'),('1409011','ja-JP','打撃')",
+		"INSERT INTO skill_locale VALUES('1409011','en-US','Wrong namespace')",
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	db.Close()
+	resolver, err := capture.OpenDisplayResolver(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resolver.Close()
+	store := loadSettings(filepath.Join(t.TempDir(), "settings.json"), testLocaleCatalog())
+	share := 0.75
+	skills := []capture.ViewSkill{{SkillID: 1409011, Name: "Core", NameStatus: "VERIFIED", DamageDealt: 300, DamageShare: &share, OutgoingEvents: 4}, {SkillID: 1409099, DamageDealt: 100, OutgoingEvents: 1}}
+	role := capture.ViewRole{RoleID: 42, DamageDealt: 400, Skills: skills}
+	vehicle := &capture.ViewVehicle{Skills: []capture.ViewSkill{{SkillID: 1409011, DamageDealt: 9, OutgoingEvents: 1}}}
+	view := capture.ViewSnapshot{Roles: []capture.ViewRole{role}, Vehicle: vehicle, Encounters: capture.ViewEncounters{Current: &capture.ViewEncounter{Roles: []capture.ViewRole{role}, Vehicle: vehicle}, Recent: []capture.ViewEncounter{{Roles: []capture.ViewRole{role}}}}}
+	before, _ := json.Marshal(view)
+	source := &service.Snapshot{Sequence: 3, View: &view}
+	projection := &displayProjection{resolver: resolver}
+	decode := func(raw []byte) (result struct{ View capture.ViewSnapshot }) {
+		if err := json.Unmarshal(raw, &result); err != nil {
+			t.Fatal(err)
+		}
+		return result
+	}
+	first, err := projection.encode(source, store.current(), testLocaleCatalog(), service.ListeningStatus{}, OverlayStates{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, err := store.setLocale("ja")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := projection.encode(source, state, testLocaleCatalog(), service.ListeningStatus{}, OverlayStates{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, b := decode(first), decode(second)
+	for _, scoped := range []struct {
+		name string
+		a, b []capture.ViewSkill
+	}{
+		{"interval", a.View.Roles[0].Skills, b.View.Roles[0].Skills},
+		{"current", a.View.Encounters.Current.Roles[0].Skills, b.View.Encounters.Current.Roles[0].Skills},
+		{"recent", a.View.Encounters.Recent[0].Roles[0].Skills, b.View.Encounters.Recent[0].Roles[0].Skills},
+		{"vehicle", a.View.Encounters.Current.Vehicle.Skills, b.View.Encounters.Current.Vehicle.Skills},
+	} {
+		if scoped.a[0].Name != "Strike" || scoped.b[0].Name != "打撃" {
+			t.Fatalf("%s skill names = %q / %q", scoped.name, scoped.a[0].Name, scoped.b[0].Name)
+		}
+		for i := range scoped.a {
+			left, right := scoped.a[i], scoped.b[i]
+			left.Name, right.Name = "", ""
+			if !reflect.DeepEqual(left, right) {
+				t.Fatalf("%s locale changed skill statistics: %+v / %+v", scoped.name, scoped.a[i], scoped.b[i])
+			}
+		}
+	}
+	if unnamed := b.View.Roles[0].Skills[1]; unnamed.Name != "" || unnamed.NameStatus != "UNKNOWN" || unnamed.SkillID != 1409099 {
+		t.Fatalf("a skill without an official name must stay UNKNOWN with its ID: %+v", unnamed)
+	}
+	after, _ := json.Marshal(view)
+	if string(before) != string(after) {
+		t.Fatal("projection mutated the core snapshot")
+	}
+}

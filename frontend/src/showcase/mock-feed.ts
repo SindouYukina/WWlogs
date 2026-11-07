@@ -1,4 +1,4 @@
-import type { SkillRow } from "../lib/combat-data"
+import type { SkillBreakdown } from "../lib/combat-data"
 import type { Effect, Encounter, ListeningInfo, Role, Snapshot, UnassignedRole, Vehicle } from "../lib/snapshot"
 import { masterEffects, masterRoles } from "./master-fixture.ts"
 
@@ -30,7 +30,7 @@ export interface MockOutput {
   snapshot: Snapshot
   /** The Snapshot has no per-role time series yet; see the Phase 1 gap list. */
   history: ReadonlyMap<number, ReadonlyArray<number | null>>
-  skillsOf: (roleId: number) => SkillRow[]
+  skillsOf: (rowKey: string) => SkillBreakdown | undefined
 }
 
 interface MockRole {
@@ -251,7 +251,7 @@ export class MockFeed {
     this.sequence += 1
     this.lastPublish = Date.now()
     const history = new Map([...this.history].map(([id, series]) => [id, [...series]]))
-    return { snapshot: this.buildSnapshot(), history, skillsOf: roleId => this.skills(roleId) }
+    return { snapshot: this.buildSnapshot(), history, skillsOf: rowKey => this.skills(rowKey) }
   }
 
   /** Keeps the review surface populated: expiring effects are replaced and some are refreshed before they end. */
@@ -277,14 +277,17 @@ export class MockFeed {
     return names?.[this.locale] ?? names?.en
   }
 
-  private skills(roleId: number): SkillRow[] {
+  private skills(rowKey: string): SkillBreakdown | undefined {
+    const roleId = Number(rowKey.split("-").at(-1))
     const master = masterRoles.find(role => role.roleId === roleId)
     const role = this.roles.find(candidate => candidate.roleId === roleId)
-    if (!master || !role) return []
-    return master.skills.map((skill, index) => {
-      const damage = role.damage * (skillWeights[index] ?? 0)
-      return { skillId: skill.skillId, name: this.localized(skill.names), damage, hits: Math.floor(damage / (skillHitSize[index] ?? 5000)), share: skillWeights[index] ?? 0 }
-    })
+    if (!rowKey.startsWith("role-") || !master || !role) return undefined
+    return {
+      rows: master.skills.map((skill, index) => {
+        const damage = role.damage * (skillWeights[index] ?? 0)
+        return { skillId: skill.skillId, name: this.localized(skill.names), damage, events: Math.floor(damage / (skillHitSize[index] ?? 5000)), share: skillWeights[index] ?? 0 }
+      }),
+    }
   }
 
   private buildSnapshot(): Snapshot {

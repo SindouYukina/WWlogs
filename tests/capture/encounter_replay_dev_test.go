@@ -8,9 +8,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -54,6 +56,109 @@ type encounterReplayResult struct {
 	RawFactsSHA256                string             `json:"rawFactsSha256"`
 	RawFactsCount                 int                `json:"rawFactsCount"`
 	Pairing                       RPCPairingSnapshot `json:"pairing"`
+	SkillCoverage                 skillCoverage      `json:"skillCoverage"`
+	// ViewSnapshotBytes is the JSON size of the final view snapshot, the payload the host publishes.
+	ViewSnapshotBytes int `json:"viewSnapshotBytes"`
+	// ViewSnapshotSkillBytes is the part of ViewSnapshotBytes that the skill split adds.
+	ViewSnapshotSkillBytes int `json:"viewSnapshotSkillBytes"`
+}
+
+// viewWithoutSkills returns a copy of view with every skill split removed, to measure what the split costs.
+func viewWithoutSkills(view ViewSnapshot) ViewSnapshot {
+	strip := func(roles []ViewRole) []ViewRole {
+		result := append([]ViewRole(nil), roles...)
+		for i := range result {
+			result[i].Skills, result[i].UnassignedSkill = nil, ViewUnassignedSkill{}
+		}
+		return result
+	}
+	stripVehicle := func(vehicle *ViewVehicle) *ViewVehicle {
+		if vehicle == nil {
+			return nil
+		}
+		copied := *vehicle
+		copied.Skills, copied.UnassignedSkill = nil, ViewUnassignedSkill{}
+		return &copied
+	}
+	view.Roles, view.Vehicle = strip(view.Roles), stripVehicle(view.Vehicle)
+	view.Encounters.Recent = append([]ViewEncounter(nil), view.Encounters.Recent...)
+	for i := range view.Encounters.Recent {
+		view.Encounters.Recent[i].Roles, view.Encounters.Recent[i].Vehicle = strip(view.Encounters.Recent[i].Roles), stripVehicle(view.Encounters.Recent[i].Vehicle)
+	}
+	if view.Encounters.Current != nil {
+		current := *view.Encounters.Current
+		current.Roles, current.Vehicle = strip(current.Roles), stripVehicle(current.Vehicle)
+		view.Encounters.Current = &current
+	}
+	return view
+}
+
+// skillCoverage reports how much confirmed role and vehicle damage of the capture interval has a skill source, by
+// events and by damage, and how much of that has an official Master name. Unknown reasons are kept apart.
+type skillCoverage struct {
+	Roles               int      `json:"roles"`
+	RoleEvents          uint64   `json:"roleEvents"`
+	RoleDamage          int64    `json:"roleDamage"`
+	SkillEvents         uint64   `json:"skillEvents"`
+	SkillDamage         int64    `json:"skillDamage"`
+	NamedSkillEvents    uint64   `json:"namedSkillEvents"`
+	NamedSkillDamage    int64    `json:"namedSkillDamage"`
+	MissingSkillEvents  uint64   `json:"missingSkillEvents"`
+	MissingSkillDamage  int64    `json:"missingSkillDamage"`
+	OverflowEvents      uint64   `json:"overflowEvents"`
+	DistinctSkills      int      `json:"distinctSkills"`
+	UnnamedSkillIDs     []uint64 `json:"unnamedSkillIds"`
+	MasterRoleConflicts []string `json:"masterRoleConflicts"`
+	VehicleEvents       uint64   `json:"vehicleEvents"`
+	VehicleSkillEvents  uint64   `json:"vehicleSkillEvents"`
+}
+
+// collectSkillCoverage reads the interval split. A Master skill-group role that differs from the runtime role is
+// listed as a conflict for review; it never changes attribution.
+func collectSkillCoverage(statistics DamageStatisticsSnapshot, masters *gameMaster) skillCoverage {
+	var coverage skillCoverage
+	distinct := map[uint64]bool{}
+	unnamed := map[uint64]bool{}
+	for _, role := range statistics.Roles {
+		if role.OutgoingEvents == 0 {
+			continue
+		}
+		coverage.Roles++
+		coverage.RoleEvents += role.OutgoingEvents
+		coverage.RoleDamage += role.DamageDealt
+		coverage.MissingSkillEvents += role.UnassignedSkill.MissingSkillEvents
+		coverage.OverflowEvents += role.UnassignedSkill.OverflowEvents
+		if role.UnassignedSkill.OverflowEvents == 0 {
+			coverage.MissingSkillDamage += role.UnassignedSkill.DamageDealt
+		}
+		for _, skill := range role.Skills {
+			distinct[skill.SkillID] = true
+			coverage.SkillEvents += skill.OutgoingEvents
+			coverage.SkillDamage += skill.DamageDealt
+			record, ok := masters.damageSkill(skill.SkillID)
+			if ok && record.Name != "" && record.NameStatus == string(resolutionVerified) {
+				coverage.NamedSkillEvents += skill.OutgoingEvents
+				coverage.NamedSkillDamage += skill.DamageDealt
+			} else {
+				unnamed[skill.SkillID] = true
+			}
+			if ok && record.RoleID != 0 && record.RoleID != role.RoleID {
+				coverage.MasterRoleConflicts = append(coverage.MasterRoleConflicts, fmt.Sprintf("role %d skill %d master role %d", role.RoleID, skill.SkillID, record.RoleID))
+			}
+		}
+	}
+	if vehicle := statistics.Vehicle; vehicle != nil {
+		coverage.VehicleEvents = vehicle.OutgoingEvents
+		for _, skill := range vehicle.Skills {
+			coverage.VehicleSkillEvents += skill.OutgoingEvents
+		}
+	}
+	coverage.DistinctSkills = len(distinct)
+	for id := range unnamed {
+		coverage.UnnamedSkillIDs = append(coverage.UnnamedSkillIDs, id)
+	}
+	sort.Slice(coverage.UnnamedSkillIDs, func(i, j int) bool { return coverage.UnnamedSkillIDs[i] < coverage.UnnamedSkillIDs[j] })
+	return coverage
 }
 
 const encounterReplayTimeLayout = "2006-01-02T15:04:05.000000000Z07:00"
@@ -111,6 +216,9 @@ func TestEncounterReplayCollector(t *testing.T) {
 		t.Run(capture.name, func(t *testing.T) {
 			first := encounterReplayOnce(t, inputs, masters, key, capture, 0)
 			second := encounterReplayOnce(t, inputs, masters, key, capture, encounterReplayPublishEvery)
+			// The payload size is a measurement; process-local capture-session numbers inside it may differ in width.
+			viewBytes, skillBytes := first.ViewSnapshotBytes, first.ViewSnapshotSkillBytes
+			first.ViewSnapshotBytes, second.ViewSnapshotBytes, first.ViewSnapshotSkillBytes, second.ViewSnapshotSkillBytes = 0, 0, 0, 0
 			if !reflect.DeepEqual(first, second) {
 				t.Fatalf("two replays of the same capture produced different results")
 			}
@@ -119,6 +227,7 @@ func TestEncounterReplayCollector(t *testing.T) {
 			assertEncountersDoNotOverlap(t, first.Statistics)
 			assertRoleTotalsReconcile(t, first.Statistics)
 			assertConfirmedEndsAtSignals(t, first)
+			first.ViewSnapshotBytes, first.ViewSnapshotSkillBytes = viewBytes, skillBytes
 			data := equivalenceMarshal(t, first)
 			if archive := os.Getenv("WWLOGS_ATTRIBUTION_INVENTORY_OUT"); archive != "" {
 				if err := os.MkdirAll(archive, 0700); err != nil {
@@ -225,7 +334,16 @@ func encounterReplayOnce(t *testing.T, inputs equivalenceInputs, masters *gameMa
 			timelines[i].EncounterID = "1-" + rest
 		}
 	}
-	return encounterReplayResult{Name: capture.name, Timelines: timelines, MaxFrameGapInEncounterSeconds: maxGap.Seconds(), UDPPackets: stats.udpPackets, Statistics: statistics, Signals: signals, Unassigned: unassigned, Evidence: evidence, VehicleRecords: vehicleRecords, VehicleEvidence: vehicleEvidence, RawFactsSHA256: hex.EncodeToString(factsHash.Sum(nil)), RawFactsCount: factsCount, Pairing: p.rpcPairingSnapshot()}
+	finalView := p.viewSnapshot()
+	view, err := json.Marshal(finalView)
+	if err != nil {
+		t.Fatal(err)
+	}
+	withoutSkills, err := json.Marshal(viewWithoutSkills(finalView))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return encounterReplayResult{SkillCoverage: collectSkillCoverage(statistics, masters), ViewSnapshotBytes: len(view), ViewSnapshotSkillBytes: len(view) - len(withoutSkills), Name: capture.name, Timelines: timelines, MaxFrameGapInEncounterSeconds: maxGap.Seconds(), UDPPackets: stats.udpPackets, Statistics: statistics, Signals: signals, Unassigned: unassigned, Evidence: evidence, VehicleRecords: vehicleRecords, VehicleEvidence: vehicleEvidence, RawFactsSHA256: hex.EncodeToString(factsHash.Sum(nil)), RawFactsCount: factsCount, Pairing: p.rpcPairingSnapshot()}
 }
 
 // normalizeEncounterIDs removes the process-local capture session sequence from encounter identities.
