@@ -8,7 +8,7 @@
   are Unofficial: verification never reads or advances the owner's official build counter.
   Every step reports PASS, FAIL, NOT RUN, or BLOCKED. Nothing is reported as PASS unless it executed.
 
-  Steps that need local-only material (privateKey.pem, archived PCAP captures) are NOT RUN, not PASS, when
+  Steps that need local-only material (the owner-local key input, archived PCAP captures) are NOT RUN, not PASS, when
   that material is missing. Pass -PcapDirectory to add the replay regression, the public output audit, and the
   encounter replay (determinism and partition) through an embedded-key development test binary.
 #>
@@ -97,9 +97,15 @@ try {
     Set-Result 'game assets: version control' $(if ($assetProblems.Count -eq 0) { 'PASS' } else { 'FAIL' }) $(if ($assetProblems.Count -gt 0) { $assetProblems -join '; ' } else { "$($assetManifest.entries.Count) images" })
 
     # 3. Build both executables into a throw-away directory and audit them.
-    $keyPath = Join-Path $repoRoot 'privateKey.pem'
-    if (-not (Test-Path -LiteralPath $keyPath -PathType Leaf)) {
-        Set-Result 'build + output audit' 'NOT RUN' 'privateKey.pem is not present'
+    # The restricted embed-key step alone probes and reads its owner-local key input.
+    $keyStatus = Invoke-Go @('run', './scripts/embed-key.go', '-check-key')
+    $missingKeyMessage = 'owner-local private key is not present'
+    if ($keyStatus.Code -ne 0) {
+        if ($keyStatus.Output.Contains($missingKeyMessage)) {
+            Set-Result 'build + output audit' 'NOT RUN' $missingKeyMessage
+        } else {
+            Set-Result 'build + output audit' 'FAIL' $keyStatus.Output.Trim()
+        }
     } else {
         $buildDirectory = Join-Path ([IO.Path]::GetTempPath()) ("wwlogs-verify-" + [Guid]::NewGuid().ToString('N'))
         New-Item -ItemType Directory -Path $buildDirectory | Out-Null
@@ -108,8 +114,13 @@ try {
             $developmentExe = Join-Path $buildDirectory 'WWlogs-dev.exe'
             $publicBuild = Invoke-Go @('run', './scripts/embed-key.go', '-unofficial', '-profile', 'public', '-o', $publicExe)
             $developmentBuild = Invoke-Go @('run', './scripts/embed-key.go', '-unofficial', '-profile', 'development', '-o', $developmentExe)
-            Set-Result 'build (Public)' $(if ($publicBuild.Code -eq 0) { 'PASS' } else { 'FAIL' }) $(if ($publicBuild.Code -ne 0) { $publicBuild.Output.Trim() })
-            Set-Result 'build (Development)' $(if ($developmentBuild.Code -eq 0) { 'PASS' } else { 'FAIL' }) $(if ($developmentBuild.Code -ne 0) { $developmentBuild.Output.Trim() })
+            $publicKeyMissing = $publicBuild.Output.Contains($missingKeyMessage)
+            $developmentKeyMissing = $developmentBuild.Output.Contains($missingKeyMessage)
+            if ($publicKeyMissing -or $developmentKeyMissing) {
+                Set-Result 'build + output audit' 'NOT RUN' $missingKeyMessage
+            }
+            Set-Result 'build (Public)' $(if ($publicKeyMissing) { 'NOT RUN' } elseif ($publicBuild.Code -eq 0) { 'PASS' } else { 'FAIL' }) $(if ($publicKeyMissing) { $missingKeyMessage } elseif ($publicBuild.Code -ne 0) { $publicBuild.Output.Trim() })
+            Set-Result 'build (Development)' $(if ($developmentKeyMissing) { 'NOT RUN' } elseif ($developmentBuild.Code -eq 0) { 'PASS' } else { 'FAIL' }) $(if ($developmentKeyMissing) { $missingKeyMessage } elseif ($developmentBuild.Code -ne 0) { $developmentBuild.Output.Trim() })
 
             if ($publicBuild.Code -eq 0 -and $developmentBuild.Code -eq 0) {
                 # Build identity: profile from compiled constants, SHA-256 against an independent tool.

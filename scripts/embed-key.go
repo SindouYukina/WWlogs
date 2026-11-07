@@ -50,7 +50,20 @@ func run() error {
 	unofficial := flag.Bool("unofficial", false, "build unofficial executables that neither read nor advance the official build counter")
 	initCounter := flag.Bool("init-build-number", false, "owner-directed first initialization of the official build counter; refused when a counter exists or existed")
 	stateDirectory := flag.String("build-state", "", "official build counter directory (default: <repository>/.local); tests point it at an isolated directory")
+	checkKey := flag.Bool("check-key", false, "check for the owner-local private key input without reading its contents")
 	flag.Parse()
+	if *checkKey {
+		checkOnly := true
+		flag.Visit(func(f *flag.Flag) {
+			if f.Name != "check-key" {
+				checkOnly = false
+			}
+		})
+		if !checkOnly || flag.NArg() != 0 {
+			return errors.New("-check-key must be used alone")
+		}
+		return checkOwnerKey(repositoryRootFor())
+	}
 	if flag.NArg() != 0 {
 		return errors.New("unexpected positional arguments")
 	}
@@ -100,14 +113,14 @@ func run() error {
 	if version == "" {
 		version = registeredVersion(repositoryRoot)
 	}
-	keyPEM, err := os.ReadFile(filepath.Join(repositoryRoot, "privateKey.pem"))
+	keyPEM, err := readOwnerKey(repositoryRoot)
 	if err != nil {
-		return fmt.Errorf("read project-root privateKey.pem: %w", err)
+		return err
 	}
 	defer clear(keyPEM)
 	privateDER, err := validatePrivateKeyPEM(keyPEM)
 	if err != nil {
-		return fmt.Errorf("validate project-root privateKey.pem: %w", err)
+		return fmt.Errorf("validate owner-local private key: %w", err)
 	}
 	defer clear(privateDER)
 	payload, err := keyembed.Encrypt(keyPEM)
@@ -584,6 +597,49 @@ func verifyBuildIdentity(path, profile, version, buildNumber, commit string) err
 }
 
 // repositoryRootFor locates the repository root from this script's source path.
+// ownerKeyRelativePath is the one location of the owner-local RSA key input, relative to the repository root. This
+// program is its only reader; there is no fallback location, and nothing here creates or rewrites the file.
+var ownerKeyRelativePath = filepath.Join(".local", "keys", "privateKey.pem")
+
+// errOwnerKeyMissing is matched by scripts/verify.ps1 to report NOT RUN instead of FAIL; keep the wording stable.
+var errOwnerKeyMissing = errors.New("owner-local private key is not present")
+
+// ownerKeyError reports a key access failure without the private path: only the operating-system reason is kept.
+func ownerKeyError(action string, err error) error {
+	if errors.Is(err, fs.ErrNotExist) {
+		return errOwnerKeyMissing
+	}
+	var pathError *fs.PathError
+	if errors.As(err, &pathError) {
+		err = pathError.Err
+	}
+	return fmt.Errorf("%s owner-local private key: %w", action, err)
+}
+
+// checkOwnerKey reports whether the key input exists as a regular file, without reading its contents.
+func checkOwnerKey(root string) error {
+	info, err := os.Lstat(filepath.Join(root, ownerKeyRelativePath))
+	if err != nil {
+		return ownerKeyError("inspect", err)
+	}
+	if !info.Mode().IsRegular() {
+		return errors.New("owner-local private key is not a regular file")
+	}
+	return nil
+}
+
+// readOwnerKey reads the key input for the build-time encryption step. The caller clears the returned bytes.
+func readOwnerKey(root string) ([]byte, error) {
+	if err := checkOwnerKey(root); err != nil {
+		return nil, err
+	}
+	data, err := os.ReadFile(filepath.Join(root, ownerKeyRelativePath))
+	if err != nil {
+		return nil, ownerKeyError("read", err)
+	}
+	return data, nil
+}
+
 func repositoryRootFor() string {
 	_, sourcePath, _, _ := runtime.Caller(0)
 	return filepath.Dir(filepath.Dir(sourcePath))
