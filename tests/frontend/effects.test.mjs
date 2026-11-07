@@ -1,6 +1,7 @@
 import test from "node:test"
 import assert from "node:assert/strict"
-import {effectRemaining,snapshotStale,relevantEffect} from "../../frontend/src/lib/effects.ts"
+import {effectRemaining,snapshotStale} from "../../frontend/src/lib/effects.ts"
+import {readFileSync} from "node:fs"
 
 const at=Date.parse("2026-11-05T00:00:00Z")
 function snapshot(source="live") {return {publishedAt:new Date(at).toISOString(),service:{state:"running",session:{source}},view:{health:{context:{state:"VALID"}},effects:{status:"complete"}}}}
@@ -23,8 +24,8 @@ test("stale context, stale snapshot, removed effects and missing duration never 
   s.view.health.context.state="VALID";s.service.state="stopped"
   assert.equal(effectRemaining(effect,s,"connected",at),undefined)
 })
-test("effect filtering never guesses local ownership or reclassifies non-combat effects",()=>{
-  assert.equal(relevantEffect(effect),true)
-  assert.equal(relevantEffect({...effect,combatClass:"non_combat"}),false)
-  assert.equal(relevantEffect({...effect,holderRelation:"unknown"}),false)
+test("display eligibility belongs to the engine: no frontend effect filter or classifier exists",()=>{
+  const source=readFileSync("frontend/src/lib/effects.ts","utf8")
+  assert.ok(!source.includes("relevantEffect"))
+  assert.ok(!/combatClass|holderRelation/.test(source),"the frontend must not re-derive relevance from relations or classes")
 })

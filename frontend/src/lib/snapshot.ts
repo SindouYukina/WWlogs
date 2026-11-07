@@ -176,6 +176,10 @@ export interface Effect {
   sourceRelation: string
   polarity: string
   combatClass: string
+  /** What the definition says the effect is for (Go EffectKind). */
+  kind: string
+  /** The engine's display decision; listed effects are always eligible. */
+  display: { eligibility: string; target?: "team" | "enemy" | "unresolved" }
   stackCount?: number
   lifecycle: string
   durationSeconds?: number
@@ -186,6 +190,24 @@ export interface Effect {
   lastUpdatedAt: string
   endedAt?: string
   evidence: string
+}
+
+/**
+ * How the engine partitioned its tracked effects (Go ViewEffectCounts). `eligible` is the display set: active lists its
+ * first `listed` members and `truncated` are the rest. Every other count is a reason an effect was not eligible.
+ */
+export interface EffectCounts {
+  tracked: number
+  estimatedExpired: number
+  active: number
+  notLocal: number
+  local: number
+  nonCombat: number
+  internal: number
+  unclassified: number
+  eligible: number
+  listed: number
+  truncated: number
 }
 
 export interface ViewSnapshot {
@@ -221,7 +243,7 @@ export interface ViewSnapshot {
   vehicle?: Vehicle
   unassignedRole: UnassignedRole
   unassignedRoleShare?: number
-  effects: { status: string; reason?: string; active: Effect[]; recentEnded: Effect[]; omitted: number }
+  effects: { status: string; reason?: string; active: Effect[]; recentEnded: Effect[]; counts: EffectCounts }
   /** DPS over time of the encounter shown (encounters.current, else the newest recent one); absent before any. */
   timeline?: Timeline
 }

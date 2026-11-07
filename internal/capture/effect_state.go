@@ -96,11 +96,15 @@ const (
 	EffectOriginSnapshot EffectOrigin = "snapshot"
 )
 
-// EffectPolarity is the buff/debuff classification. No verified protocol field or
-// Master relation gives it, so every instance stays unclassified.
+// EffectPolarity is the buff/debuff classification. No protocol field gives it; it is set only where
+// the definition proves it (see effectPolarityFor), and every other instance stays unclassified.
 type EffectPolarity string
 
-const EffectPolarityUnclassified EffectPolarity = "unclassified"
+const (
+	EffectPolarityUnclassified EffectPolarity = "unclassified"
+	// EffectPolarityDebuff is a harmful state of the holder.
+	EffectPolarityDebuff EffectPolarity = "debuff"
+)
 
 // EffectSnapshotStatus tells a consumer whether the tracked set is complete.
 type EffectSnapshotStatus string
@@ -282,9 +286,12 @@ type EffectInstanceSnapshot struct {
 	Evidence EffectEvidence `json:"evidence"`
 	// CombatClass says whether the effect is evidently part of combat; CombatBasis names the evidence.
 	// unknown means no evidence either way and is never a statement that the effect is harmless.
-	CombatClass     EffectCombatClass `json:"combatClass"`
-	CombatBasis     string            `json:"combatBasis"`
-	FirstObservedAt time.Time         `json:"firstObservedAt"`
+	CombatClass EffectCombatClass `json:"combatClass"`
+	CombatBasis string            `json:"combatBasis"`
+	// Kind says what the definition says the effect is for (see classifyEffectKind); KindBasis names the evidence.
+	Kind            EffectKind `json:"kind"`
+	KindBasis       string     `json:"kindBasis"`
+	FirstObservedAt time.Time  `json:"firstObservedAt"`
 	// AppliedAt is set only for origin apply; a snapshot-origin instance has an unknown application time.
 	AppliedAt     *time.Time `json:"appliedAt,omitempty"`
 	LastUpdatedAt time.Time  `json:"lastUpdatedAt"`
@@ -1071,6 +1078,8 @@ func (t *EffectTracker) instanceSnapshotLocked(instance *effectInstance, query C
 		holder: instance.holderRelation, source: instance.sourceRelation,
 		holderMonster: instance.holderMonster, sourceMonster: instance.sourceMonster,
 	})
+	snapshot.Kind, snapshot.KindBasis = classifyEffectKind(snapshot.CombatClass, snapshot.CombatBasis, snapshot.Static)
+	snapshot.Polarity = effectPolarityFor(snapshot)
 	if instance.hasStack {
 		count := instance.stack
 		snapshot.StackCount = &count

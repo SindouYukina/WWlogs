@@ -347,6 +347,8 @@ export class MockFeed {
       sourceRelation: "unknown",
       polarity: effect.polarity,
       combatClass: "combat",
+      kind: "stat_modifier",
+      display: { eligibility: "eligible", target: "team" as const },
       stackCount: effect.stacks,
       lifecycle: "active",
       durationSeconds: effect.duration,
@@ -396,7 +398,8 @@ export class MockFeed {
         roles,
         vehicle,
         unassignedRole,
-        effects: { status: "complete", active, recentEnded: [], omitted: 0 },
+        // Mock effects are all eligible; nothing is tracked beyond them.
+        effects: { status: "complete", active, recentEnded: [], counts: { tracked: active.length, estimatedExpired: 0, active: active.length, notLocal: 0, local: active.length, nonCombat: 0, internal: 0, unclassified: 0, eligible: active.length, listed: active.length, truncated: 0 } },
       },
     }
   }

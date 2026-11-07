@@ -5,6 +5,8 @@
   "unknownEffect": "Unknown effect ({{id}})",
   "termCandidate": "Related term · not a confirmed effect name",
   "omitted": "{{count}} more effects not shown",
+  "unclassified": "Unclassified {{count}}",
+  "targetEnemy": "Enemy",
   "finishEditing": "Done",
   "relatedTerm": "Related: {{term}}",
   "combat": {

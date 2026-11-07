@@ -5,6 +5,8 @@
   "unknownEffect": "알 수 없는 효과 ({{id}})",
   "termCandidate": "관련 용어 · 효과 명칭 미확정",
   "omitted": "추가 효과 {{count}}개",
+  "unclassified": "미분류 {{count}}",
+  "targetEnemy": "적",
   "finishEditing": "완료",
   "relatedTerm": "관련: {{term}}",
   "combat": {
