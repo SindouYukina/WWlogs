@@ -22,7 +22,7 @@ test("the Go settings list and the frontend registry name the same themes", () =
 })
 
 test("each theme maps to its confirmed character and has art", () => {
-  assert.deepEqual(themeCharacters, { electro: 1312, aero: 1409, havoc: 1508, glacio: 1107 })
+  assert.deepEqual(themeCharacters, { electro: 1312, aero: 1409, havoc: 1508, glacio: 1107, fusion: 1209 })
   const art = readdirSync("frontend/src/design/themes/art")
   for (const theme of themeIds) {
     assert.ok(art.includes(`${theme}.webp`), theme)
@@ -33,8 +33,41 @@ test("each theme maps to its confirmed character and has art", () => {
 test("every theme sets the same design decisions", () => {
   const required = ["--ww-ink-h", "--ww-ink-c", "--ww-accent-h", "--ww-accent-c", "--ww-accent-2:", "--ww-indicator", "--ww-hero-number", "--ww-glow", "--ww-sheen", "--ww-card-edge", "--ww-card-corner", "--ww-chart-grid", "--ww-theme-ambient", "--ww-selection", "--ww-radius-scale"]
   const blocks = themesCss.split(/\n(?=\/\* [A-Z])/).filter(block => block.includes("--ww-ink-h"))
-  assert.equal(blocks.length, 4)
+  assert.equal(blocks.length, themeIds.length)
+  for (const theme of themeIds) assert.ok(blocks.some(block => block.includes(`data-ww-theme="${theme}"`)), theme)
   for (const block of blocks) for (const token of required) assert.ok(block.includes(token), `${token} missing in:\n${block.slice(0, 80)}`)
+})
+
+test("every token a theme uses exists", () => {
+  const defined = new Set()
+  for (const file of ["tokens.css", "themes.css"]) {
+    for (const match of readFileSync(`frontend/src/design/${file}`, "utf8").matchAll(/(--ww-[a-z0-9-]+)\s*:/g)) defined.add(match[1])
+  }
+  for (const match of themesCss.matchAll(/var\((--ww-[a-z0-9-]+)/g)) assert.ok(defined.has(match[1]), match[1])
+})
+
+test("the theme picker keeps every theme in one row", () => {
+  const picker = /\.ww-theme-picker \{[^}]*\}/.exec(readFileSync("frontend/src/design/components.css", "utf8"))[0]
+  assert.match(picker, new RegExp(`grid-template-columns: repeat\\(${themeIds.length},`))
+  assert.doesNotMatch(picker, /auto-fill|auto-fit/, "a wrapping grid would add a second row")
+  const css = readFileSync("frontend/src/design/components.css", "utf8")
+  for (const theme of themeIds) assert.ok(css.includes(`[data-theme-preview="${theme}"]`), `${theme} has swatches`)
+})
+
+test("the Fusion theme is the character first and the warm note second", () => {
+  const block = themesCss.slice(themesCss.indexOf('[data-ww-theme="fusion"]'))
+  const hue = name => Number(new RegExp(`${name}: oklch\\([0-9.]+ [0-9.]+ ([0-9.]+)`).exec(block)[1])
+  assert.equal(/--ww-accent-h: (\d+)/.exec(block)[1], "284", "the leading color comes from her hair and coat")
+  assert.ok(hue("--ww-accent-2") < 80, "the second color is the warm one")
+  assert.ok(hue("--ww-indicator") > 270 && hue("--ww-hero-number") > 270, "selection and hero numbers stay cold")
+})
+
+test("theme names match the game's own names in every language", () => {
+  const expected = { "zh-TW": ["熱熔", "莫寧"], "zh-CN": ["热熔", "莫宁"], en: ["Fusion", "Mornye"], ja: ["焦熱", "モーニエ"], ko: ["용융", "모니에"] }
+  for (const [locale, [name, character]] of Object.entries(expected)) {
+    const settings = JSON.parse(readFileSync(`frontend/locales/${locale}/settings.json`, "utf8").replace(/^\uFEFF/, ""))
+    assert.deepEqual(settings.themes.fusion, { name, character }, locale)
+  }
 })
 
 test("themes never redefine status or character series colors", () => {

@@ -328,7 +328,7 @@
 .ww-has-backdrop > :not(.ww-backdrop) { position: relative; }
 
 /* ------------------------------ Theme picker ------------------------------ */
-.ww-theme-picker { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--ww-space-3); width: 100%; }
+.ww-theme-picker { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--ww-space-3); width: 100%; }
 .ww-theme-card { position: relative; display: grid; grid-template-rows: auto auto; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--ww-space-1) var(--ww-space-2); padding: 0 0 var(--ww-space-2); border: 0; border-radius: var(--ww-radius-md); overflow: hidden; cursor: pointer; font: inherit; text-align: start; color: var(--ww-text); background: var(--ww-surface-1); box-shadow: inset 0 0 0 1px var(--ww-line-soft); transition: transform var(--ww-spring-snappy-dur) var(--ww-spring-snappy), box-shadow var(--ww-dur-base) var(--ww-ease-standard); }
 .ww-theme-card:hover { transform: translateY(-2px); box-shadow: inset 0 0 0 1px var(--ww-line-strong); }
 .ww-theme-card:active { transform: scale(0.98); }
@@ -353,6 +353,9 @@
 [data-theme-preview="glacio"] > .ww-theme-card-swatches > i:nth-child(1) { background: oklch(0.66 0.175 358); }
 [data-theme-preview="glacio"] > .ww-theme-card-swatches > i:nth-child(2) { background: oklch(0.86 0.052 205); }
 [data-theme-preview="glacio"] > .ww-theme-card-swatches > i:nth-child(3) { background: oklch(0.26 0.018 255); }
+[data-theme-preview="fusion"] > .ww-theme-card-swatches > i:nth-child(1) { background: oklch(0.78 0.085 284); }
+[data-theme-preview="fusion"] > .ww-theme-card-swatches > i:nth-child(2) { background: oklch(0.77 0.125 58); }
+[data-theme-preview="fusion"] > .ww-theme-card-swatches > i:nth-child(3) { background: oklch(0.22 0.026 282); }
 
 /* ------------------------------ Listening status ------------------------------ */
 .ww-listening { --ww-status: var(--ww-idle); --ww-status-soft: var(--ww-idle-soft); display: inline-flex; align-items: center; gap: var(--ww-space-1_5); min-width: 0; color: var(--ww-status); font-size: var(--ww-text-xs); font-weight: var(--ww-weight-medium); line-height: 1.2; white-space: nowrap; }

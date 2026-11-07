@@ -105,4 +105,30 @@
   --ww-selection: oklch(0.6 0.17 358 / 0.42);
 }
 
+/* Fusion / Mornye: silver hair and a white coat over indigo, gold fittings and red eyes. Starlit ink and lavender lead; the warm ember stays a small note, so it never reads as a warning. */
+[data-ww-theme="fusion"] {
+  --ww-ink-h: 282;
+  --ww-ink-c: 0.026;
+  --ww-ink-lift: 0.002;
+  --ww-accent-h: 284;
+  --ww-accent-c: 0.1;
+  --ww-radius-scale: 0.85;
+  --ww-on-accent: oklch(0.17 0.03 284);
+  --ww-accent-fill-top: oklch(0.79 0.08 284);
+  --ww-accent-fill-bottom: oklch(0.71 0.095 284);
+  --ww-accent-fill-hover: oklch(0.85 0.065 284);
+  --ww-accent-2: oklch(0.77 0.125 58);
+  --ww-accent-2-soft: oklch(0.77 0.125 58 / 0.14);
+  --ww-indicator: oklch(0.78 0.085 284);
+  --ww-hero-number: oklch(0.88 0.05 280);
+  --ww-glow: 0 0 32px -12px oklch(0.6 0.12 284 / 0.6);
+  --ww-sheen: oklch(0.95 0.02 284 / 0.07);
+  --ww-card-edge: linear-gradient(90deg, oklch(0.78 0.085 284 / 0.55), oklch(0.77 0.125 58 / 0.3) 38%, transparent 76%);
+  /* One star point rather than a line. */
+  --ww-card-corner: radial-gradient(circle, oklch(0.77 0.125 58 / 0.8) 0 1.5px, transparent 2px) right 9px top 4px / 5px 5px no-repeat;
+  --ww-chart-grid: oklch(0.86 0.04 284 / 0.075);
+  --ww-theme-ambient: radial-gradient(940px 540px at 86% -8%, oklch(0.48 0.11 284 / 0.2), transparent 70%), radial-gradient(640px 420px at 6% 110%, oklch(0.62 0.12 52 / 0.075), transparent 70%);
+  --ww-selection: oklch(0.6 0.11 284 / 0.45);
+}
+
 ::selection { background: var(--ww-selection); }

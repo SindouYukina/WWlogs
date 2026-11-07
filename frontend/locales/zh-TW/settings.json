@@ -29,6 +29,10 @@
     "glacio": {
       "name": "冷凝",
       "character": "珂萊塔"
+    },
+    "fusion": {
+      "name": "熱熔",
+      "character": "莫寧"
     }
   },
   "groups": {

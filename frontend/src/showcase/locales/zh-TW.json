@@ -28,7 +28,8 @@
       "electro": "導電",
       "aero": "氣動",
       "havoc": "湮滅",
-      "glacio": "冷凝"
+      "glacio": "冷凝",
+      "fusion": "熱熔"
     },
     "scenario": {
       "active": "運作中",

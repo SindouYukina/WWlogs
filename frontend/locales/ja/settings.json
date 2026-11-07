@@ -29,6 +29,10 @@
     "glacio": {
       "name": "凝縮",
       "character": "カルロッタ"
+    },
+    "fusion": {
+      "name": "焦熱",
+      "character": "モーニエ"
     }
   },
   "groups": {

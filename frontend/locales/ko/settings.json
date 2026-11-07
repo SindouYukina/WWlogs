@@ -29,6 +29,10 @@
     "glacio": {
       "name": "응결",
       "character": "카를로타"
+    },
+    "fusion": {
+      "name": "용융",
+      "character": "모니에"
     }
   },
   "groups": {

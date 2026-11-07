@@ -42,7 +42,7 @@ export const springs = {
 
 export type SpringName = keyof typeof springs
 
-export type MotionFlavor = "electro" | "aero" | "havoc" | "glacio"
+export type MotionFlavor = "electro" | "aero" | "havoc" | "glacio" | "fusion"
 
 /**
  * A theme changes the feel of interaction, not the motion system. Data and rank springs are never overridden, because
@@ -57,6 +57,8 @@ export const flavors: Readonly<Record<MotionFlavor, { time: number; springs: Par
   havoc: { time: 0.8, springs: { snappy: { stiffness: 620, damping: 44, mass: 0.5 }, morph: { stiffness: 480, damping: 40, mass: 0.7 }, gentle: { stiffness: 420, damping: 40, mass: 0.8 }, lively: { stiffness: 560, damping: 38, mass: 0.5 } } },
   /** Poised and even, slightly slower than the default. */
   glacio: { time: 1.06, springs: { snappy: { stiffness: 370, damping: 29, mass: 0.6 }, morph: { stiffness: 265, damping: 29, mass: 0.9 }, gentle: { stiffness: 220, damping: 29, mass: 0.95 }, lively: { stiffness: 300, damping: 24, mass: 0.7 } } },
+  /** Exact, like an instrument: quick to arrive, with only a small warm settle. */
+  fusion: { time: 0.94, springs: { snappy: { stiffness: 480, damping: 32, mass: 0.55 }, morph: { stiffness: 360, damping: 32, mass: 0.85 }, gentle: { stiffness: 300, damping: 33, mass: 0.9 }, lively: { stiffness: 420, damping: 26, mass: 0.6 } } },
 }
 
 /** Natural frequency for counters that follow engine values. About 700 ms to settle after an update. */
