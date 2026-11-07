@@ -149,6 +149,7 @@ func Run(options Options) error {
 		Windows: application.WindowsOptions{
 			WebviewUserDataPath:   webviewUserDataPath(),
 			AdditionalBrowserArgs: webviewArguments(options),
+			WndProcInterceptor:    keepForeground,
 		},
 	})
 	bridge.openBrowser = options.OpenBrowser
