@@ -33,6 +33,9 @@ type ViewSnapshot struct {
 	UnassignedRoleShare *float64             `json:"unassignedRoleShare,omitempty"`
 	Vehicle             *ViewVehicle         `json:"vehicle,omitempty"`
 	Effects             ViewEffects          `json:"effects"`
+	// Timeline is the DPS over time of the encounter the UI shows (Encounters.Current, else the newest of
+	// Encounters.Recent), at most maxViewTimelinePoints points; absent before the first encounter.
+	Timeline *EncounterTimelineSnapshot `json:"timeline,omitempty"`
 }
 
 // ViewSnapshotSchemaVersion changes whenever a field changes meaning or is removed.
@@ -42,6 +45,9 @@ const ViewSnapshotSchemaVersion = 2
 const (
 	maxViewRecentEncounters = 10
 	maxViewEffects          = 128
+	// maxViewTimelinePoints keeps the chart payload small; longer encounters use a wider display interval, and the
+	// engine's 1-second intervals stay exact underneath.
+	maxViewTimelinePoints = 120
 )
 
 // ViewHealth is the capture, transport, and context state behind the numbers.
@@ -249,6 +255,9 @@ func (p *processor) viewSnapshot() ViewSnapshot {
 		UnassignedRoleShare: unassignedRoleShare(statistics.UnassignedRole, statistics.DamageDealt),
 		Vehicle:             viewVehicle(statistics.Vehicle, statistics.DamageDealt),
 		Effects:             p.viewEffects(),
+	}
+	if p.damageStatistics != nil {
+		view.Timeline = p.damageStatistics.TimelineAt(CaptureQueryTime{CaptureSessionID: statistics.CaptureSessionID, Timestamp: observedAt}, maxViewTimelinePoints)
 	}
 	return view
 }

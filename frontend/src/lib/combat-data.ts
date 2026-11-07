@@ -15,8 +15,14 @@ export interface SkillRow {
 
 export interface CombatTimeline {
   slots: number
-  /** Per-role values by RoleId. */
-  series: ReadonlyMap<number, ReadonlyArray<number | null>>
+  /** Seconds one slot covers; slot n starts n * slotSeconds after the encounter start. */
+  slotSeconds: number
+  /** DPS per slot by series key: "team", a ranking row key (role-<playerId>-<roleId>, vehicle-<kind>), or "unassigned". Null slots are not drawn. */
+  series: ReadonlyMap<string, ReadonlyArray<number | null>>
+  /** The encounter the series belong to, when the provider knows it. */
+  encounterId?: string
+  /** The encounter finished, so the series are final. */
+  final?: boolean
 }
 
 export interface CombatData {
