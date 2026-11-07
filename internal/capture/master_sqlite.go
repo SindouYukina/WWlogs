@@ -708,6 +708,9 @@ func loadSQLiteBuffStaticParameters(db *sql.DB, master *gameMaster) error {
 	if err := loadBuffModifierPresence(db, statics); err != nil {
 		return err
 	}
+	if err := loadBuffHUDCues(db, statics); err != nil {
+		return err
+	}
 	master.buffStatics = make(map[uint64]buffStaticParameters, len(statics))
 	for id, entry := range statics {
 		if _, defined := master.buffDefinitions[id]; defined {
