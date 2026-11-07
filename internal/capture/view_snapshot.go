@@ -420,22 +420,27 @@ func (p *processor) viewEffects() ViewEffects {
 	snapshot := p.effectSnapshotAtLastFrame()
 	// Only display-eligible instances are listed; the bound applies to the display set alone, so an eligible instance is
 	// never pushed out by one that would not have been shown. Effects with a server duration come first, so the bound
-	// and a short window keep the countdowns; within each group the tracker's order is kept, so a refresh never moves a
-	// row.
+	// and a short window keep the countdowns; within the timed and the untimed group, effects the game itself draws in a
+	// HUD buff bar come first (effect_hud_cues.go). Within each group the tracker's order is kept, so a refresh never
+	// moves a row. The order only decides which eligible rows fit; it never removes one from the display set.
 	view := ViewEffects{Status: snapshot.Status, Reason: snapshot.Reason, Active: []ViewEffect{}}
-	var timed, untimed []EffectInstanceSnapshot
+	var groups [4][]EffectInstanceSnapshot
 	for _, effect := range snapshot.Effects {
 		display := effectDisplayFor(effect)
 		view.Counts.add(display.Eligibility)
-		switch {
-		case display.Eligibility != EffectDisplayEligible:
-		case effect.ServerDurationSeconds != nil:
-			timed = append(timed, effect)
-		default:
-			untimed = append(untimed, effect)
+		if display.Eligibility != EffectDisplayEligible {
+			continue
 		}
+		group := 0
+		if effect.ServerDurationSeconds == nil {
+			group = 2
+		}
+		if effect.Static == nil || len(effect.Static.HUDCueTypes) == 0 {
+			group++
+		}
+		groups[group] = append(groups[group], effect)
 	}
-	for _, effect := range append(timed, untimed...) {
+	for _, effect := range append(append(append(groups[0], groups[1]...), groups[2]...), groups[3]...) {
 		if len(view.Active) == maxViewEffects {
 			view.Counts.Truncated++
 			continue

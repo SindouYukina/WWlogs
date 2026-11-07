@@ -249,6 +249,9 @@ type buffStaticParameters struct {
 	attribute    uint64
 	hasAttribute bool
 	hasModifier  bool
+	// hudCueTypes are the distinct HUD cue types (ascending) of the row's GameplayCueIds that have a Path
+	// (effect_hud_cues.go): the game draws the effect in a HUD buff bar.
+	hudCueTypes []int32
 }
 
 // effectTermRecord is the localized glossary term of an element-ailment buff row. The link comes

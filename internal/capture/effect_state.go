@@ -143,6 +143,9 @@ type EffectStaticInfo struct {
 	// Term is the official glossary text of an element-ailment effect. Its link to the effect is
 	// correlated, never verified, because it joins on the GameplayTag rather than on an engine key.
 	Term *EffectTermInfo `json:"term,omitempty"`
+	// HUDCueTypes are the HUD buff-bar cue types (2, 14, 24, 37) with an icon Path among the definition's
+	// GameplayCueIds: the game shows this effect in a HUD buff bar (effect_hud_cues.go).
+	HUDCueTypes []int32 `json:"hudCueTypes,omitempty"`
 }
 
 // EffectTermInfo is the localized glossary term tied to an effect definition.
@@ -443,7 +446,7 @@ func (info *EffectStaticInfo) clone() *EffectStaticInfo {
 	if info == nil {
 		return nil
 	}
-	copied := &EffectStaticInfo{DeveloperTags: append([]string(nil), info.DeveloperTags...)}
+	copied := &EffectStaticInfo{DeveloperTags: append([]string(nil), info.DeveloperTags...), HUDCueTypes: append([]int32(nil), info.HUDCueTypes...)}
 	if info.Term != nil {
 		term := *info.Term
 		copied.Term = &term

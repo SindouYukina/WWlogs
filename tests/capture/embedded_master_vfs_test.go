@@ -109,6 +109,13 @@ func TestMasterLookupDigest(t *testing.T) {
 		writeSortedLookups(digest, "uiSkillName", master.skillNames.uiSkillNames)
 		writeSortedLookups(digest, "echoItem", master.skillNames.echoItems)
 		writeSortedLookups(digest, "echoName", master.skillNames.echoNames)
+		hudCues := map[uint64][]int32{}
+		for id, static := range master.buffStatics {
+			if len(static.hudCueTypes) > 0 {
+				hudCues[id] = static.hudCueTypes
+			}
+		}
+		writeSortedLookups(digest, "buffHudCue", hudCues)
 		fmt.Fprintf(digest, "relations=%d monsters=%d\n", len(master.sceneIdentity.levelTemplates), len(master.sceneIdentity.levelMonsters))
 	}
 	t.Logf("master lookup digest: %s", hex.EncodeToString(digest.Sum(nil)))

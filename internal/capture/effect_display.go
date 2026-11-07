@@ -24,6 +24,10 @@ const (
 	EffectKindBuffMarker EffectKind = "buff_marker"
 	// EffectKindCombatState has a combat word in a developer tag outside the internal-state families.
 	EffectKindCombatState EffectKind = "combat_state"
+	// EffectKindHUDEffect has no more specific kind, but the game draws it in a HUD buff bar: its definition lists a
+	// GameplayCue of a HUD type with an icon (effect_hud_cues.go). This is the client's own presentation evidence that
+	// the player sees the effect; its meaning and polarity stay unknown.
+	EffectKindHUDEffect EffectKind = "hud_effect"
 	// EffectKindRuntimeLink has no classifying definition, but the local team put it on a monster or a monster on the
 	// local team. Its meaning is unknown; only its combat context is established.
 	EffectKindRuntimeLink EffectKind = "runtime_link"
@@ -64,6 +68,7 @@ const (
 	effectKindBasisAttribute    = "combat_attribute_modifier"
 	effectKindBasisBuffMarker   = "developer_tag_buff_marker:"
 	effectKindBasisNonCombat    = "non_combat_evidence"
+	effectKindBasisHUDCue       = "hud_buff_bar_cue"
 	effectKindBasisInternalTag  = "developer_tag_internal_family:"
 	effectKindBasisCombatTag    = "developer_tag_combat_word"
 	effectKindBasisRuntimeLink  = "runtime_monster_link"
@@ -74,7 +79,9 @@ const (
 // classifyEffectKind derives the kind from an instance's combat classification and its definition's developer tags.
 // Player-facing evidence wins over internal evidence, as combat evidence wins over non-combat evidence in the combat
 // class, so an effect with both is never hidden: a term, then a combat attribute modifier, then a buff marker, then
-// non-combat evidence, then an internal-state family, then other combat words, then the runtime link.
+// non-combat evidence, then a HUD buff-bar cue, then an internal-state family, then other combat words, then the
+// runtime link. A HUD cue never replaces a more specific kind and never hides anything: an effect without one keeps
+// whatever its other evidence says.
 func classifyEffectKind(class EffectCombatClass, basis string, static *EffectStaticInfo) (EffectKind, string) {
 	var tags []string
 	if static != nil {
@@ -91,6 +98,9 @@ func classifyEffectKind(class EffectCombatClass, basis string, static *EffectSta
 	}
 	if class == EffectCombatClassNonCombat {
 		return EffectKindNonCombat, effectKindBasisNonCombat
+	}
+	if static != nil && len(static.HUDCueTypes) > 0 {
+		return EffectKindHUDEffect, effectKindBasisHUDCue
 	}
 	if segment := tagSegmentMatch(tags, func(s string) bool { return internalStateTagSegments[s] || strings.Contains(s, "镜头") }); segment != "" {
 		return EffectKindInternalState, effectKindBasisInternalTag + segment
@@ -162,7 +172,7 @@ func effectDisplayFor(effect EffectInstanceSnapshot) EffectDisplay {
 		target = EffectTargetEnemy
 	}
 	switch effect.Kind {
-	case EffectKindElementAilment, EffectKindStatModifier, EffectKindBuffMarker, EffectKindCombatState, EffectKindRuntimeLink:
+	case EffectKindElementAilment, EffectKindStatModifier, EffectKindBuffMarker, EffectKindHUDEffect, EffectKindCombatState, EffectKindRuntimeLink:
 		return EffectDisplay{Eligibility: EffectDisplayEligible, Target: target}
 	case EffectKindNonCombat:
 		return EffectDisplay{Eligibility: EffectDisplayNonCombat, Target: target}
