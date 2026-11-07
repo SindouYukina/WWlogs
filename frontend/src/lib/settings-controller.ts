@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import type { AppIdentity } from "./build-identity"
 import { environmentNotice, type Adapter, type EnvironmentState, type NpcapDownload } from "./capture-environment"
 import { host, type OverlayChange } from "./host"
-import type { OverlayKind, OverlayStates, Snapshot } from "./snapshot"
+import { normalizeFrameRateCap, type FrameRateCap } from "@/design/motion/ticker"
+import { normalizeUpdateInterval, type OverlayKind, type OverlayStates, type Snapshot, type UpdateInterval } from "./snapshot"
 
 /** The official Npcap download as far as it is known. `info` stays null until the host has answered. */
 export interface NpcapDownloadState {
@@ -24,6 +25,12 @@ export interface SettingsController {
   theme: string | undefined
   reduceMotion: boolean
   setAppearance: (theme: string, reduceMotion: boolean) => void
+  /** The one live combat data cadence for the Dashboard and both Overlays. */
+  updateIntervalMs: UpdateInterval
+  setUpdateInterval: (ms: UpdateInterval) => void
+  /** The cap for frame-by-frame animation computed by the frontend. */
+  animationFps: FrameRateCap
+  setAnimationFps: (fps: FrameRateCap) => void
   adapters: readonly Adapter[]
   defaultAdapter: string
   setDefaultAdapter: (ipv4: string) => void
@@ -130,6 +137,10 @@ export function useLiveSettings(snapshot: Snapshot | null, connected: boolean, c
     theme: snapshot?.theme,
     reduceMotion: snapshot?.reduceMotion === true,
     setAppearance: (theme, reduceMotion) => guard(host.setAppearance(theme, reduceMotion)),
+    updateIntervalMs: normalizeUpdateInterval(snapshot?.updateIntervalMs),
+    setUpdateInterval: ms => guard(host.setUpdateInterval(ms)),
+    animationFps: normalizeFrameRateCap(snapshot?.animationFps),
+    setAnimationFps: fps => guard(host.setAnimationFps(fps)),
     adapters,
     defaultAdapter,
     setDefaultAdapter: ipv4 => guard(host.setDefaultAdapter(ipv4).then(state => { if (mounted.current) setStoredAdapter(state.settings.defaultAdapterIPv4) })),

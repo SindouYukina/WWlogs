@@ -60,3 +60,23 @@ test("motorcycle is a separate contributor using Go shares without a synthetic R
  assert.equal(damageContributors([],vehicle)[0].key,"vehicle-motorcycle")
  assert.equal(damageContributors([role]).length,1)
 })
+
+import { defaultUpdateInterval, normalizeUpdateInterval, shellChanged, updateIntervals, withShell } from "../../frontend/src/lib/snapshot.ts"
+
+test("only the selectable update intervals are accepted; anything else is the 250 ms default", () => {
+  assert.deepEqual([...updateIntervals], [250, 500, 750, 1000])
+  for (const value of updateIntervals) assert.equal(normalizeUpdateInterval(value), value)
+  for (const value of [undefined, null, 0, 100, 125, 2000, "250"]) assert.equal(normalizeUpdateInterval(value), defaultUpdateInterval)
+  assert.equal(defaultUpdateInterval, 250)
+})
+
+test("a display setting change on a heartbeat updates the shell without replacing core data", () => {
+  const current = { sequence: 9, localeRevision: 1, view: { marker: "core" }, updateIntervalMs: 250, animationFps: 60, theme: "electro" }
+  const heartbeat = { ...current, view: { marker: "must not replace" }, updateIntervalMs: 1000, animationFps: 30 }
+  assert.equal(shellChanged(heartbeat, current), true)
+  const next = withShell(current, heartbeat)
+  assert.equal(next.view, current.view)
+  assert.equal(next.updateIntervalMs, 1000)
+  assert.equal(next.animationFps, 30)
+  assert.equal(shellChanged({ ...current }, current), false)
+})

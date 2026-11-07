@@ -68,10 +68,15 @@ export interface SegmentedProps<T extends string> {
   label: string
   /** "tabs" and "underline" use tab semantics; the default is a radio group. */
   variant?: "segmented" | "tabs" | "underline"
+  /**
+   * Gives every option the width of the widest. The indicator then keeps one width and only translates, which the
+   * compositor can animate without a layout per frame; use it for value scales such as intervals or rates.
+   */
+  equal?: boolean
 }
 
 /** Segmented control and tabs share this implementation. Only the indicator moves between options. */
-export function Segmented<T extends string>({ value, options, onChange, label, variant = "segmented" }: SegmentedProps<T>) {
+export function Segmented<T extends string>({ value, options, onChange, label, variant = "segmented", equal = false }: SegmentedProps<T>) {
   const { container, box, ready } = useSlidingIndicator(value, "x")
   const tabs = variant !== "segmented"
   const onKeyDown = (event: React.KeyboardEvent) => {
@@ -82,7 +87,7 @@ export function Segmented<T extends string>({ value, options, onChange, label, v
     const next = options[(index + direction + options.length) % options.length]
     if (next) onChange(next.value)
   }
-  return <div ref={container} className="ww-seg" role={tabs ? "tablist" : "radiogroup"} aria-label={label} data-variant={variant} data-ready={ready} onKeyDown={onKeyDown}>
+  return <div ref={container} className="ww-seg" role={tabs ? "tablist" : "radiogroup"} aria-label={label} data-variant={variant} data-equal={equal || undefined} data-ready={ready} onKeyDown={onKeyDown}>
     {box && <span className="ww-seg-indicator" aria-hidden="true" style={{ width: box.size, transform: `translateX(${box.offset}px)` }} />}
     {options.map(option => {
       const selected = option.value === value

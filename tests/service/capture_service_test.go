@@ -22,6 +22,21 @@ type fakeSession struct {
 	runErr    error
 	burst     int
 	closeWait <-chan struct{}
+	// intervals records every SetPublishInterval call, in order.
+	intervalMu sync.Mutex
+	intervals  []time.Duration
+}
+
+func (f *fakeSession) SetPublishInterval(interval time.Duration) {
+	f.intervalMu.Lock()
+	defer f.intervalMu.Unlock()
+	f.intervals = append(f.intervals, interval)
+}
+
+func (f *fakeSession) publishIntervals() []time.Duration {
+	f.intervalMu.Lock()
+	defer f.intervalMu.Unlock()
+	return append([]time.Duration(nil), f.intervals...)
 }
 
 func (f *fakeSession) Info() capture.SessionInfo {
@@ -343,5 +358,38 @@ func TestShutdownDuringOpenDoesNotWaitOnLifecycleLock(t *testing.T) {
 	stop(t, s)
 	if session.runs.Load() != 0 || session.closes.Load() != 1 {
 		t.Fatal("opening session ran or closed more than once")
+	}
+}
+
+// The UI update interval is owned by the service: it reaches the session being opened and the running session, it
+// survives a restart, and a stopped session no longer receives changes.
+func TestPublishIntervalReachesRunningAndLaterSessions(t *testing.T) {
+	first, second := &fakeSession{id: 1}, &fakeSession{id: 2}
+	var configured []time.Duration
+	var opened atomic.Int32
+	sessions := []*fakeSession{first, second}
+	s := NewCaptureService(func(cfg capture.SessionConfig) (Session, error) {
+		configured = append(configured, cfg.PublishInterval)
+		return sessions[int(opened.Add(1))-1], nil
+	})
+	s.SetPublishInterval(time.Second)
+	if err := s.Start(capture.SessionConfig{PublishInterval: 250 * time.Millisecond}); err != nil {
+		t.Fatal(err)
+	}
+	s.SetPublishInterval(500 * time.Millisecond)
+	stop(t, s)
+	s.SetPublishInterval(750 * time.Millisecond)
+	if err := s.Start(capture.SessionConfig{}); err != nil {
+		t.Fatal(err)
+	}
+	stop(t, s)
+	if len(configured) != 2 || configured[0] != time.Second || configured[1] != 750*time.Millisecond {
+		t.Fatalf("opened with %v, want [1s 750ms]", configured)
+	}
+	if got := first.publishIntervals(); len(got) != 2 || got[0] != time.Second || got[1] != 500*time.Millisecond {
+		t.Fatalf("first session intervals = %v, want [1s 500ms]", got)
+	}
+	if got := second.publishIntervals(); len(got) != 1 || got[0] != 750*time.Millisecond {
+		t.Fatalf("second session intervals = %v, want [750ms]; a stopped session must not receive changes", got)
 	}
 }

@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
+
 	"wwlogs/internal/capture"
 	"wwlogs/internal/service"
 )
@@ -132,6 +134,50 @@ func TestShellChangeReencodesWithoutTouchingCoreSequence(t *testing.T) {
 	}
 	if view.Roles[0].ElementID != 0 {
 		t.Fatal("projection mutated the core snapshot")
+	}
+}
+
+func TestProjectedShellCarriesDisplayPerformance(t *testing.T) {
+	store := loadSettings(filepath.Join(t.TempDir(), "settings.json"), testLocaleCatalog())
+	projection := &displayProjection{}
+	source := &service.Snapshot{Sequence: 3}
+	decode := func(raw []byte) (shell struct {
+		Sequence         uint64
+		UpdateIntervalMs int
+		AnimationFps     int
+	}) {
+		if err := json.Unmarshal(raw, &shell); err != nil {
+			t.Fatal(err)
+		}
+		return shell
+	}
+	first, err := projection.encode(source, store.current(), testLocaleCatalog(), service.ListeningStatus{}, OverlayStates{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := decode(first); got.UpdateIntervalMs != 250 || got.AnimationFps != 60 {
+		t.Fatalf("defaults: %+v", got)
+	}
+	if _, err := store.setUpdateInterval(750); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.setAnimationFPS(120); err != nil {
+		t.Fatal(err)
+	}
+	// The same core snapshot is re-encoded with the new shell, so every window sees the change without new data.
+	second, err := projection.encode(source, store.current(), testLocaleCatalog(), service.ListeningStatus{}, OverlayStates{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := decode(second); got.UpdateIntervalMs != 750 || got.AnimationFps != 120 || got.Sequence != 3 {
+		t.Fatalf("after change: %+v", got)
+	}
+	// A heartbeat never comes before the next scheduled snapshot of a running capture.
+	if wait := snapshotWait(store.current().Settings); wait != 1750*time.Millisecond {
+		t.Fatalf("heartbeat limit at 750 ms = %v", wait)
+	}
+	if wait := snapshotWait(Settings{}); wait != 1250*time.Millisecond {
+		t.Fatalf("default heartbeat limit = %v", wait)
 	}
 }
 
