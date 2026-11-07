@@ -32,7 +32,6 @@ func parseOptions(arguments []string, output io.Writer) (Options, error) {
 	diagnostics := flags.Bool("capture-diagnostics", true, "Development: record live PCAP and diagnostics to the local spool (default true; replay does not record)")
 	showOverlay := flags.Bool("overlay", false, "Development: show the overlay window at start")
 	debugPort := flags.Int("webview-debug-port", 0, "Development: open the WebView2 remote debugging port for automated UI checks")
-	publishInterval := flags.Duration("publish-interval", capture.DefaultPublishInterval, "Development: minimum time between UI snapshots (at least 100ms)")
 	showcase := flags.Bool("showcase", false, "Development: open the Motion Showcase (mock data only) instead of the Desktop view")
 	showcaseOverlays := flags.Bool("showcase-overlays", false, "Development: with -showcase, also open its transparent Overlay windows")
 	webviewArgs := flags.String("webview-args", "", "Development: extra WebView2 browser arguments for rendering experiments, separated by spaces")
@@ -68,15 +67,11 @@ func parseOptions(arguments []string, output io.Writer) (Options, error) {
 	if *fontRoot != "" && !*showcase {
 		return Options{}, errors.New("-font-root requires -showcase")
 	}
-	if *publishInterval < capture.MinPublishInterval {
-		*publishInterval = capture.MinPublishInterval
-	}
 	return Options{
 		MasterDatabase: *masterDatabase,
 		Locale:         *locale,
 		Session: capture.SessionConfig{
-			LocalIPv4: *ip, ReplayPath: *replay, ReplayPacing: *pacing,
-			PublishInterval: *publishInterval, Diagnostics: *diagnostics,
+			LocalIPv4: *ip, ReplayPath: *replay, ReplayPacing: *pacing, Diagnostics: *diagnostics,
 		},
 		AutoStart:        *autoStart || *replay != "",
 		ShowOverlay:      *showOverlay,

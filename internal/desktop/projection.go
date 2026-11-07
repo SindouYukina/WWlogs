@@ -26,7 +26,11 @@ type projectedShell struct {
 	Listening    service.ListeningStatus `json:"listening"`
 	Theme        string                  `json:"theme"`
 	ReduceMotion bool                    `json:"reduceMotion"`
-	Overlays     OverlayStates           `json:"overlays"`
+	// UpdateIntervalMs is the publish cadence the windows receive; the countdown bars ease across one interval.
+	UpdateIntervalMs int `json:"updateIntervalMs"`
+	// AnimationFPS caps frontend frame-by-frame animation.
+	AnimationFPS int           `json:"animationFps"`
+	Overlays     OverlayStates `json:"overlays"`
 	// SettingsWarning is a recoverable settings problem to show in the Desktop window.
 	SettingsWarning string `json:"settingsWarning,omitempty"`
 }
@@ -34,7 +38,9 @@ type projectedShell struct {
 func (p *displayProjection) encode(source *service.Snapshot, settings SettingsState, catalog localeCatalog, listening service.ListeningStatus, overlays OverlayStates) (json.RawMessage, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	shell := projectedShell{Listening: listening, Theme: effectiveTheme(settings.Settings), ReduceMotion: settings.Settings.ReduceMotion, Overlays: overlays, SettingsWarning: settings.Warning}
+	shell := projectedShell{Listening: listening, Theme: effectiveTheme(settings.Settings), ReduceMotion: settings.Settings.ReduceMotion,
+		UpdateIntervalMs: int(effectiveUpdateInterval(settings.Settings) / time.Millisecond), AnimationFPS: effectiveAnimationFPS(settings.Settings),
+		Overlays: overlays, SettingsWarning: settings.Warning}
 	if p.source == source && p.revision == settings.LocaleRevision && p.shell == shell {
 		return append(json.RawMessage(nil), p.encoded...), nil
 	}

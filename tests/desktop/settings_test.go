@@ -4,7 +4,11 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
+
+	"wwlogs/internal/capture"
 )
 
 func TestAppearanceDefaultsPersistenceAndValidation(t *testing.T) {
@@ -100,4 +104,60 @@ func testLocaleCatalog() localeCatalog {
 	var catalog localeCatalog
 	_ = json.Unmarshal([]byte(`{"fallbackLocale":"en","supportedLocales":["en","ja"],"languages":{"en":{"label":"English","masterLocale":"en-US"},"ja":{"label":"Japanese","masterLocale":"ja-JP"}}}`), &catalog)
 	return catalog
+}
+
+func TestDisplayPerformanceDefaultsPersistenceAndValidation(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "user", "settings.json")
+	store := loadSettings(path, testLocaleCatalog())
+	first := store.current().Settings
+	if effectiveUpdateInterval(first) != capture.DefaultPublishInterval || effectiveAnimationFPS(first) != 60 {
+		t.Fatalf("first run: %v, %d FPS", effectiveUpdateInterval(first), effectiveAnimationFPS(first))
+	}
+	for _, ms := range []int{0, 100, 249, 300, 1001, -250} {
+		if _, err := store.setUpdateInterval(ms); err == nil {
+			t.Fatalf("update interval %d accepted", ms)
+		}
+	}
+	for _, fps := range []int{0, 1, 59, 144, 240} {
+		if _, err := store.setAnimationFPS(fps); err == nil {
+			t.Fatalf("frame rate %d accepted", fps)
+		}
+	}
+	if _, err := store.setAppearance("glacio", true); err != nil {
+		t.Fatal(err)
+	}
+	for _, ms := range []int{250, 500, 750, 1000} {
+		state, err := store.setUpdateInterval(ms)
+		if err != nil || effectiveUpdateInterval(state.Settings) != time.Duration(ms)*time.Millisecond {
+			t.Fatalf("set %d ms: %+v %v", ms, state, err)
+		}
+	}
+	for _, fps := range []int{30, 120, 60, 30} {
+		if _, err := store.setAnimationFPS(fps); err != nil {
+			t.Fatal(err)
+		}
+	}
+	reloaded := loadSettings(path, testLocaleCatalog()).current().Settings
+	if effectiveUpdateInterval(reloaded) != time.Second || effectiveAnimationFPS(reloaded) != 30 || reloaded.Theme != "glacio" || !reloaded.ReduceMotion {
+		t.Fatalf("not restored or another preference was overwritten: %+v", reloaded)
+	}
+	// Other preferences keep the display choices.
+	if state, err := store.setLocale("en"); err != nil || state.Settings.UpdateIntervalMs != 1000 || state.Settings.AnimationFPS != 30 {
+		t.Fatalf("locale update: %+v %v", state, err)
+	}
+	// A file written before these settings existed, and values from a newer version, load as defaults without a warning.
+	for _, content := range []string{`{"version":1,"locale":"en","theme":"aero"}`, `{"version":1,"locale":"en","theme":"aero","updateIntervalMs":125,"animationFps":240}`} {
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		state := loadSettings(path, testLocaleCatalog()).current()
+		if state.Warning != "" || state.Settings.Theme != "aero" || effectiveUpdateInterval(state.Settings) != 250*time.Millisecond || effectiveAnimationFPS(state.Settings) != 60 {
+			t.Fatalf("%s: %+v", content, state)
+		}
+	}
+	// The fields are optional, so default preferences are written exactly as before and older versions can read them.
+	data, err := json.Marshal(Settings{Version: 1, Locale: "en"})
+	if err != nil || strings.Contains(string(data), "updateIntervalMs") || strings.Contains(string(data), "animationFps") {
+		t.Fatalf("default settings encode the new fields: %s %v", data, err)
+	}
 }

@@ -31,7 +31,9 @@ type Bridge struct {
 	openBrowser func(string) error
 }
 
-// snapshotWaitLimit bounds one NextSnapshot call; an unchanged snapshot returned at the limit is a heartbeat.
+// snapshotWaitLimit is the heartbeat base: one NextSnapshot call waits at most this plus one update interval, and an
+// unchanged snapshot returned at the limit is a heartbeat. Adding the interval keeps a running capture's own snapshots
+// ahead of the heartbeat, so a slower update interval is not undone by full duplicate payloads.
 const snapshotWaitLimit = time.Second
 
 // stopWaitLimit bounds an interactive StopCapture request; native shutdown allows a separate drain budget.
@@ -64,6 +66,24 @@ func (b *Bridge) SetAppearance(theme string, reduceMotion bool) (SettingsState, 
 	return state, err
 }
 
+// SetUpdateInterval persists the live combat data cadence and applies it to the running capture at once. It changes
+// only how often snapshots are published to the windows; packet processing and statistics are unaffected.
+func (b *Bridge) SetUpdateInterval(ms int) (SettingsState, error) {
+	state, err := b.settings.setUpdateInterval(ms)
+	if err == nil {
+		b.capture.SetPublishInterval(effectiveUpdateInterval(state.Settings))
+	}
+	b.shell.fire()
+	return state, err
+}
+
+// SetAnimationFPS persists the animation frame-rate cap; every window applies it from its next snapshot.
+func (b *Bridge) SetAnimationFPS(fps int) (SettingsState, error) {
+	state, err := b.settings.setAnimationFPS(fps)
+	b.shell.fire()
+	return state, err
+}
+
 // UpdateOverlay changes one Overlay's window properties. The other Overlay is not touched.
 func (b *Bridge) UpdateOverlay(kind string, change OverlayChange) (OverlayStates, error) {
 	if b.overlays == nil {
@@ -81,9 +101,9 @@ func (b *Bridge) ResetOverlay(kind string) error {
 }
 
 // NextSnapshot returns the newest snapshot once its sequence is greater than after, when host state changes, or the
-// current one after about a second. The returned JSON is a copy.
+// current one after the heartbeat limit (one second plus the update interval). The returned JSON is a copy.
 func (b *Bridge) NextSnapshot(ctx context.Context, after uint64) (json.RawMessage, error) {
-	waitCtx, cancel := context.WithTimeout(ctx, snapshotWaitLimit)
+	waitCtx, cancel := context.WithTimeout(ctx, snapshotWait(b.settings.current().Settings))
 	defer cancel()
 	changed := b.shell.changed()
 	go func() {
@@ -101,6 +121,11 @@ func (b *Bridge) NextSnapshot(ctx context.Context, after uint64) (json.RawMessag
 		return nil, err
 	}
 	return b.encode(snapshot)
+}
+
+// snapshotWait bounds one NextSnapshot call for the stored update interval.
+func snapshotWait(settings Settings) time.Duration {
+	return snapshotWaitLimit + effectiveUpdateInterval(settings)
 }
 
 // CurrentSnapshot returns the newest snapshot without waiting.

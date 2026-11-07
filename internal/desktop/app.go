@@ -118,6 +118,7 @@ func Run(options Options) error {
 	defer masters.Close()
 	resolver := masters.DisplayResolver()
 	captureService := service.NewCaptureService(service.SessionOpener(masters))
+	captureService.SetPublishInterval(effectiveUpdateInterval(settings.current().Settings))
 	bridge := &Bridge{capture: captureService, defaults: options.Session, settings: settings}
 	bridge.catalog = catalog
 	bridge.projection = &displayProjection{resolver: resolver}

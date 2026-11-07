@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/gopacket"
@@ -27,7 +28,8 @@ type SessionConfig struct {
 	ReplayPacing float64
 	// MinPort and MaxPort bound the game server UDP ports; zero selects the defaults.
 	MinPort, MaxPort int
-	// PublishInterval is the minimum wall time between published snapshots; zero selects DefaultPublishInterval.
+	// PublishInterval is the initial minimum wall time between published snapshots; zero selects
+	// DefaultPublishInterval. SetPublishInterval changes it while the session runs. It never affects packet handling.
 	PublishInterval time.Duration
 	// Diagnostics writes the Development diagnostic PCAP for a live session. Public builds reject it.
 	Diagnostics bool
@@ -124,6 +126,16 @@ type Session struct {
 	diagnostics *sessionDiagnostics
 	info        SessionInfo
 	used        bool
+	// publishInterval is read by the Run goroutine before every publish decision and written by SetPublishInterval.
+	publishInterval atomic.Int64
+}
+
+// normalizePublishInterval maps zero to the default and caps the snapshot rate at MinPublishInterval.
+func normalizePublishInterval(interval time.Duration) time.Duration {
+	if interval == 0 {
+		return DefaultPublishInterval
+	}
+	return max(interval, MinPublishInterval)
 }
 
 // OpenSession validates cfg, opens the packet source, and prepares a fresh processor. All resources it opened are
@@ -138,12 +150,7 @@ func OpenSession(cfg SessionConfig, masters *MasterData) (*Session, error) {
 	if cfg.MinPort < 1 || cfg.MaxPort > 65535 || cfg.MinPort > cfg.MaxPort {
 		return nil, fmt.Errorf("invalid port range %d-%d", cfg.MinPort, cfg.MaxPort)
 	}
-	if cfg.PublishInterval == 0 {
-		cfg.PublishInterval = DefaultPublishInterval
-	}
-	if cfg.PublishInterval < MinPublishInterval {
-		cfg.PublishInterval = MinPublishInterval
-	}
+	cfg.PublishInterval = normalizePublishInterval(cfg.PublishInterval)
 	if cfg.ReplayPacing < 0 {
 		return nil, fmt.Errorf("invalid replay pacing %g", cfg.ReplayPacing)
 	}
@@ -159,6 +166,7 @@ func OpenSession(cfg SessionConfig, masters *MasterData) (*Session, error) {
 		return nil, fmt.Errorf("load embedded key: %w", err)
 	}
 	session := &Session{cfg: cfg, info: SessionInfo{LocalIPv4: cfg.LocalIPv4, Diagnostics: cfg.Diagnostics}}
+	session.publishInterval.Store(int64(cfg.PublishInterval))
 	if live {
 		device, err := findDeviceByIP(cfg.LocalIPv4)
 		if err != nil {
@@ -202,6 +210,14 @@ func OpenSession(cfg SessionConfig, masters *MasterData) (*Session, error) {
 	return session, nil
 }
 
+// SetPublishInterval changes the minimum wall time between published snapshots of a running or unopened session. It is
+// safe to call from any goroutine. The next publish decision uses it, so a shorter interval applies at the next packet
+// or read timeout. Only the UI snapshot cadence changes: every packet is still processed, and the statistics, the
+// timeline bins and effect lifecycles do not depend on when snapshots are taken.
+func (s *Session) SetPublishInterval(interval time.Duration) {
+	s.publishInterval.Store(int64(normalizePublishInterval(interval)))
+}
+
 // Info describes the session.
 func (s *Session) Info() SessionInfo {
 	return s.info
@@ -242,7 +258,7 @@ func (s *Session) Run(ctx context.Context, publish func(ViewSnapshot)) (result S
 
 	lastPublish := time.Time{}
 	maybePublish := func(now time.Time) {
-		if publish != nil && (lastPublish.IsZero() || now.Sub(lastPublish) >= s.cfg.PublishInterval) {
+		if publish != nil && (lastPublish.IsZero() || now.Sub(lastPublish) >= time.Duration(s.publishInterval.Load())) {
 			lastPublish = now
 			publish(p.viewSnapshot())
 		}

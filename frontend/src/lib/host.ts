@@ -17,6 +17,8 @@ export interface Settings {
   locale: string
   theme?: string
   reduceMotion?: boolean
+  updateIntervalMs?: number
+  animationFps?: number
 }
 
 export interface SettingsState {
@@ -40,6 +42,8 @@ export const host = {
   setDefaultAdapter: (ipv4: string) => call<SettingsState>("SetDefaultAdapter", ipv4),
   setLocale: (locale: string) => call<SettingsState>("SetLocale", locale),
   setAppearance: (theme: string, reduceMotion: boolean) => call<SettingsState>("SetAppearance", theme, reduceMotion),
+  setUpdateInterval: (ms: number) => call<SettingsState>("SetUpdateInterval", ms),
+  setAnimationFps: (fps: number) => call<SettingsState>("SetAnimationFPS", fps),
   updateOverlay: (kind: OverlayKind, change: OverlayChange) => call<OverlayStates>("UpdateOverlay", kind, change),
   resetOverlay: (kind: OverlayKind) => call<void>("ResetOverlay", kind),
 }

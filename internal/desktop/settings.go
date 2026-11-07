@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 )
 
 const settingsVersion = 1
@@ -24,6 +25,11 @@ type Settings struct {
 	// Theme is one of the official theme IDs; empty means the default theme.
 	Theme        string `json:"theme,omitempty"`
 	ReduceMotion bool   `json:"reduceMotion,omitempty"`
+	// UpdateIntervalMs is the one cadence for live combat data in every window; zero means the default. Older files
+	// have no value and newer unsupported values fall back to the default.
+	UpdateIntervalMs int `json:"updateIntervalMs,omitempty"`
+	// AnimationFPS caps frame-by-frame animation computed by the frontend; zero means the default.
+	AnimationFPS int `json:"animationFps,omitempty"`
 }
 
 // OverlaySet holds independent preferences per Overlay; a change to one never touches the other.
@@ -107,6 +113,45 @@ func effectiveTheme(settings Settings) string {
 	return defaultTheme
 }
 
+// Display and performance choices. The default update interval equals capture.DefaultPublishInterval.
+const (
+	defaultUpdateIntervalMs = 250
+	defaultAnimationFPS     = 60
+)
+
+func validUpdateInterval(ms int) bool {
+	switch ms {
+	case 250, 500, 750, 1000:
+		return true
+	}
+	return false
+}
+
+func validAnimationFPS(fps int) bool {
+	switch fps {
+	case 30, 60, 120:
+		return true
+	}
+	return false
+}
+
+// effectiveUpdateInterval is the snapshot cadence to apply for stored preferences.
+func effectiveUpdateInterval(settings Settings) time.Duration {
+	ms := settings.UpdateIntervalMs
+	if !validUpdateInterval(ms) {
+		ms = defaultUpdateIntervalMs
+	}
+	return time.Duration(ms) * time.Millisecond
+}
+
+// effectiveAnimationFPS is the frame-rate cap to publish to every window for stored preferences.
+func effectiveAnimationFPS(settings Settings) int {
+	if validAnimationFPS(settings.AnimationFPS) {
+		return settings.AnimationFPS
+	}
+	return defaultAnimationFPS
+}
+
 type SettingsState struct {
 	Settings       Settings `json:"settings"`
 	Warning        string   `json:"warning,omitempty"`
@@ -178,6 +223,12 @@ func loadSettings(path string, catalog localeCatalog) *settingsStore {
 	}
 	if value.Theme != "" && !validTheme(value.Theme) {
 		value.Theme = ""
+	}
+	if value.UpdateIntervalMs != 0 && !validUpdateInterval(value.UpdateIntervalMs) {
+		value.UpdateIntervalMs = 0
+	}
+	if value.AnimationFPS != 0 && !validAnimationFPS(value.AnimationFPS) {
+		value.AnimationFPS = 0
 	}
 	if !catalog.valid(value.Locale) {
 		value.Locale = catalog.FallbackLocale
@@ -252,6 +303,30 @@ func (s *settingsStore) setAppearance(theme string, reduceMotion bool) (Settings
 	defer s.mu.Unlock()
 	value := s.state.Settings
 	value.Theme, value.ReduceMotion = theme, reduceMotion
+	return s.writeLocked(value)
+}
+
+// setUpdateInterval persists the live combat data cadence shared by the Dashboard and both Overlays.
+func (s *settingsStore) setUpdateInterval(ms int) (SettingsState, error) {
+	if !validUpdateInterval(ms) {
+		return SettingsState{}, errors.New("unsupported_update_interval")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	value := s.state.Settings
+	value.UpdateIntervalMs = ms
+	return s.writeLocked(value)
+}
+
+// setAnimationFPS persists the frame-rate cap for frontend-computed animation.
+func (s *settingsStore) setAnimationFPS(fps int) (SettingsState, error) {
+	if !validAnimationFPS(fps) {
+		return SettingsState{}, errors.New("unsupported_animation_fps")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	value := s.state.Settings
+	value.AnimationFPS = fps
 	return s.writeLocked(value)
 }
 
