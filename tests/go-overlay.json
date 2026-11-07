@@ -270,6 +270,8 @@
     "tests/desktop/licenses_test.go": "",
     "internal/desktop/central_licenses_test.go": "tests/desktop/licenses_test.go",
     "tests/desktop/environment_test.go": "",
-    "internal/desktop/central_environment_test.go": "tests/desktop/environment_test.go"
+    "internal/desktop/central_environment_test.go": "tests/desktop/environment_test.go",
+    "tests/desktop/autostart_test.go": "",
+    "internal/desktop/central_autostart_test.go": "tests/desktop/autostart_test.go"
   }
 }

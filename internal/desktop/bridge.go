@@ -29,6 +29,8 @@ type Bridge struct {
 	environment *environmentChecker
 	npcap       *npcapDownloadResolver
 	openBrowser func(string) error
+	// startup is the launch-time automatic start; a manual start or stop settles it for the rest of the run.
+	startup startupCapture
 }
 
 // snapshotWaitLimit is the heartbeat base: one NextSnapshot call waits at most this plus one update interval, and an
@@ -47,9 +49,14 @@ type StartRequest struct {
 // GetSettings returns validated preferences and a recoverable startup warning, if any.
 func (b *Bridge) GetSettings() SettingsState { return b.settings.current() }
 
-// SetDefaultAdapter persists the capture interface preselected at launch.
+// SetDefaultAdapter persists the capture interface. A running capture keeps the interface it started on.
 func (b *Bridge) SetDefaultAdapter(ipv4 string) (SettingsState, error) {
 	return b.settings.setDefaultAdapter(ipv4)
+}
+
+// SetAutoStartCapture persists whether the next launch starts a capture by itself. It never starts or stops a capture.
+func (b *Bridge) SetAutoStartCapture(enabled bool) (SettingsState, error) {
+	return b.settings.setAutoStartCapture(enabled)
 }
 
 // SetLocale persists the single global display locale without touching capture or statistics.
@@ -186,17 +193,26 @@ func (b *Bridge) OpenNpcapDownload(ctx context.Context) (NpcapDownload, error) {
 	return download, b.openBrowser(download.URL)
 }
 
-// StartCapture starts a live capture on the interface with request.LocalIPv4, using the host's other options.
+// StartCapture starts a live capture on the interface with request.LocalIPv4, using the host's other options. A manual
+// start settles the launch-time automatic start.
 func (b *Bridge) StartCapture(request StartRequest) error {
+	b.startup.claim()
+	return b.startCapture(request.LocalIPv4)
+}
+
+// startCapture is the one start path, for the user's start and the launch-time start alike.
+func (b *Bridge) startCapture(localIPv4 string) error {
 	cfg := b.defaults
-	if request.LocalIPv4 != "" {
-		cfg.LocalIPv4 = request.LocalIPv4
+	if localIPv4 != "" {
+		cfg.LocalIPv4 = localIPv4
 	}
 	return b.capture.Start(cfg)
 }
 
-// StopCapture stops the current capture and waits until its resources are released.
+// StopCapture stops the current capture and waits until its resources are released. A manual stop also cancels a
+// launch-time start that has not begun, so the capture stays stopped for the rest of the run.
 func (b *Bridge) StopCapture(ctx context.Context) error {
+	b.startup.claim()
 	stopCtx, cancel := context.WithTimeout(ctx, stopWaitLimit)
 	defer cancel()
 	return b.capture.Stop(stopCtx)

@@ -18,6 +18,7 @@ export interface Settings {
   theme?: string
   reduceMotion?: boolean
   updateIntervalMs?: number
+  autoStartCapture?: boolean
 }
 
 export interface SettingsState {
@@ -39,6 +40,7 @@ export const host = {
   stopCapture: () => call<void>("StopCapture"),
   getSettings: () => call<SettingsState>("GetSettings"),
   setDefaultAdapter: (ipv4: string) => call<SettingsState>("SetDefaultAdapter", ipv4),
+  setAutoStartCapture: (enabled: boolean) => call<SettingsState>("SetAutoStartCapture", enabled),
   setLocale: (locale: string) => call<SettingsState>("SetLocale", locale),
   setAppearance: (theme: string, reduceMotion: boolean) => call<SettingsState>("SetAppearance", theme, reduceMotion),
   setUpdateInterval: (ms: number) => call<SettingsState>("SetUpdateInterval", ms),

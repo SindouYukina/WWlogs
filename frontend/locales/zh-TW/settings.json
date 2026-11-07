@@ -2,9 +2,12 @@
   "title": "設定",
   "language": "語言",
   "languageHint": "即時套用至兩個視窗與遊戲名稱。",
-  "defaultAdapter": "預設網路介面",
-  "chooseAtLaunch": "每次啟動時選擇",
-  "adapterHint": "啟動時預選，擷取仍需手動開始。",
+  "defaultAdapter": "網路介面",
+  "adapterHint": "開始擷取時使用此介面。",
+  "adapterChoose": "選擇遊戲連線使用的網路介面。",
+  "adapterLocked": "擷取中無法變更，請先停止擷取。",
+  "autoStartCapture": "啟動時自動開始擷取",
+  "autoStartCaptureHint": "請先開啟 WWlogs，再登入遊戲；登入後才開始擷取，將無法正常解析該次連線。",
   "storage": "儲存於 %LOCALAPPDATA%\\WWlogs\\settings.json。",
   "invalid": "設定無法安全載入，已使用預設值。",
   "saveFailed": "偏好儲存失敗，原設定已保留。",
@@ -38,7 +41,6 @@
   "groups": {
     "basic": "基礎設定",
     "overlays": "Overlay",
-    "capture": "擷取",
     "about": "關於"
   },
   "pages": {
@@ -46,7 +48,6 @@
     "appearance": "外觀",
     "combatOverlay": "戰鬥 Overlay",
     "effectsOverlay": "效果 Overlay",
-    "capture": "網路擷取",
     "about": "WWlogs",
     "licenses": "授權"
   },

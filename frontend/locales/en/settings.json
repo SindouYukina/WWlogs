@@ -2,9 +2,12 @@
   "title": "Settings",
   "language": "Language",
   "languageHint": "Applies immediately to both windows and Master names.",
-  "defaultAdapter": "Default network interface",
-  "chooseAtLaunch": "Choose at each launch",
-  "adapterHint": "Preselected on launch. Capture always starts manually.",
+  "defaultAdapter": "Network interface",
+  "adapterHint": "Capture uses this interface.",
+  "adapterChoose": "Choose the interface your game connection uses.",
+  "adapterLocked": "Stop the capture to change the interface.",
+  "autoStartCapture": "Start capture when WWlogs launches",
+  "autoStartCaptureHint": "Open WWlogs before you log in to the game. A capture started after login cannot decode that connection.",
   "storage": "Stored in %LOCALAPPDATA%\\WWlogs\\settings.json.",
   "invalid": "Settings could not be loaded safely. Defaults are in use.",
   "saveFailed": "Preferences could not be saved. Previous settings are preserved.",
@@ -38,7 +41,6 @@
   "groups": {
     "basic": "Basics",
     "overlays": "Overlays",
-    "capture": "Capture",
     "about": "About"
   },
   "pages": {
@@ -46,7 +48,6 @@
     "appearance": "Appearance",
     "combatOverlay": "Combat Overlay",
     "effectsOverlay": "Effects Overlay",
-    "capture": "Capture",
     "about": "WWlogs",
     "licenses": "Licenses"
   },

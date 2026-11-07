@@ -1,8 +1,8 @@
 import { useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { BrandEmblem, Button, ContentSwitch, Icon, ListeningStatus, Segmented, Select, resolveTheme, type IconName } from "@/design"
+import { BrandEmblem, Button, ContentSwitch, Icon, ListeningStatus, Segmented, Tooltip, resolveTheme, type IconName } from "@/design"
 import { statusText } from "@/i18n"
-import { adapterUsable, environmentNotice } from "@/lib/capture-environment"
+import { adapterProblem, adapterUsable, captureBusy, environmentNotice } from "@/lib/capture-environment"
 import { host } from "@/lib/host"
 import { useLiveSettings } from "@/lib/settings-controller"
 import type { OverlayKind } from "@/lib/snapshot"
@@ -19,7 +19,10 @@ const overlayToggles: ReadonlyArray<{ kind: OverlayKind; icon: IconName; label: 
   { kind: "effects", icon: "spark", label: "pages.effectsOverlay" },
 ]
 
-/** The production Desktop window: one global header over the Dashboard and Settings views. */
+/**
+ * The production Desktop window: one global header over the Dashboard and Settings views. The header reads, from left to
+ * right, capture status, the two Overlay switches and the capture button; the capture interface is chosen in Settings.
+ */
 export function DesktopApp() {
   const { t } = useTranslation(["dashboard", "common", "settings"])
   const c = (key: string) => t(key, { ns: "common" })
@@ -29,14 +32,13 @@ export function DesktopApp() {
   const controller = useLiveSettings(snapshot, connected, changeLocale)
   const describeListening = useListeningLabels()
   const [page, setPage] = useState<Page>("dashboard")
-  const [selected, setSelected] = useState<string | null>(null)
   const [action, setAction] = useState<"start" | "stop" | null>(null)
   const [failed, setFailed] = useState(false)
   const actionLock = useRef(false)
-  const adapter = selected ?? controller.defaultAdapter
+  const adapter = controller.defaultAdapter
   const service = snapshot?.service
-  const busy = service?.state === "starting" || service?.state === "running" || service?.state === "stopping"
-  const available = controller.adapters.some(item => item.ipv4 === adapter)
+  const busy = captureBusy(service?.state)
+  const problem = busy ? null : adapterProblem(controller.environment, controller.adapters, adapter)
   const usable = adapterUsable(controller.environment, controller.checking, controller.adapters, adapter)
   const capture = async (kind: "start" | "stop") => {
     if (actionLock.current) return
@@ -54,13 +56,10 @@ export function DesktopApp() {
     }
   }
   const running = service?.state === "running"
+  // Settings shows the same problem on the interface row, so the bar with its shortcut belongs to the Dashboard.
+  const adapterNotice = problem !== null && page === "dashboard"
   const listening = snapshot?.listening
   const listeningText = listening ? describeListening(listening) : null
-  const adapterOptions = [
-    ...(adapter === "" ? [{ value: "", label: controller.environment === null ? t("environment.checking") : t("selectInterface") }] : []),
-    ...(adapter !== "" && !available ? [{ value: adapter, label: `${adapter} · ${statusText("unavailable")}` }] : []),
-    ...controller.adapters.map(item => ({ value: item.ipv4, label: `${item.ipv4} — ${item.description || t("network")}` })),
-  ]
   return <div className="ww-root ww-app">
     <header className="ww-app-header">
       <div className="ww-app-brand"><BrandEmblem /><div><strong>WWlogs</strong><span>{c("appSubtitle")}</span></div></div>
@@ -74,17 +73,21 @@ export function DesktopApp() {
           })}
         </div>
         <div className="ww-app-capture" data-field="service-state" data-state={service?.state}>
-          <Select label={t("network")} value={adapter} onChange={setSelected} options={adapterOptions} />
           {running || service?.state === "stopping"
             ? <Button size="sm" disabled={!connected || !running || action !== null} data-field="capture-stop" onClick={() => void capture("stop")}><Icon name="pause" size={13} />{action === "stop" || service?.state === "stopping" ? statusText("stopping") : t("stop")}</Button>
-            : <Button size="sm" variant="primary" disabled={!connected || busy || action !== null || !usable} data-field="capture-start" onClick={() => void capture("start")}><Icon name="play" size={13} />{action === "start" || service?.state === "starting" ? statusText("starting") : t("start")}</Button>}
+            // A capture that begins after the game login cannot decode that connection, so the start button says so.
+            : <Tooltip text={t("startHint")} trigger="child" placement="bottom"><Button size="sm" variant="primary" disabled={!connected || busy || action !== null || !usable} data-field="capture-start" onClick={() => void capture("start")}><Icon name="play" size={13} />{action === "start" || service?.state === "starting" ? statusText("starting") : t("start")}</Button></Tooltip>}
         </div>
       </div>
     </header>
-    {(failed || service?.lastError || environmentNotice(controller.environment)) && <div className="ww-app-notices">
+    {(failed || service?.lastError || environmentNotice(controller.environment) || adapterNotice) && <div className="ww-app-notices">
       {failed && <p role="alert" data-tone="critical">{c("operationFailed")}</p>}
       {service?.lastError && <p role="alert" data-tone="critical">{c("captureFailed")}</p>}
       <CaptureEnvironmentNotice controller={controller} />
+      {adapterNotice && <div className="ww-env-notice" role="status" data-field="adapter-notice" data-problem={problem}>
+        <div className="ww-env-notice-text"><span>{t(problem === "unset" ? "interfaceUnset" : "interfaceUnavailable")}</span></div>
+        <div className="ww-env-notice-actions"><Button size="sm" data-field="open-general-settings" onClick={() => setPage("settings")}>{t("openSettings")}</Button></div>
+      </div>}
     </div>}
     <main className="ww-app-main">
       <ContentSwitch contentKey={page} direction={page === "settings" ? "forward" : "back"} className="ww-app-page">
