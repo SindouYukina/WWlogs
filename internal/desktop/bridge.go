@@ -77,13 +77,6 @@ func (b *Bridge) SetUpdateInterval(ms int) (SettingsState, error) {
 	return state, err
 }
 
-// SetAnimationFPS persists the animation frame-rate cap; every window applies it from its next snapshot.
-func (b *Bridge) SetAnimationFPS(fps int) (SettingsState, error) {
-	state, err := b.settings.setAnimationFPS(fps)
-	b.shell.fire()
-	return state, err
-}
-
 // UpdateOverlay changes one Overlay's window properties. The other Overlay is not touched.
 func (b *Bridge) UpdateOverlay(kind string, change OverlayChange) (OverlayStates, error) {
 	if b.overlays == nil {

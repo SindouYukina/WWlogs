@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { Button, ContentSwitch, Icon, Segmented, Select, SettingsRow, SettingsSection, Sidebar, Slider, Stepper, ThemeBackdrop, ThemePicker, Toggle, Tooltip, defaultFrameRateCap, frameRateCaps, normalizeFrameRateCap, resolveTheme, type SidebarGroupModel } from "@/design"
+import { Button, ContentSwitch, Icon, Segmented, Select, SettingsRow, SettingsSection, Sidebar, Slider, Stepper, ThemeBackdrop, ThemePicker, Toggle, Tooltip, resolveTheme, type SidebarGroupModel } from "@/design"
 import { manifest } from "@/i18n"
 import { buildNumberText, profileKey, revisionText, versionText, type IdentityText } from "@/lib/build-identity"
 import { environmentNotice } from "@/lib/capture-environment"
@@ -21,7 +21,6 @@ function GeneralPage({ controller }: { controller: SettingsController }) {
   const { t } = useTranslation("settings")
   const options = manifest.supportedLocales.map(locale => ({ value: locale, label: manifest.languages[locale as keyof typeof manifest.languages].label }))
   const interval = (ms: number) => ms % 1000 === 0 ? t("units.seconds", { value: ms / 1000 }) : t("units.milliseconds", { value: ms })
-  const fps = (value: number) => t("units.fps", { value })
   return <>
     <SettingsSection title={t("sections.language")}>
       <SettingsRow title={t("language")} description={t("languageHint")}><span data-field="locale"><Select label={t("language")} value={controller.locale} onChange={controller.setLocale} options={options} /></span></SettingsRow>
@@ -29,9 +28,6 @@ function GeneralPage({ controller }: { controller: SettingsController }) {
     <SettingsSection title={t("sections.displayPerformance")}>
       <SettingsRow title={t("updateInterval")} description={t("updateIntervalNote", { value: interval(defaultUpdateInterval) })} hint={<Hint text={t("updateIntervalHint")} />}>
         <span data-field="update-interval"><Segmented equal label={t("updateInterval")} value={String(controller.updateIntervalMs)} onChange={value => controller.setUpdateInterval(normalizeUpdateInterval(Number(value)))} options={updateIntervals.map(ms => ({ value: String(ms), label: interval(ms) }))} /></span>
-      </SettingsRow>
-      <SettingsRow title={t("animationFps")} description={t("animationFpsNote", { value: fps(defaultFrameRateCap) })} hint={<Hint text={t("animationFpsHint")} />}>
-        <span data-field="animation-fps"><Segmented equal label={t("animationFps")} value={String(controller.animationFps)} onChange={value => controller.setAnimationFps(normalizeFrameRateCap(Number(value)))} options={frameRateCaps.map(value => ({ value: String(value), label: fps(value) }))} /></span>
       </SettingsRow>
     </SettingsSection>
   </>

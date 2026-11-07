@@ -111,12 +111,8 @@
   "updateInterval": "战斗信息更新间隔",
   "updateIntervalHint": "仪表盘与两个 Overlay 共用，包含效果倒计时。只改变画面更新频率，所有战斗事件仍会完整计算。",
   "updateIntervalNote": "仪表盘与 Overlay 共用 · 默认 {{value}}",
-  "animationFps": "动画帧率上限",
-  "animationFpsHint": "限制数字滚动等逐帧计算的动画，不改变动画时长。过渡与倒计时条由系统按屏幕刷新率绘制；超过屏幕刷新率时以屏幕为准。",
-  "animationFpsNote": "不改变动画时长 · 默认 {{value}}",
   "units": {
     "milliseconds": "{{value}} ms",
-    "seconds": "{{value}} s",
-    "fps": "{{value}} FPS"
+    "seconds": "{{value}} s"
   }
 }
