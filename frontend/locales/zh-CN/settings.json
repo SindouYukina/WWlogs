@@ -2,9 +2,12 @@
   "title": "设置",
   "language": "语言",
   "languageHint": "立即应用到两个窗口与游戏名称。",
-  "defaultAdapter": "默认网络接口",
-  "chooseAtLaunch": "每次启动时选择",
-  "adapterHint": "启动时预选，采集仍需手动开始。",
+  "defaultAdapter": "网络接口",
+  "adapterHint": "开始采集时使用此接口。",
+  "adapterChoose": "选择游戏连接使用的网络接口。",
+  "adapterLocked": "采集中无法更改，请先停止采集。",
+  "autoStartCapture": "启动时自动开始采集",
+  "autoStartCaptureHint": "请先打开 WWlogs，再登录游戏；登录后才开始采集，将无法正常解析该次连接。",
   "storage": "保存于 %LOCALAPPDATA%\\WWlogs\\settings.json。",
   "invalid": "设置无法安全加载，已使用默认值。",
   "saveFailed": "偏好保存失败，原设置已保留。",
@@ -38,7 +41,6 @@
   "groups": {
     "basic": "基础设置",
     "overlays": "Overlay",
-    "capture": "捕获",
     "about": "关于"
   },
   "pages": {
@@ -46,7 +48,6 @@
     "appearance": "外观",
     "combatOverlay": "战斗 Overlay",
     "effectsOverlay": "效果 Overlay",
-    "capture": "网络捕获",
     "about": "WWlogs",
     "licenses": "授权"
   },

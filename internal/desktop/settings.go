@@ -29,6 +29,9 @@ type Settings struct {
 	// have no value and newer unsupported values fall back to the default. A field from an earlier build that is no
 	// longer a preference (such as animationFps) is ignored when read and not written again.
 	UpdateIntervalMs int `json:"updateIntervalMs,omitempty"`
+	// AutoStartCapture starts one capture on DefaultAdapterIPv4 when WWlogs launches. Off by default; older files have
+	// no value.
+	AutoStartCapture bool `json:"autoStartCapture,omitempty"`
 }
 
 // OverlaySet holds independent preferences per Overlay; a change to one never touches the other.
@@ -258,8 +261,8 @@ func (set *OverlaySet) of(kind string) *OverlayPreferences {
 	return &set.Combat
 }
 
-// setDefaultAdapter persists the interface preselected at launch. Every preference has its own update, so settings apply
-// at once and no stale form can overwrite another preference.
+// setDefaultAdapter persists the capture interface. Every preference has its own update, so settings apply at once and
+// no stale form can overwrite another preference.
 func (s *settingsStore) setDefaultAdapter(ipv4 string) (SettingsState, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -292,6 +295,15 @@ func (s *settingsStore) setUpdateInterval(ms int) (SettingsState, error) {
 	defer s.mu.Unlock()
 	value := s.state.Settings
 	value.UpdateIntervalMs = ms
+	return s.writeLocked(value)
+}
+
+// setAutoStartCapture persists whether a launch starts a capture by itself. It takes effect at the next launch.
+func (s *settingsStore) setAutoStartCapture(enabled bool) (SettingsState, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	value := s.state.Settings
+	value.AutoStartCapture = enabled
 	return s.writeLocked(value)
 }
 

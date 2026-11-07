@@ -18,6 +18,7 @@ export function useMockSettings(theme: ThemeId, setTheme: (theme: ThemeId) => vo
   const { i18n } = useTranslation()
   const [overlays, setOverlays] = useState(initialOverlays)
   const [defaultAdapter, setDefaultAdapter] = useState("")
+  const [autoStartCapture, setAutoStartCapture] = useState(false)
   const [updateIntervalMs, setUpdateInterval] = useState<UpdateInterval>(defaultUpdateInterval)
   return useMemo(() => ({
     locale: i18n.language,
@@ -30,6 +31,9 @@ export function useMockSettings(theme: ThemeId, setTheme: (theme: ThemeId) => vo
     adapters: [{ ipv4: "192.0.2.10", description: "Mock adapter" }],
     defaultAdapter,
     setDefaultAdapter,
+    autoStartCapture,
+    setAutoStartCapture,
+    captureBusy: false,
     environment: "ready",
     checking: false,
     checkEnvironment: () => undefined,
@@ -45,5 +49,5 @@ export function useMockSettings(theme: ThemeId, setTheme: (theme: ThemeId) => vo
     loadFailed: false,
     warning: "",
     connected: true,
-  }), [i18n, i18n.language, theme, setTheme, reduced, setReduced, overlays, defaultAdapter, updateIntervalMs])
+  }), [i18n, i18n.language, theme, setTheme, reduced, setReduced, overlays, defaultAdapter, autoStartCapture, updateIntervalMs])
 }

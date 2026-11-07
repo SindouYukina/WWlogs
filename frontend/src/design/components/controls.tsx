@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from "react"
+import { cloneElement, isValidElement, memo, useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from "react"
 import { createPortal } from "react-dom"
 import { Icon } from "./Icon"
 
@@ -106,11 +106,12 @@ export interface SelectProps<T extends string> {
   options: ReadonlyArray<SelectOption<T>>
   onChange: (value: T) => void
   label: string
+  disabled?: boolean
 }
 
 const closeMs = 120
 
-export function Select<T extends string>({ value, options, onChange, label }: SelectProps<T>) {
+export function Select<T extends string>({ value, options, onChange, label, disabled = false }: SelectProps<T>) {
   const id = useId()
   const trigger = useRef<HTMLButtonElement>(null)
   const list = useRef<HTMLDivElement>(null)
@@ -126,13 +127,15 @@ export function Select<T extends string>({ value, options, onChange, label }: Se
   }, [])
   const open = () => {
     const bounds = trigger.current?.getBoundingClientRect()
-    if (!bounds) return
+    if (!bounds || disabled) return
     clearTimeout(closeTimer.current)
     setRect({ left: bounds.left, top: bounds.bottom + 4, width: bounds.width })
     setActive(Math.max(0, options.findIndex(option => option.value === value)))
     setState("open")
   }
   useEffect(() => () => clearTimeout(closeTimer.current), [])
+  // A control that becomes disabled while its list is open closes the list, so no stale choice can be committed.
+  useEffect(() => { if (disabled) close() }, [disabled, close])
   useEffect(() => {
     if (state !== "open") return
     const onPointer = (event: PointerEvent) => {
@@ -177,7 +180,7 @@ export function Select<T extends string>({ value, options, onChange, label }: Se
     }
   }
   return <>
-    <button ref={trigger} type="button" className="ww-select-trigger" role="combobox" aria-haspopup="listbox" aria-expanded={state === "open"} aria-controls={id} aria-label={label} onClick={() => state === "open" ? close() : open()} onKeyDown={onKeyDown}>
+    <button ref={trigger} type="button" className="ww-select-trigger" role="combobox" aria-haspopup="listbox" aria-expanded={state === "open"} aria-controls={id} aria-label={label} disabled={disabled} onClick={() => state === "open" ? close() : open()} onKeyDown={onKeyDown}>
       <span className="ww-truncate">{selected?.label ?? ""}</span><Icon name="chevron" size={14} />
     </button>
     {state !== "closed" && createPortal(
@@ -234,20 +237,32 @@ export function Stepper({ value, unit, step, min, max, onChange, decreaseLabel, 
 export interface TooltipProps {
   text: string
   children: ReactNode
+  /**
+   * "self" makes the wrapper the focusable trigger (an info icon). "child" leaves focus to the wrapped control, which the
+   * text then describes, so a button keeps one tab stop and its own accessible name.
+   */
+  trigger?: "self" | "child"
+  /** Below suits controls at the top edge of a window. */
+  placement?: "top" | "bottom"
 }
 
 const showDelayMs = 240
+// Half the tooltip's max-width plus a margin, so a tooltip next to a window edge stays inside the window.
+const edgeInset = 148
 
 /** Positioned at the document level so scrolling panes never clip it. Not mounted until it is needed. */
-export function Tooltip({ text, children }: TooltipProps) {
+export function Tooltip({ text, children, trigger = "self", placement = "top" }: TooltipProps) {
   const anchor = useRef<HTMLSpanElement>(null)
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const describedBy = `${useId()}-text`
   const [position, setPosition] = useState<{ x: number; y: number } | null>(null)
   const show = () => {
     clearTimeout(timer.current)
     timer.current = setTimeout(() => {
       const bounds = anchor.current?.getBoundingClientRect()
-      if (bounds) setPosition({ x: bounds.left + bounds.width / 2, y: bounds.top - 6 })
+      if (!bounds) return
+      const x = Math.min(Math.max(bounds.left + bounds.width / 2, edgeInset), Math.max(edgeInset, window.innerWidth - edgeInset))
+      setPosition({ x, y: placement === "bottom" ? bounds.bottom + 6 : bounds.top - 6 })
     }, showDelayMs)
   }
   const hide = () => {
@@ -255,9 +270,12 @@ export function Tooltip({ text, children }: TooltipProps) {
     setPosition(null)
   }
   useEffect(() => () => clearTimeout(timer.current), [])
-  return <span ref={anchor} className="ww-tooltip-trigger" tabIndex={0} aria-label={text} onPointerEnter={show} onPointerLeave={hide} onFocus={show} onBlur={hide}>
-    {children}
-    {position && createPortal(<div role="tooltip" className="ww-root ww-tooltip" style={{ left: position.x, top: position.y }}>{text}</div>, document.body)}
+  const self = trigger === "self"
+  const content = !self && isValidElement<{ "aria-describedby"?: string }>(children) ? cloneElement(children, { "aria-describedby": describedBy }) : children
+  return <span ref={anchor} className="ww-tooltip-trigger" data-trigger={trigger} tabIndex={self ? 0 : undefined} aria-label={self ? text : undefined} onPointerEnter={show} onPointerLeave={hide} onFocus={show} onBlur={hide}>
+    {content}
+    {!self && <span id={describedBy} hidden>{text}</span>}
+    {position && createPortal(<div role="tooltip" className="ww-root ww-tooltip" data-placement={placement} style={{ left: position.x, top: position.y }}>{text}</div>, document.body)}
   </span>
 }
 

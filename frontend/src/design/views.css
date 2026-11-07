@@ -15,7 +15,6 @@ body[data-view="desktop"] { margin: 0; background: var(--ww-surface-canvas); ove
 .ww-app-tools .ww-listening-detail { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ww-app-overlays { display: flex; gap: var(--ww-space-1); flex: none; }
 .ww-app-capture { display: flex; align-items: center; gap: var(--ww-space-2); flex: none; }
-.ww-app-capture .ww-select-trigger { width: 180px; height: 30px; font-size: var(--ww-text-xs); }
 .ww-app-notices { display: flex; flex-direction: column; gap: var(--ww-space-1); padding: var(--ww-space-2) var(--ww-space-5); background: var(--ww-warn-soft); font-size: var(--ww-text-xs); color: var(--ww-warn); }
 .ww-app-notices > p { margin: 0; }
 .ww-app-notices > p[data-tone="critical"] { color: var(--ww-critical); }

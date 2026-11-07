@@ -3,18 +3,47 @@ import { useTranslation } from "react-i18next"
 import { Button, ContentSwitch, Icon, Segmented, Select, SettingsRow, SettingsSection, Sidebar, Slider, Stepper, ThemeBackdrop, ThemePicker, Toggle, Tooltip, resolveTheme, type SidebarGroupModel } from "@/design"
 import { manifest } from "@/i18n"
 import { buildNumberText, profileKey, revisionText, versionText, type IdentityText } from "@/lib/build-identity"
-import { environmentNotice } from "@/lib/capture-environment"
+import { adapterProblem, environmentNotice } from "@/lib/capture-environment"
+import { statusText } from "@/i18n"
 import type { SettingsController } from "@/lib/settings-controller"
 import { defaultUpdateInterval, normalizeUpdateInterval, updateIntervals, type OverlayKind } from "@/lib/snapshot"
 import { useThemeDescriptions } from "@/lib/useListeningLabels"
 import { LicensesPage } from "./LicensesPage"
 
-type Page = "general" | "appearance" | "combatOverlay" | "effectsOverlay" | "capture" | "about" | "licenses"
+type Page = "general" | "appearance" | "combatOverlay" | "effectsOverlay" | "about" | "licenses"
 
-const pageOrder: Page[] = ["general", "appearance", "combatOverlay", "effectsOverlay", "capture", "about", "licenses"]
+const pageOrder: Page[] = ["general", "appearance", "combatOverlay", "effectsOverlay", "about", "licenses"]
 
 function Hint({ text }: { text: string }) {
   return <Tooltip text={text}><Icon name="info" size={15} /></Tooltip>
+}
+
+/**
+ * The capture interface with its recheck, as one row. A running capture keeps the interface it started on, so the choice
+ * is locked until it stops; the saved interface is never replaced by another one automatically.
+ */
+function AdapterRow({ controller }: { controller: SettingsController }) {
+  const { t } = useTranslation(["settings", "dashboard"])
+  const saved = controller.defaultAdapter
+  const listed = controller.adapters.some(adapter => adapter.ipv4 === saved)
+  const options = [
+    ...(saved === "" ? [{ value: "", label: t(controller.environment === null ? "environment.checking" : "selectInterface", { ns: "dashboard" }) }] : []),
+    ...(saved !== "" && !listed ? [{ value: saved, label: `${saved} · ${statusText("unavailable")}` }] : []),
+    ...controller.adapters.map(adapter => ({ value: adapter.ipv4, label: `${adapter.ipv4} — ${adapter.description || t("network", { ns: "dashboard" })}` })),
+  ]
+  const notice = environmentNotice(controller.environment)
+  const problem = adapterProblem(controller.environment, controller.adapters, saved)
+  const description = controller.captureBusy ? t("adapterLocked")
+    : notice ? t(`environment.${notice.key}.title`, { ns: "dashboard" })
+    : problem === "unavailable" ? t("missingInterface", { ns: "dashboard" })
+    : problem === "unset" ? t("adapterChoose")
+    : t("adapterHint")
+  return <SettingsRow title={t("defaultAdapter")} description={description}>
+    <span className="ww-row-pair" data-field="adapter" data-problem={problem ?? ""} data-locked={controller.captureBusy}>
+      <Select label={t("defaultAdapter")} value={saved} onChange={controller.setDefaultAdapter} options={options} disabled={controller.captureBusy || !controller.connected} />
+      <Button size="sm" disabled={controller.checking} data-field="settings-environment-recheck" onClick={controller.checkEnvironment}>{t(controller.checking ? "environment.checking" : "environment.recheck", { ns: "dashboard" })}</Button>
+    </span>
+  </SettingsRow>
 }
 
 function GeneralPage({ controller }: { controller: SettingsController }) {
@@ -24,6 +53,10 @@ function GeneralPage({ controller }: { controller: SettingsController }) {
   return <>
     <SettingsSection title={t("sections.language")}>
       <SettingsRow title={t("language")} description={t("languageHint")}><span data-field="locale"><Select label={t("language")} value={controller.locale} onChange={controller.setLocale} options={options} /></span></SettingsRow>
+    </SettingsSection>
+    <SettingsSection title={t("sections.capture")}>
+      <AdapterRow controller={controller} />
+      <SettingsRow title={t("autoStartCapture")} description={t("autoStartCaptureHint")}><span data-field="auto-start-capture"><Toggle label={t("autoStartCapture")} disabled={!controller.connected} checked={controller.autoStartCapture} onChange={controller.setAutoStartCapture} /></span></SettingsRow>
     </SettingsSection>
     <SettingsSection title={t("sections.displayPerformance")}>
       <SettingsRow title={t("updateInterval")} description={t("updateIntervalNote", { value: interval(defaultUpdateInterval) })} hint={<Hint text={t("updateIntervalHint")} />}>
@@ -80,21 +113,6 @@ function OverlayPage({ kind, controller }: { kind: OverlayKind; controller: Sett
   </div>
 }
 
-function CapturePage({ controller }: { controller: SettingsController }) {
-  const { t } = useTranslation(["settings", "dashboard"])
-  const missing = controller.defaultAdapter !== "" && !controller.adapters.some(adapter => adapter.ipv4 === controller.defaultAdapter)
-  const options = [
-    { value: "", label: t("chooseAtLaunch") },
-    ...(missing ? [{ value: controller.defaultAdapter, label: `${controller.defaultAdapter} · ${t("missingInterface", { ns: "dashboard" })}` }] : []),
-    ...controller.adapters.map(adapter => ({ value: adapter.ipv4, label: `${adapter.ipv4} — ${adapter.description || t("network", { ns: "dashboard" })}` })),
-  ]
-  const notice = environmentNotice(controller.environment)
-  return <SettingsSection title={t("sections.capture")}>
-    <SettingsRow title={t("defaultAdapter")} description={t("adapterHint")}><Select label={t("defaultAdapter")} value={controller.defaultAdapter} onChange={controller.setDefaultAdapter} options={options} /></SettingsRow>
-    <SettingsRow title={t("network", { ns: "dashboard" })} description={notice ? t(`environment.${notice.key}.title`, { ns: "dashboard" }) : undefined}><Button size="sm" disabled={controller.checking} data-field="settings-environment-recheck" onClick={controller.checkEnvironment}>{t(controller.checking ? "environment.checking" : "environment.recheck", { ns: "dashboard" })}</Button></SettingsRow>
-  </SettingsSection>
-}
-
 function AboutPage({ controller }: { controller: SettingsController }) {
   const { t } = useTranslation("settings")
   const app = controller.app
@@ -118,7 +136,6 @@ export function SettingsView({ controller }: { controller: SettingsController })
   const groups = useMemo<ReadonlyArray<SidebarGroupModel<Page>>>(() => [
     { label: t("groups.basic"), items: [{ value: "general", label: t("pages.general"), icon: "sliders" }, { value: "appearance", label: t("pages.appearance"), icon: "palette" }] },
     { label: t("groups.overlays"), items: [{ value: "combatOverlay", label: t("pages.combatOverlay"), icon: "overlay" }, { value: "effectsOverlay", label: t("pages.effectsOverlay"), icon: "spark" }] },
-    { label: t("groups.capture"), items: [{ value: "capture", label: t("pages.capture"), icon: "capture" }] },
     { label: t("groups.about"), items: [{ value: "about", label: t("pages.about"), icon: "about" }] },
     { label: "", pinned: true, items: [{ value: "licenses", label: t("pages.licenses"), icon: "license" }] },
   ], [t])
@@ -140,7 +157,6 @@ export function SettingsView({ controller }: { controller: SettingsController })
         {page === "appearance" && <AppearancePage controller={controller} />}
         {page === "combatOverlay" && <OverlayPage kind="combat" controller={controller} />}
         {page === "effectsOverlay" && <OverlayPage kind="effects" controller={controller} />}
-        {page === "capture" && <CapturePage controller={controller} />}
         {page === "about" && <AboutPage controller={controller} />}
         {page === "licenses" && <LicensesPage openLink={controller.openLicenseLink} />}
       </ContentSwitch>

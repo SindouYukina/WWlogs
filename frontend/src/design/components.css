@@ -91,7 +91,8 @@
 
 /* ------------------------------ Select ------------------------------ */
 .ww-select-trigger { display: inline-flex; align-items: center; justify-content: space-between; gap: var(--ww-space-2); min-width: 180px; height: 34px; padding-inline: var(--ww-space-3) var(--ww-space-2); border: 0; border-radius: var(--ww-radius-md); background: var(--ww-ink-950); box-shadow: inset 0 0 0 1px var(--ww-line); color: var(--ww-text); font: inherit; font-size: var(--ww-text-sm); cursor: pointer; transition: box-shadow var(--ww-dur-fast) var(--ww-ease-standard), background-color var(--ww-dur-fast) var(--ww-ease-standard); }
-.ww-select-trigger:hover { box-shadow: inset 0 0 0 1px var(--ww-line-strong); }
+.ww-select-trigger:hover:not(:disabled) { box-shadow: inset 0 0 0 1px var(--ww-line-strong); }
+.ww-select-trigger:disabled { opacity: 0.45; cursor: default; }
 .ww-select-trigger:focus-visible { outline: none; box-shadow: var(--ww-focus-ring); }
 .ww-select-trigger .ww-icon { color: var(--ww-text-3); transition: transform var(--ww-spring-snappy-dur) var(--ww-spring-snappy); }
 .ww-select-trigger[aria-expanded="true"] .ww-icon { transform: rotate(180deg); }
@@ -129,6 +130,9 @@
 .ww-tooltip-trigger { display: inline-flex; align-items: center; color: var(--ww-text-3); }
 .ww-tooltip { position: fixed; z-index: 70; max-width: 280px; padding: 6px var(--ww-space-2); border-radius: var(--ww-radius-sm); background: var(--ww-surface-3); box-shadow: var(--ww-shadow-popover); color: var(--ww-text-2); font-size: var(--ww-text-xs); line-height: 1.45; pointer-events: none; transform-origin: bottom center; animation: ww-tip-in var(--ww-spring-snappy-dur) var(--ww-spring-snappy) both; }
 @keyframes ww-tip-in { from { opacity: 0; transform: translate(-50%, calc(-100% + 3px)) scale(0.96); } to { opacity: 1; transform: translate(-50%, -100%); } }
+.ww-tooltip[data-placement="bottom"] { transform-origin: top center; animation-name: ww-tip-in-below; }
+@keyframes ww-tip-in-below { from { opacity: 0; transform: translate(-50%, -3px) scale(0.96); } to { opacity: 1; transform: translate(-50%, 0); } }
+.ww-tooltip-trigger[data-trigger="child"] { color: inherit; }
 
 /* ------------------------------ Card ------------------------------ */
 .ww-card { position: relative; border-radius: var(--ww-radius-lg); background: linear-gradient(180deg, color-mix(in oklab, var(--ww-surface-2) var(--ww-card-opacity), transparent), color-mix(in oklab, var(--ww-surface-1) var(--ww-card-opacity), transparent)); box-shadow: var(--ww-shadow-card); }
@@ -300,6 +304,9 @@
 .ww-row-label { display: flex; flex-direction: column; min-width: 0; flex: none; max-width: 46%; }
 .ww-row-title { display: inline-flex; align-items: center; gap: var(--ww-space-1_5); font-size: var(--ww-text-base); font-weight: var(--ww-weight-medium); }
 .ww-row-desc { margin-top: 2px; font-size: var(--ww-text-xs); color: var(--ww-text-3); }
+.ww-row-pair { display: flex; align-items: center; justify-content: flex-end; gap: var(--ww-space-2); min-width: 0; }
+.ww-row-pair .ww-select-trigger { flex: 0 1 280px; min-width: 160px; }
+.ww-row-pair > .ww-btn { flex: none; }
 .ww-row-control { display: flex; align-items: center; justify-content: flex-end; flex: 1; gap: var(--ww-space-3); min-width: 0; }
 
 /* ------------------------------ Live chart ------------------------------ */

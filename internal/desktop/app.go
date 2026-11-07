@@ -194,10 +194,22 @@ func Run(options Options) error {
 		}
 	})
 	if options.AutoStart {
+		// Development -autostart and -replay start their own configured session; the saved preference does not add one.
+		bridge.startup.claim()
 		app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
 			go func() {
 				if err := captureService.Start(options.Session); err != nil {
 					fmt.Fprintf(os.Stderr, "capture start failed: %v\n", err)
+				}
+			}()
+		})
+	} else if !options.Showcase {
+		// The saved "start capture when WWlogs launches" preference, evaluated once per run.
+		app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
+			go func() {
+				outcome, err := bridge.startAtLaunch(watcherContext)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "automatic capture start failed (%s): %v\n", outcome, err)
 				}
 			}()
 		})

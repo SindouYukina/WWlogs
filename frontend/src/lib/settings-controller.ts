@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import type { AppIdentity } from "./build-identity"
-import { environmentNotice, type Adapter, type EnvironmentState, type NpcapDownload } from "./capture-environment"
+import { captureBusy, environmentNotice, type Adapter, type EnvironmentState, type NpcapDownload } from "./capture-environment"
 import { host, type OverlayChange } from "./host"
 import { normalizeUpdateInterval, type OverlayKind, type OverlayStates, type Snapshot, type UpdateInterval } from "./snapshot"
 
@@ -28,8 +28,14 @@ export interface SettingsController {
   updateIntervalMs: UpdateInterval
   setUpdateInterval: (ms: UpdateInterval) => void
   adapters: readonly Adapter[]
+  /** The capture interface. Empty means none is chosen yet. */
   defaultAdapter: string
   setDefaultAdapter: (ipv4: string) => void
+  /** A launch starts one capture by itself on `defaultAdapter`. Takes effect at the next launch. */
+  autoStartCapture: boolean
+  setAutoStartCapture: (enabled: boolean) => void
+  /** A capture is starting, running or stopping, so its interface cannot be changed now. */
+  captureBusy: boolean
   /** The last finished check, or null before the first one. */
   environment: EnvironmentState | null
   /** A check is running. Starting another while this is true does nothing. */
@@ -57,6 +63,7 @@ export function useLiveSettings(snapshot: Snapshot | null, connected: boolean, c
   const [environment, setEnvironment] = useState<EnvironmentState | null>(null)
   const [checking, setChecking] = useState(true)
   const [defaultAdapter, setStoredAdapter] = useState("")
+  const [autoStartCapture, setStoredAutoStart] = useState(false)
   const [startupWarning, setStartupWarning] = useState("")
   const [failed, setFailed] = useState(false)
   const [loadFailed, setLoadFailed] = useState(false)
@@ -74,6 +81,7 @@ export function useLiveSettings(snapshot: Snapshot | null, connected: boolean, c
       if (!mounted.current) return
       preferencesMissing.current = false
       setStoredAdapter(preferences.settings.defaultAdapterIPv4)
+      setStoredAutoStart(preferences.settings.autoStartCapture === true)
       setStartupWarning(preferences.warning ?? "")
       setLoadFailed(false)
     }, () => { if (mounted.current) setLoadFailed(true) })
@@ -138,6 +146,9 @@ export function useLiveSettings(snapshot: Snapshot | null, connected: boolean, c
     adapters,
     defaultAdapter,
     setDefaultAdapter: ipv4 => guard(host.setDefaultAdapter(ipv4).then(state => { if (mounted.current) setStoredAdapter(state.settings.defaultAdapterIPv4) })),
+    autoStartCapture,
+    setAutoStartCapture: enabled => guard(host.setAutoStartCapture(enabled).then(state => { if (mounted.current) setStoredAutoStart(state.settings.autoStartCapture === true) })),
+    captureBusy: captureBusy(snapshot?.service.state),
     environment,
     checking,
     checkEnvironment,
