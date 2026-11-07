@@ -57,8 +57,8 @@ const SkillTable = memo(function SkillTable({ breakdown, color }: { breakdown: S
   if (rows.length === 0 && !unassigned) return <p className="ww-dash-empty-note">{t("noSkillRows")}</p>
   return <div className="ww-dash-skills-wrap"><table className="ww-dash-skills" data-field="skills" style={{ "--ww-series": color } as React.CSSProperties}>
     <thead><tr><th>{t("skill")}</th><th>{t("damageColumn")}</th><th>{t("damageEvents")}</th><th>{t("shareColumn")}</th></tr></thead>
-    <tbody>{rows.map(row => <tr key={row.skillId} data-skill-id={row.skillId} data-named={row.name !== undefined}>
-      <td><span className="ww-dash-skill-name" title={`SkillId ${row.skillId}`}><GameAssetImage kind="skill" id={row.skillId} /><span className="ww-truncate">{row.name ?? t("unnamedSkill")}</span><span className="ww-dash-skill-id ww-num ww-selectable">{row.skillId}</span></span></td>
+    <tbody>{rows.map(row => <tr key={row.skillId} data-skill-id={row.skillId} data-named={row.name !== undefined} data-name-source={row.derived}>
+      <td><span className="ww-dash-skill-name" title={`SkillId ${row.skillId}`}><GameAssetImage kind="skill" id={row.skillId} /><span className="ww-truncate">{row.name ?? t("unnamedSkill")}</span>{row.derived && <span className="ww-dash-skill-derived" data-field="derived-name" title={t(row.derived === "echo" ? "derivedEchoSkillNote" : "derivedSkillNote")} aria-label={t(row.derived === "echo" ? "derivedEchoSkillNote" : "derivedSkillNote")}>≈</span>}<span className="ww-dash-skill-id ww-num ww-selectable">{row.skillId}</span></span></td>
       <td className="ww-num"><AnimatedNumber value={row.damage} format={format.integer} /></td>
       <td className="ww-num">{format.integer(row.events)}</td>
       <td><div className="ww-dash-skill-share"><DamageBar share={row.share} /><span className="ww-num">{share(row.share)}</span></div></td>

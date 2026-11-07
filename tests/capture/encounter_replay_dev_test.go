@@ -97,21 +97,27 @@ func viewWithoutSkills(view ViewSnapshot) ViewSnapshot {
 // skillCoverage reports how much confirmed role and vehicle damage of the capture interval has a skill source, by
 // events and by damage, and how much of that has an official Master name. Unknown reasons are kept apart.
 type skillCoverage struct {
-	Roles               int      `json:"roles"`
-	RoleEvents          uint64   `json:"roleEvents"`
-	RoleDamage          int64    `json:"roleDamage"`
-	SkillEvents         uint64   `json:"skillEvents"`
-	SkillDamage         int64    `json:"skillDamage"`
-	NamedSkillEvents    uint64   `json:"namedSkillEvents"`
-	NamedSkillDamage    int64    `json:"namedSkillDamage"`
-	MissingSkillEvents  uint64   `json:"missingSkillEvents"`
-	MissingSkillDamage  int64    `json:"missingSkillDamage"`
-	OverflowEvents      uint64   `json:"overflowEvents"`
-	DistinctSkills      int      `json:"distinctSkills"`
-	UnnamedSkillIDs     []uint64 `json:"unnamedSkillIds"`
-	MasterRoleConflicts []string `json:"masterRoleConflicts"`
-	VehicleEvents       uint64   `json:"vehicleEvents"`
-	VehicleSkillEvents  uint64   `json:"vehicleSkillEvents"`
+	Roles            int    `json:"roles"`
+	RoleEvents       uint64 `json:"roleEvents"`
+	RoleDamage       int64  `json:"roleDamage"`
+	SkillEvents      uint64 `json:"skillEvents"`
+	SkillDamage      int64  `json:"skillDamage"`
+	NamedSkillEvents uint64 `json:"namedSkillEvents"`
+	NamedSkillDamage int64  `json:"namedSkillDamage"`
+	// DerivedSkill* count rows named through a related record (skill_names.go), never counted as official names.
+	DerivedSkillEvents uint64   `json:"derivedSkillEvents"`
+	DerivedSkillDamage int64    `json:"derivedSkillDamage"`
+	DerivedSkills      []string `json:"derivedSkills"`
+	MissingSkillEvents uint64   `json:"missingSkillEvents"`
+	MissingSkillDamage int64    `json:"missingSkillDamage"`
+	OverflowEvents     uint64   `json:"overflowEvents"`
+	DistinctSkills     int      `json:"distinctSkills"`
+	UnnamedSkillIDs    []uint64 `json:"unnamedSkillIds"`
+	// StillUnnamedSkillIDs have neither an official nor a derived name.
+	StillUnnamedSkillIDs []uint64 `json:"stillUnnamedSkillIds"`
+	MasterRoleConflicts  []string `json:"masterRoleConflicts"`
+	VehicleEvents        uint64   `json:"vehicleEvents"`
+	VehicleSkillEvents   uint64   `json:"vehicleSkillEvents"`
 }
 
 // collectSkillCoverage reads the interval split. A Master skill-group role that differs from the runtime role is
@@ -120,6 +126,8 @@ func collectSkillCoverage(statistics DamageStatisticsSnapshot, masters *gameMast
 	var coverage skillCoverage
 	distinct := map[uint64]bool{}
 	unnamed := map[uint64]bool{}
+	stillUnnamed := map[uint64]bool{}
+	derived := map[string]bool{}
 	for _, role := range statistics.Roles {
 		if role.OutgoingEvents == 0 {
 			continue
@@ -142,6 +150,13 @@ func collectSkillCoverage(statistics DamageStatisticsSnapshot, masters *gameMast
 				coverage.NamedSkillDamage += skill.DamageDealt
 			} else {
 				unnamed[skill.SkillID] = true
+				if _, status, source, sourceID := masters.skillRowName(role.RoleID, skill); status == skillNameStatusDerived {
+					coverage.DerivedSkillEvents += skill.OutgoingEvents
+					coverage.DerivedSkillDamage += skill.DamageDealt
+					derived[fmt.Sprintf("role %d skill %d %s %d", role.RoleID, skill.SkillID, source, sourceID)] = true
+				} else {
+					stillUnnamed[skill.SkillID] = true
+				}
 			}
 			if ok && record.RoleID != 0 && record.RoleID != role.RoleID {
 				coverage.MasterRoleConflicts = append(coverage.MasterRoleConflicts, fmt.Sprintf("role %d skill %d master role %d", role.RoleID, skill.SkillID, record.RoleID))
@@ -159,6 +174,14 @@ func collectSkillCoverage(statistics DamageStatisticsSnapshot, masters *gameMast
 		coverage.UnnamedSkillIDs = append(coverage.UnnamedSkillIDs, id)
 	}
 	sort.Slice(coverage.UnnamedSkillIDs, func(i, j int) bool { return coverage.UnnamedSkillIDs[i] < coverage.UnnamedSkillIDs[j] })
+	for id := range stillUnnamed {
+		coverage.StillUnnamedSkillIDs = append(coverage.StillUnnamedSkillIDs, id)
+	}
+	sort.Slice(coverage.StillUnnamedSkillIDs, func(i, j int) bool { return coverage.StillUnnamedSkillIDs[i] < coverage.StillUnnamedSkillIDs[j] })
+	for key := range derived {
+		coverage.DerivedSkills = append(coverage.DerivedSkills, key)
+	}
+	sort.Strings(coverage.DerivedSkills)
 	return coverage
 }
 

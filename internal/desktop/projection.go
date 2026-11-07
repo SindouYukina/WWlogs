@@ -49,11 +49,7 @@ func (p *displayProjection) encode(source *service.Snapshot, settings SettingsSt
 	skills := func(original []capture.ViewSkill) []capture.ViewSkill {
 		result := append([]capture.ViewSkill{}, original...)
 		for i := range result {
-			name, err := p.resolver.Resolve(ctx, "combat_skill", result[i].SkillID, masterLocale)
-			if err != nil {
-				projectionErr = err
-			}
-			result[i].Name, result[i].NameStatus = name.Name, name.Status
+			result[i].Name, result[i].NameStatus = projectSkillName(ctx, p.resolver, result[i], masterLocale, &projectionErr)
 		}
 		return result
 	}
@@ -137,4 +133,24 @@ func (p *displayProjection) encode(source *service.Snapshot, settings SettingsSt
 	}
 	p.source, p.revision, p.shell, p.encoded = source, settings.LocaleRevision, shell, encoded
 	return append(json.RawMessage(nil), encoded...), nil
+}
+
+// projectSkillName re-resolves a skill row's name for the UI locale through the source the engine selected. A derived
+// source keeps its DERIVED status; when its record has no name in any locale the row falls back to UNKNOWN.
+func projectSkillName(ctx context.Context, resolver *capture.DisplayResolver, skill capture.ViewSkill, locale string, projectionErr *error) (string, string) {
+	kind, id, status := "combat_skill", skill.SkillID, ""
+	switch skill.NameSource {
+	case "damage_list":
+		kind, id, status = "skill", skill.SourceID, "DERIVED"
+	case "echo":
+		kind, id, status = "echo", skill.SourceID, "DERIVED"
+	}
+	name, err := resolver.Resolve(ctx, kind, id, locale)
+	if err != nil {
+		*projectionErr = err
+	}
+	if status != "" && name.Name != "" {
+		return name.Name, status
+	}
+	return name.Name, name.Status
 }

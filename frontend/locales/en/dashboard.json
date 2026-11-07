@@ -72,6 +72,8 @@
   "skill": "Skill",
   "damageEvents": "Damage events",
   "unnamedSkill": "Unnamed skill",
+  "derivedSkillNote": "Not this skill's own name: the official name of the skill whose damage list contains these hits.",
+  "derivedEchoSkillNote": "Not this skill's own name: the official name of the Echo that casts it.",
   "unassignedSkill": "Unconfirmed skill source",
   "unassignedSkillNote": "Damage confirmed for this source whose protocol data carries no skill ID.",
   "noSkillRows": "This source has no skill damage to break down.",

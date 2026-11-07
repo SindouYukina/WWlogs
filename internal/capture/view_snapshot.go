@@ -168,13 +168,18 @@ type ViewRole struct {
 	UnassignedSkill ViewUnassignedSkill `json:"unassignedSkill"`
 }
 
-// ViewSkill is one DamageContext.SkillId of a contributor. Name is the official Master skill name for the selected
-// locale, filled by the display projection; it is empty with NameStatus UNKNOWN when Master has none, and the UI then
-// shows the SkillId. Developer labels and unofficial translations are never used here.
+// ViewSkill is one DamageContext.SkillId of a contributor. Name is a Master name for the selected locale, filled by the
+// display projection. NameStatus VERIFIED is the SkillId's own official name; DERIVED is the official name of the
+// related record NameSource and SourceID identify (skill_names.go), which the UI marks; UNKNOWN leaves Name empty and
+// the UI shows the SkillId. Developer labels and unofficial translations are never used here.
 type ViewSkill struct {
-	SkillID        uint64   `json:"skillId"`
-	Name           string   `json:"name"`
-	NameStatus     string   `json:"nameStatus"`
+	SkillID    uint64 `json:"skillId"`
+	Name       string `json:"name"`
+	NameStatus string `json:"nameStatus"`
+	// NameSource is "official", "damage_list" or "echo"; empty when Name is empty.
+	NameSource string `json:"nameSource,omitempty"`
+	// SourceID is the record Name belongs to for a DERIVED name: Skill.Id (damage_list) or PhantomItem.Id (echo).
+	SourceID       uint64   `json:"sourceId,omitempty"`
 	DamageDealt    int64    `json:"damageDealt"`
 	DamageShare    *float64 `json:"damageShare,omitempty"`
 	OutgoingEvents uint64   `json:"outgoingEvents"`
@@ -365,7 +370,7 @@ func (p *processor) viewRoles(roles []RoleDamageSnapshot, total int64) []ViewRol
 			DamageDealt: role.DamageDealt, DirectDamage: role.DirectDamage, SummonDamage: role.SummonDamage,
 			OutgoingEvents: role.OutgoingEvents, DamageTaken: role.DamageTaken, IncomingEvents: role.IncomingEvents,
 		})
-		view[len(view)-1].Skills, view[len(view)-1].UnassignedSkill = p.viewSkills(role.Skills, role.UnassignedSkill, role.DamageDealt)
+		view[len(view)-1].Skills, view[len(view)-1].UnassignedSkill = p.viewSkills(role.RoleID, role.Skills, role.UnassignedSkill, role.DamageDealt)
 		if total > 0 {
 			share := float64(role.DamageDealt) / float64(total)
 			view[len(view)-1].DamageShare = &share
@@ -375,7 +380,8 @@ func (p *processor) viewRoles(roles []RoleDamageSnapshot, total int64) []ViewRol
 }
 
 // viewSkills projects a contributor's skill split. Shares use the contributor's own confirmed damage, never the team's.
-func (p *processor) viewSkills(skills []SkillDamageSnapshot, unassigned UnassignedSkillTotals, total int64) ([]ViewSkill, ViewUnassignedSkill) {
+// roleID is zero for the vehicle, which has no skill group.
+func (p *processor) viewSkills(roleID uint64, skills []SkillDamageSnapshot, unassigned UnassignedSkillTotals, total int64) ([]ViewSkill, ViewUnassignedSkill) {
 	share := func(amount int64) *float64 {
 		if total <= 0 {
 			return nil
@@ -385,26 +391,13 @@ func (p *processor) viewSkills(skills []SkillDamageSnapshot, unassigned Unassign
 	}
 	view := make([]ViewSkill, 0, len(skills))
 	for _, skill := range skills {
-		name, status := p.skillDisplayName(skill.SkillID)
+		name, status, source, sourceID := p.masters.skillRowName(roleID, skill)
 		view = append(view, ViewSkill{
-			SkillID: skill.SkillID, Name: name, NameStatus: status, DamageDealt: skill.DamageDealt,
-			DamageShare: share(skill.DamageDealt), OutgoingEvents: skill.OutgoingEvents,
+			SkillID: skill.SkillID, Name: name, NameStatus: status, NameSource: source, SourceID: sourceID,
+			DamageDealt: skill.DamageDealt, DamageShare: share(skill.DamageDealt), OutgoingEvents: skill.OutgoingEvents,
 		})
 	}
 	return view, ViewUnassignedSkill{UnassignedSkillTotals: unassigned, DamageShare: share(unassigned.DamageDealt)}
-}
-
-// skillDisplayName returns the official Master name of a DamageContext.SkillId in the capture Master locale; the
-// desktop projection replaces it with the selected UI locale. Only a VERIFIED official name is shown.
-func (p *processor) skillDisplayName(skillID uint64) (string, string) {
-	if p.masters == nil {
-		return "", string(resolutionUnknown)
-	}
-	skill, ok := p.masters.damageSkill(skillID)
-	if !ok || skill.Name == "" || skill.NameStatus != string(resolutionVerified) {
-		return "", string(resolutionUnknown)
-	}
-	return skill.Name, skill.NameStatus
 }
 
 // roleDisplayName returns the Master name of a RoleId. A name is shown only when Master marks it verified; anything
@@ -553,7 +546,7 @@ func (p *processor) viewVehicle(vehicle *VehicleDamageSnapshot, total int64) *Vi
 	}
 	view := &ViewVehicle{VehicleDamageSnapshot: *vehicle}
 	view.VehicleDamageSnapshot.Skills = nil
-	view.Skills, view.UnassignedSkill = p.viewSkills(vehicle.Skills, vehicle.UnassignedSkill, vehicle.DamageDealt)
+	view.Skills, view.UnassignedSkill = p.viewSkills(0, vehicle.Skills, vehicle.UnassignedSkill, vehicle.DamageDealt)
 	if total > 0 {
 		share := float64(vehicle.DamageDealt) / float64(total)
 		view.DamageShare = &share

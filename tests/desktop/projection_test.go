@@ -255,3 +255,67 @@ func TestDisplayProjectionRelocalizesSkillNamesWithoutChangingSkillStatistics(t 
 		t.Fatal("projection mutated the core snapshot")
 	}
 }
+
+func TestDisplayProjectionRelocalizesDerivedSkillNamesThroughTheirSource(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "master.db")
+	db, _ := sql.Open("sqlite", path)
+	for _, statement := range []string{
+		"CREATE TABLE skilldescription_locale (id TEXT,locale TEXT,name TEXT,PRIMARY KEY(id,locale))",
+		"CREATE TABLE skill_locale (id TEXT,locale TEXT,name TEXT,PRIMARY KEY(id,locale))",
+		"CREATE TABLE roleinfo_locale (id TEXT,locale TEXT,name TEXT,PRIMARY KEY(id,locale))",
+		"CREATE TABLE roleinfo (id TEXT PRIMARY KEY,element_id TEXT)",
+		"CREATE TABLE phantomitem_locale (id TEXT,locale TEXT,name TEXT,PRIMARY KEY(id,locale))",
+		// The runtime SkillId shares its number with an unrelated SkillDescription row; the source must decide.
+		"INSERT INTO skilldescription_locale VALUES('1006203','en-US','Wrong runtime row')",
+		"INSERT INTO skill_locale VALUES('1006203','en-US','Liberation'),('1006203','ja-JP','解放')",
+		"INSERT INTO phantomitem_locale VALUES('60001062','en-US','Reminiscence: Fleurdelys')",
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	db.Close()
+	resolver, err := capture.OpenDisplayResolver(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resolver.Close()
+	store := loadSettings(filepath.Join(t.TempDir(), "settings.json"), testLocaleCatalog())
+	skills := []capture.ViewSkill{
+		{SkillID: 1312050, Name: "x", NameStatus: "DERIVED", NameSource: "damage_list", SourceID: 1006203, DamageDealt: 300, OutgoingEvents: 4},
+		{SkillID: 280026010, Name: "x", NameStatus: "DERIVED", NameSource: "echo", SourceID: 60001062, DamageDealt: 100, OutgoingEvents: 2},
+		{SkillID: 1006203, NameStatus: "UNKNOWN", DamageDealt: 5, OutgoingEvents: 1},
+		{SkillID: 1409099, Name: "x", NameStatus: "DERIVED", NameSource: "damage_list", SourceID: 1009999, DamageDealt: 1, OutgoingEvents: 1},
+	}
+	view := capture.ViewSnapshot{Roles: []capture.ViewRole{{RoleID: 1312, DamageDealt: 406, Skills: skills}}}
+	source := &service.Snapshot{Sequence: 4, View: &view}
+	projection := &displayProjection{resolver: resolver}
+	decode := func(raw []byte) (result struct{ View capture.ViewSnapshot }) {
+		if err := json.Unmarshal(raw, &result); err != nil {
+			t.Fatal(err)
+		}
+		return result
+	}
+	first, err := projection.encode(source, store.current(), testLocaleCatalog(), service.ListeningStatus{}, OverlayStates{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, err := store.setLocale("ja")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := projection.encode(source, state, testLocaleCatalog(), service.ListeningStatus{}, OverlayStates{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	en, ja := decode(first).View.Roles[0].Skills, decode(second).View.Roles[0].Skills
+	want := []struct{ en, ja, status string }{{"Liberation", "解放", "DERIVED"}, {"Reminiscence: Fleurdelys", "Reminiscence: Fleurdelys", "DERIVED"}, {"Wrong runtime row", "Wrong runtime row", "VERIFIED"}, {"", "", "UNKNOWN"}}
+	for i, w := range want {
+		if en[i].Name != w.en || ja[i].Name != w.ja || en[i].NameStatus != w.status || ja[i].NameStatus != w.status {
+			t.Fatalf("row %d: en=%q/%s ja=%q/%s, want %q/%q/%s", i, en[i].Name, en[i].NameStatus, ja[i].Name, ja[i].NameStatus, w.en, w.ja, w.status)
+		}
+		if en[i].NameSource != skills[i].NameSource || en[i].SourceID != skills[i].SourceID || en[i].DamageDealt != skills[i].DamageDealt || en[i].OutgoingEvents != skills[i].OutgoingEvents {
+			t.Fatalf("row %d: projection changed the row: %+v", i, en[i])
+		}
+	}
+}

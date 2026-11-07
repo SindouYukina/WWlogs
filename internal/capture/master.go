@@ -123,6 +123,8 @@ type gameMaster struct {
 	elementNames  map[int32]string
 	damage        map[uint64]damageMasterRecord
 	sceneIdentity *sceneIdentityMaster
+	// skillNames holds the static relations behind derived skill-row names (skill_names.go).
+	skillNames *skillNameMaster
 }
 
 func (m *gameMaster) sceneMonster(instanceID, entityID uint64) (uint64, bool) {
