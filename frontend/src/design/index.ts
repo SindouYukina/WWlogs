@@ -2,7 +2,6 @@
 export { installMotionTokens, durations, easings, springs, defaultTickMs } from "./motion/tokens.ts"
 export { gameAssetUrl, type GameAssetKind } from "./assets"
 export { applyAppearance } from "./appearance"
-export { defaultFrameRateCap, frameRateCaps, normalizeFrameRateCap, setFrameRateCap, type FrameRateCap } from "./motion/ticker.ts"
 export { defaultTheme, resolveTheme, themeCharacters, themeIds, type ThemeId } from "./themes/registry.ts"
 export { ListeningStatus, ThemeBackdrop, ThemePicker, type ListeningStateName } from "./components/appearance"
 export { AnimatedNumber, type AnimatedNumberProps } from "./components/AnimatedNumber"

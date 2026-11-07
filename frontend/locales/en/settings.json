@@ -111,12 +111,8 @@
   "updateInterval": "Combat data update interval",
   "updateIntervalHint": "Shared by the Dashboard and both Overlays, including effect countdowns. Only the screen update rate changes; every combat event is still counted.",
   "updateIntervalNote": "Dashboard and Overlays · Default {{value}}",
-  "animationFps": "Animation frame rate limit",
-  "animationFpsHint": "Limits frame-by-frame animation such as counting numbers without changing its duration. Transitions and countdown bars are drawn by the system at the display's refresh rate, which also caps higher settings.",
-  "animationFpsNote": "Duration unchanged · Default {{value}}",
   "units": {
     "milliseconds": "{{value}} ms",
-    "seconds": "{{value}} s",
-    "fps": "{{value}} FPS"
+    "seconds": "{{value}} s"
   }
 }

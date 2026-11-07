@@ -137,14 +137,14 @@ func TestShellChangeReencodesWithoutTouchingCoreSequence(t *testing.T) {
 	}
 }
 
-func TestProjectedShellCarriesDisplayPerformance(t *testing.T) {
+func TestProjectedShellCarriesUpdateInterval(t *testing.T) {
 	store := loadSettings(filepath.Join(t.TempDir(), "settings.json"), testLocaleCatalog())
 	projection := &displayProjection{}
 	source := &service.Snapshot{Sequence: 3}
 	decode := func(raw []byte) (shell struct {
 		Sequence         uint64
 		UpdateIntervalMs int
-		AnimationFps     int
+		AnimationFps     *int
 	}) {
 		if err := json.Unmarshal(raw, &shell); err != nil {
 			t.Fatal(err)
@@ -155,13 +155,10 @@ func TestProjectedShellCarriesDisplayPerformance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := decode(first); got.UpdateIntervalMs != 250 || got.AnimationFps != 60 {
-		t.Fatalf("defaults: %+v", got)
+	if got := decode(first); got.UpdateIntervalMs != 250 || got.AnimationFps != nil {
+		t.Fatalf("defaults (the retired frame-rate field must not be published): %+v", got)
 	}
 	if _, err := store.setUpdateInterval(750); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.setAnimationFPS(120); err != nil {
 		t.Fatal(err)
 	}
 	// The same core snapshot is re-encoded with the new shell, so every window sees the change without new data.
@@ -169,7 +166,7 @@ func TestProjectedShellCarriesDisplayPerformance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := decode(second); got.UpdateIntervalMs != 750 || got.AnimationFps != 120 || got.Sequence != 3 {
+	if got := decode(second); got.UpdateIntervalMs != 750 || got.Sequence != 3 {
 		t.Fatalf("after change: %+v", got)
 	}
 	// A heartbeat never comes before the next scheduled snapshot of a running capture.

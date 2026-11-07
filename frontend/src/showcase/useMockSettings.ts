@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { defaultFrameRateCap, type FrameRateCap, type ThemeId } from "@/design"
+import type { ThemeId } from "@/design"
 import type { SettingsController } from "@/lib/settings-controller"
 import { defaultUpdateInterval, type OverlayKind, type OverlayStates, type UpdateInterval } from "@/lib/snapshot"
 
@@ -11,15 +11,14 @@ const initialOverlays: OverlayStates = {
 
 /**
  * Local demo state for the production Settings view. Nothing is read from or written to the user's real settings, and
- * the display choices only change these values: the Showcase keeps its own mock publish rate and never drives the
- * product's update interval or frame-rate cap.
+ * the update interval only changes this value: the Showcase keeps its own mock publish rate and never drives the
+ * product's update interval.
  */
 export function useMockSettings(theme: ThemeId, setTheme: (theme: ThemeId) => void, reduced: boolean, setReduced: (reduced: boolean) => void): SettingsController {
   const { i18n } = useTranslation()
   const [overlays, setOverlays] = useState(initialOverlays)
   const [defaultAdapter, setDefaultAdapter] = useState("")
   const [updateIntervalMs, setUpdateInterval] = useState<UpdateInterval>(defaultUpdateInterval)
-  const [animationFps, setAnimationFps] = useState<FrameRateCap>(defaultFrameRateCap)
   return useMemo(() => ({
     locale: i18n.language,
     setLocale: locale => void i18n.changeLanguage(locale),
@@ -28,8 +27,6 @@ export function useMockSettings(theme: ThemeId, setTheme: (theme: ThemeId) => vo
     setAppearance: (nextTheme, nextReduced) => { setTheme(nextTheme as ThemeId); setReduced(nextReduced) },
     updateIntervalMs,
     setUpdateInterval,
-    animationFps,
-    setAnimationFps,
     adapters: [{ ipv4: "192.0.2.10", description: "Mock adapter" }],
     defaultAdapter,
     setDefaultAdapter,
@@ -48,5 +45,5 @@ export function useMockSettings(theme: ThemeId, setTheme: (theme: ThemeId) => vo
     loadFailed: false,
     warning: "",
     connected: true,
-  }), [i18n, i18n.language, theme, setTheme, reduced, setReduced, overlays, defaultAdapter, updateIntervalMs, animationFps])
+  }), [i18n, i18n.language, theme, setTheme, reduced, setReduced, overlays, defaultAdapter, updateIntervalMs])
 }

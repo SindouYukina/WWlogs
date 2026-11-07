@@ -111,12 +111,8 @@
   "updateInterval": "戦闘情報の更新間隔",
   "updateIntervalHint": "ダッシュボードと 2 つのオーバーレイで共通です（効果のカウントダウンを含む）。変わるのは画面の更新頻度だけで、戦闘イベントはすべて集計されます。",
   "updateIntervalNote": "ダッシュボードとオーバーレイで共通 · 既定 {{value}}",
-  "animationFps": "アニメーションのフレームレート上限",
-  "animationFpsHint": "数値のカウントなど、フレームごとに計算するアニメーションを制限します。再生時間は変わりません。トランジションとカウントダウンバーはディスプレイのリフレッシュレートで描画され、それを超える設定もディスプレイに合わせられます。",
-  "animationFpsNote": "再生時間は不変 · 既定 {{value}}",
   "units": {
     "milliseconds": "{{value}} ms",
-    "seconds": "{{value}} s",
-    "fps": "{{value}} FPS"
+    "seconds": "{{value}} s"
   }
 }

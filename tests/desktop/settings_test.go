@@ -106,21 +106,15 @@ func testLocaleCatalog() localeCatalog {
 	return catalog
 }
 
-func TestDisplayPerformanceDefaultsPersistenceAndValidation(t *testing.T) {
+func TestUpdateIntervalDefaultsPersistenceAndValidation(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "user", "settings.json")
 	store := loadSettings(path, testLocaleCatalog())
-	first := store.current().Settings
-	if effectiveUpdateInterval(first) != capture.DefaultPublishInterval || effectiveAnimationFPS(first) != 60 {
-		t.Fatalf("first run: %v, %d FPS", effectiveUpdateInterval(first), effectiveAnimationFPS(first))
+	if got := effectiveUpdateInterval(store.current().Settings); got != capture.DefaultPublishInterval {
+		t.Fatalf("first run: %v", got)
 	}
 	for _, ms := range []int{0, 100, 249, 300, 1001, -250} {
 		if _, err := store.setUpdateInterval(ms); err == nil {
 			t.Fatalf("update interval %d accepted", ms)
-		}
-	}
-	for _, fps := range []int{0, 1, 59, 144, 240} {
-		if _, err := store.setAnimationFPS(fps); err == nil {
-			t.Fatalf("frame rate %d accepted", fps)
 		}
 	}
 	if _, err := store.setAppearance("glacio", true); err != nil {
@@ -132,32 +126,62 @@ func TestDisplayPerformanceDefaultsPersistenceAndValidation(t *testing.T) {
 			t.Fatalf("set %d ms: %+v %v", ms, state, err)
 		}
 	}
-	for _, fps := range []int{30, 120, 60, 30} {
-		if _, err := store.setAnimationFPS(fps); err != nil {
-			t.Fatal(err)
-		}
-	}
 	reloaded := loadSettings(path, testLocaleCatalog()).current().Settings
-	if effectiveUpdateInterval(reloaded) != time.Second || effectiveAnimationFPS(reloaded) != 30 || reloaded.Theme != "glacio" || !reloaded.ReduceMotion {
+	if effectiveUpdateInterval(reloaded) != time.Second || reloaded.Theme != "glacio" || !reloaded.ReduceMotion {
 		t.Fatalf("not restored or another preference was overwritten: %+v", reloaded)
 	}
-	// Other preferences keep the display choices.
-	if state, err := store.setLocale("en"); err != nil || state.Settings.UpdateIntervalMs != 1000 || state.Settings.AnimationFPS != 30 {
+	// Other preferences keep the interval.
+	if state, err := store.setLocale("en"); err != nil || state.Settings.UpdateIntervalMs != 1000 {
 		t.Fatalf("locale update: %+v %v", state, err)
 	}
-	// A file written before these settings existed, and values from a newer version, load as defaults without a warning.
-	for _, content := range []string{`{"version":1,"locale":"en","theme":"aero"}`, `{"version":1,"locale":"en","theme":"aero","updateIntervalMs":125,"animationFps":240}`} {
+	// A file written before the setting existed, and a value from a newer version, load as the default without a warning.
+	for _, content := range []string{`{"version":1,"locale":"en","theme":"aero"}`, `{"version":1,"locale":"en","theme":"aero","updateIntervalMs":125}`} {
 		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		state := loadSettings(path, testLocaleCatalog()).current()
-		if state.Warning != "" || state.Settings.Theme != "aero" || effectiveUpdateInterval(state.Settings) != 250*time.Millisecond || effectiveAnimationFPS(state.Settings) != 60 {
+		if state.Warning != "" || state.Settings.Theme != "aero" || effectiveUpdateInterval(state.Settings) != 250*time.Millisecond {
 			t.Fatalf("%s: %+v", content, state)
 		}
 	}
-	// The fields are optional, so default preferences are written exactly as before and older versions can read them.
+	// The field is optional, so default preferences are written exactly as before and older versions can read them.
 	data, err := json.Marshal(Settings{Version: 1, Locale: "en"})
-	if err != nil || strings.Contains(string(data), "updateIntervalMs") || strings.Contains(string(data), "animationFps") {
-		t.Fatalf("default settings encode the new fields: %s %v", data, err)
+	if err != nil || strings.Contains(string(data), "updateIntervalMs") {
+		t.Fatalf("default settings encode the interval: %s %v", data, err)
+	}
+}
+
+// Builds before the frame-rate setting was retired saved animationFps. Such a file loads without a warning, keeps
+// every other preference, and the next save drops the retired field instead of failing or keeping a dead value.
+func TestRetiredAnimationFPSFieldLoadsAndIsDropped(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "user", "settings.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	old := `{"version":1,"defaultAdapterIPv4":"127.0.0.1","locale":"ja","theme":"havoc","reduceMotion":true,"updateIntervalMs":750,"animationFps":30,` +
+		`"overlays":{"combat":{"visible":true,"opacity":55,"alwaysOnTop":true,"clickThrough":false},"effects":{"visible":false,"opacity":40,"alwaysOnTop":false,"clickThrough":true}}}`
+	if err := os.WriteFile(path, []byte(old), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	store := loadSettings(path, testLocaleCatalog())
+	state := store.current()
+	want := func(s Settings) bool {
+		return s.DefaultAdapterIPv4 == "127.0.0.1" && s.Locale == "ja" && s.Theme == "havoc" && s.ReduceMotion && s.UpdateIntervalMs == 750 &&
+			s.Overlays.Combat.Visible && s.Overlays.Combat.Opacity == 55 && !s.Overlays.Combat.ClickThrough && s.Overlays.Effects.Opacity == 40 && !s.Overlays.Effects.AlwaysOnTop
+	}
+	if state.Warning != "" || !want(state.Settings) {
+		t.Fatalf("old file: %+v", state)
+	}
+	if _, err := store.setUpdateInterval(500); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil || strings.Contains(string(data), "animationFps") {
+		t.Fatalf("the retired field was written again: %s %v", data, err)
+	}
+	reloaded := loadSettings(path, testLocaleCatalog()).current().Settings
+	reloaded.UpdateIntervalMs = 750
+	if !want(reloaded) {
+		t.Fatalf("a save lost another preference: %+v", reloaded)
 	}
 }

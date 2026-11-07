@@ -71,12 +71,11 @@ test("only the selectable update intervals are accepted; anything else is the 25
 })
 
 test("a display setting change on a heartbeat updates the shell without replacing core data", () => {
-  const current = { sequence: 9, localeRevision: 1, view: { marker: "core" }, updateIntervalMs: 250, animationFps: 60, theme: "electro" }
-  const heartbeat = { ...current, view: { marker: "must not replace" }, updateIntervalMs: 1000, animationFps: 30 }
+  const current = { sequence: 9, localeRevision: 1, view: { marker: "core" }, updateIntervalMs: 250, theme: "electro" }
+  const heartbeat = { ...current, view: { marker: "must not replace" }, updateIntervalMs: 1000 }
   assert.equal(shellChanged(heartbeat, current), true)
   const next = withShell(current, heartbeat)
   assert.equal(next.view, current.view)
   assert.equal(next.updateIntervalMs, 1000)
-  assert.equal(next.animationFps, 30)
   assert.equal(shellChanged({ ...current }, current), false)
 })

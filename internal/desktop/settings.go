@@ -26,10 +26,9 @@ type Settings struct {
 	Theme        string `json:"theme,omitempty"`
 	ReduceMotion bool   `json:"reduceMotion,omitempty"`
 	// UpdateIntervalMs is the one cadence for live combat data in every window; zero means the default. Older files
-	// have no value and newer unsupported values fall back to the default.
+	// have no value and newer unsupported values fall back to the default. A field from an earlier build that is no
+	// longer a preference (such as animationFps) is ignored when read and not written again.
 	UpdateIntervalMs int `json:"updateIntervalMs,omitempty"`
-	// AnimationFPS caps frame-by-frame animation computed by the frontend; zero means the default.
-	AnimationFPS int `json:"animationFps,omitempty"`
 }
 
 // OverlaySet holds independent preferences per Overlay; a change to one never touches the other.
@@ -113,23 +112,12 @@ func effectiveTheme(settings Settings) string {
 	return defaultTheme
 }
 
-// Display and performance choices. The default update interval equals capture.DefaultPublishInterval.
-const (
-	defaultUpdateIntervalMs = 250
-	defaultAnimationFPS     = 60
-)
+// defaultUpdateIntervalMs equals capture.DefaultPublishInterval.
+const defaultUpdateIntervalMs = 250
 
 func validUpdateInterval(ms int) bool {
 	switch ms {
 	case 250, 500, 750, 1000:
-		return true
-	}
-	return false
-}
-
-func validAnimationFPS(fps int) bool {
-	switch fps {
-	case 30, 60, 120:
 		return true
 	}
 	return false
@@ -142,14 +130,6 @@ func effectiveUpdateInterval(settings Settings) time.Duration {
 		ms = defaultUpdateIntervalMs
 	}
 	return time.Duration(ms) * time.Millisecond
-}
-
-// effectiveAnimationFPS is the frame-rate cap to publish to every window for stored preferences.
-func effectiveAnimationFPS(settings Settings) int {
-	if validAnimationFPS(settings.AnimationFPS) {
-		return settings.AnimationFPS
-	}
-	return defaultAnimationFPS
 }
 
 type SettingsState struct {
@@ -226,9 +206,6 @@ func loadSettings(path string, catalog localeCatalog) *settingsStore {
 	}
 	if value.UpdateIntervalMs != 0 && !validUpdateInterval(value.UpdateIntervalMs) {
 		value.UpdateIntervalMs = 0
-	}
-	if value.AnimationFPS != 0 && !validAnimationFPS(value.AnimationFPS) {
-		value.AnimationFPS = 0
 	}
 	if !catalog.valid(value.Locale) {
 		value.Locale = catalog.FallbackLocale
@@ -315,18 +292,6 @@ func (s *settingsStore) setUpdateInterval(ms int) (SettingsState, error) {
 	defer s.mu.Unlock()
 	value := s.state.Settings
 	value.UpdateIntervalMs = ms
-	return s.writeLocked(value)
-}
-
-// setAnimationFPS persists the frame-rate cap for frontend-computed animation.
-func (s *settingsStore) setAnimationFPS(fps int) (SettingsState, error) {
-	if !validAnimationFPS(fps) {
-		return SettingsState{}, errors.New("unsupported_animation_fps")
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	value := s.state.Settings
-	value.AnimationFPS = fps
 	return s.writeLocked(value)
 }
 

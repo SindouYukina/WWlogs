@@ -4,7 +4,6 @@ import type { Connection, Snapshot } from "./snapshot"
 import { shellChanged, snapshotSupersedes, withShell } from "./snapshot"
 import i18n, { manifest } from "@/i18n"
 import { applyAppearance } from "@/design/appearance"
-import { setFrameRateCap } from "@/design/motion/ticker"
 
 /** Resolves when the window is visible. A hidden window holds no long-poll, so it costs the host nothing. */
 function whenVisible(): Promise<void> {
@@ -30,8 +29,6 @@ export function useSnapshot() {
   const accept=useCallback((next:Snapshot)=>{
     const previous=latest.current
     applyAppearance(next.theme,next.reduceMotion===true)
-    // An unchanged value returns at once, so applying it from every heartbeat costs nothing.
-    setFrameRateCap(next.animationFps)
     if(!snapshotSupersedes(next,previous,minimumRevision.current)) {
       // A heartbeat keeps the core sequence, but listening state, appearance and window state may still have moved.
       setSnapshot(current=>current&&next.sequence===current.sequence&&shellChanged(next,current)?withShell(current,next):current)

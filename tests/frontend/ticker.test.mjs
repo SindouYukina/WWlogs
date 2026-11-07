@@ -1,6 +1,6 @@
 import test from "node:test"
 import assert from "node:assert/strict"
-import { activeFrameCallbacks, animateFrames, defaultFrameRateCap, frameRateCap, normalizeFrameRateCap, setFrameRateCap, setFrameScheduler } from "../../frontend/src/design/motion/ticker.ts"
+import { activeFrameCallbacks, animateFrames, counterFrameRate, setFrameScheduler } from "../../frontend/src/design/motion/ticker.ts"
 
 /**
  * A display that refreshes every `refreshMs` and a timer queue, both on one virtual clock. Frame requests run at the
@@ -43,10 +43,9 @@ function fakeDisplay(refreshMs) {
 }
 
 /** Drives one animation for `seconds` and returns its step count and the total time it was told had passed. */
-function measure(refreshMs, cap, seconds) {
+function measure(refreshMs, seconds) {
   const display = fakeDisplay(refreshMs)
   setFrameScheduler(display.scheduler)
-  setFrameRateCap(cap)
   let steps = 0
   let elapsed = 0
   const stop = animateFrames(dt => { steps++; elapsed += dt; return true })
@@ -57,29 +56,30 @@ function measure(refreshMs, cap, seconds) {
 
 test.afterEach(() => setFrameScheduler())
 
-test("the cap limits steps per second and never exceeds the display's refresh rate", () => {
-  for (const [refreshMs, cap, expected] of [[1000 / 120, 30, 30], [1000 / 120, 60, 60], [1000 / 120, 120, 120], [1000 / 60, 120, 60], [1000 / 60, 30, 30], [1000 / 144, 60, 60], [1000 / 144, 120, 120]]) {
-    const { steps } = measure(refreshMs, cap, 10)
+test("counters target 60 steps per second and follow a slower display", () => {
+  assert.equal(counterFrameRate, 60)
+  for (const [hz, expected] of [[144, 60], [120, 60], [60, 60], [50, 50], [30, 30]]) {
+    const { steps } = measure(1000 / hz, 10)
     const rate = steps / 10
-    assert.ok(Math.abs(rate - expected) <= expected * 0.03, `${Math.round(1000 / refreshMs)} Hz display at cap ${cap}: ${rate} steps/s, want about ${expected}`)
+    assert.ok(Math.abs(rate - expected) <= expected * 0.03, `${hz} Hz display: ${rate} steps/s, want about ${expected}`)
   }
 })
 
-test("an animation lasts the same wall time at every cap", () => {
-  for (const cap of [30, 60, 120]) {
-    const { elapsed } = measure(1000 / 120, cap, 2)
-    // Elapsed time is reported to the callback, so a time-based animation reaches the same point at any cap.
-    assert.ok(Math.abs(elapsed - 2) < 1000 / cap / 1000 + 1e-9, `cap ${cap}: callbacks saw ${elapsed}s of 2s`)
+test("an animation lasts the same wall time on every display", () => {
+  for (const hz of [144, 120, 60, 30]) {
+    const { elapsed } = measure(1000 / hz, 2)
+    // Elapsed time is reported to the callback, so a time-based animation reaches the same point at any step rate.
+    assert.ok(Math.abs(elapsed - 2) < 1 / 30 + 1e-9, `${hz} Hz: callbacks saw ${elapsed}s of 2s`)
   }
 })
 
 test("between steps the clock sleeps on a timer instead of waking for every display refresh", () => {
-  const { steps, display } = measure(1000 / 120, 30, 10)
-  // A clock driven only by requestAnimationFrame would ask for all 1,200 refreshes; this one asks about twice per step.
+  const { steps, display } = measure(1000 / 144, 10)
+  // A clock driven only by requestAnimationFrame would ask for all 1,440 refreshes; this one asks about twice per step.
   assert.ok(display.counts.frames <= steps * 2.2, `${display.counts.frames} frame requests for ${steps} steps`)
 })
 
-test("a settled clock schedules nothing, and a cap change or restart does not pile up work", () => {
+test("a settled clock schedules nothing, and restarts never pile up work", () => {
   const display = fakeDisplay(1000 / 120)
   setFrameScheduler(display.scheduler)
   let remaining = 5
@@ -89,21 +89,15 @@ test("a settled clock schedules nothing, and a cap change or restart does not pi
   assert.equal(activeFrameCallbacks(), 0)
   assert.equal(display.pending(), 0, "nothing stays scheduled once every animation has finished")
 
+  // Many counters starting and stopping (mounts, unmounts, new values) share one wakeup.
+  const stops = []
   let steps = 0
-  const stop = animateFrames(() => { steps++; return true })
-  for (const cap of [120, 30, 60, 120, 30, 60, 120]) setFrameRateCap(cap)
-  assert.ok(display.pending() <= 1, `${display.pending()} pending wakeups after repeated cap changes`)
-  const before = steps
+  for (let i = 0; i < 12; i++) stops.push(animateFrames(() => { steps++; return true }))
+  for (let i = 0; i < 6; i++) stops[i]()
+  assert.ok(display.pending() <= 1, `${display.pending()} pending wakeups for one clock`)
   display.run(2000)
-  assert.ok(Math.abs((steps - before) - 120) <= 4, `after switching, ${steps - before} steps in 1s at cap 120`)
-  stop()
+  assert.ok(Math.abs(steps - 6 * 60) <= 6 * 2, `${steps} callback steps for 6 counters in 1s`)
+  for (const stop of stops.slice(6)) stop()
+  assert.equal(activeFrameCallbacks(), 0)
   assert.equal(display.pending(), 0, "stopping the last animation cancels its wakeup")
-})
-
-test("only the selectable caps are accepted; anything else keeps the default", () => {
-  for (const value of [30, 60, 120]) assert.equal(normalizeFrameRateCap(value), value)
-  for (const value of [undefined, null, 0, 59, 144, "60", Number.NaN]) assert.equal(normalizeFrameRateCap(value), defaultFrameRateCap)
-  setFrameRateCap(30)
-  setFrameRateCap(240)
-  assert.equal(frameRateCap(), defaultFrameRateCap)
 })

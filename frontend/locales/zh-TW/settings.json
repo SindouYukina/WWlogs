@@ -111,12 +111,8 @@
   "updateInterval": "戰鬥資訊更新間隔",
   "updateIntervalHint": "儀表板與兩個 Overlay 共用，包含效果倒數。只改變畫面更新頻率，所有戰鬥事件仍會完整計算。",
   "updateIntervalNote": "儀表板與 Overlay 共用 · 預設 {{value}}",
-  "animationFps": "動畫幀率上限",
-  "animationFpsHint": "限制數字跳動等逐格計算的動畫，不改變動畫時間。過場與倒數條由系統依螢幕更新率繪製；超過螢幕更新率時以螢幕為準。",
-  "animationFpsNote": "不改變動畫時間 · 預設 {{value}}",
   "units": {
     "milliseconds": "{{value}} ms",
-    "seconds": "{{value}} s",
-    "fps": "{{value}} FPS"
+    "seconds": "{{value}} s"
   }
 }
