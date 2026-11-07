@@ -39,7 +39,8 @@ test("the Go identity and the frontend type carry the same fields", () => {
 
 test("the About page shows no hard-coded build values", () => {
   const view = readFileSync("frontend/src/views/SettingsView.tsx", "utf8")
-  const about = /function AboutPage[\s\S]*?\n\}\n/.exec(view)[0]
+  // Line endings depend on the checkout (core.autocrlf), so the match accepts CRLF and LF.
+  const about = /function AboutPage[\s\S]*?\r?\n\}\r?\n/.exec(view)[0]
   assert.doesNotMatch(about, /\b0\.6\.0\b|\b128\b|"v\d/)
   for (const field of ["app-version", "app-build-number", "app-profile", "app-revision"]) assert.match(about, new RegExp(`data-field="${field}"`))
 })
