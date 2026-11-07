@@ -36,16 +36,39 @@ function Invoke-Go([string[]]$GoArguments) {
 
 Push-Location $repoRoot
 try {
-    # 1. gofmt. Compare after stripping CR so a CRLF checkout does not read as a formatting difference.
-    $unformatted = @()
+    # 1. gofmt. A CRLF checkout must not read as a formatting difference, so gofmt -l checks byte copies with every CR
+    # removed (ISO-8859-1 maps bytes one to one, and CR never occurs inside a UTF-8 multi-byte sequence). File content
+    # never passes through a PowerShell pipe, so the console code page cannot change the result; gofmt prints only the
+    # relative paths of the copies.
     # Git lists tracked and new unignored files, and it is the one tool this script can already rely on.
     $goFiles = @(& git ls-files --cached --others --exclude-standard -- cmd internal scripts tests | Where-Object { $_ -like '*.go' -and (Test-Path -LiteralPath $_) } | Sort-Object)
-    foreach ($file in $goFiles) {
-        $text = (Get-Content -LiteralPath $file -Raw) -replace "`r", ''
-        $formatted = $text | & gofmt 2>$null
-        if (($formatted -join "`n").TrimEnd() -ne $text.TrimEnd()) { $unformatted += $file }
+    $bytewise = [Text.Encoding]::GetEncoding(28591)
+    $gofmtDirectory = Join-Path ([IO.Path]::GetTempPath()) ("wwlogs-gofmt-" + [Guid]::NewGuid().ToString('N'))
+    try {
+        foreach ($file in $goFiles) {
+            $copy = Join-Path $gofmtDirectory $file
+            [void][IO.Directory]::CreateDirectory((Split-Path -Parent $copy))
+            $content = $bytewise.GetString([IO.File]::ReadAllBytes((Join-Path $repoRoot $file))).Replace("`r", '')
+            [IO.File]::WriteAllBytes($copy, $bytewise.GetBytes($content))
+        }
+        Push-Location $gofmtDirectory
+        try {
+            $gofmtOutput = @(& gofmt -l . 2>&1 | ForEach-Object { "$_" })
+            $gofmtCode = $LASTEXITCODE
+        } finally { Pop-Location }
+    } finally {
+        Remove-Item -LiteralPath $gofmtDirectory -Recurse -Force -ErrorAction SilentlyContinue
     }
-    if ($unformatted.Count -eq 0) { Set-Result 'gofmt' 'PASS' } else { Set-Result 'gofmt' 'FAIL' ($unformatted -join ', ') }
+    $unformatted = @($gofmtOutput | ForEach-Object { $_ -replace '\\', '/' -replace '^\./', '' } | Sort-Object)
+    if ($goFiles.Count -eq 0) {
+        Set-Result 'gofmt' 'FAIL' 'no Go files listed'
+    } elseif ($gofmtCode -ne 0) {
+        Set-Result 'gofmt' 'FAIL' (($gofmtOutput -join ' ').Trim())
+    } elseif ($unformatted.Count -eq 0) {
+        Set-Result 'gofmt' 'PASS' "$($goFiles.Count) files"
+    } else {
+        Set-Result 'gofmt' 'FAIL' ($unformatted -join ', ')
+    }
 
     # 2. go vet and go test for each profile.
     $packages = @('./cmd/...', './internal/...', './tests/...')
