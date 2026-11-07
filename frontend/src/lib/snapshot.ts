@@ -1,6 +1,8 @@
 // Types of the snapshot the Go host publishes (internal/service.Snapshot and internal/capture.ViewSnapshot).
 // Every number here was computed by the Go statistics engine; the frontend only formats it.
 
+import type { AppIdentity } from "./build-identity"
+
 export type ServiceState = "stopped" | "starting" | "running" | "stopping" | "error"
 export type IntegrityStatus = "INTACT" | "DEGRADED" | "UNRELIABLE"
 export type DPSStatus = "available" | "lower_bound" | "unreliable" | "unavailable" | "insufficient_data" | "invalid_duration"
@@ -61,7 +63,7 @@ export interface ServiceStatus {
   startedAt?: string
   lastError?: string
   lastResult?: SessionResult
-  app: { version: string; commit: string; profile: string }
+  app: AppIdentity
 }
 
 export interface SessionInfo {

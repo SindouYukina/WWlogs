@@ -358,7 +358,7 @@ export class MockFeed {
       sequence: this.sequence,
       publishedAt: new Date(this.lastPublish).toISOString(),
       listening: { ...scenarioStatus[this.listeningScenario], since: new Date(this.lastPublish).toISOString() },
-      service: { state: "running", session: { captureSessionId: 1, source: "replay", localIPv4: "0.0.0.0", diagnostics: false }, app: { version: "showcase", commit: "mock", profile: "development" } },
+      service: { state: "running", session: { captureSessionId: 1, source: "replay", localIPv4: "0.0.0.0", diagnostics: false }, app: { version: "showcase", buildNumber: 0, official: false, commit: "mock", dirty: "unknown", profile: "development" } },
       view: {
         schemaVersion: 1,
         captureSessionId: 1,

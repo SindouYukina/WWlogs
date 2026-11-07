@@ -10,7 +10,7 @@
 | `game/skills/by-config/<Skill.Id>/icon.webp` | `Skill.Id` | `skill-config` |
 | `game/buffs/<Buff.Id>/icon.webp` | `Buff.Id` | `buff` |
 
-`scripts/build.ps1 -Target Desktop` (Public) verifies each listed image against the manifest, stores each distinct image once, and embeds the pack in the executable. A missing or changed image fails the build. Development reads the same tree only through an explicit `-asset-root assets`.
+`scripts/build.ps1` (Public) verifies each listed image against the manifest, stores each distinct image once, and embeds the pack in the executable. A missing or changed image fails the build. Development reads the same tree only through an explicit `-asset-root assets`.
 
 An ID without an image stays without one. It is never replaced with another ID's image.
 

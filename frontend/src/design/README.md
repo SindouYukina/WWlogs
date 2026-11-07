@@ -56,8 +56,8 @@ The Showcase lives in `../showcase/`. It adds a Mock provider, demo controls, a 
 Build and open it in the real WebView2 host. `-asset-root` is an explicit path to a directory that contains `game/`, normally `assets`; without it, components show their fallbacks. Public executables carry the same images through the same resolver (`assets/README.md`).
 
 ```powershell
-pwsh -NoProfile -File scripts/build.ps1 -Profile Development -Target Desktop
-work/dist/WWlogs-Desktop-dev.exe -showcase -asset-root <directory>
+pwsh -NoProfile -File scripts/build.ps1 -Profile Development
+bin/development/WWlogs.exe -showcase -asset-root <directory>
 ```
 
 Pass `-font-root <directory>` separately to load local typeface candidates. The root contains `manifest.json` and one directory per scheme; it must not be placed under `assets/`. Without it, only the bundled scheme and system baseline can be compared. The Typography section reports each scheme as Loaded, Partial coverage, Missing, Load failed or No font root, based on the file requests, the browser's decode and the manifest's character ranges. A CSS declaration or `document.fonts.check()` is not evidence that a font was used, so a scheme that did not load shows no specimen and is not applied to the page. Add `-showcase-overlays` to also open its real transparent Overlay windows. For fast iteration without the Go host, run `npm run dev` in `frontend/`, set `WWLOGS_ASSET_ROOT` for game images and `WWLOGS_FONT_ROOT` to `work/fonts/candidates`, and open `http://localhost:9245/?view=showcase`.

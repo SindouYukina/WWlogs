@@ -4,7 +4,8 @@
 
 .DESCRIPTION
   Runs formatting, vet, and unit tests for the Public and Development profiles, builds both executables with
-  embed-key, audits the public executable's output surface, and checks the build identity.
+  embed-key, audits the public executable's output surface, and checks the build identity. These throw-away builds
+  are Unofficial: verification never reads or advances the owner's official build counter.
   Every step reports PASS, FAIL, NOT RUN, or BLOCKED. Nothing is reported as PASS unless it executed.
 
   Steps that need local-only material (privateKey.pem, archived PCAP captures) are NOT RUN, not PASS, when
@@ -51,7 +52,7 @@ try {
     foreach ($profile in @(@{ Name = 'Public'; Tags = @() }, @{ Name = 'Development'; Tags = @('-tags', 'wwdev') })) {
         $vet = Invoke-Go (@('vet', "-overlay=$overlay") + $profile.Tags + $packages)
         Set-Result "go vet ($($profile.Name))" $(if ($vet.Code -eq 0) { 'PASS' } else { 'FAIL' }) $(if ($vet.Code -ne 0) { $vet.Output.Trim() })
-        $test = Invoke-Go (@('test', '-count=1', "-overlay=$overlay") + $profile.Tags + @('./cmd/capture', './internal/buildinfo', './internal/capture', './internal/service', './internal/desktop', './internal/keyembed', './tests/assets', './tests/versioninfo'))
+        $test = Invoke-Go (@('test', '-count=1', "-overlay=$overlay") + $profile.Tags + @('./cmd/capture', './internal/buildinfo', './internal/capture', './internal/service', './internal/desktop', './internal/keyembed', './tests/assets', './tests/buildrun', './tests/versioninfo'))
         Set-Result "go test ($($profile.Name))" $(if ($test.Code -eq 0) { 'PASS' } else { 'FAIL' }) $(if ($test.Code -ne 0) { $test.Output.Trim() })
     }
 
@@ -82,8 +83,8 @@ try {
         try {
             $publicExe = Join-Path $buildDirectory 'WWlogs.exe'
             $developmentExe = Join-Path $buildDirectory 'WWlogs-dev.exe'
-            $publicBuild = Invoke-Go @('run', './scripts/embed-key.go', '-profile', 'public', '-o', $publicExe)
-            $developmentBuild = Invoke-Go @('run', './scripts/embed-key.go', '-profile', 'development', '-o', $developmentExe)
+            $publicBuild = Invoke-Go @('run', './scripts/embed-key.go', '-unofficial', '-profile', 'public', '-o', $publicExe)
+            $developmentBuild = Invoke-Go @('run', './scripts/embed-key.go', '-unofficial', '-profile', 'development', '-o', $developmentExe)
             Set-Result 'build (Public)' $(if ($publicBuild.Code -eq 0) { 'PASS' } else { 'FAIL' }) $(if ($publicBuild.Code -ne 0) { $publicBuild.Output.Trim() })
             Set-Result 'build (Development)' $(if ($developmentBuild.Code -eq 0) { 'PASS' } else { 'FAIL' }) $(if ($developmentBuild.Code -ne 0) { $developmentBuild.Output.Trim() })
 
@@ -94,7 +95,8 @@ try {
                 $developmentHash = (Get-FileHash -LiteralPath $developmentExe -Algorithm SHA256).Hash.ToLowerInvariant()
                 $identityOk = ($publicVersion -match 'Build profile: public') -and ($developmentVersion -match 'Build profile: development') -and
                     ($developmentVersion -match "Executable SHA-256: $developmentHash") -and ($publicVersion -notmatch 'Executable SHA-256') -and
-                    ($publicVersion -match 'Commit: [0-9a-f]{40}')
+                    ($publicVersion -match 'Commit: [0-9a-f]{40}') -and ($publicVersion -match 'Build number: unofficial') -and
+                    ($developmentVersion -match 'Build number: unofficial')
                 Set-Result 'build identity' $(if ($identityOk) { 'PASS' } else { 'FAIL' })
 
                 # Public output surface: no diagnostic flags, no diagnostic strings, no PCAP writer symbols.
@@ -122,8 +124,8 @@ try {
                     Set-Result 'frontend typecheck + build' 'PASS'
                     $desktopPublicExe = Join-Path $buildDirectory 'WWlogs-Desktop.exe'
                     $desktopDevelopmentExe = Join-Path $buildDirectory 'WWlogs-Desktop-dev.exe'
-                    $desktopPublic = Invoke-Go @('run', './scripts/embed-key.go', '-profile', 'public', '-target', 'desktop', '-frontend-dist', $frontendDist, '-o', $desktopPublicExe)
-                    $desktopDevelopment = Invoke-Go @('run', './scripts/embed-key.go', '-profile', 'development', '-target', 'desktop', '-frontend-dist', $frontendDevelopmentDist, '-o', $desktopDevelopmentExe)
+                    $desktopPublic = Invoke-Go @('run', './scripts/embed-key.go', '-unofficial', '-profile', 'public', '-target', 'desktop', '-frontend-dist-public', $frontendDist, '-o', $desktopPublicExe)
+                    $desktopDevelopment = Invoke-Go @('run', './scripts/embed-key.go', '-unofficial', '-profile', 'development', '-target', 'desktop', '-frontend-dist-development', $frontendDevelopmentDist, '-o', $desktopDevelopmentExe)
                     Set-Result 'desktop build (Public + Development)' $(if ($desktopPublic.Code -eq 0 -and $desktopDevelopment.Code -eq 0) { 'PASS' } else { 'FAIL' }) $(if ($desktopPublic.Code -ne 0) { $desktopPublic.Output.Trim() } elseif ($desktopDevelopment.Code -ne 0) { $desktopDevelopment.Output.Trim() })
                     if ($desktopPublic.Code -eq 0) {
                         $desktopHelp = (& $desktopPublicExe -h 2>&1) -join "`n"

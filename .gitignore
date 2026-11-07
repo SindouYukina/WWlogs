@@ -2,6 +2,7 @@
 # Development-only font candidates and proprietary font sources stay local.
 /work/fonts/src/misans/
 /work/fonts/candidates/
+/.local/
 /AGENTS.md
 /HANDOFF.md
 /bin/

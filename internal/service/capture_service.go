@@ -35,10 +35,15 @@ type Status struct {
 	App        AppIdentity            `json:"app"`
 }
 
-// AppIdentity is the build identity shown in the UI. It carries no paths or hashes.
+// AppIdentity is the build identity shown in the UI, taken from buildinfo. It carries no paths or hashes.
 type AppIdentity struct {
 	Version string `json:"version"`
-	Commit  string `json:"commit"`
+	// BuildNumber is the official Build Number; zero with Official false marks an unofficial build.
+	BuildNumber uint64 `json:"buildNumber"`
+	Official    bool   `json:"official"`
+	Commit      string `json:"commit"`
+	// Dirty is "true" when tracked sources were modified at build time, "false", or "unknown".
+	Dirty   string `json:"dirty"`
 	Profile string `json:"profile"`
 }
 
@@ -80,7 +85,8 @@ type CaptureService struct {
 // NewCaptureService creates a stopped service using open to create sessions.
 func NewCaptureService(open Opener) *CaptureService {
 	record := buildinfo.Current()
-	identity := AppIdentity{Version: record.Version, Commit: record.Commit, Profile: string(record.Profile)}
+	identity := AppIdentity{Version: record.Version, BuildNumber: record.BuildNumber, Official: record.Official(),
+		Commit: record.Commit, Dirty: record.Dirty, Profile: string(record.Profile)}
 	status := Status{State: StateStopped, App: identity}
 	return &CaptureService{open: open, publisher: NewPublisher(status), identity: identity, status: status}
 }

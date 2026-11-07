@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react"
+import type { AppIdentity } from "./build-identity"
 import { environmentNotice, type Adapter, type EnvironmentState, type NpcapDownload } from "./capture-environment"
 import { host, type OverlayChange } from "./host"
 import type { OverlayKind, OverlayStates, Snapshot } from "./snapshot"
@@ -38,7 +39,7 @@ export interface SettingsController {
   overlays: OverlayStates | undefined
   updateOverlay: (kind: OverlayKind, change: OverlayChange) => void
   resetOverlay: (kind: OverlayKind) => void
-  app: { version: string; commit: string; profile: string } | undefined
+  app: AppIdentity | undefined
   /** A setting could not be saved. Values are unchanged because the host only reports what it applied. */
   failed: boolean
   /** Saved preferences could not be read, so defaults are showing. Capture problems never set this or `failed`. */

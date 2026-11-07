@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Button, ContentSwitch, Icon, Select, SettingsRow, SettingsSection, Sidebar, Slider, Stepper, ThemeBackdrop, ThemePicker, Toggle, Tooltip, resolveTheme, type SidebarGroupModel } from "@/design"
 import { manifest } from "@/i18n"
+import { buildNumberText, profileKey, revisionText, versionText, type IdentityText } from "@/lib/build-identity"
 import { environmentNotice } from "@/lib/capture-environment"
 import type { SettingsController } from "@/lib/settings-controller"
 import type { OverlayKind } from "@/lib/snapshot"
@@ -89,10 +90,14 @@ function CapturePage({ controller }: { controller: SettingsController }) {
 function AboutPage({ controller }: { controller: SettingsController }) {
   const { t } = useTranslation("settings")
   const app = controller.app
+  const show = (text: IdentityText) => text.kind === "value" ? text.value : t(text.key)
+  const profile = app ? profileKey(app) : undefined
+  const revision = app ? revisionText(app) : undefined
   return <SettingsSection title={t("sections.about")}>
-    <SettingsRow title="WWlogs" description={t("storage")}><span className="ww-num" data-field="app">{app?.version ?? "—"}</span></SettingsRow>
-    <SettingsRow title={t("buildCommit")}><span className="ww-num">{app?.commit.slice(0, 12) ?? "—"}</span></SettingsRow>
-    <SettingsRow title={t("buildProfile")}><span>{app?.profile ?? "—"}</span></SettingsRow>
+    <SettingsRow title={t("buildVersion")} description={t("storage")}><span className="ww-num" data-field="app-version">{app ? show(versionText(app)) : "—"}</span></SettingsRow>
+    <SettingsRow title={t("buildNumber")}><span className="ww-num" data-field="app-build-number" data-official={app?.official ? "true" : "false"}>{app ? show(buildNumberText(app)) : "—"}</span></SettingsRow>
+    <SettingsRow title={t("buildProfile")}><span data-field="app-profile">{app ? (profile ? t(profile) : app.profile) : "—"}</span></SettingsRow>
+    <SettingsRow title={t("buildRevision")} description={revision?.note ? t(revision.note) : undefined}><span className="ww-num" data-field="app-revision" data-dirty={app?.dirty}>{revision ? show(revision.revision) : "—"}</span></SettingsRow>
   </SettingsSection>
 }
 

@@ -4,6 +4,7 @@ All WWlogs product test source files, test helpers, and fixtures belong in this 
 
 - `capture/` and `keyembed/` contain white-box tests. `go-overlay.json` maps these files from their physical locations under `tests/` to the product packages under test, and hides their original paths from `tests/` package discovery.
 - `versioninfo/` contains product tests that use exported APIs.
+- `buildrun/` tests the official Build Number allocator and the all-or-nothing installation of a build run, each against its own temporary counter directory.
 - `.vscode/settings.json` and `scripts/test.ps1` use the same overlay so that `gopls`, Go tests, and editor diagnostics resolve files consistently.
 
 Run product tests from the repository root:

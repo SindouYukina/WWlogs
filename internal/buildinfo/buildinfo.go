@@ -1,8 +1,10 @@
-// Package buildinfo identifies the executable that is actually running: product version, source
-// commit, build profile, and the SHA-256 of the executable file itself.
+// Package buildinfo identifies the executable that is actually running: product version, official Build Number or
+// unofficial status, source commit, build profile, and the SHA-256 of the executable file itself.
 //
-// Version and commit are injected at link time by the build script. The profile is not injected:
-// it is a constant chosen by the wwdev build tag, so it always matches what was compiled in.
+// Version, Build Number and commit are injected at link time by the build orchestrator (scripts/embed-key.go), which
+// alone allocates official numbers. The profile is not injected: it is a constant chosen by the wwdev build tag, so it
+// always matches what was compiled in. This package is the one identity source for the console, the desktop host and
+// the frontend.
 package buildinfo
 
 import (
@@ -12,6 +14,7 @@ import (
 	"os"
 	"regexp"
 	"runtime/debug"
+	"strconv"
 	"sync"
 )
 
@@ -30,20 +33,24 @@ const Unavailable = "UNAVAILABLE"
 
 // Values set with -ldflags "-X wwlogs/internal/buildinfo.injectedVersion=..." and so on.
 var (
-	injectedVersion string
-	injectedCommit  string
-	injectedDirty   string
+	injectedVersion     string
+	injectedBuildNumber string
+	injectedCommit      string
+	injectedDirty       string
 )
 
 var (
 	versionPattern = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$`)
 	commitPattern  = regexp.MustCompile(`^[0-9a-f]{40}$`)
+	numberPattern  = regexp.MustCompile(`^[1-9][0-9]{0,18}$`)
 )
 
 // Identity is the build identity that needs no file access.
 type Identity struct {
 	// Version is the product version, for example v0.3.0, or Unavailable.
 	Version string
+	// BuildNumber is the official lifetime Build Number; zero marks an unofficial build.
+	BuildNumber uint64
 	// Commit is the full 40-character Git commit SHA, or Unavailable.
 	Commit string
 	// Dirty is "true" or "false" when the working tree state is known, otherwise "unknown".
@@ -55,6 +62,8 @@ type Identity struct {
 // Record is the build identity as recorded in diagnostic metadata, with the executable hash.
 type Record struct {
 	Version          string `json:"version"`
+	BuildNumber      uint64 `json:"buildNumber,omitempty"`
+	Official         bool   `json:"official"`
 	Commit           string `json:"commit"`
 	Dirty            string `json:"dirty"`
 	Profile          string `json:"profile"`
@@ -65,18 +74,22 @@ type Record struct {
 func CurrentRecord() Record {
 	identity := Current()
 	return Record{
-		Version: identity.Version, Commit: identity.Commit, Dirty: identity.Dirty,
+		Version: identity.Version, BuildNumber: identity.BuildNumber, Official: identity.Official(),
+		Commit: identity.Commit, Dirty: identity.Dirty,
 		Profile: string(identity.Profile), ExecutableSHA256: ExecutableSHA256(),
 	}
 }
 
 // Current returns the build identity. It performs no file or network access.
 func Current() Identity {
-	return resolve(injectedVersion, injectedCommit, injectedDirty, readVCS)
+	return resolve(injectedVersion, injectedBuildNumber, injectedCommit, injectedDirty, readVCS)
 }
 
-func resolve(version, commit, dirty string, vcs func() (string, string)) Identity {
+func resolve(version, buildNumber, commit, dirty string, vcs func() (string, string)) Identity {
 	identity := Identity{Version: version, Commit: commit, Dirty: dirty, Profile: profile}
+	if numberPattern.MatchString(buildNumber) {
+		identity.BuildNumber, _ = strconv.ParseUint(buildNumber, 10, 64)
+	}
 	if !versionPattern.MatchString(identity.Version) {
 		identity.Version = Unavailable
 	}
@@ -109,6 +122,17 @@ func readVCS() (revision, modified string) {
 	return revision, modified
 }
 
+// Official reports whether the build carries an official Build Number.
+func (i Identity) Official() bool { return i.BuildNumber > 0 }
+
+// BuildLabel is the Build Number in decimal, or "unofficial".
+func (i Identity) BuildLabel() string {
+	if !i.Official() {
+		return "unofficial"
+	}
+	return strconv.FormatUint(i.BuildNumber, 10)
+}
+
 // String formats the identity on one line without the executable hash.
 func (i Identity) String() string {
 	commit := i.Commit
@@ -118,7 +142,7 @@ func (i Identity) String() string {
 			commit += "-dirty"
 		}
 	}
-	return i.Version + " " + string(i.Profile) + " " + commit
+	return i.Version + " build " + i.BuildLabel() + " " + string(i.Profile) + " " + commit
 }
 
 var (
