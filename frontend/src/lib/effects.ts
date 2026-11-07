@@ -16,10 +16,6 @@ export function effectRemaining(effect:Effect,snapshot:Snapshot|null,connection:
   return Math.max(0,effect.remainingSeconds)
 }
 
-export function relevantEffect(effect:Effect):boolean {
-  return effect.combatClass!=="non_combat" && [effect.holderRelation,effect.sourceRelation].some(value=>value==="local_role"||value==="local_owned")
-}
-
 /** The measured sizes one Effects panel lays out against, in CSS pixels. */
 export interface EffectLayout {
   available: number
@@ -44,10 +40,13 @@ export function effectCapacity(layout: EffectLayout): EffectCapacity {
 }
 
 /**
- * Splits the engine's order into shown rows and a count of the rest. It depends only on the effect count and the window's
- * capacity, so countdowns and row animations cannot make the row count move. The order itself is never changed.
+ * Splits the engine's display set into shown rows and an overflow count. The engine decides which effects are eligible
+ * (Go effectDisplayFor) and lists them in its order, at most a bounded number; `eligible` counts all of them, so
+ * visible + overflow always equals eligible. Unclassified effects are not part of that set: they only need the hint line.
+ * The split depends only on counts and the window's capacity, so countdowns and row animations cannot make it move.
  */
-export function visibleEffects(total: number, engineOmitted: number, capacity: EffectCapacity): { visible: number; omitted: number } {
-  const visible = engineOmitted === 0 && total <= capacity.all ? total : Math.min(total, capacity.withHint)
-  return { visible, omitted: total - visible + engineOmitted }
+export function visibleEffects(eligible: number, listed: number, unclassified: number, capacity: EffectCapacity): { visible: number; overflow: number } {
+  const rows = Math.min(listed, eligible)
+  const visible = rows === eligible && unclassified === 0 && rows <= capacity.all ? rows : Math.min(rows, capacity.withHint)
+  return { visible, overflow: eligible - visible }
 }

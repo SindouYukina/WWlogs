@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next"
 import { BuffStatusItem, ListeningStatus, StackList } from "@/design"
 import { isFrozen, type CombatData } from "@/lib/combat-data"
 import { effectRow, type EffectRowModel } from "@/lib/combat-view"
-import { effectCapacity, effectRemaining, relevantEffect, visibleEffects, type EffectCapacity } from "@/lib/effects"
+import { effectCapacity, effectRemaining, visibleEffects, type EffectCapacity } from "@/lib/effects"
 import { useFormatters } from "@/lib/format"
 import type { Effect } from "@/lib/snapshot"
 import { useListeningLabels } from "@/lib/useListeningLabels"
@@ -73,13 +73,16 @@ export function EffectsOverlayPanel({ data, alpha, fitHeight = false }: EffectsO
   const { snapshot, connection, now } = data
   const frozen = isFrozen(data)
   const view = snapshot?.view
-  const relevant = useMemo(() => (view?.effects.active ?? []).filter(relevantEffect), [view])
+  // The engine lists only display-eligible effects and counts the rest; the panel neither filters nor reorders them.
+  const listed = view?.effects.active ?? []
+  const eligible = view?.effects.counts?.eligible ?? listed.length
+  const unclassified = view?.effects.counts?.unclassified ?? 0
   const { root, head, capacity } = useFittedCapacity(fitHeight)
-  const { visible, omitted } = visibleEffects(relevant.length, view?.effects.omitted ?? 0, capacity)
-  const items = useMemo<EffectView[]>(() => relevant.slice(0, visible).map(effect => {
+  const { visible, overflow } = visibleEffects(eligible, listed.length, unclassified, capacity)
+  const items = useMemo<EffectView[]>(() => listed.slice(0, visible).map(effect => {
     const remaining = frozen ? undefined : effectRemaining(effect, snapshot, connection, now)
     return { effect, row: { ...effectRow(effect, remaining), stale: frozen } }
-  }), [relevant, visible, frozen, snapshot, connection, now])
+  }), [listed, visible, frozen, snapshot, connection, now])
   const holder = (effect: Effect) => {
     if (effect.holderName && effect.holderNameStatus === "VERIFIED") return effect.holderName
     return effect.holderRoleId !== undefined ? t("unknownRole", { ns: "common", id: effect.holderRoleId }) : undefined
@@ -88,16 +91,16 @@ export function EffectsOverlayPanel({ data, alpha, fitHeight = false }: EffectsO
   const text = listening ? describe(listening) : null
   const style = alpha === undefined ? undefined : { "--ww-alpha-overlay": alpha, "--ww-alpha-overlay-strong": Math.min(1, alpha + 0.12) } as CSSProperties
   return <div ref={root} className="ww-effects" style={style} data-field="effects" data-fit={fitHeight}>
-    <div ref={head} className="ww-effects-head"><span>{t("effects")}</span><span className="ww-effects-head-end">{listening && text && <span data-field="listening" data-state={listening.state} data-reason={listening.reason}><ListeningStatus state={listening.state} label={text.label} detail={text.detail} variant="dot" /></span>}<span className="ww-num">{relevant.length}</span></span></div>
-    {items.length === 0 && omitted === 0 && <div className="ww-combat-empty ww-effects-empty">{t("noEffects")}</div>}
+    <div ref={head} className="ww-effects-head"><span>{t("effects")}</span><span className="ww-effects-head-end">{listening && text && <span data-field="listening" data-state={listening.state} data-reason={listening.reason}><ListeningStatus state={listening.state} label={text.label} detail={text.detail} variant="dot" /></span>}<span className="ww-num" data-field="effects-count" data-count={eligible}>{eligible}</span></span></div>
+    {items.length === 0 && overflow === 0 && <div className="ww-combat-empty ww-effects-empty">{t("noEffects")}</div>}
     <StackList items={items} keyOf={keyOf} rowHeight={rowHeight} gap={rowGap} renderItem={({ effect, row }) => {
       const verified = effect.termStatus === "VERIFIED" && effect.termName
       // A correlated glossary term is shown as a related term beside the raw ID, never as the effect's confirmed name.
       const related = effect.termStatus === "CORRELATED" ? effect.termName : undefined
-      const meta = [related && t("relatedTerm", { term: related }), holder(effect)].filter(Boolean).join(" · ")
+      const meta = [related && t("relatedTerm", { term: related }), effect.display?.target === "enemy" ? t("targetEnemy") : holder(effect)].filter(Boolean).join(" · ")
       const countdown = row.countdown
       return <BuffStatusItem effect={row} title={verified ? effect.termName! : t("unknownEffect", { id: effect.effectId ?? "—" })} unnamed={!verified} meta={meta} tickMs={data.tickMs} remainingText={countdown.kind === "unknown" ? "—" : `~${format.seconds(countdown.remaining)}`} />
     }} />
-    {omitted > 0 && <div className="ww-effects-omitted" data-field="effects-omitted" data-count={omitted}>{t("omitted", { count: omitted })}</div>}
+    {(overflow > 0 || unclassified > 0) && <div className="ww-effects-omitted" data-field="effects-omitted" data-count={overflow} data-unclassified={unclassified}>{[overflow > 0 && t("omitted", { count: overflow }), unclassified > 0 && t("unclassified", { count: unclassified })].filter(Boolean).join(" · ")}</div>}
   </div>
 }

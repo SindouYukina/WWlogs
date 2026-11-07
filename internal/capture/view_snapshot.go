@@ -2,7 +2,6 @@ package capture
 
 import (
 	"hash/fnv"
-	"sort"
 	"strconv"
 	"time"
 )
@@ -39,7 +38,7 @@ type ViewSnapshot struct {
 }
 
 // ViewSnapshotSchemaVersion changes whenever a field changes meaning or is removed.
-const ViewSnapshotSchemaVersion = 2
+const ViewSnapshotSchemaVersion = 3
 
 // View bounds keep a snapshot small regardless of how long a session runs.
 const (
@@ -187,14 +186,15 @@ type ViewUnassignedSkill struct {
 	DamageShare *float64 `json:"damageShare,omitempty"`
 }
 
-// ViewEffects is the tracked effect state at the capture time.
+// ViewEffects is the display set of the tracked effect state at the capture time. Active lists display-eligible
+// instances only (see effectDisplayFor); Counts accounts for every tracked instance, listed or not, by the reason it was
+// left out, so a consumer can show what is hidden without seeing it.
 type ViewEffects struct {
 	Status      EffectSnapshotStatus `json:"status"`
 	Reason      string               `json:"reason,omitempty"`
 	Active      []ViewEffect         `json:"active"`
 	RecentEnded []ViewEffect         `json:"recentEnded"`
-	// Omitted counts tracked instances not listed because of maxViewEffects.
-	Omitted int `json:"omitted"`
+	Counts      ViewEffectCounts     `json:"counts"`
 }
 
 // ViewEffect is one tracked effect instance. Key is an opaque, stable identity for list rendering; it is a hash, not
@@ -213,6 +213,8 @@ type ViewEffect struct {
 	SourceRelation   EffectEntityRelation  `json:"sourceRelation"`
 	Polarity         EffectPolarity        `json:"polarity"`
 	CombatClass      EffectCombatClass     `json:"combatClass"`
+	Kind             EffectKind            `json:"kind"`
+	Display          EffectDisplay         `json:"display"`
 	StackCount       *uint64               `json:"stackCount,omitempty"`
 	Lifecycle        EffectLifecycle       `json:"lifecycle"`
 	FirstObservedAt  time.Time             `json:"firstObservedAt"`
@@ -423,31 +425,32 @@ func (p *processor) viewEffects() ViewEffects {
 		return ViewEffects{Status: EffectSnapshotComplete, Active: []ViewEffect{}}
 	}
 	snapshot := p.effectSnapshotAtLastFrame()
-	// Keep local combat effects ahead of unrelated instances when the curated view reaches its bound.
-	priority := func(effect EffectInstanceSnapshot) int {
-		local := effect.HolderRelation == EffectRelationLocalRole || effect.HolderRelation == EffectRelationLocalOwned || effect.SourceRelation == EffectRelationLocalRole || effect.SourceRelation == EffectRelationLocalOwned
-		if !local {
-			return 5
-		}
-		if effect.CombatClass == EffectCombatClassNonCombat {
-			return 4
-		}
-		if effect.Lifecycle != EffectLifecycleActive {
-			return 3
-		}
-		if effect.CombatClass == EffectCombatClassCombat {
-			return 0
-		}
-		return 1
-	}
-	sort.SliceStable(snapshot.Effects, func(i, j int) bool { return priority(snapshot.Effects[i]) < priority(snapshot.Effects[j]) })
+	// Only display-eligible instances are listed; the bound applies to the display set alone, so an eligible instance is
+	// never pushed out by one that would not have been shown. Effects with a server duration come first, so the bound
+	// and a short window keep the countdowns; within each group the tracker's order is kept, so a refresh never moves a
+	// row.
 	view := ViewEffects{Status: snapshot.Status, Reason: snapshot.Reason, Active: []ViewEffect{}}
+	var timed, untimed []EffectInstanceSnapshot
 	for _, effect := range snapshot.Effects {
+		display := effectDisplayFor(effect)
+		view.Counts.add(display.Eligibility)
+		switch {
+		case display.Eligibility != EffectDisplayEligible:
+		case effect.ServerDurationSeconds != nil:
+			timed = append(timed, effect)
+		default:
+			untimed = append(untimed, effect)
+		}
+	}
+	for _, effect := range append(timed, untimed...) {
 		if len(view.Active) == maxViewEffects {
-			view.Omitted++
+			view.Counts.Truncated++
 			continue
 		}
-		view.Active = append(view.Active, p.viewEffect(effect))
+		view.Counts.Listed++
+		entry := p.viewEffect(effect)
+		entry.Display = effectDisplayFor(effect)
+		view.Active = append(view.Active, entry)
 	}
 	endedEffects := snapshot.RecentEnded
 	if len(endedEffects) > 12 {
@@ -455,6 +458,10 @@ func (p *processor) viewEffects() ViewEffects {
 	}
 	for _, ended := range endedEffects {
 		effect := p.viewEffect(ended.EffectInstanceSnapshot)
+		// An ended instance carries the decision it had while active, so a consumer can tell which ended rows it showed.
+		whileActive := ended.EffectInstanceSnapshot
+		whileActive.Lifecycle = EffectLifecycleActive
+		effect.Display = effectDisplayFor(whileActive)
 		// An ended holder's ID may already have been reused. Do not resolve its past role from current entities.
 		effect.HolderRoleID = nil
 		at := ended.EndedAt
@@ -472,6 +479,7 @@ func (p *processor) viewEffect(effect EffectInstanceSnapshot) ViewEffect {
 		SourceRelation:   effect.SourceRelation,
 		Polarity:         effect.Polarity,
 		CombatClass:      effect.CombatClass,
+		Kind:             effect.Kind,
 		StackCount:       cloneUint64(effect.StackCount),
 		Lifecycle:        effect.Lifecycle,
 		FirstObservedAt:  effect.FirstObservedAt,

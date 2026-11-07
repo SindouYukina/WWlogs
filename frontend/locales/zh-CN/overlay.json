@@ -5,6 +5,8 @@
   "unknownEffect": "未知效果（{{id}}）",
   "termCandidate": "相关词条・并非已确认的效果名称",
   "omitted": "另有 {{count}} 个效果未显示",
+  "unclassified": "未分类 {{count}}",
+  "targetEnemy": "敌方",
   "finishEditing": "完成",
   "relatedTerm": "相关：{{term}}",
   "combat": {

@@ -27,7 +27,8 @@ import (
 //   - every encounter's DPS timeline adds up to its confirmed local damage, per role, vehicle, and unassigned
 //     contributor, and tiles exactly the span its Encounter DPS divides by,
 //   - publishing view snapshots while replaying (as the host does at any replay speed) changes nothing: the second
-//     replay publishes every encounterReplayPublishEvery packets and must equal the first, timelines included.
+//     replay publishes every encounterReplayPublishEvery packets and must equal the first, timelines included,
+//   - every published view's effect counts partition the tracked effects exactly (display-eligible = listed + truncated).
 //
 // It writes one canonical JSON file per capture for review. It is skipped unless WWLOGS_ENCOUNTER_REPLAY_OUT is
 // set, reads only paths supplied through the environment, and needs the embedded key payload in the test binary
@@ -264,7 +265,11 @@ func encounterReplayOnce(t *testing.T, inputs equivalenceInputs, masters *gameMa
 			lastFrame = frame
 		}
 		if publishEvery > 0 && index%publishEvery == 0 {
-			_ = p.viewSnapshot()
+			// Every published view must account for each tracked effect exactly once (see ViewEffectCounts).
+			view := p.viewSnapshot()
+			if err := view.Effects.Counts.accountingError(len(view.Effects.Active)); err != nil {
+				t.Fatalf("effect view counts at packet %d: %v", index, err)
+			}
 		}
 	})
 	p.finishCapture()
