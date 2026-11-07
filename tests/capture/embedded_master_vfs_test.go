@@ -105,6 +105,10 @@ func TestMasterLookupDigest(t *testing.T) {
 		writeSortedLookups(digest, "bullet", master.commonBullets)
 		writeSortedLookups(digest, "damage", master.damage)
 		writeSortedLookups(digest, "template", master.sceneIdentity.templateCatalog)
+		writeSortedLookups(digest, "damageListSkill", master.skillNames.damageListSkills)
+		writeSortedLookups(digest, "uiSkillName", master.skillNames.uiSkillNames)
+		writeSortedLookups(digest, "echoItem", master.skillNames.echoItems)
+		writeSortedLookups(digest, "echoName", master.skillNames.echoNames)
 		fmt.Fprintf(digest, "relations=%d monsters=%d\n", len(master.sceneIdentity.levelTemplates), len(master.sceneIdentity.levelMonsters))
 	}
 	t.Logf("master lookup digest: %s", hex.EncodeToString(digest.Sum(nil)))

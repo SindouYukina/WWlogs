@@ -72,6 +72,8 @@
   "skill": "スキル",
   "damageEvents": "ダメージイベント",
   "unnamedSkill": "名称未設定のスキル",
+  "derivedSkillNote": "このスキル自体の名称ではありません。これらのダメージを倍率表に含むスキルの公式名称です。",
+  "derivedEchoSkillNote": "このスキル自体の名称ではありません。このスキルを発動する音骸の公式名称です。",
   "unassignedSkill": "スキル未確認",
   "unassignedSkillNote": "このソースのダメージとして確認済みですが、プロトコルにスキル ID がありません。",
   "noSkillRows": "このソースには内訳を表示できるスキルダメージがありません。",

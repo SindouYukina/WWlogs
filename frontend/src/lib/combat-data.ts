@@ -6,8 +6,10 @@ import { dataState, type Connection, type DPS, type Encounter, type Snapshot, ty
 
 export interface SkillRow {
   skillId: number
-  /** Official Master display name; absent names show the raw ID. */
+  /** Master display name; absent names show the raw ID. */
   name?: string
+  /** Set when name is not the skill's own official name but that of a related record; the table marks such rows. */
+  derived?: "damage_list" | "echo"
   damage: number
   /** Server-confirmed, deduplicated damage events. Not a cast count. */
   events: number

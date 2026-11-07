@@ -139,9 +139,15 @@ export interface Role {
 /** One DamageContext.SkillId of a contributor. The share uses the contributor's own confirmed damage. */
 export interface Skill {
   skillId: number
-  /** Official Master name in the selected locale; empty with nameStatus UNKNOWN when Master has none. */
+  /**
+   * Master name in the selected locale. nameStatus VERIFIED is the skill's own official name; DERIVED is the official
+   * name of the related record nameSource names (a UI skill whose damage list holds the hits, or the casting Echo);
+   * UNKNOWN leaves it empty.
+   */
   name: string
   nameStatus: string
+  /** "official", "damage_list" or "echo"; absent when there is no name. */
+  nameSource?: string
   damageDealt: number
   damageShare?: number
   outgoingEvents: number

@@ -33,7 +33,7 @@ func TestSkillBreakdownGroupsRepeatedHitsOfOneSkill(t *testing.T) {
 	got := p.damageStatistics.Snapshot()
 	assertRoleTotalsReconcile(t, got)
 	role := roleOf(t, got, 1409)
-	if len(role.Skills) != 1 || role.Skills[0] != (SkillDamageSnapshot{SkillID: 1409011, DamageDealt: 300, OutgoingEvents: 3}) {
+	if len(role.Skills) != 1 || !reflect.DeepEqual(role.Skills[0], SkillDamageSnapshot{SkillID: 1409011, DamageDealt: 300, OutgoingEvents: 3, DamageIDsIncomplete: true}) {
 		t.Fatalf("skills = %+v", role.Skills)
 	}
 	if role.UnassignedSkill != (UnassignedSkillTotals{}) {
@@ -112,7 +112,7 @@ func TestSkillBreakdownCreditsVerifiedSummonAndExcludesUnverifiedSummon(t *testi
 	got := p.damageStatistics.Snapshot()
 	assertRoleTotalsReconcile(t, got)
 	role := roleOf(t, got, 1409)
-	if role.SummonDamage != 60 || len(role.Skills) != 1 || role.Skills[0] != (SkillDamageSnapshot{SkillID: 1409050, DamageDealt: 60, OutgoingEvents: 1}) {
+	if role.SummonDamage != 60 || len(role.Skills) != 1 || !reflect.DeepEqual(role.Skills[0], SkillDamageSnapshot{SkillID: 1409050, DamageDealt: 60, OutgoingEvents: 1, DamageIDsIncomplete: true}) {
 		t.Fatalf("verified summon skill = %+v", role)
 	}
 	if got.UnattributedOutgoingDamage != 70 {
@@ -169,7 +169,7 @@ func TestSkillBreakdownKeepsVehicleAndUnassignedLocalDamageOffRoles(t *testing.T
 	}
 	got := statistics.Snapshot()
 	assertRoleTotalsReconcile(t, got)
-	if got.Vehicle == nil || len(got.Vehicle.Skills) != 1 || got.Vehicle.Skills[0] != (SkillDamageSnapshot{SkillID: 10001009, DamageDealt: 80, OutgoingEvents: 1}) {
+	if got.Vehicle == nil || len(got.Vehicle.Skills) != 1 || !reflect.DeepEqual(got.Vehicle.Skills[0], SkillDamageSnapshot{SkillID: 10001009, DamageDealt: 80, OutgoingEvents: 1, DamageIDsIncomplete: true}) {
 		t.Fatalf("vehicle skills = %+v", got.Vehicle)
 	}
 	if r := roleOf(t, got, 1409); r.DamageDealt != 5 || r.Skills[0].DamageDealt != 5 {
@@ -203,7 +203,7 @@ func TestSkillBreakdownIsPerEncounterAndResets(t *testing.T) {
 	if len(got.Encounters.Completed) != 2 || got.Encounters.Current == nil {
 		t.Fatalf("encounters = %+v", got.Encounters)
 	}
-	want := [][]SkillDamageSnapshot{{{SkillID: 11, DamageDealt: 100, OutgoingEvents: 1}}, {{SkillID: 22, DamageDealt: 40, OutgoingEvents: 1}}}
+	want := [][]SkillDamageSnapshot{{{SkillID: 11, DamageDealt: 100, OutgoingEvents: 1, DamageIDsIncomplete: true}}, {{SkillID: 22, DamageDealt: 40, OutgoingEvents: 1, DamageIDsIncomplete: true}}}
 	for i, encounter := range got.Encounters.Completed {
 		if !reflect.DeepEqual(encounter.Roles[0].Skills, want[i]) {
 			t.Fatalf("encounter %d skills = %+v, want %+v", i, encounter.Roles[0].Skills, want[i])

@@ -1,4 +1,4 @@
-import type { SkillBreakdown } from "./combat-data"
+import type { SkillBreakdown, SkillRow } from "./combat-data"
 import type { Effect, Encounter, Role, Skill, UnassignedSkill, Vehicle, ViewSnapshot } from "./snapshot"
 
 // Adapts engine snapshot types to the row models the shared components render. Nothing here adds information: a value
@@ -109,16 +109,26 @@ export function detailRow(rows: readonly CombatRowModel[], scope: string, manual
   return { row: topRole(rows), mode: "auto" }
 }
 
-/** The engine's skill split of one contributor. Names stay absent unless Master reports a VERIFIED official name. */
+/**
+ * The engine's skill split of one contributor. A name is shown only when Master reports the skill's own VERIFIED name
+ * or a DERIVED name of a related record; a DERIVED row keeps its source so the table can mark it.
+ */
 export function skillBreakdown(contributor: { skills?: Skill[]; unassignedSkill?: UnassignedSkill }): SkillBreakdown | undefined {
   if (contributor.skills === undefined) return undefined
-  const rows = contributor.skills.map(skill => ({
-    skillId: skill.skillId,
-    name: skill.nameStatus === "VERIFIED" && skill.name !== "" ? skill.name : undefined,
-    damage: skill.damageDealt,
-    events: skill.outgoingEvents,
-    share: skill.damageShare,
-  }))
+  const rows = contributor.skills.map(skill => {
+    // A DERIVED name without a known source is not shown: the table could not say what it is.
+    const source = skill.nameSource
+    const derived: SkillRow["derived"] = skill.nameStatus === "DERIVED" && (source === "damage_list" || source === "echo") ? source : undefined
+    const named = skill.name !== "" && (skill.nameStatus === "VERIFIED" || derived !== undefined)
+    return {
+      skillId: skill.skillId,
+      name: named ? skill.name : undefined,
+      ...(named && derived ? { derived } : {}),
+      damage: skill.damageDealt,
+      events: skill.outgoingEvents,
+      share: skill.damageShare,
+    }
+  })
   const unassigned = contributor.unassignedSkill
   return { rows, unassigned: unassigned && unassigned.outgoingEvents > 0 ? { damage: unassigned.damageDealt, events: unassigned.outgoingEvents, share: unassigned.damageShare } : undefined }
 }

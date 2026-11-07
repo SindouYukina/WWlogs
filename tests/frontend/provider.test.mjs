@@ -119,6 +119,24 @@ test("skill rows are the engine's split, keyed like the ranking rows, with offic
   assert.equal(map.get("vehicle-motorcycle").rows[0].skillId, 7)
 })
 
+test("derived skill names keep their source and are marked; unknown sources and statuses stay unnamed", () => {
+  const skills = [
+    { skillId: 1312050, name: "Liberation", nameStatus: "DERIVED", nameSource: "damage_list", damageDealt: 50, outgoingEvents: 2 },
+    { skillId: 280026010, name: "Echo", nameStatus: "DERIVED", nameSource: "echo", damageDealt: 30, outgoingEvents: 3 },
+    { skillId: 1312011, name: "Basic", nameStatus: "VERIFIED", nameSource: "official", damageDealt: 15, outgoingEvents: 1 },
+    { skillId: 9, name: "Guess", nameStatus: "DERIVED", nameSource: "timing", damageDealt: 4, outgoingEvents: 1 },
+    { skillId: 10, name: "Label", nameStatus: "CORRELATED", damageDealt: 1, outgoingEvents: 1 },
+  ]
+  const rows = skillBreakdown({ skills }).rows
+  assert.deepEqual(rows.map(row => [row.skillId, row.name, row.derived]), [
+    [1312050, "Liberation", "damage_list"], [280026010, "Echo", "echo"], [1312011, "Basic", undefined], [9, undefined, undefined], [10, undefined, undefined],
+  ])
+  assert.equal(rows.reduce((sum, row) => sum + row.damage, 0), 100, "naming never changes a row's damage")
+  const dashboard = readFileSync("frontend/src/views/DashboardView.tsx", "utf8")
+  assert.match(dashboard, /data-name-source=\{row\.derived\}/)
+  assert.match(dashboard, /derivedSkillNote/)
+})
+
 test("the Live provider and the Dashboard never compute or invent skill rows", () => {
   const provider = readFileSync("frontend/src/lib/useLiveCombatData.ts", "utf8")
   assert.match(provider, /skillBreakdowns\(/)

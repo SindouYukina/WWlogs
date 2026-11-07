@@ -256,6 +256,9 @@ func loadMasterDataFromDatabase(db *sql.DB, databasePath, hash, locale string) (
 	if err := loadSQLiteCommonSkills(db, master); err != nil {
 		return nil, err
 	}
+	if err := loadSQLiteSkillNameSources(db, locale, master); err != nil {
+		return nil, err
+	}
 	if err := loadSQLiteDamage(db, hash, master); err != nil {
 		return nil, err
 	}

@@ -215,6 +215,8 @@
     "internal/capture/central_role_aggregation_test.go": "tests/capture/role_aggregation_test.go",
     "tests/capture/skill_breakdown_test.go": "",
     "internal/capture/central_skill_breakdown_test.go": "tests/capture/skill_breakdown_test.go",
+    "tests/capture/skill_names_test.go": "",
+    "internal/capture/central_skill_names_test.go": "tests/capture/skill_names_test.go",
     "tests/capture/view_snapshot_test.go": "",
     "internal/capture/central_view_snapshot_test.go": "tests/capture/view_snapshot_test.go",
     "tests/capture/session_publish_test.go": "",

@@ -51,9 +51,10 @@ func (r *DisplayResolver) Close() error { return r.db.Close() }
 // looking up a raw effect ID as a glossary ID is never allowed by the projection.
 //
 // "skill" is the UI skill-tree namespace (Skill.Id). "combat_skill" is the runtime namespace of DamageContext.SkillId,
-// whose official names are SkillDescription rows; the two ID spaces are different and must not be mixed.
+// whose official names are SkillDescription rows; the two ID spaces are different and must not be mixed. "echo" is
+// PhantomItem.Id; a skill row reaches "skill" or "echo" only through the derived sources of skill_names.go.
 func (r *DisplayResolver) Resolve(ctx context.Context, kind string, id uint64, locale string) (DisplayName, error) {
-	tables := map[string]string{"role": "roleinfo_locale", "skill": "skill_locale", "combat_skill": "skilldescription_locale", "monster": "monsterinfo_locale", "term": "term_locale"}
+	tables := map[string]string{"role": "roleinfo_locale", "skill": "skill_locale", "combat_skill": "skilldescription_locale", "echo": "phantomitem_locale", "monster": "monsterinfo_locale", "term": "term_locale"}
 	table, ok := tables[kind]
 	if !ok {
 		return DisplayName{}, errors.New("unsupported Master name kind")
