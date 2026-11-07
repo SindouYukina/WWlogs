@@ -2,6 +2,7 @@ package capture
 
 import (
 	"reflect"
+	"strconv"
 	"sync"
 	"testing"
 )
@@ -16,11 +17,13 @@ func assertRoleTotalsReconcile(t *testing.T, snapshot DamageStatisticsSnapshot) 
 		if vehicle != nil {
 			sumDealt += vehicle.DamageDealt
 			sumOutgoing += vehicle.OutgoingEvents
+			assertSkillsReconcile(t, scope+" vehicle", vehicle.Skills, vehicle.UnassignedSkill, vehicle.DamageDealt, vehicle.OutgoingEvents)
 		}
 		for _, role := range roles {
 			if role.DirectDamage+role.SummonDamage != role.DamageDealt {
 				t.Fatalf("%s role %d/%d: direct %d + summon %d != dealt %d", scope, role.PlayerID, role.RoleID, role.DirectDamage, role.SummonDamage, role.DamageDealt)
 			}
+			assertSkillsReconcile(t, scope+" role "+strconv.FormatUint(role.RoleID, 10), role.Skills, role.UnassignedSkill, role.DamageDealt, role.OutgoingEvents)
 			sumDealt += role.DamageDealt
 			sumTaken += role.DamageTaken
 			sumOutgoing += role.OutgoingEvents
@@ -38,6 +41,31 @@ func assertRoleTotalsReconcile(t *testing.T, snapshot DamageStatisticsSnapshot) 
 	}
 	for _, e := range encounters {
 		check("encounter "+e.EncounterID, e.Roles, e.UnassignedRole, e.Vehicle, e.Totals.DamageDealt, e.Totals.DamageTaken, e.Totals.OutgoingEvents, e.Totals.IncomingEvents)
+	}
+}
+
+// assertSkillsReconcile checks one contributor's skill split: rows plus the unassigned-skill bucket equal its confirmed
+// damage and events, every row has a SkillId, no SkillId repeats, and rows are ordered by damage then SkillId.
+func assertSkillsReconcile(t *testing.T, scope string, skills []SkillDamageSnapshot, unassigned UnassignedSkillTotals, dealt int64, events uint64) {
+	t.Helper()
+	sumDealt, sumEvents := unassigned.DamageDealt, unassigned.OutgoingEvents
+	if unassigned.MissingSkillEvents+unassigned.OverflowEvents != unassigned.OutgoingEvents {
+		t.Fatalf("%s unassigned skill events %+v do not split into missing and overflow", scope, unassigned)
+	}
+	seen := make(map[uint64]bool, len(skills))
+	for i, skill := range skills {
+		if skill.SkillID == 0 || seen[skill.SkillID] || skill.OutgoingEvents == 0 {
+			t.Fatalf("%s skill row %d is invalid: %+v", scope, i, skill)
+		}
+		seen[skill.SkillID] = true
+		if i > 0 && (skills[i-1].DamageDealt < skill.DamageDealt || (skills[i-1].DamageDealt == skill.DamageDealt && skills[i-1].SkillID > skill.SkillID)) {
+			t.Fatalf("%s skill rows are out of order at %d: %+v", scope, i, skills)
+		}
+		sumDealt += skill.DamageDealt
+		sumEvents += skill.OutgoingEvents
+	}
+	if sumDealt != dealt || sumEvents != events {
+		t.Fatalf("%s skills do not reconcile: skills+unassigned dealt=%d events=%d, contributor dealt=%d events=%d", scope, sumDealt, sumEvents, dealt, events)
 	}
 }
 

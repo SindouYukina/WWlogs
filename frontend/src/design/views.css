@@ -83,6 +83,9 @@ body[data-view="desktop"] { margin: 0; background: var(--ww-surface-canvas); ove
 .ww-dash-skills td:first-child { padding-inline-start: 0; text-align: start; }
 .ww-dash-skill-name { display: flex; align-items: center; gap: var(--ww-space-2); min-width: 0; max-width: 240px; }
 .ww-dash-skill-name img { width: 22px; height: 22px; flex: none; }
+.ww-dash-skills-wrap { max-height: 320px; overflow-y: auto; }
+.ww-dash-skill-id { flex: none; font-size: var(--ww-text-2xs); color: var(--ww-text-4); }
+.ww-dash-skill-unassigned td { color: var(--ww-text-3); font-style: italic; }
 .ww-dash-skill-share { display: grid; grid-template-columns: minmax(60px, 1fr) 48px; align-items: center; gap: var(--ww-space-2); min-width: 130px; }
 .ww-dash-contribution { display: grid; gap: var(--ww-space-1_5); padding-block: var(--ww-space-2); font-size: var(--ww-text-sm); color: var(--ww-text-2); }
 .ww-dash-contribution > div:not(.ww-bar) { display: flex; justify-content: space-between; }

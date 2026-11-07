@@ -1,7 +1,7 @@
 import { memo, useEffect, useMemo, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { AnimatedNumber, Card, CharacterAvatar, Chip, ContentSwitch, DamageBar, GameAssetImage, Icon, LiveChart, Reveal, Segmented, StackList, ThemeBackdrop, type ChartSeries, type IconName, type ThemeId } from "@/design"
-import { dataChip, displayedEncounter, isFrozen, usableDps, type CombatData, type SkillRow } from "@/lib/combat-data"
+import { dataChip, displayedEncounter, isFrozen, usableDps, type CombatData, type SkillBreakdown } from "@/lib/combat-data"
 import { teamSeriesKey, unassignedSeriesKey } from "@/lib/timeline"
 import { combatRows, contributionShares, intervalRows, type CombatRowModel } from "@/lib/combat-view"
 import { elementColor, useFormatters, useRowNames } from "@/lib/format"
@@ -37,7 +37,7 @@ function RoleBoard({ rows, selected, onSelect, scope, stale, numberMode }: { row
   const format = useFormatters()
   const nameOf = useRowNames()
   const ordered = useMemo(() => [...rows].sort((a, b) => a.rank - b.rank), [rows])
-  return <StackList items={ordered} keyOf={row => row.key} rowHeight={58} gap={6} renderItem={row => <div className="ww-dash-role" data-field={row.kind === "vehicle" ? "vehicle" : undefined} data-selected={row.key === selected} data-element={row.elementId} role="button" tabIndex={0} onClick={() => onSelect(row.key)} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") onSelect(row.key) }}>
+  return <StackList items={ordered} keyOf={row => row.key} rowHeight={58} gap={6} renderItem={row => <div className="ww-dash-role" data-key={row.key} data-field={row.kind === "vehicle" ? "vehicle" : undefined} data-selected={row.key === selected} data-element={row.elementId} role="button" tabIndex={0} onClick={() => onSelect(row.key)} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") onSelect(row.key) }}>
     <CharacterAvatar roleId={row.roleId} elementId={row.elementId} size={42} fallback={row.kind === "vehicle" ? <Icon name="bolt" size={18} /> : "?"} />
     <div className="ww-dash-role-main">
       <div className="ww-dash-role-line"><strong className="ww-truncate">{nameOf(row)}</strong><span className="ww-num ww-dash-role-dps"><AnimatedNumber value={row.dps} format={format.integer} mode={numberMode} scope={scope} stale={stale} /></span></div>
@@ -47,18 +47,28 @@ function RoleBoard({ rows, selected, onSelect, scope, stale, numberMode }: { row
   </div>} />
 }
 
-const SkillTable = memo(function SkillTable({ rows, color }: { rows: readonly SkillRow[]; color: string }) {
+/** The engine's skill split of one contributor. Rows plus the unassigned row add up to the contributor's damage. */
+const SkillTable = memo(function SkillTable({ breakdown, color }: { breakdown: SkillBreakdown; color: string }) {
   const { t } = useTranslation("dashboard")
   const format = useFormatters()
-  return <table className="ww-dash-skills" style={{ "--ww-series": color } as React.CSSProperties}>
-    <thead><tr><th>{t("skill")}</th><th>{t("damageColumn")}</th><th>{t("hits")}</th><th>{t("shareColumn")}</th></tr></thead>
-    <tbody>{rows.map(row => <tr key={row.skillId}>
-      <td><span className="ww-dash-skill-name"><GameAssetImage kind="skill" id={row.skillId} /><span className="ww-truncate">{row.name ?? `#${row.skillId}`}</span></span></td>
+  const share = (value: number | undefined) => value === undefined ? "—" : format.percent(value)
+  const { rows, unassigned } = breakdown
+  if (rows.length === 0 && !unassigned) return <p className="ww-dash-empty-note">{t("noSkillRows")}</p>
+  return <div className="ww-dash-skills-wrap"><table className="ww-dash-skills" data-field="skills" style={{ "--ww-series": color } as React.CSSProperties}>
+    <thead><tr><th>{t("skill")}</th><th>{t("damageColumn")}</th><th>{t("damageEvents")}</th><th>{t("shareColumn")}</th></tr></thead>
+    <tbody>{rows.map(row => <tr key={row.skillId} data-skill-id={row.skillId} data-named={row.name !== undefined}>
+      <td><span className="ww-dash-skill-name" title={`SkillId ${row.skillId}`}><GameAssetImage kind="skill" id={row.skillId} /><span className="ww-truncate">{row.name ?? t("unnamedSkill")}</span><span className="ww-dash-skill-id ww-num">{row.skillId}</span></span></td>
       <td className="ww-num"><AnimatedNumber value={row.damage} format={format.integer} /></td>
-      <td className="ww-num">{format.integer(row.hits)}</td>
-      <td><div className="ww-dash-skill-share"><DamageBar share={row.share} /><span className="ww-num">{format.percent(row.share)}</span></div></td>
-    </tr>)}</tbody>
-  </table>
+      <td className="ww-num">{format.integer(row.events)}</td>
+      <td><div className="ww-dash-skill-share"><DamageBar share={row.share} /><span className="ww-num">{share(row.share)}</span></div></td>
+    </tr>)}
+    {unassigned && <tr className="ww-dash-skill-unassigned" data-field="unassigned-skill">
+      <td><span className="ww-dash-skill-name" title={t("unassignedSkillNote")}><span className="ww-truncate">{t("unassignedSkill")}</span></span></td>
+      <td className="ww-num"><AnimatedNumber value={unassigned.damage} format={format.integer} /></td>
+      <td className="ww-num">{format.integer(unassigned.events)}</td>
+      <td><div className="ww-dash-skill-share"><DamageBar share={unassigned.share} /><span className="ww-num">{share(unassigned.share)}</span></div></td>
+    </tr>}</tbody>
+  </table></div>
 })
 
 /** The engine's own health report. Nothing here is computed in the frontend. */
@@ -141,7 +151,7 @@ export function DashboardView({ data, theme, numberMode = "tween", actions }: Da
     if (unassigned) lines.push({ key: unassignedSeriesKey, label: c("unassigned"), color: "var(--ww-ink-400)", values: fit(unassigned) })
     return lines
   }, [timelineKey, rows, nameOf, t])
-  const skills = data.skillsOf && selected?.roleId !== undefined ? data.skillsOf(selected.roleId) : undefined
+  const skills = data.skillsOf && selected ? data.skillsOf(selected.key) : undefined
   const shares = selected ? contributionShares(selected) : undefined
   const attributionIncomplete = view !== null && (view.unassignedRole.outgoingEvents > 0 || view.statistics.unattributed.outgoingEvents > 0)
   const diagnostics = snapshot?.service.app.profile === "development"
@@ -185,7 +195,7 @@ export function DashboardView({ data, theme, numberMode = "tween", actions }: Da
             <Segmented variant="underline" label={t("breakdown")} value={tab} onChange={setTab} options={[{ value: "skills", label: t("skills") }, { value: "contribution", label: t("contribution") }, { value: "integrity", label: c("integrity") }]} />
           </div>
           <ContentSwitch contentKey={`${tab}-${selected?.key ?? ""}`}>
-            {tab === "skills" && (skills === undefined ? <p className="ww-dash-empty-note">{t("skillsUnavailable")}</p> : <SkillTable rows={skills} color={elementColor(selected?.elementId)} />)}
+            {tab === "skills" && (skills === undefined ? <p className="ww-dash-empty-note">{t("skillsUnavailable")}</p> : <SkillTable breakdown={skills} color={elementColor(selected?.elementId)} />)}
             {tab === "contribution" && (shares === undefined ? <p className="ww-dash-empty-note">{t("noContribution")}</p> : <div className="ww-dash-contribution" data-element={selected?.elementId}>
               <div><span>{t("direct")}</span><b className="ww-num">{format.percent(shares.direct)}</b></div><DamageBar share={shares.direct} />
               <div><span>{t("summon")}</span><b className="ww-num">{format.percent(shares.summon)}</b></div><DamageBar share={shares.summon} />

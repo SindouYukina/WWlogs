@@ -1,4 +1,5 @@
-import type { Effect, Encounter, Role, Vehicle, ViewSnapshot } from "./snapshot"
+import type { SkillBreakdown } from "./combat-data"
+import type { Effect, Encounter, Role, Skill, UnassignedSkill, Vehicle, ViewSnapshot } from "./snapshot"
 
 // Adapts engine snapshot types to the row models the shared components render. Nothing here adds information: a value
 // the engine did not report stays undefined, and unresolved identities keep their raw IDs.
@@ -72,6 +73,32 @@ function ranked(roles: readonly Role[], vehicle: Vehicle | undefined, duration: 
   if (vehicle) rows.push(vehicleRow(vehicle, duration))
   const ordered = [...rows].sort((a, b) => b.damage - a.damage || a.key.localeCompare(b.key))
   return ordered.map((row, rank) => ({ ...row, rank }))
+}
+
+/** The engine's skill split of one contributor. Names stay absent unless Master reports a VERIFIED official name. */
+export function skillBreakdown(contributor: { skills?: Skill[]; unassignedSkill?: UnassignedSkill }): SkillBreakdown | undefined {
+  if (contributor.skills === undefined) return undefined
+  const rows = contributor.skills.map(skill => ({
+    skillId: skill.skillId,
+    name: skill.nameStatus === "VERIFIED" && skill.name !== "" ? skill.name : undefined,
+    damage: skill.damageDealt,
+    events: skill.outgoingEvents,
+    share: skill.damageShare,
+  }))
+  const unassigned = contributor.unassignedSkill
+  return { rows, unassigned: unassigned && unassigned.outgoingEvents > 0 ? { damage: unassigned.damageDealt, events: unassigned.outgoingEvents, share: unassigned.damageShare } : undefined }
+}
+
+/** Skill splits by ranking-row key, from the same encounter (or interval) the ranking rows come from. */
+export function skillBreakdowns(source: Pick<Encounter, "roles" | "vehicle">): Map<string, SkillBreakdown> {
+  const result = new Map<string, SkillBreakdown>()
+  for (const role of source.roles) {
+    const breakdown = skillBreakdown(role)
+    if (breakdown) result.set(`role-${role.playerId}-${role.roleId}`, breakdown)
+  }
+  const vehicle = source.vehicle && skillBreakdown(source.vehicle)
+  if (source.vehicle && vehicle) result.set(`vehicle-${source.vehicle.kind}`, vehicle)
+  return result
 }
 
 /** Direct and summon shares of one row, or undefined when the engine reported no damage to split. */

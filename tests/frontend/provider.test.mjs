@@ -3,7 +3,7 @@ import { existsSync, readFileSync, readdirSync } from "node:fs"
 import { join } from "node:path"
 import test from "node:test"
 import { dataChip, displayedEncounter, isFrozen, usableDps } from "../../frontend/src/lib/combat-data.ts"
-import { combatRows, contributionShares, intervalRows } from "../../frontend/src/lib/combat-view.ts"
+import { combatRows, contributionShares, intervalRows, skillBreakdown, skillBreakdowns } from "../../frontend/src/lib/combat-view.ts"
 import { shellChanged } from "../../frontend/src/lib/snapshot.ts"
 
 const now = Date.parse("2026-11-06T10:00:10Z")
@@ -94,4 +94,37 @@ test("no product source depends on a build profile", () => {
   for (const file of [...sources("frontend/src/views"), ...sources("frontend/src/lib"), ...sources("frontend/src/design")]) {
     assert.doesNotMatch(readFileSync(file, "utf8"), /__WWLOGS_SHOWCASE__|WWLOGS_FRONTEND_PROFILE/, file)
   }
+})
+
+test("skill rows are the engine's split, keyed like the ranking rows, with official names only", () => {
+  const skills = [
+    { skillId: 1409011, name: "Strike", nameStatus: "VERIFIED", damageDealt: 300, damageShare: 0.6, outgoingEvents: 4 },
+    { skillId: 1409012, name: "", nameStatus: "UNKNOWN", damageDealt: 100, damageShare: 0.2, outgoingEvents: 1 },
+  ]
+  const unassignedSkill = { damageDealt: 100, outgoingEvents: 2, missingSkillEvents: 2, overflowEvents: 0, damageShare: 0.2 }
+  const role = { playerId: 1, roleId: 1409, name: "A", nameStatus: "VERIFIED", damageDealt: 500, directDamage: 500, summonDamage: 0, damageTaken: 0, skills, unassignedSkill }
+  const breakdown = skillBreakdown(role)
+  assert.deepEqual(breakdown.rows, [
+    { skillId: 1409011, name: "Strike", damage: 300, events: 4, share: 0.6 },
+    { skillId: 1409012, name: undefined, damage: 100, events: 1, share: 0.2 },
+  ])
+  assert.deepEqual(breakdown.unassigned, { damage: 100, events: 2, share: 0.2 })
+  const total = breakdown.rows.reduce((sum, row) => sum + row.damage, breakdown.unassigned.damage)
+  assert.equal(total, role.damageDealt, "rows plus unassigned add up to the role")
+  assert.equal(skillBreakdown({ ...role, unassignedSkill: { ...unassignedSkill, damageDealt: 0, outgoingEvents: 0 } }).unassigned, undefined)
+  assert.equal(skillBreakdown({ ...role, skills: undefined }), undefined, "an old host without a skill field has no split")
+  const map = skillBreakdowns({ roles: [role], vehicle: { kind: "motorcycle", damageDealt: 9, skills: [{ skillId: 7, name: "", nameStatus: "UNKNOWN", damageDealt: 9, outgoingEvents: 1 }] } })
+  const keys = intervalRows({ roles: [role], vehicle: { kind: "motorcycle", damageDealt: 9 } }).map(row => row.key)
+  assert.deepEqual([...map.keys()].sort(), [...keys].sort(), "every ranking row finds its own split")
+  assert.equal(map.get("vehicle-motorcycle").rows[0].skillId, 7)
+})
+
+test("the Live provider and the Dashboard never compute or invent skill rows", () => {
+  const provider = readFileSync("frontend/src/lib/useLiveCombatData.ts", "utf8")
+  assert.match(provider, /skillBreakdowns\(/)
+  const dashboard = readFileSync("frontend/src/views/DashboardView.tsx", "utf8")
+  assert.match(dashboard, /data\.skillsOf\(selected\.key\)/)
+  assert.doesNotMatch(dashboard, /mock|Mock/)
+  const view = readFileSync("frontend/src/lib/combat-view.ts", "utf8")
+  assert.doesNotMatch(view, /devLabel|dev_label/, "developer labels are not official skill names")
 })

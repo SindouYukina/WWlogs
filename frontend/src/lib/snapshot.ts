@@ -112,6 +112,29 @@ export interface Role {
   outgoingEvents: number
   damageTaken: number
   incomingEvents: number
+  /** Damage split by DamageContext.SkillId, ordered by damage; absent from hosts older than skill breakdown. */
+  skills?: Skill[]
+  unassignedSkill?: UnassignedSkill
+}
+
+/** One DamageContext.SkillId of a contributor. The share uses the contributor's own confirmed damage. */
+export interface Skill {
+  skillId: number
+  /** Official Master name in the selected locale; empty with nameStatus UNKNOWN when Master has none. */
+  name: string
+  nameStatus: string
+  damageDealt: number
+  damageShare?: number
+  outgoingEvents: number
+}
+
+/** Confirmed damage of a contributor without a SkillId (or beyond the engine's row bound). */
+export interface UnassignedSkill {
+  damageDealt: number
+  outgoingEvents: number
+  missingSkillEvents: number
+  overflowEvents: number
+  damageShare?: number
 }
 
 export interface UnassignedRole {
@@ -289,6 +312,8 @@ export interface Vehicle {
  damageDealt: number
  outgoingEvents: number
  damageShare?: number
+ skills?: Skill[]
+ unassignedSkill?: UnassignedSkill
 }
 
 export interface DamageContributor {

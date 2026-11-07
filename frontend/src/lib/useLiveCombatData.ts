@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { displayedEncounter, type CombatData } from "./combat-data"
+import { skillBreakdowns } from "./combat-view"
 import { timelineFromView } from "./timeline"
 import { useSnapshot } from "./useSnapshot"
 
@@ -27,14 +28,19 @@ export function useClock(): number {
 
 /**
  * The Live provider. It publishes only what the Go engine reports: the DPS timeline comes from the snapshot's engine
- * timeline (empty until the first encounter); per-skill rows have no backend field yet, so they stay absent and the
- * views show their unavailable state.
+ * timeline (empty until the first encounter), and skill rows come from the engine's per-contributor skill split of
+ * the same encounter (or capture interval) the ranking shows.
  */
 export function useLiveCombatData() {
   const { snapshot, connection, changeLocale } = useSnapshot()
   const now = useClock()
   const view = snapshot?.view
   const timeline = useMemo(() => timelineFromView(view, displayedEncounter(view)?.encounterId), [view])
-  const data = useMemo<CombatData>(() => ({ snapshot, connection, now, timeline }), [snapshot, connection, now, timeline])
+  const skillsOf = useMemo(() => {
+    const source = displayedEncounter(view) ?? view
+    const breakdowns = source ? skillBreakdowns(source) : new Map()
+    return (rowKey: string) => breakdowns.get(rowKey)
+  }, [view])
+  const data = useMemo<CombatData>(() => ({ snapshot, connection, now, timeline, skillsOf }), [snapshot, connection, now, timeline, skillsOf])
   return { data, changeLocale }
 }

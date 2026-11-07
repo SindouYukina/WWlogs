@@ -43,6 +43,17 @@ func (p *displayProjection) encode(source *service.Snapshot, settings SettingsSt
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	var projectionErr error
+	skills := func(original []capture.ViewSkill) []capture.ViewSkill {
+		result := append([]capture.ViewSkill{}, original...)
+		for i := range result {
+			name, err := p.resolver.Resolve(ctx, "combat_skill", result[i].SkillID, masterLocale)
+			if err != nil {
+				projectionErr = err
+			}
+			result[i].Name, result[i].NameStatus = name.Name, name.Status
+		}
+		return result
+	}
 	roles := func(original []capture.ViewRole) []capture.ViewRole {
 		result := append([]capture.ViewRole{}, original...)
 		for i := range result {
@@ -52,8 +63,17 @@ func (p *displayProjection) encode(source *service.Snapshot, settings SettingsSt
 			}
 			result[i].Name, result[i].NameStatus = name.Name, name.Status
 			result[i].ElementID = p.resolver.RoleElement(ctx, result[i].RoleID)
+			result[i].Skills = skills(result[i].Skills)
 		}
 		return result
+	}
+	vehicle := func(original *capture.ViewVehicle) *capture.ViewVehicle {
+		if original == nil {
+			return nil
+		}
+		copied := *original
+		copied.Skills = skills(copied.Skills)
+		return &copied
 	}
 	effects := func(original []capture.ViewEffect) []capture.ViewEffect {
 		result := append([]capture.ViewEffect{}, original...)
@@ -81,13 +101,16 @@ func (p *displayProjection) encode(source *service.Snapshot, settings SettingsSt
 	if source.View != nil {
 		copied := *source.View
 		copied.Roles = roles(copied.Roles)
+		copied.Vehicle = vehicle(copied.Vehicle)
 		copied.Encounters.Recent = append([]capture.ViewEncounter{}, copied.Encounters.Recent...)
 		for i := range copied.Encounters.Recent {
 			copied.Encounters.Recent[i].Roles = roles(copied.Encounters.Recent[i].Roles)
+			copied.Encounters.Recent[i].Vehicle = vehicle(copied.Encounters.Recent[i].Vehicle)
 		}
 		if copied.Encounters.Current != nil {
 			current := *copied.Encounters.Current
 			current.Roles = roles(current.Roles)
+			current.Vehicle = vehicle(current.Vehicle)
 			copied.Encounters.Current = &current
 		}
 		copied.Effects.Active = effects(copied.Effects.Active)
