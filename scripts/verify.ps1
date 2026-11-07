@@ -9,8 +9,9 @@
   Every step reports PASS, FAIL, NOT RUN, or BLOCKED. Nothing is reported as PASS unless it executed.
 
   Steps that need local-only material (the owner-local key input, archived PCAP captures) are NOT RUN, not PASS, when
-  that material is missing. Pass -PcapDirectory to add the replay regression, the public output audit, and the
-  encounter replay (determinism and partition) through an embedded-key development test binary.
+  that material is missing. Pass -PcapDirectory to add the replay regression, the public output audit, the
+  encounter replay (determinism and partition), the host session equivalence and the transport perturbation replay
+  through an embedded-key development test binary.
 #>
 param(
     # Directory that contains archived *.pcap files. Local and private; never read from the repository.
@@ -270,6 +271,19 @@ try {
                                 Remove-Item Env:WWLOGS_SESSION_REPLAY_OUT, Env:WWLOGS_SESSION_REPLAY_PCAPS, Env:WWLOGS_SESSION_REPLAY_MASTER_DB -ErrorAction SilentlyContinue
                             }
                             Set-Result 'replay: host session equivalence' $(if ($sessionCode -eq 0) { 'PASS' } else { 'FAIL' }) "$($pcaps.Count) captures$(if ($sessionCode -ne 0) { '; ' + (($sessionOut | Select-Object -Last 20) -join ' ') })"
+
+                            # 7. Transport perturbation: duplicated, reordered, truncated and late-started deliveries of
+                            # every capture, derived in memory; totals and splits must hold (see the test's header).
+                            $env:WWLOGS_PERTURBATION_OUT = Join-Path $buildDirectory 'perturbation'
+                            $env:WWLOGS_PERTURBATION_PCAPS = $listPath
+                            $env:WWLOGS_PERTURBATION_MASTER_DB = Join-Path $repoRoot 'data/master_data.db'
+                            try {
+                                $perturbationOut = & $testBinary '-test.run' '^TestTransportPerturbationCollector$' '-test.count' '1' 2>&1
+                                $perturbationCode = $LASTEXITCODE
+                            } finally {
+                                Remove-Item Env:WWLOGS_PERTURBATION_OUT, Env:WWLOGS_PERTURBATION_PCAPS, Env:WWLOGS_PERTURBATION_MASTER_DB -ErrorAction SilentlyContinue
+                            }
+                            Set-Result 'replay: transport perturbation' $(if ($perturbationCode -eq 0) { 'PASS' } else { 'FAIL' }) "$($pcaps.Count) captures$(if ($perturbationCode -ne 0) { '; ' + (($perturbationOut | Select-Object -Last 20) -join ' ') })"
                         }
                     }
                 }
