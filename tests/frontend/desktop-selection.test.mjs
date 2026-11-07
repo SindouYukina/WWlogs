@@ -35,6 +35,6 @@ test("selection is not suppressed by intercepting pointer events", () => {
   }
 })
 
-test("the interface select keeps one width whether or not an interface is chosen", () => {
-  assert.ok(read("frontend/src/design/components.css").includes(".ww-row-pair .ww-select-trigger { flex: 0 1 auto; width: 320px; min-width: 160px; }"))
+test("the interface select keeps its original sizing: at least 160 px, up to 280 px for a chosen interface", () => {
+  assert.ok(read("frontend/src/design/components.css").includes(".ww-row-pair .ww-select-trigger { flex: 0 1 280px; min-width: 160px; }"))
 })
