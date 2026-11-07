@@ -321,7 +321,8 @@
 
 /* ------------------------------ Theme backdrop ------------------------------ */
 .ww-backdrop { position: absolute; inset: 0; overflow: hidden; pointer-events: none; contain: strict; }
-.ww-backdrop[data-intensity="ambient"] { background: var(--ww-theme-ambient); }
+/* Chromium paints CSS gradients without dithering, which shows as steps this dark. The static tile breaks them up. */
+.ww-backdrop[data-intensity="ambient"] { background: url("./themes/art/dither.webp") 0 0 / 128px 128px, var(--ww-theme-ambient); image-rendering: pixelated; }
 .ww-backdrop-art { position: absolute; inset: 0; background-size: cover; background-position: right top; background-repeat: no-repeat; animation: ww-fade var(--ww-dur-slower) var(--ww-ease-standard) both; }
 .ww-backdrop-shade { position: absolute; inset: 0; background: linear-gradient(90deg, color-mix(in oklab, var(--ww-surface-canvas) 28%, transparent), transparent 46%); }
 .ww-has-backdrop { --ww-card-opacity: 78%; }

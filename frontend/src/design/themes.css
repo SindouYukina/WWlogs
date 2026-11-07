@@ -79,7 +79,7 @@
   --ww-card-edge: linear-gradient(90deg, oklch(0.6 0.19 24) 0 44px, transparent 44px);
   --ww-card-corner: linear-gradient(135deg, transparent 50%, oklch(0.6 0.19 24 / 0.85) 50%) right 0 top 0 / 9px 9px no-repeat;
   --ww-chart-grid: oklch(1 0 0 / 0.055);
-  --ww-theme-ambient: linear-gradient(115deg, transparent 62%, oklch(0.5 0.18 24 / 0.1) 62% 62.3%, transparent 62.3%), radial-gradient(800px 500px at 96% 104%, oklch(0.42 0.15 24 / 0.13), transparent 70%);
+  --ww-theme-ambient: radial-gradient(800px 500px at 96% 104%, oklch(0.42 0.15 24 / 0.13), transparent 70%);
   --ww-selection: oklch(0.6 0.19 24 / 0.45);
 }
 

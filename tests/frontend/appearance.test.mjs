@@ -1,6 +1,6 @@
 import test from "node:test"
 import assert from "node:assert/strict"
-import { readFileSync, readdirSync } from "node:fs"
+import { readFileSync, readdirSync, statSync } from "node:fs"
 import { defaultTheme, resolveTheme, themeCharacters, themeIds } from "../../frontend/src/design/themes/registry.ts"
 import { flavors, motionVariables, springs } from "../../frontend/src/design/motion/tokens.ts"
 import { springPosition } from "../../frontend/src/design/motion/spring.ts"
@@ -44,6 +44,23 @@ test("every token a theme uses exists", () => {
     for (const match of readFileSync(`frontend/src/design/${file}`, "utf8").matchAll(/(--ww-[a-z0-9-]+)\s*:/g)) defined.add(match[1])
   }
   for (const match of themesCss.matchAll(/var\((--ww-[a-z0-9-]+)/g)) assert.ok(defined.has(match[1]), match[1])
+})
+
+test("the ambient backdrop stays free of hard edges and is dithered", () => {
+  for (const match of themesCss.matchAll(/--ww-theme-ambient: ([^;]+);/g)) assert.doesNotMatch(match[1], /linear-gradient/, "a theme ambient is soft light, never a drawn line")
+  const css = readFileSync("frontend/src/design/components.css", "utf8")
+  assert.match(css, /\.ww-backdrop\[data-intensity="ambient"\] \{ background: url\("\.\/themes\/art\/dither\.webp"\)/)
+})
+
+test("theme art keeps its dither without growing out of proportion", () => {
+  const dir = "frontend/src/design/themes/art"
+  for (const theme of themeIds) {
+    const art = statSync(`${dir}/${theme}.webp`).size
+    // A low-quality encode removes the dither and brings the steps back; these files were 40 KB when they showed them.
+    assert.ok(art > 150_000 && art < 500_000, `${theme} art is ${art} bytes`)
+    assert.ok(statSync(`${dir}/${theme}-thumb.webp`).size < 40_000, `${theme} thumbnail`)
+  }
+  assert.ok(statSync(`${dir}/dither.webp`).size < 8_000)
 })
 
 test("the theme picker keeps every theme in one row", () => {
