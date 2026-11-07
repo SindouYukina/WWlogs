@@ -7,7 +7,6 @@ body[data-view="showcase"] { margin: 0; background: var(--ww-surface-canvas); ov
 .sc-brand > div { display: flex; flex-direction: column; line-height: 1.25; }
 .sc-brand strong { font-family: var(--ww-font-display); font-size: var(--ww-text-base); }
 .sc-brand span { font-size: var(--ww-text-2xs); color: var(--ww-text-3); }
-.sc-mark { display: grid; place-items: center; width: 30px; height: 30px; border-radius: var(--ww-radius-md); background: linear-gradient(160deg, var(--ww-accent-fill-top), var(--ww-accent-fill-bottom)); box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.25); font-weight: var(--ww-weight-bold); color: var(--ww-on-accent); }
 .sc-header-tools { display: flex; align-items: center; justify-content: flex-end; gap: var(--ww-space-3); }
 .sc-header-tools .ww-select-trigger { min-width: 120px; height: 30px; }
 .sc-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ww-space-2) var(--ww-space-5); padding: var(--ww-space-2) var(--ww-space-5); border-bottom: 1px solid var(--ww-line-soft); font-size: var(--ww-text-xs); color: var(--ww-text-3); }

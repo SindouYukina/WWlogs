@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next"
 import "./showcase.css"
 import i18n, { manifest } from "@/i18n"
 import { host } from "@/lib/host"
-import { Button, Chip, ContentSwitch, Icon, ListeningStatus, Segmented, Select, Toggle, applyAppearance, themeIds, type ThemeId } from "@/design"
+import { BrandEmblem, Button, Chip, ContentSwitch, Icon, ListeningStatus, Segmented, Select, Toggle, applyAppearance, themeIds, type ThemeId } from "@/design"
 import type { OverlayKind } from "@/lib/snapshot"
 import { DashboardView } from "@/views/DashboardView"
 import { OverlaySurface } from "@/views/OverlayWindow"
@@ -111,7 +111,7 @@ function Shell() {
   const localeOptions = manifest.supportedLocales.map(locale => ({ value: locale, label: manifest.languages[locale as keyof typeof manifest.languages].label }))
   return <div className="ww-root sc-shell">
     <header className="sc-header">
-      <div className="sc-brand"><span className="sc-mark" aria-hidden="true">W</span><div><strong>{t("shell.title")}</strong><span>{t("shell.subtitle")}</span></div></div>
+      <div className="sc-brand"><BrandEmblem /><div><strong>{t("shell.title")}</strong><span>{t("shell.subtitle")}</span></div></div>
       <Segmented variant="tabs" label={t("shell.sections")} value={section} onChange={setSection} options={sections.map(value => ({ value, label: t(`shell.section.${value}`) }))} />
       <div className="sc-header-tools"><StatusBadge controls={controls} /><Chip tone="warn" dot>{t("shell.mock")}</Chip>
         <Select label={t("shell.locale")} value={instance.language} onChange={locale => void instance.changeLanguage(locale)} options={localeOptions} />

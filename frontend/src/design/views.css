@@ -8,8 +8,8 @@ body[data-view="desktop"] { margin: 0; background: var(--ww-surface-canvas); ove
 .ww-app-brand { display: flex; align-items: center; gap: var(--ww-space-3); min-width: 0; }
 .ww-app-brand > div { display: flex; flex-direction: column; line-height: 1.25; }
 .ww-app-brand strong { font-family: var(--ww-font-display); font-size: var(--ww-text-base); }
-.ww-app-brand span:not(.ww-app-mark) { font-size: var(--ww-text-2xs); color: var(--ww-text-3); }
-.ww-app-mark { display: grid; place-items: center; width: 30px; height: 30px; flex: none; border-radius: var(--ww-radius-md); background: linear-gradient(160deg, var(--ww-accent-fill-top), var(--ww-accent-fill-bottom)); box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.25); font-weight: var(--ww-weight-bold); color: var(--ww-on-accent); }
+.ww-app-brand span { font-size: var(--ww-text-2xs); color: var(--ww-text-3); }
+.ww-brand-emblem { display: block; flex: none; width: 30px; height: 30px; object-fit: contain; }
 .ww-app-tools { display: flex; align-items: center; justify-content: flex-end; gap: var(--ww-space-3); min-width: 0; }
 .ww-app-tools > [data-field="listening"] { min-width: 0; overflow: hidden; }
 .ww-app-tools .ww-listening-detail { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

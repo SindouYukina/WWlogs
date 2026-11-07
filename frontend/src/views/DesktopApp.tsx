@@ -1,6 +1,6 @@
 import { useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { Button, ContentSwitch, Icon, ListeningStatus, Segmented, Select, resolveTheme, type IconName } from "@/design"
+import { BrandEmblem, Button, ContentSwitch, Icon, ListeningStatus, Segmented, Select, resolveTheme, type IconName } from "@/design"
 import { statusText } from "@/i18n"
 import { adapterUsable, environmentNotice } from "@/lib/capture-environment"
 import { host } from "@/lib/host"
@@ -63,7 +63,7 @@ export function DesktopApp() {
   ]
   return <div className="ww-root ww-app">
     <header className="ww-app-header">
-      <div className="ww-app-brand"><span className="ww-app-mark" aria-hidden="true">W</span><div><strong>WWlogs</strong><span>{c("appSubtitle")}</span></div></div>
+      <div className="ww-app-brand"><BrandEmblem /><div><strong>WWlogs</strong><span>{c("appSubtitle")}</span></div></div>
       <Segmented variant="tabs" label={c("dashboard")} value={page} onChange={setPage} options={[{ value: "dashboard", label: c("dashboard") }, { value: "settings", label: c("settings") }]} />
       <div className="ww-app-tools">
         {listening && listeningText && <span data-field="listening" data-state={listening.state} data-reason={listening.reason}><ListeningStatus state={listening.state} label={listeningText.label} detail={listeningText.detail} /></span>}
