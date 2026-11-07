@@ -56,6 +56,7 @@
   "summaryTitle": "Combat summary",
   "ranking": "Damage ranking",
   "timeline": "DPS over time",
+  "teamDps": "Team",
   "chartEmpty": "Waiting for the first second of data",
   "timelineUnavailable": "This statistic has no data source yet",
   "noSource": "No data source yet",

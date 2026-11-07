@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import type { CombatData } from "@/lib/combat-data"
-import { MockFeed, historySlots, type ListeningScenario, type MockOutput } from "./mock-feed.ts"
+import { MockFeed, historySlots, mockPlayerId, type ListeningScenario, type MockOutput } from "./mock-feed.ts"
 
 export interface FeedControls {
   /** The Mock provider's output, in the same contract the Live provider fills. */
@@ -71,7 +71,8 @@ export function useMockFeed(initialPublishMs = 250): FeedControls {
     connection: "connected",
     now,
     paused,
-    timeline: { slots: historySlots, series: output.history },
+    // Mock series are keyed like the live timeline: by the ranking row key of each role.
+    timeline: { slots: historySlots, slotSeconds: 1, series: new Map([...output.history].map(([roleId, values]) => [`role-${mockPlayerId}-${roleId}`, values])) },
     skillsOf: output.skillsOf,
     tickMs: publishMs,
   }), [output, now, paused, publishMs])

@@ -76,6 +76,14 @@ func comparableView(v ViewSnapshot) ViewSnapshot {
 		fix(&recent[i])
 	}
 	v.Encounters.Recent = recent
+	// The timeline names its encounter with the same process-local prefix; everything else in it is compared.
+	if v.Timeline != nil {
+		timeline := *v.Timeline
+		if _, rest, ok := strings.Cut(timeline.EncounterID, "-"); ok {
+			timeline.EncounterID = rest
+		}
+		v.Timeline = &timeline
+	}
 	return v
 }
 

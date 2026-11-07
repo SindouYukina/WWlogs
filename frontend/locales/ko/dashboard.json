@@ -56,6 +56,7 @@
   "summaryTitle": "전투 요약",
   "ranking": "피해량 순위",
   "timeline": "시간별 DPS",
+  "teamDps": "팀",
   "chartEmpty": "첫 1초 데이터를 기다리는 중",
   "timelineUnavailable": "이 통계에는 아직 데이터 소스가 없습니다",
   "noSource": "데이터 소스 없음",

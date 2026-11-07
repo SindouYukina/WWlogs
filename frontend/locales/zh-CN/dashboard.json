@@ -56,6 +56,7 @@
   "summaryTitle": "战斗摘要",
   "ranking": "伤害排名",
   "timeline": "DPS 时间变化",
+  "teamDps": "队伍",
   "chartEmpty": "等待第一秒数据",
   "timelineUnavailable": "此项统计尚未接入数据来源",
   "noSource": "尚无数据来源",

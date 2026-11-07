@@ -7,6 +7,8 @@ import { masterEffects, masterRoles } from "./master-fixture.ts"
 // calculates real data, and it is never reachable from Public builds.
 
 export const historySlots = 61
+/** The one local player of the scripted feed. */
+export const mockPlayerId = 1
 
 /** Every status a window must be able to show. The values are scripted; the real ones come from internal/service. */
 export const listeningScenarios = ["active", "establishing", "waiting", "traffic_without_key", "stale", "recovering", "error", "closed", "off"] as const
@@ -293,7 +295,7 @@ export class MockFeed {
     const confirmed = roleDamage + vehicleDamage + this.unassignedDamage
     const masterOf = (roleId: number | undefined) => masterRoles.find(candidate => candidate.roleId === roleId)
     const roles: Role[] = this.roles.map(role => ({
-      playerId: 1,
+      playerId: mockPlayerId,
       roleId: role.roleId,
       name: this.localized(masterOf(role.roleId)?.names) ?? "",
       nameStatus: "VERIFIED",

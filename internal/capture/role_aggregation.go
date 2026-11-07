@@ -143,8 +143,9 @@ func (a *roleAggregate) entry(role *CombatRole) *RoleDamageSnapshot {
 	return entry
 }
 
-// add credits one statistics record. Only confirmed local flows are aggregated.
-func (a *roleAggregate) add(record CombatEventRecord) {
+// add credits one statistics record. Only confirmed local flows are aggregated. For confirmed local outgoing damage
+// it returns the contributor it credited, so the DPS timeline splits damage exactly as these totals do.
+func (a *roleAggregate) add(record CombatEventRecord) (TimelineContributor, bool) {
 	switch record.Flow {
 	case CombatFlowLocalOutgoing:
 		if record.VehicleKind == vehicleKindMotorcycle {
@@ -152,13 +153,13 @@ func (a *roleAggregate) add(record CombatEventRecord) {
 			a.vehicle.Evidence = string(resolutionCorrelated)
 			a.vehicle.DamageDealt += record.Amount
 			a.vehicle.OutgoingEvents++
-			return
+			return TimelineContributor{Kind: TimelineContributorVehicle, VehicleKind: vehicleKindMotorcycle}, true
 		}
 		entry := a.entry(record.SourceRole)
 		if entry == nil {
 			a.unassigned.DamageDealt += record.Amount
 			a.unassigned.OutgoingEvents++
-			return
+			return TimelineContributor{Kind: TimelineContributorUnassigned}, true
 		}
 		entry.DamageDealt += record.Amount
 		entry.OutgoingEvents++
@@ -167,16 +168,18 @@ func (a *roleAggregate) add(record CombatEventRecord) {
 		} else {
 			entry.DirectDamage += record.Amount
 		}
+		return TimelineContributor{Kind: TimelineContributorRole, PlayerID: entry.PlayerID, RoleID: entry.RoleID}, true
 	case CombatFlowLocalIncoming:
 		entry := a.entry(record.TargetRole)
 		if entry == nil {
 			a.unassigned.DamageTaken += record.Amount
 			a.unassigned.IncomingEvents++
-			return
+			return TimelineContributor{}, false
 		}
 		entry.DamageTaken += record.Amount
 		entry.IncomingEvents++
 	}
+	return TimelineContributor{}, false
 }
 
 // snapshot returns an independent copy, ordered by PlayerId then RoleId.

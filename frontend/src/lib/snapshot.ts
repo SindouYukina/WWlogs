@@ -199,6 +199,40 @@ export interface ViewSnapshot {
   unassignedRole: UnassignedRole
   unassignedRoleShare?: number
   effects: { status: string; reason?: string; active: Effect[]; recentEnded: Effect[]; omitted: number }
+  /** DPS over time of the encounter shown (encounters.current, else the newest recent one); absent before any. */
+  timeline?: Timeline
+}
+
+/** Who confirmed local damage was credited to (Go TimelineContributor). */
+export interface TimelineContributor {
+  kind: "role" | "vehicle" | "unassigned"
+  playerId?: number
+  roleId?: number
+  vehicleKind?: string
+}
+
+/** One interval of the engine's DPS timeline (Go TimelinePoint). dps is null when the duration is zero. */
+export interface TimelinePoint {
+  startSeconds: number
+  durationSeconds: number
+  state: "complete" | "in_progress" | "partial"
+  damage: number
+  dps: number | null
+  /** Aligned with Timeline.contributors. */
+  contributorDamage: number[]
+}
+
+/** An encounter's DPS timeline (Go EncounterTimelineSnapshot); its points add up to the encounter's confirmed damage. */
+export interface Timeline {
+  encounterId: string
+  final: boolean
+  intervalSeconds: number
+  startedAt: string
+  endAt: string
+  durationSeconds: number
+  damageDealt: number
+  contributors: TimelineContributor[]
+  points: TimelinePoint[]
 }
 
 // The connection to the Go host, judged by the frontend. "disconnected" means calls to the host fail.

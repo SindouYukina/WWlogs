@@ -183,6 +183,7 @@ type encounterRecord struct {
 	totals          EncounterTotals
 	integrity       encounterIntegrityState
 	roles           roleAggregate
+	timeline        *encounterTimeline
 }
 
 // encounterTracker owns the encounter lifecycle of one statistics interval. It is driven only by capture-observed
@@ -217,6 +218,8 @@ type encounterTracker struct {
 	transitions                  []EncounterTransition
 	// completedIntegrity is aligned with completed; completed snapshots hold the DPS before integrity is applied.
 	completedIntegrity []encounterIntegrityState
+	// completedTimelines is aligned with completed.
+	completedTimelines []completedTimeline
 	// losses is the transport loss table of this interval (plus losses still ongoing when it began).
 	losses        map[uint64]*statisticsLoss
 	lossOrder     []uint64
@@ -398,7 +401,9 @@ func (t *encounterTracker) addPrelude(record CombatEventRecord) {
 
 func (t *encounterTracker) addToCurrent(record CombatEventRecord) {
 	t.current.totals.add(record)
-	t.current.roles.add(record)
+	if contributor, ok := t.current.roles.add(record); ok {
+		t.current.timeline.add(record.ObservedAt, record.Amount, contributor)
+	}
 	if record.ContextDowngrade != "" {
 		t.current.integrity.contextDowngraded++
 	}
@@ -417,7 +422,7 @@ func (t *encounterTracker) open(at time.Time, protocolSession int, basis string,
 	t.nextSequence++
 	t.current = &encounterRecord{
 		sequence: t.nextSequence, protocolSession: protocolSession, state: EncounterActive,
-		startAt: at, startBasis: basis, startConfirmed: confirmed,
+		startAt: at, startBasis: basis, startConfirmed: confirmed, timeline: newEncounterTimeline(at),
 	}
 	if basis == encounterStartBattleState {
 		t.current.battleEntered = at
@@ -584,10 +589,14 @@ func (t *encounterTracker) finish(decidedAt time.Time, interruptBasis string) {
 		t.droppedTotals.merge(t.completed[0].Totals)
 		t.completed = t.completed[1:]
 		t.completedIntegrity = t.completedIntegrity[1:]
+		t.completedTimelines = t.completedTimelines[1:]
 		t.completedDropped++
 	}
 	t.completed = append(t.completed, base)
 	t.completedIntegrity = append(t.completedIntegrity, record.integrity)
+	t.completedTimelines = append(t.completedTimelines, completedTimeline{
+		encounterID: t.encounterID(record.sequence), timeline: record.timeline, start: record.startAt, end: record.endAt,
+	})
 	detail := snapshot
 	t.emit("finished", record, decidedAt, record.endBasis, &detail)
 }

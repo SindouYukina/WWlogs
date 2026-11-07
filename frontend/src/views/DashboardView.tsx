@@ -2,6 +2,7 @@ import { memo, useEffect, useMemo, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { AnimatedNumber, Card, CharacterAvatar, Chip, ContentSwitch, DamageBar, GameAssetImage, Icon, LiveChart, Reveal, Segmented, StackList, ThemeBackdrop, type ChartSeries, type IconName, type ThemeId } from "@/design"
 import { dataChip, displayedEncounter, isFrozen, usableDps, type CombatData, type SkillRow } from "@/lib/combat-data"
+import { teamSeriesKey, unassignedSeriesKey } from "@/lib/timeline"
 import { combatRows, contributionShares, intervalRows, type CombatRowModel } from "@/lib/combat-view"
 import { elementColor, useFormatters, useRowNames } from "@/lib/format"
 import { dpsText, type ViewSnapshot } from "@/lib/snapshot"
@@ -125,11 +126,21 @@ export function DashboardView({ data, theme, numberMode = "tween", actions }: Da
   const events = encounter ? encounter.roles.reduce((sum, role) => sum + role.outgoingEvents, (encounter.vehicle?.outgoingEvents ?? 0) + encounter.unassignedRole.outgoingEvents) : view?.statistics.outgoingEvents
   const timeline = data.timeline
   // The timeline changes once per second; the memo keeps the chart from re-rendering at the publish rate.
-  const timelineKey = timeline ? [...timeline.series.values()].map(series => `${series.length}:${series.at(-1) ?? ""}`).join() : ""
-  const series = useMemo<ChartSeries[]>(() => timeline ? rows.filter(row => row.kind === "role").sort((a, b) => (a.roleId ?? 0) - (b.roleId ?? 0)).map(row => {
-    const values = timeline.series.get(row.roleId ?? 0) ?? []
-    return { key: row.key, label: nameOf(row), color: elementColor(row.elementId), values: Array.from({ length: timeline.slots }, (_, slot) => values[slot] ?? null) }
-  }) : [], [timelineKey, rows.length, nameOf])
+  const timelineKey = timeline ? `${timeline.encounterId ?? ""}:${timeline.slots}:${timeline.slotSeconds}:${timeline.final === true}:` + [...timeline.series].map(([key, values]) => `${key}=${values.length}:${values.at(-1) ?? ""}`).join() : ""
+  const series = useMemo<ChartSeries[]>(() => {
+    if (!timeline) return []
+    const fit = (values: ReadonlyArray<number | null> | undefined) => Array.from({ length: timeline.slots }, (_, slot) => values?.[slot] ?? null)
+    const lines: ChartSeries[] = []
+    const team = timeline.series.get(teamSeriesKey)
+    if (team) lines.push({ key: teamSeriesKey, label: t("teamDps"), color: "var(--ww-ink-100)", values: fit(team) })
+    // Roles keep their element color in RoleId order, then the vehicle; the same contributor keeps its line when ranks change.
+    for (const row of rows.filter(row => timeline.series.has(row.key)).sort((a, b) => (a.kind === b.kind ? (a.roleId ?? 0) - (b.roleId ?? 0) : a.kind === "role" ? -1 : 1))) {
+      lines.push({ key: row.key, label: nameOf(row), color: elementColor(row.elementId), values: fit(timeline.series.get(row.key)) })
+    }
+    const unassigned = timeline.series.get(unassignedSeriesKey)
+    if (unassigned) lines.push({ key: unassignedSeriesKey, label: c("unassigned"), color: "var(--ww-ink-400)", values: fit(unassigned) })
+    return lines
+  }, [timelineKey, rows, nameOf, t])
   const skills = data.skillsOf && selected?.roleId !== undefined ? data.skillsOf(selected.roleId) : undefined
   const shares = selected ? contributionShares(selected) : undefined
   const attributionIncomplete = view !== null && (view.unassignedRole.outgoingEvents > 0 || view.statistics.unattributed.outgoingEvents > 0)
@@ -166,7 +177,7 @@ export function DashboardView({ data, theme, numberMode = "tween", actions }: Da
       <Reveal index={5} className="ww-dash-detail-wrap">
         <Card className="ww-dash-chart-card">
           <div className="ww-dash-card-head"><h3>{t("timeline")}</h3>{!timeline && <Chip>{t("noSource")}</Chip>}</div>
-          <LiveChart series={series} slots={timeline?.slots ?? 61} height={190} formatValue={format.compact} formatSlot={slot => format.clock(slot)} emptyLabel={t(timeline ? "chartEmpty" : "timelineUnavailable")} ariaLabel={t("timeline")} />
+          <div data-field="timeline" data-encounter={timeline?.encounterId ?? ""} data-final={timeline?.final === true} data-series={series.length}><LiveChart series={series} slots={timeline?.slots ?? 61} height={190} formatValue={format.compact} formatSlot={slot => format.clock(slot * (timeline?.slotSeconds ?? 1))} emptyLabel={t(timeline ? "chartEmpty" : "timelineUnavailable")} ariaLabel={t("timeline")} /></div>
         </Card>
         <Card className="ww-dash-detail">
           <div className="ww-dash-card-head">

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
-import type { CombatData } from "./combat-data"
+import { displayedEncounter, type CombatData } from "./combat-data"
+import { timelineFromView } from "./timeline"
 import { useSnapshot } from "./useSnapshot"
 
 /** A 1 Hz clock that stops while the window is hidden and catches up the moment it is shown again. */
@@ -25,12 +26,15 @@ export function useClock(): number {
 }
 
 /**
- * The Live provider. It publishes only what the Go engine reports today: per-role time series and per-skill rows have no
- * backend field yet (Phase 2B), so they stay absent and the views show their unavailable state.
+ * The Live provider. It publishes only what the Go engine reports: the DPS timeline comes from the snapshot's engine
+ * timeline (empty until the first encounter); per-skill rows have no backend field yet, so they stay absent and the
+ * views show their unavailable state.
  */
 export function useLiveCombatData() {
   const { snapshot, connection, changeLocale } = useSnapshot()
   const now = useClock()
-  const data = useMemo<CombatData>(() => ({ snapshot, connection, now }), [snapshot, connection, now])
+  const view = snapshot?.view
+  const timeline = useMemo(() => timelineFromView(view, displayedEncounter(view)?.encounterId), [view])
+  const data = useMemo<CombatData>(() => ({ snapshot, connection, now, timeline }), [snapshot, connection, now, timeline])
   return { data, changeLocale }
 }
