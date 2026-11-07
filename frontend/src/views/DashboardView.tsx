@@ -58,7 +58,7 @@ const SkillTable = memo(function SkillTable({ breakdown, color }: { breakdown: S
   return <div className="ww-dash-skills-wrap"><table className="ww-dash-skills" data-field="skills" style={{ "--ww-series": color } as React.CSSProperties}>
     <thead><tr><th>{t("skill")}</th><th>{t("damageColumn")}</th><th>{t("damageEvents")}</th><th>{t("shareColumn")}</th></tr></thead>
     <tbody>{rows.map(row => <tr key={row.skillId} data-skill-id={row.skillId} data-named={row.name !== undefined}>
-      <td><span className="ww-dash-skill-name" title={`SkillId ${row.skillId}`}><GameAssetImage kind="skill" id={row.skillId} /><span className="ww-truncate">{row.name ?? t("unnamedSkill")}</span><span className="ww-dash-skill-id ww-num">{row.skillId}</span></span></td>
+      <td><span className="ww-dash-skill-name" title={`SkillId ${row.skillId}`}><GameAssetImage kind="skill" id={row.skillId} /><span className="ww-truncate">{row.name ?? t("unnamedSkill")}</span><span className="ww-dash-skill-id ww-num ww-selectable">{row.skillId}</span></span></td>
       <td className="ww-num"><AnimatedNumber value={row.damage} format={format.integer} /></td>
       <td className="ww-num">{format.integer(row.events)}</td>
       <td><div className="ww-dash-skill-share"><DamageBar share={row.share} /><span className="ww-num">{share(row.share)}</span></div></td>
@@ -80,7 +80,7 @@ function IntegrityPanel({ view, diagnostics }: { view: ViewSnapshot | null; diag
   const integrity = view?.statistics.integrity
   return <div className="ww-dash-integrity">
     <p className="ww-dash-empty-note" data-field="integrity" data-status={view?.health.dataIntegrity}>{!view ? c("waiting") : t(integrity?.status === "INTACT" ? "intactNote" : integrity?.status === "DEGRADED" ? "degradedNote" : "unreliableNote")}</p>
-    <dl className="ww-dash-facts">
+    <dl className="ww-dash-facts ww-selectable">
       <dt>{c("context")}</dt><dd data-field="context">{statusText(view?.health.context.state)}</dd>
       <dt>{c("transport")}</dt><dd data-field="transport">{statusText(view?.health.transport.state)}</dd>
       <dt>{t("transportLosses")}</dt><dd className="ww-num">{number(integrity?.transportLosses)}</dd>

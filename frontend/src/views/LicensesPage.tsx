@@ -18,14 +18,14 @@ function FontLicenseCard({ font, openLink }: { font: FontLicense; openLink: (url
       <dt>{t("licenses.faces")}</dt><dd lang="en">{font.faces}</dd>
       <dt>{t("licenses.version")}</dt><dd className="ww-num">{font.version}</dd>
       <dt>{t("licenses.authors")}</dt><dd lang="en">{font.authors}</dd>
-      <dt>{t("licenses.copyright")}</dt><dd lang="en" data-field={`license-notice-${font.id}`}>{font.notice}</dd>
+      <dt>{t("licenses.copyright")}</dt><dd lang="en" className="ww-selectable" data-field={`license-notice-${font.id}`}>{font.notice}</dd>
       <dt>{t("licenses.license")}</dt><dd lang="en">{font.licenseName}</dd>
       <dt>{t("licenses.links")}</dt>
       <dd className="ww-license-links">{font.links.map(link => <Button key={link.url} size="sm" variant="ghost" title={link.url} data-license-link={link.url} onClick={() => follow(link.url)}>{t(`licenses.link.${link.kind}`)}</Button>)}</dd>
     </dl>
     {linkFailed && <p className="ww-settings-notice" role="alert">{t("licenses.linkFailed")}</p>}
     <Button size="sm" aria-expanded={open} data-field={`license-toggle-${font.id}`} onClick={() => setOpen(!open)}>{t(open ? "licenses.hideText" : "licenses.showText")}</Button>
-    <Collapse open={open}><pre className="ww-license-text" lang="en" tabIndex={open ? 0 : -1} data-field={`license-text-${font.id}`}>{font.text}</pre></Collapse>
+    <Collapse open={open}><pre className="ww-license-text ww-selectable" lang="en" tabIndex={open ? 0 : -1} data-field={`license-text-${font.id}`}>{font.text}</pre></Collapse>
   </article>
 }
 

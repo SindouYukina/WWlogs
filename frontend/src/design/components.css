@@ -9,6 +9,16 @@
 /* ------------------------------ Base ------------------------------ */
 .ww-root { font-family: var(--ww-font-ui); font-size: var(--ww-text-md); font-weight: var(--ww-weight-regular); letter-spacing: calc(var(--ww-tracking-ui) + var(--ww-tracking-shift)); line-height: var(--ww-leading-normal); color: var(--ww-text); }
 .ww-root *, .ww-root *::before, .ww-root *::after { box-sizing: border-box; }
+/*
+ * Desktop-native selection: product text is not drag-selectable and images leave no drag ghost. Editable fields keep
+ * native selection, and .ww-selectable marks the few values meant to be copied (build identity, license text,
+ * diagnostics, raw IDs). Only CSS: no pointer handler is intercepted, so window drag, Edit Mode and keyboard use stay as is.
+ */
+body[data-view="desktop"], body[data-view="overlay"], .ww-root { -webkit-user-select: none; user-select: none; }
+.ww-root input, .ww-root textarea, .ww-root [contenteditable="true"], .ww-root [contenteditable="plaintext-only"], .ww-root .ww-selectable { -webkit-user-select: text; user-select: text; }
+.ww-root .ww-selectable { cursor: text; }
+.ww-root .ww-selectable::selection, .ww-root .ww-selectable *::selection { background: var(--ww-accent-soft); color: var(--ww-text); }
+body[data-view] img { -webkit-user-drag: none; }
 .ww-caps { font-size: var(--ww-text-2xs); font-weight: var(--ww-weight-semibold); letter-spacing: var(--ww-tracking-caps); text-transform: uppercase; color: var(--ww-text-3); }
 .ww-truncate { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ww-focusable:focus-visible { outline: none; box-shadow: var(--ww-focus-ring); }
@@ -307,7 +317,8 @@
 .ww-row-title { display: inline-flex; align-items: center; gap: var(--ww-space-1_5); font-size: var(--ww-text-base); font-weight: var(--ww-weight-medium); }
 .ww-row-desc { margin-top: 2px; font-size: var(--ww-text-xs); color: var(--ww-text-3); }
 .ww-row-pair { display: flex; align-items: center; justify-content: flex-end; gap: var(--ww-space-2); min-width: 0; }
-.ww-row-pair .ww-select-trigger { flex: 0 1 280px; min-width: 160px; }
+/* An address and an adapter name: twice the minimum select width, the same whether or not one is chosen yet. */
+.ww-row-pair .ww-select-trigger { flex: 0 1 auto; width: 320px; min-width: 160px; }
 .ww-row-pair > .ww-btn { flex: none; }
 .ww-row-control { display: flex; align-items: center; justify-content: flex-end; flex: 1; gap: var(--ww-space-3); min-width: 0; }
 
