@@ -196,6 +196,10 @@ type overlayEntry struct {
 	timer   *time.Timer
 	// hitWidth and hitHeight are the size the layered hit-test region was last refreshed for.
 	hitWidth, hitHeight int
+	// topmost is the always-on-top state last set on the window, and topmostSet says whether one was set yet.
+	topmost, topmostSet bool
+	// foregroundAtCreation is the window that held the foreground just before this window was created.
+	foregroundAtCreation uintptr
 }
 
 // overlayManager owns both Overlay windows. operation serializes requests, which call into the UI thread, and must not be
@@ -315,21 +319,36 @@ func (m *overlayManager) applyLocked(entry *overlayEntry) {
 	if window == nil || !ready {
 		return
 	}
-	window.SetAlwaysOnTop(prefs.AlwaysOnTop)
+	// Outside Edit Mode nothing here may activate the window: the foreground window is normally the game. The always-on-top
+	// and first-show calls below avoid the Wails methods' activating forms for that reason.
+	setOverlayActivation(window, editing)
+	m.mu.Lock()
+	changeTopmost := !entry.topmostSet || entry.topmost != prefs.AlwaysOnTop
+	entry.topmost, entry.topmostSet = prefs.AlwaysOnTop, true
+	m.mu.Unlock()
+	if changeTopmost {
+		setOverlayTopmost(window, prefs.AlwaysOnTop)
+	}
 	window.SetIgnoreMouseEvents(prefs.ClickThrough && !editing)
 	// Edge resizing is gated in the window runtime, not with SetResizable. Dropping the native resizable style more than
 	// doubled the GPU process's CPU for two live Overlays in repeated measurements, and a frameless window has no native
 	// edge to grab either way.
 	window.ExecJS(fmt.Sprintf("window._wails.setResizable(%v);", editing))
-	if prefs.Visible {
-		window.Show()
-	} else {
+	switch {
+	case !prefs.Visible:
 		window.Hide()
+	case !window.IsVisible():
+		// Settings such as opacity also pass through here. Only a hidden window needs showing.
+		if !editing {
+			showOverlayInactive(window)
+		}
+		window.Show()
 	}
 }
 
 // createLocked creates the native window. The caller holds mu.
 func (m *overlayManager) createLocked(entry *overlayEntry) {
+	entry.foregroundAtCreation = foregroundWindow()
 	window := m.app.Window.NewWithOptions(overlayWindowOptions(entry.spec, "/?view=overlay&surface="+entry.kind))
 	entry.window = window
 	window.OnWindowEvent(events.Common.WindowRuntimeReady, func(*application.WindowEvent) { m.onReady(entry) })
@@ -359,7 +378,9 @@ func (m *overlayManager) onReady(entry *overlayEntry) {
 		return
 	}
 	window := entry.window
+	previous := entry.foregroundAtCreation
 	m.mu.Unlock()
+	returnForeground(window, previous)
 	window.SetPhysicalBounds(toRect(placeOverlay(entry.spec, m.store.overlay(entry.kind).Placement, m.screens())))
 	m.mu.Lock()
 	entry.ready = true
