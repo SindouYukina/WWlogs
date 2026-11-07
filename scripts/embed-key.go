@@ -13,10 +13,12 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -25,6 +27,7 @@ import (
 
 	"wwlogs/internal/assets"
 	"wwlogs/internal/keyembed"
+	"wwlogs/scripts/buildrun"
 )
 
 func main() {
@@ -35,64 +38,69 @@ func main() {
 }
 
 func run() error {
-	outputFlag := flag.String("o", "", "output executable path (defaults to bin/WWlogs[-Desktop].exe for public or work/dist/WWlogs[-Desktop]-dev.exe for development)")
-	profileFlag := flag.String("profile", "public", "build profile: public (no raw diagnostic outputs) or development (full diagnostics)")
+	outputFlag := flag.String("o", "", "output executable path for a single-profile run (default: <output-root>/<profile>/WWlogs.exe for desktop, WWlogs-Capture.exe for capture)")
+	outputRoot := flag.String("output-root", "bin", "root of the per-profile output directories <output-root>/development and <output-root>/public")
+	profileFlag := flag.String("profile", "public", "build profile: public (no raw diagnostic outputs), development (full diagnostics), or both in one build run")
 	versionFlag := flag.String("version", "", "product version to embed (default: the version registered in internal/versioninfo)")
 	requireClean := flag.Bool("require-clean", false, "fail when the Git working tree has uncommitted changes to tracked files")
 	testBinary := flag.String("test-binary", "", "build a test binary of this package (for example ./internal/capture) carrying the encrypted key payload and the committed test overlay, instead of the executable; requires -o")
-	targetFlag := flag.String("target", "capture", "executable to build: capture (console analyzer) or desktop (Wails desktop host; requires -frontend-dist)")
-	frontendDist := flag.String("frontend-dist", "", "built frontend directory to embed into the desktop host; must be outside the repository (scripts/frontend.ps1 -Action Build)")
+	targetFlag := flag.String("target", "capture", "executable to build: capture (console analyzer) or desktop (Wails desktop host; requires the built frontend of each profile)")
+	frontendPublic := flag.String("frontend-dist-public", "", "built Public frontend directory to embed into the desktop host; must be outside the repository (scripts/frontend.ps1 -Action Build)")
+	frontendDevelopment := flag.String("frontend-dist-development", "", "built Development frontend directory to embed into the desktop host; must be outside the repository")
+	unofficial := flag.Bool("unofficial", false, "build unofficial executables that neither read nor advance the official build counter")
+	initCounter := flag.Bool("init-build-number", false, "owner-directed first initialization of the official build counter; refused when a counter exists or existed")
+	stateDirectory := flag.String("build-state", "", "official build counter directory (default: <repository>/.local); tests point it at an isolated directory")
 	flag.Parse()
 	if flag.NArg() != 0 {
 		return errors.New("unexpected positional arguments")
 	}
 
-	var buildTags []string
+	var profiles []string
 	switch *profileFlag {
-	case "public":
-	case "development":
-		buildTags = []string{"-tags", "wwdev"}
+	case "public", "development":
+		profiles = []string{*profileFlag}
+	case "both":
+		// Development first: a Public failure after it still installs nothing.
+		profiles = []string{"development", "public"}
 	default:
-		return fmt.Errorf("unknown profile %q: use public or development", *profileFlag)
+		return fmt.Errorf("unknown profile %q: use public, development or both", *profileFlag)
 	}
-	var buildPackage string
+	var buildPackage, outputName string
 	switch *targetFlag {
 	case "capture":
-		buildPackage = "./cmd/capture"
+		buildPackage, outputName = "./cmd/capture", "WWlogs-Capture.exe"
 	case "desktop":
-		buildPackage = "./cmd/desktop"
+		buildPackage, outputName = "./cmd/desktop", "WWlogs.exe"
 		if *testBinary != "" {
 			return errors.New("-test-binary builds packages, not the desktop target")
-		}
-		if *frontendDist == "" {
-			return errors.New("-target desktop requires -frontend-dist")
-		}
-		// Wails' production tag removes DevTools and the dev-server hook; the Development profile keeps Wails debug mode.
-		if *profileFlag == "public" {
-			buildTags = []string{"-tags", "production"}
 		}
 	default:
 		return fmt.Errorf("unknown target %q: use capture or desktop", *targetFlag)
 	}
-	if *outputFlag == "" && *testBinary == "" {
-		name := map[string]string{"capture": "WWlogs", "desktop": "WWlogs-Desktop"}[*targetFlag]
-		*outputFlag = filepath.Join("bin", name+".exe")
-		if *profileFlag == "development" {
-			*outputFlag = filepath.Join("work", "dist", name+"-dev.exe")
+	frontendDist := map[string]string{"public": *frontendPublic, "development": *frontendDevelopment}
+	if *targetFlag == "desktop" {
+		for _, profile := range profiles {
+			if frontendDist[profile] == "" {
+				return fmt.Errorf("-target desktop requires -frontend-dist-%s", profile)
+			}
 		}
 	}
-	version := *versionFlag
-	if version == "" {
-		version = registeredVersion(repositoryRootFor())
+	if *outputFlag != "" && len(profiles) != 1 {
+		return errors.New("-o names one executable; use -output-root for a run that builds both profiles")
+	}
+	if *testBinary != "" && (len(profiles) != 1 || *outputFlag == "") {
+		return errors.New("-test-binary needs one profile and -o")
+	}
+	if *unofficial && *initCounter {
+		return errors.New("-unofficial and -init-build-number exclude each other")
 	}
 
-	_, sourcePath, _, ok := runtime.Caller(0)
-	if !ok {
-		return errors.New("cannot locate build script")
+	repositoryRoot := repositoryRootFor()
+	version := *versionFlag
+	if version == "" {
+		version = registeredVersion(repositoryRoot)
 	}
-	repositoryRoot := filepath.Dir(filepath.Dir(sourcePath))
-	keyPath := filepath.Join(repositoryRoot, "privateKey.pem")
-	keyPEM, err := os.ReadFile(keyPath)
+	keyPEM, err := os.ReadFile(filepath.Join(repositoryRoot, "privateKey.pem"))
 	if err != nil {
 		return fmt.Errorf("read project-root privateKey.pem: %w", err)
 	}
@@ -102,27 +110,10 @@ func run() error {
 		return fmt.Errorf("validate project-root privateKey.pem: %w", err)
 	}
 	defer clear(privateDER)
-
 	payload, err := keyembed.Encrypt(keyPEM)
 	if err != nil {
 		return fmt.Errorf("encrypt build key payload: %w", err)
 	}
-
-	outputPath := *outputFlag
-	if !filepath.IsAbs(outputPath) {
-		outputPath = filepath.Join(repositoryRoot, outputPath)
-	}
-	outputPath = filepath.Clean(outputPath)
-	outputDirectory := filepath.Dir(outputPath)
-	if err := os.MkdirAll(outputDirectory, 0o755); err != nil {
-		return fmt.Errorf("create output directory: %w", err)
-	}
-	temporaryExecutable, err := temporaryPath(outputDirectory, ".wwlogs-build-*.exe")
-	if err != nil {
-		return fmt.Errorf("prepare temporary executable path: %w", err)
-	}
-	defer os.Remove(temporaryExecutable)
-
 	generatedSource := []byte(fmt.Sprintf(`package capture
 
 var (
@@ -150,110 +141,249 @@ var (
 		return fmt.Errorf("hash combat Master database build input: %w", err)
 	}
 	fmt.Fprintf(os.Stdout, "Master database: %d bytes, SHA-256 %s\n", masterDatabaseInfo.Size(), masterDatabaseHash)
-	replacements := map[string]string{
+	baseReplacements := map[string]string{
 		filepath.Join(repositoryRoot, "internal", "capture", "key_payload.go"): generatedSourcePath,
 		filepath.Join(repositoryRoot, "internal", "capture", "master_data.db"): masterDatabasePath,
 	}
-	if *targetFlag == "desktop" {
-		archivePath, archiveSourcePath, err := writeFrontendArchive(repositoryRoot, *frontendDist)
-		if err != nil {
-			return err
-		}
-		defer os.Remove(archivePath)
-		defer os.Remove(archiveSourcePath)
-		replacements[filepath.Join(repositoryRoot, "internal", "desktop", "frontend_archive.go")] = archiveSourcePath
-		replacements[filepath.Join(repositoryRoot, "internal", "desktop", frontendArchiveName)] = archivePath
-		packPath, packSourcePath, err := writeGameAssetPack(repositoryRoot)
-		if err != nil {
-			return err
-		}
-		defer os.Remove(packPath)
-		defer os.Remove(packSourcePath)
-		replacements[filepath.Join(repositoryRoot, "internal", "desktop", "game_asset_archive.go")] = packSourcePath
-		replacements[filepath.Join(repositoryRoot, "internal", "desktop", gameAssetPackName)] = packPath
-	}
-	if *testBinary != "" {
-		if *outputFlag == "" {
-			return errors.New("-test-binary requires -o")
-		}
-		if err := mergeTestOverlay(repositoryRoot, replacements); err != nil {
-			return err
-		}
-	}
-	var windowsResourceSet *winres.ResourceSet
-	if *testBinary == "" {
-		resources, resourcePath, err := windowsResources(repositoryRoot, buildPackage, version)
-		if err != nil {
-			return err
-		}
-		defer os.Remove(resourcePath)
-		windowsResourceSet = resources
-	}
-	overlayData, err := json.Marshal(struct {
-		Replace map[string]string
-	}{Replace: replacements})
-	if err != nil {
-		return fmt.Errorf("encode Go build overlay: %w", err)
-	}
-	defer clear(overlayData)
-	overlayPath, err := writeTemporaryFile(os.TempDir(), "wwlogs-key-overlay-*.json", overlayData)
-	if err != nil {
-		return fmt.Errorf("write Go build overlay: %w", err)
-	}
-	defer os.Remove(overlayPath)
 
 	if *testBinary != "" {
-		return buildTestBinary(repositoryRoot, *testBinary, outputPath, overlayPath, buildTags, keyPEM, privateDER)
+		if err := mergeTestOverlay(repositoryRoot, baseReplacements); err != nil {
+			return err
+		}
+		overlayPath, err := writeOverlay(baseReplacements)
+		if err != nil {
+			return err
+		}
+		defer os.Remove(overlayPath)
+		return buildTestBinary(repositoryRoot, *testBinary, absolutePath(repositoryRoot, *outputFlag), overlayPath, profileTags(profiles[0], *targetFlag), keyPEM, privateDER)
 	}
 
 	commit, dirty := gitIdentity(repositoryRoot)
 	if *requireClean && dirty != "false" {
 		return fmt.Errorf("working tree state is %q; commit or stash tracked changes before a clean build", dirty)
 	}
-	ldflags := "-X wwlogs/internal/buildinfo.injectedVersion=" + version +
-		" -X wwlogs/internal/buildinfo.injectedCommit=" + commit +
-		" -X wwlogs/internal/buildinfo.injectedDirty=" + dirty
-	if *targetFlag == "desktop" {
-		// A GUI subsystem executable opens no console window; -version still writes to redirected output.
-		ldflags += " -H windowsgui"
-	}
-	// -buildvcs=false keeps the result independent of Git being reachable; the identity is injected above.
-	buildArgs := append([]string{"build", "-trimpath", "-buildvcs=false"}, buildTags...)
-	buildArgs = append(buildArgs, "-ldflags", ldflags, "-overlay", overlayPath, "-o", temporaryExecutable, buildPackage)
-	build := exec.Command("go", buildArgs...)
-	build.Dir = repositoryRoot
-	build.Stdout = os.Stdout
-	build.Stderr = os.Stderr
-	if err := build.Run(); err != nil {
-		return fmt.Errorf("build executable: %w", err)
-	}
-	if err := verifyNoPlaintextKey(temporaryExecutable, keyPEM, privateDER); err != nil {
-		return err
-	}
-	if err := verifyBuildIdentity(temporaryExecutable, *profileFlag, version, commit); err != nil {
-		return err
-	}
-	if err := verifyWindowsResources(temporaryExecutable, windowsResourceSet); err != nil {
-		return err
-	}
-	if err := installExecutable(temporaryExecutable, outputPath); err != nil {
-		return fmt.Errorf("install verified executable: %w", err)
+
+	// The official counter is consulted only now, after every input check, and stays locked until the run ends.
+	var allocation *buildrun.Allocation
+	buildNumber := ""
+	if !*unofficial {
+		directory := *stateDirectory
+		if directory == "" {
+			directory = filepath.Join(repositoryRoot, ".local")
+		}
+		store := &buildrun.Store{Dir: absolutePath(repositoryRoot, directory), Waiting: func() {
+			fmt.Fprintln(os.Stdout, "Waiting for another official build run to finish")
+		}}
+		allocation, err = store.Begin(*initCounter)
+		switch {
+		case errors.Is(err, buildrun.ErrNotInitialized):
+			allocation = nil
+			fmt.Fprintln(os.Stdout, "Official build counter not found: building UNOFFICIAL executables; no Build Number is used")
+		case err != nil:
+			return fmt.Errorf("BLOCKED: %w", err)
+		default:
+			defer allocation.Abort(true)
+			buildNumber = strconv.FormatUint(allocation.Number, 10)
+			if allocation.Initialized {
+				fmt.Fprintln(os.Stdout, "Initializing the official build counter (owner-directed first use)")
+			}
+			fmt.Fprintf(os.Stdout, "Build run %s: candidate Build Number for %s\n", buildNumber, strings.Join(profiles, " + "))
+		}
+	} else {
+		fmt.Fprintln(os.Stdout, "Unofficial build requested: the official build counter is not used")
 	}
 
-	digest, err := fileSHA256(outputPath)
-	if err != nil {
-		return fmt.Errorf("hash installed executable: %w", err)
+	var artifacts []buildrun.Artifact
+	for _, profile := range profiles {
+		output := *outputFlag
+		if output == "" {
+			output = filepath.Join(*outputRoot, profile, outputName)
+		}
+		artifacts = append(artifacts, buildrun.Artifact{Profile: profile, Output: absolutePath(repositoryRoot, output)})
 	}
-	fmt.Fprintf(os.Stdout, "Built %s\n", outputPath)
-	fmt.Fprintf(os.Stdout, "Profile: %s  Version: %s  Commit: %s  Working tree modified: %s\n", *profileFlag, version, commit, dirty)
-	fmt.Fprintf(os.Stdout, "Executable SHA-256: %s\n", digest)
+
+	// The image pack is profile-independent, so one run builds it once and embeds the same bytes in every profile.
+	var packPath, packSourcePath string
+	defer func() {
+		if packPath != "" {
+			os.Remove(packPath)
+			os.Remove(packSourcePath)
+		}
+	}()
+	builder := func(artifact buildrun.Artifact, staged string) error {
+		replacements := maps.Clone(baseReplacements)
+		if *targetFlag == "desktop" {
+			archivePath, archiveSourcePath, err := writeFrontendArchive(repositoryRoot, frontendDist[artifact.Profile])
+			if err != nil {
+				return err
+			}
+			defer os.Remove(archivePath)
+			defer os.Remove(archiveSourcePath)
+			replacements[filepath.Join(repositoryRoot, "internal", "desktop", "frontend_archive.go")] = archiveSourcePath
+			replacements[filepath.Join(repositoryRoot, "internal", "desktop", frontendArchiveName)] = archivePath
+			if packPath == "" {
+				if packPath, packSourcePath, err = writeGameAssetPack(repositoryRoot); err != nil {
+					return err
+				}
+			}
+			replacements[filepath.Join(repositoryRoot, "internal", "desktop", "game_asset_archive.go")] = packSourcePath
+			replacements[filepath.Join(repositoryRoot, "internal", "desktop", gameAssetPackName)] = packPath
+		}
+		overlayPath, err := writeOverlay(replacements)
+		if err != nil {
+			return err
+		}
+		defer os.Remove(overlayPath)
+		identity := windowsIdentity{version: version, buildNumber: buildNumber, profile: artifact.Profile, commit: commit, dirty: dirty, originalFilename: outputName}
+		resources, resourcePath, err := windowsResources(repositoryRoot, buildPackage, identity)
+		if err != nil {
+			return err
+		}
+		// The resource object is reserved per build and removed before the next profile writes its own.
+		defer os.Remove(resourcePath)
+		ldflags := "-X wwlogs/internal/buildinfo.injectedVersion=" + version +
+			" -X wwlogs/internal/buildinfo.injectedBuildNumber=" + buildNumber +
+			" -X wwlogs/internal/buildinfo.injectedCommit=" + commit +
+			" -X wwlogs/internal/buildinfo.injectedDirty=" + dirty
+		if *targetFlag == "desktop" {
+			// A GUI subsystem executable opens no console window; -version still writes to redirected output.
+			ldflags += " -H windowsgui"
+		}
+		// -buildvcs=false keeps the result independent of Git being reachable; the identity is injected above.
+		buildArgs := append([]string{"build", "-trimpath", "-buildvcs=false"}, profileTags(artifact.Profile, *targetFlag)...)
+		buildArgs = append(buildArgs, "-ldflags", ldflags, "-overlay", overlayPath, "-o", staged, buildPackage)
+		build := exec.Command("go", buildArgs...)
+		build.Dir = repositoryRoot
+		build.Stdout = os.Stdout
+		build.Stderr = os.Stderr
+		fmt.Fprintf(os.Stdout, "Building %s (%s)\n", artifact.Profile, *targetFlag)
+		if err := build.Run(); err != nil {
+			return fmt.Errorf("build executable: %w", err)
+		}
+		if err := verifyNoPlaintextKey(staged, keyPEM, privateDER); err != nil {
+			return err
+		}
+		if err := verifyBuildIdentity(staged, artifact.Profile, version, buildNumber, commit); err != nil {
+			return err
+		}
+		return verifyWindowsResources(staged, resources)
+	}
+
+	staged, err := buildrun.Stage(artifacts, builder)
+	if err != nil {
+		return fmt.Errorf("build run failed, nothing was installed and the Build Number was not used: %w", err)
+	}
+	stagedHashes := map[string]string{}
+	for profile, path := range staged.Paths() {
+		if stagedHashes[profile], err = fileSHA256(path); err != nil {
+			staged.Discard()
+			return fmt.Errorf("hash staged executable: %w", err)
+		}
+	}
+	if allocation != nil {
+		if err := allocation.MarkIssued(); err != nil {
+			staged.Discard()
+			return fmt.Errorf("record the Build Number before installing: %w", err)
+		}
+	}
+	installation, rolledBack, err := staged.Install()
+	if err != nil {
+		if allocation != nil {
+			allocation.Abort(rolledBack)
+		}
+		return fmt.Errorf("build run failed while installing: %w", err)
+	}
+	if allocation != nil {
+		record := buildrun.SuccessRecord{CompletedAt: time.Now().UTC(), Commit: commit, Dirty: dirty, Target: *targetFlag, Profiles: profiles}
+		if err := allocation.Commit(record); err != nil {
+			rollbackErr := installation.Rollback()
+			allocation.Abort(rollbackErr == nil)
+			return fmt.Errorf("record the completed build run: %v; previous executables restored: %t", err, rollbackErr == nil)
+		}
+	}
+	installation.Finalize()
+
+	label := buildNumber
+	if label == "" {
+		label = "unofficial"
+	}
+	for _, artifact := range artifacts {
+		fmt.Fprintf(os.Stdout, "Built %s\n", artifact.Output)
+		fmt.Fprintf(os.Stdout, "Profile: %s  Version: %s  Build number: %s  Commit: %s  Working tree modified: %s\n", artifact.Profile, version, label, commit, dirty)
+		fmt.Fprintf(os.Stdout, "Executable SHA-256: %s\n", stagedHashes[artifact.Profile])
+	}
 	fmt.Fprintln(os.Stdout, "Plaintext RSA PEM/DER scan: PASS")
 	fmt.Fprintln(os.Stdout, "Build identity check: PASS")
 	fmt.Fprintln(os.Stdout, "Embedded Windows icon and version check: PASS")
+	fmt.Fprintf(os.Stdout, "Build run complete: %d executable(s), Build Number %s\n", len(artifacts), label)
 	return nil
 }
 
-func windowsResources(repositoryRoot, buildPackage, productVersion string) (*winres.ResourceSet, string, error) {
+// profileTags returns the Go build tags of one profile and target.
+func profileTags(profile, target string) []string {
+	if profile == "development" {
+		return []string{"-tags", "wwdev"}
+	}
+	if target == "desktop" {
+		// Wails' production tag removes DevTools and the dev-server hook; the Development profile keeps Wails debug mode.
+		return []string{"-tags", "production"}
+	}
+	return nil
+}
+
+func absolutePath(root, path string) string {
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(root, path)
+	}
+	return filepath.Clean(path)
+}
+
+func writeOverlay(replacements map[string]string) (string, error) {
+	overlayData, err := json.Marshal(struct {
+		Replace map[string]string
+	}{Replace: replacements})
+	if err != nil {
+		return "", fmt.Errorf("encode Go build overlay: %w", err)
+	}
+	defer clear(overlayData)
+	path, err := writeTemporaryFile(os.TempDir(), "wwlogs-key-overlay-*.json", overlayData)
+	if err != nil {
+		return "", fmt.Errorf("write Go build overlay: %w", err)
+	}
+	return path, nil
+}
+
+// windowsIdentity is the part of the build identity written into the executable's version resource.
+type windowsIdentity struct {
+	version, buildNumber, profile, commit, dirty, originalFilename string
+}
+
+// productVersionText keeps the full Build Number in a string field; the numeric version fields only carry
+// MAJOR.MINOR.PATCH, so a lifetime count beyond 65535 is never truncated into them.
+func (w windowsIdentity) productVersionText() string {
+	build := "Unofficial"
+	if w.buildNumber != "" {
+		build = "Build " + w.buildNumber
+	}
+	profile := map[string]string{"public": "Public", "development": "Development"}[w.profile]
+	return strings.TrimPrefix(w.version, "v") + " (" + build + ", " + profile + ")"
+}
+
+func (w windowsIdentity) sourceText() string {
+	if len(w.commit) < 12 {
+		return "Source revision unavailable"
+	}
+	text := "Source revision " + w.commit[:12]
+	switch w.dirty {
+	case "true":
+		text += " with uncommitted changes"
+	case "unknown":
+		text += ", working tree state unknown"
+	}
+	return text
+}
+
+func windowsResources(repositoryRoot, buildPackage string, identity windowsIdentity) (*winres.ResourceSet, string, error) {
 	iconFile, err := os.Open(filepath.Join(repositoryRoot, "build", "windows", "icon.ico"))
 	if err != nil {
 		return nil, "", fmt.Errorf("open Windows application icon: %w", err)
@@ -268,9 +398,7 @@ func windowsResources(repositoryRoot, buildPackage, productVersion string) (*win
 	if err := resources.SetIcon(winres.ID(3), icon); err != nil {
 		return nil, "", fmt.Errorf("set Windows application icon: %w", err)
 	}
-	originalFilename := "WWlogs.exe"
 	if buildPackage == "./cmd/desktop" {
-		originalFilename = "WWlogs-Desktop.exe"
 		// Wails registers the native window class using IDI_APPLICATION. Reuse the
 		// existing icon images so both the class and individual windows have the logo.
 		const idiApplication = winres.ID(32512)
@@ -279,13 +407,20 @@ func windowsResources(repositoryRoot, buildPackage, productVersion string) (*win
 			return nil, "", fmt.Errorf("set Windows window class icon: %w", err)
 		}
 	}
+	// One en-US string table: the numeric fields carry MAJOR.MINOR.PATCH only, while ProductVersion and Comments
+	// spell out the whole build identity, including a Build Number of any size.
 	var info winversion.Info
-	info.SetFileVersion(strings.TrimPrefix(productVersion, "v"))
-	info.SetProductVersion(strings.TrimPrefix(productVersion, "v"))
+	numeric := strings.TrimPrefix(identity.version, "v")
+	if err := info.Set(winversion.LangDefault, winversion.ProductName, "WWlogs"); err != nil {
+		return nil, "", fmt.Errorf("set Windows version information: %w", err)
+	}
+	info.SetFileVersion(numeric)
+	info.SetProductVersion(numeric)
 	for field, value := range map[string]string{
 		winversion.FileDescription:  "WWlogs",
-		winversion.ProductName:      "WWlogs",
-		winversion.OriginalFilename: originalFilename,
+		winversion.OriginalFilename: identity.originalFilename,
+		winversion.ProductVersion:   identity.productVersionText(),
+		winversion.Comments:         identity.sourceText(),
 	} {
 		if err := info.Set(winversion.LangDefault, field, value); err != nil {
 			return nil, "", fmt.Errorf("set Windows version information: %w", err)
@@ -352,22 +487,6 @@ func validatePrivateKeyPEM(data []byte) ([]byte, error) {
 	return append([]byte(nil), block.Bytes...), nil
 }
 
-func temporaryPath(directory, pattern string) (string, error) {
-	file, err := os.CreateTemp(directory, pattern)
-	if err != nil {
-		return "", err
-	}
-	path := file.Name()
-	if err := file.Close(); err != nil {
-		os.Remove(path)
-		return "", err
-	}
-	if err := os.Remove(path); err != nil {
-		return "", err
-	}
-	return path, nil
-}
-
 func writeTemporaryFile(directory, pattern string, contents []byte) (string, error) {
 	file, err := os.CreateTemp(directory, pattern)
 	if err != nil {
@@ -397,31 +516,6 @@ func verifyNoPlaintextKey(path string, pemData, derData []byte) error {
 	}
 	if bytes.Contains(executable, pemData) || bytes.Contains(executable, derData) {
 		return errors.New("built executable contains plaintext RSA private key material")
-	}
-	return nil
-}
-
-func installExecutable(temporaryExecutable, outputPath string) error {
-	if err := os.Rename(temporaryExecutable, outputPath); err == nil {
-		return nil
-	} else if _, statErr := os.Stat(outputPath); statErr != nil {
-		return err
-	}
-
-	backupPath, err := temporaryPath(filepath.Dir(outputPath), ".wwlogs-backup-*.exe")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(backupPath)
-	if err := os.Rename(outputPath, backupPath); err != nil {
-		return err
-	}
-	if err := os.Rename(temporaryExecutable, outputPath); err != nil {
-		restoreErr := os.Rename(backupPath, outputPath)
-		if restoreErr != nil {
-			return fmt.Errorf("replace failed (%v), and restoring previous executable failed: %w", err, restoreErr)
-		}
-		return err
 	}
 	return nil
 }
@@ -463,7 +557,7 @@ func fileSHA256(path string) (string, error) {
 
 // verifyBuildIdentity runs the built executable with -version and checks that the profile it reports
 // is the one that was requested, so a mislabelled build can never be installed.
-func verifyBuildIdentity(path, profile, version, commit string) error {
+func verifyBuildIdentity(path, profile, version, buildNumber, commit string) error {
 	output, err := exec.Command(path, "-version").Output()
 	if err != nil {
 		return fmt.Errorf("run built executable for identity check: %w", err)
@@ -475,6 +569,13 @@ func verifyBuildIdentity(path, profile, version, commit string) error {
 	}
 	if !strings.Contains(text, "WWlogs version: "+version) {
 		return fmt.Errorf("built executable does not report version %s", version)
+	}
+	wantBuild := "Build number: unofficial"
+	if buildNumber != "" {
+		wantBuild = "Build number: " + buildNumber
+	}
+	if !strings.Contains(text, wantBuild+"\n") && !strings.Contains(text, wantBuild+"\r\n") {
+		return fmt.Errorf("built executable does not report %q", wantBuild)
 	}
 	if commit != "" && !strings.Contains(text, "Commit: "+commit) {
 		return fmt.Errorf("built executable does not report commit %s", commit)

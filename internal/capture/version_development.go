@@ -17,6 +17,6 @@ func printVersionDetails(w io.Writer) {
 // announceBuildIdentity prints the build identity once at start-up.
 func announceBuildIdentity(w io.Writer) {
 	identity := buildinfo.Current()
-	fmt.Fprintf(w, "build_identity version=%s profile=%s commit=%s dirty=%s executable_sha256=%s\n",
-		identity.Version, identity.Profile, identity.Commit, identity.Dirty, buildinfo.ExecutableSHA256())
+	fmt.Fprintf(w, "build_identity version=%s build_number=%s profile=%s commit=%s dirty=%s executable_sha256=%s\n",
+		identity.Version, identity.BuildLabel(), identity.Profile, identity.Commit, identity.Dirty, buildinfo.ExecutableSHA256())
 }
