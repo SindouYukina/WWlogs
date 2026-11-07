@@ -28,7 +28,8 @@
       "electro": "Electro",
       "aero": "Aero",
       "havoc": "Havoc",
-      "glacio": "Glacio"
+      "glacio": "Glacio",
+      "fusion": "Fusion"
     },
     "scenario": {
       "active": "Active",
