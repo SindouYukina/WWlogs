@@ -15,7 +15,7 @@
   "appearance": "Appearance",
   "theme": "Theme",
   "reduceMotion": "Reduce motion",
-  "reduceMotionHint": "Turns off transitions. Windows' own animation setting is also respected.",
+  "reduceMotionHint": "Turns off transitions and counting numbers; values still update at once. Windows' own animation setting is also respected.",
   "themes": {
     "electro": {
       "name": "Electro",
@@ -64,7 +64,7 @@
   "showWindow": "Show this overlay",
   "alwaysOnTop": "Always on top",
   "clickThrough": "Mouse click-through",
-  "clickThroughHint": "Mouse input passes to the game underneath. To move the overlay, use Edit Mode below.",
+  "clickThroughHint": "When on, mouse input passes through the overlay and never interrupts the game.",
   "editMode": "Edit Mode",
   "editModeHint": "Temporarily accepts the mouse so you can drag and resize. Your settings return when you finish.",
   "startEditing": "Edit",

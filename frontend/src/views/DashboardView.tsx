@@ -1,9 +1,10 @@
-import { memo, useEffect, useMemo, useState, type ReactNode } from "react"
+import { memo, useMemo, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { AnimatedNumber, Card, CharacterAvatar, Chip, ContentSwitch, DamageBar, GameAssetImage, Icon, LiveChart, Reveal, Segmented, StackList, ThemeBackdrop, type ChartSeries, type IconName, type ThemeId } from "@/design"
 import { dataChip, displayedEncounter, isFrozen, usableDps, type CombatData, type SkillBreakdown } from "@/lib/combat-data"
 import { teamSeriesKey, unassignedSeriesKey } from "@/lib/timeline"
-import { combatRows, contributionShares, intervalRows, type CombatRowModel } from "@/lib/combat-view"
+import { combatRows, contributionShares, detailRow, intervalRows, selectionScope, type CombatRowModel } from "@/lib/combat-view"
+import { useDetailPick, type DetailPick } from "@/lib/useDetailPick"
 import { elementColor, useFormatters, useRowNames } from "@/lib/format"
 import { dpsText, type ViewSnapshot } from "@/lib/snapshot"
 import { statusText } from "@/i18n"
@@ -37,7 +38,7 @@ function RoleBoard({ rows, selected, onSelect, scope, stale, numberMode }: { row
   const format = useFormatters()
   const nameOf = useRowNames()
   const ordered = useMemo(() => [...rows].sort((a, b) => a.rank - b.rank), [rows])
-  return <StackList items={ordered} keyOf={row => row.key} rowHeight={58} gap={6} renderItem={row => <div className="ww-dash-role" data-key={row.key} data-field={row.kind === "vehicle" ? "vehicle" : undefined} data-selected={row.key === selected} data-element={row.elementId} role="button" tabIndex={0} onClick={() => onSelect(row.key)} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") onSelect(row.key) }}>
+  return <StackList items={ordered} keyOf={row => row.key} rowHeight={58} gap={6} renderItem={row => <div className="ww-dash-role" data-key={row.key} data-rank={row.rank} data-field={row.kind === "vehicle" ? "vehicle" : undefined} data-selected={row.key === selected} data-element={row.elementId} role="button" tabIndex={0} onClick={() => onSelect(row.key)} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") onSelect(row.key) }}>
     <CharacterAvatar roleId={row.roleId} elementId={row.elementId} size={42} fallback={row.kind === "vehicle" ? <Icon name="bolt" size={18} /> : "?"} />
     <div className="ww-dash-role-main">
       <div className="ww-dash-role-line"><strong className="ww-truncate">{nameOf(row)}</strong><span className="ww-num ww-dash-role-dps"><AnimatedNumber value={row.dps} format={format.integer} mode={numberMode} scope={scope} stale={stale} /></span></div>
@@ -105,13 +106,15 @@ export interface DashboardViewProps {
   numberMode?: "tween" | "roll"
   /** Extra controls beside the clock, for review surfaces. */
   actions?: ReactNode
+  /** The ranking pick, held by the window so it outlives a page switch. Without it the Dashboard keeps its own. */
+  detailPick?: DetailPick
 }
 
 /**
  * The one Dashboard. It renders only what its provider reports. A number without a source is shown as unavailable, and
  * nothing is calculated here beyond formatting the engine's values.
  */
-export function DashboardView({ data, theme, numberMode = "tween", actions }: DashboardViewProps) {
+export function DashboardView({ data, theme, numberMode = "tween", actions, detailPick }: DashboardViewProps) {
   const { t, i18n } = useTranslation(["dashboard", "common"])
   const c = (key: string) => t(key, { ns: "common" })
   const format = useFormatters()
@@ -123,11 +126,15 @@ export function DashboardView({ data, theme, numberMode = "tween", actions }: Da
   const stale = isFrozen(data)
   const chip = dataChip(data)
   const scope = encounter?.encounterId ?? "none"
-  const [selectedKey, setSelected] = useState("")
+  // The detail follows this encounter's top character until the user picks a row; the pick lasts for this encounter only.
+  // It is view state: nothing is written back to the engine.
+  const detailScope = selectionScope(view, encounter)
+  const ownPick = useDetailPick(detailScope)
+  const [manual, pick] = detailPick ?? ownPick
   const hasSkills = data.skillsOf !== undefined
   const [tab, setTab] = useState<DetailTab>(hasSkills ? "skills" : "contribution")
-  const selected = rows.find(row => row.key === selectedKey) ?? rows[0]
-  useEffect(() => { if (selected && selected.key !== selectedKey) setSelected(selected.key) }, [selected, selectedKey])
+  const detail = detailRow(rows, detailScope, manual)
+  const selected = detail.row
   const dps = encounter?.dps ?? view?.statistics.encounterDps
   const lowerBound = dps?.status === "lower_bound"
   // A lower bound is never shown as an exact value.
@@ -178,7 +185,7 @@ export function DashboardView({ data, theme, numberMode = "tween", actions }: Da
         <Card className="ww-dash-board">
           <div className="ww-dash-card-head"><h3>{t("ranking")}</h3></div>
           <div data-field="roles">
-            {rows.length === 0 ? <p className="ww-dash-empty-note">{t("noRoles")}</p> : <RoleBoard rows={rows} selected={selected?.key ?? ""} onSelect={setSelected} scope={scope} stale={stale} numberMode={numberMode} />}
+            {rows.length === 0 ? <p className="ww-dash-empty-note">{t("noRoles")}</p> : <RoleBoard rows={rows} selected={selected?.key ?? ""} onSelect={pick} scope={scope} stale={stale} numberMode={numberMode} />}
           </div>
           {attributionIncomplete && <p className="ww-dash-warning" data-field="attribution-incomplete">{c("attributionIncomplete")}</p>}
           {selected?.roleId !== undefined && <ContentSwitch contentKey={selected.key} className="ww-dash-portrait"><GameAssetImage kind="character-portrait" id={selected.roleId} /></ContentSwitch>}
@@ -190,7 +197,7 @@ export function DashboardView({ data, theme, numberMode = "tween", actions }: Da
           <div data-field="timeline" data-encounter={timeline?.encounterId ?? ""} data-final={timeline?.final === true} data-series={series.length}><LiveChart series={series} slots={timeline?.slots ?? 61} height={190} formatValue={format.compact} formatSlot={slot => format.clock(slot * (timeline?.slotSeconds ?? 1))} emptyLabel={t(timeline ? "chartEmpty" : "timelineUnavailable")} ariaLabel={t("timeline")} /></div>
         </Card>
         <Card className="ww-dash-detail">
-          <div className="ww-dash-card-head">
+          <div className="ww-dash-card-head" data-field="detail" data-selection={selected ? detail.mode : "none"} data-key={selected?.key ?? ""} data-scope={detailScope}>
             <h3>{selected ? nameOf(selected) : "—"}</h3>
             <Segmented variant="underline" label={t("breakdown")} value={tab} onChange={setTab} options={[{ value: "skills", label: t("skills") }, { value: "contribution", label: t("contribution") }, { value: "integrity", label: c("integrity") }]} />
           </div>

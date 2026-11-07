@@ -3,6 +3,9 @@ import { useTranslation } from "react-i18next"
 import { BrandEmblem, Button, ContentSwitch, Icon, ListeningStatus, Segmented, Tooltip, resolveTheme, type IconName } from "@/design"
 import { statusText } from "@/i18n"
 import { adapterProblem, adapterUsable, captureBusy, environmentNotice } from "@/lib/capture-environment"
+import { displayedEncounter } from "@/lib/combat-data"
+import { selectionScope } from "@/lib/combat-view"
+import { useDetailPick } from "@/lib/useDetailPick"
 import { host } from "@/lib/host"
 import { useLiveSettings } from "@/lib/settings-controller"
 import type { OverlayKind } from "@/lib/snapshot"
@@ -32,6 +35,8 @@ export function DesktopApp() {
   const controller = useLiveSettings(snapshot, connected, changeLocale)
   const describeListening = useListeningLabels()
   const [page, setPage] = useState<Page>("dashboard")
+  // The Dashboard unmounts while Settings shows, so the window holds the ranking pick and ends it with its encounter.
+  const detailPick = useDetailPick(selectionScope(snapshot?.view, displayedEncounter(snapshot?.view)))
   const [action, setAction] = useState<"start" | "stop" | null>(null)
   const [failed, setFailed] = useState(false)
   const actionLock = useRef(false)
@@ -91,7 +96,7 @@ export function DesktopApp() {
     </div>}
     <main className="ww-app-main">
       <ContentSwitch contentKey={page} direction={page === "settings" ? "forward" : "back"} className="ww-app-page">
-        {page === "dashboard" ? <DashboardView data={data} theme={resolveTheme(snapshot?.theme)} /> : <SettingsView controller={controller} />}
+        {page === "dashboard" ? <DashboardView data={data} theme={resolveTheme(snapshot?.theme)} detailPick={detailPick} /> : <SettingsView controller={controller} />}
       </ContentSwitch>
     </main>
   </div>

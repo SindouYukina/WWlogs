@@ -15,7 +15,7 @@
   "appearance": "외관",
   "theme": "테마",
   "reduceMotion": "동작 줄이기",
-  "reduceMotionHint": "전환 효과를 끕니다. Windows 애니메이션 설정도 따릅니다.",
+  "reduceMotionHint": "전환 효과와 숫자 카운트 애니메이션을 끕니다. 값은 바로 갱신됩니다. Windows 애니메이션 설정도 따릅니다.",
   "themes": {
     "electro": {
       "name": "전도",
@@ -64,7 +64,7 @@
   "showWindow": "이 오버레이 표시",
   "alwaysOnTop": "항상 위에 표시",
   "clickThrough": "마우스 클릭 통과",
-  "clickThroughHint": "마우스 입력이 아래의 게임으로 전달됩니다. 오버레이를 옮기려면 아래의 편집 모드를 사용하세요.",
+  "clickThroughHint": "켜면 마우스 입력이 오버레이를 통과해 게임 조작을 방해하지 않습니다.",
   "editMode": "편집 모드",
   "editModeHint": "일시적으로 마우스 입력을 받아 이동과 크기 조정을 할 수 있습니다. 완료하면 원래 설정으로 돌아갑니다.",
   "startEditing": "편집 시작",

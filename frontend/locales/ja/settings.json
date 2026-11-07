@@ -15,7 +15,7 @@
   "appearance": "外観",
   "theme": "テーマ",
   "reduceMotion": "動きを減らす",
-  "reduceMotionHint": "トランジションをオフにします。Windows のアニメーション設定も尊重します。",
+  "reduceMotionHint": "トランジションと数値のカウントアニメーションをオフにします。数値はすぐに更新されます。Windows のアニメーション設定も尊重します。",
   "themes": {
     "electro": {
       "name": "電導",
@@ -64,7 +64,7 @@
   "showWindow": "このオーバーレイを表示",
   "alwaysOnTop": "常に最前面に表示",
   "clickThrough": "マウスクリックを透過",
-  "clickThroughHint": "マウス操作は下のゲームに届きます。オーバーレイを動かすには下の編集モードを使います。",
+  "clickThroughHint": "オンにすると、マウス操作がオーバーレイを通り抜け、ゲームの操作を妨げません。",
   "editMode": "編集モード",
   "editModeHint": "一時的にマウス操作を受け付け、移動とサイズ変更ができます。完了すると元の設定に戻ります。",
   "startEditing": "編集を開始",

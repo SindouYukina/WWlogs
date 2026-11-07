@@ -99,6 +99,14 @@ export function motionVariables({ scale = 1, preference = "full", flavor = "elec
   return variables
 }
 
+/**
+ * Whether this window currently shows reduced motion: the user's setting or the Windows animation preference, as decided by
+ * installMotionTokens. JavaScript-driven motion reads it at each update, so a change applies to the next value.
+ */
+export function motionReduced(): boolean {
+  return typeof document !== "undefined" && document.documentElement.dataset.wwMotion === "reduced"
+}
+
 /** Installs the motion variables on the root element and follows the system reduced-motion preference. */
 export function installMotionTokens(options: InstallOptions = {}): () => void {
   const root = document.documentElement
