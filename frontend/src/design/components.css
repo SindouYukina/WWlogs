@@ -317,8 +317,7 @@ body[data-view] img { -webkit-user-drag: none; }
 .ww-row-title { display: inline-flex; align-items: center; gap: var(--ww-space-1_5); font-size: var(--ww-text-base); font-weight: var(--ww-weight-medium); }
 .ww-row-desc { margin-top: 2px; font-size: var(--ww-text-xs); color: var(--ww-text-3); }
 .ww-row-pair { display: flex; align-items: center; justify-content: flex-end; gap: var(--ww-space-2); min-width: 0; }
-/* An address and an adapter name: twice the minimum select width, the same whether or not one is chosen yet. */
-.ww-row-pair .ww-select-trigger { flex: 0 1 auto; width: 320px; min-width: 160px; }
+.ww-row-pair .ww-select-trigger { flex: 0 1 280px; min-width: 160px; }
 .ww-row-pair > .ww-btn { flex: none; }
 .ww-row-control { display: flex; align-items: center; justify-content: flex-end; flex: 1; gap: var(--ww-space-3); min-width: 0; }
 
