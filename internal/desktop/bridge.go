@@ -15,16 +15,18 @@ import (
 // returns snapshots as JSON copies, so no window ever holds a reference to Go state. Every window calls it on its
 // own schedule; a slow window only receives fewer snapshots.
 type Bridge struct {
-	capture    *service.CaptureService
-	defaults   capture.SessionConfig
-	overlays   *overlayManager
-	shell      shellSignal
-	shutdown   *shutdownGate
-	settings   *settingsStore
-	catalog    localeCatalog
-	projection *displayProjection
-	listening  service.ListeningMonitor
-	process    *service.GameProcessWatcher
+	capture  *service.CaptureService
+	defaults capture.SessionConfig
+	overlays *overlayManager
+	// desktopWindow remembers the Desktop window; nil for the Showcase review window, which saves nothing.
+	desktopWindow *desktopWindowKeeper
+	shell         shellSignal
+	shutdown      *shutdownGate
+	settings      *settingsStore
+	catalog       localeCatalog
+	projection    *displayProjection
+	listening     service.ListeningMonitor
+	process       *service.GameProcessWatcher
 	// environment and npcap answer the first-use questions; openBrowser hands a checked URL to the system browser.
 	environment *environmentChecker
 	npcap       *npcapDownloadResolver
@@ -90,6 +92,14 @@ func (b *Bridge) UpdateOverlay(kind string, change OverlayChange) (OverlayStates
 		return OverlayStates{}, errors.New("overlays are unavailable")
 	}
 	return b.overlays.update(kind, change)
+}
+
+// ResetDesktopWindow forgets the Desktop window's remembered size and position and returns it to its default.
+func (b *Bridge) ResetDesktopWindow() error {
+	if b.desktopWindow == nil {
+		return errors.New("the desktop window is unavailable")
+	}
+	return b.desktopWindow.reset()
 }
 
 // ResetOverlay returns one Overlay to its default position and size.

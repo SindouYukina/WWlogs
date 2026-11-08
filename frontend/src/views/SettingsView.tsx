@@ -63,6 +63,9 @@ function GeneralPage({ controller }: { controller: SettingsController }) {
         <span data-field="update-interval"><Segmented equal label={t("updateInterval")} value={String(controller.updateIntervalMs)} onChange={value => controller.setUpdateInterval(normalizeUpdateInterval(Number(value)))} options={updateIntervals.map(ms => ({ value: String(ms), label: interval(ms) }))} /></span>
       </SettingsRow>
     </SettingsSection>
+    <SettingsSection title={t("sections.window")}>
+      <SettingsRow title={t("mainWindow")} description={t("mainWindowNote")}><Button size="sm" disabled={!controller.connected} data-field="reset-main-window" onClick={controller.resetDesktopWindow}>{t("resetMainWindow")}</Button></SettingsRow>
+    </SettingsSection>
   </>
 }
 
@@ -184,7 +187,7 @@ export function SettingsView({ controller }: { controller: SettingsController })
     previous.current = page
     setPage(next)
   }
-  const warning = controller.warning === "overlay_save_failed" ? "saveFailed" : controller.warning === "overlay_geometry_reset" ? "geometryReset" : controller.warning ? "invalid" : ""
+  const warning = controller.warning === "overlay_save_failed" || controller.warning === "window_save_failed" ? "saveFailed" : controller.warning === "overlay_geometry_reset" ? "geometryReset" : controller.warning ? "invalid" : ""
   return <div className="ww-settings" data-field="settings" data-page={page}>
     <ThemeBackdrop theme={resolveTheme(controller.theme)} intensity="ambient" />
     <Sidebar label={t("title")} value={page} groups={groups} onChange={change} />

@@ -32,6 +32,33 @@ type Settings struct {
 	// AutoStartCapture starts one capture on DefaultAdapterIPv4 when WWlogs launches. Off by default; older files have
 	// no value.
 	AutoStartCapture bool `json:"autoStartCapture,omitempty"`
+	// DesktopWindow is where the user last left the Desktop window. Nil until the window has been shown once, and in
+	// older files; the window then opens at its default size.
+	DesktopWindow *DesktopPlacement `json:"desktopWindow,omitempty"`
+}
+
+// DesktopPlacement is the Desktop window's last normal (not maximized, not minimized) bounds in physical pixels, with
+// the scale of the display they were on, and whether the window was maximized on top of them.
+type DesktopPlacement struct {
+	X         int     `json:"x"`
+	Y         int     `json:"y"`
+	Width     int     `json:"width"`
+	Height    int     `json:"height"`
+	Scale     float64 `json:"scale"`
+	Maximized bool    `json:"maximized,omitempty"`
+}
+
+// validDesktopPlacement applies the bounds Overlay placements use; anything else is not trusted.
+func validDesktopPlacement(p *DesktopPlacement) bool {
+	return p != nil && validPlacement(&OverlayPlacement{X: p.X, Y: p.Y, Width: p.Width, Height: p.Height, Scale: p.Scale})
+}
+
+func copyDesktopPlacement(p *DesktopPlacement) *DesktopPlacement {
+	if p == nil {
+		return nil
+	}
+	copied := *p
+	return &copied
 }
 
 // OverlaySet holds independent preferences per Overlay; a change to one never touches the other.
@@ -243,6 +270,10 @@ func loadSettings(path string, catalog localeCatalog) *settingsStore {
 		value.Overlays.Combat.Visible = value.ShowOverlayOnStartup
 	}
 	value.ShowOverlayOnStartup = false
+	if value.DesktopWindow != nil && !validDesktopPlacement(value.DesktopWindow) {
+		// An untrusted placement only loses the remembered window; the default opens instead.
+		value.DesktopWindow = nil
+	}
 	combatReset := normalizeOverlay(overlayCombat, &value.Overlays.Combat)
 	effectsReset := normalizeOverlay(overlayEffects, &value.Overlays.Effects)
 	if combatReset || effectsReset {
@@ -257,6 +288,7 @@ func (s *settingsStore) current() SettingsState {
 	defer s.mu.Unlock()
 	state := s.state
 	state.Settings.Overlays = copyOverlays(state.Settings.Overlays)
+	state.Settings.DesktopWindow = copyDesktopPlacement(state.Settings.DesktopWindow)
 	return state
 }
 
@@ -386,6 +418,54 @@ func (s *settingsStore) saveOverlayPlacement(kind string, placement OverlayPlace
 	value := s.state.Settings
 	value.Overlays = copyOverlays(value.Overlays)
 	value.Overlays.of(kind).Placement = &placement
+	_, err := s.writeLocked(value)
+	return err
+}
+
+// desktopPlacement returns where the Desktop window was last left, or nil.
+func (s *settingsStore) desktopPlacement() *DesktopPlacement {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return copyDesktopPlacement(s.state.Settings.DesktopWindow)
+}
+
+// saveDesktopPlacement records where the Desktop window is. It follows the same rule as saveOverlayPlacement for
+// unreadable files: the value is kept in memory and the file is not replaced.
+func (s *settingsStore) saveDesktopPlacement(placement DesktopPlacement) error {
+	if !validDesktopPlacement(&placement) {
+		return errors.New("invalid_desktop_placement")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	current := s.state.Settings.DesktopWindow
+	if current != nil && *current == placement && !s.dirty {
+		return nil
+	}
+	if s.state.Warning == "settings_invalid" || s.state.Warning == "settings_read_failed" {
+		s.state.Settings.DesktopWindow = &placement
+		return nil
+	}
+	value := s.state.Settings
+	value.Overlays = copyOverlays(value.Overlays)
+	value.DesktopWindow = &placement
+	_, err := s.writeLocked(value)
+	return err
+}
+
+// clearDesktopPlacement forgets the Desktop window, so the next launch opens at the default again.
+func (s *settingsStore) clearDesktopPlacement() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.state.Settings.DesktopWindow == nil && !s.dirty {
+		return nil
+	}
+	if s.state.Warning == "settings_invalid" || s.state.Warning == "settings_read_failed" {
+		s.state.Settings.DesktopWindow = nil
+		return nil
+	}
+	value := s.state.Settings
+	value.Overlays = copyOverlays(value.Overlays)
+	value.DesktopWindow = nil
 	_, err := s.writeLocked(value)
 	return err
 }
