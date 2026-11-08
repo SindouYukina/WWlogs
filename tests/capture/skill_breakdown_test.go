@@ -36,7 +36,7 @@ func TestSkillBreakdownGroupsRepeatedHitsOfOneSkill(t *testing.T) {
 	if len(role.Skills) != 1 || !reflect.DeepEqual(role.Skills[0], SkillDamageSnapshot{SkillID: 1409011, DamageDealt: 300, OutgoingEvents: 3, DamageIDsIncomplete: true}) {
 		t.Fatalf("skills = %+v", role.Skills)
 	}
-	if role.UnassignedSkill != (UnassignedSkillTotals{}) {
+	if !reflect.DeepEqual(role.UnassignedSkill, UnassignedSkillTotals{}) {
 		t.Fatalf("unassigned skill = %+v, want empty", role.UnassignedSkill)
 	}
 }
@@ -95,7 +95,7 @@ func TestSkillBreakdownKeepsDamageWithoutSkillIDOnItsRole(t *testing.T) {
 	if role.DamageDealt != 132 || role.OutgoingEvents != 3 {
 		t.Fatalf("role total changed when its skill was unknown: %+v", role)
 	}
-	if role.UnassignedSkill != (UnassignedSkillTotals{DamageDealt: 32, OutgoingEvents: 2, MissingSkillEvents: 2}) {
+	if !reflect.DeepEqual(role.UnassignedSkill, UnassignedSkillTotals{DamageDealt: 32, OutgoingEvents: 2, MissingSkillEvents: 2, DamageIDsIncomplete: true}) {
 		t.Fatalf("unassigned skill = %+v", role.UnassignedSkill)
 	}
 	if got.UnassignedRole.DamageDealt != 0 {

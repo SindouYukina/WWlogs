@@ -146,3 +146,27 @@ test("the Live provider and the Dashboard never compute or invent skill rows", (
   const view = readFileSync("frontend/src/lib/combat-view.ts", "utf8")
   assert.doesNotMatch(view, /devLabel|dev_label/, "developer labels are not official skill names")
 })
+
+test("a skill row keeps its name source and its own icon, and a row may have one without the other", () => {
+  const breakdown = skillBreakdown({
+    skills: [
+      { skillId: 1, name: "諧度破壞·長刃", nameStatus: "DERIVED", nameSource: "tune_break", sourceId: 9, iconKind: "skill-config", iconId: 9, damageDealt: 10, outgoingEvents: 1 },
+      { skillId: 2, name: "共鳴迴響", nameStatus: "DERIVED", nameSource: "echo", sourceId: 60, iconKind: "echo-skill", iconId: 280026, damageDealt: 8, outgoingEvents: 1 },
+      { skillId: 3, name: "", nameStatus: "UNKNOWN", iconKind: "skill", iconId: 3, damageDealt: 6, outgoingEvents: 1 },
+      { skillId: 4, name: "x", nameStatus: "CORRELATED", nameSource: "other", iconKind: "weapon", iconId: 5, damageDealt: 1, outgoingEvents: 1 },
+    ],
+    unassignedSkill: { damageDealt: 7, outgoingEvents: 2, missingSkillEvents: 2, overflowEvents: 0, name: "鳴式·利維亞坦", nameStatus: "DERIVED", nameSource: "echo", iconKind: "echo-skill", iconId: 280033 },
+  })
+  assert.deepEqual(breakdown.rows[0], { skillId: 1, name: "諧度破壞·長刃", derived: "tune_break", iconKind: "skill-config", iconId: 9, damage: 10, events: 1, share: undefined })
+  assert.equal(breakdown.rows[1].derived, "echo")
+  assert.equal(breakdown.rows[1].iconKind, "echo-skill")
+  assert.equal(breakdown.rows[2].name, undefined, "an unnamed row still asks for its own icon")
+  assert.equal(breakdown.rows[2].iconKind, "skill")
+  assert.equal(breakdown.rows[3].name, undefined, "only verified or derived names are shown")
+  assert.equal(breakdown.rows[3].iconKind, undefined, "an icon kind the host does not serve is dropped")
+  assert.equal(breakdown.unassigned.name, "鳴式·利維亞坦")
+  assert.equal(breakdown.unassigned.iconId, 280033)
+  assert.equal(breakdown.unassigned.damage, 7)
+  const plain = skillBreakdown({ skills: [], unassignedSkill: { damageDealt: 7, outgoingEvents: 2, missingSkillEvents: 2, overflowEvents: 0 } })
+  assert.equal(plain.unassigned.name, undefined)
+})

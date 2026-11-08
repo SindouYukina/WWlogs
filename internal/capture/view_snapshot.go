@@ -200,19 +200,29 @@ type ViewSkill struct {
 	SkillID    uint64 `json:"skillId"`
 	Name       string `json:"name"`
 	NameStatus string `json:"nameStatus"`
-	// NameSource is "official", "damage_list" or "echo"; empty when Name is empty.
+	// NameSource is "official", "damage_list", "tune_break" or "echo"; empty when Name is empty.
 	NameSource string `json:"nameSource,omitempty"`
-	// SourceID is the record Name belongs to for a DERIVED name: Skill.Id (damage_list) or PhantomItem.Id (echo).
-	SourceID       uint64   `json:"sourceId,omitempty"`
+	// SourceID is the record Name belongs to for a DERIVED name: Skill.Id (damage_list, tune_break) or PhantomItem.Id (echo).
+	SourceID uint64 `json:"sourceId,omitempty"`
+	// IconKind and IconID address the row's image; the name and the image are resolved separately (skill_names.go).
+	IconKind       string   `json:"iconKind,omitempty"`
+	IconID         uint64   `json:"iconId,omitempty"`
 	DamageDealt    int64    `json:"damageDealt"`
 	DamageShare    *float64 `json:"damageShare,omitempty"`
 	OutgoingEvents uint64   `json:"outgoingEvents"`
 }
 
-// ViewUnassignedSkill is a contributor's confirmed damage without a skill row.
+// ViewUnassignedSkill is a contributor's confirmed damage without a skill row. The hits have no SkillId, so a name here is
+// only ever DERIVED from the Echo their DamageIds belong to; the row stays the unassigned row.
 type ViewUnassignedSkill struct {
 	UnassignedSkillTotals
 	DamageShare *float64 `json:"damageShare,omitempty"`
+	Name        string   `json:"name,omitempty"`
+	NameStatus  string   `json:"nameStatus,omitempty"`
+	NameSource  string   `json:"nameSource,omitempty"`
+	SourceID    uint64   `json:"sourceId,omitempty"`
+	IconKind    string   `json:"iconKind,omitempty"`
+	IconID      uint64   `json:"iconId,omitempty"`
 }
 
 // ViewEffects is the display set of the tracked effect state at the capture time. Active lists display-eligible
@@ -432,12 +442,18 @@ func (p *processor) viewSkills(roleID uint64, skills []SkillDamageSnapshot, unas
 	view := make([]ViewSkill, 0, len(skills))
 	for _, skill := range skills {
 		name, status, source, sourceID := p.masters.skillRowName(roleID, skill)
+		iconKind, iconID := p.masters.skillRowIcon(skill, source, sourceID)
 		view = append(view, ViewSkill{
-			SkillID: skill.SkillID, Name: name, NameStatus: status, NameSource: source, SourceID: sourceID,
+			SkillID: skill.SkillID, Name: name, NameStatus: status, NameSource: source, SourceID: sourceID, IconKind: iconKind, IconID: iconID,
 			DamageDealt: skill.DamageDealt, DamageShare: share(skill.DamageDealt), OutgoingEvents: skill.OutgoingEvents,
 		})
 	}
-	return view, ViewUnassignedSkill{UnassignedSkillTotals: unassigned, DamageShare: share(unassigned.DamageDealt)}
+	row := ViewUnassignedSkill{UnassignedSkillTotals: unassigned, DamageShare: share(unassigned.DamageDealt)}
+	if name, item, vision, ok := p.masters.unassignedSkillEcho(unassigned); ok {
+		row.Name, row.NameStatus, row.NameSource, row.SourceID = name, skillNameStatusDerived, skillNameSourceEcho, item
+		row.IconKind, row.IconID = skillIconKindEchoSkill, vision
+	}
+	return view, row
 }
 
 // roleDisplayName returns the Master name of a RoleId. A name is shown only when Master marks it verified; anything

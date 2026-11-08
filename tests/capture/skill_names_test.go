@@ -217,10 +217,17 @@ func TestTrackedMasterDerivesObservedSkillNames(t *testing.T) {
 		{1508, SkillDamageSnapshot{SkillID: 1508404, DamageIDs: []uint64{15084040013, 15084040023}}, "damage_list", 1004207, "解弦視界·萬理歸塵"},
 		{1209, SkillDamageSnapshot{SkillID: 1209200, DamageIDs: []uint64{120920002}}, "damage_list", 1004403, "臨界協議"},
 		{1409, SkillDamageSnapshot{SkillID: 280026010, DamageIDs: []uint64{28002601, 28002602}}, "echo", 60001062, "共鳴迴響·芙露德莉斯"},
-		// Mixed UI skills, an Echo skill whose Echoes carry different names, and an unlisted DamageId stay unnamed.
+		// A row reaches one Echo through a variant family, a developer label, or the Echo's own actor blueprint.
+		{1209, SkillDamageSnapshot{SkillID: 280034001, DamageIDs: []uint64{28003401}}, "echo", 60001902, "爐芯機骸"},
+		{1508, SkillDamageSnapshot{SkillID: 230006, DamageIDs: []uint64{28003301}}, "echo", 60001672, "共鳴迴響·鳴式·利維亞坦"},
+		{1312, SkillDamageSnapshot{SkillID: 28004502, DamageIDs: []uint64{280045012, 280045013}}, "echo", 60002252, "共鳴迴響·天演溯心"},
+		// Tune Break: the genre, the damage type and the role's one Tune Break skill.
+		{1508, SkillDamageSnapshot{SkillID: 1508991, DamageIDs: []uint64{1000009901, 1000009902, 1000009903}}, "tune_break", 1004210, "諧度破壞·長刃"},
+		{1209, SkillDamageSnapshot{SkillID: 1209991, DamageIDs: []uint64{1000009901, 1000009903}}, "tune_break", 1004410, "解耦"},
+		// The same genre on a role whose Tune Break skill is another role's stays unnamed through damage it does not own.
+		{1312, SkillDamageSnapshot{SkillID: 1508991, DamageIDs: []uint64{28003401}}, "", 0, ""},
+		// Mixed UI skills and an unlisted DamageId stay unnamed.
 		{1102, SkillDamageSnapshot{SkillID: 1102030, DamageIDs: []uint64{1102030002, 1102030010}}, "", 0, ""},
-		{1505, SkillDamageSnapshot{SkillID: 280013010, DamageIDs: []uint64{280013010}}, "", 0, ""},
-		{1312, SkillDamageSnapshot{SkillID: 28004502, DamageIDs: []uint64{280045012, 280045013}}, "", 0, ""},
 		// A role must own the UI skill: Chisa's DamageIds never name a Lockdawn row.
 		{1312, SkillDamageSnapshot{SkillID: 1508404, DamageIDs: []uint64{15084040013}}, "", 0, ""},
 	}
@@ -236,5 +243,96 @@ func TestTrackedMasterDerivesObservedSkillNames(t *testing.T) {
 	}
 	if name, status, source, _ := master.skillRowName(1312, SkillDamageSnapshot{SkillID: 1312011, DamageIDs: []uint64{1312011001}}); name != "攏傘形" || status != "VERIFIED" || source != "official" {
 		t.Fatalf("an official name changed: (%q, %s, %q)", name, status, source)
+	}
+	// Hits without a SkillId are named only when every DamageId belongs to one Echo's common bullets.
+	unassigned := UnassignedSkillTotals{DamageDealt: 10, OutgoingEvents: 1, MissingSkillEvents: 1, DamageIDs: []uint64{28003302}}
+	if name, item, vision, ok := master.unassignedSkillEcho(unassigned); !ok || name != "共鳴迴響·鳴式·利維亞坦" || item != 60001672 || vision != 280033 {
+		t.Fatalf("unassigned Echo = (%q, %d, %d, %v)", name, item, vision, ok)
+	}
+	if _, _, _, ok := master.unassignedSkillEcho(UnassignedSkillTotals{DamageIDs: []uint64{28003302, 1409011001}}); ok {
+		t.Fatal("a DamageId of no Echo must not name the row")
+	}
+	if _, _, _, ok := master.unassignedSkillEcho(UnassignedSkillTotals{DamageIDs: []uint64{28003302}, DamageIDsIncomplete: true}); ok {
+		t.Fatal("an incomplete list must not name the row")
+	}
+	if kind, id := master.skillRowIcon(SkillDamageSnapshot{SkillID: 280026010}, skillNameSourceEcho, 60001062); kind != skillIconKindEchoSkill || id != 280026 {
+		t.Fatalf("Echo icon = %s/%d", kind, id)
+	}
+	if kind, id := master.skillRowIcon(SkillDamageSnapshot{SkillID: 1508991}, skillNameSourceTuneBreak, 1004210); kind != skillIconKindSkillConfig || id != 1004210 {
+		t.Fatalf("Tune Break icon = %s/%d", kind, id)
+	}
+	if kind, id := master.skillRowIcon(SkillDamageSnapshot{SkillID: 1312050}, "", 0); kind != skillIconKindSkill || id != 1312050 {
+		t.Fatalf("unnamed row icon = %s/%d", kind, id)
+	}
+}
+
+func TestResolveEchoItems(t *testing.T) {
+	item := func(id, monster, parent uint64, zh, en string) echoItem {
+		return echoItem{id: id, monster: monster, parent: parent, names: map[string]string{"zh-TW": zh, "en-US": en}}
+	}
+	cases := []struct {
+		name  string
+		items []echoItem
+		want  uint64
+		ok    bool
+	}{
+		{"one name for every candidate", []echoItem{item(3, 30, 0, "甲", "A"), item(2, 20, 0, "甲", "A")}, 2, true},
+		{"a variant names the base", []echoItem{item(60101905, 6010190, 6000190, "異相·乙", "Phantom: B"), item(60001903, 6000190, 0, "乙", "B"), item(60001902, 6000190, 0, "乙", "B")}, 60001902, true},
+		{"two different Echoes stay unnamed", []echoItem{item(1, 10, 0, "甲", "A"), item(2, 20, 0, "乙", "B")}, 0, false},
+		{"a variant of another monster stays unnamed", []echoItem{item(1, 10, 0, "甲", "A"), item(2, 22, 99, "異", "X")}, 0, false},
+		{"only variants have no base to name them", []echoItem{item(2, 22, 10, "異", "X"), item(3, 33, 10, "另", "Y")}, 0, false},
+		{"no monster data cannot prove a family", []echoItem{item(1, 0, 0, "甲", "A"), item(2, 0, 0, "乙", "B")}, 0, false},
+		{"nothing", nil, 0, false},
+	}
+	for _, c := range cases {
+		if got, ok := resolveEchoItems(c.items); got != c.want || ok != c.ok {
+			t.Errorf("%s: got (%d, %v), want (%d, %v)", c.name, got, ok, c.want, c.ok)
+		}
+	}
+}
+
+func TestTuneBreakNeedsTheGenreEveryDamageIdAndOneRoleSkill(t *testing.T) {
+	names := newSkillNameMaster()
+	names.tuneBreakSkills = map[uint64]struct{}{1508991: {}}
+	names.tuneBreakDamage = map[uint64]struct{}{1000009901: {}, 1000009902: {}}
+	names.roleTuneBreak = map[uint64]uint64{1508: 1004210}
+	cases := []struct {
+		name   string
+		roleID uint64
+		skill  SkillDamageSnapshot
+		ok     bool
+	}{
+		{"every condition holds", 1508, SkillDamageSnapshot{SkillID: 1508991, DamageIDs: []uint64{1000009901, 1000009902}}, true},
+		{"not the genre", 1508, SkillDamageSnapshot{SkillID: 1508000, DamageIDs: []uint64{1000009901}}, false},
+		{"another damage type among the hits", 1508, SkillDamageSnapshot{SkillID: 1508991, DamageIDs: []uint64{1000009901, 15084040013}}, false},
+		{"a hit without a DamageId", 1508, SkillDamageSnapshot{SkillID: 1508991, DamageIDs: []uint64{1000009901}, DamageIDsIncomplete: true}, false},
+		{"a role without exactly one Tune Break skill", 1409, SkillDamageSnapshot{SkillID: 1508991, DamageIDs: []uint64{1000009901}}, false},
+		{"a vehicle", 0, SkillDamageSnapshot{SkillID: 1508991, DamageIDs: []uint64{1000009901}}, false},
+	}
+	for _, c := range cases {
+		if _, ok := names.tuneBreakSkill(c.roleID, c.skill); ok != c.ok {
+			t.Errorf("%s: ok = %v, want %v", c.name, ok, c.ok)
+		}
+	}
+}
+
+func TestViewSkillsNameTheEchoOfAnUnassignedRowWithoutMovingIt(t *testing.T) {
+	p := newPairingTestProcessor()
+	master := testSkillNameMaster()
+	master.skillNames.damageVisions = map[uint64]uint64{28003302: 280033}
+	master.skillNames.visionItems = map[uint64]uint64{280033: 60001672}
+	master.skillNames.echoNames[60001672] = "共鳴迴響·鳴式·利維亞坦"
+	p.masters = master
+	unassigned := UnassignedSkillTotals{DamageDealt: 42025, OutgoingEvents: 27, MissingSkillEvents: 27, DamageIDs: []uint64{28003302}}
+	skills, row := p.viewSkills(1508, nil, unassigned, 42025)
+	if len(skills) != 0 || row.Name != "共鳴迴響·鳴式·利維亞坦" || row.NameStatus != "DERIVED" || row.NameSource != "echo" || row.SourceID != 60001672 || row.IconKind != "echo-skill" || row.IconID != 280033 {
+		t.Fatalf("unassigned row = %+v, rows %+v", row, skills)
+	}
+	if row.DamageDealt != 42025 || row.OutgoingEvents != 27 {
+		t.Fatalf("naming the row changed its totals: %+v", row)
+	}
+	_, other := p.viewSkills(1508, nil, UnassignedSkillTotals{DamageDealt: 9, OutgoingEvents: 1, MissingSkillEvents: 1, DamageIDs: []uint64{1}}, 9)
+	if other.Name != "" || other.NameStatus != "" || other.IconKind != "" {
+		t.Fatalf("an unknown DamageId named the row: %+v", other)
 	}
 }

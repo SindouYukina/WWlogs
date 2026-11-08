@@ -63,6 +63,7 @@ func (p *displayProjection) encode(source *service.Snapshot, settings SettingsSt
 			result[i].Name, result[i].NameStatus = name.Name, name.Status
 			result[i].ElementID = p.resolver.RoleElement(ctx, result[i].RoleID)
 			result[i].Skills = skills(result[i].Skills)
+			result[i].UnassignedSkill = projectUnassignedSkill(ctx, p.resolver, result[i].UnassignedSkill, masterLocale, &projectionErr)
 		}
 		return result
 	}
@@ -72,6 +73,7 @@ func (p *displayProjection) encode(source *service.Snapshot, settings SettingsSt
 		}
 		copied := *original
 		copied.Skills = skills(copied.Skills)
+		copied.UnassignedSkill = projectUnassignedSkill(ctx, p.resolver, copied.UnassignedSkill, masterLocale, &projectionErr)
 		return &copied
 	}
 	effects := func(original []capture.ViewEffect) []capture.ViewEffect {
@@ -135,12 +137,29 @@ func (p *displayProjection) encode(source *service.Snapshot, settings SettingsSt
 	return append(json.RawMessage(nil), encoded...), nil
 }
 
+// projectUnassignedSkill re-resolves the Echo name of an unassigned row for the UI locale. When the Echo has no name in any
+// locale the row goes back to being plainly unassigned.
+func projectUnassignedSkill(ctx context.Context, resolver *capture.DisplayResolver, skill capture.ViewUnassignedSkill, locale string, projectionErr *error) capture.ViewUnassignedSkill {
+	if skill.NameSource != "echo" {
+		return skill
+	}
+	name, err := resolver.Resolve(ctx, "echo", skill.SourceID, locale)
+	if err != nil {
+		*projectionErr = err
+	}
+	skill.Name = name.Name
+	if name.Name == "" {
+		skill.NameStatus, skill.NameSource, skill.SourceID, skill.IconKind, skill.IconID = "", "", 0, "", 0
+	}
+	return skill
+}
+
 // projectSkillName re-resolves a skill row's name for the UI locale through the source the engine selected. A derived
 // source keeps its DERIVED status; when its record has no name in any locale the row falls back to UNKNOWN.
 func projectSkillName(ctx context.Context, resolver *capture.DisplayResolver, skill capture.ViewSkill, locale string, projectionErr *error) (string, string) {
 	kind, id, status := "combat_skill", skill.SkillID, ""
 	switch skill.NameSource {
-	case "damage_list":
+	case "damage_list", "tune_break":
 		kind, id, status = "skill", skill.SourceID, "DERIVED"
 	case "echo":
 		kind, id, status = "echo", skill.SourceID, "DERIVED"

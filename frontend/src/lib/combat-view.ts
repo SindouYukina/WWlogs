@@ -1,3 +1,4 @@
+import type { GameAssetKind } from "../design/assets.ts"
 import type { SkillBreakdown, SkillRow } from "./combat-data"
 import type { Effect, Encounter, Role, Skill, UnassignedSkill, Vehicle, ViewSnapshot } from "./snapshot"
 
@@ -109,6 +110,20 @@ export function detailRow(rows: readonly CombatRowModel[], scope: string, manual
   return { row: topRole(rows), mode: "auto" }
 }
 
+const skillIconKinds: readonly GameAssetKind[] = ["skill", "skill-config", "echo-skill"]
+function isSkillIconKind(kind: string | undefined): kind is GameAssetKind {
+  return skillIconKinds.includes(kind as GameAssetKind)
+}
+
+/** The Echo an unassigned row's hits belong to, when the engine could name it from their DamageIds. */
+function unassignedSkillSource(unassigned: UnassignedSkill): Pick<NonNullable<SkillBreakdown["unassigned"]>, "name" | "iconKind" | "iconId"> {
+  const named = unassigned.nameStatus === "DERIVED" && unassigned.nameSource === "echo" && unassigned.name
+  return {
+    ...(named ? { name: unassigned.name } : {}),
+    ...(isSkillIconKind(unassigned.iconKind) && unassigned.iconId !== undefined ? { iconKind: unassigned.iconKind, iconId: unassigned.iconId } : {}),
+  }
+}
+
 /**
  * The engine's skill split of one contributor. A name is shown only when Master reports the skill's own VERIFIED name
  * or a DERIVED name of a related record; a DERIVED row keeps its source so the table can mark it.
@@ -118,19 +133,20 @@ export function skillBreakdown(contributor: { skills?: Skill[]; unassignedSkill?
   const rows = contributor.skills.map(skill => {
     // A DERIVED name without a known source is not shown: the table could not say what it is.
     const source = skill.nameSource
-    const derived: SkillRow["derived"] = skill.nameStatus === "DERIVED" && (source === "damage_list" || source === "echo") ? source : undefined
+    const derived: SkillRow["derived"] = skill.nameStatus === "DERIVED" && (source === "damage_list" || source === "tune_break" || source === "echo") ? source : undefined
     const named = skill.name !== "" && (skill.nameStatus === "VERIFIED" || derived !== undefined)
     return {
       skillId: skill.skillId,
       name: named ? skill.name : undefined,
       ...(named && derived ? { derived } : {}),
+      ...(isSkillIconKind(skill.iconKind) && skill.iconId !== undefined ? { iconKind: skill.iconKind, iconId: skill.iconId } : {}),
       damage: skill.damageDealt,
       events: skill.outgoingEvents,
       share: skill.damageShare,
     }
   })
   const unassigned = contributor.unassignedSkill
-  return { rows, unassigned: unassigned && unassigned.outgoingEvents > 0 ? { damage: unassigned.damageDealt, events: unassigned.outgoingEvents, share: unassigned.damageShare } : undefined }
+  return { rows, unassigned: unassigned && unassigned.outgoingEvents > 0 ? { ...unassignedSkillSource(unassigned), damage: unassigned.damageDealt, events: unassigned.outgoingEvents, share: unassigned.damageShare } : undefined }
 }
 
 /** Skill splits by ranking-row key, from the same encounter (or interval) the ranking rows come from. */

@@ -109,6 +109,10 @@ func TestMasterLookupDigest(t *testing.T) {
 		writeSortedLookups(digest, "uiSkillName", master.skillNames.uiSkillNames)
 		writeSortedLookups(digest, "echoItem", master.skillNames.echoItems)
 		writeSortedLookups(digest, "echoName", master.skillNames.echoNames)
+		writeSortedLookups(digest, "echoVision", master.skillNames.echoVisions)
+		writeSortedLookups(digest, "damageVision", master.skillNames.damageVisions)
+		writeSortedLookups(digest, "visionItem", master.skillNames.visionItems)
+		writeSortedLookups(digest, "roleTuneBreak", master.skillNames.roleTuneBreak)
 		hudCues := map[uint64][]int32{}
 		for id, static := range master.buffStatics {
 			if len(static.hudCueTypes) > 0 {
