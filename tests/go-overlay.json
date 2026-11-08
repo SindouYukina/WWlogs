@@ -187,6 +187,8 @@
     "internal/capture/central_integrity_test.go": "tests/capture/integrity_test.go",
     "tests/capture/transport_perturbation_dev_test.go": "",
     "internal/capture/central_transport_perturbation_dev_test.go": "tests/capture/transport_perturbation_dev_test.go",
+    "tests/capture/reorder_attribution_dev_test.go": "",
+    "internal/capture/central_reorder_attribution_dev_test.go": "tests/capture/reorder_attribution_dev_test.go",
     "tests/capture/transport_recovery_test.go": "",
     "internal/capture/central_transport_recovery_test.go": "tests/capture/transport_recovery_test.go",
     "tests/capture/segment_drop_replay_dev_test.go": "",

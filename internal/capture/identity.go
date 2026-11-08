@@ -1135,10 +1135,12 @@ func applySummonInfo(entity *runtimeEntity, data []byte) error {
 	return nil
 }
 
-func (r *entityResolver) applyEntityRemoveNotify(body []byte) (int, []uint64, error) {
+// entityRemoveNotifyIDs returns the entities an EntityRemoveNotify removes. On a malformed EntityRemoveInfo it returns
+// the IDs read before it together with the error.
+func entityRemoveNotifyIDs(body []byte) ([]uint64, error) {
 	fields, err := parseProtoFields(body)
 	if err != nil {
-		return 0, nil, fmt.Errorf("parse EntityRemoveNotify: %w", err)
+		return nil, fmt.Errorf("parse EntityRemoveNotify: %w", err)
 	}
 	remove := false
 	for _, field := range fields {
@@ -1147,30 +1149,37 @@ func (r *entityResolver) applyEntityRemoveNotify(body []byte) (int, []uint64, er
 		}
 	}
 	if !remove {
-		return 0, nil, nil
+		return nil, nil
 	}
-	removed := 0
-	removedIDs := make([]uint64, 0)
+	ids := make([]uint64, 0)
 	for _, field := range fields {
 		if field.number != 5 || field.wire != 2 {
 			continue
 		}
 		info, err := parseProtoFields(field.data)
 		if err != nil {
-			return removed, removedIDs, fmt.Errorf("parse EntityRemoveInfo: %w", err)
+			return ids, fmt.Errorf("parse EntityRemoveInfo: %w", err)
 		}
 		for _, value := range info {
 			if value.number == 1 && value.wire == 0 && value.value != 0 {
-				removedIDs = append(removedIDs, value.value)
-				r.observeLifecycleRemove(value.value)
-				if _, ok := r.entities[value.value]; ok {
-					delete(r.entities, value.value)
-					removed++
-				}
+				ids = append(ids, value.value)
 			}
 		}
 	}
-	return removed, removedIDs, nil
+	return ids, nil
+}
+
+func (r *entityResolver) applyEntityRemoveNotify(body []byte) (int, []uint64, error) {
+	removedIDs, err := entityRemoveNotifyIDs(body)
+	removed := 0
+	for _, id := range removedIDs {
+		r.observeLifecycleRemove(id)
+		if _, ok := r.entities[id]; ok {
+			delete(r.entities, id)
+			removed++
+		}
+	}
+	return removed, removedIDs, err
 }
 
 func (r *entityResolver) applyActiveResponseIdentityComponents(entityID uint64, components []protoField) (int, error) {
