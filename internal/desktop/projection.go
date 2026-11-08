@@ -23,9 +23,11 @@ type displayProjection struct {
 
 // projectedShell is host state published with every snapshot. A change reaches every window without a new core sequence.
 type projectedShell struct {
-	Listening    service.ListeningStatus `json:"listening"`
-	Theme        string                  `json:"theme"`
-	ReduceMotion bool                    `json:"reduceMotion"`
+	Listening service.ListeningStatus `json:"listening"`
+	// LanguagePreference tells the Settings view whether the language follows Windows; the language itself is in Locale.
+	LanguagePreference string `json:"languagePreference,omitempty"`
+	Theme              string `json:"theme"`
+	ReduceMotion       bool   `json:"reduceMotion"`
 	// UpdateIntervalMs is the publish cadence the windows receive; the countdown bars ease across one interval.
 	UpdateIntervalMs int           `json:"updateIntervalMs"`
 	Overlays         OverlayStates `json:"overlays"`
@@ -36,7 +38,7 @@ type projectedShell struct {
 func (p *displayProjection) encode(source *service.Snapshot, settings SettingsState, catalog localeCatalog, listening service.ListeningStatus, overlays OverlayStates) (json.RawMessage, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	shell := projectedShell{Listening: listening, Theme: effectiveTheme(settings.Settings), ReduceMotion: settings.Settings.ReduceMotion,
+	shell := projectedShell{Listening: listening, LanguagePreference: settings.Settings.LanguagePreference, Theme: effectiveTheme(settings.Settings), ReduceMotion: settings.Settings.ReduceMotion,
 		UpdateIntervalMs: int(effectiveUpdateInterval(settings.Settings) / time.Millisecond), Overlays: overlays, SettingsWarning: settings.Warning}
 	if p.source == source && p.revision == settings.LocaleRevision && p.shell == shell {
 		return append(json.RawMessage(nil), p.encoded...), nil

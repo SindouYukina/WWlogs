@@ -29,3 +29,13 @@ test("the host decides the first language only before the first window opens", (
   assert.ok(app.indexOf("settings.seedInitialLocale(") < app.indexOf("bootLocaleQuery(settings)"), "windows open with the seeded language")
   assert.match(read("internal/desktop/overlay.go"), /"\/\?view=overlay&surface="\+entry\.kind\+"&"\+bootLocaleQuery\(m\.store\)/)
 })
+
+test("the language selector offers Automatic first and shows the saved preference, not the resolved language", () => {
+  const settings = read("frontend/src/views/SettingsView.tsx")
+  assert.match(settings, /\[\{ value: "auto", label: t\("languageAuto"\) \}, \.\.\.manifest\.supportedLocales/)
+  assert.match(settings, /value=\{controller\.languageChoice\}/)
+  const controller = read("frontend/src/lib/settings-controller.ts")
+  assert.match(controller, /languageChoice: snapshot\?\.languagePreference === "auto" \? "auto" : snapshot\?\.locale/)
+  const store = read("internal/desktop/settings.go")
+  assert.match(store, /locale != languagePreferenceAuto && !s\.catalog\.valid\(locale\)/)
+})

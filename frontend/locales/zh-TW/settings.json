@@ -2,6 +2,8 @@
   "title": "設定",
   "language": "語言",
   "languageHint": "即時套用至兩個視窗與遊戲名稱。",
+  "languageAuto": "自動",
+  "languageAutoHint": "依 Windows 顯示語言。目前：{{language}}",
   "defaultAdapter": "網路介面",
   "adapterHint": "開始擷取時使用此介面。",
   "adapterChoose": "選擇遊戲連線使用的網路介面。",

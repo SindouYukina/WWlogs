@@ -2,6 +2,8 @@
   "title": "设置",
   "language": "语言",
   "languageHint": "立即应用到两个窗口与游戏名称。",
+  "languageAuto": "自动",
+  "languageAutoHint": "跟随 Windows 显示语言。当前：{{language}}",
   "defaultAdapter": "网络接口",
   "adapterHint": "开始采集时使用此接口。",
   "adapterChoose": "选择游戏连接使用的网络接口。",

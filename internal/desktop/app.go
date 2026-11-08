@@ -101,6 +101,7 @@ func Run(options Options) error {
 	if systemLanguages == nil {
 		systemLanguages = userPreferredUILanguages
 	}
+	settings.useSystemLanguages(systemLanguages)
 	settings.seedInitialLocale(systemLanguages())
 	if options.Locale != "" {
 		locale := options.Locale

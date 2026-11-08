@@ -19,6 +19,9 @@ type Settings struct {
 	Version            int    `json:"version"`
 	DefaultAdapterIPv4 string `json:"defaultAdapterIPv4"`
 	Locale             string `json:"locale"`
+	// LanguagePreference is languagePreferenceAuto when the UI language follows Windows; Locale then holds the language it
+	// resolved to. Empty means Locale is a language the user chose, which is what a file without the field means.
+	LanguagePreference string `json:"languagePreference,omitempty"`
 	// ShowOverlayOnStartup is read from v0.5 files only: it migrates to Overlays.Combat.Visible on load.
 	ShowOverlayOnStartup bool `json:"showOverlayOnStartup,omitempty"`
 	// Overlays keeps each Overlay's preferences separately. Nil in a file means it predates the two-window Overlay.
@@ -202,7 +205,14 @@ type settingsStore struct {
 	dirty bool
 	// localeSeed says whether this launch has no valid saved language, and whether one chosen now may be written.
 	localeSeed localeSeedMode
+	// systemLanguages reads the user's preferred Windows languages when the preference is set back to Automatic.
+	systemLanguages func() []string
+	// languageResolved makes the launch-time resolution run once.
+	languageResolved bool
 }
+
+// languagePreferenceAuto is the saved language preference that follows the Windows display language.
+const languagePreferenceAuto = "auto"
 
 // localeSeedMode is what a launch may do about the UI language. A valid saved language is the user's and is never touched.
 type localeSeedMode int
@@ -288,6 +298,9 @@ func loadSettings(path string, catalog localeCatalog) *settingsStore {
 		value.Locale = catalog.FallbackLocale
 		store.localeSeed = localeSeedPersist
 	}
+	if value.LanguagePreference != languagePreferenceAuto {
+		value.LanguagePreference = ""
+	}
 	if value.Overlays == nil {
 		// v0.5 had one Overlay with a different layout. Its visibility carries over; its geometry does not fit either window.
 		value.Overlays = defaultOverlays()
@@ -307,20 +320,37 @@ func loadSettings(path string, catalog localeCatalog) *settingsStore {
 	return store
 }
 
-// seedInitialLocale applies the user's preferred languages when this launch has no valid saved language, and saves the
-// result so later launches treat it as the user's preference. It runs once and only ever replaces the catalog fallback
-// that loadSettings left in place: a saved language, and the fallback itself, are unaffected.
+// useSystemLanguages sets the source of the Windows display languages for a later change back to Automatic.
+func (s *settingsStore) useSystemLanguages(languages func() []string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.systemLanguages = languages
+}
+
+// seedInitialLocale resolves the UI language at launch. A launch with no valid saved language starts on Automatic. A saved
+// Automatic preference is resolved again, so a changed Windows display language applies from this launch. A language the
+// user chose, including one an older build seeded, has no marker and is never touched.
 func (s *settingsStore) seedInitialLocale(preferred []string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	mode := s.localeSeed
-	s.localeSeed = localeSeedNone
-	if mode == localeSeedNone {
+	if s.languageResolved {
 		return
 	}
+	s.languageResolved = true
+	mode := s.localeSeed
+	s.localeSeed = localeSeedNone
 	value := s.state.Settings
+	switch {
+	case mode != localeSeedNone:
+		value.LanguagePreference = languagePreferenceAuto
+	case value.LanguagePreference != languagePreferenceAuto:
+		return
+	}
 	value.Locale = initialLocaleFor(preferred, s.catalog)
-	if mode == localeSeedPersist {
+	if mode == localeSeedNone && value.Locale == s.state.Settings.Locale {
+		return
+	}
+	if mode != localeSeedMemoryOnly {
 		if _, err := s.writeLocked(value); err == nil {
 			return
 		}
@@ -408,14 +438,23 @@ func (s *settingsStore) setAutoStartCapture(enabled bool) (SettingsState, error)
 	return s.writeLocked(value)
 }
 
+// setLocale saves a language the user chose, or Automatic, which resolves the Windows display language at once.
 func (s *settingsStore) setLocale(locale string) (SettingsState, error) {
-	if !s.catalog.valid(locale) {
+	if locale != languagePreferenceAuto && !s.catalog.valid(locale) {
 		return SettingsState{}, errors.New("unsupported_locale")
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	value := s.state.Settings
-	value.Locale = locale
+	if locale == languagePreferenceAuto {
+		var preferred []string
+		if s.systemLanguages != nil {
+			preferred = s.systemLanguages()
+		}
+		value.LanguagePreference, value.Locale = languagePreferenceAuto, initialLocaleFor(preferred, s.catalog)
+	} else {
+		value.LanguagePreference, value.Locale = "", locale
+	}
 	return s.writeLocked(value)
 }
 

@@ -2,6 +2,8 @@
   "title": "Settings",
   "language": "Language",
   "languageHint": "Applies immediately to both windows and Master names.",
+  "languageAuto": "Automatic",
+  "languageAutoHint": "Follows the Windows display language. Now: {{language}}",
   "defaultAdapter": "Network interface",
   "adapterHint": "Capture uses this interface.",
   "adapterChoose": "Choose the interface your game connection uses.",
