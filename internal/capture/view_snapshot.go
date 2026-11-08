@@ -106,6 +106,28 @@ type ViewStatistics struct {
 	DamageSpanDPS   ViewDPS          `json:"damageSpanDps"`
 	Rolling5sDPS    ViewDPS          `json:"rolling5sDps"`
 	Rolling10sDPS   ViewDPS          `json:"rolling10sDps"`
+	// Healing is the interval's local healing, with the interval's integrity applied.
+	Healing ViewHealing `json:"healing"`
+}
+
+// ViewHealing is the local team's healing. Effective is the HP applied and is what the UI shows; Status follows data
+// integrity as ViewDPS does, and the UI must show the status, never a bare number, for unreliable.
+type ViewHealing struct {
+	Status                 DPSStatus `json:"status"`
+	Reason                 string    `json:"reason,omitempty"`
+	Effective              int64     `json:"effective"`
+	Reported               int64     `json:"reported"`
+	Overheal               int64     `json:"overheal"`
+	Events                 uint64    `json:"events"`
+	UnknownHealerEffective int64     `json:"unknownHealerEffective"`
+	UnknownHealerEvents    uint64    `json:"unknownHealerEvents"`
+}
+
+func viewHealing(result HealingResult) ViewHealing {
+	return ViewHealing{
+		Status: result.Status, Reason: result.Reason, Effective: result.Effective, Reported: result.Reported, Overheal: result.Overheal,
+		Events: result.Events, UnknownHealerEffective: result.UnknownHealerEffective, UnknownHealerEvents: result.UnknownHealerEvents,
+	}
 }
 
 // ViewUnattributed is damage that was observed but could not be confirmed as local; it is never part of the totals.
@@ -141,6 +163,8 @@ type ViewEncounter struct {
 	Totals              EncounterTotals      `json:"totals"`
 	Integrity           DataIntegrity        `json:"integrity"`
 	DPS                 ViewDPS              `json:"dps"`
+	PeakDPS             ViewDPS              `json:"peakDps"`
+	Healing             ViewHealing          `json:"healing"`
 	Roles               []ViewRole           `json:"roles"`
 	UnassignedRole      UnassignedRoleTotals `json:"unassignedRole"`
 	UnassignedRoleShare *float64             `json:"unassignedRoleShare,omitempty"`
@@ -279,6 +303,7 @@ func (p *processor) viewSnapshot() ViewSnapshot {
 			DamageSpanDPS:   viewDPS(statistics.DamageSpanDPS),
 			Rolling5sDPS:    viewDPS(statistics.Rolling5sDPS),
 			Rolling10sDPS:   viewDPS(statistics.Rolling10sDPS),
+			Healing:         viewHealing(intervalHealing(statistics)),
 		},
 		Encounters:          p.viewEncounters(statistics.Encounters),
 		Roles:               p.viewRoles(statistics.Roles, statistics.DamageDealt),
@@ -340,6 +365,7 @@ func (p *processor) viewEncounter(encounter EncounterSnapshot) ViewEncounter {
 		State: encounter.State, Outcome: encounter.Outcome, StartedAt: encounter.StartedAt, StartBasis: encounter.StartBasis,
 		EndedAt: encounter.EndedAt, EndBasis: encounter.EndBasis, Totals: encounter.Totals,
 		Integrity: cloneIntegrity(encounter.Integrity), DPS: viewDPS(encounter.EncounterDPS),
+		PeakDPS: viewDPS(encounter.PeakDPS), Healing: viewHealing(encounter.Healing),
 		Roles: p.viewRoles(encounter.Roles, encounter.Totals.DamageDealt), UnassignedRole: encounter.UnassignedRole,
 		UnassignedRoleShare: unassignedRoleShare(encounter.UnassignedRole, encounter.Totals.DamageDealt),
 		Vehicle:             p.viewVehicle(encounter.Vehicle, encounter.Totals.DamageDealt),

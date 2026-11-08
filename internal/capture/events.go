@@ -403,6 +403,12 @@ func (p *processor) writeDamageEvent(event combatEvent) bool {
 			}
 		case CombatFlowLocalIncoming:
 			record.TargetRole = p.localRoleForEntity(event.TargetEntityID, event.Target)
+		case CombatFlowLocalInternal:
+			if record.Kind == CombatEventHealing {
+				record = p.gateHealing(record)
+				record.SourceRole = p.localRoleForEntity(event.SourceEntityID, event.Source)
+				record.TargetRole = p.localRoleForEntity(event.TargetEntityID, event.Target)
+			}
 		}
 		assignment := p.damageStatistics.addCombatEvent(record)
 		p.writeCombatEventRecord(record, assignment)

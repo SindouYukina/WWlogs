@@ -81,9 +81,10 @@
   "shareColumn": "비율",
   "direct": "직접",
   "summon": "소환",
-  "eventsLabel": "확인된 이벤트",
-  "eventsNote": "서버에서 확인한 이벤트",
   "damageNote": "이번 전투에서 확인된 로컬 파티 피해량",
   "takenNote": "이번 전투에서 확인된 받은 피해량",
-  "rollingNote": "최근 5초 {{five}} · 최근 10초 {{ten}}"
+  "peakNote": "최고 1초 DPS: {{value}}",
+  "healing": "치유량",
+  "healingNote": "이번 전투에서 확인된 치유량",
+  "healingUnavailable": "아직 확인 가능한 치유 데이터가 없습니다"
 }

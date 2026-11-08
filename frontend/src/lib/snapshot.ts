@@ -184,10 +184,34 @@ export interface Encounter {
   totals: { damageDealt: number; damageTaken: number; unattributedOutgoingDamage: number; unattributedIncomingDamage: number }
   integrity: DataIntegrity
   dps: DPS
+  /** The highest 1-second interval of the encounter's DPS timeline, per 1 second. */
+  peakDps?: DPS
+  /** The local team's healing within the encounter. */
+  healing?: Healing
   roles: Role[]
   vehicle?: Vehicle
   unassignedRole: UnassignedRole
   unassignedRoleShare?: number
+}
+
+/**
+ * The local team's healing: healing results from a local source to a local target. Effective is the HP the server
+ * applied and is what the UI shows; Status follows data integrity as DPS does.
+ */
+export interface Healing {
+  status: DPS["status"]
+  reason?: string
+  effective: number
+  reported: number
+  overheal: number
+  events: number
+  unknownHealerEffective: number
+  unknownHealerEvents: number
+}
+
+/** Healing a user may see: available, or a lower bound when the data is degraded. */
+export function usableHealing(healing: Healing | undefined): healing is Healing {
+  return healing?.status === "available" || healing?.status === "lower_bound"
 }
 
 export interface Effect {
@@ -266,6 +290,7 @@ export interface ViewSnapshot {
     damageSpanDps: DPS
     rolling5sDps: DPS
     rolling10sDps: DPS
+    healing?: Healing
   }
   encounters: { state: string; battleState: string; current?: Encounter; recent: Encounter[]; completedTotal: number }
   roles: Role[]

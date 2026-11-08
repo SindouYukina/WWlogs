@@ -130,6 +130,10 @@ type EncounterSnapshot struct {
 	// DEGRADED and withheld when it is UNRELIABLE.
 	Integrity    DataIntegrity `json:"integrity"`
 	EncounterDPS DPSResult     `json:"encounterDps"`
+	// PeakDPS is the highest 1-second interval of the encounter's DPS timeline (encounterPeakDPS); Healing is the local
+	// team's healing within the encounter (healing.go). Both follow the data integrity as EncounterDPS does.
+	PeakDPS DPSResult     `json:"peakDps"`
+	Healing HealingResult `json:"healing"`
 	// Roles, Vehicle, and UnassignedRole partition confirmed local damage (role_aggregation.go).
 	Roles          []RoleDamageSnapshot   `json:"roles"`
 	UnassignedRole UnassignedRoleTotals   `json:"unassignedRole"`
@@ -229,6 +233,10 @@ type encounterTracker struct {
 	// battleStateUnverified is set after an inbound loss until a battle-state signal or scene boundary re-establishes it.
 	battleStateUnverified bool
 	contextDowngraded     uint64
+	// healing holds the local team's healing results of this interval until no encounter can still include them;
+	// healingDropped counts results evicted at the bound (healing.go).
+	healing        []healingEvent
+	healingDropped uint64
 }
 
 func newEncounterTracker(captureSessionID, intervalID uint64) *encounterTracker {
@@ -575,6 +583,8 @@ func (t *encounterTracker) finish(decidedAt time.Time, interruptBasis string) {
 	default:
 		outcome = EncounterOutcomeInferred
 	}
+	// Healing at or before this end can no longer join a later encounter.
+	defer t.pruneHealing(record)
 	if !record.totals.confirmedActivity() {
 		// Unattributed events seen during an empty battle interval stay counted, outside any encounter.
 		t.outside.merge(record.totals)
@@ -585,6 +595,8 @@ func (t *encounterTracker) finish(decidedAt time.Time, interruptBasis string) {
 	snapshot := t.snapshotOf(record, outcome, time.Time{})
 	base := snapshot
 	base.EncounterDPS = encounterDPS(record, record.endAt, outcomeConfidence(outcome))
+	base.PeakDPS = encounterPeakDPS(record, record.endAt, outcomeConfidence(outcome))
+	base.Healing = t.encounterHealing(record, record.endAt)
 	if len(t.completed) >= maxCompletedEncounters {
 		t.droppedTotals.merge(t.completed[0].Totals)
 		t.completed = t.completed[1:]
@@ -632,8 +644,13 @@ func (t *encounterTracker) snapshotOf(record *encounterRecord, outcome Encounter
 	default:
 		snapshot.EncounterDPS = encounterDPS(record, record.endAt, outcomeConfidence(outcome))
 	}
+	// Peak DPS and healing are evaluated at the same end as Encounter DPS.
+	snapshot.PeakDPS = encounterPeakDPS(record, snapshot.EncounterDPS.EndObservedAt, snapshot.EncounterDPS.Confidence)
+	snapshot.Healing = t.encounterHealing(record, snapshot.EncounterDPS.EndObservedAt)
 	snapshot.Integrity = t.integrityFrom(record.integrity, extra...)
 	snapshot.EncounterDPS = applyIntegrityToDPS(snapshot.EncounterDPS, snapshot.Integrity)
+	snapshot.PeakDPS = applyIntegrityToDPS(snapshot.PeakDPS, snapshot.Integrity)
+	snapshot.Healing = applyIntegrityToHealing(snapshot.Healing, snapshot.Integrity)
 	return snapshot
 }
 
@@ -718,6 +735,8 @@ func (t *encounterTracker) renderCompleted() []EncounterSnapshot {
 		rendered[i] = base
 		rendered[i].Integrity = t.integrityFrom(t.completedIntegrity[i])
 		rendered[i].EncounterDPS = applyIntegrityToDPS(base.EncounterDPS, rendered[i].Integrity)
+		rendered[i].PeakDPS = applyIntegrityToDPS(base.PeakDPS, rendered[i].Integrity)
+		rendered[i].Healing = applyIntegrityToHealing(base.Healing, rendered[i].Integrity)
 	}
 	return rendered
 }

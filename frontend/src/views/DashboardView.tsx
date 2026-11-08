@@ -6,7 +6,7 @@ import { teamSeriesKey, unassignedSeriesKey } from "@/lib/timeline"
 import { combatRows, contributionShares, detailRow, intervalRows, selectionScope, type CombatRowModel } from "@/lib/combat-view"
 import { useDetailPick, type DetailPick } from "@/lib/useDetailPick"
 import { elementColor, useFormatters, useRowNames } from "@/lib/format"
-import { dpsText, type ViewSnapshot } from "@/lib/snapshot"
+import { dpsText, usableHealing, type ViewSnapshot } from "@/lib/snapshot"
 import { statusText } from "@/i18n"
 
 interface StatProps {
@@ -139,8 +139,13 @@ export function DashboardView({ data, theme, numberMode = "tween", actions, deta
   const lowerBound = dps?.status === "lower_bound"
   // A lower bound is never shown as an exact value.
   const dpsFormat = useMemo(() => lowerBound ? (value: number) => `≥ ${format.integer(value)}` : format.integer, [lowerBound, format])
-  const rollingText = (value: Parameters<typeof dpsText>[0]) => usableDps(value) ? dpsText(value, i18n.language) : "—"
-  const events = encounter ? encounter.roles.reduce((sum, role) => sum + role.outgoingEvents, (encounter.vehicle?.outgoingEvents ?? 0) + encounter.unassignedRole.outgoingEvents) : view?.statistics.outgoingEvents
+  // The highest 1-second interval of this encounter's timeline; outside an encounter there is none.
+  const peak = encounter?.peakDps
+  const peakText = usableDps(peak) ? dpsText(peak, i18n.language) : "—"
+  // The local team's healing in this encounter, or in the capture interval when no encounter is shown.
+  const healing = encounter ? encounter.healing : view?.statistics.healing
+  const healingShown = usableHealing(healing)
+  const healingFormat = useMemo(() => healing?.status === "lower_bound" ? (value: number) => `≥ ${format.integer(value)}` : format.integer, [healing?.status, format])
   const timeline = data.timeline
   // The timeline changes once per second; the memo keeps the chart from re-rendering at the publish rate.
   const timelineKey = timeline ? `${timeline.encounterId ?? ""}:${timeline.slots}:${timeline.slotSeconds}:${timeline.final === true}:` + [...timeline.series].map(([key, values]) => `${key}=${values.length}:${values.at(-1) ?? ""}`).join() : ""
@@ -149,7 +154,7 @@ export function DashboardView({ data, theme, numberMode = "tween", actions, deta
     const fit = (values: ReadonlyArray<number | null> | undefined) => Array.from({ length: timeline.slots }, (_, slot) => values?.[slot] ?? null)
     const lines: ChartSeries[] = []
     const team = timeline.series.get(teamSeriesKey)
-    if (team) lines.push({ key: teamSeriesKey, label: t("teamDps"), color: "var(--ww-ink-100)", values: fit(team) })
+    if (team) lines.push({ key: teamSeriesKey, label: t("teamDps"), color: "var(--ww-ink-100)", values: fit(team), aggregate: true })
     // Roles keep their element color in RoleId order, then the vehicle; the same contributor keeps its line when ranks change.
     for (const row of rows.filter(row => timeline.series.has(row.key)).sort((a, b) => (a.kind === b.kind ? (a.roleId ?? 0) - (b.roleId ?? 0) : a.kind === "role" ? -1 : 1))) {
       lines.push({ key: row.key, label: nameOf(row), color: elementColor(row.elementId), values: fit(timeline.series.get(row.key)) })
@@ -175,10 +180,10 @@ export function DashboardView({ data, theme, numberMode = "tween", actions, deta
       </div>
     </Reveal>
     <div className="ww-dash-stats">
-      <StatCard index={0} hero icon="bolt" label={c("encounterDps")} field="encounter-dps" status={dps?.status ?? "unavailable"} value={usableDps(dps) ? dps?.value : undefined} format={dpsFormat} note={view ? t("rollingNote", { five: rollingText(view.statistics.rolling5sDps), ten: rollingText(view.statistics.rolling10sDps) }) : undefined} scope={scope} stale={stale} numberMode={numberMode} />
+      <StatCard index={0} hero icon="bolt" label={c("encounterDps")} field="encounter-dps" status={dps?.status ?? "unavailable"} value={usableDps(dps) ? dps?.value : undefined} format={dpsFormat} note={view ? t("peakNote", { value: peakText }) : undefined} scope={scope} stale={stale} numberMode={numberMode} />
       <StatCard index={1} icon="spark" label={t("confirmedDamage")} field="damage-dealt" value={encounter?.totals.damageDealt ?? view?.statistics.damageDealt} format={format.integer} note={t(encounter ? "damageNote" : "interval")} scope={scope} stale={stale} numberMode={numberMode} />
       <StatCard index={2} icon="shield" label={t("damageTaken")} field="damage-taken" value={encounter?.totals.damageTaken ?? view?.statistics.damageTaken} format={format.integer} note={t(encounter ? "takenNote" : "interval")} scope={scope} stale={stale} numberMode={numberMode} />
-      <StatCard index={3} icon="list" label={t("eventsLabel")} field="events" value={events} format={format.integer} note={t("eventsNote")} scope={scope} stale={stale} numberMode={numberMode} />
+      <StatCard index={3} icon="heal" label={t("healing")} field="healing" status={healing?.status ?? "unavailable"} value={healingShown ? healing.effective : undefined} format={healingFormat} note={healingShown ? t(encounter ? "healingNote" : "interval") : t("healingUnavailable")} scope={scope} stale={stale} numberMode={numberMode} />
     </div>
     <div className="ww-dash-main">
       <Reveal index={4} className="ww-dash-board-wrap">
@@ -194,7 +199,7 @@ export function DashboardView({ data, theme, numberMode = "tween", actions, deta
       <Reveal index={5} className="ww-dash-detail-wrap">
         <Card className="ww-dash-chart-card">
           <div className="ww-dash-card-head"><h3>{t("timeline")}</h3>{!timeline && <Chip>{t("noSource")}</Chip>}</div>
-          <div data-field="timeline" data-encounter={timeline?.encounterId ?? ""} data-final={timeline?.final === true} data-series={series.length}><LiveChart series={series} slots={timeline?.slots ?? 61} height={190} formatValue={format.compact} formatSlot={slot => format.clock(slot * (timeline?.slotSeconds ?? 1))} emptyLabel={t(timeline ? "chartEmpty" : "timelineUnavailable")} ariaLabel={t("timeline")} /></div>
+          <div data-field="timeline" data-encounter={timeline?.encounterId ?? ""} data-final={timeline?.final === true} data-series={series.length}><LiveChart series={series} slots={timeline?.slots ?? 61} height={190} formatValue={format.compact} formatSlot={slot => format.clock(slot * (timeline?.slotSeconds ?? 1))} emptyLabel={t(timeline ? "chartEmpty" : "timelineUnavailable")} ariaLabel={t("timeline")} scope={timeline?.encounterId ?? ""} /></div>
         </Card>
         <Card className="ww-dash-detail">
           <div className="ww-dash-card-head" data-field="detail" data-selection={selected ? detail.mode : "none"} data-key={selected?.key ?? ""} data-scope={detailScope}>

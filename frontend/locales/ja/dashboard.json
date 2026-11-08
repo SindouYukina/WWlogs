@@ -81,9 +81,10 @@
   "shareColumn": "割合",
   "direct": "直接",
   "summon": "召喚",
-  "eventsLabel": "確定イベント",
-  "eventsNote": "サーバーが確定したイベント",
   "damageNote": "この戦闘で確定したローカルチームのダメージ",
   "takenNote": "この戦闘で確定した被ダメージ",
-  "rollingNote": "直近 5 秒 {{five}}・直近 10 秒 {{ten}}"
+  "peakNote": "最大 1 秒 DPS：{{value}}",
+  "healing": "回復量",
+  "healingNote": "この戦闘で確認された回復量",
+  "healingUnavailable": "検証できる回復データはまだありません"
 }
