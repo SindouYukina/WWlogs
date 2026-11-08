@@ -20,6 +20,8 @@ export interface NpcapDownloadState {
  */
 export interface SettingsController {
   locale: string
+  /** The value of the language selector: "auto" while the language follows Windows, otherwise the chosen locale. */
+  languageChoice: string
   setLocale: (locale: string) => void
   theme: string | undefined
   reduceMotion: boolean
@@ -139,6 +141,7 @@ export function useLiveSettings(snapshot: Snapshot | null, connected: boolean, c
 
   return {
     locale: snapshot?.locale ?? "",
+    languageChoice: snapshot?.languagePreference === "auto" ? "auto" : snapshot?.locale ?? "",
     setLocale: locale => guard(changeLocale(locale)),
     theme: snapshot?.theme,
     reduceMotion: snapshot?.reduceMotion === true,

@@ -22,6 +22,7 @@ export function useMockSettings(theme: ThemeId, setTheme: (theme: ThemeId) => vo
   const [updateIntervalMs, setUpdateInterval] = useState<UpdateInterval>(defaultUpdateInterval)
   return useMemo(() => ({
     locale: i18n.language,
+    languageChoice: i18n.language,
     setLocale: locale => void i18n.changeLanguage(locale),
     theme,
     reduceMotion: reduced,

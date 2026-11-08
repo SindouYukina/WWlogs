@@ -9,6 +9,8 @@ export type DPSStatus = "available" | "lower_bound" | "unreliable" | "unavailabl
 
 export interface Snapshot {
   locale: string
+  /** "auto" when the UI language follows Windows; absent when `locale` is the user's own choice. */
+  languagePreference?: string
   localeRevision: number
   sequence: number
   publishedAt: string

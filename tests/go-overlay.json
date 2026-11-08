@@ -290,6 +290,8 @@
     "tests/desktop/desktop_window_test.go": "",
     "internal/desktop/central_desktop_window_test.go": "tests/desktop/desktop_window_test.go",
     "tests/capture/effect_live_accuracy_test.go": "",
-    "internal/capture/central_effect_live_accuracy_test.go": "tests/capture/effect_live_accuracy_test.go"
+    "internal/capture/central_effect_live_accuracy_test.go": "tests/capture/effect_live_accuracy_test.go",
+    "tests/desktop/language_preference_test.go": "",
+    "internal/desktop/central_language_preference_test.go": "tests/desktop/language_preference_test.go"
   }
 }

@@ -95,17 +95,21 @@ func seededStore(t *testing.T, body *string) (*settingsStore, string) {
 	return loadSettings(path, fullLocaleCatalog()), path
 }
 
-func TestFirstLaunchSeedsTheWindowsLanguageOnce(t *testing.T) {
+func TestFirstLaunchStartsOnAutomaticAndFollowsWindows(t *testing.T) {
 	store, path := seededStore(t, nil)
 	store.seedInitialLocale([]string{"ja-JP"})
-	if got := store.current().Settings.Locale; got != "ja" {
-		t.Fatalf("seeded locale %q", got)
+	if got := store.current().Settings; got.Locale != "ja" || got.LanguagePreference != languagePreferenceAuto {
+		t.Fatalf("first launch = %+v", got)
 	}
-	// The seed is the user's preference from now on: a later change of the Windows language does not follow it.
+	// Automatic is what was saved, so a later change of the Windows language applies at the next launch.
 	reloaded := loadSettings(path, fullLocaleCatalog())
 	reloaded.seedInitialLocale([]string{"ko-KR"})
-	if got := reloaded.current().Settings.Locale; got != "ja" {
-		t.Fatalf("a later Windows language changed the saved locale: %q", got)
+	if got := reloaded.current().Settings; got.Locale != "ko" || got.LanguagePreference != languagePreferenceAuto {
+		t.Fatalf("a later Windows language was not followed: %+v", got)
+	}
+	again := loadSettings(path, fullLocaleCatalog())
+	if got := again.current().Settings; got.Locale != "ko" || got.LanguagePreference != languagePreferenceAuto {
+		t.Fatalf("the resolved language was not saved: %+v", got)
 	}
 }
 

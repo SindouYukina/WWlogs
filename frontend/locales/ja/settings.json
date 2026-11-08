@@ -2,6 +2,8 @@
   "title": "設定",
   "language": "言語",
   "languageHint": "両方のウィンドウとゲーム内名称に即時反映します。",
+  "languageAuto": "自動",
+  "languageAutoHint": "Windows の表示言語に従います。現在：{{language}}",
   "defaultAdapter": "ネットワークインターフェース",
   "adapterHint": "キャプチャにはこのインターフェースを使用します。",
   "adapterChoose": "ゲームの通信に使うインターフェースを選択してください。",

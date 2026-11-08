@@ -48,11 +48,13 @@ function AdapterRow({ controller }: { controller: SettingsController }) {
 
 function GeneralPage({ controller }: { controller: SettingsController }) {
   const { t } = useTranslation("settings")
-  const options = manifest.supportedLocales.map(locale => ({ value: locale, label: manifest.languages[locale as keyof typeof manifest.languages].label }))
+  const languageLabel = (locale: string) => manifest.languages[locale as keyof typeof manifest.languages]?.label ?? locale
+  const options = [{ value: "auto", label: t("languageAuto") }, ...manifest.supportedLocales.map(locale => ({ value: locale, label: languageLabel(locale) }))]
+  const followsWindows = controller.languageChoice === "auto"
   const interval = (ms: number) => ms % 1000 === 0 ? t("units.seconds", { value: ms / 1000 }) : t("units.milliseconds", { value: ms })
   return <>
     <SettingsSection title={t("sections.language")}>
-      <SettingsRow title={t("language")} description={t("languageHint")}><span data-field="locale"><Select label={t("language")} value={controller.locale} onChange={controller.setLocale} options={options} /></span></SettingsRow>
+      <SettingsRow title={t("language")} description={followsWindows ? t("languageAutoHint", { language: languageLabel(controller.locale) }) : t("languageHint")}><span data-field="locale" data-choice={controller.languageChoice}><Select label={t("language")} value={controller.languageChoice} onChange={controller.setLocale} options={options} /></span></SettingsRow>
     </SettingsSection>
     <SettingsSection title={t("sections.capture")}>
       <AdapterRow controller={controller} />
