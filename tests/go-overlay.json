@@ -276,6 +276,8 @@
     "tests/desktop/environment_test.go": "",
     "internal/desktop/central_environment_test.go": "tests/desktop/environment_test.go",
     "tests/desktop/autostart_test.go": "",
-    "internal/desktop/central_autostart_test.go": "tests/desktop/autostart_test.go"
+    "internal/desktop/central_autostart_test.go": "tests/desktop/autostart_test.go",
+    "tests/desktop/desktop_window_test.go": "",
+    "internal/desktop/central_desktop_window_test.go": "tests/desktop/desktop_window_test.go"
   }
 }
