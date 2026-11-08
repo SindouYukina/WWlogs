@@ -158,19 +158,25 @@ func Run(options Options) error {
 		bridge.openBrowser = app.Browser.OpenURL
 	}
 
-	desktopURL, desktopWidth, desktopHeight := "/?view=desktop", 1280, 820
+	desktopURL, shape := "/?view=desktop", desktopShape
 	if options.Showcase {
-		desktopURL, desktopWidth, desktopHeight = "/?view=showcase", 1360, 880
+		desktopURL, shape = "/?view=showcase", showcaseShape
 	}
 	desktop := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Name:             desktopWindowName,
 		Title:            "WWlogs",
-		Width:            desktopWidth,
-		Height:           desktopHeight,
-		MinWidth:         980,
-		MinHeight:        620,
+		Width:            shape.width,
+		Height:           shape.height,
+		MinWidth:         shape.minWidth,
+		MinHeight:        shape.minHeight,
 		URL:              desktopURL,
 		BackgroundColour: application.NewRGB(15, 17, 23),
+		InitialPosition:  application.WindowCentered,
+	})
+	// Wails reads the displays only when the application runs, so a work area smaller than the designed window is
+	// handled then.
+	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
+		fitDesktopWindow(desktop, app.Screen.GetPrimary(), shape)
 	})
 	if options.Showcase {
 		// The Showcase is a review surface: it must not rewrite the user's saved windows or settings.
