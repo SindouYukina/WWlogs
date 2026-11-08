@@ -46,4 +46,6 @@ export const host = {
   setUpdateInterval: (ms: number) => call<SettingsState>("SetUpdateInterval", ms),
   updateOverlay: (kind: OverlayKind, change: OverlayChange) => call<OverlayStates>("UpdateOverlay", kind, change),
   resetOverlay: (kind: OverlayKind) => call<void>("ResetOverlay", kind),
+  /** Forgets the Desktop window's remembered size and position and returns it to the first-launch default. */
+  resetDesktopWindow: () => call<void>("ResetDesktopWindow"),
 }

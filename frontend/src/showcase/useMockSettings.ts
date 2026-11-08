@@ -43,6 +43,7 @@ export function useMockSettings(theme: ThemeId, setTheme: (theme: ThemeId) => vo
     overlays,
     updateOverlay: (kind: OverlayKind, change) => setOverlays(current => ({ ...current, [kind]: { ...current[kind], ...change } })),
     resetOverlay: () => undefined,
+    resetDesktopWindow: () => undefined,
     // Mock identity: unmistakably not a real build (no version, no commit, never an official number).
     app: { version: "showcase", buildNumber: 0, official: false, commit: "mock", dirty: "unknown", profile: "development" },
     failed: false,

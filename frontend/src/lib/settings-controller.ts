@@ -48,6 +48,8 @@ export interface SettingsController {
   overlays: OverlayStates | undefined
   updateOverlay: (kind: OverlayKind, change: OverlayChange) => void
   resetOverlay: (kind: OverlayKind) => void
+  /** Returns the Desktop window to its default size and position; the remembered ones are forgotten. */
+  resetDesktopWindow: () => void
   app: AppIdentity | undefined
   /** A setting could not be saved. Values are unchanged because the host only reports what it applied. */
   failed: boolean
@@ -158,6 +160,7 @@ export function useLiveSettings(snapshot: Snapshot | null, connected: boolean, c
     overlays: snapshot?.overlays,
     updateOverlay: (kind, change) => guard(host.updateOverlay(kind, change)),
     resetOverlay: kind => guard(host.resetOverlay(kind)),
+    resetDesktopWindow: () => guard(host.resetDesktopWindow()),
     app: snapshot?.service.app,
     failed,
     loadFailed,

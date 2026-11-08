@@ -134,8 +134,10 @@ func Run(options Options) error {
 	defer stopWatcher()
 	go bridge.process.Run(watcherContext, func() bool { return captureService.Status().State == service.StateRunning })
 	var app *application.App
+	var keeper *desktopWindowKeeper
 	shutdown := newShutdownGate(func(ctx context.Context) error {
 		err := captureService.Shutdown(ctx)
+		keeper.close(true)
 		bridge.overlays.close(true)
 		return err
 	}, func() { app.Quit() })
@@ -158,26 +160,37 @@ func Run(options Options) error {
 		bridge.openBrowser = app.Browser.OpenURL
 	}
 
-	desktopURL, shape := "/?view=desktop", desktopShape
+	desktopURL, width, height := "/?view=desktop", desktopShape.width, desktopShape.height
 	if options.Showcase {
-		desktopURL, shape = "/?view=showcase", showcaseShape
+		desktopURL = "/?view=showcase"
+	} else {
+		keeper = newDesktopWindowKeeper(app, settings, desktopShape)
+		bridge.desktopWindow = keeper
+		width, height = keeper.size()
 	}
 	desktop := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Name:             desktopWindowName,
 		Title:            "WWlogs",
-		Width:            shape.width,
-		Height:           shape.height,
-		MinWidth:         shape.minWidth,
-		MinHeight:        shape.minHeight,
+		Width:            width,
+		Height:           height,
+		MinWidth:         desktopShape.minWidth,
+		MinHeight:        desktopShape.minHeight,
 		URL:              desktopURL,
 		BackgroundColour: application.NewRGB(15, 17, 23),
 		InitialPosition:  application.WindowCentered,
+		Hidden:           keeper != nil,
 	})
-	// Wails reads the displays only when the application runs, so a work area smaller than the designed window is
-	// handled then.
-	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
-		fitDesktopWindow(desktop, app.Screen.GetPrimary(), shape)
-	})
+	if keeper != nil {
+		// The window opens where the user left it: the keeper places and shows it once its runtime is ready.
+		keeper.attach(desktop)
+		defer keeper.close(false)
+	} else {
+		// The Showcase review window keeps its default and saves nothing. Wails reads the displays only when the
+		// application runs, so a work area smaller than the default is handled then.
+		app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
+			fitDesktopWindow(desktop, app.Screen.GetPrimary(), desktopShape)
+		})
+	}
 	if options.Showcase {
 		// The Showcase is a review surface: it must not rewrite the user's saved windows or settings.
 		if options.ShowcaseOverlays {

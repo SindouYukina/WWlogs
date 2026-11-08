@@ -436,12 +436,19 @@ func rescaleSource(base *OverlayPlacement, rescaled application.Rect, current Ov
 
 // currentPlacement is the window's bounds with the scales they were laid out for.
 func (m *overlayManager) currentPlacement(window *application.WebviewWindow, overlayScale int) OverlayPlacement {
+	placement := physicalPlacement(window)
+	placement.OverlayScale = overlayScale
+	return placement
+}
+
+// physicalPlacement is a window's bounds in physical pixels with the scale of the display it is on.
+func physicalPlacement(window *application.WebviewWindow) OverlayPlacement {
 	scale := 1.0
 	if screen, err := window.GetScreen(); err == nil && screen != nil && screen.ScaleFactor > 0 {
 		scale = float64(screen.ScaleFactor)
 	}
 	bounds := window.PhysicalBounds()
-	return OverlayPlacement{X: bounds.X, Y: bounds.Y, Width: bounds.Width, Height: bounds.Height, Scale: scale, OverlayScale: overlayScale}
+	return OverlayPlacement{X: bounds.X, Y: bounds.Y, Width: bounds.Width, Height: bounds.Height, Scale: scale}
 }
 
 // createLocked creates the native window. The caller holds mu.
@@ -497,8 +504,13 @@ func toRect(placement OverlayPlacement) application.Rect {
 }
 
 func (m *overlayManager) screens() []overlayScreen {
+	return displayScreens(m.app)
+}
+
+// displayScreens lists the displays in physical pixels, as window placements are kept.
+func displayScreens(app *application.App) []overlayScreen {
 	var result []overlayScreen
-	for _, screen := range m.app.Screen.GetAll() {
+	for _, screen := range app.Screen.GetAll() {
 		result = append(result, overlayScreen{Bounds: screen.PhysicalBounds, WorkArea: screen.PhysicalWorkArea, Scale: float64(screen.ScaleFactor), Primary: screen.IsPrimary})
 	}
 	return result
