@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sync"
@@ -199,6 +200,25 @@ type settingsStore struct {
 	catalog localeCatalog
 	// dirty marks a change held in memory until the next write, such as an opacity slider drag.
 	dirty bool
+	// localeSeed says whether this launch has no valid saved language, and whether one chosen now may be written.
+	localeSeed localeSeedMode
+}
+
+// localeSeedMode is what a launch may do about the UI language. A valid saved language is the user's and is never touched.
+type localeSeedMode int
+
+const (
+	localeSeedNone localeSeedMode = iota
+	// localeSeedPersist has no usable language in a readable state, so a chosen language is saved.
+	localeSeedPersist
+	// localeSeedMemoryOnly is a damaged settings file: it is kept as evidence, so the choice lasts for this launch only.
+	localeSeedMemoryOnly
+)
+
+// bootLocaleQuery names the current language in a window's URL, so the first render is already in it rather than in the
+// frontend's fallback until the first snapshot arrives.
+func bootLocaleQuery(s *settingsStore) string {
+	return "lang=" + url.QueryEscape(s.current().Settings.Locale)
 }
 
 func settingsPath() string {
@@ -229,10 +249,12 @@ func loadSettings(path string, catalog localeCatalog) *settingsStore {
 	store := &settingsStore{path: path, catalog: catalog, state: SettingsState{Settings: Settings{Version: settingsVersion, Locale: catalog.FallbackLocale, Overlays: defaultOverlays()}, LocaleRevision: 1}}
 	file, err := os.Open(path)
 	if errors.Is(err, os.ErrNotExist) && path != "" {
+		store.localeSeed = localeSeedPersist
 		return store
 	}
 	if err != nil {
 		store.state.Warning = "settings_read_failed"
+		store.localeSeed = localeSeedMemoryOnly
 		return store
 	}
 	defer file.Close()
@@ -253,6 +275,7 @@ func loadSettings(path string, catalog localeCatalog) *settingsStore {
 	}
 	if err != nil {
 		store.state.Warning = "settings_invalid"
+		store.localeSeed = localeSeedMemoryOnly
 		return store
 	}
 	if value.Theme != "" && !validTheme(value.Theme) {
@@ -263,6 +286,7 @@ func loadSettings(path string, catalog localeCatalog) *settingsStore {
 	}
 	if !catalog.valid(value.Locale) {
 		value.Locale = catalog.FallbackLocale
+		store.localeSeed = localeSeedPersist
 	}
 	if value.Overlays == nil {
 		// v0.5 had one Overlay with a different layout. Its visibility carries over; its geometry does not fit either window.
@@ -281,6 +305,27 @@ func loadSettings(path string, catalog localeCatalog) *settingsStore {
 	}
 	store.state.Settings = value
 	return store
+}
+
+// seedInitialLocale applies the user's preferred languages when this launch has no valid saved language, and saves the
+// result so later launches treat it as the user's preference. It runs once and only ever replaces the catalog fallback
+// that loadSettings left in place: a saved language, and the fallback itself, are unaffected.
+func (s *settingsStore) seedInitialLocale(preferred []string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	mode := s.localeSeed
+	s.localeSeed = localeSeedNone
+	if mode == localeSeedNone {
+		return
+	}
+	value := s.state.Settings
+	value.Locale = initialLocaleFor(preferred, s.catalog)
+	if mode == localeSeedPersist {
+		if _, err := s.writeLocked(value); err == nil {
+			return
+		}
+	}
+	s.state.Settings = value
 }
 
 func (s *settingsStore) current() SettingsState {
