@@ -40,6 +40,7 @@ func parseOptions(arguments []string, output io.Writer) (Options, error) {
 	simulateEnvironment := flags.String("simulate-capture-environment", "", "Development: comma-separated states, one per check, for UI checks; the last repeats and \"ready\" is the real check")
 	npcapOffline := flags.Bool("simulate-npcap-offline", false, "Development: make the official Npcap sources unreachable, for UI checks")
 	browserLog := flags.String("record-browser-url", "", "Development: append URLs to this file instead of opening the browser, for UI checks")
+	simulatedLanguages := flags.String("simulate-ui-languages", "", "Development: comma-separated Windows display languages in preference order, for UI checks of a first launch")
 	if err := flags.Parse(arguments); err != nil {
 		return Options{}, err
 	}
@@ -54,6 +55,11 @@ func parseOptions(arguments []string, output io.Writer) (Options, error) {
 	var openBrowser func(string) error
 	if *browserLog != "" {
 		openBrowser = func(address string) error { return appendLine(*browserLog, address) }
+	}
+	var systemLanguages func() []string
+	if *simulatedLanguages != "" {
+		languages := strings.Split(*simulatedLanguages, ",")
+		systemLanguages = func() []string { return languages }
 	}
 	if *replay != "" && *diagnostics && flagsWereSet(flags, "capture-diagnostics") {
 		return Options{}, errors.New("-capture-diagnostics applies to live capture only")
@@ -84,6 +90,7 @@ func parseOptions(arguments []string, output io.Writer) (Options, error) {
 		EnvironmentProbe: environmentProbe,
 		NpcapTransport:   npcapTransport,
 		OpenBrowser:      openBrowser,
+		SystemLanguages:  systemLanguages,
 	}, nil
 }
 

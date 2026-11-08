@@ -454,7 +454,7 @@ func physicalPlacement(window *application.WebviewWindow) OverlayPlacement {
 // createLocked creates the native window. The caller holds mu.
 func (m *overlayManager) createLocked(entry *overlayEntry) {
 	entry.foregroundAtCreation = foregroundWindow()
-	window := m.app.Window.NewWithOptions(overlayWindowOptions(entry.spec.at(m.store.overlay(entry.kind).Scale), "/?view=overlay&surface="+entry.kind))
+	window := m.app.Window.NewWithOptions(overlayWindowOptions(entry.spec.at(m.store.overlay(entry.kind).Scale), "/?view=overlay&surface="+entry.kind+"&"+bootLocaleQuery(m.store)))
 	entry.window = window
 	window.OnWindowEvent(events.Common.WindowRuntimeReady, func(*application.WindowEvent) { m.onReady(entry) })
 	changed := func(*application.WindowEvent) { m.persistSoon(entry) }

@@ -46,6 +46,8 @@ type Options struct {
 	PreviewFontRoot string
 	// WebviewArguments are extra browser arguments for rendering experiments; only Development flags can set them.
 	WebviewArguments []string
+	// SystemLanguages replaces the Windows display-language query for controlled UI checks. Only Development sets it.
+	SystemLanguages func() []string
 	// EnvironmentProbe, NpcapTransport and OpenBrowser replace system access for controlled UI checks. Only Development
 	// flags can set them; nil means the real system.
 	EnvironmentProbe func() capture.CaptureEnvironment
@@ -95,6 +97,11 @@ func Run(options Options) error {
 		return err
 	}
 	settings := loadSettings(settingsPath(), catalog)
+	systemLanguages := options.SystemLanguages
+	if systemLanguages == nil {
+		systemLanguages = userPreferredUILanguages
+	}
+	settings.seedInitialLocale(systemLanguages())
 	if options.Locale != "" {
 		locale := options.Locale
 		// Preserve older desktop CLI aliases using only the bundled manifest's Master mapping.
@@ -160,7 +167,7 @@ func Run(options Options) error {
 		bridge.openBrowser = app.Browser.OpenURL
 	}
 
-	desktopURL, width, height := "/?view=desktop", desktopShape.width, desktopShape.height
+	desktopURL, width, height := "/?view=desktop&"+bootLocaleQuery(settings), desktopShape.width, desktopShape.height
 	if options.Showcase {
 		desktopURL = "/?view=showcase"
 	} else {
