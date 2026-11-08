@@ -16,131 +16,82 @@ export function effectRemaining(effect:Effect,snapshot:Snapshot|null,connection:
   return Math.max(0,effect.remainingSeconds)
 }
 
-/** Who holds an effect, the only grouping the Effects Overlay draws: one row group per local role, then other local
- * holders, enemies, and holders whose relation the capture could not establish. */
-export interface EffectGroup {
-  key: string
-  kind: "role" | "team" | "enemy" | "unresolved"
-  roleId?: number
+type OrderedEffect = Pick<Effect, "key" | "lifecycle" | "remainingStatus" | "expectedExpiry" | "stale" | "hudIcon">
+
+/**
+ * The moment an effect is expected to end, in capture time, or undefined when it has no reliable time. An expiry only
+ * moves when the engine reports a new time, so sorting by it never reorders effects because time passed. Trust gates that
+ * hide every countdown at once (a stalled snapshot, a suspect context) leave it in place, so effects do not reshuffle
+ * while their seconds are hidden.
+ */
+export function effectExpiryMs(effect: Pick<Effect, "lifecycle" | "remainingStatus" | "expectedExpiry" | "stale">): number | undefined {
+  if (effect.stale || effect.lifecycle !== "active" || effect.remainingStatus !== "estimated" || effect.expectedExpiry === undefined) return undefined
+  const at = Date.parse(effect.expectedExpiry)
+  return Number.isFinite(at) ? at : undefined
 }
 
-export function effectGroupOf(effect: Pick<Effect, "display" | "holderRoleId">): EffectGroup {
-  switch (effect.display?.target) {
-    case "team": return effect.holderRoleId !== undefined ? { key: `role-${effect.holderRoleId}`, kind: "role", roleId: effect.holderRoleId } : { key: "team", kind: "team" }
-    case "enemy": return { key: "enemy", kind: "enemy" }
-    default: return { key: "unresolved", kind: "unresolved" }
-  }
+/**
+ * The strip's order: soonest to end first, effects without a reliable time last. Equal keys keep a fixed order through
+ * the instance key, so effects that expire together never trade places. Among effects without a time, those the game
+ * draws with an icon come first, as in the engine's list.
+ */
+export function compareEffects(a: OrderedEffect, b: OrderedEffect): number {
+  const expiryA = effectExpiryMs(a)
+  const expiryB = effectExpiryMs(b)
+  if (expiryA !== undefined && expiryB !== undefined && expiryA !== expiryB) return expiryA - expiryB
+  if ((expiryA === undefined) !== (expiryB === undefined)) return expiryA === undefined ? 1 : -1
+  if (expiryA === undefined && (a.hudIcon === true) !== (b.hudIcon === true)) return a.hudIcon === true ? -1 : 1
+  return a.key < b.key ? -1 : a.key > b.key ? 1 : 0
 }
 
-const groupRank: Record<EffectGroup["kind"], number> = { role: 0, team: 1, enemy: 2, unresolved: 3 }
-
-/** A fixed group order (roles by RoleId, other team holders, enemies, unresolved) so a new effect never moves a group. */
-export function compareEffectGroups(a: EffectGroup, b: EffectGroup): number {
-  return groupRank[a.kind] - groupRank[b.kind] || (a.roleId ?? 0) - (b.roleId ?? 0)
+export function orderEffects<T extends OrderedEffect>(effects: readonly T[]): T[] {
+  return [...effects].sort(compareEffects)
 }
 
-/** The measured sizes one Effects panel lays out against, in CSS pixels. */
-export interface EffectGridLayout {
-  /** Height and width of the panel. */
-  available: number
+/** An effect with an icon of its own is a full cell; any other effect is a narrow gauge, so it never passes for one. */
+export type EffectCellSize = "icon" | "gauge"
+
+export function effectCellSize(effect: Pick<Effect, "hudIcon" | "hudIconGeneric">): EffectCellSize {
+  return effect.hudIcon === true && effect.hudIconGeneric !== true ? "icon" : "gauge"
+}
+
+/** The measured sizes of the strip, in CSS pixels. */
+export interface EffectStripLayout {
   width: number
-  head: number
-  /** The gap between the panel's head, tile groups and count of hidden effects. */
-  sectionGap: number
-  hint: number
-  /** An effect the game draws with its icon is a tile. */
-  tile: number
-  tileGap: number
-  /** An effect without a game icon is a small gauge chip after its holder's tiles. */
-  chip: number
-  chipGap: number
-  /** The gap between a holder's tiles and its chips. */
-  blockGap: number
-  /** Width of a group's holder mark and the gap between it and the tiles. */
-  groupHead: number
-  groupHeadGap: number
-  groupGap: number
+  icon: number
+  gauge: number
+  gap: number
+  /** The count of effects that did not fit. */
+  more: number
 }
 
-/** Items per line of one group, for a given item size and gap. */
-export function effectGridColumns(layout: EffectGridLayout, size = layout.tile, gap = layout.tileGap): number {
-  return Math.max(1, Math.floor((layout.width - layout.groupHead - layout.groupHeadGap + gap) / (size + gap)))
-}
+export const stripCellWidth = (size: EffectCellSize, layout: EffectStripLayout) => size === "icon" ? layout.icon : layout.gauge
 
-interface GroupCount { tiles: number; chips: number }
-
-function blockHeight(count: number, columns: number, size: number, gap: number): number {
-  const lines = Math.ceil(count / columns)
-  return lines === 0 ? 0 : lines * size + (lines - 1) * gap
-}
-
-function gridHeight(counts: Iterable<GroupCount>, layout: EffectGridLayout): number {
-  const tileColumns = effectGridColumns(layout)
-  const chipColumns = effectGridColumns(layout, layout.chip, layout.chipGap)
-  let height = 0
-  let groups = 0
-  for (const { tiles, chips } of counts) {
-    if (tiles + chips === 0) continue
-    const tileBlock = blockHeight(tiles, tileColumns, layout.tile, layout.tileGap)
-    const chipBlock = blockHeight(chips, chipColumns, layout.chip, layout.chipGap)
-    // A holder mark is as tall as a tile, so a holder with chips only still takes a tile's height.
-    height += Math.max(layout.tile, tileBlock + chipBlock + (tileBlock > 0 && chipBlock > 0 ? layout.blockGap : 0))
-    groups += 1
-  }
-  return groups === 0 ? 0 : height + (groups - 1) * layout.groupGap
-}
-
-export interface EffectGroupView<T> {
-  group: EffectGroup
-  /** Effects the game draws with an icon, in the engine's order. */
-  tiles: T[]
-  /** Effects without a game icon, in the engine's order. */
-  chips: T[]
-}
-
-export interface EffectGrid<T> {
-  groups: EffectGroupView<T>[]
+export interface EffectStrip {
+  /** How many of the ordered effects are drawn. */
   visible: number
   /** Eligible effects not drawn: visible + overflow always equals eligible. */
   overflow: number
 }
 
-/** An unfitted panel (a review stage that grows with its content) shows at most this many effects. */
-export const unfittedEffectLimit = 48
-
 /**
- * Splits the engine's display set into drawn effects and an overflow count. The engine decides which effects are
- * eligible (Go effectDisplayFor) and their priority order; this keeps the longest prefix of that order that fits the
- * panel once grouped by holder (tiles first, then chips), leaving a line for the count of hidden effects whenever one is
- * needed. Unclassified effects are not part of the display set: they only need that line. The split depends only on
- * the listed effects, their holders and the panel's measured size, so countdowns and animations cannot make it move.
+ * Splits the ordered effects into the longest prefix that fits one line and a count of the rest, leaving room for that
+ * count whenever one is needed, so the soonest to end stay visible. It depends only on the ordered effects and the
+ * measured width, so a countdown cannot change it. The engine's display set is never filtered here.
  */
-export function fitEffectGrid<T>(listed: readonly T[], groupOf: (item: T) => EffectGroup, isTile: (item: T) => boolean, eligible: number, unclassified: number, layout: EffectGridLayout | undefined): EffectGrid<T> {
-  const total = Math.min(listed.length, eligible)
-  let visible = Math.min(total, unfittedEffectLimit)
-  if (layout) {
-    const counts = new Map<string, GroupCount>()
-    visible = 0
-    // Height grows with every effect; only the hint line can disappear, and only when every eligible effect is drawn.
-    // So the prefixes that fit are 1..k, plus possibly the whole set without a hint: no early exit.
-    for (let next = 1; next <= total; next++) {
-      const item = listed[next - 1]!
-      const key = groupOf(item).key
-      const count = counts.get(key) ?? { tiles: 0, chips: 0 }
-      if (isTile(item)) count.tiles += 1
-      else count.chips += 1
-      counts.set(key, count)
-      const hint = next < eligible || unclassified > 0 ? layout.hint + layout.sectionGap : 0
-      if (gridHeight(counts.values(), layout) <= layout.available - layout.head - layout.sectionGap - hint) visible = next
-    }
+export function fitEffectStrip<T>(ordered: readonly T[], sizeOf: (item: T) => EffectCellSize, eligible: number, layout: EffectStripLayout | undefined): EffectStrip {
+  const total = Math.min(ordered.length, eligible)
+  if (layout === undefined) return { visible: 0, overflow: eligible }
+  let used = 0
+  let fitting = 0
+  let fittingWithCount = 0
+  for (let index = 0; index < total; index++) {
+    const next = used + (index > 0 ? layout.gap : 0) + stripCellWidth(sizeOf(ordered[index]!), layout)
+    if (next > layout.width) break
+    used = next
+    fitting = index + 1
+    if (next + layout.gap + layout.more <= layout.width) fittingWithCount = fitting
   }
-  const groups = new Map<string, EffectGroupView<T>>()
-  for (const item of listed.slice(0, visible)) {
-    const group = groupOf(item)
-    const entry = groups.get(group.key) ?? { group, tiles: [], chips: [] }
-    if (isTile(item)) entry.tiles.push(item)
-    else entry.chips.push(item)
-    groups.set(group.key, entry)
-  }
-  return { groups: [...groups.values()].sort((a, b) => compareEffectGroups(a.group, b.group)), visible, overflow: eligible - visible }
+  const visible = fitting === eligible ? fitting : fittingWithCount
+  return { visible, overflow: eligible - visible }
 }

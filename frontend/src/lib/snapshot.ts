@@ -231,6 +231,10 @@ export interface Effect {
   kind: string
   /** The game draws this effect in a HUD buff bar with an icon of its own; it says nothing about its meaning. */
   hudIcon?: boolean
+  /** The game shares this icon across many definitions, so it does not identify the effect. */
+  hudIconGeneric?: boolean
+  /** The element the effect's own definition states (ElementInfo id). Absent means none is established. */
+  elementId?: number
   /** The engine's display decision; listed effects are always eligible. */
   display: { eligibility: string; target?: "team" | "enemy" | "unresolved" }
   stackCount?: number
@@ -238,6 +242,8 @@ export interface Effect {
   durationSeconds?: number
   remainingStatus: string
   remainingSeconds?: number
+  /** Capture time the engine expects the effect to end. It changes only when the engine reports a new time. */
+  expectedExpiry?: string
   stale?: boolean
   firstObservedAt: string
   lastUpdatedAt: string

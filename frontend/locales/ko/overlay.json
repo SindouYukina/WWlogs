@@ -1,12 +1,8 @@
 {
   "drag": "끌어서 이동 · 가장자리로 크기 조정",
-  "effects": "버프 / 디버프",
   "noEffects": "관련 전투 효과가 관측되지 않았습니다.",
   "omitted": "추가 효과 {{count}}개",
   "unclassified": "미분류 {{count}}",
-  "targetEnemy": "적",
-  "holderTeam": "내 파티",
-  "holderUnresolved": "보유자 미확인",
   "tileGameIcon": "게임 아이콘이 있는 효과",
   "tileNoIcon": "게임 아이콘이 없는 효과",
   "tileRemaining": "약 {{seconds}}초 남음",

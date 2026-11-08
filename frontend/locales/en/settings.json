@@ -123,14 +123,14 @@
     "seconds": "{{value}} s"
   },
   "effectsLegend": {
-    "title": "Effect tiles",
-    "gameIcon": "Square with an icon: the icon the game itself shows for this effect in its HUD. Bottom-right: estimated seconds left; bottom bar: share of the duration left; top-right: stacks from two.",
-    "attribute": "Small square: no game icon; changes a combat attribute, whether up or down is not established.",
-    "state": "Small circle: no game icon; another combat state whose meaning is not established.",
-    "enemyLink": "Small diamond: no game icon; tied to an enemy, meaning not established.",
-    "fill": "Fill of a small mark: share of the duration left. Hollow: no time from the game. Center dot: two or more stacks.",
-    "ailment": "Red: a confirmed element ailment (harmful to its holder).",
-    "holders": "Rows start with who holds the effects: a character, the crosshair for enemies.",
+    "title": "Effect strip",
+    "gameIcon": "Icon: the icon the game itself shows for this effect in its HUD. The colored area inside is the share of the duration left, below it are the estimated seconds left, and at the top right are the stacks from two.",
+    "generic": "Dim icon in a narrow cell: an icon the game shares across many effects (such as crossed swords), so it cannot tell them apart.",
+    "gauge": "Narrow cell: the game has no icon for this effect. The small center mark is its kind: square changes a combat attribute, circle is another combat state, diamond relates to enemies. Direction and meaning are not confirmed.",
+    "color": "Fill color: the element the effect's definition states; gray when it states none or it cannot be confirmed. Color does not mean buff or debuff.",
+    "untimed": "Hatched with no seconds: the game gives no reliable time.",
+    "more": "+N: effects that do not fit the width of the window. The window can be widened in Edit Mode.",
+    "order": "Effects run left to right by when they end: soonest first, effects without a time last.",
     "noNames": "Effects are shown without names, as in the game; most effects have no name in the game data."
   }
 }

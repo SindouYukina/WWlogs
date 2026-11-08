@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react"
+import { useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
-import { Button, ContentSwitch, Icon, NumberField, Segmented, Select, SettingsRow, SettingsSection, Sidebar, Slider, Stepper, ThemeBackdrop, ThemePicker, Toggle, Tooltip, resolveTheme, type SidebarGroupModel } from "@/design"
+import { Button, ContentSwitch, EffectCell, EffectMore, Icon, NumberField, Segmented, Select, SettingsRow, SettingsSection, Sidebar, Slider, Stepper, ThemeBackdrop, ThemePicker, Toggle, Tooltip, resolveTheme, type SidebarGroupModel } from "@/design"
 import { manifest } from "@/i18n"
 import { buildNumberText, profileKey, revisionText, versionText, type IdentityText } from "@/lib/build-identity"
 import { adapterProblem, environmentNotice } from "@/lib/capture-environment"
@@ -132,27 +132,26 @@ function OverlayPage({ kind, controller }: { kind: OverlayKind; controller: Sett
   </div>
 }
 
-/** What the Effects Overlay's tiles and chips mean. The overlay carries no text per effect, so it is explained here. */
+/** What the Effects Overlay's cells mean. The overlay carries no text per effect, so it is explained here. */
 function EffectsLegend() {
   const { t } = useTranslation("settings")
-  const game = (polarity?: string) => <span className="ww-effect-tile ww-effects-legend-swatch" aria-hidden="true" data-icon="game" data-polarity={polarity}>
-    <span className="ww-effects-legend-game" />
-    {!polarity && <><span className="ww-effect-tile-bar" style={{ "--ww-remaining": 0.6 } as CSSProperties}><span /></span><span className="ww-effect-tile-time ww-num">8</span><span className="ww-effect-tile-stack ww-num">3</span></>}
-  </span>
-  const chip = (mark: string, fill: number | undefined, stacked = false) => <span className="ww-effect-chip ww-effects-legend-swatch" data-mark={mark} data-timed={fill !== undefined} data-stacked={stacked}>{fill !== undefined && <span className="ww-effect-chip-fill" style={{ "--ww-remaining": fill } as CSSProperties} />}</span>
+  const describe = () => ""
+  const cell = (key: string, props: Partial<ComponentProps<typeof EffectCell>> & Pick<ComponentProps<typeof EffectCell>, "size" | "icon">) => <span key={key} className="ww-effects-legend-sample" data-size={props.size}><EffectCell kind="stat_modifier" fill={0.6} untimed={false} seconds="8" low={false} stale={false} describe={describe} {...props} /></span>
+  const samples = (...content: ReactNode[]) => <span className="ww-effects-legend-samples" aria-hidden="true">{content}</span>
+  // Sample cells use the game's own Aero Erosion icon and a shared weapon icon; every other sample draws no icon.
   const items: { key: string; swatch: ReactNode }[] = [
-    { key: "gameIcon", swatch: game() },
-    { key: "attribute", swatch: chip("attribute", 0.6) },
-    { key: "state", swatch: chip("state", 0.6) },
-    { key: "enemyLink", swatch: chip("enemy-link", 0.6) },
-    { key: "fill", swatch: <span className="ww-effects-legend-chips" aria-hidden="true">{chip("attribute", 0.35)}{chip("attribute", undefined)}{chip("attribute", 1, true)}</span> },
-    { key: "ailment", swatch: game("debuff") },
-    { key: "holders", swatch: <span className="ww-effect-group-glyph" aria-hidden="true"><Icon name="target" size={14} /></span> },
+    { key: "gameIcon", swatch: samples(cell("icon", { size: "icon", icon: "game", effectId: 10041000, elementId: 4, stackCount: 3 })) },
+    { key: "generic", swatch: samples(cell("generic", { size: "gauge", icon: "generic", effectId: 110025020 })) },
+    { key: "gauge", swatch: samples(cell("attribute", { size: "gauge", icon: "none" }), cell("state", { size: "gauge", icon: "none", kind: "buff_marker" }), cell("enemy", { size: "gauge", icon: "none", kind: "runtime_link" })) },
+    { key: "color", swatch: samples(cell("element", { size: "gauge", icon: "none", elementId: 2 }), cell("neutral", { size: "gauge", icon: "none" })) },
+    { key: "untimed", swatch: samples(cell("untimed", { size: "gauge", icon: "none", fill: undefined, untimed: true, seconds: undefined })) },
+    { key: "more", swatch: <span className="ww-effects-legend-samples ww-effects-legend-more" aria-hidden="true"><EffectMore count={12} label="" /></span> },
   ]
   return <SettingsSection title={t("effectsLegend.title")}>
     <ul className="ww-effects-legend" data-field="effects-legend">
       {items.map(item => <li key={item.key}><span className="ww-effects-legend-mark">{item.swatch}</span><span>{t(`effectsLegend.${item.key}`)}</span></li>)}
     </ul>
+    <p className="ww-effects-legend-note">{t("effectsLegend.order")}</p>
     <p className="ww-effects-legend-note">{t("effectsLegend.noNames")}</p>
   </SettingsSection>
 }

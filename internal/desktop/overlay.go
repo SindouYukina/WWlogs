@@ -30,7 +30,7 @@ type overlaySpec struct {
 
 var overlaySpecs = map[string]overlaySpec{
 	overlayCombat:  {windowName: "overlay-combat", title: "WWlogs Combat Overlay", width: 486, height: 268, minWidth: 340, minHeight: 150, maxWidth: 1200, maxHeight: 900, offsetX: 48, offsetY: 48, defaultOpacity: 74},
-	overlayEffects: {windowName: "overlay-effects", title: "WWlogs Effects Overlay", width: 320, height: 420, minWidth: 220, minHeight: 120, maxWidth: 900, maxHeight: 1200, offsetX: 48, offsetY: 336, defaultOpacity: 62},
+	overlayEffects: {windowName: "overlay-effects", title: "WWlogs Effects Overlay", width: 640, height: 112, minWidth: 220, minHeight: 72, maxWidth: 1600, maxHeight: 1200, offsetX: 48, offsetY: 336, defaultOpacity: 62},
 }
 
 // overlayWindowOptions is the single definition of an Overlay's native window, for production and Showcase surfaces.

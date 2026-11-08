@@ -257,9 +257,11 @@ func (s *Session) Run(ctx context.Context, publish func(ViewSnapshot)) (result S
 	}()
 
 	lastPublish := time.Time{}
+	var newestFrame, newestFrameWall time.Time
 	maybePublish := func(now time.Time) {
 		if publish != nil && (lastPublish.IsZero() || now.Sub(lastPublish) >= time.Duration(s.publishInterval.Load())) {
 			lastPublish = now
+			p.viewClockLead = liveViewClockLead(newestFrameWall, now)
 			publish(p.viewSnapshot())
 		}
 	}
@@ -326,6 +328,9 @@ loop:
 		direction := packetDirection(packet, s.cfg.LocalIPv4, udp, s.cfg.MinPort, s.cfg.MaxPort)
 		consumeDatagram(udp.Payload, direction, capturedAt, streams, p, &stats)
 		if live {
+			if !p.currentFrameTime.Equal(newestFrame) {
+				newestFrame, newestFrameWall = p.currentFrameTime, receivedAt
+			}
 			p.observePacketTiming(capturedAt, receivedAt, time.Now())
 			p.sessionHealth.observeClock(time.Now())
 		} else {
@@ -337,11 +342,27 @@ loop:
 	p.sampleCaptureStats(handle, time.Now(), true)
 	p.finishCapture()
 	if publish != nil {
+		p.viewClockLead = 0
 		final := p.viewSnapshot()
 		final.Final = true
 		publish(final)
 	}
 	return result, err
+}
+
+// liveViewClockLeadLimit bounds how long countdowns keep running with no new game frame. It matches the listening
+// status's stale threshold: the longest frame gap in the archived captures is 5.98 s, and past 8 s the capture is no
+// longer known to be seeing the game.
+const liveViewClockLeadLimit = 8 * time.Second
+
+// liveViewClockLead returns how far a live publish reads the Effects view past the newest frame. The game clock keeps
+// running between packets, so without it a quiet connection would freeze every countdown until the next frame. A replay
+// never records a frame's wall time, so its view stays exactly at capture time.
+func liveViewClockLead(newestFrameWall, now time.Time) time.Duration {
+	if newestFrameWall.IsZero() {
+		return 0
+	}
+	return min(max(now.Sub(newestFrameWall), 0), liveViewClockLeadLimit)
 }
 
 // waitUntil sleeps until deadline; it returns false when ctx ends first.

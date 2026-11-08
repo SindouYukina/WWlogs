@@ -245,7 +245,11 @@ type ViewEffect struct {
 	Kind             EffectKind           `json:"kind"`
 	// HUDIcon reports that the game draws this effect in a HUD buff bar with an icon of its own (effect_hud_cues.go);
 	// only such an effect has an icon worth requesting. It says nothing about the effect's meaning.
-	HUDIcon          bool                  `json:"hudIcon,omitempty"`
+	HUDIcon bool `json:"hudIcon,omitempty"`
+	// HUDIconGeneric reports that the icon is one the game shares across many definitions, so it does not identify the effect.
+	HUDIconGeneric bool `json:"hudIconGeneric,omitempty"`
+	// ElementID is the element the effect's own definition states (effect_element.go); absent means none is established.
+	ElementID        *uint64               `json:"elementId,omitempty"`
 	Display          EffectDisplay         `json:"display"`
 	StackCount       *uint64               `json:"stackCount,omitempty"`
 	Lifecycle        EffectLifecycle       `json:"lifecycle"`
@@ -446,7 +450,7 @@ func (p *processor) viewEffects() ViewEffects {
 	if p.effects == nil {
 		return ViewEffects{Status: EffectSnapshotComplete, Active: []ViewEffect{}}
 	}
-	snapshot := p.effectSnapshotAtLastFrame()
+	snapshot := p.effectSnapshotAfterLastFrame(p.viewClockLead)
 	// Only display-eligible instances are listed; the bound applies to the display set alone, so an eligible instance is
 	// never pushed out by one that would not have been shown. Effects with a server duration come first, so the bound
 	// and a short window keep the countdowns; within the timed and the untimed group, effects the game itself draws in a
@@ -522,7 +526,11 @@ func (p *processor) viewEffect(effect EffectInstanceSnapshot) ViewEffect {
 		view.ExpectedExpiry = &expiry
 	}
 	if effect.Static != nil && len(effect.Static.HUDCueTypes) > 0 {
-		view.HUDIcon = true
+		view.HUDIcon, view.HUDIconGeneric = true, effect.Static.HUDIconGeneric
+	}
+	if effect.Static != nil && effect.Static.ElementID != 0 {
+		element := effect.Static.ElementID
+		view.ElementID = &element
 	}
 	if effect.Static != nil && effect.Static.Term != nil {
 		view.TermName = effect.Static.Term.Name

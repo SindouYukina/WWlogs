@@ -1,112 +1,148 @@
 import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 import test from "node:test"
-import { compareEffectGroups, effectGridColumns, effectGroupOf, fitEffectGrid, unfittedEffectLimit } from "../../frontend/src/lib/effects.ts"
+import { compareEffects, effectCellSize, effectExpiryMs, fitEffectStrip, orderEffects } from "../../frontend/src/lib/effects.ts"
 
 const read = path => readFileSync(path, "utf8").replace(/\r\n/g, "\n")
-// The default 320 x 420 Effects window: 32 px tiles with 4 px gaps, 14 px chips with 3 px gaps, a 26 px holder mark.
-const layout = (available, width = 312) => ({ available, width, head: 20, sectionGap: 6, hint: 18, tile: 32, tileGap: 4, chip: 14, chipGap: 3, blockGap: 4, groupHead: 26, groupHeadGap: 6, groupGap: 6 })
-const role = (roleId, n, hudIcon = false) => Array.from({ length: n }, (_, i) => ({ key: `${roleId}-${hudIcon ? "t" : "c"}${i}`, display: { target: "team" }, holderRoleId: roleId, hudIcon }))
-const enemy = (n, hudIcon = false) => Array.from({ length: n }, (_, i) => ({ key: `e-${i}`, display: { target: "enemy" }, hudIcon }))
-const isTile = item => item.hudIcon === true
-const fit = (listed, eligible, unclassified, size) => fitEffectGrid(listed, effectGroupOf, isTile, eligible, unclassified, size)
-const drawn = grid => grid.groups.reduce((sum, group) => sum + group.tiles.length + group.chips.length, 0)
+const base = Date.parse("2026-11-08T12:00:00Z")
+const expires = seconds => new Date(base + seconds * 1000).toISOString()
+const timed = (key, seconds, extra = {}) => ({ key, lifecycle: "active", remainingStatus: "estimated", expectedExpiry: expires(seconds), ...extra })
+const untimed = (key, extra = {}) => ({ key, lifecycle: "active", remainingStatus: "unknown", ...extra })
+const keys = list => list.map(effect => effect.key)
 
-test("a group line holds as many whole tiles or chips as its width allows", () => {
-  // 312 - 26 - 6 = 280 px: 7 tiles (248 px; an eighth would need 284) or 16 chips (269 px; a seventeenth 286).
-  assert.equal(effectGridColumns(layout(400)), 7)
-  assert.equal(effectGridColumns(layout(400), 14, 3), 16)
-  assert.equal(effectGridColumns(layout(400, 316)), 8)
-  assert.equal(effectGridColumns(layout(400, 40)), 1, "a very narrow window still lays out one item per line")
+// The default 640 px window: a 10 px status slot beside 36 px icons and 22 px gauges with 4 px gaps.
+const layout = (width = 616) => ({ width, icon: 36, gauge: 22, gap: 4, more: 34 })
+const icons = n => Array.from({ length: n }, (_, i) => ({ key: `i${i}`, hudIcon: true }))
+const gauges = n => Array.from({ length: n }, (_, i) => ({ key: `g${i}` }))
+
+test("effects run from the soonest to end to the latest, then those without a reliable time", () => {
+  const list = [timed("c", 12.3), untimed("u"), timed("a", 1.8), timed("d", 6), timed("b", 3.4)]
+  assert.deepEqual(keys(orderEffects(list)), ["a", "b", "d", "c", "u"])
 })
 
-test("holders group in a fixed order: roles by RoleId, other team holders, enemies, unresolved", () => {
-  assert.deepEqual(effectGroupOf({ display: { target: "team" }, holderRoleId: 1312 }), { key: "role-1312", kind: "role", roleId: 1312 })
-  assert.deepEqual(effectGroupOf({ display: { target: "team" } }), { key: "team", kind: "team" })
-  assert.deepEqual(effectGroupOf({ display: { target: "enemy" }, holderRoleId: 9 }), { key: "enemy", kind: "enemy" })
-  assert.deepEqual(effectGroupOf({ display: { target: "unresolved" } }), { key: "unresolved", kind: "unresolved" })
-  const groups = [effectGroupOf({ display: { target: "enemy" } }), effectGroupOf({ display: { target: "team" }, holderRoleId: 1505 }), effectGroupOf({ display: {} }), effectGroupOf({ display: { target: "team" }, holderRoleId: 1209 }), effectGroupOf({ display: { target: "team" } })]
-  assert.deepEqual(groups.sort(compareEffectGroups).map(group => group.key), ["role-1209", "role-1505", "team", "enemy", "unresolved"])
+test("a new effect lands at the front, in the middle or at the end by its expiry", () => {
+  const list = [timed("a", 2), timed("b", 4), timed("c", 6)]
+  assert.deepEqual(keys(orderEffects([...list, timed("n", 1)])), ["n", "a", "b", "c"])
+  assert.deepEqual(keys(orderEffects([...list, timed("n", 5)])), ["a", "b", "n", "c"])
+  assert.deepEqual(keys(orderEffects([...list, timed("n", 9)])), ["a", "b", "c", "n"])
 })
 
-test("game-icon effects become tiles and the rest chips, each in the engine's order within its holder", () => {
-  const listed = [...role(1505, 2, true), ...role(1505, 3), ...enemy(2, true), ...role(1312, 2), ...role(1505, 1, true)]
-  const grid = fit(listed, listed.length, 0, layout(420))
-  assert.equal(grid.visible, listed.length)
-  assert.deepEqual(grid.groups.map(group => [group.group.key, group.tiles.map(item => item.key), group.chips.map(item => item.key)]), [
-    ["role-1312", [], ["1312-c0", "1312-c1"]],
-    ["role-1505", ["1505-t0", "1505-t1", "1505-t0"], ["1505-c0", "1505-c1", "1505-c2"]],
-    ["enemy", ["e-0", "e-1"], []],
-  ])
-})
-
-test("every eligible effect is drawn or counted, and the hint line is kept only when needed", () => {
-  // Height for effects: available - head - gap (- hint - gap). One tile line is 32 px, each further one 36 px.
-  const exact = lines => 26 + lines * 32 + (lines - 1) * 4
-  // One holder: 7 tiles per line. Exactly two lines fit 14 tiles without a hint.
-  assert.equal(fit(role(1312, 14, true), 14, 0, layout(exact(2))).visible, 14)
-  // Fifteen tiles need a third line; with the hint only one line remains: 7 drawn, 8 counted.
-  const crowded = fit(role(1312, 15, true), 15, 0, layout(exact(2)))
-  assert.deepEqual([crowded.visible, crowded.overflow], [7, 8])
-  // Unclassified effects never take a place but always need the line.
-  const withUnclassified = fit(role(1312, 14, true), 14, 40, layout(exact(2)))
-  assert.deepEqual([withUnclassified.visible, withUnclassified.overflow], [7, 7])
-  // Eligible effects beyond the engine's bound need the line even when every listed effect would fit.
-  const bounded = fit(role(1312, 3, true), 9, 0, layout(420))
-  assert.deepEqual([bounded.visible, bounded.overflow], [3, 6])
-  for (const [count, eligible, unclassified, available] of [[0, 0, 0, 420], [1, 1, 0, 420], [40, 40, 0, 420], [128, 500, 0, 420], [9, 9, 3, 60], [5, 5, 0, 0]]) {
-    const grid = fit([...role(1102, Math.ceil(count / 2), true), ...enemy(Math.floor(count / 2))], eligible, unclassified, layout(available))
-    assert.equal(grid.visible + grid.overflow, eligible, `${count}/${eligible}/${unclassified}/${available}`)
-    assert.equal(drawn(grid), grid.visible)
+test("effects ending together keep one order whatever order the engine lists them in", () => {
+  const list = [timed("z", 5), timed("m", 5), timed("a", 5)]
+  const expected = ["a", "m", "z"]
+  for (let turn = 0; turn < 20; turn++) {
+    list.push(list.shift())
+    assert.deepEqual(keys(orderEffects(list)), expected)
   }
 })
 
-test("chips are compact: many effects without a game icon still fit next to their holder", () => {
-  // Sixteen chips share one line, as tall as the holder mark; 40 chips take three chip lines (14 + 17 + 17 = 48 px).
-  assert.equal(fit(role(1312, 16), 16, 0, layout(26 + 32)).visible, 16)
-  assert.equal(fit(role(1312, 40), 40, 0, layout(26 + 48)).visible, 40)
-  // One pixel less and the 40 chips need the hint line, which leaves less than a holder's height: all are counted.
-  assert.deepEqual([fit(role(1312, 40), 40, 0, layout(26 + 47)).visible, fit(role(1312, 40), 40, 0, layout(26 + 47)).overflow], [0, 40])
-  // A holder with tiles and chips stacks a tile line, the block gap and a chip line: 32 + 4 + 14 = 50 px.
-  assert.equal(fit([...role(1312, 7, true), ...role(1312, 16)], 23, 0, layout(26 + 50)).visible, 23)
+test("time passing never reorders: the order follows the expiry, not the seconds left", () => {
+  const snapshot = tick => [timed("a", 3, { remainingSeconds: 3 - tick / 4 }), timed("b", 3.4, { remainingSeconds: 3.4 - tick / 4 }), timed("c", 3.40001, { remainingSeconds: 3.40001 - tick / 4 }), untimed("u")]
+  const first = keys(orderEffects(snapshot(0)))
+  for (let tick = 1; tick < 12; tick++) assert.deepEqual(keys(orderEffects(snapshot(tick))), first)
 })
 
-test("each new holder costs a group gap, so holders change how many effects fit", () => {
-  const exact = lines => 26 + 18 + 6 + lines * 32 + (lines - 1) * 4
-  // Room for two lines with the hint: one holder fills both (14 tiles); two holders of seven need the 6 px group gap too.
-  assert.equal(fit(role(1312, 20, true), 20, 0, layout(exact(2))).visible, 14)
-  assert.equal(fit([...role(1312, 7, true), ...role(1505, 7, true), ...role(1102, 1, true)], 15, 0, layout(exact(2))).visible, 7)
-  assert.equal(fit([...role(1312, 7, true), ...role(1505, 7, true), ...role(1102, 1, true)], 15, 0, layout(exact(2) + 6)).visible, 14)
+test("a refreshed effect moves to where its new expiry belongs", () => {
+  assert.deepEqual(keys(orderEffects([timed("a", 2), timed("b", 4)])), ["a", "b"])
+  assert.deepEqual(keys(orderEffects([timed("a", 9), timed("b", 4)])), ["b", "a"])
 })
 
-test("a panel without a measured window shows a bounded prefix", () => {
-  const grid = fit(role(1312, 80), 80, 0, undefined)
-  assert.equal(grid.visible, unfittedEffectLimit)
-  assert.equal(grid.overflow, 80 - unfittedEffectLimit)
+test("an effect whose duration becomes known joins the timed effects", () => {
+  assert.deepEqual(keys(orderEffects([untimed("a"), timed("b", 4)])), ["b", "a"])
+  assert.deepEqual(keys(orderEffects([timed("a", 1), timed("b", 4)])), ["a", "b"])
+})
+
+test("only a reliable engine time sorts: stale, overdue and ended effects go last", () => {
+  for (const unreliable of [timed("x", 1, { stale: true }), timed("x", 1, { remainingStatus: "overdue" }), timed("x", 1, { lifecycle: "estimated_expired" }), { ...timed("x", 1), expectedExpiry: "not a time" }, untimed("x")]) {
+    assert.equal(effectExpiryMs(unreliable), undefined)
+    assert.deepEqual(keys(orderEffects([unreliable, timed("b", 40)])), ["b", "x"])
+  }
+})
+
+test("among effects without a time, those the game draws with an icon come first", () => {
+  assert.deepEqual(keys(orderEffects([untimed("a"), untimed("b", { hudIcon: true }), untimed("c")])), ["b", "a", "c"])
+  assert.ok(compareEffects(untimed("a"), untimed("a")) === 0)
+})
+
+test("the same effect on two characters stays two instances", () => {
+  const list = orderEffects([timed("holder-1|1312010033", 5, { effectId: 1312010033 }), timed("holder-2|1312010033", 5, { effectId: 1312010033 })])
+  assert.equal(new Set(keys(list)).size, 2)
+})
+
+test("only an icon of the effect's own makes a full cell", () => {
+  assert.equal(effectCellSize({ hudIcon: true }), "icon")
+  assert.equal(effectCellSize({ hudIcon: true, hudIconGeneric: true }), "gauge")
+  assert.equal(effectCellSize({}), "gauge")
+})
+
+test("the strip keeps the longest prefix that fits and counts every other eligible effect", () => {
+  // 15 icons need 15 * 36 + 14 * 4 = 596 px.
+  assert.deepEqual(fitEffectStrip(icons(15), effectCellSize, 15, layout()), { visible: 15, overflow: 0 })
+  // Sixteen would take 636 px: 14 icons leave room for the 34 px count (14 * 36 + 13 * 4 + 4 + 34 = 594).
+  assert.deepEqual(fitEffectStrip(icons(16), effectCellSize, 16, layout()), { visible: 14, overflow: 2 })
+  assert.deepEqual(fitEffectStrip(gauges(30), effectCellSize, 30, layout(610)), { visible: 22, overflow: 8 })
+  for (const [count, eligible, width] of [[0, 0, 616], [1, 1, 616], [128, 500, 616], [9, 9, 60], [5, 5, 0], [40, 40, 220]]) {
+    const { visible, overflow } = fitEffectStrip([...icons(Math.ceil(count / 2)), ...gauges(Math.floor(count / 2))], effectCellSize, eligible, layout(width))
+    assert.equal(visible + overflow, eligible, `${count}/${eligible}/${width}`)
+    assert.ok(visible >= 0 && visible <= count)
+  }
+})
+
+test("effects beyond the engine's bound need the count even when every listed effect would fit", () => {
+  assert.deepEqual(fitEffectStrip(icons(3), effectCellSize, 9, layout()), { visible: 3, overflow: 6 })
+})
+
+test("a strip that has not been measured yet shows no cells and loses no count", () => {
+  assert.deepEqual(fitEffectStrip(icons(3), effectCellSize, 3, undefined), { visible: 0, overflow: 3 })
 })
 
 test("the drawn effects do not change while only time passes", () => {
-  const listed = [...role(1312, 9, true), ...enemy(4), ...role(1505, 12)]
-  const first = fit(listed, 25, 4, layout(200))
-  for (let tick = 0; tick < 50; tick++) assert.deepEqual(fit(listed, 25, 4, layout(200)), first)
+  const list = [...icons(9), ...gauges(16)]
+  const first = fitEffectStrip(list, effectCellSize, 25, layout(300))
+  for (let tick = 0; tick < 50; tick++) assert.deepEqual(fitEffectStrip(list, effectCellSize, 25, layout(300)), first)
 })
 
-test("the production window fits its effects from the engine's order and never names one", () => {
+test("the production strip orders the engine's set, never filters it, and never names an effect", () => {
   const panel = read("frontend/src/views/EffectsOverlayPanel.tsx")
-  assert.ok(panel.includes("fitEffectGrid(listed, effectGroupOf, isTile, eligible, unclassified"), "effects are a prefix of the engine's order")
-  assert.ok(panel.includes("const isTile = (effect: Effect) => effect.hudIcon === true"), "only a game icon makes a tile")
+  assert.ok(panel.includes("orderEffects(listed)"), "the panel orders the engine's list")
+  assert.ok(panel.includes("fitEffectStrip(ordered, effectCellSize, eligible, layout)"), "the strip is a prefix of that order")
   assert.ok(!/relevantEffect|\.filter\(relevant/.test(panel), "the engine, not the panel, decides display eligibility")
-  assert.match(panel, /counts\?\.eligible/, "the title counts the engine's display set")
+  assert.match(panel, /counts\?\.eligible/, "the count comes from the engine's display set")
+  assert.ok(!/effectGroupOf|EffectGroupMark|holderName|holderRoleId/.test(panel), "the strip does not group by holder")
   for (const forbidden of ["termName", "unknownEffect", "relatedTerm", "effectId ??", "title={"]) assert.ok(!panel.includes(forbidden), `the overlay shows no effect name or ID: ${forbidden}`)
-  const tile = read("frontend/src/design/components/combat.tsx")
-  assert.ok(tile.includes('effect.hudIcon && effect.effectId !== undefined ? gameAssetUrl("buff", effect.effectId)'), "only a game icon of this effect is requested")
-  const components = tile.slice(tile.indexOf("export const EffectTile"), tile.indexOf("export const EffectGroupMark"))
-  assert.ok(!/title=/.test(components), "no hover text on a tile or chip")
-  assert.ok(!/gameAssetUrl/.test(tile.slice(tile.indexOf("export const EffectChip"), tile.indexOf("export const EffectGroupMark"))), "a chip never borrows an icon")
-  assert.match(read("frontend/src/views/OverlayWindow.tsx"), /<EffectsOverlayPanel data=\{data\} alpha=\{alpha\} fitHeight \/>/)
-  assert.ok(!read("frontend/src/showcase/sections/EffectsSection.tsx").includes("fitHeight"), "the review stage grows with its content")
+  const components = read("frontend/src/design/components/combat.tsx")
+  const cell = components.slice(components.indexOf("export const EffectCell"), components.indexOf("export const EffectMore"))
+  assert.ok(!/title=/.test(cell), "no hover text on a cell")
+  assert.ok(cell.includes('icon !== "none" && effectId !== undefined ? gameAssetUrl("buff", effectId)'), "only this effect's own game icon is requested")
+  assert.match(read("frontend/src/views/OverlayWindow.tsx"), /<EffectsOverlayPanel data=\{data\} alpha=\{alpha\} \/>/)
   for (const locale of ["en", "ja", "ko", "zh-CN", "zh-TW"]) {
     const overlay = JSON.parse(read(`frontend/locales/${locale}/overlay.json`))
     assert.equal(overlay.unknownEffect, undefined, `${locale} has no unknown-effect label`)
   }
+})
+
+test("the fill sits behind the icon and is colored by the effect's own element, or neutral", () => {
+  const css = read("frontend/src/design/components.css")
+  const cell = read("frontend/src/design/components/combat.tsx")
+  assert.ok(cell.indexOf('className="ww-effect-fill"') < cell.indexOf("<img src={iconUrl}"), "the fill is drawn before the icon")
+  assert.match(css, /\.ww-effect-face \{[^}]*--ww-effect-color: var\(--ww-series, var\(--ww-element-unknown\)\)/)
+  assert.ok(cell.includes("data-element={elementId}"), "the color comes from the effect's element")
+  assert.ok(!/\.ww-effect-[a-z-]*\[data-polarity/.test(css), "polarity never colors an effect")
+  const fill = css.match(/\.ww-effect-fill \{[^}]*\}/)[0]
+  assert.ok(fill.includes("scaleX(var(--ww-remaining))"), "the time moves by transform only")
+  assert.ok(!/transition|animation|filter|box-shadow|width:/.test(fill), "a countdown runs no continuous animation")
+})
+
+test("the strip reuses the ranking's motion and sets no timer of its own per cell", () => {
+  const layoutSource = read("frontend/src/design/components/layout.tsx")
+  const row = layoutSource.slice(layoutSource.indexOf("export function StackRow"), layoutSource.indexOf("export interface SettingsSectionProps"))
+  assert.ok(row.includes("translateX("), "cells are positioned by transform")
+  assert.ok(row.includes("usePresence(items, keyOf)"), "the strip shares the ranking's presence handling")
+  assert.ok(!/getBoundingClientRect|requestAnimationFrame|setInterval/.test(row), "a reorder measures nothing and runs no frame loop")
+  const css = read("frontend/src/design/components.css")
+  assert.match(css, /\.ww-stack-item \{[^}]*transition: transform var\(--ww-spring-rank-dur\) var\(--ww-spring-rank\)/)
+  const strip = css.slice(css.indexOf("Effects strip"), css.indexOf("------ Settings"))
+  assert.ok(!/infinite/.test(strip), "no looping animation")
+  const cell = read("frontend/src/design/components/combat.tsx")
+  assert.ok(!/setInterval|setTimeout|requestAnimationFrame/.test(cell.slice(cell.indexOf("export const EffectCell"))), "a cell owns no clock")
 })

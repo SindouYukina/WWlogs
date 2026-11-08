@@ -146,6 +146,11 @@ type EffectStaticInfo struct {
 	// HUDCueTypes are the HUD buff-bar cue types (2, 14, 24, 37) with an icon Path among the definition's
 	// GameplayCueIds: the game shows this effect in a HUD buff bar (effect_hud_cues.go).
 	HUDCueTypes []int32 `json:"hudCueTypes,omitempty"`
+	// HUDIconGeneric reports that every HUD icon of the definition is shared by many definitions.
+	HUDIconGeneric bool `json:"hudIconGeneric,omitempty"`
+	// ElementID is the element the definition states (effect_element.go); zero means none is established.
+	ElementID    uint64 `json:"elementId,omitempty"`
+	ElementBasis string `json:"elementBasis,omitempty"`
 }
 
 // EffectTermInfo is the localized glossary term tied to an effect definition.
@@ -446,7 +451,7 @@ func (info *EffectStaticInfo) clone() *EffectStaticInfo {
 	if info == nil {
 		return nil
 	}
-	copied := &EffectStaticInfo{DeveloperTags: append([]string(nil), info.DeveloperTags...), HUDCueTypes: append([]int32(nil), info.HUDCueTypes...)}
+	copied := &EffectStaticInfo{DeveloperTags: append([]string(nil), info.DeveloperTags...), HUDCueTypes: append([]int32(nil), info.HUDCueTypes...), HUDIconGeneric: info.HUDIconGeneric, ElementID: info.ElementID, ElementBasis: info.ElementBasis}
 	if info.Term != nil {
 		term := *info.Term
 		copied.Term = &term

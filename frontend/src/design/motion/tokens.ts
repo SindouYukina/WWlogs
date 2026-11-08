@@ -67,9 +67,6 @@ export const numberOmega = 11
 /** How long a removed effect keeps its slot while it plays its exit. */
 export const presenceExitMs = durations.moderate
 
-/** Engine snapshots arrive at this cadence by default (internal/capture.DefaultPublishInterval). */
-export const defaultTickMs = 250
-
 export const staggerMs = 45
 
 export type MotionPreference = "full" | "reduced"

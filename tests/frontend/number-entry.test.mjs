@@ -76,5 +76,5 @@ test("both Overlays offer the same live scale control and the surface zooms as a
   const views = read("frontend/src/design/views.css")
   assert.match(views, /\.ww-overlay-surface \{[^}]*zoom: var\(--ww-overlay-scale, 1\); height: calc\(100vh \/ var\(--ww-overlay-scale, 1\)\);/)
   const panel = read("frontend/src/views/EffectsOverlayPanel.tsx")
-  assert.match(panel, /const zoom = panel\.currentCSSZoom \|\| 1/, "the effect grid is measured in the panel's own pixels")
+  assert.match(panel, /const zoom = element\.currentCSSZoom \|\| 1/, "the effect strip is measured in its own pixels")
 })

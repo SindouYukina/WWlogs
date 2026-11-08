@@ -52,6 +52,32 @@ export function Card({ interactive = false, className, style, children }: CardPr
   </div>
 }
 
+/** Keeps removed items through their exit and forgets their slots afterwards. The caller fills slots for its own axis. */
+function usePresence<T>(items: readonly T[], keyOf: (item: T) => string) {
+  const [previousItems, setPreviousItems] = useState(items)
+  const [entries, setEntries] = useState<Array<PresenceEntry<T>>>(() => reconcilePresence<T>([], items, keyOf, 0, 0))
+  if (items !== previousItems) {
+    setPreviousItems(items)
+    setEntries(reconcilePresence(entries, items, keyOf, Date.now(), presenceExitMs))
+  }
+  const slots = useRef(new Map<string, number>())
+  const exiting = entries.filter(entry => entry.phase === "exit")
+  const soonest = exiting.reduce((min, entry) => Math.min(min, entry.removeAt ?? Infinity), Infinity)
+  useEffect(() => {
+    if (!Number.isFinite(soonest)) return
+    const timer = setTimeout(() => {
+      const now = Date.now()
+      setEntries(current => current.filter(entry => {
+        const keep = entry.phase !== "exit" || (entry.removeAt ?? 0) > now
+        if (!keep) slots.current.delete(entry.key)
+        return keep
+      }))
+    }, Math.max(0, soonest - Date.now()))
+    return () => clearTimeout(timer)
+  }, [soonest])
+  return { entries, slots }
+}
+
 export interface StackListProps<T> {
   items: readonly T[]
   keyOf: (item: T) => string
@@ -67,28 +93,8 @@ export interface StackListProps<T> {
  * images; a removed row keeps its slot through its exit while the rows below close the gap.
  */
 export function StackList<T>({ items, keyOf, rowHeight, gap = 4, renderItem, role = "list", label }: StackListProps<T>) {
-  const [previousItems, setPreviousItems] = useState(items)
-  const [entries, setEntries] = useState<Array<PresenceEntry<T>>>(() => reconcilePresence<T>([], items, keyOf, 0, 0))
-  if (items !== previousItems) {
-    setPreviousItems(items)
-    setEntries(reconcilePresence(entries, items, keyOf, Date.now(), presenceExitMs))
-  }
-  const slots = useRef(new Map<string, number>())
+  const { entries, slots } = usePresence(items, keyOf)
   items.forEach((item, index) => slots.current.set(keyOf(item), index))
-  const exiting = entries.filter(entry => entry.phase === "exit")
-  const soonest = exiting.reduce((min, entry) => Math.min(min, entry.removeAt ?? Infinity), Infinity)
-  useEffect(() => {
-    if (!Number.isFinite(soonest)) return
-    const timer = setTimeout(() => {
-      const now = Date.now()
-      setEntries(current => current.filter(entry => {
-        const keep = entry.phase !== "exit" || (entry.removeAt ?? 0) > now
-        if (!keep) slots.current.delete(entry.key)
-        return keep
-      }))
-    }, Math.max(0, soonest - Date.now()))
-    return () => clearTimeout(timer)
-  }, [soonest])
   const height = items.length > 0 ? items.length * (rowHeight + gap) - gap : 0
   const ordered = [...entries].sort((a, b) => a.key.localeCompare(b.key))
   return <div className="ww-stack" role={role} aria-label={label} style={{ height }}>
@@ -98,6 +104,32 @@ export function StackList<T>({ items, keyOf, rowHeight, gap = 4, renderItem, rol
         <div className="ww-stack-inner" style={{ height: "100%" }}>{renderItem(entry.item, entry.phase)}</div>
       </div>
     })}
+  </div>
+}
+
+export interface StackRowProps<T> {
+  items: readonly T[]
+  keyOf: (item: T) => string
+  /** Each item's width, in the same pixels as gap. Positions are computed from it, so reordering measures nothing. */
+  widthOf: (item: T) => number
+  gap?: number
+  renderItem: (item: T) => ReactNode
+  label?: string
+}
+
+/** StackList along the horizontal axis, for items of different widths. It animates swaps with the same spring as the rows. */
+export function StackRow<T>({ items, keyOf, widthOf, gap = 4, renderItem, label }: StackRowProps<T>) {
+  const { entries, slots } = usePresence(items, keyOf)
+  let offset = 0
+  for (const item of items) {
+    slots.current.set(keyOf(item), offset)
+    offset += widthOf(item) + gap
+  }
+  const ordered = [...entries].sort((a, b) => a.key.localeCompare(b.key))
+  return <div className="ww-stack ww-stack-row" role="list" aria-label={label}>
+    {ordered.map(entry => <div key={entry.key} className="ww-stack-item" role="listitem" data-axis="x" data-phase={entry.phase} style={{ width: widthOf(entry.item), transform: `translateX(${slots.current.get(entry.key) ?? 0}px)` }}>
+      <div className="ww-stack-inner">{renderItem(entry.item)}</div>
+    </div>)}
   </div>
 }
 

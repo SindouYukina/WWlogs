@@ -143,6 +143,7 @@ type processor struct {
 	pendingSummaryCredits     map[uint64][]pendingSummaryCredit
 	pendingSummaryCreditCount int
 	currentFrameTime          time.Time
+	viewClockLead             time.Duration // how far past currentFrameTime the Effects view reads countdowns; only a live session sets it
 	clientVersion             *clientVersionReport
 	stdout                    io.Writer
 	diagnostic                io.Writer

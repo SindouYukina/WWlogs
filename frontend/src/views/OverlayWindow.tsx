@@ -34,7 +34,7 @@ export function OverlaySurface({ surface, data, opacity, scale, editing = false,
   const alpha = opacity === undefined ? undefined : opacity / 100
   const zoom = scale === undefined || scale === 100 ? undefined : { "--ww-overlay-scale": scale / 100 } as CSSProperties
   return <div className="ww-root ww-overlay-surface" style={zoom} data-surface={surface} data-scale={scale ?? 100} data-editing={canDrag} data-field="overlay" data-locale={data.snapshot?.locale}>
-    {surface === "combat" ? <CombatOverlayPanel data={data} alpha={alpha} numberMode={numberMode} /> : <EffectsOverlayPanel data={data} alpha={alpha} fitHeight />}
+    {surface === "combat" ? <CombatOverlayPanel data={data} alpha={alpha} numberMode={numberMode} /> : <EffectsOverlayPanel data={data} alpha={alpha} />}
     {editing && <div className="ww-overlay-edit" data-field="edit-bar">
       <span className="ww-truncate">{t("drag")}</span>
       <Button size="sm" variant="primary" onClick={onFinishEditing}>{t("finishEditing")}</Button>

@@ -9,7 +9,7 @@ export function EffectsSection({ controls }: { controls: FeedControls }) {
   const { apply, paused, setPaused } = controls
   return <div className="sc-demo">
     <div className="sc-stage" data-backdrop="effects">
-      <div className="sc-stage-overlay" style={{ width: 300 }}><EffectsOverlayPanel data={controls.data} /></div>
+      <div className="sc-stage-overlay" style={{ width: 560 }}><EffectsOverlayPanel data={controls.data} /></div>
     </div>
     <aside className="sc-controls">
       <h3>{t("controls.effectEvents")}</h3>
