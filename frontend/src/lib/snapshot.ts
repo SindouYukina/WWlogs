@@ -40,6 +40,8 @@ export interface OverlayState {
   visible: boolean
   /** Surface opacity in percent. Text stays fully readable. */
   opacity: number
+  /** Display scale in percent, 75 to 200: the window and everything in it. Placement and manual resizing are kept. */
+  scale: number
   alwaysOnTop: boolean
   clickThrough: boolean
   editing: boolean

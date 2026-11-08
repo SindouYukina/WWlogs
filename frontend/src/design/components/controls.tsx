@@ -1,5 +1,6 @@
 import { cloneElement, isValidElement, memo, useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from "react"
 import { createPortal } from "react-dom"
+import { commitNumberEntry, previewNumberEntry, readNumberEntry, stepNumber } from "@/lib/number-entry"
 import { Icon } from "./Icon"
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -231,6 +232,66 @@ export function Stepper({ value, unit, step, min, max, onChange, decreaseLabel, 
     <span className="ww-stepper-value"><span className="ww-num">{value}</span>{unit && <span className="ww-stepper-unit">{unit}</span>}</span>
     <button type="button" aria-label={decreaseLabel} onClick={() => onChange(clamp(value - step))}>−</button>
     <button type="button" aria-label={increaseLabel} onClick={() => onChange(clamp(value + step))}>+</button>
+  </div>
+}
+
+export interface NumberFieldProps {
+  value: number
+  unit?: string
+  /** The buttons move to the next multiple of step; typing reaches every whole number in the range. */
+  step: number
+  min: number
+  max: number
+  onChange: (value: number) => void
+  label: string
+  decreaseLabel: string
+  increaseLabel: string
+}
+
+/**
+ * A whole number that can be typed, pasted or stepped. While the user is typing, the field keeps their text even when
+ * the value changes elsewhere, and only a complete in-range number previews. Enter or leaving the field commits the
+ * entry, clamped to the range; empty or non-numeric text restores the value from before typing, and so does Escape.
+ */
+export function NumberField({ value, unit, step, min, max, onChange, label, decreaseLabel, increaseLabel }: NumberFieldProps) {
+  const [text, setText] = useState<string | null>(null)
+  const before = useRef(value)
+  const entry = text === null ? undefined : readNumberEntry(text)
+  const invalid = text !== null && entry?.kind !== "empty" && previewNumberEntry(text, min, max) === undefined
+  const type = (next: string) => {
+    if (text === null) before.current = value
+    setText(next)
+    const preview = previewNumberEntry(next, min, max)
+    if (preview !== undefined && preview !== value) onChange(preview)
+  }
+  const commit = () => {
+    if (text === null) return
+    const next = commitNumberEntry(text, before.current, min, max)
+    setText(null)
+    if (next !== value) onChange(next)
+  }
+  const restore = () => {
+    if (text === null) return
+    setText(null)
+    if (before.current !== value) onChange(before.current)
+  }
+  const stepBy = (direction: 1 | -1) => {
+    setText(null)
+    const next = stepNumber(value, step, direction, min, max)
+    if (next !== value) onChange(next)
+  }
+  return <div className="ww-stepper" data-invalid={invalid}>
+    <span className="ww-stepper-value">
+      <input className="ww-stepper-input ww-num" type="text" inputMode="numeric" enterKeyHint="done" autoComplete="off" spellCheck={false} maxLength={12} aria-label={label} aria-invalid={invalid} value={text ?? String(value)}
+        onChange={event => type(event.target.value)} onBlur={commit}
+        onKeyDown={event => {
+          if (event.key === "Enter") { event.preventDefault(); commit() }
+          else if (event.key === "Escape") { event.preventDefault(); restore() }
+        }} />
+      {unit && <span className="ww-stepper-unit">{unit}</span>}
+    </span>
+    <button type="button" aria-label={decreaseLabel} disabled={value <= min} onClick={() => stepBy(-1)}>−</button>
+    <button type="button" aria-label={increaseLabel} disabled={value >= max} onClick={() => stepBy(1)}>+</button>
   </div>
 }
 

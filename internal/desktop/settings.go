@@ -42,11 +42,15 @@ type OverlaySet struct {
 
 // OverlayPreferences are the persisted properties of one Overlay window.
 type OverlayPreferences struct {
-	Visible      bool              `json:"visible"`
-	Opacity      int               `json:"opacity"`
-	AlwaysOnTop  bool              `json:"alwaysOnTop"`
-	ClickThrough bool              `json:"clickThrough"`
-	Placement    *OverlayPlacement `json:"placement,omitempty"`
+	Visible      bool `json:"visible"`
+	Opacity      int  `json:"opacity"`
+	AlwaysOnTop  bool `json:"alwaysOnTop"`
+	ClickThrough bool `json:"clickThrough"`
+	// Scale is the Overlay's display scale in percent (75 to 200). It multiplies the window's size and its content
+	// together; Windows display scaling is applied on top by the system and is never folded into it. Zero in an older
+	// file means 100.
+	Scale     int               `json:"scale,omitempty"`
+	Placement *OverlayPlacement `json:"placement,omitempty"`
 }
 
 // OverlayPlacement is in physical pixels, with the scale of the display it was saved on. Wails DIP coordinates are per
@@ -57,10 +61,28 @@ type OverlayPlacement struct {
 	Width  int     `json:"width"`
 	Height int     `json:"height"`
 	Scale  float64 `json:"scale"`
+	// OverlayScale is the Overlay display scale (percent) the size was saved at; zero in an older file means 100. The
+	// size the user chose at 100% is Width / Scale / (OverlayScale / 100), so a scale change never compounds.
+	OverlayScale int `json:"overlayScale,omitempty"`
 }
 
 func (p OverlayPreferences) state(editing bool) OverlayState {
-	return OverlayState{Visible: p.Visible, Opacity: p.Opacity, AlwaysOnTop: p.AlwaysOnTop, ClickThrough: p.ClickThrough, Editing: editing}
+	return OverlayState{Visible: p.Visible, Opacity: p.Opacity, AlwaysOnTop: p.AlwaysOnTop, ClickThrough: p.ClickThrough, Scale: effectiveOverlayScale(p.Scale), Editing: editing}
+}
+
+// Overlay display scale bounds, in percent. 100 keeps the measured default sizes (overlaySpecs).
+const minOverlayScale, maxOverlayScale, defaultOverlayScale = 75, 200, 100
+
+func clampOverlayScale(value int) int {
+	return max(minOverlayScale, min(value, maxOverlayScale))
+}
+
+// effectiveOverlayScale reads a stored scale: zero (an older file) is the default, anything else is clamped.
+func effectiveOverlayScale(value int) int {
+	if value == 0 {
+		return defaultOverlayScale
+	}
+	return clampOverlayScale(value)
 }
 
 const minOverlayOpacity, maxOverlayOpacity = 20, 100
@@ -80,7 +102,8 @@ func defaultOverlays() *OverlaySet {
 }
 
 func validPlacement(p *OverlayPlacement) bool {
-	return p != nil && p.Scale > 0 && p.Scale <= 16 && p.Width > 0 && p.Width <= 20000 && p.Height > 0 && p.Height <= 20000 && p.X >= -200000 && p.X <= 200000 && p.Y >= -200000 && p.Y <= 200000
+	return p != nil && p.Scale > 0 && p.Scale <= 16 && p.Width > 0 && p.Width <= 20000 && p.Height > 0 && p.Height <= 20000 && p.X >= -200000 && p.X <= 200000 && p.Y >= -200000 && p.Y <= 200000 &&
+		(p.OverlayScale == 0 || (p.OverlayScale >= minOverlayScale && p.OverlayScale <= maxOverlayScale))
 }
 
 func normalizeOverlay(kind string, prefs *OverlayPreferences) (reset bool) {
@@ -88,6 +111,7 @@ func normalizeOverlay(kind string, prefs *OverlayPreferences) (reset bool) {
 		prefs.Opacity = defaultOverlayPreferences(kind).Opacity
 	}
 	prefs.Opacity = clampOpacity(prefs.Opacity)
+	prefs.Scale = effectiveOverlayScale(prefs.Scale)
 	if prefs.Placement != nil && !validPlacement(prefs.Placement) {
 		prefs.Placement = nil
 		return true

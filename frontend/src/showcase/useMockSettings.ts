@@ -5,8 +5,8 @@ import type { SettingsController } from "@/lib/settings-controller"
 import { defaultUpdateInterval, type OverlayKind, type OverlayStates, type UpdateInterval } from "@/lib/snapshot"
 
 const initialOverlays: OverlayStates = {
-  combat: { visible: true, opacity: 74, alwaysOnTop: true, clickThrough: true, editing: false },
-  effects: { visible: true, opacity: 62, alwaysOnTop: true, clickThrough: true, editing: false },
+  combat: { visible: true, opacity: 74, scale: 100, alwaysOnTop: true, clickThrough: true, editing: false },
+  effects: { visible: true, opacity: 62, scale: 100, alwaysOnTop: true, clickThrough: true, editing: false },
 }
 
 /**
