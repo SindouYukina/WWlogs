@@ -161,14 +161,6 @@ export function skillBreakdowns(source: Pick<Encounter, "roles" | "vehicle">): M
   return result
 }
 
-/** Direct and summon shares of one row, or undefined when the engine reported no damage to split. */
-export function contributionShares(row: Pick<CombatRowModel, "directDamage" | "summonDamage">): { direct: number; summon: number } | undefined {
-  const direct = row.directDamage ?? 0
-  const summon = row.summonDamage ?? 0
-  const total = direct + summon
-  return total > 0 ? { direct: direct / total, summon: summon / total } : undefined
-}
-
 export type CountdownState =
   /** The engine reports an estimated remaining time and a total duration, so a progress bar is truthful. */
   | { kind: "timed"; remaining: number; duration: number }

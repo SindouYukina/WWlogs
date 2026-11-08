@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next"
 import { AnimatedNumber, Card, CharacterAvatar, Chip, ContentSwitch, DamageBar, GameAssetImage, Icon, LiveChart, Reveal, Segmented, StackList, ThemeBackdrop, type ChartSeries, type IconName, type ThemeId } from "@/design"
 import { dataChip, displayedEncounter, isFrozen, usableDps, type CombatData, type SkillBreakdown } from "@/lib/combat-data"
 import { teamSeriesKey, unassignedSeriesKey } from "@/lib/timeline"
-import { combatRows, contributionShares, detailRow, intervalRows, selectionScope, type CombatRowModel } from "@/lib/combat-view"
+import { combatRows, detailRow, intervalRows, selectionScope, type CombatRowModel } from "@/lib/combat-view"
 import { useDetailPick, type DetailPick } from "@/lib/useDetailPick"
 import { elementColor, useFormatters, useRowNames } from "@/lib/format"
 import { dpsText, usableHealing, type ViewSnapshot } from "@/lib/snapshot"
@@ -100,7 +100,7 @@ function IntegrityPanel({ view, diagnostics }: { view: ViewSnapshot | null; diag
   </div>
 }
 
-type DetailTab = "skills" | "contribution" | "integrity"
+type DetailTab = "skills" | "integrity"
 
 export interface DashboardViewProps {
   data: CombatData
@@ -134,7 +134,7 @@ export function DashboardView({ data, theme, numberMode = "tween", actions, deta
   const ownPick = useDetailPick(detailScope)
   const [manual, pick] = detailPick ?? ownPick
   const hasSkills = data.skillsOf !== undefined
-  const [tab, setTab] = useState<DetailTab>(hasSkills ? "skills" : "contribution")
+  const [tab, setTab] = useState<DetailTab>(hasSkills ? "skills" : "integrity")
   const detail = detailRow(rows, detailScope, manual)
   const selected = detail.row
   const dps = encounter?.dps ?? view?.statistics.encounterDps
@@ -166,7 +166,6 @@ export function DashboardView({ data, theme, numberMode = "tween", actions, deta
     return lines
   }, [timelineKey, rows, nameOf, t])
   const skills = data.skillsOf && selected ? data.skillsOf(selected.key) : undefined
-  const shares = selected ? contributionShares(selected) : undefined
   const attributionIncomplete = view !== null && (view.unassignedRole.outgoingEvents > 0 || view.statistics.unattributed.outgoingEvents > 0)
   const diagnostics = snapshot?.service.app.profile === "development"
   return <div className="ww-dash ww-has-backdrop"><ThemeBackdrop theme={theme} intensity="art" /><div className="ww-dash-layout">
@@ -206,14 +205,10 @@ export function DashboardView({ data, theme, numberMode = "tween", actions, deta
         <Card className="ww-dash-detail">
           <div className="ww-dash-card-head" data-field="detail" data-selection={selected ? detail.mode : "none"} data-key={selected?.key ?? ""} data-scope={detailScope}>
             <h3>{selected ? nameOf(selected) : "—"}</h3>
-            <Segmented variant="underline" label={t("breakdown")} value={tab} onChange={setTab} options={[{ value: "skills", label: t("skills") }, { value: "contribution", label: t("contribution") }, { value: "integrity", label: c("integrity") }]} />
+            <Segmented variant="underline" label={t("breakdown")} value={tab} onChange={setTab} options={[{ value: "skills", label: t("skills") }, { value: "integrity", label: c("integrity") }]} />
           </div>
           <ContentSwitch contentKey={`${tab}-${selected?.key ?? ""}`}>
             {tab === "skills" && (skills === undefined ? <p className="ww-dash-empty-note">{t("skillsUnavailable")}</p> : <SkillTable breakdown={skills} color={elementColor(selected?.elementId)} />)}
-            {tab === "contribution" && (shares === undefined ? <p className="ww-dash-empty-note">{t("noContribution")}</p> : <div className="ww-dash-contribution" data-element={selected?.elementId}>
-              <div><span>{t("direct")}</span><b className="ww-num">{format.percent(shares.direct)}</b></div><DamageBar share={shares.direct} />
-              <div><span>{t("summon")}</span><b className="ww-num">{format.percent(shares.summon)}</b></div><DamageBar share={shares.summon} />
-            </div>)}
             {tab === "integrity" && <IntegrityPanel view={view} diagnostics={diagnostics} />}
           </ContentSwitch>
         </Card>
