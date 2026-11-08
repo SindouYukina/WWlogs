@@ -148,8 +148,11 @@ export interface Skill {
    */
   name: string
   nameStatus: string
-  /** "official", "damage_list" or "echo"; absent when there is no name. */
+  /** "official", "damage_list", "tune_break" or "echo"; absent when there is no name. */
   nameSource?: string
+  /** The row's image, resolved separately from its name. */
+  iconKind?: string
+  iconId?: number
   damageDealt: number
   damageShare?: number
   outgoingEvents: number
@@ -162,6 +165,12 @@ export interface UnassignedSkill {
   missingSkillEvents: number
   overflowEvents: number
   damageShare?: number
+  /** The Echo these hits belong to, DERIVED from their DamageIds; the hits still have no skill row of their own. */
+  name?: string
+  nameStatus?: string
+  nameSource?: string
+  iconKind?: string
+  iconId?: number
 }
 
 export interface UnassignedRole {

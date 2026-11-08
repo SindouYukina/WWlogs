@@ -74,6 +74,8 @@
   "unnamedSkill": "未命名技能",
   "derivedSkillNote": "非此技能本身的名稱：此列傷害所屬技能（技能傷害表）的官方名稱。",
   "derivedEchoSkillNote": "非此技能本身的名稱：施放此技能之聲骸的官方名稱。",
+  "derivedTuneBreakNote": "非此技能本身的名稱：此角色的諧度破壞技能官方名稱。",
+  "derivedUnassignedEchoNote": "這些傷害沒有技能 ID；依其傷害 ID 對應到此聲骸的官方名稱。",
   "unassignedSkill": "未確認技能來源",
   "unassignedSkillNote": "已確認屬於此來源，但協議沒有提供技能 ID 的傷害。",
   "noSkillRows": "此來源沒有可分解的技能傷害。",

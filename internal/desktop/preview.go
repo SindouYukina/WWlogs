@@ -27,6 +27,7 @@ var gameAssetKinds = map[string]assets.Kind{
 	"buff":               assets.BuffIcon,
 	"skill":              assets.SkillIcon,
 	"skill-config":       assets.SkillConfigIcon,
+	"echo-skill":         assets.EchoSkillIcon,
 }
 
 // gameAssetSource selects where images come from: an explicitly supplied Development directory, else the pack embedded

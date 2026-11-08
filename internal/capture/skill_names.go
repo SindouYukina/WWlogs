@@ -4,32 +4,67 @@ import (
 	"database/sql"
 	"fmt"
 	"sort"
+	"strings"
 )
 
-// Display names of a contributor's skill rows (one row per DamageContext.SkillId).
+// Display names and icons of a contributor's skill rows (one row per DamageContext.SkillId).
 //
 // The official name of a runtime skill is its own SkillDescription row: SkillDescription.Id is the runtime SkillId and
 // SkillLevelGroupId names the UI skill (Skill.Id) whose text it shows (loadSQLiteSkills). Runtime skills that live only
-// in SkillInfo DataTables have no SkillDescription row and therefore no official name of their own. Two static Master
+// in SkillInfo DataTables have no SkillDescription row and therefore no official name of their own. Static Master
 // relations still identify, without inventing text, the player-visible record such a row belongs to:
 //
 //   - damage_list: Skill.DamageList (skill_damage_ref) lists the DamageIds that belong to a UI skill. A row is named by
 //     UI skill U when every hit of the row carried a DamageId, every one of those DamageIds is listed by exactly one UI
 //     skill and that skill is U for all of them, and U's skill group belongs to the row's runtime role. Requests carry
 //     DamageContext.SkillId and DamageId together, so the row's DamageIds are protocol facts, not timing guesses.
-//   - echo: Vision.SkillId or Vision.BirthCastSkillId equals the SkillId, and Vision.Id is the PhantomItem.SkillId key
-//     space. A row is named by the Echo when every PhantomItem of every such Vision carries one official name per locale.
+//   - tune_break: SkillInfo.SkillGenre 14 is the game's weakness-break skill genre, damage.type 11 is its damage, and
+//     every role has one UI skill of Skill.SkillType 12 ("Tune Break"). A row is named by that UI skill when every row of
+//     the SkillId has the genre, every DamageId of the row has the type, and the role has exactly one such UI skill.
+//   - echo: the row reaches a Vision (Vision.Id is the PhantomItem.SkillId key space) by Vision.SkillId or
+//     Vision.BirthCastSkillId; or by SkillInfo's developer label "召唤幻象-<Vision note>"; or by being preloaded only on
+//     the Vision's own actor blueprint. It is named by the Echo when every PhantomItem of those Visions carries one
+//     official name per locale, or when they are one family: the base items of one monster share a name and every other
+//     candidate is a variant of that monster (ParentMonsterId). Two different Echoes keep the row unnamed.
 //
-// Both are DERIVED: the text is an official name of a related record, never the runtime skill's own name, so the UI
-// marks them. A row whose hits split across UI skills, carry an unlisted DamageId, or belong to another role keeps no
-// name. Names never change a row, its totals, its owner, or the order of rows.
+// All of them are DERIVED: the text is an official name of a related record, never the runtime skill's own name, so the
+// UI marks them. A developer label is used only to find a record, never as text. A row whose hits split across UI skills,
+// carry an unlisted DamageId, or belong to another role keeps no name. Names never change a row, its totals, its owner,
+// or the order of rows.
+//
+// A row's icon is resolved separately from its name, because either can exist without the other: the name and the image
+// of an official row come from different records, and a Vision's HUD icon is keyed by the Vision, not by the PhantomItem
+// that names it.
 
 const (
 	skillNameSourceOfficial   = "official"
 	skillNameSourceDamageList = "damage_list"
+	skillNameSourceTuneBreak  = "tune_break"
 	skillNameSourceEcho       = "echo"
 	// skillNameStatusDerived marks a name taken from a related record (see the file comment).
 	skillNameStatusDerived = "DERIVED"
+)
+
+// Asset kinds a skill row may request. They are the host's route names (internal/desktop/preview.go).
+const (
+	skillIconKindSkill       = "skill"        // SkillDescription.Id
+	skillIconKindSkillConfig = "skill-config" // Skill.Id
+	skillIconKindEchoSkill   = "echo-skill"   // Vision.Id
+)
+
+const (
+	// skillGenreBreak is SkillInfo.SkillGenre for a weakness-break skill.
+	skillGenreBreak = 14
+	// damageTypeBreak is damage.type for the hits of a weakness-break skill.
+	damageTypeBreak = 11
+	// uiSkillTypeBreak is Skill.SkillType for the "Tune Break" UI skill of a role.
+	uiSkillTypeBreak = 12
+	// echoSummonLabelPrefix starts the developer label of the common skills that summon one Echo.
+	echoSummonLabelPrefix = "召唤幻象-"
+	// visionActorPathSegment marks a Vision's own actor blueprint.
+	visionActorPathSegment = "/Character/Vision/"
+	// visionBulletNameSeparator ends the Vision part of a common bullet's developer name.
+	visionBulletNameSeparator = "-"
 )
 
 // skillNameMaster holds the static relations behind derived skill-row names.
@@ -41,19 +76,33 @@ type skillNameMaster struct {
 	uiSkillRoles map[uint64]map[uint64]struct{}
 	// uiSkillNames holds the official UI skill names of the master locale (skill_locale, en-US fallback).
 	uiSkillNames map[uint64]string
+	// tuneBreakSkills holds SkillIds whose every SkillInfo row has the weakness-break genre.
+	tuneBreakSkills map[uint64]struct{}
+	// tuneBreakDamage holds DamageIds of damage.type 11.
+	tuneBreakDamage map[uint64]struct{}
+	// roleTuneBreak maps a role to its Tune Break UI skill; a role with more than one is left out.
+	roleTuneBreak map[uint64]uint64
 	// echoItems maps a Vision skill key to one PhantomItem.Id whose official name every candidate Echo shares.
 	echoItems map[uint64]uint64
+	// echoVisions maps a skill key to its Vision.Id, when it has exactly one.
+	echoVisions map[uint64]uint64
+	// damageVisions maps a DamageId to the one Vision its common bullets name.
+	damageVisions map[uint64]uint64
+	// visionItems maps a Vision.Id to the PhantomItem.Id that names it.
+	visionItems map[uint64]uint64
 	// echoNames holds the official PhantomItem names of the master locale (phantomitem_locale, en-US fallback).
 	echoNames map[uint64]string
 }
 
 func newSkillNameMaster() *skillNameMaster {
 	return &skillNameMaster{damageListSkills: map[uint64]uint64{}, uiSkillRoles: map[uint64]map[uint64]struct{}{},
-		uiSkillNames: map[uint64]string{}, echoItems: map[uint64]uint64{}, echoNames: map[uint64]string{}}
+		uiSkillNames: map[uint64]string{}, tuneBreakSkills: map[uint64]struct{}{}, tuneBreakDamage: map[uint64]struct{}{},
+		roleTuneBreak: map[uint64]uint64{}, echoItems: map[uint64]uint64{}, echoVisions: map[uint64]uint64{},
+		damageVisions: map[uint64]uint64{}, visionItems: map[uint64]uint64{}, echoNames: map[uint64]string{}}
 }
 
-// skillRowName names one skill row. roleID is zero for a vehicle, which has no skill group; damage_list never applies
-// to it. status is VERIFIED for an official name, DERIVED for a related record's name, UNKNOWN otherwise.
+// skillRowName names one skill row. roleID is zero for a vehicle, which has no skill group; damage_list and tune_break
+// never apply to it. status is VERIFIED for an official name, DERIVED for a related record's name, UNKNOWN otherwise.
 func (m *gameMaster) skillRowName(roleID uint64, skill SkillDamageSnapshot) (name, status, source string, sourceID uint64) {
 	if m == nil {
 		return "", string(resolutionUnknown), "", 0
@@ -70,12 +119,56 @@ func (m *gameMaster) skillRowName(roleID uint64, skill SkillDamageSnapshot) (nam
 			return text, skillNameStatusDerived, skillNameSourceDamageList, uiSkill
 		}
 	}
+	if uiSkill, ok := names.tuneBreakSkill(roleID, skill); ok {
+		if text := names.uiSkillNames[uiSkill]; text != "" {
+			return text, skillNameStatusDerived, skillNameSourceTuneBreak, uiSkill
+		}
+	}
 	if item, ok := names.echoItems[skill.SkillID]; ok {
 		if text := names.echoNames[item]; text != "" {
 			return text, skillNameStatusDerived, skillNameSourceEcho, item
 		}
 	}
 	return "", string(resolutionUnknown), "", 0
+}
+
+// skillRowIcon returns the asset a row should show. An official row and an unnamed row ask by SkillId; a row named through
+// a related record shows that record's image. A row may have a name and no icon, and the other way round: the host answers
+// 404 for an ID it has no image for, and the row then draws none.
+func (m *gameMaster) skillRowIcon(skill SkillDamageSnapshot, source string, sourceID uint64) (kind string, id uint64) {
+	switch source {
+	case skillNameSourceDamageList, skillNameSourceTuneBreak:
+		return skillIconKindSkillConfig, sourceID
+	case skillNameSourceEcho:
+		if m != nil && m.skillNames != nil {
+			if vision, ok := m.skillNames.echoVisions[skill.SkillID]; ok {
+				return skillIconKindEchoSkill, vision
+			}
+		}
+		return "", 0
+	}
+	return skillIconKindSkill, skill.SkillID
+}
+
+// unassignedSkillEcho names the Echo behind a contributor's hits that carried no SkillId: every hit must have a DamageId
+// and every DamageId must belong to one Vision's common bullets. The hits stay in the unassigned row.
+func (m *gameMaster) unassignedSkillEcho(unassigned UnassignedSkillTotals) (name string, item, vision uint64, ok bool) {
+	if m == nil || m.skillNames == nil || unassigned.OverflowEvents != 0 || unassigned.DamageIDsIncomplete || len(unassigned.DamageIDs) == 0 {
+		return "", 0, 0, false
+	}
+	names := m.skillNames
+	for index, damageID := range unassigned.DamageIDs {
+		found, known := names.damageVisions[damageID]
+		if !known || (index > 0 && found != vision) {
+			return "", 0, 0, false
+		}
+		vision = found
+	}
+	item, known := names.visionItems[vision]
+	if !known || names.echoNames[item] == "" {
+		return "", 0, 0, false
+	}
+	return names.echoNames[item], item, vision, true
 }
 
 // damageListSkill returns the single UI skill that lists every DamageId of the row, when it belongs to roleID.
@@ -95,6 +188,23 @@ func (m *skillNameMaster) damageListSkill(roleID uint64, skill SkillDamageSnapsh
 		return 0, false
 	}
 	return uiSkill, true
+}
+
+// tuneBreakSkill returns the role's Tune Break UI skill when the row is a weakness-break skill (see the file comment).
+func (m *skillNameMaster) tuneBreakSkill(roleID uint64, skill SkillDamageSnapshot) (uint64, bool) {
+	if roleID == 0 || skill.DamageIDsIncomplete || len(skill.DamageIDs) == 0 {
+		return 0, false
+	}
+	if _, ok := m.tuneBreakSkills[skill.SkillID]; !ok {
+		return 0, false
+	}
+	for _, damageID := range skill.DamageIDs {
+		if _, ok := m.tuneBreakDamage[damageID]; !ok {
+			return 0, false
+		}
+	}
+	uiSkill, ok := m.roleTuneBreak[roleID]
+	return uiSkill, ok
 }
 
 // loadSQLiteSkillNameSources reads the relations of the file comment. Every table is optional; a Master without them
@@ -169,11 +279,36 @@ func loadSQLiteSkillNameSources(db *sql.DB, locale string, master *gameMaster) e
 		if err := loadLocalizedNames(db, "skill_locale", locale, names.uiSkillNames); err != nil {
 			return err
 		}
+		if hasType, err := masterColumnExists(db, "skill", "skill_type"); err != nil {
+			return err
+		} else if hasType {
+			breaks := map[uint64]map[uint64]struct{}{}
+			if err := pairs(`SELECT CAST(r.role_id AS TEXT),CAST(s.id AS TEXT) FROM skill s
+				JOIN role_skill_group_ref r ON CAST(r.skill_group_id AS TEXT)=CAST(s.skill_group_id AS TEXT) WHERE s.skill_type=?`, func(roleID, uiSkill uint64) error {
+				if breaks[roleID] == nil {
+					breaks[roleID] = map[uint64]struct{}{}
+				}
+				breaks[roleID][uiSkill] = struct{}{}
+				return nil
+			}, uiSkillTypeBreak); err != nil {
+				return err
+			}
+			for roleID, skills := range breaks {
+				if len(skills) == 1 {
+					for uiSkill := range skills {
+						names.roleTuneBreak[roleID] = uiSkill
+					}
+				}
+			}
+		}
+	}
+	if err := loadSQLiteTuneBreakSkills(db, names, exists); err != nil {
+		return err
 	}
 	if ok, err := exists("vision", "phantomitem", "phantomitem_locale"); err != nil {
 		return err
 	} else if ok {
-		if err := loadSQLiteEchoSkillItems(db, names); err != nil {
+		if err := loadSQLiteEchoSkillItems(db, names, exists); err != nil {
 			return err
 		}
 		if err := loadLocalizedNames(db, "phantomitem_locale", locale, names.echoNames); err != nil {
@@ -183,9 +318,131 @@ func loadSQLiteSkillNameSources(db *sql.DB, locale string, master *gameMaster) e
 	return nil
 }
 
-// loadSQLiteEchoSkillItems keeps a Vision skill key only when every PhantomItem reachable from it has the same official
-// name in every locale; the representative item is the smallest PhantomItem.Id that carries all of those names.
-func loadSQLiteEchoSkillItems(db *sql.DB, names *skillNameMaster) error {
+// loadSQLiteTuneBreakSkills reads the SkillIds of the weakness-break genre and the DamageIds of its damage type.
+func loadSQLiteTuneBreakSkills(db *sql.DB, names *skillNameMaster, exists func(...string) (bool, error)) error {
+	if ok, err := exists("skillinfo"); err != nil {
+		return err
+	} else if ok {
+		if hasGenre, err := masterColumnExists(db, "skillinfo", "skill_genre_raw"); err != nil {
+			return err
+		} else if hasGenre {
+			rows, err := db.Query(`SELECT CAST(skill_id AS TEXT) FROM skillinfo GROUP BY skill_id HAVING MIN(skill_genre_raw)=? AND MAX(skill_genre_raw)=?`, skillGenreBreak, skillGenreBreak)
+			if err != nil {
+				return fmt.Errorf("query weakness-break skills: %w", err)
+			}
+			defer rows.Close()
+			for rows.Next() {
+				var raw string
+				if err := rows.Scan(&raw); err != nil {
+					return fmt.Errorf("read weakness-break skills: %w", err)
+				}
+				id, err := parseMasterID(raw, "skillinfo.skill_id")
+				if err != nil {
+					return err
+				}
+				names.tuneBreakSkills[id] = struct{}{}
+			}
+			if err := rows.Err(); err != nil {
+				return err
+			}
+		}
+	}
+	if ok, err := exists("damage"); err != nil || !ok {
+		return err
+	}
+	if hasType, err := masterColumnExists(db, "damage", "type"); err != nil || !hasType {
+		return err
+	}
+	rows, err := db.Query(`SELECT CAST(id AS TEXT) FROM damage WHERE type=?`, damageTypeBreak)
+	if err != nil {
+		return fmt.Errorf("query weakness-break damage: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var raw string
+		if err := rows.Scan(&raw); err != nil {
+			return fmt.Errorf("read weakness-break damage: %w", err)
+		}
+		id, err := parseMasterID(raw, "damage.id")
+		if err != nil {
+			return err
+		}
+		names.tuneBreakDamage[id] = struct{}{}
+	}
+	return rows.Err()
+}
+
+// echoItem is one PhantomItem that a Vision can be equipped as.
+type echoItem struct {
+	id, monster, parent uint64
+	names               map[string]string
+}
+
+// resolveEchoItems picks the PhantomItem that names a set of candidates, or reports none. One official name per locale
+// across every candidate wins outright. Otherwise the candidates must be one family: the base items of one monster share
+// their names and every other candidate is a variant of that monster, and the family is named by its base.
+func resolveEchoItems(candidates []echoItem) (uint64, bool) {
+	if len(candidates) == 0 {
+		return 0, false
+	}
+	pick := func(items []echoItem, locales map[string]map[string]struct{}) (uint64, bool) {
+		ids := make([]uint64, 0, len(items))
+		for _, item := range items {
+			if len(item.names) == len(locales) {
+				ids = append(ids, item.id)
+			}
+		}
+		if len(ids) == 0 {
+			return 0, false
+		}
+		sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+		return ids[0], true
+	}
+	namesOf := func(items []echoItem) (map[string]map[string]struct{}, bool) {
+		locales := map[string]map[string]struct{}{}
+		unique := true
+		for _, item := range items {
+			for locale, name := range item.names {
+				if locales[locale] == nil {
+					locales[locale] = map[string]struct{}{}
+				}
+				locales[locale][name] = struct{}{}
+				if len(locales[locale]) > 1 {
+					unique = false
+				}
+			}
+		}
+		return locales, unique
+	}
+	if locales, unique := namesOf(candidates); unique {
+		return pick(candidates, locales)
+	}
+	var bases []echoItem
+	root := uint64(0)
+	for _, item := range candidates {
+		itemRoot := item.monster
+		if item.parent != 0 {
+			itemRoot = item.parent
+		} else {
+			bases = append(bases, item)
+		}
+		if itemRoot == 0 || (root != 0 && root != itemRoot) {
+			return 0, false
+		}
+		root = itemRoot
+	}
+	if len(bases) == 0 {
+		return 0, false
+	}
+	locales, unique := namesOf(bases)
+	if !unique {
+		return 0, false
+	}
+	return pick(bases, locales)
+}
+
+// loadSQLiteEchoSkillItems links SkillIds and DamageIds to Visions and each Vision to the PhantomItem that names it.
+func loadSQLiteEchoSkillItems(db *sql.DB, names *skillNameMaster, exists func(...string) (bool, error)) error {
 	hasCast, err := masterColumnExists(db, "vision", "birth_cast_skill_id")
 	if err != nil {
 		return err
@@ -194,70 +451,342 @@ func loadSQLiteEchoSkillItems(db *sql.DB, names *skillNameMaster) error {
 	if hasCast {
 		keys += ` UNION SELECT CAST(id AS TEXT), CAST(birth_cast_skill_id AS TEXT) FROM vision WHERE birth_cast_skill_id IS NOT NULL AND CAST(birth_cast_skill_id AS TEXT)<>''`
 	}
-	rows, err := db.Query(`SELECT k.skill_key, CAST(i.id AS TEXT), l.locale, l.name FROM (` + keys + `) k
-		JOIN phantomitem i ON CAST(i.skill_id AS TEXT)=k.vision_id
-		JOIN phantomitem_locale l ON CAST(l.id AS TEXT)=CAST(i.id AS TEXT) AND l.name<>''`)
+	visionsOfSkill := map[uint64]map[uint64]struct{}{}
+	addVision := func(skill, vision uint64) {
+		if visionsOfSkill[skill] == nil {
+			visionsOfSkill[skill] = map[uint64]struct{}{}
+		}
+		visionsOfSkill[skill][vision] = struct{}{}
+	}
+	if err := scanMasterIDPairs(db, keys, func(vision, skill uint64) { addVision(skill, vision) }); err != nil {
+		return err
+	}
+	items, err := loadSQLiteVisionItems(db)
 	if err != nil {
-		return fmt.Errorf("query echo skill names: %w", err)
+		return err
+	}
+	for vision, candidates := range items {
+		if item, ok := resolveEchoItems(candidates); ok {
+			names.visionItems[vision] = item
+		}
+	}
+	notes, err := loadSQLiteVisionNotes(db)
+	if err != nil {
+		return err
+	}
+	if err := linkEchoSummonLabels(db, exists, notes, addVision); err != nil {
+		return err
+	}
+	if err := linkVisionActors(db, exists, visionsOfSkill, addVision); err != nil {
+		return err
+	}
+	for skill, visions := range visionsOfSkill {
+		var candidates []echoItem
+		for vision := range visions {
+			candidates = append(candidates, items[vision]...)
+		}
+		if item, ok := resolveEchoItems(candidates); ok {
+			names.echoItems[skill] = item
+		}
+		if len(visions) == 1 {
+			for vision := range visions {
+				names.echoVisions[skill] = vision
+			}
+		}
+	}
+	return linkCommonBulletDamage(db, exists, notes, names)
+}
+
+func scanMasterIDPairs(db *sql.DB, query string, read func(a, b uint64)) error {
+	rows, err := db.Query(query)
+	if err != nil {
+		return fmt.Errorf("query echo skill relations: %w", err)
 	}
 	defer rows.Close()
-	type candidate struct {
-		names map[string]map[string]struct{}
-		items map[uint64]map[string]struct{}
-	}
-	candidates := map[uint64]*candidate{}
 	for rows.Next() {
-		var rawSkill, rawItem, locale, name string
-		if err := rows.Scan(&rawSkill, &rawItem, &locale, &name); err != nil {
-			return fmt.Errorf("read echo skill names: %w", err)
+		var rawA, rawB string
+		if err := rows.Scan(&rawA, &rawB); err != nil {
+			return fmt.Errorf("read echo skill relations: %w", err)
 		}
-		skill, err := parseMasterID(rawSkill, "vision skill key")
+		a, err := parseMasterID(rawA, "echo skill relation")
 		if err != nil {
 			return err
 		}
-		item, err := parseMasterID(rawItem, "phantomitem.id")
+		b, err := parseMasterID(rawB, "echo skill relation")
 		if err != nil {
 			return err
 		}
-		entry := candidates[skill]
-		if entry == nil {
-			entry = &candidate{names: map[string]map[string]struct{}{}, items: map[uint64]map[string]struct{}{}}
-			candidates[skill] = entry
+		read(a, b)
+	}
+	return rows.Err()
+}
+
+// loadSQLiteVisionItems reads every PhantomItem of each Vision with its localized names. An older Master without monster
+// columns simply has no family relation.
+func loadSQLiteVisionItems(db *sql.DB) (map[uint64][]echoItem, error) {
+	hasMonster, err := masterColumnExists(db, "phantomitem", "monster_id")
+	if err != nil {
+		return nil, err
+	}
+	hasParent, err := masterColumnExists(db, "phantomitem", "parent_monster_id")
+	if err != nil {
+		return nil, err
+	}
+	monster, parent := "'0'", "'0'"
+	if hasMonster {
+		monster = "COALESCE(CAST(i.monster_id AS TEXT),'0')"
+	}
+	if hasParent {
+		parent = "COALESCE(CAST(i.parent_monster_id AS TEXT),'0')"
+	}
+	rows, err := db.Query(`SELECT CAST(i.skill_id AS TEXT), CAST(i.id AS TEXT), ` + monster + `, ` + parent + `, l.locale, l.name
+		FROM phantomitem i JOIN phantomitem_locale l ON CAST(l.id AS TEXT)=CAST(i.id AS TEXT) AND l.name<>''
+		WHERE i.skill_id IS NOT NULL AND CAST(i.skill_id AS TEXT)<>''`)
+	if err != nil {
+		return nil, fmt.Errorf("query echo skill names: %w", err)
+	}
+	defer rows.Close()
+	byVision := map[uint64]map[uint64]*echoItem{}
+	for rows.Next() {
+		var rawVision, rawItem, rawMonster, rawParent, locale, name string
+		if err := rows.Scan(&rawVision, &rawItem, &rawMonster, &rawParent, &locale, &name); err != nil {
+			return nil, fmt.Errorf("read echo skill names: %w", err)
 		}
-		if entry.names[locale] == nil {
-			entry.names[locale] = map[string]struct{}{}
+		vision, err := parseMasterID(rawVision, "phantomitem.skill_id")
+		if err != nil {
+			return nil, err
 		}
-		entry.names[locale][name] = struct{}{}
-		if entry.items[item] == nil {
-			entry.items[item] = map[string]struct{}{}
+		id, err := parseMasterID(rawItem, "phantomitem.id")
+		if err != nil {
+			return nil, err
 		}
-		entry.items[item][locale] = struct{}{}
+		monsterID, err := parseOptionalMasterID(rawMonster, "phantomitem.monster_id")
+		if err != nil {
+			return nil, err
+		}
+		parentID, err := parseOptionalMasterID(rawParent, "phantomitem.parent_monster_id")
+		if err != nil {
+			return nil, err
+		}
+		if byVision[vision] == nil {
+			byVision[vision] = map[uint64]*echoItem{}
+		}
+		item := byVision[vision][id]
+		if item == nil {
+			item = &echoItem{id: id, monster: monsterID, parent: parentID, names: map[string]string{}}
+			byVision[vision][id] = item
+		}
+		item.names[locale] = name
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	result := make(map[uint64][]echoItem, len(byVision))
+	for vision, items := range byVision {
+		for _, item := range items {
+			result[vision] = append(result[vision], *item)
+		}
+	}
+	return result, nil
+}
+
+// parseOptionalMasterID reads an ID column where zero means "none".
+func parseOptionalMasterID(raw, field string) (uint64, error) {
+	if raw == "" || raw == "0" {
+		return 0, nil
+	}
+	return parseMasterID(raw, field)
+}
+
+// loadSQLiteVisionNotes maps a developer note to its Vision, leaving out notes that several Visions share.
+func loadSQLiteVisionNotes(db *sql.DB) (map[string]uint64, error) {
+	hasNote, err := masterColumnExists(db, "vision", "dev_note_zh_cn")
+	if err != nil || !hasNote {
+		return map[string]uint64{}, err
+	}
+	rows, err := db.Query(`SELECT CAST(id AS TEXT), dev_note_zh_cn FROM vision WHERE dev_note_zh_cn IS NOT NULL AND dev_note_zh_cn<>''`)
+	if err != nil {
+		return nil, fmt.Errorf("query vision notes: %w", err)
+	}
+	defer rows.Close()
+	counts := map[string]int{}
+	notes := map[string]uint64{}
+	for rows.Next() {
+		var raw, note string
+		if err := rows.Scan(&raw, &note); err != nil {
+			return nil, fmt.Errorf("read vision notes: %w", err)
+		}
+		id, err := parseMasterID(raw, "vision.id")
+		if err != nil {
+			return nil, err
+		}
+		counts[note]++
+		notes[note] = id
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for note, count := range counts {
+		if count != 1 {
+			delete(notes, note)
+		}
+	}
+	return notes, nil
+}
+
+// linkEchoSummonLabels links the common skills that summon one Echo through their developer label.
+func linkEchoSummonLabels(db *sql.DB, exists func(...string) (bool, error), notes map[string]uint64, addVision func(skill, vision uint64)) error {
+	if ok, err := exists("skillinfo"); err != nil || !ok {
+		return err
+	}
+	if hasName, err := masterColumnExists(db, "skillinfo", "dev_name_zh_cn"); err != nil || !hasName {
+		return err
+	}
+	rows, err := db.Query(`SELECT DISTINCT CAST(skill_id AS TEXT), dev_name_zh_cn FROM skillinfo WHERE dev_name_zh_cn LIKE ?`, echoSummonLabelPrefix+"%")
+	if err != nil {
+		return fmt.Errorf("query echo summon labels: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var raw, label string
+		if err := rows.Scan(&raw, &label); err != nil {
+			return fmt.Errorf("read echo summon labels: %w", err)
+		}
+		skill, err := parseMasterID(raw, "skillinfo.skill_id")
+		if err != nil {
+			return err
+		}
+		if vision, ok := notes[strings.TrimPrefix(label, echoSummonLabelPrefix)]; ok {
+			addVision(skill, vision)
+		}
+	}
+	return rows.Err()
+}
+
+// linkVisionActors adds a skill preloaded only on Vision actor blueprints to the Visions of those blueprints. The blueprint
+// of a Vision is the one its directly linked skills are preloaded on, and it must lie under the Vision character tree; a
+// skill common to many actors never qualifies. Several Visions of one blueprint are all candidates: resolveEchoItems then
+// decides whether they name one Echo.
+func linkVisionActors(db *sql.DB, exists func(...string) (bool, error), direct map[uint64]map[uint64]struct{}, addVision func(skill, vision uint64)) error {
+	if ok, err := exists("entityskillpreload", "asset_reference"); err != nil || !ok {
+		return err
+	}
+	rows, err := db.Query(`SELECT CAST(p.skill_id AS TEXT), CAST(p.actor_asset_id AS TEXT), COALESCE(p.is_common,0), COALESCE(a.path,'')
+		FROM entityskillpreload p LEFT JOIN asset_reference a ON CAST(a.id AS TEXT)=CAST(p.actor_asset_id AS TEXT)`)
+	if err != nil {
+		return fmt.Errorf("query skill preload actors: %w", err)
+	}
+	defer rows.Close()
+	type row struct {
+		skill  uint64
+		actor  string
+		common bool
+	}
+	var all []row
+	actorPaths := map[string]string{}
+	for rows.Next() {
+		var rawSkill, actor, path string
+		var common int64
+		if err := rows.Scan(&rawSkill, &actor, &common, &path); err != nil {
+			return fmt.Errorf("read skill preload actors: %w", err)
+		}
+		skill, err := parseMasterID(rawSkill, "entityskillpreload.skill_id")
+		if err != nil {
+			return err
+		}
+		all = append(all, row{skill: skill, actor: actor, common: common != 0})
+		actorPaths[actor] = path
 	}
 	if err := rows.Err(); err != nil {
 		return err
 	}
-	for skill, entry := range candidates {
-		unique := true
-		for _, set := range entry.names {
-			if len(set) != 1 {
-				unique = false
-				break
-			}
-		}
-		if !unique {
+	actorVisions := map[string]map[uint64]struct{}{}
+	for _, entry := range all {
+		visions, linked := direct[entry.skill]
+		if !linked || entry.common || !strings.Contains(actorPaths[entry.actor], visionActorPathSegment) {
 			continue
 		}
-		items := make([]uint64, 0, len(entry.items))
-		for item, locales := range entry.items {
-			if len(locales) == len(entry.names) {
-				items = append(items, item)
-			}
+		if actorVisions[entry.actor] == nil {
+			actorVisions[entry.actor] = map[uint64]struct{}{}
 		}
-		if len(items) == 0 {
+		for vision := range visions {
+			actorVisions[entry.actor][vision] = struct{}{}
+		}
+	}
+	type candidate struct {
+		visions map[uint64]struct{}
+		invalid bool
+	}
+	skills := map[uint64]*candidate{}
+	for _, entry := range all {
+		current := skills[entry.skill]
+		if current == nil {
+			current = &candidate{visions: map[uint64]struct{}{}}
+			skills[entry.skill] = current
+		}
+		visions, known := actorVisions[entry.actor]
+		if entry.common || !known {
+			current.invalid = true
 			continue
 		}
-		sort.Slice(items, func(i, j int) bool { return items[i] < items[j] })
-		names.echoItems[skill] = items[0]
+		for vision := range visions {
+			current.visions[vision] = struct{}{}
+		}
+	}
+	for skill, current := range skills {
+		if _, linked := direct[skill]; linked || current.invalid || len(current.visions) == 0 {
+			continue
+		}
+		for vision := range current.visions {
+			addVision(skill, vision)
+		}
+	}
+	return nil
+}
+
+// linkCommonBulletDamage maps a DamageId to the one Vision named by every common bullet that deals it. A common bullet's
+// developer name starts with the Vision's developer note followed by a separator.
+func linkCommonBulletDamage(db *sql.DB, exists func(...string) (bool, error), notes map[string]uint64, names *skillNameMaster) error {
+	if ok, err := exists("commonbullet"); err != nil || !ok {
+		return err
+	}
+	for _, column := range []string{"dev_name_zh_cn", "damage_id"} {
+		if ok, err := masterColumnExists(db, "commonbullet", column); err != nil || !ok {
+			return err
+		}
+	}
+	rows, err := db.Query(`SELECT CAST(damage_id AS TEXT), dev_name_zh_cn FROM commonbullet WHERE damage_id IS NOT NULL AND CAST(damage_id AS TEXT) NOT IN ('','0') AND dev_name_zh_cn IS NOT NULL`)
+	if err != nil {
+		return fmt.Errorf("query common bullet damage: %w", err)
+	}
+	defer rows.Close()
+	conflicted := map[uint64]struct{}{}
+	for rows.Next() {
+		var rawDamage, name string
+		if err := rows.Scan(&rawDamage, &name); err != nil {
+			return fmt.Errorf("read common bullet damage: %w", err)
+		}
+		damageID, err := parseMasterID(rawDamage, "commonbullet.damage_id")
+		if err != nil {
+			return err
+		}
+		note, _, separated := strings.Cut(name, visionBulletNameSeparator)
+		vision, known := notes[note]
+		if !separated || !known {
+			conflicted[damageID] = struct{}{}
+			continue
+		}
+		if existing, seen := names.damageVisions[damageID]; seen && existing != vision {
+			conflicted[damageID] = struct{}{}
+			continue
+		}
+		names.damageVisions[damageID] = vision
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for damageID := range conflicted {
+		delete(names.damageVisions, damageID)
 	}
 	return nil
 }

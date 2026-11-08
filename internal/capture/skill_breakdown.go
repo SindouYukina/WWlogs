@@ -40,6 +40,10 @@ type UnassignedSkillTotals struct {
 	// maxSkillsPerContributor rows were held. Both are included in OutgoingEvents.
 	MissingSkillEvents uint64 `json:"missingSkillEvents"`
 	OverflowEvents     uint64 `json:"overflowEvents"`
+	// DamageIDs are the distinct DamageIds of the hits without a SkillId, as on a skill row. They never move a hit out of
+	// this bucket; the view may name the Echo behind them (skill_names.go).
+	DamageIDs           []uint64 `json:"damageIds,omitempty"`
+	DamageIDsIncomplete bool     `json:"damageIdsIncomplete,omitempty"`
 }
 
 // maxSkillsPerContributor bounds one contributor's skill table. Archived encounters show at most a few dozen SkillIds
@@ -59,6 +63,7 @@ func (a *skillAggregate) add(skillID, damageID uint64, amount int64) {
 		a.unassigned.DamageDealt += amount
 		a.unassigned.OutgoingEvents++
 		a.unassigned.MissingSkillEvents++
+		a.unassigned.DamageIDs, a.unassigned.DamageIDsIncomplete = insertDamageID(a.unassigned.DamageIDs, a.unassigned.DamageIDsIncomplete, damageID)
 		return
 	}
 	entry, ok := a.skills[skillID]
@@ -82,21 +87,26 @@ func (a *skillAggregate) add(skillID, damageID uint64, amount int64) {
 
 // recordDamageID keeps the row's distinct DamageIds sorted and bounded.
 func (entry *SkillDamageSnapshot) recordDamageID(damageID uint64) {
+	entry.DamageIDs, entry.DamageIDsIncomplete = insertDamageID(entry.DamageIDs, entry.DamageIDsIncomplete, damageID)
+}
+
+// insertDamageID adds a DamageId to a sorted bounded list. A hit without one, or one past the bound, marks the list
+// incomplete.
+func insertDamageID(ids []uint64, incomplete bool, damageID uint64) ([]uint64, bool) {
 	if damageID == 0 {
-		entry.DamageIDsIncomplete = true
-		return
+		return ids, true
 	}
-	index := sort.Search(len(entry.DamageIDs), func(i int) bool { return entry.DamageIDs[i] >= damageID })
-	if index < len(entry.DamageIDs) && entry.DamageIDs[index] == damageID {
-		return
+	index := sort.Search(len(ids), func(i int) bool { return ids[i] >= damageID })
+	if index < len(ids) && ids[index] == damageID {
+		return ids, incomplete
 	}
-	if len(entry.DamageIDs) >= maxDamageIDsPerSkill {
-		entry.DamageIDsIncomplete = true
-		return
+	if len(ids) >= maxDamageIDsPerSkill {
+		return ids, true
 	}
-	entry.DamageIDs = append(entry.DamageIDs, 0)
-	copy(entry.DamageIDs[index+1:], entry.DamageIDs[index:])
-	entry.DamageIDs[index] = damageID
+	ids = append(ids, 0)
+	copy(ids[index+1:], ids[index:])
+	ids[index] = damageID
+	return ids, incomplete
 }
 
 // snapshot returns an independent copy ordered by damage, highest first; equal damage orders by SkillId so the order
@@ -114,5 +124,7 @@ func (a *skillAggregate) snapshot() ([]SkillDamageSnapshot, UnassignedSkillTotal
 		}
 		return skills[i].SkillID < skills[j].SkillID
 	})
-	return skills, a.unassigned
+	unassigned := a.unassigned
+	unassigned.DamageIDs = append([]uint64(nil), a.unassigned.DamageIDs...)
+	return skills, unassigned
 }

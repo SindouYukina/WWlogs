@@ -1,3 +1,4 @@
+import type { GameAssetKind } from "../design/assets.ts"
 import { snapshotStale } from "./effects.ts"
 import { dataState, type Connection, type DPS, type Encounter, type Snapshot, type ViewSnapshot } from "./snapshot.ts"
 
@@ -9,7 +10,9 @@ export interface SkillRow {
   /** Master display name; absent names show the raw ID. */
   name?: string
   /** Set when name is not the skill's own official name but that of a related record; the table marks such rows. */
-  derived?: "damage_list" | "echo"
+  derived?: "damage_list" | "tune_break" | "echo"
+  iconKind?: GameAssetKind
+  iconId?: number
   damage: number
   /** Server-confirmed, deduplicated damage events. Not a cast count. */
   events: number
@@ -21,7 +24,7 @@ export interface SkillRow {
 export interface SkillBreakdown {
   rows: SkillRow[]
   /** Confirmed damage of the contributor without a skill source; absent when there is none. */
-  unassigned?: { damage: number; events: number; share?: number }
+  unassigned?: { damage: number; events: number; share?: number; name?: string; iconKind?: GameAssetKind; iconId?: number }
 }
 
 export interface CombatTimeline {
