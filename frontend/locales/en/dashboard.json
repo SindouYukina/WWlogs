@@ -81,9 +81,10 @@
   "shareColumn": "Share",
   "direct": "Direct",
   "summon": "Summon",
-  "eventsLabel": "Confirmed events",
-  "eventsNote": "Confirmed by the server",
   "damageNote": "Confirmed local team damage in this encounter",
   "takenNote": "Confirmed damage taken in this encounter",
-  "rollingNote": "Last 5 s {{five}} · last 10 s {{ten}}"
+  "peakNote": "Peak 1s DPS: {{value}}",
+  "healing": "Healing",
+  "healingNote": "Confirmed healing this encounter",
+  "healingUnavailable": "No verifiable healing data yet"
 }

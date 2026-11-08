@@ -172,6 +172,48 @@ func (tl *encounterTimeline) coarsen() {
 	tl.scale *= 2
 }
 
+// span returns the first and last interval index, in intervals of factor stored intervals, that [start, end] covers.
+// An end exactly on a boundary closes the previous interval instead of opening an empty one.
+func (tl *encounterTimeline) span(start, end time.Time, factor int64) (first, last int64) {
+	size := int64(tl.unit()) * factor
+	first = floorDiv(int64(start.Sub(tl.anchor)), size)
+	last = floorDiv(int64(end.Sub(tl.anchor)), size)
+	if last > first && tl.anchor.Add(time.Duration(last*size)).Equal(end) {
+		last--
+	}
+	return first, last
+}
+
+// peak returns the stored interval of [start, end] with the most damage, with the same clipping as render: damage
+// outside the span counts in the first or last interval. The interval is reported at its nominal length even when the
+// span cuts it short, so a short first or last interval is never scaled up. ok is false without damage.
+func (tl *encounterTimeline) peak(start, end time.Time) (damage int64, begin time.Time, length time.Duration, ok bool) {
+	if tl == nil || len(tl.buckets) == 0 || start.IsZero() || end.IsZero() || end.Before(start) {
+		return 0, time.Time{}, 0, false
+	}
+	first, last := tl.span(start, end, 1)
+	sums := make(map[int64]int64, len(tl.buckets))
+	for k, bucket := range tl.buckets {
+		sums[max(first, min(last, k))] += bucket.damage
+	}
+	best := int64(0)
+	for k, sum := range sums {
+		// Ties go to the earliest interval so the result does not depend on map order.
+		if sum > damage || (sum == damage && sum > 0 && k < best) {
+			damage, best = sum, k
+		}
+	}
+	if damage <= 0 {
+		return 0, time.Time{}, 0, false
+	}
+	length = tl.unit()
+	begin = tl.anchor.Add(time.Duration(best * int64(length)))
+	if begin.Before(start) {
+		begin = start
+	}
+	return damage, begin, length, true
+}
+
 // displaySeconds are the display interval lengths a bounded render may use, so labels stay on round durations.
 var displaySeconds = []int64{1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600}
 
@@ -200,16 +242,7 @@ func (tl *encounterTimeline) render(encounterID string, start, end time.Time, op
 		maxPoints = maxTimelineRenderPoints
 	}
 	unit := int64(tl.unit())
-	bounds := func(factor int64) (first, last int64) {
-		size := unit * factor
-		first = floorDiv(int64(start.Sub(tl.anchor)), size)
-		last = floorDiv(int64(end.Sub(tl.anchor)), size)
-		// An end exactly on a boundary closes the previous interval instead of opening an empty one.
-		if last > first && tl.anchor.Add(time.Duration(last*size)).Equal(end) {
-			last--
-		}
-		return first, last
-	}
+	bounds := func(factor int64) (first, last int64) { return tl.span(start, end, factor) }
 	fits := func(factor int64) bool {
 		first, last := bounds(factor)
 		return last-first+1 <= int64(maxPoints)
@@ -381,4 +414,23 @@ func (s *DamageStatistics) encounterTimelines() []EncounterTimelineSnapshot {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.encounters.allTimelines(time.Time{})
+}
+
+// encounterPeakDPS is the highest 1-second Encounter DPS interval of the encounter's timeline, evaluated at the same end
+// as Encounter DPS, before data integrity is applied. Damage is that interval's confirmed local damage; Value is that
+// damage over the nominal interval length.
+func encounterPeakDPS(record *encounterRecord, end time.Time, confidence string) DPSResult {
+	result := DPSResult{Confidence: confidence}
+	damage, begin, length, ok := record.timeline.peak(record.startAt, end)
+	if !ok {
+		result.Status, result.Reason = DPSStatusUnavailable, "no_confirmed_damage"
+		return result
+	}
+	result.Damage, result.Duration, result.StartObservedAt = damage, length, begin
+	result.EndObservedAt = begin.Add(length)
+	if result.EndObservedAt.After(end) {
+		result.EndObservedAt = end
+	}
+	result.Status, result.Value = DPSStatusAvailable, float64(damage)/length.Seconds()
+	return result
 }

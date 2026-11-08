@@ -21,6 +21,7 @@ const paths = {
   clock: "M12 21a9 9 0 100-18 9 9 0 000 18zM12 7v5l3 2",
   bolt: "M13 3L5 14h6l-1 7 8-11h-6z",
   shield: "M12 3l7 3v5c0 5-3 8-7 10-4-2-7-5-7-10V6z",
+  heal: "M9.5 4h5v5.5H20v5h-5.5V20h-5v-5.5H4v-5h5.5z",
   list: "M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01",
   question: "M9 9a3 3 0 115 2c-1 1-2 1.5-2 3M12 18h.01",
   play: "M7 5l12 7-12 7z",

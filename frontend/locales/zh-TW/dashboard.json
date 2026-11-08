@@ -81,9 +81,10 @@
   "shareColumn": "占比",
   "direct": "直接",
   "summon": "召喚",
-  "eventsLabel": "已確認事件",
-  "eventsNote": "伺服器已確認的事件",
   "damageNote": "本場已確認的本機隊伍傷害",
   "takenNote": "本場已確認的承受傷害",
-  "rollingNote": "近 5 秒 {{five}}・近 10 秒 {{ten}}"
+  "peakNote": "本場峰值 DPS：{{value}}",
+  "healing": "治療量",
+  "healingNote": "本場已確認的治療量",
+  "healingUnavailable": "暫無可驗證的治療資料"
 }

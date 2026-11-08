@@ -112,6 +112,13 @@ type DamageStatisticsSnapshot struct {
 	Roles          []RoleDamageSnapshot   `json:"roles"`
 	UnassignedRole UnassignedRoleTotals   `json:"unassignedRole"`
 	Vehicle        *VehicleDamageSnapshot `json:"vehicle,omitempty"`
+	// Healing is the local team's healing of this interval (healing.go). HealingNotLocalEvents counts healing results
+	// that were not the local team's (another source or target, or held back by the attribution gate),
+	// HealingDuplicateEvents repeated healing results, and HealingInconsistentEvents healing results that lowered HP.
+	Healing                   HealingTotals `json:"healing"`
+	HealingNotLocalEvents     uint64        `json:"healingNotLocalEvents"`
+	HealingDuplicateEvents    uint64        `json:"healingDuplicateEvents"`
+	HealingInconsistentEvents uint64        `json:"healingInconsistentEvents"`
 }
 
 type rollingDamageEvent struct {
@@ -159,6 +166,13 @@ type DamageStatistics struct {
 	// lastDowngradeAt is the capture time of the newest event kept unattributed by the attribution context gate.
 	lastDowngradeAt time.Time
 	roles           roleAggregate
+	// healing is the local team's healing of this interval; appliedHealingKeys is kept apart from appliedKeys, so
+	// healing never changes which damage keys the bounded set remembers.
+	healing                healingAccumulator
+	healingNotLocal        uint64
+	healingDuplicates      uint64
+	appliedHealingKeys     map[CombatEventKey]struct{}
+	appliedHealingKeyOrder []CombatEventKey
 }
 
 // NewDamageStatistics creates an empty damage statistics accumulator.
@@ -270,6 +284,8 @@ func (s *DamageStatistics) snapshotLocked() DamageStatisticsSnapshot {
 		UngroupedOutgoingEvents: s.ungroupedOutgoingEvents, UngroupedIncomingEvents: s.ungroupedIncomingEvents,
 		DuplicateEvents: s.duplicateEvents,
 		ByPlayerEntity:  make([]PlayerEntityDamageSnapshot, 0, len(s.entities)),
+		Healing:         s.healing.result(), HealingNotLocalEvents: s.healingNotLocal, HealingDuplicateEvents: s.healingDuplicates,
+		HealingInconsistentEvents: s.healing.inconsistent,
 	}
 	for _, entity := range s.entities {
 		snapshot.ByPlayerEntity = append(snapshot.ByPlayerEntity, entity)
@@ -357,6 +373,9 @@ func (s *DamageStatistics) resetLocked() {
 	s.duplicateEvents = 0
 	s.lastDowngradeAt = time.Time{}
 	s.roles = roleAggregate{}
+	s.healing = healingAccumulator{}
+	s.healingNotLocal = 0
+	s.healingDuplicates = 0
 	s.encounters = s.encounters.nextInterval(s.statisticsIntervalID)
 }
 
@@ -423,15 +442,18 @@ const (
 	statisticsAssignmentNotCounted = "not_counted"
 )
 
-// addCombatEvent applies one normalized record and returns its encounter assignment. Only damage enters these
-// totals; healing stays out because HPS has no verified semantics. A record whose key was already applied is
-// counted as a duplicate and ignored.
+// addCombatEvent applies one normalized record and returns its encounter assignment. Damage enters the damage totals
+// and the encounters; the local team's healing enters only the healing totals (addHealingLocked). A record whose key
+// was already applied is counted as a duplicate and ignored.
 func (s *DamageStatistics) addCombatEvent(record CombatEventRecord) string {
-	if s == nil || record.Kind != CombatEventDamage || record.Amount <= 0 {
+	if s == nil || record.Amount <= 0 || (record.Kind != CombatEventDamage && record.Kind != CombatEventHealing) {
 		return statisticsAssignmentNotCounted
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if record.Kind == CombatEventHealing {
+		return s.addHealingLocked(record)
+	}
 	if s.entities == nil {
 		s.entities = make(map[combatStatisticsKey]PlayerEntityDamageSnapshot)
 	}
@@ -474,15 +496,41 @@ func (s *DamageStatistics) addCombatEvent(record CombatEventRecord) string {
 // rememberAppliedKeyLocked keeps a bounded FIFO of applied keys. The bound matches the RPC consumed set, so an
 // evicted key could also be re-admitted there; both layers then agree on what counts as a repeat.
 func (s *DamageStatistics) rememberAppliedKeyLocked(key CombatEventKey) {
-	if s.appliedKeys == nil {
-		s.appliedKeys = make(map[CombatEventKey]struct{})
+	rememberBoundedKey(&s.appliedKeys, &s.appliedKeyOrder, key)
+}
+
+func rememberBoundedKey(keys *map[CombatEventKey]struct{}, order *[]CombatEventKey, key CombatEventKey) {
+	if *keys == nil {
+		*keys = make(map[CombatEventKey]struct{})
 	}
-	s.appliedKeys[key] = struct{}{}
-	s.appliedKeyOrder = append(s.appliedKeyOrder, key)
-	for len(s.appliedKeys) > maxStatisticsAppliedKeys && len(s.appliedKeyOrder) > 0 {
-		delete(s.appliedKeys, s.appliedKeyOrder[0])
-		s.appliedKeyOrder = s.appliedKeyOrder[1:]
+	(*keys)[key] = struct{}{}
+	*order = append(*order, key)
+	for len(*keys) > maxStatisticsAppliedKeys && len(*order) > 0 {
+		delete(*keys, (*order)[0])
+		*order = (*order)[1:]
 	}
+}
+
+// Statistics-level assignment for a healing record counted as the local team's healing.
+const statisticsAssignmentHealing = "healing"
+
+// addHealingLocked applies one healing record. Only the local team's healing is counted; it is kept for encounter
+// association without touching encounter boundaries, the clock, or any damage total.
+func (s *DamageStatistics) addHealingLocked(record CombatEventRecord) string {
+	if record.Key.hasIdentity() {
+		if _, seen := s.appliedHealingKeys[record.Key]; seen {
+			s.healingDuplicates++
+			return statisticsAssignmentDuplicate
+		}
+		rememberBoundedKey(&s.appliedHealingKeys, &s.appliedHealingKeyOrder, record.Key)
+	}
+	if !isLocalHealing(record) {
+		s.healingNotLocal++
+		return statisticsAssignmentNotCounted
+	}
+	s.healing.add(healingEventOf(record))
+	s.encounters.observeHealing(record)
+	return statisticsAssignmentHealing
 }
 
 func (s *DamageStatistics) addRollingDamageEventLocked(sessionNumber int, observedAt time.Time, damage int64) {
