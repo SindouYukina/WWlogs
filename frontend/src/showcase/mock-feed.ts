@@ -46,6 +46,8 @@ interface MockRole {
 
 /** Seconds between scripted healing results. */
 const healIntervalSeconds = 1.6
+/** HP each scripted role starts the encounter missing, so effective healing shows from the first results. */
+const startingMissingHp = 6000
 
 interface MockEffect {
   key: string
@@ -116,7 +118,7 @@ export class MockFeed {
     this.state = "running"
     this.vehicle = undefined
     this.unassignedDamage = 0
-    this.roles = masterRoles.slice(0, 3).map((role, index) => ({ roleId: role.roleId, damage: 0, base: baseDps[index]!, burstUntil: 0, taken: 0, missing: 0, window: [] }))
+    this.roles = masterRoles.slice(0, 3).map((role, index) => ({ roleId: role.roleId, damage: 0, base: baseDps[index]!, burstUntil: 0, taken: 0, missing: startingMissingHp, window: [] }))
     this.history = new Map(this.roles.map(role => [role.roleId, [] as Array<number | null>]))
     this.historyAccumulator = 0
     this.peakBucket = 0
@@ -156,7 +158,7 @@ export class MockFeed {
     const removed = this.roles[this.roles.length - 1]
     if (!next || !removed) return
     this.history.delete(removed.roleId)
-    this.roles[this.roles.length - 1] = { roleId: next.roleId, damage: 0, base: baseDps[3]!, burstUntil: 0, taken: 0, missing: 0, window: [] }
+    this.roles[this.roles.length - 1] = { roleId: next.roleId, damage: 0, base: baseDps[3]!, burstUntil: 0, taken: 0, missing: startingMissingHp, window: [] }
     this.history.set(next.roleId, [])
   }
 
