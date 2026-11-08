@@ -11,12 +11,12 @@ export function snapshotStale(snapshot:Snapshot|null, now:number):boolean {
 // Game time-stop is not proven, so even a fresh finite result remains explicitly estimated.
 export function effectRemaining(effect:Effect,snapshot:Snapshot|null,connection:Connection,now:number):number|undefined {
   if(!snapshot?.view || connection!=="connected" || snapshot.service.state!=="running" || snapshotStale(snapshot,now))return undefined
-  if(snapshot.view.health.context.state!=="VALID" || snapshot.view.effects.status!=="complete" || effect.stale)return undefined
+  if(snapshot.view.health.context.state!=="VALID" || snapshot.view.effects.status!=="complete" || snapshot.view.effects.clockStalled===true || effect.stale || effect.maintained===true)return undefined
   if(effect.lifecycle!=="active" || effect.remainingStatus!=="estimated" || effect.remainingSeconds===undefined || !Number.isFinite(effect.remainingSeconds))return undefined
   return Math.max(0,effect.remainingSeconds)
 }
 
-type OrderedEffect = Pick<Effect, "key" | "lifecycle" | "remainingStatus" | "expectedExpiry" | "stale" | "hudIcon">
+type OrderedEffect = Pick<Effect, "key" | "lifecycle" | "remainingStatus" | "expectedExpiry" | "stale" | "hudIcon" | "maintained">
 
 /**
  * The moment an effect is expected to end, in capture time, or undefined when it has no reliable time. An expiry only
@@ -24,8 +24,8 @@ type OrderedEffect = Pick<Effect, "key" | "lifecycle" | "remainingStatus" | "exp
  * hide every countdown at once (a stalled snapshot, a suspect context) leave it in place, so effects do not reshuffle
  * while their seconds are hidden.
  */
-export function effectExpiryMs(effect: Pick<Effect, "lifecycle" | "remainingStatus" | "expectedExpiry" | "stale">): number | undefined {
-  if (effect.stale || effect.lifecycle !== "active" || effect.remainingStatus !== "estimated" || effect.expectedExpiry === undefined) return undefined
+export function effectExpiryMs(effect: Pick<Effect, "lifecycle" | "remainingStatus" | "expectedExpiry" | "stale" | "maintained">): number | undefined {
+  if (effect.stale || effect.maintained || effect.lifecycle !== "active" || effect.remainingStatus !== "estimated" || effect.expectedExpiry === undefined) return undefined
   const at = Date.parse(effect.expectedExpiry)
   return Number.isFinite(at) ? at : undefined
 }
@@ -70,7 +70,7 @@ export const stripCellWidth = (size: EffectCellSize, layout: EffectStripLayout) 
 export interface EffectStrip {
   /** How many of the ordered effects are drawn. */
   visible: number
-  /** Eligible effects not drawn: visible + overflow always equals eligible. */
+  /** Cells not drawn: visible + overflow always equals the cells the engine listed and truncated. */
   overflow: number
 }
 

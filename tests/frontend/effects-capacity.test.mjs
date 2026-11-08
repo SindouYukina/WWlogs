@@ -15,6 +15,12 @@ const layout = (width = 616) => ({ width, icon: 36, gauge: 22, gap: 4, more: 34 
 const icons = n => Array.from({ length: n }, (_, i) => ({ key: `i${i}`, hudIcon: true }))
 const gauges = n => Array.from({ length: n }, (_, i) => ({ key: `g${i}` }))
 
+test("a maintained modifier sorts with the effects that have no reliable time", () => {
+  const list = [timed("m", 0.5, { maintained: true }), timed("a", 4), untimed("u")]
+  assert.equal(effectExpiryMs(list[0]), undefined)
+  assert.deepEqual(keys(orderEffects(list)), ["a", "m", "u"])
+})
+
 test("effects run from the soonest to end to the latest, then those without a reliable time", () => {
   const list = [timed("c", 12.3), untimed("u"), timed("a", 1.8), timed("d", 6), timed("b", 3.4)]
   assert.deepEqual(keys(orderEffects(list)), ["a", "b", "d", "c", "u"])
@@ -105,9 +111,9 @@ test("the drawn effects do not change while only time passes", () => {
 test("the production strip orders the engine's set, never filters it, and never names an effect", () => {
   const panel = read("frontend/src/views/EffectsOverlayPanel.tsx")
   assert.ok(panel.includes("orderEffects(listed)"), "the panel orders the engine's list")
-  assert.ok(panel.includes("fitEffectStrip(ordered, effectCellSize, eligible, layout)"), "the strip is a prefix of that order")
+  assert.ok(panel.includes("fitEffectStrip(ordered, effectCellSize, cells, layout)"), "the strip is a prefix of that order")
   assert.ok(!/relevantEffect|\.filter\(relevant/.test(panel), "the engine, not the panel, decides display eligibility")
-  assert.match(panel, /counts\?\.eligible/, "the count comes from the engine's display set")
+  assert.match(panel, /counts\?\.cells/, "the count comes from the engine's display cells")
   assert.ok(!/effectGroupOf|EffectGroupMark|holderName|holderRoleId/.test(panel), "the strip does not group by holder")
   for (const forbidden of ["termName", "unknownEffect", "relatedTerm", "effectId ??", "title={"]) assert.ok(!panel.includes(forbidden), `the overlay shows no effect name or ID: ${forbidden}`)
   const components = read("frontend/src/design/components/combat.tsx")

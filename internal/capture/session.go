@@ -351,8 +351,9 @@ loop:
 }
 
 // liveViewClockLeadLimit bounds how long countdowns keep running with no new game frame. It matches the listening
-// status's stale threshold: the longest frame gap in the archived captures is 5.98 s, and past 8 s the capture is no
-// longer known to be seeing the game.
+// status's stale threshold. In the 24 valid archived captures 113,300 frame gaps stay under 3 s, the longest gap of an
+// established session is 5.98 s, and the only two longer ones (18.6 s and 39.6 s) precede a new handshake, so past 8 s
+// the capture is no longer known to be seeing the game. The view then reports ClockStalled rather than a countdown.
 const liveViewClockLeadLimit = 8 * time.Second
 
 // liveViewClockLead returns how far a live publish reads the Effects view past the newest frame. The game clock keeps

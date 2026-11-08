@@ -29,6 +29,16 @@ func elementOfAttribute(attribute uint64) (uint64, bool) {
 	return 0, false
 }
 
+// elementFamilyOfAttribute returns the first attribute of the element family an attribute belongs to, or zero.
+func elementFamilyOfAttribute(attribute uint64) uint64 {
+	for _, first := range elementAttributeFamilies {
+		if attribute >= first && attribute < first+6 {
+			return first
+		}
+	}
+	return 0
+}
+
 // effectElementFor returns the element a definition states and the evidence for it. A glossary term decides first, then
 // a modifier of an element-specific attribute. It says what element the effect concerns, not who benefits from it.
 func effectElementFor(termID uint64, hasTerm bool, static buffStaticParameters) (uint64, string) {

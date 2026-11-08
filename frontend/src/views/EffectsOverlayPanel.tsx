@@ -61,15 +61,15 @@ export function EffectsOverlayPanel({ data, alpha }: EffectsOverlayPanelProps) {
   const { t } = useTranslation(["overlay", "common"])
   const describeListening = useListeningLabels()
   const { snapshot, connection, now } = data
-  const frozen = isFrozen(data)
   const view = snapshot?.view
-  // The engine lists only display-eligible effects and counts the rest; the panel orders them but never filters them.
+  const frozen = isFrozen(data) || view?.effects.clockStalled === true
+  // The engine lists only display-eligible cells and counts the rest; the panel orders them but never filters them.
   const listed = view?.effects.active ?? []
-  const eligible = view?.effects.counts?.eligible ?? listed.length
+  const cells = view?.effects.counts?.cells ?? listed.length
   const unclassified = view?.effects.counts?.unclassified ?? 0
   const { strip, layout } = useStripLayout()
   const ordered = useMemo(() => orderEffects(listed), [listed])
-  const { visible, overflow } = useMemo(() => fitEffectStrip(ordered, effectCellSize, eligible, layout), [ordered, eligible, layout])
+  const { visible, overflow } = useMemo(() => fitEffectStrip(ordered, effectCellSize, cells, layout), [ordered, cells, layout])
   const items = useMemo<StripItem[]>(() => {
     const cells = ordered.slice(0, visible).map<StripItem>(effect => ({
       kind: "effect",
@@ -95,10 +95,10 @@ export function EffectsOverlayPanel({ data, alpha }: EffectsOverlayPanelProps) {
   const listening = snapshot?.listening
   const text = listening ? describeListening(listening) : null
   const style = alpha === undefined ? undefined : { "--ww-alpha-overlay": alpha, "--ww-alpha-overlay-strong": Math.min(1, alpha + 0.12) } as CSSProperties
-  return <div className="ww-effects" style={style} data-field="effects" data-count={eligible} data-visible={visible} data-overflow={overflow} data-unclassified={unclassified}>
+  return <div className="ww-effects" style={style} data-field="effects" data-count={cells} data-visible={visible} data-overflow={overflow} data-unclassified={unclassified}>
     {listening && text && <span className="ww-effects-status" data-field="listening" data-state={listening.state} data-reason={listening.reason}><ListeningStatus state={listening.state} label={text.label} detail={text.detail} variant="dot" /></span>}
     <div ref={strip} className="ww-effects-strip" data-field="effect-strip">
-      {eligible === 0
+      {cells === 0
         ? <div className="ww-combat-empty ww-effects-empty">{t("noEffects")}</div>
         : <StackRow items={items} keyOf={stripKey} widthOf={widthOf} gap={layout?.gap} renderItem={renderItem} />}
     </div>

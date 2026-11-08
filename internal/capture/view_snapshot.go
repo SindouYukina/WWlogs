@@ -224,6 +224,9 @@ type ViewEffects struct {
 	Active      []ViewEffect         `json:"active"`
 	RecentEnded []ViewEffect         `json:"recentEnded"`
 	Counts      ViewEffectCounts     `json:"counts"`
+	// ClockStalled reports that a live capture has seen no game frame for liveViewClockLeadLimit: the countdowns stopped
+	// advancing because the capture no longer knows what the game is doing. A replay never sets it.
+	ClockStalled bool `json:"clockStalled,omitempty"`
 }
 
 // ViewEffect is one tracked effect instance. Key is an opaque, stable identity for list rendering; it is a hash, not
@@ -262,6 +265,10 @@ type ViewEffect struct {
 	Stale            bool                  `json:"stale,omitempty"`
 	Evidence         EffectEvidence        `json:"evidence"`
 	EndedAt          *time.Time            `json:"endedAt,omitempty"`
+	// Instances is how many tracker instances this overlay cell stands for (effectDisplayCells).
+	Instances int `json:"instances,omitempty"`
+	// Maintained reports a modifier the game keeps refreshing, whose remaining time is a refresh period, not a time left.
+	Maintained bool `json:"maintained,omitempty"`
 }
 
 // viewSnapshot builds the UI view at the newest capture time. It runs on the capture goroutine.
@@ -452,18 +459,24 @@ func (p *processor) viewEffects() ViewEffects {
 	}
 	snapshot := p.effectSnapshotAfterLastFrame(p.viewClockLead)
 	// Only display-eligible instances are listed; the bound applies to the display set alone, so an eligible instance is
-	// never pushed out by one that would not have been shown. Effects with a server duration come first, so the bound
-	// and a short window keep the countdowns; within the timed and the untimed group, effects the game itself draws in a
-	// HUD buff bar come first (effect_hud_cues.go). Within each group the tracker's order is kept, so a refresh never
-	// moves a row. The order only decides which eligible rows fit; it never removes one from the display set.
-	view := ViewEffects{Status: snapshot.Status, Reason: snapshot.Reason, Active: []ViewEffect{}}
-	var groups [4][]EffectInstanceSnapshot
+	// never pushed out by one that would not have been shown. Instances the strip cannot tell apart share one cell
+	// (effectDisplayCells). Effects with a server duration come first, so the bound and a short window keep the
+	// countdowns; within the timed and the untimed group, effects the game itself draws in a HUD buff bar come first
+	// (effect_hud_cues.go). The order only decides which cells fit; it never removes one from the display set.
+	view := ViewEffects{Status: snapshot.Status, Reason: snapshot.Reason, Active: []ViewEffect{}, ClockStalled: p.viewClockLead >= liveViewClockLeadLimit}
+	eligible := make([]EffectInstanceSnapshot, 0, len(snapshot.Effects))
 	for _, effect := range snapshot.Effects {
 		display := effectDisplayFor(effect)
 		view.Counts.add(display.Eligibility)
-		if display.Eligibility != EffectDisplayEligible {
-			continue
+		if display.Eligibility == EffectDisplayEligible {
+			eligible = append(eligible, effect)
 		}
+	}
+	var groups [4][]effectDisplayCell
+	cells := effectDisplayCells(eligible)
+	view.Counts.Cells = len(cells)
+	for _, cell := range cells {
+		effect := cell.representative
 		group := 0
 		if effect.ServerDurationSeconds == nil {
 			group = 2
@@ -471,17 +484,17 @@ func (p *processor) viewEffects() ViewEffects {
 		if effect.Static == nil || len(effect.Static.HUDCueTypes) == 0 {
 			group++
 		}
-		groups[group] = append(groups[group], effect)
+		groups[group] = append(groups[group], cell)
 	}
-	for _, effect := range append(append(append(groups[0], groups[1]...), groups[2]...), groups[3]...) {
+	for _, cell := range append(append(append(groups[0], groups[1]...), groups[2]...), groups[3]...) {
 		if len(view.Active) == maxViewEffects {
-			view.Counts.Truncated++
+			view.Counts.Truncated += cell.instances()
+			view.Counts.TruncatedCells++
 			continue
 		}
-		view.Counts.Listed++
-		entry := p.viewEffect(effect)
-		entry.Display = effectDisplayFor(effect)
-		view.Active = append(view.Active, entry)
+		view.Counts.Listed += cell.instances()
+		view.Counts.ListedCells++
+		view.Active = append(view.Active, p.viewEffectCell(cell))
 	}
 	endedEffects := snapshot.RecentEnded
 	if len(endedEffects) > 12 {
@@ -498,6 +511,27 @@ func (p *processor) viewEffects() ViewEffects {
 		at := ended.EndedAt
 		effect.EndedAt = &at
 		view.RecentEnded = append(view.RecentEnded, effect)
+	}
+	return view
+}
+
+// viewEffectCell projects one Effects Overlay cell. The instances of a cell end together; it shows the largest stack.
+func (p *processor) viewEffectCell(cell effectDisplayCell) ViewEffect {
+	view := p.viewEffect(cell.representative)
+	view.Display = effectDisplayFor(cell.representative)
+	view.Instances = cell.instances()
+	view.Maintained = effectIsMaintained(cell.representative)
+	for _, member := range cell.members {
+		if member.StackCount != nil && (view.StackCount == nil || *member.StackCount > *view.StackCount) {
+			stack := *member.StackCount
+			view.StackCount = &stack
+		}
+	}
+	if cell.instances() > 1 {
+		view.HolderRoleID = nil
+	}
+	if cell.elementFanOut {
+		view.ElementID = nil
 	}
 	return view
 }

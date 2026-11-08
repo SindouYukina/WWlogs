@@ -522,7 +522,9 @@ func maxViewEffectCounts(a, b ViewEffectCounts) ViewEffectCounts {
 	return ViewEffectCounts{
 		Tracked: max(a.Tracked, b.Tracked), EstimatedExpired: max(a.EstimatedExpired, b.EstimatedExpired), Active: max(a.Active, b.Active),
 		NotLocal: max(a.NotLocal, b.NotLocal), Local: max(a.Local, b.Local), NonCombat: max(a.NonCombat, b.NonCombat), Internal: max(a.Internal, b.Internal),
-		Unclassified: max(a.Unclassified, b.Unclassified), Eligible: max(a.Eligible, b.Eligible), Listed: max(a.Listed, b.Listed), Truncated: max(a.Truncated, b.Truncated),
+		Unclassified: max(a.Unclassified, b.Unclassified), Passive: max(a.Passive, b.Passive), PredictedExpired: max(a.PredictedExpired, b.PredictedExpired),
+		Eligible: max(a.Eligible, b.Eligible), Listed: max(a.Listed, b.Listed), Truncated: max(a.Truncated, b.Truncated),
+		Cells: max(a.Cells, b.Cells), ListedCells: max(a.ListedCells, b.ListedCells), TruncatedCells: max(a.TruncatedCells, b.TruncatedCells),
 	}
 }
 
