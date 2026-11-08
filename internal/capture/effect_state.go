@@ -151,6 +151,9 @@ type EffectStaticInfo struct {
 	// ElementID is the element the definition states (effect_element.go); zero means none is established.
 	ElementID    uint64 `json:"elementId,omitempty"`
 	ElementBasis string `json:"elementBasis,omitempty"`
+	// ElementFamily is the first attribute of the element attribute family the definition's modifier belongs to; zero when
+	// the element does not come from an attribute (effect_element.go).
+	ElementFamily uint64 `json:"elementFamily,omitempty"`
 }
 
 // EffectTermInfo is the localized glossary term tied to an effect definition.
@@ -308,7 +311,9 @@ type EffectInstanceSnapshot struct {
 	RemainingStatus       EffectRemainingStatus `json:"remainingStatus"`
 	RemainingReason       string                `json:"remainingReason,omitempty"`
 	RemainingSeconds      *float64              `json:"remainingSeconds,omitempty"`
-	ExpectedExpiry        *time.Time            `json:"expectedExpiry,omitempty"`
+	// OverdueSeconds is how far the query time is past the expected expiry; set only when RemainingStatus is overdue.
+	OverdueSeconds *float64   `json:"overdueSeconds,omitempty"`
+	ExpectedExpiry *time.Time `json:"expectedExpiry,omitempty"`
 	// StaleSinceTransportLoss is set when no message updated the instance since a transport loss began; its
 	// removal or refresh may have been lost.
 	StaleSinceTransportLoss bool `json:"staleSinceTransportLoss,omitempty"`
@@ -451,7 +456,7 @@ func (info *EffectStaticInfo) clone() *EffectStaticInfo {
 	if info == nil {
 		return nil
 	}
-	copied := &EffectStaticInfo{DeveloperTags: append([]string(nil), info.DeveloperTags...), HUDCueTypes: append([]int32(nil), info.HUDCueTypes...), HUDIconGeneric: info.HUDIconGeneric, ElementID: info.ElementID, ElementBasis: info.ElementBasis}
+	copied := &EffectStaticInfo{DeveloperTags: append([]string(nil), info.DeveloperTags...), HUDCueTypes: append([]int32(nil), info.HUDCueTypes...), HUDIconGeneric: info.HUDIconGeneric, ElementID: info.ElementID, ElementBasis: info.ElementBasis, ElementFamily: info.ElementFamily}
 	if info.Term != nil {
 		term := *info.Term
 		copied.Term = &term
@@ -1116,6 +1121,8 @@ func (t *EffectTracker) instanceSnapshotLocked(instance *effectInstance, query C
 		}
 		zero := 0.0
 		snapshot.RemainingStatus, snapshot.RemainingSeconds = EffectRemainingOverdue, &zero
+		overdue := -remaining
+		snapshot.OverdueSeconds = &overdue
 		if -remaining > effectOverdueRetention.Seconds() {
 			snapshot.Lifecycle = EffectLifecycleEstimatedExpired
 		}

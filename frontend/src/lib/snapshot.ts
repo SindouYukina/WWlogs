@@ -245,6 +245,10 @@ export interface Effect {
   /** Capture time the engine expects the effect to end. It changes only when the engine reports a new time. */
   expectedExpiry?: string
   stale?: boolean
+  /** How many tracker instances this cell stands for: one effect on several holders, or one bonus per element. */
+  instances?: number
+  /** The game keeps refreshing this modifier, so its remaining time is a refresh period rather than a time left. */
+  maintained?: boolean
   firstObservedAt: string
   lastUpdatedAt: string
   endedAt?: string
@@ -252,8 +256,9 @@ export interface Effect {
 }
 
 /**
- * How the engine partitioned its tracked effects (Go ViewEffectCounts). `eligible` is the display set: active lists its
- * first `listed` members and `truncated` are the rest. Every other count is a reason an effect was not eligible.
+ * How the engine partitioned its tracked effects (Go ViewEffectCounts). `eligible` counts instances and `cells` the
+ * overlay cells they form: active lists `listedCells` and `truncatedCells` are the rest. Every other count is a reason an
+ * effect was not eligible.
  */
 export interface EffectCounts {
   tracked: number
@@ -264,9 +269,14 @@ export interface EffectCounts {
   nonCombat: number
   internal: number
   unclassified: number
+  passive: number
+  predictedExpired: number
   eligible: number
   listed: number
   truncated: number
+  cells: number
+  listedCells: number
+  truncatedCells: number
 }
 
 export interface ViewSnapshot {
@@ -303,7 +313,7 @@ export interface ViewSnapshot {
   vehicle?: Vehicle
   unassignedRole: UnassignedRole
   unassignedRoleShare?: number
-  effects: { status: string; reason?: string; active: Effect[]; recentEnded: Effect[]; counts: EffectCounts }
+  effects: { status: string; reason?: string; active: Effect[]; recentEnded: Effect[]; counts: EffectCounts; clockStalled?: boolean }
   /** DPS over time of the encounter shown (encounters.current, else the newest recent one); absent before any. */
   timeline?: Timeline
 }

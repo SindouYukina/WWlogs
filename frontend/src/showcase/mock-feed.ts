@@ -402,7 +402,7 @@ export class MockFeed {
         vehicle,
         unassignedRole,
         // Mock effects are all eligible; nothing is tracked beyond them.
-        effects: { status: "complete", active, recentEnded: [], counts: { tracked: active.length, estimatedExpired: 0, active: active.length, notLocal: 0, local: active.length, nonCombat: 0, internal: 0, unclassified: 0, eligible: active.length, listed: active.length, truncated: 0 } },
+        effects: { status: "complete", active, recentEnded: [], counts: { tracked: active.length, estimatedExpired: 0, active: active.length, notLocal: 0, local: active.length, nonCombat: 0, internal: 0, unclassified: 0, passive: 0, predictedExpired: 0, eligible: active.length, listed: active.length, truncated: 0, cells: active.length, listedCells: active.length, truncatedCells: 0 } },
       },
     }
   }

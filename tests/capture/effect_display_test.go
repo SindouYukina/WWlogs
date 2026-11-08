@@ -47,7 +47,9 @@ func TestClassifyEffectKind(t *testing.T) {
 	}{
 		{"ailment term", EffectCombatClassCombat, effectCombatBasisTerm, tags("战斗状态.异常状态.基础元素异常.风蚀效应"), EffectKindElementAilment},
 		{"combat attribute without name or icon", EffectCombatClassCombat, effectCombatBasisAttribute + "CritDamage", nil, EffectKindStatModifier},
-		{"attribute wins over an internal tag", EffectCombatClassCombat, effectCombatBasisAttribute + "Atk", tags("功能.逻辑状态标识.霸体"), EffectKindStatModifier},
+		{"an internal tag wins over an attribute", EffectCombatClassCombat, effectCombatBasisAttribute + "DamageReduce", tags("功能.逻辑状态标识.霸体"), EffectKindInternalState},
+		{"a HUD cue keeps an attribute modifier with an internal tag", EffectCombatClassCombat, effectCombatBasisAttribute + "Atk", &EffectStaticInfo{DeveloperTags: []string{"角色.x.状态标识.y"}, HUDCueTypes: []int32{2}}, EffectKindStatModifier},
+		{"an unrelated tag leaves an attribute modifier", EffectCombatClassCombat, effectCombatBasisAttribute + "DamageChangeElement1", tags("装备.武器.8d690dd3.5阶"), EffectKindStatModifier},
 		{"role buff marker", EffectCombatClassCombat, effectCombatBasisTag + "buff标识", tags("角色.R2T1ShouanrenMd10011.buff标识.退场技.buff1"), EffectKindBuffMarker},
 		{"buff marker wins over a function flag", EffectCombatClassCombat, effectCombatBasisTag + "QTE", tags("功能.功能制作.QTE.激活QTE", "角色.Common.BUFF通用标识.协奏充能完成"), EffectKindBuffMarker},
 		{"buff marker without combat class", EffectCombatClassUnknown, effectCombatBasisNoEvidence, tags("角色.Common.buff标识.x"), EffectKindBuffMarker},
@@ -84,7 +86,8 @@ func TestEffectDisplayDecision(t *testing.T) {
 		{"team buff from teammate", active(EffectRelationLocalRole, EffectRelationLocalRole, EffectKindBuffMarker), EffectDisplay{EffectDisplayEligible, EffectTargetTeam}},
 		{"summon holder", active(EffectRelationLocalOwned, EffectRelationUnknown, EffectKindStatModifier), EffectDisplay{EffectDisplayEligible, EffectTargetTeam}},
 		{"enemy ailment from team", active(EffectRelationNonPlayer, EffectRelationLocalRole, EffectKindElementAilment), EffectDisplay{EffectDisplayEligible, EffectTargetEnemy}},
-		{"monster effect on team", active(EffectRelationLocalRole, EffectRelationNonPlayer, EffectKindRuntimeLink), EffectDisplay{EffectDisplayEligible, EffectTargetTeam}},
+		{"monster effect of unknown meaning on team", active(EffectRelationLocalRole, EffectRelationNonPlayer, EffectKindRuntimeLink), EffectDisplay{EffectDisplayUnclassified, EffectTargetTeam}},
+		{"team effect of unknown meaning on an enemy", active(EffectRelationNonPlayer, EffectRelationLocalRole, EffectKindRuntimeLink), EffectDisplay{EffectDisplayUnclassified, EffectTargetEnemy}},
 		{"unresolved holder from team", active(EffectRelationUnknown, EffectRelationLocalRole, EffectKindCombatState), EffectDisplay{EffectDisplayEligible, EffectTargetUnresolved}},
 		{"unknown kind stays unclassified", active(EffectRelationLocalRole, EffectRelationLocalRole, EffectKindUnknown), EffectDisplay{EffectDisplayUnclassified, EffectTargetTeam}},
 		{"empty kind is unclassified", active(EffectRelationLocalRole, EffectRelationUnknown, ""), EffectDisplay{EffectDisplayUnclassified, EffectTargetTeam}},
@@ -154,13 +157,13 @@ func TestViewEffectsListsOnlyEligibleAndAccountsForTheRest(t *testing.T) {
 	}))
 
 	view := effectViewAt(p, 0.25)
-	requireEffectCounts(t, view, ViewEffectCounts{Tracked: 10, Active: 10, NotLocal: 1, Local: 9, NonCombat: 1, Internal: 1, Unclassified: 1, Eligible: 6, Listed: 6})
+	requireEffectCounts(t, view, ViewEffectCounts{Tracked: 10, Active: 10, NotLocal: 1, Local: 9, NonCombat: 1, Internal: 1, Unclassified: 1, Eligible: 6, Listed: 6, Cells: 4, ListedCells: 4})
 	ids := map[uint64]int{}
 	for _, effect := range view.Active {
 		if effect.Display.Eligibility != EffectDisplayEligible || effect.Display.Target != EffectTargetEnemy || effect.Kind != EffectKindStatModifier {
 			t.Fatalf("listed display = %+v kind %s", effect.Display, effect.Kind)
 		}
-		ids[*effect.EffectID]++
+		ids[*effect.EffectID] += effect.Instances
 	}
 	if ids[503] != 3 || ids[500] != 1 || ids[600] != 0 || ids[601] != 0 || ids[602] != 0 || ids[603] != 0 {
 		t.Fatalf("listed effect ids = %v", ids)
@@ -199,7 +202,7 @@ func TestViewEffectsCountsAreStableUnderDuplicatesAndLifecycle(t *testing.T) {
 	p.effects.ObserveUpdate(EffectUpdateEvent{SessionNumber: 1, HolderEntityID: 10, HandleID: 1, StackCount: 3, HasStackCount: true, RemainingSeconds: effectFloat(10), DurationSeconds: effectFloat(10), ObservedAt: effectAt(2)})
 	p.effects.ObserveUpdate(EffectUpdateEvent{SessionNumber: 1, HolderEntityID: 10, HandleID: 1, StackCount: 2, HasStackCount: true, ObservedAt: effectAt(3)})
 	view := effectViewAt(p, 3)
-	requireEffectCounts(t, view, ViewEffectCounts{Tracked: 1, Active: 1, Local: 1, Eligible: 1, Listed: 1})
+	requireEffectCounts(t, view, ViewEffectCounts{Tracked: 1, Active: 1, Local: 1, Eligible: 1, Listed: 1, Cells: 1, ListedCells: 1})
 	if view.Active[0].StackCount == nil || *view.Active[0].StackCount != 2 {
 		t.Fatalf("stack = %v", view.Active[0].StackCount)
 	}
@@ -217,20 +220,20 @@ func TestViewEffectsCountsAreStableUnderDuplicatesAndLifecycle(t *testing.T) {
 	requireEffectCounts(t, effectViewAt(p, 4), ViewEffectCounts{})
 	// A new apply after the remove is a new instance, counted once.
 	p.effects.ObserveApply(displayApply(1, 500, 5, nil))
-	requireEffectCounts(t, effectViewAt(p, 5), ViewEffectCounts{Tracked: 1, Active: 1, Local: 1, Eligible: 1, Listed: 1})
+	requireEffectCounts(t, effectViewAt(p, 5), ViewEffectCounts{Tracked: 1, Active: 1, Local: 1, Eligible: 1, Listed: 1, Cells: 1, ListedCells: 1})
 
 	// Holder despawn ends every instance of that holder.
 	p.effects.ObserveApply(displayApply(2, 501, 5, func(e *EffectApplyEvent) { e.HolderEntityID = 11 }))
 	p.effects.ObserveHolderRemoved(1, 10, effectAt(5.5))
 	view = effectViewAt(p, 5.5)
-	requireEffectCounts(t, view, ViewEffectCounts{Tracked: 1, Active: 1, Local: 1, Eligible: 1, Listed: 1})
+	requireEffectCounts(t, view, ViewEffectCounts{Tracked: 1, Active: 1, Local: 1, Eligible: 1, Listed: 1, Cells: 1, ListedCells: 1})
 	if *view.Active[0].EffectID != 501 {
 		t.Fatalf("listed after despawn = %d", *view.Active[0].EffectID)
 	}
 
 	// A new protocol session (scene change or reconnect) drops the live state, as does an interval reset.
 	p.effects.ObserveApply(displayApply(3, 502, 6, func(e *EffectApplyEvent) { e.SessionNumber = 2 }))
-	requireEffectCounts(t, effectViewAt(p, 6), ViewEffectCounts{Tracked: 1, Active: 1, Local: 1, Eligible: 1, Listed: 1})
+	requireEffectCounts(t, effectViewAt(p, 6), ViewEffectCounts{Tracked: 1, Active: 1, Local: 1, Eligible: 1, Listed: 1, Cells: 1, ListedCells: 1})
 	p.effects.Reset()
 	requireEffectCounts(t, effectViewAt(p, 6), ViewEffectCounts{})
 }
@@ -246,13 +249,13 @@ func TestViewEffectsBoundAppliesToTheDisplaySetOnly(t *testing.T) {
 		}))
 	}
 	for handle := uint64(1); handle <= maxViewEffects+3; handle++ {
-		p.effects.ObserveApply(displayApply(handle, 800, 0, nil))
+		p.effects.ObserveApply(displayApply(handle, 800+handle, 0, nil))
 	}
 	total := 50 + maxViewEffects + 3
 	view := effectViewAt(p, 0.5)
-	requireEffectCounts(t, view, ViewEffectCounts{Tracked: total, Active: total, Local: total, Unclassified: 50, Eligible: maxViewEffects + 3, Listed: maxViewEffects, Truncated: 3})
+	requireEffectCounts(t, view, ViewEffectCounts{Tracked: total, Active: total, Local: total, Unclassified: 50, Eligible: maxViewEffects + 3, Listed: maxViewEffects, Truncated: 3, Cells: maxViewEffects + 3, ListedCells: maxViewEffects, TruncatedCells: 3})
 	for _, effect := range view.Active {
-		if *effect.EffectID != 800 {
+		if *effect.EffectID <= 800 {
 			t.Fatalf("an unclassified instance took a bounded row: %+v", effect)
 		}
 	}

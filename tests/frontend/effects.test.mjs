@@ -18,6 +18,8 @@ test("stale context, stale snapshot, removed effects and missing duration never 
   assert.equal(snapshotStale(s,at+6000),true)
   for(const e of [{...effect,stale:true},{...effect,lifecycle:"confirmed_removed"},{...effect,remainingStatus:"unknown"},{...effect,remainingSeconds:undefined}]) assert.equal(effectRemaining(e,s,"connected",at),undefined)
   assert.equal(effectRemaining(effect,s,"connected",at+6000),undefined)
+  assert.equal(effectRemaining({...effect,maintained:true},s,"connected",at),undefined,"a maintained modifier shows no refresh period as a countdown")
+  assert.equal(effectRemaining(effect,{...s,view:{...s.view,effects:{...s.view.effects,clockStalled:true}}},"connected",at),undefined,"a stalled capture clock shows no countdown")
   assert.equal(effectRemaining(effect,s,"disconnected",at),undefined)
   s.view.health.context.state="SUSPECT"
   assert.equal(effectRemaining(effect,s,"connected",at),undefined)

@@ -67,7 +67,7 @@ func TestViewEffectsListHUDEffectsFirstWithinEachCountdownGroup(t *testing.T) {
 		e.CombatClass, e.CombatBasis = EffectCombatClassUnknown, effectCombatBasisNoEvidence
 	}))
 	view := effectViewAt(p, 0.5)
-	requireEffectCounts(t, view, ViewEffectCounts{Tracked: 7, Active: 7, Local: 7, Unclassified: 1, Eligible: 6, Listed: 6})
+	requireEffectCounts(t, view, ViewEffectCounts{Tracked: 7, Active: 7, Local: 7, Unclassified: 1, Eligible: 6, Listed: 6, Cells: 6, ListedCells: 6})
 	var order []uint64
 	for _, effect := range view.Active {
 		order = append(order, *effect.EffectID)
