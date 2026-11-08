@@ -101,7 +101,9 @@ body[data-view="overlay"] { margin: 0; background: transparent; overflow: hidden
 /* Wails reads this at mouse down: outside Edit Mode the window cannot be dragged. Edge resize has priority over drag, so
    the transparent gutter stays inside the drag region. */
 body[data-view="overlay"][data-editing="true"] { --wails-draggable: drag; }
-.ww-overlay-surface { position: relative; height: 100vh; padding: var(--ww-space-2); overflow: hidden; user-select: none; }
+/* The display scale is a CSS zoom of the whole surface, matched by the host resizing the window by the same factor, so
+   layout, hit testing and the window agree. Inside a zoomed element 100vh is multiplied by the zoom, hence the division. */
+.ww-overlay-surface { position: relative; zoom: var(--ww-overlay-scale, 1); height: calc(100vh / var(--ww-overlay-scale, 1)); padding: var(--ww-space-2); overflow: hidden; user-select: none; }
 /* Wails checks the drag target's client size; keep hits on the surface even over inline text. */
 .ww-overlay-surface[data-editing="true"] * { pointer-events: none; }
 .ww-overlay-surface[data-editing="true"]::after { content: ""; position: absolute; inset: 2px; border: 1px dashed var(--ww-accent-bright); border-radius: var(--ww-radius-md); pointer-events: none; }

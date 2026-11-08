@@ -62,7 +62,9 @@ type OverlayState struct {
 	Opacity      int  `json:"opacity"`
 	AlwaysOnTop  bool `json:"alwaysOnTop"`
 	ClickThrough bool `json:"clickThrough"`
-	Editing      bool `json:"editing"`
+	// Scale is the display scale in percent; the window draws its content with CSS zoom Scale/100.
+	Scale   int  `json:"scale"`
+	Editing bool `json:"editing"`
 }
 
 // OverlayStates is comparable, so a change is detected by the projection without encoding it.
@@ -77,6 +79,7 @@ type OverlayChange struct {
 	Opacity      *int  `json:"opacity,omitempty"`
 	AlwaysOnTop  *bool `json:"alwaysOnTop,omitempty"`
 	ClickThrough *bool `json:"clickThrough,omitempty"`
+	Scale        *int  `json:"scale,omitempty"`
 	Editing      *bool `json:"editing,omitempty"`
 }
 
@@ -101,15 +104,29 @@ func scaled(value int, factor float64) int {
 	return int(float64(value)*factor + 0.5)
 }
 
-// placeOverlay returns where an Overlay belongs on the current displays. A placement on a display that still exists keeps
-// its position and its logical size under that display's scale. A placement on a removed display, or none at all, gets
-// the kind's default corner on the primary display. The whole window always stays inside one work area.
-func placeOverlay(spec overlaySpec, saved *OverlayPlacement, screens []overlayScreen) OverlayPlacement {
+// at returns the window shape at an Overlay display scale (percent): the default size and the limits grow and shrink
+// with the content, so a user's size at 100% means the same at any scale. The offsets stay in DIPs.
+func (spec overlaySpec) at(scale int) overlaySpec {
+	factor := float64(effectiveOverlayScale(scale)) / 100
+	spec.width, spec.height = scaled(spec.width, factor), scaled(spec.height, factor)
+	spec.minWidth, spec.minHeight = scaled(spec.minWidth, factor), scaled(spec.minHeight, factor)
+	spec.maxWidth, spec.maxHeight = scaled(spec.maxWidth, factor), scaled(spec.maxHeight, factor)
+	return spec
+}
+
+// placeOverlay returns where an Overlay belongs on the current displays at an Overlay display scale (percent). A
+// placement on a display that still exists keeps its position, and its size at 100% under that display's scale times the
+// Overlay scale; the 100% size is recomputed from the saved one every time, so 100% -> 150% -> 100% returns the same
+// size. A placement on a removed display, or none at all, gets the kind's default corner on the primary display. The
+// whole window always stays inside one work area; a scale too large for it is clamped there, never changed.
+func placeOverlay(spec overlaySpec, saved *OverlayPlacement, screens []overlayScreen, overlayScale int) OverlayPlacement {
+	overlayScale = effectiveOverlayScale(overlayScale)
+	shape := spec.at(overlayScale)
 	if len(screens) == 0 {
-		if saved != nil {
+		if saved != nil && effectiveOverlayScale(saved.OverlayScale) == overlayScale {
 			return *saved
 		}
-		return OverlayPlacement{Width: spec.width, Height: spec.height, Scale: 1}
+		return OverlayPlacement{Width: shape.width, Height: shape.height, Scale: 1, OverlayScale: overlayScale}
 	}
 	chosen := screens[0]
 	for _, screen := range screens {
@@ -119,11 +136,13 @@ func placeOverlay(spec overlaySpec, saved *OverlayPlacement, screens []overlaySc
 		}
 	}
 	anchored := false
-	logicalWidth, logicalHeight := spec.width, spec.height
+	logicalWidth, logicalHeight := shape.width, shape.height
 	var x, y int
 	if saved != nil && saved.Scale > 0 {
-		logicalWidth = scaled(saved.Width, 1/saved.Scale)
-		logicalHeight = scaled(saved.Height, 1/saved.Scale)
+		// The DIP size at the saved Overlay scale, converted to this scale.
+		ratio := float64(overlayScale) / float64(effectiveOverlayScale(saved.OverlayScale))
+		logicalWidth = scaled(saved.Width, ratio/saved.Scale)
+		logicalHeight = scaled(saved.Height, ratio/saved.Scale)
 		rect := application.Rect{X: saved.X, Y: saved.Y, Width: saved.Width, Height: saved.Height}
 		best := 0
 		for _, screen := range screens {
@@ -141,20 +160,21 @@ func placeOverlay(spec overlaySpec, saved *OverlayPlacement, screens []overlaySc
 	if !anchored {
 		x, y = area.X+scaled(spec.offsetX, scale), area.Y+scaled(spec.offsetY, scale)
 	}
-	logicalWidth = min(max(logicalWidth, spec.minWidth), spec.maxWidth)
-	logicalHeight = min(max(logicalHeight, spec.minHeight), spec.maxHeight)
+	logicalWidth = min(max(logicalWidth, shape.minWidth), shape.maxWidth)
+	logicalHeight = min(max(logicalHeight, shape.minHeight), shape.maxHeight)
 	width, height := scaled(logicalWidth, scale), scaled(logicalHeight, scale)
-	// On an unchanged scale the saved pixels are exact; converting through DIPs would drift by a pixel on every restart.
-	if anchored && saved.Scale == scale && saved.Width >= width-1 && saved.Width <= width+1 && saved.Height >= height-1 && saved.Height <= height+1 {
+	// On unchanged scales the saved pixels are exact; converting through DIPs would drift by a pixel on every restart.
+	if anchored && saved.Scale == scale && effectiveOverlayScale(saved.OverlayScale) == overlayScale && saved.Width >= width-1 && saved.Width <= width+1 && saved.Height >= height-1 && saved.Height <= height+1 {
 		width, height = saved.Width, saved.Height
 	}
 	width, height = min(width, area.Width), min(height, area.Height)
 	return OverlayPlacement{
-		X:      max(area.X, min(x, area.X+area.Width-width)),
-		Y:      max(area.Y, min(y, area.Y+area.Height-height)),
-		Width:  width,
-		Height: height,
-		Scale:  scale,
+		X:            max(area.X, min(x, area.X+area.Width-width)),
+		Y:            max(area.Y, min(y, area.Y+area.Height-height)),
+		Width:        width,
+		Height:       height,
+		Scale:        scale,
+		OverlayScale: overlayScale,
 	}
 }
 
@@ -169,6 +189,9 @@ func applyOverlayChange(prefs *OverlayPreferences, editing bool, change OverlayC
 	}
 	if change.ClickThrough != nil {
 		prefs.ClickThrough = *change.ClickThrough
+	}
+	if change.Scale != nil {
+		prefs.Scale = clampOverlayScale(*change.Scale)
 	}
 	if change.Visible != nil {
 		prefs.Visible = *change.Visible
@@ -196,6 +219,12 @@ type overlayEntry struct {
 	timer   *time.Timer
 	// hitWidth and hitHeight are the size the layered hit-test region was last refreshed for.
 	hitWidth, hitHeight int
+	// scale is the Overlay display scale (percent) the window's size was last laid out for; zero before the first layout.
+	scale int
+	// base is the placement the user last chose (or the restored one), and rescaled the bounds the last scale change
+	// set. While the window still has those bounds, a scale change starts from base again, so rounding never compounds.
+	base     *OverlayPlacement
+	rescaled application.Rect
 	// topmost is the always-on-top state last set on the window, and topmostSet says whether one was set yet.
 	topmost, topmostSet bool
 	// foregroundAtCreation is the window that held the foreground just before this window was created.
@@ -252,8 +281,8 @@ func (m *overlayManager) states() OverlayStates {
 	return OverlayStates{Combat: m.store.overlay(overlayCombat).state(combat), Effects: m.store.overlay(overlayEffects).state(effects)}
 }
 
-// update applies a request. An opacity change comes from a slider, so it reaches the windows at once while the disk write
-// is debounced; every other change is an explicit command and is written immediately.
+// update applies a request. An opacity or scale change comes from a slider, so it reaches the windows at once while the
+// disk write is debounced; every other change is an explicit command and is written immediately.
 func (m *overlayManager) update(kind string, change OverlayChange) (OverlayStates, error) {
 	if _, known := overlaySpecs[kind]; !known {
 		return OverlayStates{}, errors.New("unknown overlay")
@@ -264,13 +293,13 @@ func (m *overlayManager) update(kind string, change OverlayChange) (OverlayState
 	entry := m.entries[kind]
 	editing := entry.editing
 	m.mu.Unlock()
-	onlyOpacity := change.Opacity != nil && change.Visible == nil && change.AlwaysOnTop == nil && change.ClickThrough == nil && change.Editing == nil
+	onlyLook := (change.Opacity != nil || change.Scale != nil) && change.Visible == nil && change.AlwaysOnTop == nil && change.ClickThrough == nil && change.Editing == nil
 	var nextEditing bool
-	err := m.store.changeOverlay(kind, !onlyOpacity, func(prefs *OverlayPreferences) { nextEditing = applyOverlayChange(prefs, editing, change) })
+	err := m.store.changeOverlay(kind, !onlyLook, func(prefs *OverlayPreferences) { nextEditing = applyOverlayChange(prefs, editing, change) })
 	if err != nil {
 		return m.states(), err
 	}
-	if onlyOpacity {
+	if onlyLook {
 		m.persistSoon(entry)
 	}
 	m.mu.Lock()
@@ -293,10 +322,10 @@ func (m *overlayManager) reset(kind string) error {
 	}
 	m.mu.Lock()
 	entry := m.entries[kind]
-	ready := entry.ready
+	ready, scale := entry.ready, entry.scale
 	m.mu.Unlock()
 	if ready {
-		entry.window.SetPhysicalBounds(toRect(placeOverlay(entry.spec, nil, m.screens())))
+		entry.window.SetPhysicalBounds(toRect(placeOverlay(entry.spec, nil, m.screens(), scale)))
 	}
 	m.notify()
 	return nil
@@ -329,6 +358,7 @@ func (m *overlayManager) applyLocked(entry *overlayEntry) {
 	if changeTopmost {
 		setOverlayTopmost(window, prefs.AlwaysOnTop)
 	}
+	m.rescaleLocked(entry, window, effectiveOverlayScale(prefs.Scale))
 	window.SetIgnoreMouseEvents(prefs.ClickThrough && !editing)
 	// Edge resizing is gated in the window runtime, not with SetResizable. Dropping the native resizable style more than
 	// doubled the GPU process's CPU for two live Overlays in repeated measurements, and a frameless window has no native
@@ -346,10 +376,78 @@ func (m *overlayManager) applyLocked(entry *overlayEntry) {
 	}
 }
 
+// rescaleLocked resizes the window when its Overlay display scale changed: the size at 100% is kept, the position stays
+// anchored, the size limits follow the scale, and the result stays inside one work area. The content follows the same
+// scale through CSS zoom, so window bounds, drawn content and hit testing always agree. The caller holds operation.
+func (m *overlayManager) rescaleLocked(entry *overlayEntry, window *application.WebviewWindow, scale int) {
+	m.mu.Lock()
+	previous := entry.scale
+	entry.scale = scale
+	m.mu.Unlock()
+	if previous == scale {
+		return
+	}
+	shape := entry.spec.at(scale)
+	if previous == 0 {
+		window.SetMinSize(shape.minWidth, shape.minHeight)
+		window.SetMaxSize(shape.maxWidth, shape.maxHeight)
+		return
+	}
+	// The bounds are read before any limit changes. Wails resizes a window that a new limit excludes at once, which
+	// would look like a user resize here and break the exact return to the remembered size.
+	current := m.currentPlacement(window, previous)
+	m.mu.Lock()
+	source := rescaleSource(entry.base, entry.rescaled, current)
+	entry.base = &source
+	m.mu.Unlock()
+	next := placeOverlay(entry.spec, &source, m.screens(), scale)
+	// Both the current and the new bounds lie within the union of the two scales' limits, so neither limit change
+	// below resizes the window on its own.
+	during := relaxedLimits(entry.spec.at(previous), shape)
+	window.SetMinSize(during.minWidth, during.minHeight)
+	window.SetMaxSize(during.maxWidth, during.maxHeight)
+	if toRect(next) != toRect(current) {
+		window.SetPhysicalBounds(toRect(next))
+	}
+	window.SetMinSize(shape.minWidth, shape.minHeight)
+	window.SetMaxSize(shape.maxWidth, shape.maxHeight)
+	// The bounds the window really has, so a later change can tell this resize from one by the user.
+	actual := window.PhysicalBounds()
+	m.mu.Lock()
+	entry.rescaled = actual
+	m.mu.Unlock()
+}
+
+// relaxedLimits admits every size that either shape admits.
+func relaxedLimits(a, b overlaySpec) overlaySpec {
+	a.minWidth, a.minHeight = min(a.minWidth, b.minWidth), min(a.minHeight, b.minHeight)
+	a.maxWidth, a.maxHeight = max(a.maxWidth, b.maxWidth), max(a.maxHeight, b.maxHeight)
+	return a
+}
+
+// rescaleSource is the placement a scale change starts from: the remembered base while the window still has the bounds
+// the previous scale change gave it, otherwise the current bounds, which the user has moved or resized since.
+func rescaleSource(base *OverlayPlacement, rescaled application.Rect, current OverlayPlacement) OverlayPlacement {
+	if base != nil && toRect(current) == rescaled {
+		return *base
+	}
+	return current
+}
+
+// currentPlacement is the window's bounds with the scales they were laid out for.
+func (m *overlayManager) currentPlacement(window *application.WebviewWindow, overlayScale int) OverlayPlacement {
+	scale := 1.0
+	if screen, err := window.GetScreen(); err == nil && screen != nil && screen.ScaleFactor > 0 {
+		scale = float64(screen.ScaleFactor)
+	}
+	bounds := window.PhysicalBounds()
+	return OverlayPlacement{X: bounds.X, Y: bounds.Y, Width: bounds.Width, Height: bounds.Height, Scale: scale, OverlayScale: overlayScale}
+}
+
 // createLocked creates the native window. The caller holds mu.
 func (m *overlayManager) createLocked(entry *overlayEntry) {
 	entry.foregroundAtCreation = foregroundWindow()
-	window := m.app.Window.NewWithOptions(overlayWindowOptions(entry.spec, "/?view=overlay&surface="+entry.kind))
+	window := m.app.Window.NewWithOptions(overlayWindowOptions(entry.spec.at(m.store.overlay(entry.kind).Scale), "/?view=overlay&surface="+entry.kind))
 	entry.window = window
 	window.OnWindowEvent(events.Common.WindowRuntimeReady, func(*application.WindowEvent) { m.onReady(entry) })
 	changed := func(*application.WindowEvent) { m.persistSoon(entry) }
@@ -381,9 +479,14 @@ func (m *overlayManager) onReady(entry *overlayEntry) {
 	previous := entry.foregroundAtCreation
 	m.mu.Unlock()
 	returnForeground(window, previous)
-	window.SetPhysicalBounds(toRect(placeOverlay(entry.spec, m.store.overlay(entry.kind).Placement, m.screens())))
+	prefs := m.store.overlay(entry.kind)
+	scale := effectiveOverlayScale(prefs.Scale)
+	placed := placeOverlay(entry.spec, prefs.Placement, m.screens(), scale)
+	window.SetPhysicalBounds(toRect(placed))
 	m.mu.Lock()
 	entry.ready = true
+	entry.scale = scale
+	entry.base, entry.rescaled = &placed, toRect(placed)
 	m.mu.Unlock()
 	m.applyLocked(entry)
 	m.persistSoon(entry)
@@ -442,12 +545,10 @@ func (m *overlayManager) refreshHitRegion(entry *overlayEntry, window *applicati
 }
 
 func (m *overlayManager) savePlacement(kind string, window *application.WebviewWindow) {
-	bounds := window.PhysicalBounds()
-	scale := 1.0
-	if screen, err := window.GetScreen(); err == nil && screen != nil && screen.ScaleFactor > 0 {
-		scale = float64(screen.ScaleFactor)
-	}
-	placement := OverlayPlacement{X: bounds.X, Y: bounds.Y, Width: bounds.Width, Height: bounds.Height, Scale: scale}
+	m.mu.Lock()
+	overlayScale := m.entries[kind].scale
+	m.mu.Unlock()
+	placement := m.currentPlacement(window, effectiveOverlayScale(overlayScale))
 	if err := m.store.saveOverlayPlacement(kind, placement); err != nil {
 		m.store.setWarning("overlay_save_failed")
 		m.notify()
@@ -480,18 +581,13 @@ func (m *overlayManager) refit(screens []overlayScreen) {
 	defer m.operation.Unlock()
 	for _, entry := range m.entries {
 		m.mu.Lock()
-		window, ready := entry.window, entry.ready
+		window, ready, overlayScale := entry.window, entry.ready, entry.scale
 		m.mu.Unlock()
 		if !ready {
 			continue
 		}
-		scale := 1.0
-		if screen, err := window.GetScreen(); err == nil && screen != nil && screen.ScaleFactor > 0 {
-			scale = float64(screen.ScaleFactor)
-		}
-		bounds := window.PhysicalBounds()
-		current := OverlayPlacement{X: bounds.X, Y: bounds.Y, Width: bounds.Width, Height: bounds.Height, Scale: scale}
-		if fitted := placeOverlay(entry.spec, &current, screens); toRect(fitted) != toRect(current) {
+		current := m.currentPlacement(window, effectiveOverlayScale(overlayScale))
+		if fitted := placeOverlay(entry.spec, &current, screens, overlayScale); toRect(fitted) != toRect(current) {
 			window.SetPhysicalBounds(toRect(fitted))
 		}
 	}

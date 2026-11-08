@@ -33,10 +33,13 @@ function useGridLayout(enabled: boolean) {
     const measure = () => {
       const style = getComputedStyle(panel)
       const box = panel.getBoundingClientRect()
+      // Rects are in zoomed viewport pixels while the tokens are not. The display scale zooms the whole surface, so the
+      // layout is computed in the panel's own pixels: a window scaled together with its content holds the same tiles.
+      const zoom = panel.currentCSSZoom || 1
       const next: EffectGridLayout = {
-        available: Math.floor(box.height),
-        width: Math.floor(box.width),
-        head: Math.ceil(title.getBoundingClientRect().height),
+        available: Math.floor(box.height / zoom + 0.01),
+        width: Math.floor(box.width / zoom + 0.01),
+        head: Math.ceil(title.getBoundingClientRect().height / zoom - 0.01),
         sectionGap: Number.parseFloat(style.rowGap) || 0,
         hint: px(style, "--ww-row-effects-omitted"),
         tile: px(style, "--ww-effect-tile"),

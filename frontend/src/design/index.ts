@@ -6,7 +6,7 @@ export { defaultTheme, resolveTheme, themeCharacters, themeIds, type ThemeId } f
 export { ListeningStatus, ThemeBackdrop, ThemePicker, type ListeningStateName } from "./components/appearance"
 export { AnimatedNumber, type AnimatedNumberProps } from "./components/AnimatedNumber"
 export { BrandEmblem } from "./components/BrandEmblem"
-export { Button, Chip, Segmented, Select, Slider, Stepper, Toggle, Tooltip, useSlidingIndicator } from "./components/controls"
+export { Button, Chip, NumberField, Segmented, Select, Slider, Stepper, Toggle, Tooltip, useSlidingIndicator } from "./components/controls"
 export { Card, Collapse, ContentSwitch, Reveal, SettingsRow, SettingsSection, Sidebar, StackList, type SidebarGroupModel } from "./components/layout"
 export { CharacterAvatar, CharacterDamageRow, CombatPanel, DamageBar, EffectChip, EffectGroupMark, EffectTile, GameAssetImage, effectMarkOf, tileSeconds, type CombatState, type EffectMark } from "./components/combat"
 export { LiveChart, type ChartSeries } from "./components/LiveChart"

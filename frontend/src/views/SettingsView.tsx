@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
-import { Button, ContentSwitch, Icon, Segmented, Select, SettingsRow, SettingsSection, Sidebar, Slider, Stepper, ThemeBackdrop, ThemePicker, Toggle, Tooltip, resolveTheme, type SidebarGroupModel } from "@/design"
+import { Button, ContentSwitch, Icon, NumberField, Segmented, Select, SettingsRow, SettingsSection, Sidebar, Slider, Stepper, ThemeBackdrop, ThemePicker, Toggle, Tooltip, resolveTheme, type SidebarGroupModel } from "@/design"
 import { manifest } from "@/i18n"
 import { buildNumberText, profileKey, revisionText, versionText, type IdentityText } from "@/lib/build-identity"
 import { adapterProblem, environmentNotice } from "@/lib/capture-environment"
@@ -80,21 +80,30 @@ function AppearancePage({ controller }: { controller: SettingsController }) {
   </>
 }
 
+/** A slider moves faster than a round trip, so a live value shows what was set until the host has caught up. */
+function useLiveValue(current: number | undefined, fallback: number, apply: (value: number) => void) {
+  const [draft, setDraft] = useState<number | null>(null)
+  const settle = useRef<ReturnType<typeof setTimeout>>(undefined)
+  useEffect(() => () => clearTimeout(settle.current), [])
+  const set = (value: number) => {
+    setDraft(value)
+    apply(value)
+    clearTimeout(settle.current)
+    settle.current = setTimeout(() => setDraft(null), 500)
+  }
+  return [draft ?? current ?? fallback, set] as const
+}
+
+/** The display scale range in percent; the host clamps to the same range. */
+const minOverlayScale = 75
+const maxOverlayScale = 200
+
 function OverlayPage({ kind, controller }: { kind: OverlayKind; controller: SettingsController }) {
   const { t } = useTranslation("settings")
   const state = controller.overlays?.[kind]
   const change = controller.updateOverlay
-  // A slider moves faster than a round trip, so it shows its own value until the host has caught up.
-  const [draft, setDraft] = useState<number | null>(null)
-  const settle = useRef<ReturnType<typeof setTimeout>>(undefined)
-  useEffect(() => () => clearTimeout(settle.current), [])
-  const setOpacity = (opacity: number) => {
-    setDraft(opacity)
-    change(kind, { opacity })
-    clearTimeout(settle.current)
-    settle.current = setTimeout(() => setDraft(null), 500)
-  }
-  const opacity = draft ?? state?.opacity ?? 100
+  const [opacity, setOpacity] = useLiveValue(state?.opacity, 100, value => change(kind, { opacity: value }))
+  const [scale, setScale] = useLiveValue(state?.scale, 100, value => change(kind, { scale: value }))
   const disabled = !controller.connected || !state
   return <div data-field={`overlay-settings-${kind}`}>
     <SettingsSection title={t("sections.window")}>
@@ -108,6 +117,12 @@ function OverlayPage({ kind, controller }: { kind: OverlayKind; controller: Sett
       <SettingsRow title={t("opacity")} description={t("opacityHint")}>
         <Slider label={t("opacity")} min={20} max={100} value={opacity} onChange={setOpacity} />
         <Stepper value={opacity} unit="%" step={5} min={20} max={100} onChange={setOpacity} decreaseLabel={t("decrease")} increaseLabel={t("increase")} />
+      </SettingsRow>
+      <SettingsRow title={t("scale")} description={t("scaleHint", { min: minOverlayScale, max: maxOverlayScale })}>
+        <span className="ww-row-control" data-field="overlay-scale" data-scale={scale}>
+          <Slider label={t("scale")} min={minOverlayScale} max={maxOverlayScale} step={5} value={scale} onChange={setScale} />
+          <NumberField value={scale} unit="%" step={5} min={minOverlayScale} max={maxOverlayScale} onChange={setScale} label={t("scaleInput")} decreaseLabel={t("decrease")} increaseLabel={t("increase")} />
+        </span>
       </SettingsRow>
     </SettingsSection>
     {kind === "effects" && <EffectsLegend />}
