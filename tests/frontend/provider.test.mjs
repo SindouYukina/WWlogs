@@ -3,7 +3,7 @@ import { existsSync, readFileSync, readdirSync } from "node:fs"
 import { join } from "node:path"
 import test from "node:test"
 import { dataChip, displayedEncounter, isFrozen, usableDps } from "../../frontend/src/lib/combat-data.ts"
-import { combatRows, contributionShares, intervalRows, skillBreakdown, skillBreakdowns } from "../../frontend/src/lib/combat-view.ts"
+import { combatRows, intervalRows, skillBreakdown, skillBreakdowns } from "../../frontend/src/lib/combat-view.ts"
 import { shellChanged } from "../../frontend/src/lib/snapshot.ts"
 
 const now = Date.parse("2026-11-06T10:00:10Z")
@@ -54,9 +54,8 @@ test("rows carry Master element and engine split without adding information", ()
   const unknown = { ...role, roleId: 8, name: "Guess", nameStatus: "CORRELATED", elementId: undefined, damageDealt: 50, directDamage: 0, summonDamage: 0 }
   const rows = combatRows({ roles: [unknown, role], dps: { status: "available", durationSeconds: 10 } })
   assert.deepEqual(rows.map(row => [row.roleId, row.rank, row.elementId, row.name, row.dps]), [[7, 0, 3, "A", 10], [8, 1, undefined, null, 5]])
-  assert.deepEqual(contributionShares(rows[0]), { direct: 0.75, summon: 0.25 })
-  assert.equal(contributionShares(rows[1]), undefined, "no damage means no split, not a 0% claim")
-  assert.equal(contributionShares({}), undefined, "a vehicle has no split")
+  assert.equal(rows[0].directDamage, 75)
+  assert.equal(rows[0].summonDamage, 25)
 })
 
 test("interval rows have no per-role DPS, because there is no encounter duration", () => {
