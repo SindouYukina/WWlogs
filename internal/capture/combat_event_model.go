@@ -88,9 +88,9 @@ type CombatEventRecord struct {
 	SourceRole *CombatRole `json:"sourceRole,omitempty"`
 	TargetRole *CombatRole `json:"targetRole,omitempty"`
 	// AppliedHealing is, on a healing record, the HP the server applied to the target: the response's ChangeLife
-	// negated. An absent ChangeLife is the proto3 zero: the target was already at full HP and the whole Amount was
-	// overhealing. Amount stays the reported magnitude. HealingInconsistent marks a healing result whose ChangeLife
-	// lowered HP; it applies nothing. Both were verified against the server's Life reports (healing-statistics research).
+	// negated. An absent ChangeLife is the proto3 zero, so none was applied; whether the target was at full HP is known
+	// only where Life was also reported (see healing.go). Amount stays the reported magnitude. HealingInconsistent marks
+	// a healing result whose ChangeLife lowered HP; it applies nothing.
 	AppliedHealing      int64 `json:"appliedHealing,omitempty"`
 	HealingInconsistent bool  `json:"healingInconsistent,omitempty"`
 }
