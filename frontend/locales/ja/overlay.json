@@ -1,12 +1,8 @@
 {
   "drag": "ドラッグで移動・端でサイズ変更",
-  "effects": "バフ / デバフ",
   "noEffects": "関連する戦闘効果はまだありません。",
   "omitted": "ほか {{count}} 件の効果",
   "unclassified": "未分類 {{count}}",
-  "targetEnemy": "敵",
-  "holderTeam": "自分のチーム",
-  "holderUnresolved": "保持者は未確認",
   "tileGameIcon": "ゲームのアイコンがある効果",
   "tileNoIcon": "ゲームのアイコンがない効果",
   "tileRemaining": "残り約 {{seconds}} 秒",

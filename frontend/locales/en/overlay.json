@@ -1,12 +1,8 @@
 {
   "drag": "Drag to move · resize from the edges",
-  "effects": "Buffs / debuffs",
   "noEffects": "No relevant combat effects observed.",
   "omitted": "{{count}} more effects not shown",
   "unclassified": "Unclassified {{count}}",
-  "targetEnemy": "Enemy",
-  "holderTeam": "Your team",
-  "holderUnresolved": "Holder not established",
   "tileGameIcon": "Effect with a game icon",
   "tileNoIcon": "Effect without a game icon",
   "tileRemaining": "about {{seconds}} s left",

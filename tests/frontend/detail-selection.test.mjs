@@ -85,7 +85,7 @@ test("reduced motion stops counters and the low-time pulse, never the data", () 
   for (const [name, value] of Object.entries(reduced)) if (name.endsWith("-dur") || name.startsWith("--ww-dur-")) assert.equal(value, "0ms", name)
   const number = read("frontend/src/design/components/AnimatedNumber.tsx")
   assert.equal((number.match(/planned === "animate" && motionReduced\(\) \? "snap" : planned/g) ?? []).length, 2, "tween and roll counters snap")
-  assert.ok(read("frontend/src/design/components.css").includes(':root[data-ww-motion="reduced"] .ww-effect-tile, :root[data-ww-motion="reduced"] .ww-effect-chip, :root[data-ww-motion="reduced"] .ww-effect-tile[data-low="true"] img, :root[data-ww-motion="reduced"] .ww-effect-tile[data-low="true"] .ww-effect-tile-mark { animation: none; }'))
+  assert.ok(read("frontend/src/design/components.css").includes('.ww-effect-face[data-jump="true"] .ww-effect-fill { transition: transform var(--ww-spring-snappy-dur) var(--ww-spring-snappy); }'), "the only animated fill is a refresh, on a token reduced motion zeroes")
   // Only the user switch or the Windows preference decides; the update interval is a separate setting.
   const tokens = read("frontend/src/design/motion/tokens.ts")
   assert.ok(tokens.includes('options.preference ?? (query.matches ? "reduced" : "full")'))

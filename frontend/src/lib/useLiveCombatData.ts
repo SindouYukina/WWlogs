@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { displayedEncounter, type CombatData } from "./combat-data"
 import { skillBreakdowns } from "./combat-view"
-import { normalizeUpdateInterval } from "./snapshot"
 import { timelineFromView } from "./timeline"
 import { useSnapshot } from "./useSnapshot"
 
@@ -42,8 +41,6 @@ export function useLiveCombatData() {
     const breakdowns = source ? skillBreakdowns(source) : new Map()
     return (rowKey: string) => breakdowns.get(rowKey)
   }, [view])
-  // Countdown bars ease across one publish interval, so they follow the same cadence setting as the data.
-  const tickMs = normalizeUpdateInterval(snapshot?.updateIntervalMs)
-  const data = useMemo<CombatData>(() => ({ snapshot, connection, now, timeline, skillsOf, tickMs }), [snapshot, connection, now, timeline, skillsOf, tickMs])
+  const data = useMemo<CombatData>(() => ({ snapshot, connection, now, timeline, skillsOf }), [snapshot, connection, now, timeline, skillsOf])
   return { data, changeLocale }
 }

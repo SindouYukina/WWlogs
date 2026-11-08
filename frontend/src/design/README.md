@@ -22,7 +22,7 @@ One design system serves the Desktop window, the Combat Overlay and the Effects 
 - Do not add raw colors or literal timings to components. Add or change a token.
 - Do not add a runtime animation library, icon library or chart library without bundle and WebView2 measurements.
 - High-frequency motion animates `transform` and `opacity` only. Layout-affecting transitions are limited to user-triggered changes such as shared indicators and section expansion.
-- A settled window must schedule no work: no infinite animations except a bounded expiry cue, and no frame loop while values are unchanged.
+- A settled window must schedule no work: no infinite animations, and no frame loop while values are unchanged.
 - Do not use `backdrop-filter` on Overlay surfaces. It cannot sample behind a transparent window.
 - Motion presents engine values and never changes them. A counter never passes the engine value. Encounter resets, decreases and stale data snap. A countdown moves between engine values and stops when snapshots stop.
 - Do not invent names, polarity, timers or identities for visual completeness. Unknown values keep their raw IDs and neutral styling.

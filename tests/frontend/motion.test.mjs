@@ -123,9 +123,7 @@ test("a countdown is shown only for what the engine reported", () => {
   assert.equal(countdownFraction({ kind: "timed", remaining: 15, duration: 10 }), 1, "never above full")
 })
 
-test("the refresh animation follows the engine's update time and no-timer effects stay unknown", () => {
+test("no-timer effects stay unknown", () => {
   const base = { key: "k", polarity: "unclassified", firstObservedAt: "t0", lastUpdatedAt: "t0", remainingStatus: "unknown" }
-  assert.equal(effectRow(base, undefined).refreshToken, "")
-  assert.equal(effectRow({ ...base, lastUpdatedAt: "t1" }, undefined).refreshToken, "t1")
   assert.deepEqual(effectRow(base, undefined).countdown, { kind: "unknown" })
 })

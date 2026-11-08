@@ -50,8 +50,6 @@ export interface CombatData {
    * function means the engine reported no split for that row.
    */
   skillsOf?: (rowKey: string) => SkillBreakdown | undefined
-  /** Publish interval used to pace countdown bars, when the provider knows it. */
-  tickMs?: number
 }
 
 export function displayedEncounter(view: ViewSnapshot | null | undefined): Encounter | undefined {

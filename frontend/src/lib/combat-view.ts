@@ -179,13 +179,14 @@ export interface EffectRowModel {
   effectId?: number
   /** The game draws this effect with an icon of its own (Go ViewEffect.HUDIcon); only then is an icon requested. */
   hudIcon: boolean
+  /** The icon is shared by many definitions (Go ViewEffect.HUDIconGeneric): it is drawn at a lower visual weight. */
+  hudIconGeneric: boolean
+  /** The element the effect's own definition states; undefined keeps the neutral color. */
+  elementId?: number
   /** The engine's EffectKind; it chooses the neutral mark of an effect without a game icon. */
   kind: string
-  polarity: string
   stackCount?: number
   countdown: CountdownState
-  /** Changes when the engine reports the effect updated; drives the refresh animation only. */
-  refreshToken: string
   stale: boolean
 }
 
@@ -194,11 +195,11 @@ export function effectRow(effect: Effect, remaining: number | undefined): Effect
     key: effect.key,
     effectId: effect.effectId,
     hudIcon: effect.hudIcon === true,
+    hudIconGeneric: effect.hudIconGeneric === true,
+    elementId: effect.elementId,
     kind: effect.kind,
-    polarity: effect.polarity,
     stackCount: effect.stackCount,
     countdown: countdownState(effect, remaining),
-    refreshToken: effect.lastUpdatedAt === effect.firstObservedAt ? "" : effect.lastUpdatedAt,
     stale: effect.stale === true,
   }
 }

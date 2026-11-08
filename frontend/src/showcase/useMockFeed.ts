@@ -74,7 +74,6 @@ export function useMockFeed(initialPublishMs = 250): FeedControls {
     // Mock series are keyed like the live timeline: by the ranking row key of each role.
     timeline: { slots: historySlots, slotSeconds: 1, series: new Map([...output.history].map(([roleId, values]) => [`role-${mockPlayerId}-${roleId}`, values])) },
     skillsOf: output.skillsOf,
-    tickMs: publishMs,
-  }), [output, now, paused, publishMs])
+  }), [output, now, paused])
   return { data, output, feed, publishMs, setPublishMs, paused, setPaused, apply, now, listeningScenario, setListeningScenario }
 }

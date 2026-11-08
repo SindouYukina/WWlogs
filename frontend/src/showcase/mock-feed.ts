@@ -356,6 +356,7 @@ export class MockFeed {
       durationSeconds: effect.duration,
       remainingStatus: effect.unknownTimer ? "unknown" : "estimated",
       remainingSeconds: effect.remaining,
+      expectedExpiry: effect.remaining === undefined ? undefined : iso(this.clockMs + effect.remaining * 1000),
       firstObservedAt: effect.firstObservedAt,
       lastUpdatedAt: effect.lastUpdatedAt,
       evidence: "server_notify",
