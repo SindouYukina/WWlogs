@@ -28,8 +28,10 @@ import (
 //   - swap_same_direction: every second pair of adjacent datagrams of one direction is delivered in reverse order, each
 //     keeping its own timestamp (UDP reordering). Confirmed totals, events and role and skill splits must equal the
 //     unmodified replay.
-//   - swap_cross_direction: the same for pairs of opposite directions. It reverses two observations the capture made at
-//     different times, so attribution may change; confirmed local damage (attributed plus unattributed) may not.
+//   - swap_cross_direction: the same for pairs of opposite directions, as when the outbound stream waits behind a gap
+//     while inbound frames keep arriving. Damage responses then reach the decoder before their requests and are held;
+//     a held pair is evaluated as an in-order pair would be, including for a target removed in the same datagram as the
+//     response, so confirmed totals, events and role and skill splits must equal the unmodified replay.
 //   - truncate_N: the capture stops after N% of its datagrams (capture stopped mid-battle). Nothing may exceed the
 //     unmodified replay, and an encounter still open at the cut must not be reported as confirmed-ended.
 //   - start_N: the capture starts at N% (capture started mid-session). Without the session handshake nothing can be
@@ -300,9 +302,10 @@ func runPerturbations(t *testing.T, masters *gameMaster, key *staticRSA, packets
 	}
 	results = append(results, result)
 
-	// swap_cross_direction: reversing an outbound and an inbound datagram reverses the order of two events the capture
-	// saw at different times. This is not a transport fault the product can detect; the case records how attribution
-	// depends on that order and checks only that confirmed local damage is neither lost nor invented.
+	// swap_cross_direction: reversing an outbound and an inbound datagram puts responses ahead of their requests. Before
+	// v0.6.0 a held pair was evaluated after a removal that followed its response, which moved killing blows to
+	// unattributed damage in 3 of 25 captures; held pairs now see removed entities as they were at the response, and the
+	// splits must hold like the same-direction case.
 	crossed := append([]perturbationPacket(nil), packets...)
 	swaps = 0
 	for i := 0; i+1 < len(crossed); i += 4 {
@@ -316,8 +319,8 @@ func runPerturbations(t *testing.T, masters *gameMaster, key *staticRSA, packets
 	result = perturbationSummary(fmt.Sprintf("swap_cross_direction(%d)", swaps), len(crossed), run)
 	crossTotals := totalsOf(t, run.statistics)
 	same(&result, crossTotals == baseTotals, fmt.Sprintf("dealt %d unattributed %d outgoing %d", crossTotals.DamageDealt, crossTotals.Unattributed, crossTotals.Outgoing))
-	if crossTotals.DamageDealt+crossTotals.Unattributed != baseTotals.DamageDealt+baseTotals.Unattributed || crossTotals.DamageTaken != baseTotals.DamageTaken {
-		t.Errorf("cross-direction reordering lost or invented confirmed damage: %+v vs %+v", crossTotals, baseTotals)
+	if crossTotals != baseTotals {
+		t.Errorf("cross-direction reordering changed confirmed totals or splits: %+v vs %+v", crossTotals, baseTotals)
 	}
 	results = append(results, result)
 

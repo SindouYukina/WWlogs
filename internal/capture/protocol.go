@@ -578,21 +578,10 @@ func (p *processor) handleFrame(frame gameFrame) {
 		p.stats.entityAdds += added
 		p.refreshEffectRelations()
 	case 17769:
-		removed, removedIDs, err := p.entities.applyEntityRemoveNotify(plain)
-		if err != nil {
+		if err := p.handleEntityRemoveNotify(plain); err != nil {
 			p.stats.parseErrors++
 			fmt.Fprintf(p.diagnostic, "entity_remove_parse_error=%v\n", err)
 			return
-		}
-		p.stats.entityRemoves += removed
-		for _, id := range removedIDs {
-			p.effects.ObserveHolderRemoved(p.sessionNumber, id, p.currentFrameTime)
-			p.playerRelevance.removeEntity(id)
-			if roleID, correlated := p.sourceRoles.correlatedRole(id); correlated {
-				p.backfillEncounterSummary(id, roleID)
-			}
-			p.sourceRoles.remove(id)
-			p.removePendingSummaryCredits(id)
 		}
 	case 28481:
 		if err := p.handleActiveRequest(frame.token, plain); err != nil {
@@ -615,6 +604,25 @@ func (p *processor) handleFrame(frame gameFrame) {
 			censusEntry.FailureReasons["protobuf or message schema decode failed"]++
 		}
 	}
+}
+
+// handleEntityRemoveNotify applies an EntityRemoveNotify. A held damage response may name an entity removed here, so the
+// state an in-order pair would have seen is kept first (see rpc_pairing.go). On a parse error nothing but the registry
+// removal of the IDs read before the fault is applied.
+func (p *processor) handleEntityRemoveNotify(body []byte) error {
+	p.rememberRemovalsForHeldResponses(body)
+	removed, removedIDs, err := p.entities.applyEntityRemoveNotify(body)
+	if err != nil {
+		return err
+	}
+	p.stats.entityRemoves += removed
+	for _, id := range removedIDs {
+		p.effects.ObserveHolderRemoved(p.sessionNumber, id, p.currentFrameTime)
+		p.playerRelevance.removeEntity(id)
+		p.settleRemovedSource(id)
+		p.sourceRoles.remove(id)
+	}
+	return nil
 }
 
 // emptyBodyFailureReason labels frames whose command body is zero-length.
