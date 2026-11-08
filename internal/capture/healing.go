@@ -8,13 +8,18 @@ import (
 // Healing statistics.
 //
 // A healing result is a DamageExecute result the Master classifies as healing (CalculateType 1). Its Amount is the
-// magnitude the server reported; AppliedHealing is the HP the server applied, the response's ChangeLife negated, and
-// zero when ChangeLife is absent (the target was already at full HP). In 39 archived captures these were checked
-// against the server's own Life attribute reports: between two Life reports of one entity, Life changed by exactly the
-// ChangeLife of the results observed in between in 137 of 139 intervals with healing (the other two lost HP to damage
-// that was not observed), every zero-ChangeLife healing result with a known Life found its target at full HP, and no
-// result other than healing ever raised HP. Healing that does not arrive as a DamageExecute result (revival, natural
-// regeneration) is not a healing result and is not counted.
+// magnitude the server reported; AppliedHealing is the HP the server applied, the response's ChangeLife negated. An
+// absent ChangeLife in a decoded response is the proto3 zero, so the server applied no HP. That is what the wire says, not
+// a statement about the target: Overheal is only Reported minus Effective, and full HP is known only where the server
+// also reported Life. A response that could not be decoded or paired produces no healing record at all.
+//
+// In the 24 valid archived captures these were checked against the server's own Life attribute reports. Between two
+// Life reports of one entity, Life changed by exactly the ChangeLife of the results observed in between in 158 of 160
+// intervals with healing; the other two lost HP outside the DamageExecute responses, one through a damage push and one
+// by exactly a quarter of LifeMax with no combat result. Of the 342 healing results with no ChangeLife, the 121 with Life
+// reports on both sides all found their target at full HP; the other 221 have no Life evidence. No result other than
+// healing ever raised HP. Healing that does not arrive as a DamageExecute result (revival, natural regeneration) is not
+// a healing result and is not counted.
 //
 // The local team's healing is a healing result from a local source to a local target. Healing never takes part in
 // encounter boundaries, encounter activity or the statistics clock: an encounter's healing is the healing observed in
