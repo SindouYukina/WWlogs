@@ -1,5 +1,5 @@
 import type { SkillBreakdown } from "../lib/combat-data"
-import type { Effect, Encounter, ListeningInfo, Role, Snapshot, UnassignedRole, Vehicle } from "../lib/snapshot"
+import type { DPS, Effect, Encounter, Healing, ListeningInfo, Role, Snapshot, UnassignedRole, Vehicle } from "../lib/snapshot"
 import { masterEffects, masterRoles } from "./master-fixture.ts"
 
 // Scripted numbers for visual review, shaped exactly like the engine's Snapshot so that the Showcase runs the same
@@ -39,8 +39,13 @@ interface MockRole {
   base: number
   burstUntil: number
   taken: number
+  /** HP the role is missing: scripted hits raise it and effective healing lowers it. */
+  missing: number
   window: number[]
 }
+
+/** Seconds between scripted healing results. */
+const healIntervalSeconds = 1.6
 
 interface MockEffect {
   key: string
@@ -81,6 +86,10 @@ export class MockFeed {
   private roles: MockRole[] = []
   private history = new Map<number, Array<number | null>>()
   private historyAccumulator = 0
+  /** The highest completed one-second team bucket, in the same bins as the history the Timeline draws. */
+  private peakBucket = 0
+  private healAccumulator = 0
+  private healing = { effective: 0, reported: 0, overheal: 0, events: 0 }
   private effects = new Map<string, MockEffect>()
   private effectCounter = 0
   private vehicle: Vehicle | undefined
@@ -107,9 +116,12 @@ export class MockFeed {
     this.state = "running"
     this.vehicle = undefined
     this.unassignedDamage = 0
-    this.roles = masterRoles.slice(0, 3).map((role, index) => ({ roleId: role.roleId, damage: 0, base: baseDps[index]!, burstUntil: 0, taken: 0, window: [] }))
+    this.roles = masterRoles.slice(0, 3).map((role, index) => ({ roleId: role.roleId, damage: 0, base: baseDps[index]!, burstUntil: 0, taken: 0, missing: 0, window: [] }))
     this.history = new Map(this.roles.map(role => [role.roleId, [] as Array<number | null>]))
     this.historyAccumulator = 0
+    this.peakBucket = 0
+    this.healAccumulator = 0
+    this.healing = { effective: 0, reported: 0, overheal: 0, events: 0 }
   }
 
   endEncounter(): void {
@@ -124,7 +136,9 @@ export class MockFeed {
   burst(roleId: number): void {
     const role = this.roles.find(candidate => candidate.roleId === roleId)
     if (!role) return
-    role.damage += 28000 + this.random() * 42000
+    const amount = 28000 + this.random() * 42000
+    role.damage += amount
+    role.window.push(amount)
     role.burstUntil = this.elapsed + 2.5
   }
 
@@ -142,7 +156,7 @@ export class MockFeed {
     const removed = this.roles[this.roles.length - 1]
     if (!next || !removed) return
     this.history.delete(removed.roleId)
-    this.roles[this.roles.length - 1] = { roleId: next.roleId, damage: 0, base: baseDps[3]!, burstUntil: 0, taken: 0, window: [] }
+    this.roles[this.roles.length - 1] = { roleId: next.roleId, damage: 0, base: baseDps[3]!, burstUntil: 0, taken: 0, missing: 0, window: [] }
     this.history.set(next.roleId, [])
   }
 
@@ -227,19 +241,26 @@ export class MockFeed {
         const gained = role.base * swing * noise * boost * dtSeconds
         role.damage += gained
         role.window.push(gained)
-        role.taken += this.random() < 0.02 ? 900 + this.random() * 1600 : 0
+        const hit = this.random() < 0.02 ? 900 + this.random() * 1600 : 0
+        role.taken += hit
+        role.missing += hit
       }
+      this.scriptHealing(dtSeconds)
       this.historyAccumulator += dtSeconds
       if (this.historyAccumulator >= 1) {
         this.historyAccumulator -= 1
+        let teamBucket = 0
         for (const role of this.roles) {
+          const bucket = role.window.reduce((sum, value) => sum + value, 0)
+          teamBucket += bucket
           const series = this.history.get(role.roleId)
           if (series) {
-            series.push(role.window.reduce((sum, value) => sum + value, 0))
+            series.push(bucket)
             if (series.length > historySlots) series.shift()
           }
           role.window = []
         }
+        this.peakBucket = Math.max(this.peakBucket, teamBucket)
       }
       for (const effect of this.effects.values()) {
         if (effect.remaining === undefined) continue
@@ -252,6 +273,23 @@ export class MockFeed {
     this.lastPublish = Date.now()
     const history = new Map([...this.history].map(([id, series]) => [id, [...series]]))
     return { snapshot: this.buildSnapshot(), history, skillsOf: rowKey => this.skills(rowKey) }
+  }
+
+  /** A scripted healer: reported healing is the raw amount, and only the HP a target is missing counts as effective. */
+  private scriptHealing(dtSeconds: number): void {
+    this.healAccumulator += dtSeconds
+    while (this.healAccumulator >= healIntervalSeconds) {
+      this.healAccumulator -= healIntervalSeconds
+      const target = this.roles[Math.floor(this.random() * this.roles.length)]
+      if (!target) return
+      const reported = Math.round(1200 + this.random() * 2400)
+      const effective = Math.min(reported, Math.round(target.missing))
+      target.missing -= effective
+      this.healing.reported += reported
+      this.healing.effective += effective
+      this.healing.overheal += reported - effective
+      this.healing.events += 1
+    }
   }
 
   /** Keeps the review surface populated: expiring effects are replaced and some are refreshed before they end. */
@@ -317,6 +355,10 @@ export class MockFeed {
     const dps = durationSeconds >= 1
       ? { status: "available" as const, damage: Math.round(confirmed), durationSeconds, value: confirmed / durationSeconds }
       : { status: "insufficient_data" as const, damage: Math.round(confirmed), durationSeconds, value: 0 }
+    const peakDps: DPS = this.peakBucket > 0
+      ? { status: "available", damage: Math.round(this.peakBucket), durationSeconds: 1, value: this.peakBucket }
+      : { status: "insufficient_data", damage: 0, durationSeconds: 0, value: 0 }
+    const healing: Healing = { status: "available", ...this.healing, unknownHealerEffective: 0, unknownHealerEvents: 0 }
     const encounter: Encounter = {
       elapsedSeconds: durationSeconds,
       encounterId: `mock-${this.encounterSequence}`,
@@ -329,6 +371,8 @@ export class MockFeed {
       totals: { damageDealt: Math.round(confirmed), damageTaken: Math.round(roles.reduce((sum, role) => sum + role.damageTaken, 0)), unattributedOutgoingDamage: 0, unattributedIncomingDamage: 0 },
       integrity,
       dps,
+      peakDps,
+      healing,
       roles,
       vehicle,
       unassignedRole,
@@ -392,6 +436,7 @@ export class MockFeed {
           unattributed: { outgoingDamage: 0, incomingDamage: 0, outgoingEvents: 0, incomingEvents: 0 },
           duplicateEvents: 0,
           integrity,
+          healing,
           encounterDps: dps,
           damageSpanDps: zeroDps,
           rolling5sDps: zeroDps,
