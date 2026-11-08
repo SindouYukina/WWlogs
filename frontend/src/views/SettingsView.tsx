@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { Button, ContentSwitch, Icon, Segmented, Select, SettingsRow, SettingsSection, Sidebar, Slider, Stepper, ThemeBackdrop, ThemePicker, Toggle, Tooltip, resolveTheme, type SidebarGroupModel } from "@/design"
 import { manifest } from "@/i18n"
@@ -110,7 +110,33 @@ function OverlayPage({ kind, controller }: { kind: OverlayKind; controller: Sett
         <Stepper value={opacity} unit="%" step={5} min={20} max={100} onChange={setOpacity} decreaseLabel={t("decrease")} increaseLabel={t("increase")} />
       </SettingsRow>
     </SettingsSection>
+    {kind === "effects" && <EffectsLegend />}
   </div>
+}
+
+/** What the Effects Overlay's tiles and chips mean. The overlay carries no text per effect, so it is explained here. */
+function EffectsLegend() {
+  const { t } = useTranslation("settings")
+  const game = (polarity?: string) => <span className="ww-effect-tile ww-effects-legend-swatch" aria-hidden="true" data-icon="game" data-polarity={polarity}>
+    <span className="ww-effects-legend-game" />
+    {!polarity && <><span className="ww-effect-tile-bar" style={{ "--ww-remaining": 0.6 } as CSSProperties}><span /></span><span className="ww-effect-tile-time ww-num">8</span><span className="ww-effect-tile-stack ww-num">3</span></>}
+  </span>
+  const chip = (mark: string, fill: number | undefined, stacked = false) => <span className="ww-effect-chip ww-effects-legend-swatch" data-mark={mark} data-timed={fill !== undefined} data-stacked={stacked}>{fill !== undefined && <span className="ww-effect-chip-fill" style={{ "--ww-remaining": fill } as CSSProperties} />}</span>
+  const items: { key: string; swatch: ReactNode }[] = [
+    { key: "gameIcon", swatch: game() },
+    { key: "attribute", swatch: chip("attribute", 0.6) },
+    { key: "state", swatch: chip("state", 0.6) },
+    { key: "enemyLink", swatch: chip("enemy-link", 0.6) },
+    { key: "fill", swatch: <span className="ww-effects-legend-chips" aria-hidden="true">{chip("attribute", 0.35)}{chip("attribute", undefined)}{chip("attribute", 1, true)}</span> },
+    { key: "ailment", swatch: game("debuff") },
+    { key: "holders", swatch: <span className="ww-effect-group-glyph" aria-hidden="true"><Icon name="target" size={14} /></span> },
+  ]
+  return <SettingsSection title={t("effectsLegend.title")}>
+    <ul className="ww-effects-legend" data-field="effects-legend">
+      {items.map(item => <li key={item.key}><span className="ww-effects-legend-mark">{item.swatch}</span><span>{t(`effectsLegend.${item.key}`)}</span></li>)}
+    </ul>
+    <p className="ww-effects-legend-note">{t("effectsLegend.noNames")}</p>
+  </SettingsSection>
 }
 
 function AboutPage({ controller }: { controller: SettingsController }) {

@@ -3,9 +3,9 @@ import { defaultTickMs } from "../motion/tokens.ts"
 import { gameAssetUrl, type GameAssetKind } from "../assets"
 import { useGameAsset } from "../useGameAsset"
 import { AnimatedNumber } from "./AnimatedNumber"
-import { Icon } from "./Icon"
+import { Icon, type IconName } from "./Icon"
 import { StackList } from "./layout"
-import { countdownFraction, type CombatRowModel, type CountdownState, type EffectRowModel } from "@/lib/combat-view"
+import { countdownFraction, type CombatRowModel, type EffectRowModel } from "@/lib/combat-view"
 
 export interface DamageBarProps {
   /** 0..1. Undefined means the engine reported no share; the bar then draws a neutral hatch rather than a value. */
@@ -145,57 +145,87 @@ export const CombatPanel = memo(function CombatPanel({ rows, elementOf, nameOf, 
   </div>
 })
 
-export interface BuffCountdownProps {
-  state: CountdownState
-  tickMs?: number
+/** The neutral mark of an effect that the game draws without an icon of its own, by what its definition says it is for. */
+export type EffectMark = "attribute" | "enemy-link" | "state"
+
+export function effectMarkOf(kind: string): EffectMark {
+  if (kind === "stat_modifier") return "attribute"
+  if (kind === "runtime_link") return "enemy-link"
+  return "state"
 }
 
-/**
- * The bar moves linearly between engine values over one publish interval. It never extrapolates: if snapshots stop, the
- * bar stops. An upward move is a confirmed refresh and uses a spring rather than time's linear motion.
- */
-export const BuffCountdown = memo(function BuffCountdown({ state, tickMs = defaultTickMs }: BuffCountdownProps) {
-  const fraction = countdownFraction(state)
-  const previous = useRef(fraction)
-  const jump = fraction !== undefined && previous.current !== undefined && fraction > previous.current + 0.001
-  useEffect(() => { previous.current = fraction })
-  return <div className="ww-countdown" aria-hidden="true" data-kind={state.kind} data-jump={jump} style={{ "--ww-remaining": fraction ?? 0, "--ww-tick": `${tickMs}ms` } as CSSProperties}>
-    {fraction !== undefined && <><div className="ww-countdown-fill" /><div className="ww-countdown-low" /></>}
-  </div>
-})
+const effectMarkIcons: Record<EffectMark, IconName> = { attribute: "sliders", "enemy-link": "link", state: "spark" }
 
-export interface BuffStatusItemProps {
+export interface EffectTileProps {
   effect: EffectRowModel
-  /** Null when no verified name exists; the item then shows the raw ID. */
-  title: string
-  unnamed: boolean
-  meta?: string
-  remainingText: string
+  /** A spoken description for assistive technology. It never names the effect or quotes its ID. */
+  label: string
   tickMs?: number
   lowSeconds?: number
 }
 
 const lowDefaultSeconds = 3
 
-export const BuffStatusItem = memo(function BuffStatusItem({ effect, title, unnamed, meta, remainingText, tickMs, lowSeconds = lowDefaultSeconds }: BuffStatusItemProps) {
-  const iconUrl = effect.effectId === undefined ? undefined : gameAssetUrl("buff", effect.effectId)
+/** Seconds as the tile shows them: whole seconds, rounded up, and whole minutes from 100 seconds. */
+export function tileSeconds(remaining: number): string {
+  return remaining < 100 ? String(Math.ceil(remaining)) : `${Math.round(remaining / 60)}m`
+}
+
+/**
+ * One effect as the game's HUD draws it: an icon, a stack count from two stacks and a time bar; no name and no ID. The
+ * icon is requested only when the game has one for this effect (EffectRowModel.hudIcon); every other effect keeps an
+ * outlined neutral mark, never another effect's or a skill's icon. The bar only reflects the engine's remaining time.
+ */
+export const EffectTile = memo(function EffectTile({ effect, label, tickMs = defaultTickMs, lowSeconds = lowDefaultSeconds }: EffectTileProps) {
+  const iconUrl = effect.hudIcon && effect.effectId !== undefined ? gameAssetUrl("buff", effect.effectId) : undefined
   const icon = useGameAsset(iconUrl)
   const pulse = usePulse(effect.refreshToken)
   const stackPulse = usePulse(effect.stackCount)
   const { countdown } = effect
-  const low = (countdown.kind === "timed" || countdown.kind === "remaining-only") && countdown.remaining <= lowSeconds && countdown.remaining > 0
-  return <div className="ww-effect" data-polarity={effect.polarity} data-low={low} data-pulse={pulse} data-stale={effect.stale} title={title}>
-    <BuffCountdown state={countdown} tickMs={tickMs} />
-    <div className="ww-effect-sheen" />
-    <div className="ww-effect-icon" data-asset-state={iconUrl && icon.state}>
-      {iconUrl && icon.state !== "missing" && icon.state !== "failed"
-        ? <img src={iconUrl} alt="" decoding="async" draggable={false} onLoad={icon.onLoad} onError={icon.onError} />
-        : <span className="ww-effect-icon-fallback"><Icon name={icon.state === "failed" ? "alert" : "question"} size={16} /></span>}
-    </div>
-    <div className="ww-effect-text"><span className="ww-effect-title ww-truncate" data-unnamed={unnamed}>{title}</span>{meta && <span className="ww-effect-meta ww-truncate">{meta}</span>}</div>
-    <div className="ww-effect-trailing">
-      {effect.stackCount !== undefined && <span className="ww-effect-stack ww-num" data-pulse={stackPulse}>{effect.stackCount}</span>}
-      <span className="ww-effect-time ww-num" data-unknown={countdown.kind === "unknown"}>{remainingText}</span>
-    </div>
+  const remaining = countdown.kind === "unknown" ? undefined : countdown.remaining
+  const fraction = countdownFraction(countdown)
+  const low = remaining !== undefined && remaining <= lowSeconds && remaining > 0
+  const drawn = iconUrl !== undefined && icon.state !== "missing" && icon.state !== "failed"
+  const mark = effectMarkOf(effect.kind)
+  return <div className="ww-effect-tile" role="img" aria-label={label} data-effect-id={effect.effectId} data-icon={drawn ? "game" : "mark"} data-mark={drawn ? undefined : mark} data-polarity={effect.polarity} data-low={low} data-pulse={pulse} data-stale={effect.stale}>
+    {drawn
+      ? <img src={iconUrl} alt="" decoding="async" draggable={false} onLoad={icon.onLoad} onError={icon.onError} />
+      : <span className="ww-effect-tile-mark" aria-hidden="true"><Icon name={effectMarkIcons[mark]} size={14} /></span>}
+    {fraction !== undefined && <span className="ww-effect-tile-bar" aria-hidden="true" style={{ "--ww-remaining": fraction, "--ww-tick": `${tickMs}ms` } as CSSProperties}><span /></span>}
+    {remaining !== undefined && <span className="ww-effect-tile-time ww-num" aria-hidden="true">{tileSeconds(remaining)}</span>}
+    {effect.stackCount !== undefined && effect.stackCount > 1 && <span className="ww-effect-tile-stack ww-num" aria-hidden="true" data-pulse={stackPulse}>{effect.stackCount}</span>}
   </div>
+})
+
+export interface EffectChipProps {
+  effect: EffectRowModel
+  /** A spoken description for assistive technology. It never names the effect or quotes its ID. */
+  label: string
+  tickMs?: number
+  lowSeconds?: number
+}
+
+/**
+ * An effect the game draws without an icon of its own, as a small neutral gauge: its shape tells what the definition
+ * says it is for (EffectMark), its fill the share of the duration left, a hollow chip has no engine time, and a dot marks
+ * two or more stacks. It is deliberately smaller than a tile, so it never passes for an icon the game shows.
+ */
+export const EffectChip = memo(function EffectChip({ effect, label, tickMs = defaultTickMs, lowSeconds = lowDefaultSeconds }: EffectChipProps) {
+  const pulse = usePulse(effect.refreshToken)
+  const { countdown } = effect
+  const remaining = countdown.kind === "unknown" ? undefined : countdown.remaining
+  const fraction = countdown.kind === "timed" ? countdownFraction(countdown) : countdown.kind === "remaining-only" ? 1 : undefined
+  const low = remaining !== undefined && remaining <= lowSeconds && remaining > 0
+  return <span className="ww-effect-chip" role="img" aria-label={label} data-effect-id={effect.effectId} data-mark={effectMarkOf(effect.kind)} data-polarity={effect.polarity} data-timed={fraction !== undefined} data-low={low} data-stacked={effect.stackCount !== undefined && effect.stackCount > 1} data-pulse={pulse} data-stale={effect.stale}>
+    {fraction !== undefined && <span className="ww-effect-chip-fill" style={{ "--ww-remaining": fraction, "--ww-tick": `${tickMs}ms` } as CSSProperties} />}
+  </span>
+})
+
+/** The holder mark at the start of a tile group: the role's avatar, or a neutral mark for other holders. */
+export const EffectGroupMark = memo(function EffectGroupMark({ kind, roleId, label }: { kind: "role" | "team" | "enemy" | "unresolved"; roleId?: number; label: string }) {
+  return <span className="ww-effect-group-mark" role="img" aria-label={label} data-group={kind}>
+    {kind === "role"
+      ? <CharacterAvatar roleId={roleId} size={24} />
+      : <span className="ww-effect-group-glyph" aria-hidden="true"><Icon name={kind === "enemy" ? "target" : kind === "team" ? "list" : "question"} size={14} /></span>}
+  </span>
 })

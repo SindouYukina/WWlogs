@@ -210,15 +210,18 @@ type ViewEffect struct {
 	TermName string  `json:"termName,omitempty"`
 	TermID   *uint64 `json:"termId,omitempty"`
 	// TermStatus is the evidence level of the TermName link; it is never stronger than correlated.
-	TermStatus       string                `json:"termStatus,omitempty"`
-	HolderRelation   EffectEntityRelation  `json:"holderRelation"`
-	HolderRoleID     *uint64               `json:"holderRoleId,omitempty"`
-	HolderName       string                `json:"holderName,omitempty"`
-	HolderNameStatus string                `json:"holderNameStatus,omitempty"`
-	SourceRelation   EffectEntityRelation  `json:"sourceRelation"`
-	Polarity         EffectPolarity        `json:"polarity"`
-	CombatClass      EffectCombatClass     `json:"combatClass"`
-	Kind             EffectKind            `json:"kind"`
+	TermStatus       string               `json:"termStatus,omitempty"`
+	HolderRelation   EffectEntityRelation `json:"holderRelation"`
+	HolderRoleID     *uint64              `json:"holderRoleId,omitempty"`
+	HolderName       string               `json:"holderName,omitempty"`
+	HolderNameStatus string               `json:"holderNameStatus,omitempty"`
+	SourceRelation   EffectEntityRelation `json:"sourceRelation"`
+	Polarity         EffectPolarity       `json:"polarity"`
+	CombatClass      EffectCombatClass    `json:"combatClass"`
+	Kind             EffectKind           `json:"kind"`
+	// HUDIcon reports that the game draws this effect in a HUD buff bar with an icon of its own (effect_hud_cues.go);
+	// only such an effect has an icon worth requesting. It says nothing about the effect's meaning.
+	HUDIcon          bool                  `json:"hudIcon,omitempty"`
 	Display          EffectDisplay         `json:"display"`
 	StackCount       *uint64               `json:"stackCount,omitempty"`
 	Lifecycle        EffectLifecycle       `json:"lifecycle"`
@@ -491,6 +494,9 @@ func (p *processor) viewEffect(effect EffectInstanceSnapshot) ViewEffect {
 	if effect.ExpectedExpiry != nil {
 		expiry := *effect.ExpectedExpiry
 		view.ExpectedExpiry = &expiry
+	}
+	if effect.Static != nil && len(effect.Static.HUDCueTypes) > 0 {
+		view.HUDIcon = true
 	}
 	if effect.Static != nil && effect.Static.Term != nil {
 		view.TermName = effect.Static.Term.Name

@@ -177,6 +177,10 @@ export function countdownFraction(state: CountdownState): number | undefined {
 export interface EffectRowModel {
   key: string
   effectId?: number
+  /** The game draws this effect with an icon of its own (Go ViewEffect.HUDIcon); only then is an icon requested. */
+  hudIcon: boolean
+  /** The engine's EffectKind; it chooses the neutral mark of an effect without a game icon. */
+  kind: string
   polarity: string
   stackCount?: number
   countdown: CountdownState
@@ -189,6 +193,8 @@ export function effectRow(effect: Effect, remaining: number | undefined): Effect
   return {
     key: effect.key,
     effectId: effect.effectId,
+    hudIcon: effect.hudIcon === true,
+    kind: effect.kind,
     polarity: effect.polarity,
     stackCount: effect.stackCount,
     countdown: countdownState(effect, remaining),

@@ -75,6 +75,12 @@ func TestViewEffectsListHUDEffectsFirstWithinEachCountdownGroup(t *testing.T) {
 	if want := []uint64{903, 905, 901, 904, 902, 900}; !reflect.DeepEqual(order, want) {
 		t.Fatalf("order = %v, want timed HUD %v", order, want)
 	}
+	for _, effect := range view.Active {
+		hud := *effect.EffectID == 902 || *effect.EffectID == 903 || *effect.EffectID == 905
+		if effect.HUDIcon != hud {
+			t.Fatalf("effect %d HUDIcon = %v, want %v", *effect.EffectID, effect.HUDIcon, hud)
+		}
+	}
 }
 
 func TestLoadBuffHUDCuesKeepsHUDTypesWithAPath(t *testing.T) {

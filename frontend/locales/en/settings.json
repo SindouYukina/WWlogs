@@ -115,5 +115,16 @@
   "units": {
     "milliseconds": "{{value}} ms",
     "seconds": "{{value}} s"
+  },
+  "effectsLegend": {
+    "title": "Effect tiles",
+    "gameIcon": "Square with an icon: the icon the game itself shows for this effect in its HUD. Bottom-right: estimated seconds left; bottom bar: share of the duration left; top-right: stacks from two.",
+    "attribute": "Small square: no game icon; changes a combat attribute, whether up or down is not established.",
+    "state": "Small circle: no game icon; another combat state whose meaning is not established.",
+    "enemyLink": "Small diamond: no game icon; tied to an enemy, meaning not established.",
+    "fill": "Fill of a small mark: share of the duration left. Hollow: no time from the game. Center dot: two or more stacks.",
+    "ailment": "Red: a confirmed element ailment (harmful to its holder).",
+    "holders": "Rows start with who holds the effects: a character, the crosshair for enemies.",
+    "noNames": "Effects are shown without names, as in the game; most effects have no name in the game data."
   }
 }
