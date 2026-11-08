@@ -348,6 +348,8 @@ export class MockFeed {
       polarity: effect.polarity,
       combatClass: "combat",
       kind: "stat_modifier",
+      // Illustrative: the mock asks for each effect's game icon; one without an image keeps the neutral mark.
+      hudIcon: true,
       display: { eligibility: "eligible", target: "team" as const },
       stackCount: effect.stacks,
       lifecycle: "active",

@@ -1,10 +1,9 @@
 import { useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import { useTranslation } from "react-i18next"
-import { BuffStatusItem, ListeningStatus, StackList } from "@/design"
+import { EffectChip, EffectGroupMark, EffectTile, ListeningStatus, tileSeconds } from "@/design"
 import { isFrozen, type CombatData } from "@/lib/combat-data"
 import { effectRow, type EffectRowModel } from "@/lib/combat-view"
-import { effectCapacity, effectRemaining, visibleEffects, type EffectCapacity } from "@/lib/effects"
-import { useFormatters } from "@/lib/format"
+import { effectGroupOf, effectRemaining, fitEffectGrid, type EffectGridLayout } from "@/lib/effects"
 import type { Effect } from "@/lib/snapshot"
 import { useListeningLabels } from "@/lib/useListeningLabels"
 
@@ -13,37 +12,43 @@ interface EffectView {
   row: EffectRowModel
 }
 
-const keyOf = (item: EffectView) => item.effect.key
+const px = (style: CSSStyleDeclaration, name: string) => Number.parseFloat(style.getPropertyValue(name)) || 0
 
-const rowHeight = 38
-const rowGap = 5
-
-/** For a panel that is not fitted to a window, such as a review stage that grows with its content. */
-const unfittedCapacity: EffectCapacity = { all: 12, withHint: 12 }
+/** Only an effect the game draws with an icon of its own becomes a tile; every other effect is a chip. */
+const isTile = (effect: Effect) => effect.hudIcon === true
 
 /**
- * Measures how many whole rows the window can hold. It only runs when the window or the head changes size, so a countdown
- * never measures anything, and a hidden window, which does not resize, does no work.
+ * Measures the panel the tiles are laid out in. Tile and group sizes come from the design tokens, so a token or a scaled
+ * window changes the layout and the count of hidden effects together. It only runs when the window or the head changes
+ * size, so a countdown never measures anything, and a hidden window, which does not resize, does no work.
  */
-function useFittedCapacity(enabled: boolean) {
+function useGridLayout(enabled: boolean) {
   const root = useRef<HTMLDivElement>(null)
   const head = useRef<HTMLDivElement>(null)
-  const [capacity, setCapacity] = useState(unfittedCapacity)
+  const [layout, setLayout] = useState<EffectGridLayout | undefined>(undefined)
   useLayoutEffect(() => {
     const panel = root.current
     const title = head.current
     if (!enabled || !panel || !title) return
     const measure = () => {
       const style = getComputedStyle(panel)
-      const next = effectCapacity({
-        available: Math.floor(panel.getBoundingClientRect().height),
+      const box = panel.getBoundingClientRect()
+      const next: EffectGridLayout = {
+        available: Math.floor(box.height),
+        width: Math.floor(box.width),
         head: Math.ceil(title.getBoundingClientRect().height),
-        row: rowHeight,
-        rowGap,
         sectionGap: Number.parseFloat(style.rowGap) || 0,
-        hint: Number.parseFloat(style.getPropertyValue("--ww-row-effects-omitted")) || 0,
-      })
-      setCapacity(current => current.all === next.all && current.withHint === next.withHint ? current : next)
+        hint: px(style, "--ww-row-effects-omitted"),
+        tile: px(style, "--ww-effect-tile"),
+        tileGap: px(style, "--ww-effect-tile-gap"),
+        chip: px(style, "--ww-effect-chip"),
+        chipGap: px(style, "--ww-effect-chip-gap"),
+        blockGap: px(style, "--ww-effect-block-gap"),
+        groupHead: px(style, "--ww-effect-group-head"),
+        groupHeadGap: px(style, "--ww-effect-group-head-gap"),
+        groupGap: px(style, "--ww-effect-group-gap"),
+      }
+      setLayout(current => current && Object.keys(next).every(key => current[key as keyof EffectGridLayout] === next[key as keyof EffectGridLayout]) ? current : next)
     }
     measure()
     const observer = new ResizeObserver(measure)
@@ -51,56 +56,72 @@ function useFittedCapacity(enabled: boolean) {
     observer.observe(title)
     return () => observer.disconnect()
   }, [enabled])
-  return { root, head, capacity }
+  return { root, head, layout }
 }
 
 export interface EffectsOverlayPanelProps {
   data: CombatData
   /** Surface opacity, 0 to 1. */
   alpha?: number
-  /** Fits the rows to the height of the enclosing window. A click-through window cannot be scrolled, so rows that do not fit become a count. */
+  /** Fits the tiles to the size of the enclosing window. A click-through window cannot be scrolled, so tiles that do not fit become a count. */
   fitHeight?: boolean
 }
 
 /**
- * The one Effects Overlay. Rows pass the production trust gate: a stale or suspect snapshot yields no countdown. Polarity
- * and names are shown only as the engine and Master report them; an unverified effect keeps its raw ID.
+ * The one Effects Overlay. Like the game's HUD it shows effects as icons with their stacks and time, grouped by holder,
+ * and never as names or IDs: the game draws no effect names, and most effects have none. Effects the game draws without
+ * an icon keep a neutral mark. Tiles pass the production trust gate: a stale or suspect snapshot yields no countdown.
  */
 export function EffectsOverlayPanel({ data, alpha, fitHeight = false }: EffectsOverlayPanelProps) {
   const { t } = useTranslation(["overlay", "common"])
-  const format = useFormatters()
   const describe = useListeningLabels()
   const { snapshot, connection, now } = data
   const frozen = isFrozen(data)
   const view = snapshot?.view
-  // The engine lists only display-eligible effects and counts the rest; the panel neither filters nor reorders them.
+  // The engine lists only display-eligible effects in priority order and counts the rest; the panel neither filters
+  // nor reorders them, it only groups the drawn prefix by holder.
   const listed = view?.effects.active ?? []
   const eligible = view?.effects.counts?.eligible ?? listed.length
   const unclassified = view?.effects.counts?.unclassified ?? 0
-  const { root, head, capacity } = useFittedCapacity(fitHeight)
-  const { visible, overflow } = visibleEffects(eligible, listed.length, unclassified, capacity)
-  const items = useMemo<EffectView[]>(() => listed.slice(0, visible).map(effect => {
-    const remaining = frozen ? undefined : effectRemaining(effect, snapshot, connection, now)
-    return { effect, row: { ...effectRow(effect, remaining), stale: frozen } }
-  }), [listed, visible, frozen, snapshot, connection, now])
-  const holder = (effect: Effect) => {
+  const { root, head, layout } = useGridLayout(fitHeight)
+  const grid = useMemo(() => fitEffectGrid(listed, effectGroupOf, isTile, eligible, unclassified, fitHeight ? layout : undefined), [listed, eligible, unclassified, fitHeight, layout])
+  const groups = useMemo(() => {
+    const viewOf = (effect: Effect): EffectView => {
+      const remaining = frozen ? undefined : effectRemaining(effect, snapshot, connection, now)
+      return { effect, row: { ...effectRow(effect, remaining), stale: frozen } }
+    }
+    return grid.groups.map(({ group, tiles, chips }) => ({
+      group,
+      label: group.kind === "role" ? holderLabel([...tiles, ...chips][0]!) : t(group.kind === "enemy" ? "targetEnemy" : group.kind === "team" ? "holderTeam" : "holderUnresolved"),
+      tiles: tiles.map(viewOf),
+      chips: chips.map(viewOf),
+    }))
+  }, [grid, frozen, snapshot, connection, now, t])
+  function holderLabel(effect: Effect) {
     if (effect.holderName && effect.holderNameStatus === "VERIFIED") return effect.holderName
-    return effect.holderRoleId !== undefined ? t("unknownRole", { ns: "common", id: effect.holderRoleId }) : undefined
+    return t("unknownRole", { ns: "common", id: effect.holderRoleId })
   }
+  const tileLabel = (row: EffectRowModel) => [
+    t(row.hudIcon ? "tileGameIcon" : "tileNoIcon"),
+    row.countdown.kind !== "unknown" ? t("tileRemaining", { seconds: tileSeconds(row.countdown.remaining) }) : undefined,
+    row.stackCount !== undefined && row.stackCount > 1 ? t("tileStacks", { count: row.stackCount }) : undefined,
+  ].filter(Boolean).join(t("tileSeparator"))
+  const { overflow } = grid
   const listening = snapshot?.listening
   const text = listening ? describe(listening) : null
   const style = alpha === undefined ? undefined : { "--ww-alpha-overlay": alpha, "--ww-alpha-overlay-strong": Math.min(1, alpha + 0.12) } as CSSProperties
   return <div ref={root} className="ww-effects" style={style} data-field="effects" data-fit={fitHeight}>
     <div ref={head} className="ww-effects-head"><span>{t("effects")}</span><span className="ww-effects-head-end">{listening && text && <span data-field="listening" data-state={listening.state} data-reason={listening.reason}><ListeningStatus state={listening.state} label={text.label} detail={text.detail} variant="dot" /></span>}<span className="ww-num" data-field="effects-count" data-count={eligible}>{eligible}</span></span></div>
-    {items.length === 0 && overflow === 0 && <div className="ww-combat-empty ww-effects-empty">{t("noEffects")}</div>}
-    <StackList items={items} keyOf={keyOf} rowHeight={rowHeight} gap={rowGap} renderItem={({ effect, row }) => {
-      const verified = effect.termStatus === "VERIFIED" && effect.termName
-      // A correlated glossary term is shown as a related term beside the raw ID, never as the effect's confirmed name.
-      const related = effect.termStatus === "CORRELATED" ? effect.termName : undefined
-      const meta = [related && t("relatedTerm", { term: related }), effect.display?.target === "enemy" ? t("targetEnemy") : holder(effect)].filter(Boolean).join(" · ")
-      const countdown = row.countdown
-      return <BuffStatusItem effect={row} title={verified ? effect.termName! : t("unknownEffect", { id: effect.effectId ?? "—" })} unnamed={!verified} meta={meta} tickMs={data.tickMs} remainingText={countdown.kind === "unknown" ? "—" : `~${format.seconds(countdown.remaining)}`} />
-    }} />
+    {grid.visible === 0 && overflow === 0 && <div className="ww-combat-empty ww-effects-empty">{t("noEffects")}</div>}
+    {groups.length > 0 && <div className="ww-effect-groups" data-field="effect-groups">
+      {groups.map(({ group, label, tiles, chips }) => <div key={group.key} className="ww-effect-group" data-group={group.kind} data-role={group.roleId}>
+        <EffectGroupMark kind={group.kind} roleId={group.roleId} label={label} />
+        <div className="ww-effect-group-body">
+          {tiles.length > 0 && <div className="ww-effect-tiles">{tiles.map(({ effect, row }) => <EffectTile key={effect.key} effect={row} label={tileLabel(row)} tickMs={data.tickMs} />)}</div>}
+          {chips.length > 0 && <div className="ww-effect-chips">{chips.map(({ effect, row }) => <EffectChip key={effect.key} effect={row} label={tileLabel(row)} tickMs={data.tickMs} />)}</div>}
+        </div>
+      </div>)}
+    </div>}
     {(overflow > 0 || unclassified > 0) && <div className="ww-effects-omitted" data-field="effects-omitted" data-count={overflow} data-unclassified={unclassified}>{[overflow > 0 && t("omitted", { count: overflow }), unclassified > 0 && t("unclassified", { count: unclassified })].filter(Boolean).join(" · ")}</div>}
   </div>
 }

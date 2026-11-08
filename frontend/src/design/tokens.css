@@ -174,7 +174,16 @@
 
   /* Component metrics that Overlay layouts rely on; list positions are computed from them. */
   --ww-row-combat: 46px;
-  --ww-row-effect: 38px;
+  --ww-effect-tile: 32px;
+  --ww-effect-tile-gap: 4px;
+  --ww-effect-chip: 14px;
+  --ww-effect-chip-gap: 3px;
+  --ww-effect-block-gap: 4px;
+  /* Effect time in a neutral tone: never a theme accent, which could read as a buff or debuff color. */
+  --ww-effect-neutral: oklch(0.88 0.015 250 / 0.82);
+  --ww-effect-group-head: 26px;
+  --ww-effect-group-head-gap: 6px;
+  --ww-effect-group-gap: 6px;
   --ww-row-effects-omitted: 18px;
   --ww-overlay-edit-height: 36px;
   --ww-sidebar-width: 236px;

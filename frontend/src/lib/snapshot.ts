@@ -203,6 +203,8 @@ export interface Effect {
   combatClass: string
   /** What the definition says the effect is for (Go EffectKind). */
   kind: string
+  /** The game draws this effect in a HUD buff bar with an icon of its own; it says nothing about its meaning. */
+  hudIcon?: boolean
   /** The engine's display decision; listed effects are always eligible. */
   display: { eligibility: string; target?: "team" | "enemy" | "unresolved" }
   stackCount?: number

@@ -112,5 +112,12 @@ body[data-view="overlay"][data-editing="true"] { --wails-draggable: drag; }
 /* A fitted panel fills its window, so its rows and the count of hidden effects are laid out against the real height. */
 .ww-effects[data-fit="true"] { height: 100%; min-height: 0; overflow: hidden; }
 .ww-effects[data-fit="true"] > * { flex: none; }
-.ww-effects[data-fit="true"] > .ww-stack { overflow-x: visible; overflow-y: clip; }
+.ww-effects[data-fit="true"] > .ww-effect-groups { overflow: clip; }
+.ww-effects-legend { display: grid; gap: var(--ww-space-2); margin: 0; padding: var(--ww-space-2) 0; list-style: none; font-size: var(--ww-text-sm); color: var(--ww-text-2); }
+.ww-effects-legend li { display: grid; grid-template-columns: 56px minmax(0, 1fr); align-items: center; column-gap: var(--ww-space-3); }
+.ww-effects-legend-mark { display: flex; justify-content: center; }
+.ww-effects-legend-chips { display: inline-flex; gap: var(--ww-effect-chip-gap); }
+.ww-effects-legend-swatch { animation: none; }
+.ww-effects-legend-game { position: absolute; inset: 4px; border-radius: var(--ww-radius-xs); background: linear-gradient(135deg, oklch(0.78 0.08 220 / 0.85), oklch(0.5 0.1 260 / 0.85)); }
+.ww-effects-legend-note { margin: 0; padding-bottom: var(--ww-space-2); font-size: var(--ww-text-xs); color: var(--ww-text-3); }
 .ww-overlay-surface[data-surface="effects"]:has(> .ww-overlay-edit) { padding-bottom: calc(var(--ww-space-2) * 2 + var(--ww-overlay-edit-height)); }
