@@ -85,6 +85,51 @@ func TestDisplayProjectionRelocalizesExistingSnapshotWithoutChangingCore(t *test
 	}
 }
 
+// The projection relocalizes names and nothing else, so the engine's ranking contract reaches every window unchanged and
+// is the same in both build profiles.
+func TestDisplayProjectionKeepsTheEnginesRankingContract(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "master.db")
+	db, _ := sql.Open("sqlite", path)
+	for _, table := range []string{"roleinfo_locale", "term_locale"} {
+		if _, err := db.Exec("CREATE TABLE " + table + " (id TEXT,locale TEXT,name TEXT,PRIMARY KEY(id,locale))"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	db.Close()
+	resolver, err := capture.OpenDisplayResolver(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resolver.Close()
+	store := loadSettings(filepath.Join(t.TempDir(), "settings.json"), testLocaleCatalog())
+	share, roleDPS, vehicleDPS := 0.4, 40.0, 60.0
+	vehicle := &capture.ViewVehicle{VehicleDamageSnapshot: capture.VehicleDamageSnapshot{Kind: "motorcycle", DamageDealt: 600}, DamageShare: &share, Rank: 0, DPS: &vehicleDPS}
+	role := capture.ViewRole{RoleID: 42, DamageDealt: 400, DamageShare: &share, Rank: 1, DPS: &roleDPS}
+	encounter := capture.ViewEncounter{EncounterID: "1-1-1", Roles: []capture.ViewRole{role}, Vehicle: vehicle}
+	interval := capture.ViewRole{RoleID: 42, DamageDealt: 400, DamageShare: &share, Rank: 0}
+	view := capture.ViewSnapshot{Roles: []capture.ViewRole{interval}, Encounters: capture.ViewEncounters{Current: &encounter, Recent: []capture.ViewEncounter{encounter}}}
+	projection := &displayProjection{resolver: resolver}
+	raw, err := projection.encode(&service.Snapshot{Sequence: 1, View: &view}, store.current(), testLocaleCatalog(), service.ListeningStatus{}, OverlayStates{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded struct{ View capture.ViewSnapshot }
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	for _, scope := range []capture.ViewEncounter{*decoded.View.Encounters.Current, decoded.View.Encounters.Recent[0]} {
+		if got := scope.Roles[0]; got.Rank != 1 || got.DPS == nil || *got.DPS != roleDPS || got.DamageShare == nil || *got.DamageShare != share {
+			t.Fatalf("role row = %+v", got)
+		}
+		if got := scope.Vehicle; got.Rank != 0 || got.DPS == nil || *got.DPS != vehicleDPS {
+			t.Fatalf("vehicle row = %+v", got)
+		}
+	}
+	if got := decoded.View.Roles[0]; got.Rank != 0 || got.DPS != nil {
+		t.Fatalf("interval row = %+v", got)
+	}
+}
+
 func TestShellChangeReencodesWithoutTouchingCoreSequence(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "master.db")
 	db, _ := sql.Open("sqlite", path)

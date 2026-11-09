@@ -149,6 +149,8 @@ test("whether a row shows its ID is the engine's decision, and an unassigned row
   assert.match(view, /row\.showId && <span className="ww-dash-skill-id/, "the ID is drawn only when the engine says so")
   const unassignedRow = view.slice(view.indexOf('data-field="unassigned-skill"'), view.indexOf("</tbody>"))
   assert.doesNotMatch(unassignedRow, /ww-dash-skill-id|skillId/, "an unassigned row never shows an ID")
+  assert.match(unassignedRow, /<span className="ww-truncate">\{t\("unassignedSkill"\)\}<\/span>/, "a row without a SkillId always reads as an unconfirmed source")
+  assert.match(unassignedRow, /data-field="derived-source">\{unassigned\.name\}/, "a derived source is a note beside that label, never in its place")
   const adapter = readFileSync("frontend/src/lib/combat-view.ts", "utf8")
   assert.doesNotMatch(adapter.slice(adapter.indexOf("export function skillBreakdown"), adapter.indexOf("export function skillBreakdowns")), /nameStatus === "VERIFIED"/, "the frontend does not grade skill evidence")
 })
