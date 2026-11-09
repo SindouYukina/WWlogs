@@ -4,13 +4,17 @@ import "time"
 
 // effectEntityRelation classifies an entity with the same evidence rules as damage
 // attribution. A role of the local team, whether reported as the current entity or
-// listed in the local PlayerSceneGroup, is local_role; other entities that reach
-// the local team through a confirmed owner chain are local_owned.
+// listed in the local PlayerSceneGroup, is local_role; the local player's own
+// Proto_PlayerEntity is local_player; other entities that reach the local team through
+// a confirmed owner chain are local_owned.
 func (p *processor) effectEntityRelation(entityID uint64) EffectEntityRelation {
 	if p == nil || p.entities == nil || entityID == 0 {
 		return EffectRelationUnknown
 	}
 	identity := resolveEntityIdentity(p.entities, p.masters, entityID)
+	if identity.Runtime.entityID == entityID && p.playerRelevance.isLocalPlayerEntity(identity.Runtime) {
+		return EffectRelationLocalPlayer
+	}
 	switch p.playerRelationForEntity(entityID, identity) {
 	case playerRelationLocal:
 		if p.playerRelevance.isRoleEntity(entityID) || p.playerRelevance.isLocalPlayerRoleEntity(identity.Runtime) {
