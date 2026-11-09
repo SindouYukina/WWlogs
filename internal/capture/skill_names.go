@@ -84,7 +84,8 @@ type skillNameMaster struct {
 	roleTuneBreak map[uint64]uint64
 	// echoItems maps a Vision skill key to one PhantomItem.Id whose official name every candidate Echo shares.
 	echoItems map[uint64]uint64
-	// echoVisions maps a skill key to its Vision.Id, when it has exactly one.
+	// echoVisions maps a skill key to the Vision.Id of the PhantomItem in echoItems. The game draws an Echo's button from the
+	// PhantomSkill of its item's skill, so that one Vision holds the row's icon even when several Visions cast the skill.
 	echoVisions map[uint64]uint64
 	// damageVisions maps a DamageId to the one Vision its common bullets name.
 	damageVisions map[uint64]uint64
@@ -465,7 +466,11 @@ func loadSQLiteEchoSkillItems(db *sql.DB, names *skillNameMaster, exists func(..
 	if err != nil {
 		return err
 	}
+	itemVisions := map[uint64]uint64{}
 	for vision, candidates := range items {
+		for _, candidate := range candidates {
+			itemVisions[candidate.id] = vision
+		}
 		if item, ok := resolveEchoItems(candidates); ok {
 			names.visionItems[vision] = item
 		}
@@ -487,11 +492,7 @@ func loadSQLiteEchoSkillItems(db *sql.DB, names *skillNameMaster, exists func(..
 		}
 		if item, ok := resolveEchoItems(candidates); ok {
 			names.echoItems[skill] = item
-		}
-		if len(visions) == 1 {
-			for vision := range visions {
-				names.echoVisions[skill] = vision
-			}
+			names.echoVisions[skill] = itemVisions[item]
 		}
 	}
 	return linkCommonBulletDamage(db, exists, notes, names)

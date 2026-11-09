@@ -36,6 +36,7 @@ func sampleTree() fstest.MapFS {
 		"game/skills/700/icon.webp":           {Data: webp("shared icon")},
 		"game/skills/701/icon.webp":           {Data: webp("shared icon")},
 		"game/skills/by-config/700/icon.webp": {Data: webp("config icon")},
+		"game/echo-skills/700/icon.webp":      {Data: webp("echo icon")},
 		"game/buffs/10010000/icon.webp":       {Data: webp("buff")},
 	}
 }
@@ -48,14 +49,14 @@ func TestPackResolvesLikeADirectoryAndStoresEachContentOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if stats.Files != 7 || stats.Distinct != 5 {
+	if stats.Files != 8 || stats.Distinct != 6 {
 		t.Fatalf("stats = %+v", stats)
 	}
 	fromPack := assets.NewResolver(assets.NewPackFS(pack.String()))
 	fromDirectory := assets.NewResolver(tree)
 	for _, key := range []assets.Key{
 		{Kind: assets.CharacterAvatar, ID: 1205}, {Kind: assets.CharacterPortrait, ID: 1205}, {Kind: assets.CharacterPortrait, ID: 1506},
-		{Kind: assets.SkillIcon, ID: 700}, {Kind: assets.SkillIcon, ID: 701}, {Kind: assets.SkillConfigIcon, ID: 700}, {Kind: assets.BuffIcon, ID: 10010000},
+		{Kind: assets.SkillIcon, ID: 700}, {Kind: assets.SkillIcon, ID: 701}, {Kind: assets.SkillConfigIcon, ID: 700}, {Kind: assets.EchoSkillIcon, ID: 700}, {Kind: assets.BuffIcon, ID: 10010000},
 	} {
 		want := readKey(t, fromDirectory, key)
 		if got := readKey(t, fromPack, key); !bytes.Equal(got, want) {
@@ -66,7 +67,10 @@ func TestPackResolvesLikeADirectoryAndStoresEachContentOnce(t *testing.T) {
 	if bytes.Equal(readKey(t, fromPack, assets.Key{Kind: assets.SkillIcon, ID: 700}), readKey(t, fromPack, assets.Key{Kind: assets.SkillConfigIcon, ID: 700})) {
 		t.Fatal("skill namespaces collapsed")
 	}
-	for _, key := range []assets.Key{{Kind: assets.BuffIcon, ID: 999}, {Kind: assets.CharacterAvatar, ID: 1506}, {Kind: assets.SkillIcon, ID: 702}} {
+	if bytes.Equal(readKey(t, fromPack, assets.Key{Kind: assets.SkillIcon, ID: 700}), readKey(t, fromPack, assets.Key{Kind: assets.EchoSkillIcon, ID: 700})) {
+		t.Fatal("echo skill namespace collapsed into skills")
+	}
+	for _, key := range []assets.Key{{Kind: assets.BuffIcon, ID: 999}, {Kind: assets.CharacterAvatar, ID: 1506}, {Kind: assets.SkillIcon, ID: 702}, {Kind: assets.EchoSkillIcon, ID: 701}} {
 		if _, err := fromPack.Open(key); !errors.Is(err, fs.ErrNotExist) {
 			t.Fatalf("%+v: an ID without an image reported %v", key, err)
 		}
@@ -175,7 +179,7 @@ func TestScanLeavesOutFilesNoKeyCanReach(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(manifest.Entries) != 7 || len(skipped) != 2 {
+	if len(manifest.Entries) != 8 || len(skipped) != 2 {
 		t.Fatalf("entries=%d skipped=%v", len(manifest.Entries), skipped)
 	}
 }

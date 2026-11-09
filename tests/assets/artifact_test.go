@@ -16,7 +16,7 @@ import (
 )
 
 // keyPattern turns a manifest path back into the Key that must resolve to it.
-var keyPattern = regexp.MustCompile(`^game/(?:characters/(\d+)/(avatar|portrait)|skills/(by-config/)?(\d+)/icon|buffs/(\d+)/icon)\.webp$`)
+var keyPattern = regexp.MustCompile(`^game/(?:characters/(\d+)/(avatar|portrait)|skills/(by-config/)?(\d+)/icon|buffs/(\d+)/icon|echo-skills/(\d+)/icon)\.webp$`)
 
 func keyFor(t *testing.T, path string) assets.Key {
 	t.Helper()
@@ -40,6 +40,8 @@ func keyFor(t *testing.T, path string) assets.Key {
 		return assets.Key{Kind: assets.SkillConfigIcon, ID: parse(match[4])}
 	case match[4] != "":
 		return assets.Key{Kind: assets.SkillIcon, ID: parse(match[4])}
+	case match[6] != "":
+		return assets.Key{Kind: assets.EchoSkillIcon, ID: parse(match[6])}
 	default:
 		return assets.Key{Kind: assets.BuffIcon, ID: parse(match[5])}
 	}

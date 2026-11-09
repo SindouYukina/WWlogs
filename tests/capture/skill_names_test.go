@@ -142,8 +142,10 @@ func TestSkillNameSourcesLoaderExcludesAmbiguousRelations(t *testing.T) {
 		// Vision 280026: one Echo name in both locales. Vision 280013 and 281013 share skill 280013010 with different names.
 		// Vision 280099 has items whose names agree in zh-TW but differ in en-US. Vision.SkillId 2000003 is shared by two
 		// differently named Echoes, as in the real Master.
-		"INSERT INTO vision VALUES('280026','2000003','280026010'),('280027','2000003',NULL),('280013','280013010',NULL),('281013','280013010',NULL),('280099','280099010',NULL)",
-		"INSERT INTO phantomitem VALUES('60001062','280026'),('60001063','280026'),('60001072','280027'),('60000602','280013'),('60200103','281013'),('60009901','280099'),('60009902','280099')",
+		// Visions 280045 and 281045 cast the same skill and name one Echo: the row belongs to the item the name came from.
+		"INSERT INTO vision VALUES('280026','2000003','280026010'),('280027','2000003',NULL),('280013','280013010',NULL),('281013','280013010',NULL),('280099','280099010',NULL),('280045','28004502',NULL),('281045','28004502',NULL)",
+		"INSERT INTO phantomitem VALUES('60001062','280026'),('60001063','280026'),('60001072','280027'),('60000602','280013'),('60200103','281013'),('60009901','280099'),('60009902','280099'),('60002252','280045'),('60102255','281045')",
+		"INSERT INTO phantomitem_locale VALUES('60002252','en-US','Echo'),('60002252','zh-TW','迴響'),('60102255','en-US','Echo'),('60102255','zh-TW','迴響')",
 		"INSERT INTO phantomitem_locale VALUES('60001062','en-US','Reminiscence: Fleurdelys'),('60001062','zh-TW','共鳴迴響·芙露德莉斯'),('60001063','en-US','Reminiscence: Fleurdelys'),('60001063','zh-TW','共鳴迴響·芙露德莉斯')",
 		"INSERT INTO phantomitem_locale VALUES('60001072','en-US','Other Echo'),('60000602','en-US','Fallacy of No Return'),('60200103','en-US','Heterized Armament')",
 		"INSERT INTO phantomitem_locale VALUES('60009901','en-US','A'),('60009901','zh-TW','同'),('60009902','en-US','B'),('60009902','zh-TW','同')",
@@ -167,8 +169,12 @@ func TestSkillNameSourcesLoaderExcludesAmbiguousRelations(t *testing.T) {
 	if names.uiSkillNames[1006203] != "解放" || names.uiSkillNames[1006201] != "Basic" {
 		t.Fatalf("UI skill names = %v, want zh-TW with en-US fallback", names.uiSkillNames)
 	}
-	if !reflect.DeepEqual(names.echoItems, map[uint64]uint64{280026010: 60001062}) {
-		t.Fatalf("echo items = %v, want only the Echo skill whose candidates share one name per locale", names.echoItems)
+	if !reflect.DeepEqual(names.echoItems, map[uint64]uint64{280026010: 60001062, 28004502: 60002252}) {
+		t.Fatalf("echo items = %v, want only the Echo skills whose candidates share one name per locale", names.echoItems)
+	}
+	// An icon comes from the Vision of the item that names the row; a skill two different Echoes share has neither.
+	if !reflect.DeepEqual(names.echoVisions, map[uint64]uint64{280026010: 280026, 28004502: 280045}) {
+		t.Fatalf("echo visions = %v", names.echoVisions)
 	}
 	if names.echoNames[60001062] != "共鳴迴響·芙露德莉斯" {
 		t.Fatalf("echo names = %v", names.echoNames)
@@ -257,6 +263,15 @@ func TestTrackedMasterDerivesObservedSkillNames(t *testing.T) {
 	}
 	if kind, id := master.skillRowIcon(SkillDamageSnapshot{SkillID: 280026010}, skillNameSourceEcho, 60001062); kind != skillIconKindEchoSkill || id != 280026 {
 		t.Fatalf("Echo icon = %s/%d", kind, id)
+	}
+	// A skill several Visions cast takes the icon of the base Echo that names it, for any role that uses that Echo.
+	for _, c := range []struct{ skill, vision uint64 }{{230006, 280033}, {280034001, 280034}, {28004502, 280045}, {28004501, 280045}, {280010010, 280010}} {
+		if kind, id := master.skillRowIcon(SkillDamageSnapshot{SkillID: c.skill}, skillNameSourceEcho, 0); kind != skillIconKindEchoSkill || id != c.vision {
+			t.Errorf("skill %d Echo icon = %s/%d, want %d", c.skill, kind, id, c.vision)
+		}
+	}
+	if kind, id := master.skillRowIcon(SkillDamageSnapshot{SkillID: 1409011}, skillNameSourceEcho, 0); kind != "" || id != 0 {
+		t.Fatalf("a skill of no Echo got an Echo icon: %s/%d", kind, id)
 	}
 	if kind, id := master.skillRowIcon(SkillDamageSnapshot{SkillID: 1508991}, skillNameSourceTuneBreak, 1004210); kind != skillIconKindSkillConfig || id != 1004210 {
 		t.Fatalf("Tune Break icon = %s/%d", kind, id)
