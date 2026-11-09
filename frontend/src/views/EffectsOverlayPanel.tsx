@@ -1,11 +1,10 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import { useTranslation } from "react-i18next"
-import { EffectCell, EffectMore, ListeningStatus, StackRow, effectFill, effectSeconds, lowEffectSeconds } from "@/design"
+import { EffectCell, EffectMore, StackRow, effectFill, effectSeconds, lowEffectSeconds } from "@/design"
 import { isFrozen, type CombatData } from "@/lib/combat-data"
 import { countdownFraction, effectRow, type EffectRowModel } from "@/lib/combat-view"
 import { effectRemaining, fitEffectStrip, type EffectStripLayout } from "@/lib/effects"
 import type { Connection, Effect, Snapshot } from "@/lib/snapshot"
-import { useListeningLabels } from "@/lib/useListeningLabels"
 
 type StripItem =
   | { kind: "effect"; key: string; row: EffectRowModel }
@@ -101,11 +100,10 @@ export interface EffectsOverlayPanelProps {
  * The one Effects Overlay: BUFF on the first line and DEBUFF on the second, each soonest to end first, as icons with their
  * stacks and time and never as names or IDs. The holder, source and instance of every effect stay in the engine's data;
  * this view only stops grouping by them. Cells pass the production trust gate: a stale or suspect snapshot yields no
- * countdown.
+ * countdown. The listening status lives on the Combat Overlay; the two are used together, so it is not repeated here.
  */
 export function EffectsOverlayPanel({ data, alpha }: EffectsOverlayPanelProps) {
   const { t } = useTranslation(["overlay", "common"])
-  const describeListening = useListeningLabels()
   const { snapshot, connection, now } = data
   const view = snapshot?.view
   const frozen = isFrozen(data) || view?.effects.clockStalled === true
@@ -116,11 +114,8 @@ export function EffectsOverlayPanel({ data, alpha }: EffectsOverlayPanelProps) {
   const debuffCells = (debuffs?.effects.length ?? 0) + (debuffs?.truncated ?? 0)
   const cells = buffCells + debuffCells
   const { rows, layout } = useStripLayout()
-  const listening = snapshot?.listening
-  const text = listening ? describeListening(listening) : null
   const style = alpha === undefined ? undefined : { "--ww-alpha-overlay": alpha, "--ww-alpha-overlay-strong": Math.min(1, alpha + 0.12) } as CSSProperties
   return <div className="ww-effects" style={style} data-field="effects" data-count={cells}>
-    {listening && text && <span className="ww-effects-status" data-field="listening" data-state={listening.state} data-reason={listening.reason}><ListeningStatus state={listening.state} label={text.label} detail={text.detail} /></span>}
     <div ref={rows} className="ww-effects-rows" data-field="effect-rows">
       {cells === 0
         ? <div className="ww-combat-empty ww-effects-empty">{t("noEffects")}</div>
