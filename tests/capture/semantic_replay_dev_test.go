@@ -76,6 +76,25 @@ var semanticSkillFacts = []semanticSkillFact{
 	{"LIVE_20261105_195015", 1102, 1102030, "DERIVED", "skill_type", "焦瞑凍土", true},
 }
 
+// semanticCompletenessFact is what one encounter must report about its own damage.
+type semanticCompletenessFact struct {
+	capture       string
+	sequence      uint64
+	total         int64
+	vehicle       int64
+	unknownDamage int64
+	unknownEvents uint64
+}
+
+var semanticCompletenessFacts = []semanticCompletenessFact{
+	// A motorcycle-heavy fight with nothing unknown: the vehicle is a contributor, not a gap.
+	{"LIVE_20261103_122337", 6, 250027, 188920, 0, 0},
+	// Hits on a Monster the enemy summoned count as damage dealt; its summoner chain ends at a verified Monster.
+	{"LIVE_20261109_121001", 10, 628238, 125613, 0, 0},
+	{"LIVE_20261109_121001", 11, 591112, 0, 0, 0},
+	{"LIVE_20261105_195015", 5, 812471, 115146, 0, 0},
+}
+
 type semanticEffectSeen struct {
 	row      EffectPolarity
 	target   EffectDisplayTarget
@@ -191,6 +210,43 @@ func TestSemanticReplayCollector(t *testing.T) {
 				}
 				if got.row != fact.row || got.target != fact.target || got.maxStack != fact.maxStack {
 					t.Errorf("effect %d = %+v, want row %s target %s max stack %d", fact.effectID, *got, fact.row, fact.target, fact.maxStack)
+				}
+			}
+			statistics := p.damageStatisticsSnapshot()
+			if got := intervalDamageCompleteness(statistics); !got.Conserved {
+				t.Errorf("interval damage is not conserved: %+v", got)
+			}
+			encounters := append([]EncounterSnapshot(nil), statistics.Encounters.Completed...)
+			if statistics.Encounters.Current != nil {
+				encounters = append(encounters, *statistics.Encounters.Current)
+			}
+			bySequence := make(map[uint64]EncounterSnapshot, len(encounters))
+			for _, encounter := range encounters {
+				bySequence[encounter.Sequence] = encounter
+				got := encounterDamageCompleteness(encounter)
+				if !got.Conserved {
+					t.Errorf("encounter %d is not conserved: %+v", encounter.Sequence, got)
+				}
+				if got.RoleAttributionComplete != (encounter.UnassignedRole.OutgoingEvents == 0) {
+					t.Errorf("encounter %d attribution does not follow its unassigned bucket: %+v", encounter.Sequence, got)
+				}
+			}
+			for _, fact := range semanticCompletenessFacts {
+				if !semanticCaptureMatches(capture.name, fact.capture) {
+					continue
+				}
+				encounter, ok := bySequence[fact.sequence]
+				if !ok {
+					t.Errorf("encounter %d is missing", fact.sequence)
+					continue
+				}
+				var vehicle int64
+				if encounter.Vehicle != nil {
+					vehicle = encounter.Vehicle.DamageDealt
+				}
+				got := encounterDamageCompleteness(encounter)
+				if encounter.Totals.DamageDealt != fact.total || vehicle != fact.vehicle || got.UnknownOwnershipDamage != fact.unknownDamage || got.UnknownOwnershipEvents != fact.unknownEvents || !got.RoleAttributionComplete {
+					t.Errorf("encounter %d = total %d, vehicle %d, %+v, want %+v", fact.sequence, encounter.Totals.DamageDealt, vehicle, got, fact)
 				}
 			}
 			view := p.viewSnapshot()

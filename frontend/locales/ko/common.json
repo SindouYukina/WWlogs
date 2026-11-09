@@ -3,6 +3,7 @@
   "vehicle": "탈것",
   "diagnosticsIncomplete": "개발 진단 기록이 불완전하거나 사용할 수 없습니다. 로컬 저장 공간과 진단 상태를 확인하세요.",
   "attributionIncomplete": "캐릭터별 피해 내역이 불완전합니다. 총 피해량은 유지됩니다.",
+  "unknownOwnershipNote": "귀속 불명 피해 {{value}}은(는) 총 피해량에 포함되지 않습니다.",
   "roleTitle": "피해 기여자",
   "appSubtitle": "전투 분석",
   "dashboard": "대시보드",

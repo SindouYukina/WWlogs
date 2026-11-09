@@ -206,6 +206,21 @@ export interface Encounter {
   vehicle?: Vehicle
   unassignedRole: UnassignedRole
   unassignedRoleShare?: number
+  completeness: DamageCompleteness
+}
+
+/** Independent facts about one scope's damage, decided by the engine (Go ViewDamageCompleteness). None implies another. */
+export interface DamageCompleteness {
+  conserved: boolean
+  roleAttributionComplete: boolean
+  unassignedDamage: number
+  unassignedEvents: number
+  skillBreakdownComplete: boolean
+  noSkillDamage: number
+  noSkillEvents: number
+  /** Hits with an unknown endpoint: they are not part of the totals of this scope. */
+  unknownOwnershipDamage: number
+  unknownOwnershipEvents: number
 }
 
 /**
@@ -331,6 +346,7 @@ export interface ViewSnapshot {
   vehicle?: Vehicle
   unassignedRole: UnassignedRole
   unassignedRoleShare?: number
+  completeness: DamageCompleteness
   effects: { status: string; reason?: string; buffs: EffectRow; debuffs: EffectRow; recentEnded: Effect[]; counts: EffectCounts; clockStalled?: boolean }
   /** DPS over time of the encounter shown (encounters.current, else the newest recent one); absent before any. */
   timeline?: Timeline

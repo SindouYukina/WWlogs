@@ -31,7 +31,9 @@ type ViewSnapshot struct {
 	UnassignedRole      UnassignedRoleTotals `json:"unassignedRole"`
 	UnassignedRoleShare *float64             `json:"unassignedRoleShare,omitempty"`
 	Vehicle             *ViewVehicle         `json:"vehicle,omitempty"`
-	Effects             ViewEffects          `json:"effects"`
+	// Completeness describes this capture interval's damage; each encounter carries its own.
+	Completeness ViewDamageCompleteness `json:"completeness"`
+	Effects      ViewEffects            `json:"effects"`
 	// Timeline is the DPS over time of the encounter the UI shows (Encounters.Current, else the newest of
 	// Encounters.Recent), at most maxViewTimelinePoints points; absent before the first encounter.
 	Timeline *EncounterTimelineSnapshot `json:"timeline,omitempty"`
@@ -169,6 +171,8 @@ type ViewEncounter struct {
 	UnassignedRole      UnassignedRoleTotals `json:"unassignedRole"`
 	UnassignedRoleShare *float64             `json:"unassignedRoleShare,omitempty"`
 	Vehicle             *ViewVehicle         `json:"vehicle,omitempty"`
+	// Completeness describes this encounter's damage only, never another encounter of the interval.
+	Completeness ViewDamageCompleteness `json:"completeness"`
 }
 
 // ViewRole is one local role's totals. Name comes from the Master database for the selected locale; it is empty with
@@ -345,6 +349,7 @@ func (p *processor) viewSnapshot() ViewSnapshot {
 		UnassignedRole:      statistics.UnassignedRole,
 		UnassignedRoleShare: unassignedRoleShare(statistics.UnassignedRole, statistics.DamageDealt),
 		Vehicle:             p.viewVehicle(statistics.Vehicle, statistics.DamageDealt),
+		Completeness:        intervalDamageCompleteness(statistics),
 		Effects:             p.viewEffects(),
 	}
 	if p.damageStatistics != nil {
@@ -404,6 +409,7 @@ func (p *processor) viewEncounter(encounter EncounterSnapshot) ViewEncounter {
 		Roles: p.viewRoles(encounter.Roles, encounter.Totals.DamageDealt), UnassignedRole: encounter.UnassignedRole,
 		UnassignedRoleShare: unassignedRoleShare(encounter.UnassignedRole, encounter.Totals.DamageDealt),
 		Vehicle:             p.viewVehicle(encounter.Vehicle, encounter.Totals.DamageDealt),
+		Completeness:        encounterDamageCompleteness(encounter),
 	}
 	end := encounter.EndedAt
 	if end.IsZero() {

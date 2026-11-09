@@ -3,6 +3,7 @@
   "vehicle": "乗り物",
   "diagnosticsIncomplete": "開発用記録が不完全、または利用できません。ローカル容量と診断状態を確認してください。",
   "attributionIncomplete": "キャラクター別の内訳は不完全です。合計ダメージは保持されています。",
+  "unknownOwnershipNote": "帰属不明のダメージ {{value}} は合計に含まれていません。",
   "roleTitle": "ダメージ源",
   "appSubtitle": "戦闘分析",
   "dashboard": "ダッシュボード",
