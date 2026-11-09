@@ -159,7 +159,7 @@ func classifyEffectInstance(staticClass EffectCombatClass, staticBasis string, p
 }
 
 func localEffectRelation(relation EffectEntityRelation) bool {
-	return relation == EffectRelationLocalRole || relation == EffectRelationLocalOwned
+	return relation == EffectRelationLocalRole || relation == EffectRelationLocalOwned || relation == EffectRelationLocalPlayer
 }
 
 // effectMonsterEntity reports a runtime entity resolved as a monster.

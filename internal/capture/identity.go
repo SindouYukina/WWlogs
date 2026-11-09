@@ -14,6 +14,10 @@ type resolutionStatus string
 // entityTypeMonster follows the EntityPb.EntityType enum in the pinned Windows schema.
 const entityTypeMonster uint64 = 2
 
+// entityTypePlayerEntity is EntityPb.EntityType Proto_PlayerEntity: the one entity per player that the client registers
+// with FormationDataController and whose cues the HUD shows on the current role (PlayerGameplayCueComponent).
+const entityTypePlayerEntity uint64 = 11
+
 const (
 	resolutionVerified   resolutionStatus = "VERIFIED"
 	resolutionCorrelated resolutionStatus = "CORRELATED"

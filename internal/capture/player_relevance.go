@@ -145,6 +145,12 @@ func (r *playerRelevanceResolver) isLocalPlayerRoleEntity(entity runtimeEntity) 
 	return exists
 }
 
+// isLocalPlayerEntity reports the local player's Proto_PlayerEntity. It holds team-level effects, so it is a local effect
+// holder without being a role, and it says nothing about damage: only the effect relation uses it.
+func (r *playerRelevanceResolver) isLocalPlayerEntity(entity runtimeEntity) bool {
+	return entity.hasEntityType && entity.entityTypeCode == entityTypePlayerEntity && entity.hasPlayerID && r.isLocalPlayerID(entity.playerID)
+}
+
 func (r *playerRelevanceResolver) isLocalPlayerID(playerID uint64) bool {
 	if r == nil || playerID == 0 {
 		return false

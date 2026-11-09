@@ -32,6 +32,8 @@ const (
 	EffectRelationLocalRole EffectEntityRelation = "local_role"
 	// EffectRelationLocalOwned is a non-role entity whose confirmed owner chain ends at the local team.
 	EffectRelationLocalOwned EffectEntityRelation = "local_owned"
+	// EffectRelationLocalPlayer is the local player's Proto_PlayerEntity, the holder of team-level effects.
+	EffectRelationLocalPlayer EffectEntityRelation = "local_player"
 	// EffectRelationNonPlayer is a closed-chain runtime entity known as a monster or template.
 	// Hostility is not separately verified.
 	EffectRelationNonPlayer EffectEntityRelation = "non_player"
@@ -841,7 +843,7 @@ func emptyEffectSnapshot() EffectSnapshot {
 
 func normalizeEffectRelation(relation EffectEntityRelation) EffectEntityRelation {
 	switch relation {
-	case EffectRelationLocalRole, EffectRelationLocalOwned, EffectRelationNonPlayer:
+	case EffectRelationLocalRole, EffectRelationLocalOwned, EffectRelationLocalPlayer, EffectRelationNonPlayer:
 		return relation
 	default:
 		return EffectRelationUnknown
