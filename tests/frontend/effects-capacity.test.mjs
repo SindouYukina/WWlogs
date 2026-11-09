@@ -41,6 +41,8 @@ test("the production strip orders the engine's set, never filters it, and never 
   assert.ok(!/\.sort\(|orderEffects|compareEffects|[.]polarity ===/.test(panel), "the panel neither sorts nor classifies")
   assert.ok(panel.includes("fitEffectStrip(effects, cells, layout)"), "each row is a prefix of its order")
   assert.ok(!/relevantEffect|\.filter\(relevant/.test(panel), "the engine, not the panel, decides display eligibility")
+  assert.ok(!/ListeningStatus|useListeningLabels/.test(panel), "the listening status is shown once, on the Combat Overlay")
+  assert.match(read("frontend/src/views/CombatOverlayPanel.tsx"), /ListeningStatus/, "the Combat Overlay keeps the listening status")
   assert.ok(!/effectGroupOf|EffectGroupMark|holderName|holderRoleId/.test(panel), "the strip does not group by holder")
   for (const forbidden of ["termName", "unknownEffect", "relatedTerm", "effectId ??", "title={"]) assert.ok(!panel.includes(forbidden), `the overlay shows no effect name or ID: ${forbidden}`)
   const components = read("frontend/src/design/components/combat.tsx")
