@@ -1,5 +1,5 @@
 import type { SkillBreakdown } from "../lib/combat-data"
-import type { DPS, Effect, Encounter, Healing, ListeningInfo, Role, Snapshot, UnassignedRole, Vehicle } from "../lib/snapshot"
+import type { DamageCompleteness, DPS, Effect, Encounter, Healing, ListeningInfo, Role, Snapshot, UnassignedRole, Vehicle } from "../lib/snapshot"
 import { masterEffects, masterRoles } from "./master-fixture.ts"
 
 // Scripted numbers for visual review, shaped exactly like the engine's Snapshot so that the Showcase runs the same
@@ -359,6 +359,7 @@ export class MockFeed {
     }))
     const vehicle = this.vehicle ? { ...this.vehicle, damageShare: confirmed > 0 ? vehicleDamage / confirmed : undefined } : undefined
     const unassignedRole: UnassignedRole = { damageDealt: this.unassignedDamage, outgoingEvents: this.unassignedDamage > 0 ? 6 : 0, damageTaken: 0, incomingEvents: 0, overflowEvents: 0 }
+    const completeness: DamageCompleteness = { conserved: true, roleAttributionComplete: unassignedRole.outgoingEvents === 0, unassignedDamage: unassignedRole.damageDealt, unassignedEvents: unassignedRole.outgoingEvents, skillBreakdownComplete: true, noSkillDamage: 0, noSkillEvents: 0, unknownOwnershipDamage: 0, unknownOwnershipEvents: 0 }
     const integrity = { status: this.untrusted ? "UNRELIABLE" as const : "INTACT" as const, risks: [], transportLosses: 0, unrecoveredLosses: 0, contextDowngradedEvents: 0 }
     const dps = durationSeconds >= 1
       ? { status: "available" as const, damage: Math.round(confirmed), durationSeconds, value: confirmed / durationSeconds }
@@ -385,6 +386,7 @@ export class MockFeed {
       vehicle,
       unassignedRole,
       unassignedRoleShare: confirmed > 0 && this.unassignedDamage > 0 ? this.unassignedDamage / confirmed : undefined,
+      completeness,
     }
     const active: Effect[] = [...this.effects.values()].map(effect => ({
       key: effect.key,
@@ -455,6 +457,7 @@ export class MockFeed {
         roles,
         vehicle,
         unassignedRole,
+        completeness,
         // Mock effects are all eligible; nothing is tracked beyond them.
         effects: { status: "complete", buffs: mockEffectRow(active, "buff"), debuffs: mockEffectRow(active, "debuff"), recentEnded: [], counts: { tracked: active.length, estimatedExpired: 0, active: active.length, notLocal: 0, local: active.length, nonHud: 0, hudUnresolved: 0, predictedExpired: 0, eligible: active.length, listed: active.length, truncated: 0, cells: active.length, listedCells: active.length, truncatedCells: 0 } },
       },

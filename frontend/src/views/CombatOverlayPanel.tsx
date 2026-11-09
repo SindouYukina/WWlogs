@@ -25,8 +25,9 @@ function useCombatPanelProps(data: CombatData, numberMode: "tween" | "roll", alp
   // A lower bound is never shown as an exact value.
   const formatDps = useMemo(() => lowerBound ? (value: number) => `≥ ${format.integer(value)}` : format.integer, [lowerBound, format])
   const subtitleOf = useCallback((row: CombatRowModel) => row.kind === "vehicle" ? t("combat.vehicleNote") : row.damageTaken > 0 ? t("combat.taken", { value: format.compact(row.damageTaken) }) : undefined, [t, format])
-  const unassigned = encounter?.unassignedRole ?? view?.unassignedRole
-  const attributionIncomplete = (unassigned?.outgoingEvents ?? 0) > 0 || (view?.statistics.unattributed.outgoingEvents ?? 0) > 0
+  // The engine's facts for the scope on screen. A gap in role attribution and damage of unknown ownership are different
+  // statements: the first is inside the total, the second is not.
+  const completeness = (encounter ?? view)?.completeness
   const diagnostics = data.snapshot?.service.app.profile === "development"
   return {
     rows, elementOf, nameOf, subtitleOf,
@@ -35,7 +36,9 @@ function useCombatPanelProps(data: CombatData, numberMode: "tween" | "roll", alp
     time: format.clock(encounter?.elapsedSeconds),
     state,
     stateLabel: trust === "not_capturing" && state !== "untrusted" ? t("notCapturing", { ns: "common" }) : t(`combat.state.${state}`),
-    note: !attributionIncomplete ? undefined : diagnostics ? t("combat.unassignedNote", { value: format.integer(unassigned?.damageDealt ?? 0) }) : t("attributionIncomplete", { ns: "common" }),
+    note: completeness?.roleAttributionComplete === false
+      ? diagnostics ? t("combat.unassignedNote", { value: format.integer(completeness.unassignedDamage) }) : t("attributionIncomplete", { ns: "common" })
+      : completeness !== undefined && completeness.unknownOwnershipEvents > 0 ? t("unknownOwnershipNote", { ns: "common", value: format.integer(completeness.unknownOwnershipDamage) }) : undefined,
     labels: { totalDamage: t("combat.totalDamage"), teamDps: t("combat.teamDps"), member: t("combat.member"), dps: t("combat.dps"), damage: t("combat.damage"), share: t("combat.share"), empty: t("combat.empty") },
     formatDps,
     formatDamage: format.integer,

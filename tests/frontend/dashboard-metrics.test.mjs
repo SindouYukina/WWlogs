@@ -35,3 +35,25 @@ test("every bundled language names the peak and the healing card", () => {
     for (const key of ["rollingNote", "eventsLabel", "eventsNote"]) assert.equal(strings[key], undefined, `${locale} ${key} is no longer used`)
   }
 })
+
+test("the ranking notes read the engine's facts for the scope on screen and never merge them", () => {
+  const overlay = read("frontend/src/views/CombatOverlayPanel.tsx")
+  for (const source of [view, overlay]) {
+    assert.match(source, /const completeness = \(encounter \?\? view\)\?\.completeness/, "the facts of the encounter on screen, else the interval")
+    assert.doesNotMatch(source, /statistics\.unattributed\.outgoingEvents/, "unknown ownership is not a gap in role attribution")
+    assert.doesNotMatch(source, /unassignedRole\.outgoingEvents|unassigned\?\.outgoingEvents/, "the engine decides attribution")
+    assert.match(source, /completeness\?\.roleAttributionComplete === false/)
+    assert.match(source, /unknownOwnershipNote/)
+  }
+  assert.match(view, /data-field="attribution-incomplete"/)
+  assert.match(view, /data-field="unknown-ownership-note"/)
+})
+
+test("every bundled language says unknown ownership is outside the total", () => {
+  const manifest = JSON.parse(read("frontend/locales/manifest.json"))
+  for (const locale of manifest.supportedLocales) {
+    const common = JSON.parse(read(`frontend/locales/${locale}/common.json`))
+    assert.match(common.unknownOwnershipNote, /\{\{value\}\}/, locale)
+    assert.ok(common.attributionIncomplete.length > 0, locale)
+  }
+})

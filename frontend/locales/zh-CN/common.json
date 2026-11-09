@@ -3,6 +3,7 @@
   "vehicle": "载具",
   "diagnosticsIncomplete": "开发诊断录制不完整或无法启用，请检查本地容量与诊断状态。",
   "attributionIncomplete": "角色伤害明细尚不完整，总伤害仍完整保留。",
+  "unknownOwnershipNote": "另有 {{value}} 点伤害归属未知，未计入总伤害。",
   "roleTitle": "伤害来源",
   "appSubtitle": "战斗分析",
   "dashboard": "战斗总览",

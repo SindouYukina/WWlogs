@@ -3,6 +3,7 @@
   "vehicle": "Vehicle",
   "diagnosticsIncomplete": "Development recording is incomplete or unavailable. Check local storage and diagnostic status.",
   "attributionIncomplete": "Role breakdown is incomplete. Total damage is retained.",
+  "unknownOwnershipNote": "{{value}} more damage has unknown ownership and is not in the total.",
   "roleTitle": "Contributor",
   "appSubtitle": "Combat analysis",
   "dashboard": "Dashboard",

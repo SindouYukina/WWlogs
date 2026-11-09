@@ -167,7 +167,8 @@ export function DashboardView({ data, theme, numberMode = "tween", actions, deta
     return lines
   }, [timelineKey, rows, nameOf, t])
   const skills = data.skillsOf && selected ? data.skillsOf(selected.key) : undefined
-  const attributionIncomplete = view !== null && (view.unassignedRole.outgoingEvents > 0 || view.statistics.unattributed.outgoingEvents > 0)
+  // The engine's facts for the scope on screen: this encounter when one is shown, not the whole capture.
+  const completeness = (encounter ?? view)?.completeness
   const diagnostics = snapshot?.service.app.profile === "development"
   return <div className="ww-dash ww-has-backdrop"><ThemeBackdrop theme={theme} intensity="art" /><div className="ww-dash-layout">
     <Reveal className="ww-dash-top">
@@ -194,7 +195,8 @@ export function DashboardView({ data, theme, numberMode = "tween", actions, deta
           <div data-field="roles">
             {rows.length === 0 ? <p className="ww-dash-empty-note">{t("noRoles")}</p> : <RoleBoard rows={rows} selected={selected?.key ?? ""} onSelect={pick} scope={scope} stale={stale} numberMode={numberMode} />}
           </div>
-          {attributionIncomplete && <p className="ww-dash-warning" data-field="attribution-incomplete">{c("attributionIncomplete")}</p>}
+          {completeness?.roleAttributionComplete === false && <p className="ww-dash-warning" data-field="attribution-incomplete">{c("attributionIncomplete")}</p>}
+          {completeness !== undefined && completeness.unknownOwnershipEvents > 0 && <p className="ww-dash-warning" data-field="unknown-ownership-note">{t("unknownOwnershipNote", { ns: "common", value: format.integer(completeness.unknownOwnershipDamage) })}</p>}
           {selected?.roleId !== undefined && <ContentSwitch contentKey={selected.key} className="ww-dash-portrait"><GameAssetImage kind="character-portrait" id={selected.roleId} /></ContentSwitch>}
         </Card>
       </Reveal>
