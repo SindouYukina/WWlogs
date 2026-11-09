@@ -263,6 +263,7 @@ func (s *Session) Run(ctx context.Context, publish func(ViewSnapshot)) (result S
 			lastPublish = now
 			p.viewClockLead = liveViewClockLead(newestFrameWall, now)
 			publish(p.viewSnapshot())
+			s.diagnostics.observeEffectDisplay(p, now)
 		}
 	}
 	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())

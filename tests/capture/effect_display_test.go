@@ -136,7 +136,8 @@ func TestEffectTrackerSnapshotCarriesKindAndPolarity(t *testing.T) {
 func TestViewEffectsListsOnlyEligibleAndAccountsForTheRest(t *testing.T) {
 	p := newEffectViewProcessor()
 	// Eligible: an unnamed, icon-less stat modifier; a short one; a stacked one; the same effect id from two sources
-	// on one holder; the same effect id on two holders.
+	// on one holder, which stay two cells because they are independent instances; the same effect id on another holder,
+	// which shares a cell with one of them.
 	p.effects.ObserveApply(displayApply(1, 500, 0, nil))
 	p.effects.ObserveApply(displayApply(2, 501, 0, func(e *EffectApplyEvent) { e.DurationSeconds, e.RemainingSeconds = effectFloat(0.5), effectFloat(0.5) }))
 	p.effects.ObserveApply(displayApply(3, 502, 0, func(e *EffectApplyEvent) { e.StackCount = 4 }))
@@ -157,7 +158,7 @@ func TestViewEffectsListsOnlyEligibleAndAccountsForTheRest(t *testing.T) {
 	}))
 
 	view := effectViewAt(p, 0.25)
-	requireEffectCounts(t, view, ViewEffectCounts{Tracked: 10, Active: 10, NotLocal: 1, Local: 9, NonCombat: 1, Internal: 1, Unclassified: 1, Eligible: 6, Listed: 6, Cells: 4, ListedCells: 4})
+	requireEffectCounts(t, view, ViewEffectCounts{Tracked: 10, Active: 10, NotLocal: 1, Local: 9, NonCombat: 1, Internal: 1, Unclassified: 1, Eligible: 6, Listed: 6, Cells: 5, ListedCells: 5})
 	ids := map[uint64]int{}
 	for _, effect := range view.Active {
 		if effect.Display.Eligibility != EffectDisplayEligible || effect.Display.Target != EffectTargetEnemy || effect.Kind != EffectKindStatModifier {
