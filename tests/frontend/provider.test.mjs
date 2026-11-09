@@ -97,15 +97,15 @@ test("no product source depends on a build profile", () => {
 
 test("skill rows are the engine's split, keyed like the ranking rows, with official names only", () => {
   const skills = [
-    { skillId: 1409011, name: "Strike", nameStatus: "VERIFIED", damageDealt: 300, damageShare: 0.6, outgoingEvents: 4 },
-    { skillId: 1409012, name: "", nameStatus: "UNKNOWN", damageDealt: 100, damageShare: 0.2, outgoingEvents: 1 },
+    { skillId: 1409011, name: "Strike", nameStatus: "VERIFIED", showSkillId: false, damageDealt: 300, damageShare: 0.6, outgoingEvents: 4 },
+    { skillId: 1409012, name: "", nameStatus: "UNKNOWN", showSkillId: true, damageDealt: 100, damageShare: 0.2, outgoingEvents: 1 },
   ]
   const unassignedSkill = { damageDealt: 100, outgoingEvents: 2, missingSkillEvents: 2, overflowEvents: 0, damageShare: 0.2 }
   const role = { playerId: 1, roleId: 1409, name: "A", nameStatus: "VERIFIED", damageDealt: 500, directDamage: 500, summonDamage: 0, damageTaken: 0, skills, unassignedSkill }
   const breakdown = skillBreakdown(role)
   assert.deepEqual(breakdown.rows, [
-    { skillId: 1409011, name: "Strike", damage: 300, events: 4, share: 0.6 },
-    { skillId: 1409012, name: undefined, damage: 100, events: 1, share: 0.2 },
+    { skillId: 1409011, name: "Strike", showId: false, damage: 300, events: 4, share: 0.6 },
+    { skillId: 1409012, name: undefined, showId: true, damage: 100, events: 1, share: 0.2 },
   ])
   assert.deepEqual(breakdown.unassigned, { damage: 100, events: 2, share: 0.2 })
   const total = breakdown.rows.reduce((sum, row) => sum + row.damage, breakdown.unassigned.damage)
@@ -118,22 +118,45 @@ test("skill rows are the engine's split, keyed like the ranking rows, with offic
   assert.equal(map.get("vehicle-motorcycle").rows[0].skillId, 7)
 })
 
-test("derived skill names keep their source and are marked; unknown sources and statuses stay unnamed", () => {
+test("derived skill names keep the engine's source and are marked", () => {
   const skills = [
-    { skillId: 1312050, name: "Liberation", nameStatus: "DERIVED", nameSource: "damage_list", damageDealt: 50, outgoingEvents: 2 },
-    { skillId: 280026010, name: "Echo", nameStatus: "DERIVED", nameSource: "echo", damageDealt: 30, outgoingEvents: 3 },
-    { skillId: 1312011, name: "Basic", nameStatus: "VERIFIED", nameSource: "official", damageDealt: 15, outgoingEvents: 1 },
-    { skillId: 9, name: "Guess", nameStatus: "DERIVED", nameSource: "timing", damageDealt: 4, outgoingEvents: 1 },
-    { skillId: 10, name: "Label", nameStatus: "CORRELATED", damageDealt: 1, outgoingEvents: 1 },
+    { skillId: 1312050, name: "Liberation", nameStatus: "DERIVED", nameSource: "damage_list", showSkillId: true, damageDealt: 50, outgoingEvents: 2 },
+    { skillId: 1209400, name: "Intro", nameStatus: "DERIVED", nameSource: "skill_type", showSkillId: true, damageDealt: 30, outgoingEvents: 3 },
+    { skillId: 280026010, name: "Echo", nameStatus: "DERIVED", nameSource: "echo", showSkillId: true, damageDealt: 15, outgoingEvents: 3 },
+    { skillId: 1312011, name: "Basic", nameStatus: "VERIFIED", nameSource: "official", showSkillId: false, damageDealt: 5, outgoingEvents: 1 },
   ]
   const rows = skillBreakdown({ skills }).rows
   assert.deepEqual(rows.map(row => [row.skillId, row.name, row.derived]), [
-    [1312050, "Liberation", "damage_list"], [280026010, "Echo", "echo"], [1312011, "Basic", undefined], [9, undefined, undefined], [10, undefined, undefined],
+    [1312050, "Liberation", "damage_list"], [1209400, "Intro", "skill_type"], [280026010, "Echo", "echo"], [1312011, "Basic", undefined],
   ])
   assert.equal(rows.reduce((sum, row) => sum + row.damage, 0), 100, "naming never changes a row's damage")
   const dashboard = readFileSync("frontend/src/views/DashboardView.tsx", "utf8")
   assert.match(dashboard, /data-name-source=\{row\.derived\}/)
   assert.match(dashboard, /derivedSkillNote/)
+  assert.match(dashboard, /derivedSkillTypeNote/)
+})
+
+test("whether a row shows its ID is the engine's decision, and an unassigned row never shows one", () => {
+  const skills = [
+    { skillId: 1, name: "Basic", nameStatus: "VERIFIED", nameSource: "official", showSkillId: false, damageDealt: 4, outgoingEvents: 1 },
+    { skillId: 2, name: "Liberation", nameStatus: "DERIVED", nameSource: "damage_list", showSkillId: true, damageDealt: 3, outgoingEvents: 1 },
+    { skillId: 4, name: "", nameStatus: "UNKNOWN", showSkillId: true, damageDealt: 1, outgoingEvents: 1 },
+  ]
+  const rows = skillBreakdown({ skills, unassignedSkill: { damageDealt: 5, outgoingEvents: 2 } })
+  assert.deepEqual(rows.rows.map(row => [row.skillId, row.showId]), [[1, false], [2, true], [4, true]])
+  assert.equal(rows.unassigned.name, undefined, "an unassigned row without evidence stays the unconfirmed row")
+  const view = readFileSync("frontend/src/views/DashboardView.tsx", "utf8")
+  assert.match(view, /row\.showId && <span className="ww-dash-skill-id/, "the ID is drawn only when the engine says so")
+  const unassignedRow = view.slice(view.indexOf('data-field="unassigned-skill"'), view.indexOf("</tbody>"))
+  assert.doesNotMatch(unassignedRow, /ww-dash-skill-id|skillId/, "an unassigned row never shows an ID")
+  const adapter = readFileSync("frontend/src/lib/combat-view.ts", "utf8")
+  assert.doesNotMatch(adapter.slice(adapter.indexOf("export function skillBreakdown"), adapter.indexOf("export function skillBreakdowns")), /nameStatus === "VERIFIED"/, "the frontend does not grade skill evidence")
+})
+
+test("an unassigned row keeps the name and source the engine gave it", () => {
+  const named = source => skillBreakdown({ skills: [], unassignedSkill: { damageDealt: 5, outgoingEvents: 2, name: "X", nameStatus: "DERIVED", nameSource: source } }).unassigned
+  assert.deepEqual([named("echo").name, named("echo").derived], ["X", "echo"])
+  assert.deepEqual([named("damage_list").name, named("damage_list").derived], ["X", "damage_list"])
 })
 
 test("the Live provider and the Dashboard never compute or invent skill rows", () => {
@@ -149,14 +172,14 @@ test("the Live provider and the Dashboard never compute or invent skill rows", (
 test("a skill row keeps its name source and its own icon, and a row may have one without the other", () => {
   const breakdown = skillBreakdown({
     skills: [
-      { skillId: 1, name: "諧度破壞·長刃", nameStatus: "DERIVED", nameSource: "tune_break", sourceId: 9, iconKind: "skill-config", iconId: 9, damageDealt: 10, outgoingEvents: 1 },
+      { skillId: 1, name: "諧度破壞·長刃", nameStatus: "DERIVED", nameSource: "tune_break", showSkillId: true, sourceId: 9, iconKind: "skill-config", iconId: 9, damageDealt: 10, outgoingEvents: 1 },
       { skillId: 2, name: "共鳴迴響", nameStatus: "DERIVED", nameSource: "echo", sourceId: 60, iconKind: "echo-skill", iconId: 280026, damageDealt: 8, outgoingEvents: 1 },
       { skillId: 3, name: "", nameStatus: "UNKNOWN", iconKind: "skill", iconId: 3, damageDealt: 6, outgoingEvents: 1 },
-      { skillId: 4, name: "x", nameStatus: "CORRELATED", nameSource: "other", iconKind: "weapon", iconId: 5, damageDealt: 1, outgoingEvents: 1 },
+      { skillId: 4, name: "", nameStatus: "UNKNOWN", iconKind: "weapon", iconId: 5, damageDealt: 1, outgoingEvents: 1 },
     ],
     unassignedSkill: { damageDealt: 7, outgoingEvents: 2, missingSkillEvents: 2, overflowEvents: 0, name: "鳴式·利維亞坦", nameStatus: "DERIVED", nameSource: "echo", iconKind: "echo-skill", iconId: 280033 },
   })
-  assert.deepEqual(breakdown.rows[0], { skillId: 1, name: "諧度破壞·長刃", derived: "tune_break", iconKind: "skill-config", iconId: 9, damage: 10, events: 1, share: undefined })
+  assert.deepEqual(breakdown.rows[0], { skillId: 1, name: "諧度破壞·長刃", showId: true, derived: "tune_break", iconKind: "skill-config", iconId: 9, damage: 10, events: 1, share: undefined })
   assert.equal(breakdown.rows[1].derived, "echo")
   assert.equal(breakdown.rows[1].iconKind, "echo-skill")
   assert.equal(breakdown.rows[2].name, undefined, "an unnamed row still asks for its own icon")

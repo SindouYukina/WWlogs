@@ -115,36 +115,30 @@ function isSkillIconKind(kind: string | undefined): kind is GameAssetKind {
   return skillIconKinds.includes(kind as GameAssetKind)
 }
 
-/** The Echo an unassigned row's hits belong to, when the engine could name it from their DamageIds. */
-function unassignedSkillSource(unassigned: UnassignedSkill): Pick<NonNullable<SkillBreakdown["unassigned"]>, "name" | "iconKind" | "iconId"> {
-  const named = unassigned.nameStatus === "DERIVED" && unassigned.nameSource === "echo" && unassigned.name
+/** The Echo or UI skill the engine named an unassigned row after, from its DamageIds. */
+function unassignedSkillSource(unassigned: UnassignedSkill): Pick<NonNullable<SkillBreakdown["unassigned"]>, "name" | "derived" | "iconKind" | "iconId"> {
   return {
-    ...(named ? { name: unassigned.name } : {}),
+    ...(unassigned.name ? { name: unassigned.name, derived: unassigned.nameSource as NonNullable<SkillBreakdown["unassigned"]>["derived"] } : {}),
     ...(isSkillIconKind(unassigned.iconKind) && unassigned.iconId !== undefined ? { iconKind: unassigned.iconKind, iconId: unassigned.iconId } : {}),
   }
 }
 
 /**
- * The engine's skill split of one contributor. A name is shown only when Master reports the skill's own VERIFIED name
- * or a DERIVED name of a related record; a DERIVED row keeps its source so the table can mark it.
+ * The engine's skill split of one contributor. Names, evidence grades and whether a row shows its ID are the engine's
+ * decisions (ViewSkill); this only adapts the shape the table draws.
  */
 export function skillBreakdown(contributor: { skills?: Skill[]; unassignedSkill?: UnassignedSkill }): SkillBreakdown | undefined {
   if (contributor.skills === undefined) return undefined
-  const rows = contributor.skills.map(skill => {
-    // A DERIVED name without a known source is not shown: the table could not say what it is.
-    const source = skill.nameSource
-    const derived: SkillRow["derived"] = skill.nameStatus === "DERIVED" && (source === "damage_list" || source === "tune_break" || source === "echo") ? source : undefined
-    const named = skill.name !== "" && (skill.nameStatus === "VERIFIED" || derived !== undefined)
-    return {
-      skillId: skill.skillId,
-      name: named ? skill.name : undefined,
-      ...(named && derived ? { derived } : {}),
-      ...(isSkillIconKind(skill.iconKind) && skill.iconId !== undefined ? { iconKind: skill.iconKind, iconId: skill.iconId } : {}),
-      damage: skill.damageDealt,
-      events: skill.outgoingEvents,
-      share: skill.damageShare,
-    }
-  })
+  const rows = contributor.skills.map(skill => ({
+    skillId: skill.skillId,
+    name: skill.name === "" ? undefined : skill.name,
+    showId: skill.showSkillId === true,
+    ...(skill.nameStatus === "DERIVED" ? { derived: skill.nameSource as SkillRow["derived"] } : {}),
+    ...(isSkillIconKind(skill.iconKind) && skill.iconId !== undefined ? { iconKind: skill.iconKind, iconId: skill.iconId } : {}),
+    damage: skill.damageDealt,
+    events: skill.outgoingEvents,
+    share: skill.damageShare,
+  }))
   const unassigned = contributor.unassignedSkill
   return { rows, unassigned: unassigned && unassigned.outgoingEvents > 0 ? { ...unassignedSkillSource(unassigned), damage: unassigned.damageDealt, events: unassigned.outgoingEvents, share: unassigned.damageShare } : undefined }
 }

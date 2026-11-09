@@ -18,6 +18,9 @@ import (
 //     UI skill U when every hit of the row carried a DamageId, every one of those DamageIds is listed by exactly one UI
 //     skill and that skill is U for all of them, and U's skill group belongs to the row's runtime role. Requests carry
 //     DamageContext.SkillId and DamageId together, so the row's DamageIds are protocol facts, not timing guesses.
+//   - skill_type: a row whose hits are listed by several UI skills of its role is named by the one whose Skill.SkillType
+//     matches the row's SkillInfo.SkillGenre (skillGenreUITypes), when every other UI skill listing it is the role's Forte
+//     Circuit, which also lists hits of other skills.
 //   - tune_break: SkillInfo.SkillGenre 14 is the game's weakness-break skill genre, damage.type 11 is its damage, and
 //     every role has one UI skill of Skill.SkillType 12 ("Tune Break"). A row is named by that UI skill when every row of
 //     the SkillId has the genre, every DamageId of the row has the type, and the role has exactly one such UI skill.
@@ -39,6 +42,7 @@ import (
 const (
 	skillNameSourceOfficial   = "official"
 	skillNameSourceDamageList = "damage_list"
+	skillNameSourceSkillType  = "skill_type"
 	skillNameSourceTuneBreak  = "tune_break"
 	skillNameSourceEcho       = "echo"
 	// skillNameStatusDerived marks a name taken from a related record (see the file comment).
@@ -59,6 +63,8 @@ const (
 	damageTypeBreak = 11
 	// uiSkillTypeBreak is Skill.SkillType for the "Tune Break" UI skill of a role.
 	uiSkillTypeBreak = 12
+	// uiSkillTypeForte is Skill.SkillType for a role's Forte Circuit, whose DamageList also holds hits of other skills.
+	uiSkillTypeForte = 6
 	// echoSummonLabelPrefix starts the developer label of the common skills that summon one Echo.
 	echoSummonLabelPrefix = "召唤幻象-"
 	// visionActorPathSegment marks a Vision's own actor blueprint.
@@ -67,6 +73,12 @@ const (
 	visionBulletNameSeparator = "-"
 )
 
+// skillGenreUITypes maps SkillInfo.SkillGenre to the Skill.SkillType of the UI skill that describes it. The genres are the
+// game's own: the developer labels of the genres read basic attack (0), heavy attack (1), resonance skill (2), liberation
+// (3), intro (4), dodge counter (5) and outro (13); skilltype_locale names types 1, 2, 3, 5 and 11 the same way. Other
+// genres have no UI skill type of their own and stay out of this rule.
+var skillGenreUITypes = map[int64]int64{0: 1, 1: 1, 2: 2, 3: 3, 4: 5, 5: 1, 13: 11}
+
 // skillNameMaster holds the static relations behind derived skill-row names.
 type skillNameMaster struct {
 	// damageListSkills maps a DamageId to the only UI skill (Skill.Id) whose DamageList names it. DamageIds that more
@@ -74,6 +86,10 @@ type skillNameMaster struct {
 	damageListSkills map[uint64]uint64
 	// uiSkillRoles maps a UI skill to the roles of its skill group (skill.skill_group_id -> role_skill_group_ref).
 	uiSkillRoles map[uint64]map[uint64]struct{}
+	// uiSkillTypes maps a UI skill to its Skill.SkillType.
+	uiSkillTypes map[uint64]int64
+	// skillGenres maps a SkillId to its SkillInfo.SkillGenre, for SkillIds whose every SkillInfo row has the same one.
+	skillGenres map[uint64]int64
 	// uiSkillNames holds the official UI skill names of the master locale (skill_locale, en-US fallback).
 	uiSkillNames map[uint64]string
 	// tuneBreakSkills holds SkillIds whose every SkillInfo row has the weakness-break genre.
@@ -91,6 +107,11 @@ type skillNameMaster struct {
 	damageVisions map[uint64]uint64
 	// visionItems maps a Vision.Id to the PhantomItem.Id that names it.
 	visionItems map[uint64]uint64
+	// itemVisions maps a PhantomItem.Id to its Vision.Id.
+	itemVisions map[uint64]uint64
+	// ambiguousEchoVisions maps a skill key that several Visions cast, under different Echo names, to those Visions. Only the
+	// runtime Echo of the casting role can tell them apart.
+	ambiguousEchoVisions map[uint64]map[uint64]struct{}
 	// echoNames holds the official PhantomItem names of the master locale (phantomitem_locale, en-US fallback).
 	echoNames map[uint64]string
 }
@@ -99,7 +120,8 @@ func newSkillNameMaster() *skillNameMaster {
 	return &skillNameMaster{damageListSkills: map[uint64]uint64{}, uiSkillRoles: map[uint64]map[uint64]struct{}{},
 		uiSkillNames: map[uint64]string{}, tuneBreakSkills: map[uint64]struct{}{}, tuneBreakDamage: map[uint64]struct{}{},
 		roleTuneBreak: map[uint64]uint64{}, echoItems: map[uint64]uint64{}, echoVisions: map[uint64]uint64{},
-		damageVisions: map[uint64]uint64{}, visionItems: map[uint64]uint64{}, echoNames: map[uint64]string{}}
+		damageVisions: map[uint64]uint64{}, visionItems: map[uint64]uint64{}, itemVisions: map[uint64]uint64{}, echoNames: map[uint64]string{},
+		uiSkillTypes: map[uint64]int64{}, skillGenres: map[uint64]int64{}, ambiguousEchoVisions: map[uint64]map[uint64]struct{}{}}
 }
 
 // skillRowName names one skill row. roleID is zero for a vehicle, which has no skill group; damage_list and tune_break
@@ -120,12 +142,22 @@ func (m *gameMaster) skillRowName(roleID uint64, skill SkillDamageSnapshot) (nam
 			return text, skillNameStatusDerived, skillNameSourceDamageList, uiSkill
 		}
 	}
+	if uiSkill, ok := names.skillTypeSkill(roleID, skill); ok {
+		if text := names.uiSkillNames[uiSkill]; text != "" {
+			return text, skillNameStatusDerived, skillNameSourceSkillType, uiSkill
+		}
+	}
 	if uiSkill, ok := names.tuneBreakSkill(roleID, skill); ok {
 		if text := names.uiSkillNames[uiSkill]; text != "" {
 			return text, skillNameStatusDerived, skillNameSourceTuneBreak, uiSkill
 		}
 	}
 	if item, ok := names.echoItems[skill.SkillID]; ok {
+		if text := names.echoNames[item]; text != "" {
+			return text, skillNameStatusDerived, skillNameSourceEcho, item
+		}
+	}
+	if item, ok := names.runtimeEchoItem(skill); ok {
 		if text := names.echoNames[item]; text != "" {
 			return text, skillNameStatusDerived, skillNameSourceEcho, item
 		}
@@ -138,11 +170,14 @@ func (m *gameMaster) skillRowName(roleID uint64, skill SkillDamageSnapshot) (nam
 // 404 for an ID it has no image for, and the row then draws none.
 func (m *gameMaster) skillRowIcon(skill SkillDamageSnapshot, source string, sourceID uint64) (kind string, id uint64) {
 	switch source {
-	case skillNameSourceDamageList, skillNameSourceTuneBreak:
+	case skillNameSourceDamageList, skillNameSourceSkillType, skillNameSourceTuneBreak:
 		return skillIconKindSkillConfig, sourceID
 	case skillNameSourceEcho:
 		if m != nil && m.skillNames != nil {
 			if vision, ok := m.skillNames.echoVisions[skill.SkillID]; ok {
+				return skillIconKindEchoSkill, vision
+			}
+			if vision, ok := m.skillNames.itemVisions[sourceID]; ok {
 				return skillIconKindEchoSkill, vision
 			}
 		}
@@ -172,13 +207,26 @@ func (m *gameMaster) unassignedSkillEcho(unassigned UnassignedSkillTotals) (name
 	return names.echoNames[item], item, vision, true
 }
 
-// damageListSkill returns the single UI skill that lists every DamageId of the row, when it belongs to roleID.
-func (m *skillNameMaster) damageListSkill(roleID uint64, skill SkillDamageSnapshot) (uint64, bool) {
-	if roleID == 0 || skill.DamageIDsIncomplete || len(skill.DamageIDs) == 0 {
+// unassignedSkillDamageList names the UI skill behind a contributor's hits that carried no SkillId: every hit must have a
+// DamageId and one UI skill of the role must list them all. The hits stay in the unassigned row.
+func (m *gameMaster) unassignedSkillDamageList(roleID uint64, unassigned UnassignedSkillTotals) (string, uint64, bool) {
+	if m == nil || m.skillNames == nil || unassigned.OverflowEvents != 0 {
+		return "", 0, false
+	}
+	uiSkill, ok := m.skillNames.damageListOwner(roleID, unassigned.DamageIDs, unassigned.DamageIDsIncomplete)
+	if !ok || m.skillNames.uiSkillNames[uiSkill] == "" {
+		return "", 0, false
+	}
+	return m.skillNames.uiSkillNames[uiSkill], uiSkill, true
+}
+
+// damageListOwner returns the single UI skill of roleID that lists every DamageId.
+func (m *skillNameMaster) damageListOwner(roleID uint64, damageIDs []uint64, incomplete bool) (uint64, bool) {
+	if roleID == 0 || incomplete || len(damageIDs) == 0 {
 		return 0, false
 	}
 	var uiSkill uint64
-	for _, damageID := range skill.DamageIDs {
+	for _, damageID := range damageIDs {
 		listed, ok := m.damageListSkills[damageID]
 		if !ok || (uiSkill != 0 && listed != uiSkill) {
 			return 0, false
@@ -189,6 +237,80 @@ func (m *skillNameMaster) damageListSkill(roleID uint64, skill SkillDamageSnapsh
 		return 0, false
 	}
 	return uiSkill, true
+}
+
+// damageListSkill returns the single UI skill that lists every DamageId of the row, when it belongs to roleID.
+func (m *skillNameMaster) damageListSkill(roleID uint64, skill SkillDamageSnapshot) (uint64, bool) {
+	return m.damageListOwner(roleID, skill.DamageIDs, skill.DamageIDsIncomplete)
+}
+
+// skillTypeSkill resolves a row whose hits several UI skills of the role list (see the file comment). Every hit must be
+// listed, every lister must belong to the role, exactly one lister must have the type the row's genre names, and any other
+// lister must be the role's Forte Circuit.
+func (m *skillNameMaster) skillTypeSkill(roleID uint64, skill SkillDamageSnapshot) (uint64, bool) {
+	if roleID == 0 || skill.DamageIDsIncomplete || len(skill.DamageIDs) < 2 {
+		return 0, false
+	}
+	genre, ok := m.skillGenres[skill.SkillID]
+	if !ok {
+		return 0, false
+	}
+	wanted, ok := skillGenreUITypes[genre]
+	if !ok {
+		return 0, false
+	}
+	listers := map[uint64]struct{}{}
+	for _, damageID := range skill.DamageIDs {
+		listed, known := m.damageListSkills[damageID]
+		if !known {
+			return 0, false
+		}
+		listers[listed] = struct{}{}
+	}
+	if len(listers) < 2 {
+		return 0, false
+	}
+	var match uint64
+	for uiSkill := range listers {
+		if _, belongs := m.uiSkillRoles[uiSkill][roleID]; !belongs {
+			return 0, false
+		}
+		switch m.uiSkillTypes[uiSkill] {
+		case wanted:
+			if match != 0 {
+				return 0, false
+			}
+			match = uiSkill
+		case uiSkillTypeForte:
+		default:
+			return 0, false
+		}
+	}
+	return match, match != 0
+}
+
+// runtimeEchoItem resolves a skill several Visions cast under different names: the casting role's own Echo, the
+// ConcomitantVision entity the server summons for it, must be exactly one of those Visions.
+func (m *skillNameMaster) runtimeEchoItem(skill SkillDamageSnapshot) (uint64, bool) {
+	candidates := m.ambiguousEchoVisions[skill.SkillID]
+	if len(candidates) == 0 {
+		return 0, false
+	}
+	var match uint64
+	for _, vision := range skill.EchoVisions {
+		if _, ok := candidates[vision]; !ok {
+			continue
+		}
+		if match != 0 {
+			return 0, false
+		}
+		match = vision
+	}
+	if match == 0 {
+		return 0, false
+	}
+	item, ok := m.visionItems[match]
+	return item, ok
 }
 
 // tuneBreakSkill returns the role's Tune Break UI skill when the row is a weakness-break skill (see the file comment).
@@ -283,6 +405,26 @@ func loadSQLiteSkillNameSources(db *sql.DB, locale string, master *gameMaster) e
 		if hasType, err := masterColumnExists(db, "skill", "skill_type"); err != nil {
 			return err
 		} else if hasType {
+			rows, err := db.Query(`SELECT CAST(id AS TEXT), skill_type FROM skill WHERE skill_type IS NOT NULL`)
+			if err != nil {
+				return fmt.Errorf("query UI skill types: %w", err)
+			}
+			defer rows.Close()
+			for rows.Next() {
+				var raw string
+				var skillType int64
+				if err := rows.Scan(&raw, &skillType); err != nil {
+					return fmt.Errorf("read UI skill type: %w", err)
+				}
+				id, err := parseMasterID(raw, "skill.id")
+				if err != nil {
+					return err
+				}
+				names.uiSkillTypes[id] = skillType
+			}
+			if err := rows.Err(); err != nil {
+				return err
+			}
 			breaks := map[uint64]map[uint64]struct{}{}
 			if err := pairs(`SELECT CAST(r.role_id AS TEXT),CAST(s.id AS TEXT) FROM skill s
 				JOIN role_skill_group_ref r ON CAST(r.skill_group_id AS TEXT)=CAST(s.skill_group_id AS TEXT) WHERE s.skill_type=?`, func(roleID, uiSkill uint64) error {
@@ -303,6 +445,9 @@ func loadSQLiteSkillNameSources(db *sql.DB, locale string, master *gameMaster) e
 			}
 		}
 	}
+	if err := loadSQLiteSkillGenres(db, names, exists); err != nil {
+		return err
+	}
 	if err := loadSQLiteTuneBreakSkills(db, names, exists); err != nil {
 		return err
 	}
@@ -317,6 +462,34 @@ func loadSQLiteSkillNameSources(db *sql.DB, locale string, master *gameMaster) e
 		}
 	}
 	return nil
+}
+
+// loadSQLiteSkillGenres reads the genre of every SkillId whose SkillInfo rows agree on one.
+func loadSQLiteSkillGenres(db *sql.DB, names *skillNameMaster, exists func(...string) (bool, error)) error {
+	if ok, err := exists("skillinfo"); err != nil || !ok {
+		return err
+	}
+	if hasGenre, err := masterColumnExists(db, "skillinfo", "skill_genre_raw"); err != nil || !hasGenre {
+		return err
+	}
+	rows, err := db.Query(`SELECT CAST(skill_id AS TEXT), MIN(skill_genre_raw) FROM skillinfo WHERE skill_genre_raw IS NOT NULL GROUP BY skill_id HAVING MIN(skill_genre_raw)=MAX(skill_genre_raw)`)
+	if err != nil {
+		return fmt.Errorf("query skill genres: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var raw string
+		var genre int64
+		if err := rows.Scan(&raw, &genre); err != nil {
+			return fmt.Errorf("read skill genre: %w", err)
+		}
+		id, err := parseMasterID(raw, "skillinfo.skill_id")
+		if err != nil {
+			return err
+		}
+		names.skillGenres[id] = genre
+	}
+	return rows.Err()
 }
 
 // loadSQLiteTuneBreakSkills reads the SkillIds of the weakness-break genre and the DamageIds of its damage type.
@@ -470,6 +643,7 @@ func loadSQLiteEchoSkillItems(db *sql.DB, names *skillNameMaster, exists func(..
 	for vision, candidates := range items {
 		for _, candidate := range candidates {
 			itemVisions[candidate.id] = vision
+			names.itemVisions[candidate.id] = vision
 		}
 		if item, ok := resolveEchoItems(candidates); ok {
 			names.visionItems[vision] = item
@@ -493,6 +667,8 @@ func loadSQLiteEchoSkillItems(db *sql.DB, names *skillNameMaster, exists func(..
 		if item, ok := resolveEchoItems(candidates); ok {
 			names.echoItems[skill] = item
 			names.echoVisions[skill] = itemVisions[item]
+		} else if len(visions) > 1 {
+			names.ambiguousEchoVisions[skill] = visions
 		}
 	}
 	return linkCommonBulletDamage(db, exists, notes, names)

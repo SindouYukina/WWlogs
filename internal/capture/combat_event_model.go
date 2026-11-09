@@ -84,6 +84,8 @@ type CombatEventRecord struct {
 	ContextDowngrade string `json:"contextDowngrade,omitempty"`
 	// VehicleKind classifies a local vehicle contribution without changing source or role evidence.
 	VehicleKind string `json:"vehicleKind,omitempty"`
+	// EchoVisions are the SummonCfg ids of the ConcomitantVision entities the attacker held. They only help name a skill.
+	EchoVisions []uint64 `json:"-"`
 	// SourceRole and TargetRole preserve runtime role evidence independently of contributor classification.
 	SourceRole *CombatRole `json:"sourceRole,omitempty"`
 	TargetRole *CombatRole `json:"targetRole,omitempty"`
@@ -172,6 +174,8 @@ func normalizeCombatEvent(event combatEvent, source, target playerRelation) (Com
 		Amount:     event.Damage,
 		DamageID:   event.DamageID,
 		SkillID:    event.SkillID,
+
+		EchoVisions: event.SourceVisionSummonCfgs,
 	}
 	if kind == CombatEventHealing && event.HasChangeLife {
 		switch {
