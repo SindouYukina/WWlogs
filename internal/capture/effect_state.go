@@ -96,13 +96,15 @@ const (
 	EffectOriginSnapshot EffectOrigin = "snapshot"
 )
 
-// EffectPolarity is the buff/debuff classification. No protocol field gives it; it is set only where
-// the definition proves it (see effectPolarityFor), and every other instance stays unclassified.
+// EffectPolarity is the direction the game's HUD gives a status. No protocol field carries it; it comes from the
+// definition's HUD GameplayCue (effect_hud_cues.go), and an instance the game draws no arrow for stays unclassified.
 type EffectPolarity string
 
 const (
 	EffectPolarityUnclassified EffectPolarity = "unclassified"
-	// EffectPolarityDebuff is a harmful state of the holder.
+	// EffectPolarityBuff is drawn with the game's BUFF arrow.
+	EffectPolarityBuff EffectPolarity = "buff"
+	// EffectPolarityDebuff is drawn with the game's DEBUFF arrow.
 	EffectPolarityDebuff EffectPolarity = "debuff"
 )
 
@@ -148,6 +150,10 @@ type EffectStaticInfo struct {
 	HUDCueTypes []int32 `json:"hudCueTypes,omitempty"`
 	// HUDIconGeneric reports that every HUD icon of the definition is shared by many definitions.
 	HUDIconGeneric bool `json:"hudIconGeneric,omitempty"`
+	// HUDPolarity is the direction of the definition's first HUD cue; unclassified means the game draws no arrow for it.
+	HUDPolarity EffectPolarity `json:"hudPolarity,omitempty"`
+	// HUDHiddenOnMonsterHead reports that the cue is hidden on monster head views (GameplayCue.Parameters[4]).
+	HUDHiddenOnMonsterHead bool `json:"hudHiddenOnMonsterHead,omitempty"`
 	// ElementID is the element the definition states (effect_element.go); zero means none is established.
 	ElementID    uint64 `json:"elementId,omitempty"`
 	ElementBasis string `json:"elementBasis,omitempty"`
@@ -456,7 +462,7 @@ func (info *EffectStaticInfo) clone() *EffectStaticInfo {
 	if info == nil {
 		return nil
 	}
-	copied := &EffectStaticInfo{DeveloperTags: append([]string(nil), info.DeveloperTags...), HUDCueTypes: append([]int32(nil), info.HUDCueTypes...), HUDIconGeneric: info.HUDIconGeneric, ElementID: info.ElementID, ElementBasis: info.ElementBasis, ElementFamily: info.ElementFamily}
+	copied := &EffectStaticInfo{DeveloperTags: append([]string(nil), info.DeveloperTags...), HUDCueTypes: append([]int32(nil), info.HUDCueTypes...), HUDIconGeneric: info.HUDIconGeneric, HUDPolarity: info.HUDPolarity, HUDHiddenOnMonsterHead: info.HUDHiddenOnMonsterHead, ElementID: info.ElementID, ElementBasis: info.ElementBasis, ElementFamily: info.ElementFamily}
 	if info.Term != nil {
 		term := *info.Term
 		copied.Term = &term

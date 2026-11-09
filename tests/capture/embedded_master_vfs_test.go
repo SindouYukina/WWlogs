@@ -113,10 +113,10 @@ func TestMasterLookupDigest(t *testing.T) {
 		writeSortedLookups(digest, "damageVision", master.skillNames.damageVisions)
 		writeSortedLookups(digest, "visionItem", master.skillNames.visionItems)
 		writeSortedLookups(digest, "roleTuneBreak", master.skillNames.roleTuneBreak)
-		hudCues := map[uint64][]int32{}
+		hudCues := map[uint64]string{}
 		for id, static := range master.buffStatics {
 			if len(static.hudCueTypes) > 0 {
-				hudCues[id] = static.hudCueTypes
+				hudCues[id] = fmt.Sprintf("%v/%s/%v", static.hudCueTypes, static.hudPolarity, static.hudHiddenOnMonsterHead)
 			}
 		}
 		writeSortedLookups(digest, "buffHudCue", hudCues)

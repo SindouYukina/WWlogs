@@ -43,7 +43,7 @@ func TestClassifyEffectKindUsesTheHUDCueOnlyWithoutAMoreSpecificKind(t *testing.
 		t.Fatalf("HUD effect display = %+v", got)
 	}
 	if got := effectPolarityFor(effect); got != EffectPolarityUnclassified {
-		t.Fatalf("a HUD cue must not decide polarity: %s", got)
+		t.Fatalf("a HUD effect without a direction cue must stay unclassified: %s", got)
 	}
 }
 
@@ -122,6 +122,44 @@ func TestLoadBuffHUDCuesKeepsHUDTypesWithAPath(t *testing.T) {
 	}
 }
 
+func TestLoadBuffHUDCuesReadsDirectionAndMonsterHeadFromTheFirstCue(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "cues.db")
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	for _, statement := range []string{
+		"CREATE TABLE buff_gameplay_cue_ids(owner_id TEXT,ordinal INTEGER,value TEXT,PRIMARY KEY(owner_id,ordinal))",
+		"CREATE TABLE gameplaycue(id TEXT PRIMARY KEY,cue_type INTEGER NOT NULL,path_asset_id TEXT)",
+		"CREATE TABLE gameplaycue_parameters(owner_id TEXT NOT NULL,ordinal INTEGER NOT NULL,value TEXT NOT NULL,PRIMARY KEY(owner_id,ordinal))",
+		"INSERT INTO gameplaycue VALUES('1',2,'a'),('2',2,'b'),('3',14,'c'),('4',24,'d'),('5',2,'e'),('6',2,'f')",
+		"INSERT INTO gameplaycue_parameters VALUES('1',0,'1'),('2',0,'2'),('3',0,'2'),('4',0,'0'),('5',0,''),('2',4,'1')",
+		// 20: buff arrow; 21: debuff arrow hidden on monster heads; 22: type 14 debuff listed second behind a type 2 buff;
+		// 23: a value without an arrow; 24: an empty value; 25: a cue with no parameter rows.
+		"INSERT INTO buff_gameplay_cue_ids VALUES('20',0,'1'),('21',0,'2'),('22',0,'1'),('22',1,'3'),('23',0,'4'),('24',0,'5'),('25',0,'6')",
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatalf("%s: %v", statement, err)
+		}
+	}
+	statics := map[uint64]buffStaticParameters{}
+	if err := loadBuffHUDCues(db, statics); err != nil {
+		t.Fatal(err)
+	}
+	for id, want := range map[uint64]struct {
+		polarity EffectPolarity
+		hidden   bool
+	}{
+		20: {EffectPolarityBuff, false}, 21: {EffectPolarityDebuff, true}, 22: {EffectPolarityBuff, false},
+		23: {EffectPolarityUnclassified, false}, 24: {EffectPolarityUnclassified, false}, 25: {EffectPolarityUnclassified, false},
+	} {
+		if got := statics[id]; got.hudPolarity != want.polarity || got.hudHiddenOnMonsterHead != want.hidden {
+			t.Errorf("effect %d = %s hidden=%v, want %+v", id, got.hudPolarity, got.hudHiddenOnMonsterHead, want)
+		}
+	}
+}
+
 // TestTrackedMasterHUDCuesOfKnownEffects pins the HUD evidence of effects studied in archived captures to the tracked
 // Master. Outro and team buffs that carried no other evidence gain it; confirmed buffs without a HUD cue keep their kind.
 func TestTrackedMasterHUDCuesOfKnownEffects(t *testing.T) {
@@ -147,6 +185,17 @@ func TestTrackedMasterHUDCuesOfKnownEffects(t *testing.T) {
 		}
 		if !reflect.DeepEqual(static.hudCueTypes, types) {
 			t.Errorf("effect %d HUD cue types = %v, want %v", id, static.hudCueTypes, types)
+		}
+	}
+	for id, polarity := range map[uint64]EffectPolarity{
+		2002202311: EffectPolarityBuff, 2002203902: EffectPolarityBuff, 1311400208: EffectPolarityBuff,
+		10010000: EffectPolarityDebuff, 10041000: EffectPolarityDebuff, 10061000: EffectPolarityDebuff, 9100001202: EffectPolarityDebuff,
+		// A role buff the HUD draws without an arrow.
+		1311400007: EffectPolarityUnclassified,
+	} {
+		static, ok := master.buffStatic(id)
+		if !ok || static.hudPolarity != polarity {
+			t.Errorf("effect %d HUD polarity = %s (row %v), want %s", id, static.hudPolarity, ok, polarity)
 		}
 	}
 	p := newEffectViewProcessor()

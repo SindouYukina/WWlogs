@@ -527,13 +527,12 @@ func mergeElementFanOut(cells []effectDisplayCell) []effectDisplayCell {
 	return append(result, merged...)
 }
 
-// effectPolarityFor returns a polarity only where the definition proves one. An element-ailment glossary term describes
-// a harmful state of its holder (periodic damage or reduced defence), so its holder carries a debuff. The term link is
-// correlated, not verified, and every other effect stays unclassified: an attribute modifier does not prove polarity,
-// because the attribute it changes need not be the holder's, and a buff-marker tag names the effect table, not a sign.
+// effectPolarityFor returns the direction the game's HUD draws for the effect: the BUFF or DEBUFF arrow its definition's
+// HUD cue selects (effect_hud_cues.go). Every other effect stays unclassified. An attribute, an element, a term or an
+// icon cannot give the direction, because the game uses the same icons and attributes for both.
 func effectPolarityFor(effect EffectInstanceSnapshot) EffectPolarity {
-	if effect.Kind == EffectKindElementAilment && effect.Static != nil && effect.Static.Term != nil {
-		return EffectPolarityDebuff
+	if effect.Static != nil && (effect.Static.HUDPolarity == EffectPolarityBuff || effect.Static.HUDPolarity == EffectPolarityDebuff) {
+		return effect.Static.HUDPolarity
 	}
 	return EffectPolarityUnclassified
 }

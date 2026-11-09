@@ -255,6 +255,10 @@ type buffStaticParameters struct {
 	// hudIconGeneric reports that every HUD icon of the row is one the game shares across many definitions
 	// (effect_hud_cues.go): it is drawn, but it does not tell this effect from the others.
 	hudIconGeneric bool
+	// hudPolarity and hudHiddenOnMonsterHead are the direction and monster-head visibility of the row's first HUD cue
+	// (effect_hud_cues.go); polarity stays empty for a row without one.
+	hudPolarity            EffectPolarity
+	hudHiddenOnMonsterHead bool
 }
 
 // effectTermRecord is the localized glossary term of an element-ailment buff row. The link comes
