@@ -284,6 +284,18 @@ try {
                                 Remove-Item Env:WWLOGS_PERTURBATION_OUT, Env:WWLOGS_PERTURBATION_PCAPS, Env:WWLOGS_PERTURBATION_MASTER_DB -ErrorAction SilentlyContinue
                             }
                             Set-Result 'replay: transport perturbation' $(if ($perturbationCode -eq 0) { 'PASS' } else { 'FAIL' }) "$($pcaps.Count) captures$(if ($perturbationCode -ne 0) { '; ' + (($perturbationOut | Select-Object -Last 20) -join ' ') })"
+
+                            # 8. Semantic regression: real captures must list the right statuses in the right rows and name the
+                            # right skills. Totals alone cannot catch a status shown in the wrong row or a skill losing its name.
+                            $env:WWLOGS_SEMANTIC_REPLAY_PCAPS = $listPath
+                            $env:WWLOGS_SEMANTIC_REPLAY_MASTER_DB = Join-Path $repoRoot 'data/master_data.db'
+                            try {
+                                $semanticOut = & $testBinary '-test.run' '^TestSemanticReplayCollector$' '-test.count' '1' 2>&1
+                                $semanticCode = $LASTEXITCODE
+                            } finally {
+                                Remove-Item Env:WWLOGS_SEMANTIC_REPLAY_PCAPS, Env:WWLOGS_SEMANTIC_REPLAY_MASTER_DB -ErrorAction SilentlyContinue
+                            }
+                            Set-Result 'replay: effect and skill semantics' $(if ($semanticCode -eq 0) { 'PASS' } else { 'FAIL' }) "$($pcaps.Count) captures$(if ($semanticCode -ne 0) { '; ' + (($semanticOut | Select-Object -Last 12) -join ' ') })"
                         }
                     }
                 }
