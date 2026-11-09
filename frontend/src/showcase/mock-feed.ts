@@ -169,7 +169,7 @@ export class MockFeed {
   }
 
   toggleVehicle(): void {
-    this.vehicle = this.vehicle ? undefined : { kind: "motorcycle", evidence: "mock", damageDealt: 12000, outgoingEvents: 8 }
+    this.vehicle = this.vehicle ? undefined : { kind: "motorcycle", evidence: "mock", damageDealt: 12000, outgoingEvents: 8, rank: 0 }
   }
 
   toggleUnassigned(): void {
@@ -351,6 +351,7 @@ export class MockFeed {
       elementId: masterOf(role.roleId)?.elementId,
       damageDealt: Math.round(role.damage),
       damageShare: confirmed > 0 ? role.damage / confirmed : undefined,
+      rank: 0,
       directDamage: Math.round(role.damage * 0.92),
       summonDamage: Math.round(role.damage * 0.08),
       outgoingEvents: Math.round(role.damage / 4200),
@@ -364,6 +365,12 @@ export class MockFeed {
     const dps = durationSeconds >= 1
       ? { status: "available" as const, damage: Math.round(confirmed), durationSeconds, value: confirmed / durationSeconds }
       : { status: "insufficient_data" as const, damage: Math.round(confirmed), durationSeconds, value: 0 }
+    // The mock stands in for the engine here: it ranks its rows and gives them DPS the way Go does for an encounter.
+    const contributors = [...roles, ...(vehicle ? [vehicle] : [])]
+    contributors.sort((a, b) => b.damageDealt - a.damageDealt).forEach((row, rank) => {
+      row.rank = rank
+      row.dps = dps.status === "available" ? row.damageDealt / durationSeconds : undefined
+    })
     const peakDps: DPS = this.peakBucket > 0
       ? { status: "available", damage: Math.round(this.peakBucket), durationSeconds: 1, value: this.peakBucket }
       : { status: "insufficient_data", damage: 0, durationSeconds: 0, value: 0 }

@@ -3,7 +3,8 @@ import type { SkillBreakdown, SkillRow } from "./combat-data"
 import type { Effect, Encounter, Role, Skill, UnassignedSkill, Vehicle, ViewSnapshot } from "./snapshot"
 
 // Adapts engine snapshot types to the row models the shared components render. Nothing here adds information: a value
-// the engine did not report stays undefined, and unresolved identities keep their raw IDs.
+// the engine did not report stays undefined, and unresolved identities keep their raw IDs. Damage, share, DPS and rank are
+// the engine's (Go rankViewContributors), all from the one scope the rows came from.
 
 export interface CombatRowModel {
   key: string
@@ -19,19 +20,14 @@ export interface CombatRowModel {
   damage: number
   /** 0..1, or undefined when the engine did not report a share. */
   share?: number
-  /** Display-derived from damage and the engine's encounter duration; undefined unless encounter DPS is usable. */
+  /** The engine's DPS of this row; undefined unless its scope has a DPS the UI may show. */
   dps?: number
   damageTaken: number
-  /** Rank by damage, 0 is highest. Ties keep a stable order through the key. */
+  /** The engine's rank, 0 is the most damage. */
   rank: number
 }
 
-function usableDuration(encounter: Encounter): number | undefined {
-  const { status, durationSeconds } = encounter.dps
-  return (status === "available" || status === "lower_bound") && durationSeconds > 0 ? durationSeconds : undefined
-}
-
-function roleRow(role: Role, duration: number | undefined): Omit<CombatRowModel, "rank"> {
+function roleRow(role: Role): CombatRowModel {
   return {
     key: `role-${role.playerId}-${role.roleId}`,
     kind: "role",
@@ -42,38 +38,33 @@ function roleRow(role: Role, duration: number | undefined): Omit<CombatRowModel,
     summonDamage: role.summonDamage,
     damage: role.damageDealt,
     share: role.damageShare,
-    dps: duration === undefined ? undefined : role.damageDealt / duration,
+    dps: role.dps,
     damageTaken: role.damageTaken,
+    rank: role.rank,
   }
 }
 
-function vehicleRow(vehicle: Vehicle, duration: number | undefined): Omit<CombatRowModel, "rank"> {
+function vehicleRow(vehicle: Vehicle): CombatRowModel {
   return {
     key: `vehicle-${vehicle.kind}`,
     kind: "vehicle",
     name: null,
     damage: vehicle.damageDealt,
     share: vehicle.damageShare,
-    dps: duration === undefined ? undefined : vehicle.damageDealt / duration,
+    dps: vehicle.dps,
     damageTaken: 0,
+    rank: vehicle.rank,
   }
 }
 
-/** Rows keep a stable identity while their rank changes, which is what lets a rank swap animate instead of re-mount. */
-export function combatRows(encounter: Encounter): CombatRowModel[] {
-  return ranked(encounter.roles, encounter.vehicle, usableDuration(encounter))
-}
-
-/** The capture interval's rows, for when no encounter exists yet. There is no encounter duration, so no per-role DPS. */
-export function intervalRows(view: Pick<ViewSnapshot, "roles" | "vehicle">): CombatRowModel[] {
-  return ranked(view.roles, view.vehicle, undefined)
-}
-
-function ranked(roles: readonly Role[], vehicle: Vehicle | undefined, duration: number | undefined): CombatRowModel[] {
-  const rows = roles.map(role => roleRow(role, duration))
-  if (vehicle) rows.push(vehicleRow(vehicle, duration))
-  const ordered = [...rows].sort((a, b) => b.damage - a.damage || a.key.localeCompare(b.key))
-  return ordered.map((row, rank) => ({ ...row, rank }))
+/**
+ * The rows of one scope, an encounter or the capture interval, in the engine's order. Rows keep a stable identity while their
+ * rank changes, which is what lets a rank swap animate instead of re-mount.
+ */
+export function combatRows(scope: Pick<Encounter, "roles" | "vehicle">): CombatRowModel[] {
+  const rows = scope.roles.map(roleRow)
+  if (scope.vehicle) rows.push(vehicleRow(scope.vehicle))
+  return rows.sort((a, b) => a.rank - b.rank)
 }
 
 /** A ranking row the user picked, tied to the encounter (or capture interval) it was picked in. */

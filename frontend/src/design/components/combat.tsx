@@ -122,10 +122,9 @@ export interface CombatPanelProps {
 
 const rowKey = (row: CombatRowModel) => row.key
 
-/** The Combat Overlay surface, optimized for a three-character team. It takes engine-derived rows and owns no state. */
+/** The Combat Overlay surface, optimized for a three-character team. It draws the engine's rows in the order given and owns no state. */
 export const CombatPanel = memo(function CombatPanel({ rows, elementOf, nameOf, subtitleOf, totalDamage, teamDps, time, state, stateLabel, note, labels, formatDps, formatDamage, formatShare, numberMode = "tween", scope = "", alpha, status }: CombatPanelProps) {
   const stale = state === "stale" || state === "untrusted"
-  const ordered = [...rows].sort((a, b) => a.rank - b.rank)
   const style = alpha === undefined ? undefined : { "--ww-alpha-overlay": alpha, "--ww-alpha-overlay-strong": Math.min(1, alpha + 0.12) } as CSSProperties
   return <div className="ww-combat" style={style}>
     <header className="ww-combat-head">
@@ -135,9 +134,9 @@ export const CombatPanel = memo(function CombatPanel({ rows, elementOf, nameOf, 
     </header>
     <div className="ww-combat-columns"><span>{labels.member}</span><span>{labels.dps}</span><span>{labels.damage}</span><span>{labels.share}</span></div>
     <div className="ww-combat-rows">
-      {ordered.length === 0
+      {rows.length === 0
         ? <div className="ww-combat-empty">{labels.empty}</div>
-        : <StackList items={ordered} keyOf={rowKey} rowHeight={46} gap={4} renderItem={row => <CharacterDamageRow row={row} elementId={elementOf(row)} name={nameOf(row)} subtitle={subtitleOf?.(row)} formatDps={formatDps} formatDamage={formatDamage} formatShare={formatShare} numberMode={numberMode} scope={scope} stale={stale} />} />}
+        : <StackList items={rows} keyOf={rowKey} rowHeight={46} gap={4} renderItem={row => <CharacterDamageRow row={row} elementId={elementOf(row)} name={nameOf(row)} subtitle={subtitleOf?.(row)} formatDps={formatDps} formatDamage={formatDamage} formatShare={formatShare} numberMode={numberMode} scope={scope} stale={stale} />} />}
     </div>
     {note && <div className="ww-combat-note" role="status"><Icon name="alert" size={12} />{note}</div>}
     <footer className="ww-state-band" data-state={state}><span>{stateLabel}</span></footer>

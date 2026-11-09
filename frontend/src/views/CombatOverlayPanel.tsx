@@ -2,7 +2,7 @@ import { useCallback, useMemo } from "react"
 import { useTranslation } from "react-i18next"
 import { CombatPanel, ListeningStatus, type CombatState } from "@/design"
 import { displayedEncounter, isFrozen, usableDps, type CombatData } from "@/lib/combat-data"
-import { combatRows, intervalRows, type CombatRowModel } from "@/lib/combat-view"
+import { combatRows, type CombatRowModel } from "@/lib/combat-view"
 import { useFormatters, useRowNames } from "@/lib/format"
 import { dataState } from "@/lib/snapshot"
 import { useListeningLabels } from "@/lib/useListeningLabels"
@@ -16,7 +16,7 @@ function useCombatPanelProps(data: CombatData, numberMode: "tween" | "roll", alp
   const nameOf = useRowNames()
   const view = data.snapshot?.view ?? null
   const encounter = displayedEncounter(view)
-  const rows = useMemo(() => encounter ? combatRows(encounter) : view ? intervalRows(view) : [], [encounter, view])
+  const rows = useMemo(() => { const scope = encounter ?? view; return scope ? combatRows(scope) : [] }, [encounter, view])
   const frozen = isFrozen(data)
   const trust = dataState(data.snapshot)
   const state: CombatState = trust === "untrusted" ? "untrusted" : frozen ? "stale" : view?.encounters.current ? "combat" : encounter ? "ended" : "waiting"

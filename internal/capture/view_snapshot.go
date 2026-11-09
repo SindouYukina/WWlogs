@@ -2,6 +2,7 @@ package capture
 
 import (
 	"hash/fnv"
+	"sort"
 	"strconv"
 	"time"
 )
@@ -183,9 +184,12 @@ type ViewRole struct {
 	Name       string `json:"name"`
 	NameStatus string `json:"nameStatus"`
 	// ElementID is a Master lookup filled by the display projection; zero means unknown. It never affects statistics.
-	ElementID      uint64   `json:"elementId,omitempty"`
-	DamageDealt    int64    `json:"damageDealt"`
-	DamageShare    *float64 `json:"damageShare,omitempty"`
+	ElementID   uint64   `json:"elementId,omitempty"`
+	DamageDealt int64    `json:"damageDealt"`
+	DamageShare *float64 `json:"damageShare,omitempty"`
+	// Rank and DPS are this row's place and rate within the scope that holds it (rankViewContributors).
+	Rank           int      `json:"rank"`
+	DPS            *float64 `json:"dps,omitempty"`
 	DirectDamage   int64    `json:"directDamage"`
 	SummonDamage   int64    `json:"summonDamage"`
 	OutgoingEvents uint64   `json:"outgoingEvents"`
@@ -352,6 +356,7 @@ func (p *processor) viewSnapshot() ViewSnapshot {
 		Completeness:        intervalDamageCompleteness(statistics),
 		Effects:             p.viewEffects(),
 	}
+	rankViewContributors(view.Roles, view.Vehicle, nil)
 	if p.damageStatistics != nil {
 		view.Timeline = p.damageStatistics.TimelineAt(CaptureQueryTime{CaptureSessionID: statistics.CaptureSessionID, Timestamp: observedAt}, maxViewTimelinePoints)
 	}
@@ -411,6 +416,7 @@ func (p *processor) viewEncounter(encounter EncounterSnapshot) ViewEncounter {
 		Vehicle:             p.viewVehicle(encounter.Vehicle, encounter.Totals.DamageDealt),
 		Completeness:        encounterDamageCompleteness(encounter),
 	}
+	rankViewContributors(view.Roles, view.Vehicle, &view.DPS)
 	end := encounter.EndedAt
 	if end.IsZero() {
 		end = p.currentFrameTime
@@ -420,6 +426,51 @@ func (p *processor) viewEncounter(encounter EncounterSnapshot) ViewEncounter {
 		view.ElapsedSeconds = &elapsed
 	}
 	return view
+}
+
+// rankViewContributors fills the Rank and DPS of one scope's contributor rows. It runs while the scope is projected, from the
+// rows already built for that scope, so a row's damage, share, DPS and rank always describe the same snapshot and encounter
+// and no later reader has to scan events or ask the engine again.
+//
+// A role and a vehicle are ranked together, each as itself: a vehicle is never credited to a role, and unassigned damage has
+// no row, so it is never ranked. Rank 0 is the most damage. Equal damage falls back to the row's identity, which does not
+// change during a fight, so a tie never swaps two rows.
+//
+// scopeDPS is the scope's own DPS result; the rows use its duration, the confirmed elapsed time of the encounter including any
+// time stop, so they add up to it. A DPS the UI may not show (or no DPS result, as for a capture interval) leaves DPS nil.
+func rankViewContributors(roles []ViewRole, vehicle *ViewVehicle, scopeDPS *ViewDPS) {
+	type contributor struct {
+		key    string
+		damage int64
+		rank   *int
+		dps    **float64
+	}
+	contributors := make([]contributor, 0, len(roles)+1)
+	for i := range roles {
+		role := &roles[i]
+		key := "role-" + strconv.FormatUint(role.PlayerID, 10) + "-" + strconv.FormatUint(role.RoleID, 10)
+		contributors = append(contributors, contributor{key: key, damage: role.DamageDealt, rank: &role.Rank, dps: &role.DPS})
+	}
+	if vehicle != nil {
+		contributors = append(contributors, contributor{key: "vehicle-" + vehicle.Kind, damage: vehicle.DamageDealt, rank: &vehicle.Rank, dps: &vehicle.DPS})
+	}
+	sort.Slice(contributors, func(i, j int) bool {
+		if contributors[i].damage != contributors[j].damage {
+			return contributors[i].damage > contributors[j].damage
+		}
+		return contributors[i].key < contributors[j].key
+	})
+	var seconds float64
+	if scopeDPS != nil && (scopeDPS.Status == DPSStatusAvailable || scopeDPS.Status == DPSStatusLowerBound) {
+		seconds = scopeDPS.DurationSeconds
+	}
+	for i := range contributors {
+		*contributors[i].rank = i
+		if seconds > 0 {
+			value := float64(contributors[i].damage) / seconds
+			*contributors[i].dps = &value
+		}
+	}
 }
 
 // unassignedRoleShare uses the same confirmed-local denominator as the role rows.
@@ -649,6 +700,9 @@ func cloneFloat64(value *float64) *float64 {
 type ViewVehicle struct {
 	VehicleDamageSnapshot
 	DamageShare *float64 `json:"damageShare,omitempty"`
+	// Rank and DPS are this row's place and rate within the scope that holds it (rankViewContributors).
+	Rank int      `json:"rank"`
+	DPS  *float64 `json:"dps,omitempty"`
 	// Skills and UnassignedSkill shadow the embedded engine rows with their display projection.
 	Skills          []ViewSkill         `json:"skills"`
 	UnassignedSkill ViewUnassignedSkill `json:"unassignedSkill"`

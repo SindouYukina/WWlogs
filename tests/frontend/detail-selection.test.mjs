@@ -6,7 +6,9 @@ import { motionVariables } from "../../frontend/src/design/motion/tokens.ts"
 
 const read = path => readFileSync(path, "utf8")
 const role = (roleId, damageDealt, playerId = 1) => ({ playerId, roleId, elementId: 1, name: `R${roleId}`, nameStatus: "VERIFIED", directDamage: damageDealt, summonDamage: 0, damageDealt, damageShare: undefined, damageTaken: 0 })
-const encounter = (id, roles, vehicle) => ({ encounterId: id, roles, vehicle, dps: { status: "available", durationSeconds: 10 } })
+// The engine ranks the rows; these fixtures state the order it would report.
+const ranked = (roles, vehicle) => [...roles, ...(vehicle ? [vehicle] : [])].sort((a, b) => b.damageDealt - a.damageDealt).forEach((row, rank) => { row.rank = rank })
+const encounter = (id, roles, vehicle) => { ranked(roles, vehicle); return { encounterId: id, roles, vehicle, dps: { status: "available", durationSeconds: 10 } } }
 const rowsOf = (...roles) => combatRows(encounter("1-1-1", roles))
 
 test("the scope is the engine's encounter identity, or the capture interval before any encounter", () => {
@@ -36,9 +38,11 @@ test("no confirmed character damage selects nothing, and a vehicle is never pick
   assert.equal(topRole(combatRows(encounter("1-1-1", [], { kind: "motorcycle", damageDealt: 900 }))), undefined)
 })
 
-test("equal damage resolves through the stable rank order", () => {
-  const a = topRole(rowsOf(role(1003, 700, 2), role(1001, 700, 1)))
-  const b = topRole(rowsOf(role(1001, 700, 1), role(1003, 700, 2)))
+test("equal damage follows the rank the engine reported, whatever order the rows arrive in", () => {
+  const first = { ...role(1001, 700, 1), rank: 0 }
+  const second = { ...role(1003, 700, 2), rank: 1 }
+  const a = topRole(combatRows({ roles: [second, first] }))
+  const b = topRole(combatRows({ roles: [first, second] }))
   assert.equal(a.key, b.key)
   assert.equal(a.key, "role-1-1001")
 })

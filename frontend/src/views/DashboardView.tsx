@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next"
 import { AnimatedNumber, Card, CharacterAvatar, Chip, ContentSwitch, DamageBar, GameAssetImage, Icon, LiveChart, Reveal, Segmented, StackList, ThemeBackdrop, type ChartSeries, type IconName, type ThemeId } from "@/design"
 import { dataChip, displayedEncounter, isFrozen, usableDps, type CombatData, type SkillBreakdown } from "@/lib/combat-data"
 import { teamSeriesKey, unassignedSeriesKey } from "@/lib/timeline"
-import { combatRows, detailRow, intervalRows, selectionScope, type CombatRowModel } from "@/lib/combat-view"
+import { combatRows, detailRow, selectionScope, type CombatRowModel } from "@/lib/combat-view"
 import { useDetailPick, type DetailPick } from "@/lib/useDetailPick"
 import { elementColor, useFormatters, useRowNames } from "@/lib/format"
 import { dpsText, usableHealing, type ViewSnapshot } from "@/lib/snapshot"
@@ -37,8 +37,7 @@ const StatCard = memo(function StatCard({ icon, label, value, format, note, scop
 function RoleBoard({ rows, selected, onSelect, scope, stale, numberMode }: { rows: readonly CombatRowModel[]; selected: string; onSelect: (key: string) => void; scope: string; stale: boolean; numberMode: "tween" | "roll" }) {
   const format = useFormatters()
   const nameOf = useRowNames()
-  const ordered = useMemo(() => [...rows].sort((a, b) => a.rank - b.rank), [rows])
-  return <StackList items={ordered} keyOf={row => row.key} rowHeight={58} gap={6} renderItem={row => <div className="ww-dash-role" data-key={row.key} data-rank={row.rank} data-field={row.kind === "vehicle" ? "vehicle" : undefined} data-selected={row.key === selected} data-element={row.elementId} role="button" tabIndex={0} onClick={() => onSelect(row.key)} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") onSelect(row.key) }}>
+  return <StackList items={rows} keyOf={row => row.key} rowHeight={58} gap={6} renderItem={row => <div className="ww-dash-role" data-key={row.key} data-rank={row.rank} data-field={row.kind === "vehicle" ? "vehicle" : undefined} data-selected={row.key === selected} data-element={row.elementId} role="button" tabIndex={0} onClick={() => onSelect(row.key)} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") onSelect(row.key) }}>
     <CharacterAvatar roleId={row.roleId} elementId={row.elementId} size={42} fallback={row.kind === "vehicle" ? <Icon name="bolt" size={18} /> : "?"} />
     <div className="ww-dash-role-main">
       <div className="ww-dash-role-line"><strong className="ww-truncate">{nameOf(row)}</strong><span className="ww-num ww-dash-role-dps"><AnimatedNumber value={row.dps} format={format.integer} mode={numberMode} scope={scope} stale={stale} /></span></div>
@@ -125,7 +124,7 @@ export function DashboardView({ data, theme, numberMode = "tween", actions, deta
   const snapshot = data.snapshot
   const view = snapshot?.view ?? null
   const encounter = displayedEncounter(view)
-  const rows = useMemo(() => encounter ? combatRows(encounter) : view ? intervalRows(view) : [], [encounter, view])
+  const rows = useMemo(() => { const scope = encounter ?? view; return scope ? combatRows(scope) : [] }, [encounter, view])
   const stale = isFrozen(data)
   const chip = dataChip(data)
   const scope = encounter?.encounterId ?? "none"

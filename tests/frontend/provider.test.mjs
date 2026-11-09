@@ -3,7 +3,7 @@ import { existsSync, readFileSync, readdirSync } from "node:fs"
 import { join } from "node:path"
 import test from "node:test"
 import { dataChip, displayedEncounter, isFrozen, usableDps } from "../../frontend/src/lib/combat-data.ts"
-import { combatRows, intervalRows, skillBreakdown, skillBreakdowns } from "../../frontend/src/lib/combat-view.ts"
+import { combatRows, skillBreakdown, skillBreakdowns } from "../../frontend/src/lib/combat-view.ts"
 import { shellChanged } from "../../frontend/src/lib/snapshot.ts"
 
 const now = Date.parse("2026-11-06T10:00:10Z")
@@ -50,16 +50,16 @@ test("only an engine-approved DPS status is usable", () => {
 })
 
 test("rows carry Master element and engine split without adding information", () => {
-  const role = { playerId: 1, roleId: 7, name: "A", nameStatus: "VERIFIED", elementId: 3, damageDealt: 100, directDamage: 75, summonDamage: 25, damageTaken: 0 }
-  const unknown = { ...role, roleId: 8, name: "Guess", nameStatus: "CORRELATED", elementId: undefined, damageDealt: 50, directDamage: 0, summonDamage: 0 }
+  const role = { playerId: 1, roleId: 7, name: "A", nameStatus: "VERIFIED", elementId: 3, damageDealt: 100, directDamage: 75, summonDamage: 25, damageTaken: 0, rank: 0, dps: 10 }
+  const unknown = { ...role, roleId: 8, name: "Guess", nameStatus: "CORRELATED", elementId: undefined, damageDealt: 50, directDamage: 0, summonDamage: 0, rank: 1, dps: 5 }
   const rows = combatRows({ roles: [unknown, role], dps: { status: "available", durationSeconds: 10 } })
   assert.deepEqual(rows.map(row => [row.roleId, row.rank, row.elementId, row.name, row.dps]), [[7, 0, 3, "A", 10], [8, 1, undefined, null, 5]])
   assert.equal(rows[0].directDamage, 75)
   assert.equal(rows[0].summonDamage, 25)
 })
 
-test("interval rows have no per-role DPS, because there is no encounter duration", () => {
-  const rows = intervalRows({ roles: [{ playerId: 1, roleId: 7, name: "A", nameStatus: "VERIFIED", damageDealt: 100, directDamage: 100, summonDamage: 0, damageTaken: 0 }], vehicle: { kind: "motorcycle", damageDealt: 200 } })
+test("interval rows have no per-role DPS, because the engine reports none without an encounter duration", () => {
+  const rows = combatRows({ roles: [{ playerId: 1, roleId: 7, name: "A", nameStatus: "VERIFIED", damageDealt: 100, directDamage: 100, summonDamage: 0, damageTaken: 0, rank: 1 }], vehicle: { kind: "motorcycle", damageDealt: 200, rank: 0 } })
   assert.deepEqual(rows.map(row => [row.kind, row.rank, row.dps]), [["vehicle", 0, undefined], ["role", 1, undefined]])
 })
 
@@ -113,7 +113,7 @@ test("skill rows are the engine's split, keyed like the ranking rows, with offic
   assert.equal(skillBreakdown({ ...role, unassignedSkill: { ...unassignedSkill, damageDealt: 0, outgoingEvents: 0 } }).unassigned, undefined)
   assert.equal(skillBreakdown({ ...role, skills: undefined }), undefined, "an old host without a skill field has no split")
   const map = skillBreakdowns({ roles: [role], vehicle: { kind: "motorcycle", damageDealt: 9, skills: [{ skillId: 7, name: "", nameStatus: "UNKNOWN", damageDealt: 9, outgoingEvents: 1 }] } })
-  const keys = intervalRows({ roles: [role], vehicle: { kind: "motorcycle", damageDealt: 9 } }).map(row => row.key)
+  const keys = combatRows({ roles: [{ ...role, rank: 0 }], vehicle: { kind: "motorcycle", damageDealt: 9, rank: 1 } }).map(row => row.key)
   assert.deepEqual([...map.keys()].sort(), [...keys].sort(), "every ranking row finds its own split")
   assert.equal(map.get("vehicle-motorcycle").rows[0].skillId, 7)
 })

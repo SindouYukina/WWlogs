@@ -49,6 +49,21 @@ test("the ranking notes read the engine's facts for the scope on screen and neve
   assert.match(view, /data-field="unknown-ownership-note"/)
 })
 
+test("the ranking is the engine's: rows arrive ordered and rated, and the views draw them as given", () => {
+  const adapter = read("frontend/src/lib/combat-view.ts")
+  assert.doesNotMatch(adapter, /localeCompare|usableDuration|intervalRows|\.damage - |damageDealt \/|\/ duration/, "no ranking or rate is worked out in the adapter")
+  assert.match(adapter, /dps: role\.dps/)
+  assert.match(adapter, /rank: role\.rank/)
+  assert.match(adapter, /dps: vehicle\.dps/)
+  assert.match(adapter, /rank: vehicle\.rank/)
+  assert.doesNotMatch(read("frontend/src/lib/snapshot.ts"), /damageContributors/, "the unused second ranking is gone")
+  const overlay = read("frontend/src/views/CombatOverlayPanel.tsx")
+  const panel = read("frontend/src/design/components/combat.tsx")
+  for (const source of [view, overlay]) assert.match(source, /const scope = encounter \?\? view; return scope \? combatRows\(scope\) : \[\]/, "one scope gives every number of the board")
+  assert.doesNotMatch(panel, /sort\(\(a, b\) => a\.rank/, "the Overlay draws the order it is given")
+  assert.doesNotMatch(view, /sort\(\(a, b\) => a\.rank/, "the Dashboard draws the order it is given")
+})
+
 test("every bundled language says unknown ownership is outside the total", () => {
   const manifest = JSON.parse(read("frontend/locales/manifest.json"))
   for (const locale of manifest.supportedLocales) {
