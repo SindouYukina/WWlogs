@@ -87,6 +87,8 @@
     "internal/capture/central_damage_completeness_test.go": "tests/capture/damage_completeness_test.go",
     "tests/capture/effect_strip_view_test.go": "",
     "internal/capture/central_effect_strip_view_test.go": "tests/capture/effect_strip_view_test.go",
+    "tests/capture/effect_order_test.go": "",
+    "internal/capture/central_effect_order_test.go": "tests/capture/effect_order_test.go",
     "tests/capture/effect_hud_cues_test.go": "",
     "internal/capture/central_effect_hud_cues_test.go": "tests/capture/effect_hud_cues_test.go",
     "tests/capture/effect_feed_dev_test.go": "",
