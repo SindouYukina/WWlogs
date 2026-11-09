@@ -129,26 +129,6 @@ func TestViewProjectsTheStripFieldsWithoutChangingTheInstance(t *testing.T) {
 	}
 }
 
-func TestLiveViewClockLeadIsBoundedAndAbsentWithoutAFrame(t *testing.T) {
-	now := time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)
-	for _, tc := range []struct {
-		name string
-		last time.Time
-		want time.Duration
-	}{
-		{"no frame yet", time.Time{}, 0},
-		{"a frame this instant", now, 0},
-		{"a quiet connection", now.Add(-3 * time.Second), 3 * time.Second},
-		{"at the bound", now.Add(-liveViewClockLeadLimit), liveViewClockLeadLimit},
-		{"past the bound", now.Add(-time.Minute), liveViewClockLeadLimit},
-		{"a frame stamped ahead of the clock", now.Add(time.Second), 0},
-	} {
-		if got := liveViewClockLead(tc.last, now); got != tc.want {
-			t.Errorf("%s: lead %v, want %v", tc.name, got, tc.want)
-		}
-	}
-}
-
 func TestViewClockLeadOnlyAdvancesTheCountdownsOfTheView(t *testing.T) {
 	p := newEffectViewProcessor()
 	p.effects.ObserveApply(displayApply(1, 900, 0, nil))

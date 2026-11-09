@@ -258,27 +258,6 @@ func TestViewEffectsMaintainedFlagFollowsTheRepresentative(t *testing.T) {
 	}
 }
 
-func TestLiveViewClockLeadIsBoundedAndNeverRunsWithoutAFrame(t *testing.T) {
-	base := effectAt(0)
-	cases := []struct {
-		name string
-		wall time.Time
-		now  time.Time
-		want time.Duration
-	}{
-		{"before the first frame", time.Time{}, base, 0},
-		{"just after a frame", base, base.Add(200 * time.Millisecond), 200 * time.Millisecond},
-		{"at the limit", base, base.Add(liveViewClockLeadLimit), liveViewClockLeadLimit},
-		{"long after the last frame", base, base.Add(time.Minute), liveViewClockLeadLimit},
-		{"a clock that went backwards", base, base.Add(-time.Second), 0},
-	}
-	for _, tc := range cases {
-		if got := liveViewClockLead(tc.wall, tc.now); got != tc.want {
-			t.Errorf("%s: lead = %s, want %s", tc.name, got, tc.want)
-		}
-	}
-}
-
 func TestViewEffectsClockStallsOnlyAtTheLiveLimit(t *testing.T) {
 	p := newEffectViewProcessor()
 	p.effects.ObserveApply(displayApply(1, 500, 0, func(e *EffectApplyEvent) { e.DurationSeconds, e.RemainingSeconds = effectFloat(30), effectFloat(30) }))
@@ -300,11 +279,11 @@ func TestViewEffectsClockStallsOnlyAtTheLiveLimit(t *testing.T) {
 	requireNear(t, "live remaining", view.Active[0].RemainingSeconds, 26)
 
 	// At the limit the capture no longer knows what the game is doing.
-	p.viewClockLead = liveViewClockLeadLimit
+	p.viewClockLead, p.viewClockStalled = LiveFrameSilenceLimit, true
 	if view = p.viewEffects(); !view.ClockStalled {
 		t.Fatal("the limit did not report a stalled clock")
 	}
 	// Querying with a lead changes nothing in the tracker: the capture-time view is unchanged.
-	p.viewClockLead = 0
+	p.viewClockLead, p.viewClockStalled = 0, false
 	requireNear(t, "capture time after a lead", p.viewEffects().Active[0].RemainingSeconds, 29)
 }

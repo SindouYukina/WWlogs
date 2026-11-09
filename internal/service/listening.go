@@ -46,7 +46,7 @@ const (
 // Thresholds come from research/topics/output/listening-status.md, measured over 41 captures (2.36 hours).
 const (
 	// The longest pause between frames in any capture was 6.0 s and the highest per-capture p99 was 2.7 s.
-	listeningStaleAfterSeconds = 8.0
+	listeningStaleAfter = capture.LiveFrameSilenceLimit
 	// A key response arrived within 0.02 s of the first frame in captures that began before login.
 	listeningEstablishWindowSeconds = 5.0
 	// No capture has ever shown a decrypt failure, so a run of them is explicit evidence of a wrong or lost key.
@@ -147,7 +147,7 @@ func (m *ListeningMonitor) classify(status Status, view *capture.ViewSnapshot, p
 		return ListeningError, ReasonTransportUnrecovered
 	}
 	recovering := transport == capture.TransportGapDetected || transport == capture.TransportRecovering
-	if health.FrameIdleSeconds == nil || *health.FrameIdleSeconds > listeningStaleAfterSeconds {
+	if health.FrameIdleSeconds == nil || *health.FrameIdleSeconds >= listeningStaleAfter.Seconds() {
 		if recovering {
 			return ListeningStale, ReasonTransportRecovering
 		}

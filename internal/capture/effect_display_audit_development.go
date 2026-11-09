@@ -139,7 +139,7 @@ func newEffectAuditCell(cell effectDisplayCell) effectAuditCell {
 // effects changes, never because time passed.
 func (p *processor) effectDisplayAudit() (row effectAuditRow, cellSignature, excludedSignature string) {
 	snapshot := p.effectSnapshotAfterLastFrame(p.viewClockLead)
-	row = effectAuditRow{At: p.currentFrameTime, ClockLead: p.viewClockLead.Seconds(), ClockStalled: p.viewClockLead >= liveViewClockLeadLimit, Status: string(snapshot.Status)}
+	row = effectAuditRow{At: p.currentFrameTime, ClockLead: p.viewClockLead.Seconds(), ClockStalled: p.viewClockStalled, Status: string(snapshot.Status)}
 	var eligible []EffectInstanceSnapshot
 	type excludedKey struct {
 		reason string
