@@ -34,7 +34,7 @@ type ManifestEntry struct {
 }
 
 // A manifest path must be reachable through a Key; anything else is not a product image.
-var manifestPath = regexp.MustCompile(`^game/(characters/[1-9][0-9]*/(avatar|portrait)|skills/[1-9][0-9]*/icon|skills/by-config/[1-9][0-9]*/icon|buffs/[1-9][0-9]*/icon)\.webp$`)
+var manifestPath = regexp.MustCompile(`^game/(characters/[1-9][0-9]*/(avatar|portrait)|skills/[1-9][0-9]*/icon|skills/by-config/[1-9][0-9]*/icon|echo-skills/[1-9][0-9]*/icon|buffs/[1-9][0-9]*/icon)\.webp$`)
 
 // ParseManifest decodes and validates a manifest. Line endings do not matter, so a CRLF checkout reads the same.
 func ParseManifest(data []byte) (Manifest, error) {
