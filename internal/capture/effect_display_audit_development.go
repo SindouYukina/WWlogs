@@ -59,6 +59,8 @@ type effectAuditExcluded struct {
 	Count    int    `json:"instances"`
 	Kind     string `json:"kind"`
 	Basis    string `json:"basis"`
+	// DisplayBasis names why the instance is non-HUD or unresolved.
+	DisplayBasis string `json:"displayBasis,omitempty"`
 }
 
 type effectAuditRow struct {
@@ -74,19 +76,13 @@ type effectAuditRow struct {
 }
 
 func effectAuditMergeKind(cell effectDisplayCell) string {
-	switch {
-	case cell.elementFanOut:
-		return "element_fan_out"
-	case cell.instances() > 1:
+	if cell.instances() > 1 {
 		return "same_effect_on_several_holders"
 	}
 	return "single_instance"
 }
 
 func effectAuditCountdown(cell effectDisplayCell) string {
-	if effectIsMaintained(cell.representative) {
-		return "none_maintained"
-	}
 	return string(cell.earliest.RemainingStatus)
 }
 
@@ -122,9 +118,6 @@ func newEffectAuditCell(cell effectDisplayCell) effectAuditCell {
 	}
 	if static := representative.Static; static != nil && len(static.HUDCueTypes) > 0 {
 		out.Icon, out.CueTypes = "hud_cue", static.HUDCueTypes
-		if static.HUDIconGeneric {
-			out.Icon = "hud_cue_generic"
-		}
 	}
 	out.Leaves, out.HiddenAfter = effectAuditLeaves(cell)
 	for _, member := range cell.members {
@@ -146,6 +139,8 @@ func (p *processor) effectDisplayAudit() (row effectAuditRow, cellSignature, exc
 		id     uint64
 		kind   string
 		basis  string
+		// display names why a non-HUD or unresolved decision was made.
+		display string
 	}
 	excluded := map[excludedKey]int{}
 	for _, effect := range snapshot.Effects {
@@ -155,7 +150,7 @@ func (p *processor) effectDisplayAudit() (row effectAuditRow, cellSignature, exc
 			eligible = append(eligible, effect)
 			continue
 		}
-		key := excludedKey{reason: string(display.Eligibility), kind: string(effect.Kind), basis: effect.KindBasis}
+		key := excludedKey{reason: string(display.Eligibility), kind: string(effect.Kind), basis: effect.KindBasis, display: display.Basis}
 		if effect.EffectID != nil {
 			key.id = *effect.EffectID
 		}
@@ -173,7 +168,7 @@ func (p *processor) effectDisplayAudit() (row effectAuditRow, cellSignature, exc
 		fmt.Fprintf(&signature, "%s:%d:%s;", cell.Key, cell.Instances, cell.Merge)
 	}
 	for key, count := range excluded {
-		row.Excluded = append(row.Excluded, effectAuditExcluded{Reason: key.reason, EffectID: key.id, Count: count, Kind: key.kind, Basis: key.basis})
+		row.Excluded = append(row.Excluded, effectAuditExcluded{Reason: key.reason, EffectID: key.id, Count: count, Kind: key.kind, Basis: key.basis, DisplayBasis: key.display})
 	}
 	sort.Slice(row.Excluded, func(i, j int) bool {
 		a, b := row.Excluded[i], row.Excluded[j]

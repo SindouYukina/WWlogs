@@ -229,14 +229,26 @@ type ViewUnassignedSkill struct {
 // instances only (see effectDisplayFor); Counts accounts for every tracked instance, listed or not, by the reason it was
 // left out, so a consumer can show what is hidden without seeing it.
 type ViewEffects struct {
-	Status      EffectSnapshotStatus `json:"status"`
-	Reason      string               `json:"reason,omitempty"`
-	Active      []ViewEffect         `json:"active"`
-	RecentEnded []ViewEffect         `json:"recentEnded"`
-	Counts      ViewEffectCounts     `json:"counts"`
+	Status EffectSnapshotStatus `json:"status"`
+	Reason string               `json:"reason,omitempty"`
+	// Buffs and Debuffs are the two rows of the Effects Overlay, classified, filtered and ordered here: soonest to end first,
+	// cells without a reliable time last. The frontend only lays them out.
+	Buffs   ViewEffectRow `json:"buffs"`
+	Debuffs ViewEffectRow `json:"debuffs"`
+	// Active is every listed cell in display order, the union of the two rows. It stays out of the snapshot to keep each
+	// publish small; the rows carry the same cells.
+	Active      []ViewEffect     `json:"-"`
+	RecentEnded []ViewEffect     `json:"recentEnded"`
+	Counts      ViewEffectCounts `json:"counts"`
 	// ClockStalled reports that a live capture has seen no game frame for LiveFrameSilenceLimit: the countdowns stopped
 	// advancing because the capture no longer knows what the game is doing. A replay never sets it.
 	ClockStalled bool `json:"clockStalled,omitempty"`
+}
+
+// ViewEffectRow is one row of the Effects Overlay. Truncated counts the row's cells beyond the view's bound.
+type ViewEffectRow struct {
+	Effects   []ViewEffect `json:"effects"`
+	Truncated int          `json:"truncated,omitempty"`
 }
 
 // ViewEffect is one tracked effect instance. Key is an opaque, stable identity for list rendering; it is a hash, not
@@ -259,8 +271,6 @@ type ViewEffect struct {
 	// HUDIcon reports that the game draws this effect in a HUD buff bar with an icon of its own (effect_hud_cues.go);
 	// only such an effect has an icon worth requesting. It says nothing about the effect's meaning.
 	HUDIcon bool `json:"hudIcon,omitempty"`
-	// HUDIconGeneric reports that the icon is one the game shares across many definitions, so it does not identify the effect.
-	HUDIconGeneric bool `json:"hudIconGeneric,omitempty"`
 	// ElementID is the element the effect's own definition states (effect_element.go); absent means none is established.
 	ElementID        *uint64               `json:"elementId,omitempty"`
 	Display          EffectDisplay         `json:"display"`
@@ -277,8 +287,9 @@ type ViewEffect struct {
 	EndedAt          *time.Time            `json:"endedAt,omitempty"`
 	// Instances is how many tracker instances this overlay cell stands for (effectDisplayCells).
 	Instances int `json:"instances,omitempty"`
-	// Maintained reports a modifier the game keeps refreshing, whose remaining time is a refresh period, not a time left.
-	Maintained bool `json:"maintained,omitempty"`
+	// ShowCountdown says the remaining time may be shown: the engine expects it to be right. A frontend applies only its own
+	// connection and freshness state on top of it.
+	ShowCountdown bool `json:"showCountdown,omitempty"`
 }
 
 // viewSnapshot builds the UI view at the newest capture time. It runs on the capture goroutine.
@@ -476,10 +487,9 @@ func (p *processor) viewEffects() ViewEffects {
 	snapshot := p.effectSnapshotAfterLastFrame(p.viewClockLead)
 	// Only display-eligible instances are listed; the bound applies to the display set alone, so an eligible instance is
 	// never pushed out by one that would not have been shown. Instances the strip cannot tell apart share one cell
-	// (effectDisplayCells). Effects with a server duration come first, so the bound and a short window keep the
-	// countdowns; within the timed and the untimed group, effects the game itself draws in a HUD buff bar come first
-	// (effect_hud_cues.go). The order only decides which cells fit; it never removes one from the display set.
-	view := ViewEffects{Status: snapshot.Status, Reason: snapshot.Reason, Active: []ViewEffect{}, ClockStalled: p.viewClockStalled}
+	// (effectDisplayCells). Cells are ordered by when they end, so the bound keeps the soonest. The order only decides which
+	// cells fit; it never removes one from the display set.
+	view := ViewEffects{Status: snapshot.Status, Reason: snapshot.Reason, Active: []ViewEffect{}, Buffs: ViewEffectRow{Effects: []ViewEffect{}}, Debuffs: ViewEffectRow{Effects: []ViewEffect{}}, ClockStalled: p.viewClockStalled}
 	eligible := make([]EffectInstanceSnapshot, 0, len(snapshot.Effects))
 	for _, effect := range snapshot.Effects {
 		display := effectDisplayFor(effect)
@@ -488,29 +498,27 @@ func (p *processor) viewEffects() ViewEffects {
 			eligible = append(eligible, effect)
 		}
 	}
-	var groups [4][]effectDisplayCell
 	cells := effectDisplayCells(eligible)
+	sortEffectCells(cells)
 	view.Counts.Cells = len(cells)
+	countdowns := snapshot.Status == EffectSnapshotComplete && !p.viewClockStalled && p.context.snapshot().State == ContextValid
 	for _, cell := range cells {
-		effect := cell.representative
-		group := 0
-		if effect.ServerDurationSeconds == nil {
-			group = 2
+		row := &view.Buffs
+		if effectPolarityFor(cell.representative) == EffectPolarityDebuff {
+			row = &view.Debuffs
 		}
-		if effect.Static == nil || len(effect.Static.HUDCueTypes) == 0 {
-			group++
-		}
-		groups[group] = append(groups[group], cell)
-	}
-	for _, cell := range append(append(append(groups[0], groups[1]...), groups[2]...), groups[3]...) {
 		if len(view.Active) == maxViewEffects {
 			view.Counts.Truncated += cell.instances()
 			view.Counts.TruncatedCells++
+			row.Truncated++
 			continue
 		}
 		view.Counts.Listed += cell.instances()
 		view.Counts.ListedCells++
-		view.Active = append(view.Active, p.viewEffectCell(cell))
+		projected := p.viewEffectCell(cell)
+		projected.ShowCountdown = countdowns && effectCellCountsDown(cell.earliest)
+		view.Active = append(view.Active, projected)
+		row.Effects = append(row.Effects, projected)
 	}
 	endedEffects := snapshot.RecentEnded
 	if len(endedEffects) > 12 {
@@ -538,7 +546,6 @@ func (p *processor) viewEffectCell(cell effectDisplayCell) ViewEffect {
 	view := p.viewEffect(cell.representative)
 	view.Display = effectDisplayFor(cell.representative)
 	view.Instances = cell.instances()
-	view.Maintained = effectIsMaintained(cell.representative)
 	view.RemainingStatus, view.RemainingSeconds = cell.earliest.RemainingStatus, cloneFloat64(cell.earliest.RemainingSeconds)
 	view.ExpectedExpiry = nil
 	if cell.earliest.ExpectedExpiry != nil {
@@ -547,9 +554,6 @@ func (p *processor) viewEffectCell(cell effectDisplayCell) ViewEffect {
 	}
 	if cell.instances() > 1 {
 		view.HolderRoleID = nil
-	}
-	if cell.elementFanOut {
-		view.ElementID = nil
 	}
 	return view
 }
@@ -578,7 +582,7 @@ func (p *processor) viewEffect(effect EffectInstanceSnapshot) ViewEffect {
 		view.ExpectedExpiry = &expiry
 	}
 	if effect.Static != nil && len(effect.Static.HUDCueTypes) > 0 {
-		view.HUDIcon, view.HUDIconGeneric = true, effect.Static.HUDIconGeneric
+		view.HUDIcon = true
 	}
 	if effect.Static != nil && effect.Static.ElementID != 0 {
 		element := effect.Static.ElementID

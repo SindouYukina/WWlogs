@@ -5,13 +5,13 @@ import (
 	"testing"
 )
 
-// cellInstance is one team member's timed modifier. Its expiry is seconds after applied at remaining; every other
+// cellInstance is one team member's timed HUD status. Its expiry is seconds after applied at remaining; every other
 // field is the same across instances unless mutate changes it.
 func cellInstance(handle, effectID, holder uint64, applied, remaining float64, mutate func(*EffectApplyEvent)) EffectApplyEvent {
 	return displayApply(handle, effectID, applied, func(e *EffectApplyEvent) {
 		e.HolderEntityID, e.HolderRelation = holder, EffectRelationLocalRole
 		e.DurationSeconds, e.RemainingSeconds = effectFloat(20), effectFloat(remaining)
-		e.DefinitionLinked, e.Static = true, &EffectStaticInfo{DurationPolicy: finitePolicy()}
+		e.DefinitionLinked, e.Static = true, hudStatic()
 		if mutate != nil {
 			mutate(e)
 		}
@@ -171,18 +171,6 @@ func TestEffectCellDisappearsOnlyAfterEveryMemberIsPastTheGrace(t *testing.T) {
 	requireEffectCounts(t, effectViewAt(p, 10+effectDisplayExpiryGrace.Seconds()+0.5), ViewEffectCounts{Tracked: 2, Active: 2, Local: 2, PredictedExpired: 2})
 }
 
-func TestEffectCellMaintainedCopiesMergeRegardlessOfRefreshPhase(t *testing.T) {
-	p := newEffectViewProcessor()
-	maintained := func(e *EffectApplyEvent) { e.DurationSeconds, e.RemainingSeconds = effectFloat(1.2), effectFloat(1.2) }
-	p.effects.ObserveApply(cellInstance(1, 500, 10, 0, 1.2, maintained))
-	// Refreshed 400 ms later: no countdown is shown, so the phase cannot be told apart on screen.
-	p.effects.ObserveApply(cellInstance(2, 500, 11, 0.4, 1.2, maintained))
-	cell := oneCell(t, effectViewAt(p, 0.5))
-	if !cell.Maintained || cell.Instances != 2 {
-		t.Fatalf("maintained copies = %+v", cell)
-	}
-}
-
 func TestEffectCellStaleAndFreshInstancesStayApart(t *testing.T) {
 	p := newEffectViewProcessor()
 	p.effects.ObserveApply(cellInstance(1, 500, 10, 0, 15, nil))
@@ -203,27 +191,19 @@ func TestEffectCellStaleAndFreshInstancesStayApart(t *testing.T) {
 	}
 }
 
-func TestEffectCellEligibilityOfOtherKindsIsUnaffected(t *testing.T) {
+func TestEffectCellOnlyVerifiedHUDStatusesBecomeCells(t *testing.T) {
 	p := newEffectViewProcessor()
-	// A HUD cue without other evidence, a modifier without one, and each reason an instance stays out.
-	p.effects.ObserveApply(cellInstance(1, 510, 10, 0, 15, func(e *EffectApplyEvent) {
-		e.CombatClass, e.CombatBasis = EffectCombatClassUnknown, effectCombatBasisNoEvidence
-		e.Static = &EffectStaticInfo{DurationPolicy: finitePolicy(), HUDCueTypes: []int32{2}}
-	}))
-	p.effects.ObserveApply(cellInstance(2, 511, 10, 0, 15, nil))
-	p.effects.ObserveApply(passiveApply(3, 512, 0, nil))
+	p.effects.ObserveApply(cellInstance(1, 510, 10, 0, 15, nil))
+	// Each reason an instance stays out: no HUD cue, no definition, and a cue the game draws without an arrow.
+	p.effects.ObserveApply(cellInstance(2, 511, 10, 0, 15, func(e *EffectApplyEvent) { e.Static = noHUDStatic() }))
+	p.effects.ObserveApply(cellInstance(3, 512, 10, 0, 15, func(e *EffectApplyEvent) { e.DefinitionLinked, e.Static = false, nil }))
 	p.effects.ObserveApply(cellInstance(4, 513, 10, 0, 15, func(e *EffectApplyEvent) {
-		e.CombatClass, e.CombatBasis = EffectCombatClassUnknown, effectCombatBasisNoEvidence
-		e.Static = &EffectStaticInfo{DurationPolicy: finitePolicy(), DeveloperTags: []string{"功能.逻辑状态标识.x"}}
-	}))
-	p.effects.ObserveApply(cellInstance(5, 514, 10, 0, 15, func(e *EffectApplyEvent) {
-		e.CombatClass, e.CombatBasis = EffectCombatClassUnknown, effectCombatBasisNoEvidence
-		e.Static = &EffectStaticInfo{DurationPolicy: finitePolicy()}
+		e.Static = &EffectStaticInfo{DurationPolicy: finitePolicy(), HUDCueTypes: []int32{24}}
 	}))
 	view := effectViewAt(p, 1)
-	requireEffectCounts(t, view, ViewEffectCounts{Tracked: 5, Active: 5, Local: 5, Internal: 1, Unclassified: 1, Passive: 1, Eligible: 2, Listed: 2, Cells: 2, ListedCells: 2})
-	if !view.Active[0].HUDIcon || view.Active[1].HUDIcon {
-		t.Fatalf("a HUD cue must come first and only it carries an icon: %+v", view.Active)
+	requireEffectCounts(t, view, ViewEffectCounts{Tracked: 4, Active: 4, Local: 4, NonHUD: 1, HUDUnresolved: 2, Eligible: 1, Listed: 1, Cells: 1, ListedCells: 1})
+	if !view.Active[0].HUDIcon || *view.Active[0].EffectID != 510 || view.Active[0].Polarity != EffectPolarityDebuff {
+		t.Fatalf("listed cell = %+v", view.Active[0])
 	}
 }
 

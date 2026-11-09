@@ -94,35 +94,21 @@ func TestEffectElementsMatchTheOfficialMasterNames(t *testing.T) {
 	}
 }
 
-func TestGenericHUDIconsAreThoseSharedByManyDefinitions(t *testing.T) {
-	db := openProductMaster(t)
-	defer db.Close()
-	statics := map[uint64]buffStaticParameters{}
-	if err := loadBuffHUDCues(db, statics); err != nil {
-		t.Fatal(err)
-	}
-	for id, generic := range map[uint64]bool{110038111: true, 110025020: true, 110006406: true, 1312010033: false, 10041000: false, 2002202312: false} {
-		if statics[id].hudIconGeneric != generic {
-			t.Errorf("effect %d generic = %v, want %v", id, statics[id].hudIconGeneric, generic)
-		}
-	}
-}
-
 func TestViewProjectsTheStripFieldsWithoutChangingTheInstance(t *testing.T) {
 	p := newEffectViewProcessor()
 	p.effects.ObserveApply(displayApply(1, 900, 0, func(e *EffectApplyEvent) {
-		e.DefinitionLinked, e.Static = true, &EffectStaticInfo{HUDCueTypes: []int32{2}, HUDIconGeneric: true, ElementID: 3, ElementBasis: effectElementBasisAttribute}
+		e.DefinitionLinked, e.Static = true, &EffectStaticInfo{HUDCueTypes: []int32{2}, HUDPolarity: EffectPolarityDebuff, ElementID: 3, ElementBasis: effectElementBasisAttribute}
 	}))
 	view := p.viewEffects()
 	if len(view.Active) != 1 {
 		t.Fatalf("listed %d", len(view.Active))
 	}
 	got := view.Active[0]
-	if !got.HUDIcon || !got.HUDIconGeneric || got.ElementID == nil || *got.ElementID != 3 {
+	if !got.HUDIcon || got.ElementID == nil || *got.ElementID != 3 {
 		t.Fatalf("strip fields: %+v", got)
 	}
-	if got.Polarity != EffectPolarityUnclassified {
-		t.Fatalf("an element must not decide polarity: %s", got.Polarity)
+	if got.Polarity != EffectPolarityDebuff || got.Display.Target != EffectTargetEnemy {
+		t.Fatalf("the cue decides the row: %s, target %s", got.Polarity, got.Display.Target)
 	}
 	if got.ExpectedExpiry == nil {
 		t.Fatal("a timed effect must carry its expected expiry")

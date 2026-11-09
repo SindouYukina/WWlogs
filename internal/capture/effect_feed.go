@@ -55,11 +55,8 @@ func (p *processor) effectStaticInfo(effectID uint64) *EffectStaticInfo {
 	if !hasStatic && !hasTerm {
 		return nil
 	}
-	info := &EffectStaticInfo{DeveloperTags: append([]string(nil), static.tags...), HUDCueTypes: append([]int32(nil), static.hudCueTypes...), HUDIconGeneric: static.hudIconGeneric, HUDPolarity: static.hudPolarity, HUDHiddenOnMonsterHead: static.hudHiddenOnMonsterHead}
+	info := &EffectStaticInfo{DeveloperTags: append([]string(nil), static.tags...), HUDCueTypes: append([]int32(nil), static.hudCueTypes...), HUDPolarity: static.hudPolarity, HUDHiddenOnMonsterHead: static.hudHiddenOnMonsterHead}
 	info.ElementID, info.ElementBasis = effectElementFor(term.termID, hasTerm, static)
-	if info.ElementBasis == effectElementBasisAttribute {
-		info.ElementFamily = elementFamilyOfAttribute(static.attribute)
-	}
 	if hasTerm {
 		info.Term = &EffectTermInfo{TermID: term.termID, Name: term.name, Description: term.description, Status: string(term.status)}
 	}

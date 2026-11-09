@@ -113,8 +113,7 @@ body[data-view="overlay"][data-editing="true"] { --wails-draggable: drag; }
 .ww-effects-legend-mark { display: flex; justify-content: center; }
 .ww-effects-legend-samples { display: inline-flex; gap: var(--ww-effect-gap); }
 .ww-effects-legend-sample { display: block; flex: none; }
-.ww-effects-legend-sample[data-size="icon"] { width: var(--ww-effect-icon); }
-.ww-effects-legend-sample[data-size="gauge"] { width: var(--ww-effect-gauge); }
+.ww-effects-legend-sample { width: var(--ww-effect-icon); }
 .ww-effects-legend-more { width: var(--ww-effect-more); }
 .ww-effects-legend-note { margin: 0; padding-bottom: var(--ww-space-2); font-size: var(--ww-text-xs); color: var(--ww-text-3); }
 .ww-overlay-surface[data-surface="effects"]:has(> .ww-overlay-edit) { padding-bottom: calc(var(--ww-space-2) * 2 + var(--ww-overlay-edit-height)); }

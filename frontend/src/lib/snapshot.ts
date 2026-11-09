@@ -236,18 +236,17 @@ export interface Effect {
   holderName?: string
   holderNameStatus?: string
   sourceRelation: string
+  /** The direction the game's HUD draws: "buff" or "debuff" for every listed effect, "unclassified" otherwise. */
   polarity: string
   combatClass: string
   /** What the definition says the effect is for (Go EffectKind). */
   kind: string
   /** The game draws this effect in a HUD buff bar with an icon of its own; it says nothing about its meaning. */
   hudIcon?: boolean
-  /** The game shares this icon across many definitions, so it does not identify the effect. */
-  hudIconGeneric?: boolean
   /** The element the effect's own definition states (ElementInfo id). Absent means none is established. */
   elementId?: number
   /** The engine's display decision; listed effects are always eligible. */
-  display: { eligibility: string; target?: "team" | "enemy" | "unresolved" }
+  display: { eligibility: string; target?: "team" | "enemy" | "unresolved"; basis?: string }
   stackCount?: number
   lifecycle: string
   durationSeconds?: number
@@ -256,10 +255,10 @@ export interface Effect {
   /** Capture time the engine expects the effect to end. It changes only when the engine reports a new time. */
   expectedExpiry?: string
   stale?: boolean
-  /** How many tracker instances this cell stands for: one effect on several holders, or one bonus per element. */
+  /** How many tracker instances this cell stands for: one effect on several holders. */
   instances?: number
-  /** The game keeps refreshing this modifier, so its remaining time is a refresh period rather than a time left. */
-  maintained?: boolean
+  /** The engine trusts the remaining time enough to show it. */
+  showCountdown?: boolean
   firstObservedAt: string
   lastUpdatedAt: string
   endedAt?: string
@@ -277,10 +276,8 @@ export interface EffectCounts {
   active: number
   notLocal: number
   local: number
-  nonCombat: number
-  internal: number
-  unclassified: number
-  passive: number
+  nonHud: number
+  hudUnresolved: number
   predictedExpired: number
   eligible: number
   listed: number
@@ -288,6 +285,13 @@ export interface EffectCounts {
   cells: number
   listedCells: number
   truncatedCells: number
+}
+
+/** One row of the Effects Overlay, classified, filtered and ordered by the engine. */
+export interface EffectRow {
+  effects: Effect[]
+  /** Cells of this row beyond the engine's bound. */
+  truncated?: number
 }
 
 export interface ViewSnapshot {
@@ -324,7 +328,7 @@ export interface ViewSnapshot {
   vehicle?: Vehicle
   unassignedRole: UnassignedRole
   unassignedRoleShare?: number
-  effects: { status: string; reason?: string; active: Effect[]; recentEnded: Effect[]; counts: EffectCounts; clockStalled?: boolean }
+  effects: { status: string; reason?: string; buffs: EffectRow; debuffs: EffectRow; recentEnded: Effect[]; counts: EffectCounts; clockStalled?: boolean }
   /** DPS over time of the encounter shown (encounters.current, else the newest recent one); absent before any. */
   timeline?: Timeline
 }

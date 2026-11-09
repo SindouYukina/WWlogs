@@ -31,7 +31,7 @@ func (h *liveClockHarness) publish(wall float64) ViewEffects {
 func timedEffect(handle uint64, seconds float64) EffectApplyEvent {
 	return displayApply(handle, 500+handle, 0, func(e *EffectApplyEvent) {
 		e.DurationSeconds, e.RemainingSeconds = effectFloat(seconds), effectFloat(seconds)
-		e.DefinitionLinked, e.Static = true, &EffectStaticInfo{DurationPolicy: finitePolicy(), HUDCueTypes: []int32{2}}
+		e.DefinitionLinked, e.Static = true, hudStatic()
 	})
 }
 

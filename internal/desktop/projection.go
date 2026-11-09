@@ -117,6 +117,8 @@ func (p *displayProjection) encode(source *service.Snapshot, settings SettingsSt
 			copied.Encounters.Current = &current
 		}
 		copied.Effects.Active = effects(copied.Effects.Active)
+		copied.Effects.Buffs.Effects = effects(copied.Effects.Buffs.Effects)
+		copied.Effects.Debuffs.Effects = effects(copied.Effects.Debuffs.Effects)
 		copied.Effects.RecentEnded = effects(copied.Effects.RecentEnded)
 		view = &copied
 	}

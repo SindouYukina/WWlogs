@@ -35,7 +35,7 @@ func TestDisplayProjectionRelocalizesExistingSnapshotWithoutChangingCore(t *test
 	term := uint64(42)
 	role := capture.ViewRole{RoleID: 42, Name: "Original", NameStatus: "VERIFIED", DamageDealt: 1234, DamageTaken: 9}
 	effect := capture.ViewEffect{TermID: &term, HolderRoleID: &term, TermName: "Original", TermStatus: "CORRELATED", RemainingSeconds: new(float64)}
-	view := capture.ViewSnapshot{Roles: []capture.ViewRole{role}, Statistics: capture.ViewStatistics{DamageDealt: 1234, DamageTaken: 9}, Encounters: capture.ViewEncounters{Current: &capture.ViewEncounter{Roles: []capture.ViewRole{role}}}, Effects: capture.ViewEffects{Active: []capture.ViewEffect{effect}, RecentEnded: []capture.ViewEffect{effect}}}
+	view := capture.ViewSnapshot{Roles: []capture.ViewRole{role}, Statistics: capture.ViewStatistics{DamageDealt: 1234, DamageTaken: 9}, Encounters: capture.ViewEncounters{Current: &capture.ViewEncounter{Roles: []capture.ViewRole{role}}}, Effects: capture.ViewEffects{Buffs: capture.ViewEffectRow{Effects: []capture.ViewEffect{effect}}, RecentEnded: []capture.ViewEffect{effect}}}
 	before, _ := json.Marshal(view)
 	source := &service.Snapshot{Sequence: 7, View: &view}
 	projection := &displayProjection{resolver: resolver}
@@ -69,10 +69,10 @@ func TestDisplayProjectionRelocalizesExistingSnapshotWithoutChangingCore(t *test
 		return result
 	}
 	a, b := decode(first), decode(second)
-	if a.View.Roles[0].Name != "Example" || b.View.Roles[0].Name != "テスト" || b.View.Effects.Active[0].TermName != "テスト" || b.View.Effects.Active[0].HolderName != "テスト" || b.View.Effects.RecentEnded[0].TermName != "テスト" {
+	if a.View.Roles[0].Name != "Example" || b.View.Roles[0].Name != "テスト" || b.View.Effects.Buffs.Effects[0].TermName != "テスト" || b.View.Effects.Buffs.Effects[0].HolderName != "テスト" || b.View.Effects.RecentEnded[0].TermName != "テスト" {
 		t.Fatal("existing names were not relocalized")
 	}
-	if b.View.Effects.Active[0].TermStatus != "CORRELATED" || !reflect.DeepEqual(a.View.Statistics, b.View.Statistics) || a.Sequence != b.Sequence || b.LocaleRevision <= a.LocaleRevision {
+	if b.View.Effects.Buffs.Effects[0].TermStatus != "CORRELATED" || !reflect.DeepEqual(a.View.Statistics, b.View.Statistics) || a.Sequence != b.Sequence || b.LocaleRevision <= a.LocaleRevision {
 		t.Fatal("locale changed evidence, counters, or sequence")
 	}
 	after, _ := json.Marshal(view)

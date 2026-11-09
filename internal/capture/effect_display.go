@@ -8,9 +8,11 @@ import (
 	"time"
 )
 
-// Display eligibility is the product's one rule for which tracked effect instances the Effects Overlay lists. It reads
-// the tracker's snapshot and never changes it: an instance that is not eligible stays tracked, keeps its raw identity in
-// the development diagnostics, and is still counted under the reason it was left out.
+// Display eligibility is the product's one rule for which tracked effect instances the Effects Overlay lists. The rule is
+// the game's own: the Overlay shows what a HUD buff bar would draw, that is, an effect whose definition lists a HUD
+// GameplayCue with an icon and a BUFF or DEBUFF arrow (effect_hud_cues.go), on an entity a HUD surface reads. It reads the
+// tracker's snapshot and never changes it: an instance that is not eligible stays tracked, keeps its raw identity in the
+// development diagnostics, and is still counted under the reason it was left out.
 
 // EffectKind is what an effect definition says the effect is for. It is decided from the Master definition (glossary
 // term, attribute modifier, developer GameplayTag path) and the runtime relation, never from an effect ID list. Every
@@ -131,43 +133,42 @@ func classifyEffectKind(class EffectCombatClass, basis string, static *EffectSta
 type EffectDisplayEligibility string
 
 const (
-	// EffectDisplayEligible is an active instance with a local end and a player-facing kind.
+	// EffectDisplayEligible is a verified HUD status: an active local instance the game draws with an icon and a direction.
 	EffectDisplayEligible EffectDisplayEligibility = "eligible"
-	// EffectDisplayPredictedExpired is an instance past its expected expiry by more than effectDisplayExpiryGrace. Nothing
-	// confirmed its end: it stays tracked and returns if the game refreshes it, but it is no longer shown as active.
+	// EffectDisplayPredictedExpired is a verified HUD status past its expected expiry by more than effectDisplayExpiryGrace.
+	// Nothing confirmed its end: it stays tracked and returns if the game refreshes it, but it is no longer shown as active.
 	EffectDisplayPredictedExpired EffectDisplayEligibility = "predicted_expired"
-	// EffectDisplayPassive is a permanent modifier: its definition never expires, the server reports no duration, and the
-	// game draws no HUD icon for it. It is true of the holder for the whole scene, so it carries no information in combat.
-	EffectDisplayPassive EffectDisplayEligibility = "passive"
 	// EffectDisplayEstimatedExpired is an instance whose estimated expiry passed long ago without a REMOVE. The game
 	// most likely ended it; the tracker keeps it only until a REMOVE or its bound.
 	EffectDisplayEstimatedExpired EffectDisplayEligibility = "estimated_expired"
 	// EffectDisplayNotLocal is an instance whose holder and source are both not proven to be the local team.
 	EffectDisplayNotLocal EffectDisplayEligibility = "not_local"
-	// EffectDisplayNonCombat is an instance of kind non_combat.
-	EffectDisplayNonCombat EffectDisplayEligibility = "non_combat"
-	// EffectDisplayInternal is an instance of kind internal_state.
-	EffectDisplayInternal EffectDisplayEligibility = "internal"
-	// EffectDisplayUnclassified is a local instance whose meaning is not established (kind unknown or runtime_link). It is
-	// counted, never listed and never called internal: unknown is not evidence that an effect is irrelevant.
-	EffectDisplayUnclassified EffectDisplayEligibility = "unclassified"
+	// EffectDisplayNonHUD is a verified non-HUD status: the game draws no buff-bar item for it, because its definition
+	// lists no HUD cue or its holder is not an entity any HUD surface reads.
+	EffectDisplayNonHUD EffectDisplayEligibility = "non_hud"
+	// EffectDisplayHUDUnresolved is an unresolved HUD mapping. It is not a statement that the game shows nothing: the
+	// definition is missing, the game draws no direction for it, or the holder cannot be placed on a HUD surface.
+	EffectDisplayHUDUnresolved EffectDisplayEligibility = "hud_unresolved"
+)
+
+// Display bases name why an instance is non-HUD or unresolved, for the development diagnostics.
+const (
+	effectDisplayBasisNoDefinition     = "definition_missing"
+	effectDisplayBasisNoCue            = "no_hud_cue"
+	effectDisplayBasisSummonHolder     = "holder_is_not_a_hud_surface"
+	effectDisplayBasisNoDirection      = "hud_cue_has_no_direction"
+	effectDisplayBasisHolderUnresolved = "holder_unresolved"
+	effectDisplayBasisMonsterHead      = "hidden_on_monster_heads"
 )
 
 const (
 	// effectDisplayExpiryGrace is how long an instance past its expected expiry stays shown while a refresh or a REMOVE
 	// may still be on the way. It only affects what is listed; the tracker keeps the instance for effectOverdueRetention.
 	effectDisplayExpiryGrace = 2 * time.Second
-	// effectMaintainedDurationLimit is the longest server duration of a modifier treated as maintained rather than timed.
-	// In the archived captures every display-eligible modifier at or under this length without a HUD icon is refreshed by
-	// the game about once per duration, so its countdown shows a refresh period, not a time left.
-	effectMaintainedDurationLimit = 2.0
 	// effectCellExpiryTolerance bounds how far apart the expected expiries of one cell may lie, measured from its earliest
 	// member. It absorbs instances the game updates in one tick; 12,685 of 12,699 sampled multi-instance cells have no
 	// spread at all.
 	effectCellExpiryTolerance = 100 * time.Millisecond
-	// effectDurationPolicyInfinite is Buff.DurationPolicy for a definition without an end. Observed: no instance of such a
-	// definition ever reported a finite duration.
-	effectDurationPolicyInfinite = 1
 )
 
 // EffectDisplayTarget says whom an effect is on, from the runtime relation of its holder.
@@ -182,40 +183,46 @@ const (
 	EffectTargetUnresolved EffectDisplayTarget = "unresolved"
 )
 
-// EffectDisplay is the display decision for one instance.
+// EffectDisplay is the display decision for one instance. Basis names the reason of a non-HUD or unresolved decision.
 type EffectDisplay struct {
 	Eligibility EffectDisplayEligibility `json:"eligibility"`
 	Target      EffectDisplayTarget      `json:"target,omitempty"`
+	Basis       string                   `json:"basis,omitempty"`
 }
 
-// effectIsPassive reports a permanent modifier (EffectDisplayPassive). A buff marker counts only when it came from a scene
-// snapshot, because a marker applied during combat records something that just happened.
-func effectIsPassive(effect EffectInstanceSnapshot) bool {
+// effectHUDDecision applies the game's HUD rule to an active local instance. RoleBuffView and RoleUniqueBuffView read the
+// current role and the player's own entity (BuffItemContainer.RefreshBuff), and the monster and boss views read that
+// monster, so a summon holder is on no surface. A monster head hides a cue whose Parameters[4] is "1" but a boss bar
+// does not; the capture cannot tell them apart, so such an instance stays unresolved instead of being guessed either way.
+func effectHUDDecision(effect EffectInstanceSnapshot, target EffectDisplayTarget) (EffectDisplayEligibility, string) {
 	static := effect.Static
-	if static == nil || static.DurationPolicy == nil || *static.DurationPolicy != effectDurationPolicyInfinite {
-		return false
+	if static == nil {
+		return EffectDisplayHUDUnresolved, effectDisplayBasisNoDefinition
 	}
-	if len(static.HUDCueTypes) > 0 || effect.ServerDurationSeconds != nil {
-		return false
+	if len(static.HUDCueTypes) == 0 {
+		return EffectDisplayNonHUD, effectDisplayBasisNoCue
 	}
-	return effect.Kind == EffectKindStatModifier || (effect.Kind == EffectKindBuffMarker && effect.Origin == EffectOriginSnapshot)
-}
-
-// effectIsMaintained reports a modifier the game keeps alive by refreshing a very short duration. It is shown without a
-// countdown. A HUD icon proves the game presents it as a timed status, so an effect with one always keeps its time.
-func effectIsMaintained(effect EffectInstanceSnapshot) bool {
-	if effect.Kind != EffectKindStatModifier || effect.ServerDurationSeconds == nil {
-		return false
+	switch target {
+	case EffectTargetTeam:
+		if effect.HolderRelation == EffectRelationLocalOwned {
+			return EffectDisplayNonHUD, effectDisplayBasisSummonHolder
+		}
+	case EffectTargetEnemy:
+		if static.HUDHiddenOnMonsterHead {
+			return EffectDisplayHUDUnresolved, effectDisplayBasisMonsterHead
+		}
+	default:
+		return EffectDisplayHUDUnresolved, effectDisplayBasisHolderUnresolved
 	}
-	if effect.Static != nil && len(effect.Static.HUDCueTypes) > 0 {
-		return false
+	if effectPolarityFor(effect) == EffectPolarityUnclassified {
+		return EffectDisplayHUDUnresolved, effectDisplayBasisNoDirection
 	}
-	return *effect.ServerDurationSeconds <= effectMaintainedDurationLimit
+	return EffectDisplayEligible, ""
 }
 
 // effectDisplayFor decides whether an instance is listed. The order of the checks fixes which reason an instance is
-// counted under: an ended estimate first, then the local relation, then the kind, then whether a player-facing kind is
-// permanent or already past its time.
+// counted under: an ended estimate first, then the local relation, then the HUD rule, then whether a status the game
+// draws is already past its time.
 func effectDisplayFor(effect EffectInstanceSnapshot) EffectDisplay {
 	if effect.Lifecycle != EffectLifecycleActive {
 		return EffectDisplay{Eligibility: EffectDisplayEstimatedExpired}
@@ -231,17 +238,8 @@ func effectDisplayFor(effect EffectInstanceSnapshot) EffectDisplay {
 	case effect.HolderRelation == EffectRelationNonPlayer:
 		target = EffectTargetEnemy
 	}
-	switch effect.Kind {
-	case EffectKindElementAilment, EffectKindStatModifier, EffectKindBuffMarker, EffectKindHUDEffect, EffectKindCombatState:
-	case EffectKindNonCombat:
-		return EffectDisplay{Eligibility: EffectDisplayNonCombat, Target: target}
-	case EffectKindInternalState:
-		return EffectDisplay{Eligibility: EffectDisplayInternal, Target: target}
-	default:
-		return EffectDisplay{Eligibility: EffectDisplayUnclassified, Target: target}
-	}
-	if effectIsPassive(effect) {
-		return EffectDisplay{Eligibility: EffectDisplayPassive, Target: target}
+	if eligibility, basis := effectHUDDecision(effect, target); eligibility != EffectDisplayEligible {
+		return EffectDisplay{Eligibility: eligibility, Target: target, Basis: basis}
 	}
 	if effect.OverdueSeconds != nil && *effect.OverdueSeconds > effectDisplayExpiryGrace.Seconds() {
 		return EffectDisplay{Eligibility: EffectDisplayPredictedExpired, Target: target}
@@ -250,8 +248,8 @@ func effectDisplayFor(effect EffectInstanceSnapshot) EffectDisplay {
 }
 
 // effectDisplayCell is one cell of the Effects Overlay: the eligible instances the strip cannot tell apart. The strip
-// shows no holder and no attribute, so the same effect copied onto three team members, or one bonus the game implements
-// as one definition per element, would otherwise read as many identical cells. Instances are never merged in the tracker.
+// shows no holder, so the same effect copied onto three team members would otherwise read as identical cells. Instances
+// are never merged in the tracker.
 //
 // representative gives the cell its stable identity and definition; earliest gives its countdown, so the cell never reads
 // later than its first member's end.
@@ -259,7 +257,6 @@ type effectDisplayCell struct {
 	representative EffectInstanceSnapshot
 	earliest       EffectInstanceSnapshot
 	members        []EffectInstanceSnapshot
-	elementFanOut  bool
 }
 
 // effectCellIdentity is what every instance of a cell must share, because the strip draws one of each: one icon and kind,
@@ -309,6 +306,37 @@ func (a effectCellIdentity) less(b effectCellIdentity) bool {
 // instances returns how many tracker instances the cell stands for.
 func (c effectDisplayCell) instances() int { return len(c.members) }
 
+// effectReliableExpiry is the moment a cell shows its member ends, when its time is one the engine stands behind.
+func effectReliableExpiry(effect EffectInstanceSnapshot) (time.Time, bool) {
+	if effect.StaleSinceTransportLoss || effect.Lifecycle != EffectLifecycleActive || effect.RemainingStatus != EffectRemainingEstimated || effect.ExpectedExpiry == nil {
+		return time.Time{}, false
+	}
+	return *effect.ExpectedExpiry, true
+}
+
+// effectCellCountsDown reports that a cell's remaining time is a trustworthy countdown.
+func effectCellCountsDown(effect EffectInstanceSnapshot) bool {
+	_, timed := effectReliableExpiry(effect)
+	return timed && effect.RemainingSeconds != nil
+}
+
+// sortEffectCells orders cells for display: soonest to end first, cells without a reliable time last, and the instance
+// key breaks every tie. The expiry only moves when the engine reports a new time, so time passing never reorders cells,
+// and cells that end together never trade places.
+func sortEffectCells(cells []effectDisplayCell) {
+	sort.SliceStable(cells, func(i, j int) bool {
+		expiryI, timedI := effectReliableExpiry(cells[i].earliest)
+		expiryJ, timedJ := effectReliableExpiry(cells[j].earliest)
+		if timedI != timedJ {
+			return timedI
+		}
+		if timedI && !expiryI.Equal(expiryJ) {
+			return expiryI.Before(expiryJ)
+		}
+		return effectViewKey(cells[i].representative) < effectViewKey(cells[j].representative)
+	})
+}
+
 func effectExpiryOf(effect EffectInstanceSnapshot) (time.Time, bool) {
 	if effect.ExpectedExpiry == nil {
 		return time.Time{}, false
@@ -335,12 +363,6 @@ func sameCellTiming(a, b EffectInstanceSnapshot) bool {
 	}
 	gap := expiryA.Sub(expiryB)
 	return gap <= effectCellExpiryTolerance && gap >= -effectCellExpiryTolerance
-}
-
-// endTogether reports whether two instances may share a cell by time. A maintained instance shows no countdown, so its
-// refresh phase cannot be told apart on screen.
-func endTogether(a, b EffectInstanceSnapshot) bool {
-	return (effectIsMaintained(a) && effectIsMaintained(b)) || sameCellTiming(a, b)
 }
 
 // sortForCells puts instances in expiry order, untimed last, so that instances ending together are adjacent.
@@ -395,7 +417,7 @@ func effectCellRuns(instances []EffectInstanceSnapshot) [][]EffectInstanceSnapsh
 		var run, rest []EffectInstanceSnapshot
 		for _, instance := range instances {
 			holder := holderKey{instance.HolderEntityID, instance.HolderGeneration}
-			if _, taken := holders[holder]; taken || !endTogether(first, instance) {
+			if _, taken := holders[holder]; taken || !sameCellTiming(first, instance) {
 				rest = append(rest, instance)
 				continue
 			}
@@ -408,24 +430,8 @@ func effectCellRuns(instances []EffectInstanceSnapshot) [][]EffectInstanceSnapsh
 	return runs
 }
 
-// effectHolderSignature names the set of holders of a cell, independent of their order.
-func effectHolderSignature(members []EffectInstanceSnapshot) string {
-	holders := make([]uint64, 0, len(members))
-	for _, member := range members {
-		holders = append(holders, member.HolderEntityID)
-	}
-	sort.Slice(holders, func(i, j int) bool { return holders[i] < holders[j] })
-	var signature strings.Builder
-	for _, holder := range holders {
-		fmt.Fprintf(&signature, "%d,", holder)
-	}
-	return signature.String()
-}
-
 // effectDisplayCells groups eligible instances into cells. Instances of one identity on different holders that end
-// together become one cell. Then cells that together cover all six elements of one element attribute family, on the same
-// holders, ending together and agreeing on stack, duration and trust, become one cell; five of six stay separate. The
-// result is deterministic for a given input and independent of the input order.
+// together become one cell. The result is deterministic for a given input and independent of the input order.
 func effectDisplayCells(eligible []EffectInstanceSnapshot) []effectDisplayCell {
 	groups := make(map[effectCellIdentity][]EffectInstanceSnapshot, len(eligible))
 	var identities []effectCellIdentity
@@ -447,84 +453,7 @@ func effectDisplayCells(eligible []EffectInstanceSnapshot) []effectDisplayCell {
 			cells = append(cells, newEffectDisplayCell(run))
 		}
 	}
-	return mergeElementFanOut(cells)
-}
-
-// mergeElementFanOut folds a complete set of one element attribute family into a single cell. The merged cell states no
-// element: it concerns all of them.
-func mergeElementFanOut(cells []effectDisplayCell) []effectDisplayCell {
-	type fanOutKey struct {
-		family     uint64
-		stack      uint64
-		durationMs int64
-		stale      bool
-		holders    string
-	}
-	groups := map[fanOutKey][]int{}
-	var keys []fanOutKey
-	for index, cell := range cells {
-		static := cell.representative.Static
-		if static == nil || static.ElementFamily == 0 || cell.representative.Kind != EffectKindStatModifier {
-			continue
-		}
-		key := fanOutKey{family: static.ElementFamily, stack: effectStackOf(cell.representative), durationMs: effectDurationMs(cell.representative), stale: cell.representative.StaleSinceTransportLoss, holders: effectHolderSignature(cell.members)}
-		if _, seen := groups[key]; !seen {
-			keys = append(keys, key)
-		}
-		groups[key] = append(groups[key], index)
-	}
-	sort.Slice(keys, func(i, j int) bool {
-		a, b := keys[i], keys[j]
-		if a.family != b.family {
-			return a.family < b.family
-		}
-		if a.stack != b.stack {
-			return a.stack < b.stack
-		}
-		if a.durationMs != b.durationMs {
-			return a.durationMs < b.durationMs
-		}
-		if a.stale != b.stale {
-			return !a.stale
-		}
-		return a.holders < b.holders
-	})
-	absorbed := make([]bool, len(cells))
-	var merged []effectDisplayCell
-	for _, key := range keys {
-		indexes := groups[key]
-		sort.SliceStable(indexes, func(i, j int) bool {
-			return effectEndsBefore(cells[indexes[i]].earliest, cells[indexes[j]].earliest)
-		})
-		for start := 0; start < len(indexes); {
-			end := start + 1
-			for end < len(indexes) && endTogether(cells[indexes[start]].earliest, cells[indexes[end]].earliest) {
-				end++
-			}
-			elements := map[uint64]bool{}
-			for _, index := range indexes[start:end] {
-				elements[cells[index].representative.Static.ElementID] = true
-			}
-			if end-start == 6 && len(elements) == 6 {
-				var members []EffectInstanceSnapshot
-				for _, index := range indexes[start:end] {
-					members = append(members, cells[index].members...)
-					absorbed[index] = true
-				}
-				cell := newEffectDisplayCell(members)
-				cell.elementFanOut = true
-				merged = append(merged, cell)
-			}
-			start = end
-		}
-	}
-	result := make([]effectDisplayCell, 0, len(cells))
-	for index, cell := range cells {
-		if !absorbed[index] {
-			result = append(result, cell)
-		}
-	}
-	return append(result, merged...)
+	return cells
 }
 
 // effectPolarityFor returns the direction the game's HUD draws for the effect: the BUFF or DEBUFF arrow its definition's
@@ -542,7 +471,7 @@ func effectPolarityFor(effect EffectInstanceSnapshot) EffectPolarity {
 //
 //	Tracked  = Active + EstimatedExpired
 //	Active   = NotLocal + Local
-//	Local    = NonCombat + Internal + Unclassified + Passive + PredictedExpired + Eligible
+//	Local    = NonHUD + HUDUnresolved + PredictedExpired + Eligible
 //	Eligible = Listed + Truncated
 //	Cells    = ListedCells + TruncatedCells
 //
@@ -555,10 +484,8 @@ type ViewEffectCounts struct {
 	Active           int `json:"active"`
 	NotLocal         int `json:"notLocal"`
 	Local            int `json:"local"`
-	NonCombat        int `json:"nonCombat"`
-	Internal         int `json:"internal"`
-	Unclassified     int `json:"unclassified"`
-	Passive          int `json:"passive"`
+	NonHUD           int `json:"nonHud"`
+	HUDUnresolved    int `json:"hudUnresolved"`
 	PredictedExpired int `json:"predictedExpired"`
 	Eligible         int `json:"eligible"`
 	Listed           int `json:"listed"`
@@ -582,14 +509,10 @@ func (c *ViewEffectCounts) add(eligibility EffectDisplayEligibility) {
 	c.Active++
 	c.Local++
 	switch eligibility {
-	case EffectDisplayNonCombat:
-		c.NonCombat++
-	case EffectDisplayInternal:
-		c.Internal++
-	case EffectDisplayUnclassified:
-		c.Unclassified++
-	case EffectDisplayPassive:
-		c.Passive++
+	case EffectDisplayNonHUD:
+		c.NonHUD++
+	case EffectDisplayHUDUnresolved:
+		c.HUDUnresolved++
 	case EffectDisplayPredictedExpired:
 		c.PredictedExpired++
 	default:
@@ -604,8 +527,8 @@ func (c ViewEffectCounts) accountingError(listedCells int) error {
 		return fmt.Errorf("tracked %d != active %d + estimated expired %d", c.Tracked, c.Active, c.EstimatedExpired)
 	case c.Active != c.NotLocal+c.Local:
 		return fmt.Errorf("active %d != not local %d + local %d", c.Active, c.NotLocal, c.Local)
-	case c.Local != c.NonCombat+c.Internal+c.Unclassified+c.Passive+c.PredictedExpired+c.Eligible:
-		return fmt.Errorf("local %d != non-combat %d + internal %d + unclassified %d + passive %d + predicted expired %d + eligible %d", c.Local, c.NonCombat, c.Internal, c.Unclassified, c.Passive, c.PredictedExpired, c.Eligible)
+	case c.Local != c.NonHUD+c.HUDUnresolved+c.PredictedExpired+c.Eligible:
+		return fmt.Errorf("local %d != non-HUD %d + HUD unresolved %d + predicted expired %d + eligible %d", c.Local, c.NonHUD, c.HUDUnresolved, c.PredictedExpired, c.Eligible)
 	case c.Eligible != c.Listed+c.Truncated:
 		return fmt.Errorf("eligible %d != listed %d + truncated %d", c.Eligible, c.Listed, c.Truncated)
 	case c.Cells != c.ListedCells+c.TruncatedCells:

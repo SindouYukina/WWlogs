@@ -79,6 +79,12 @@ const baseDps = [14800, 8600, 5200, 11000]
 const skillWeights = [0.38, 0.27, 0.18, 0.11, 0.06]
 const skillHitSize = [6400, 3800, 11200, 2200, 15800]
 
+/** Stands in for the engine's row: soonest to end first, effects without a time last. Mock data only. */
+function mockEffectRow(effects: readonly Effect[], polarity: "buff" | "debuff"): { effects: Effect[] } {
+  const end = (effect: Effect) => effect.remainingSeconds ?? Number.POSITIVE_INFINITY
+  return { effects: effects.filter(effect => effect.polarity === polarity).sort((a, b) => end(a) - end(b) || (a.key < b.key ? -1 : 1)) }
+}
+
 export class MockFeed {
   private random = seededRandom(0x57_57)
   private sequence = 1
@@ -189,8 +195,8 @@ export class MockFeed {
       duration,
       remaining: duration,
       stacks: master.stackLimit > 1 ? 1 : undefined,
-      // Illustrative only: production shows a polarity only when the engine has proven it.
-      polarity: (["buff", "debuff", "unclassified"] as const)[this.effectCounter % 3]!,
+      // Illustrative only: production takes the direction from the game's HUD cue.
+      polarity: (["buff", "debuff"] as const)[this.effectCounter % 2]!,
       holderRoleId: this.roles[this.effectCounter % this.roles.length]?.roleId,
       holderRelation: "local_role",
       firstObservedAt: stamp,
@@ -394,9 +400,9 @@ export class MockFeed {
       polarity: effect.polarity,
       combatClass: "combat",
       kind: "stat_modifier",
-      // Illustrative: the mock asks for each effect's game icon; one without an image keeps the neutral mark.
+      // Illustrative: the mock asks for each effect's game icon; one without an image draws an empty cell.
       hudIcon: true,
-      display: { eligibility: "eligible", target: "team" as const },
+      display: { eligibility: "eligible", target: effect.polarity === "debuff" && this.effectCounter % 4 === 1 ? "enemy" as const : "team" as const },
       stackCount: effect.stacks,
       lifecycle: "active",
       durationSeconds: effect.duration,
@@ -406,6 +412,7 @@ export class MockFeed {
       firstObservedAt: effect.firstObservedAt,
       lastUpdatedAt: effect.lastUpdatedAt,
       evidence: "server_notify",
+      showCountdown: !effect.unknownTimer && effect.remaining !== undefined,
     }))
     const zeroDps = { status: "unavailable" as const, damage: 0, durationSeconds: 0, value: 0 }
     return {
@@ -449,7 +456,7 @@ export class MockFeed {
         vehicle,
         unassignedRole,
         // Mock effects are all eligible; nothing is tracked beyond them.
-        effects: { status: "complete", active, recentEnded: [], counts: { tracked: active.length, estimatedExpired: 0, active: active.length, notLocal: 0, local: active.length, nonCombat: 0, internal: 0, unclassified: 0, passive: 0, predictedExpired: 0, eligible: active.length, listed: active.length, truncated: 0, cells: active.length, listedCells: active.length, truncatedCells: 0 } },
+        effects: { status: "complete", buffs: mockEffectRow(active, "buff"), debuffs: mockEffectRow(active, "debuff"), recentEnded: [], counts: { tracked: active.length, estimatedExpired: 0, active: active.length, notLocal: 0, local: active.length, nonHud: 0, hudUnresolved: 0, predictedExpired: 0, eligible: active.length, listed: active.length, truncated: 0, cells: active.length, listedCells: active.length, truncatedCells: 0 } },
       },
     }
   }
