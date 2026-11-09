@@ -2,6 +2,7 @@ package capture
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -160,7 +161,9 @@ const (
 	// In the archived captures every display-eligible modifier at or under this length without a HUD icon is refreshed by
 	// the game about once per duration, so its countdown shows a refresh period, not a time left.
 	effectMaintainedDurationLimit = 2.0
-	// effectCellExpiryTolerance bounds how far apart the expected expiries of one cell may lie.
+	// effectCellExpiryTolerance bounds how far apart the expected expiries of one cell may lie, measured from its earliest
+	// member. It absorbs instances the game updates in one tick; 12,685 of 12,699 sampled multi-instance cells have no
+	// spread at all.
 	effectCellExpiryTolerance = 100 * time.Millisecond
 	// effectDurationPolicyInfinite is Buff.DurationPolicy for a definition without an end. Observed: no instance of such a
 	// definition ever reported a finite duration.
@@ -249,10 +252,58 @@ func effectDisplayFor(effect EffectInstanceSnapshot) EffectDisplay {
 // effectDisplayCell is one cell of the Effects Overlay: the eligible instances the strip cannot tell apart. The strip
 // shows no holder and no attribute, so the same effect copied onto three team members, or one bonus the game implements
 // as one definition per element, would otherwise read as many identical cells. Instances are never merged in the tracker.
+//
+// representative gives the cell its stable identity and definition; earliest gives its countdown, so the cell never reads
+// later than its first member's end.
 type effectDisplayCell struct {
 	representative EffectInstanceSnapshot
+	earliest       EffectInstanceSnapshot
 	members        []EffectInstanceSnapshot
 	elementFanOut  bool
+}
+
+// effectCellIdentity is what every instance of a cell must share, because the strip draws one of each: one icon and kind,
+// one target side, one stack number, one progress against one duration, and one trust state. The source is not part of it:
+// the strip does not show one, and copies a team applies to itself carry one source per holder. Two instances on the same
+// holder never share a cell (effectCellRuns), so independent instances are not hidden behind one.
+type effectCellIdentity struct {
+	effectID   uint64
+	target     EffectDisplayTarget
+	kind       EffectKind
+	stack      uint64
+	durationMs int64
+	stale      bool
+}
+
+func effectDurationMs(effect EffectInstanceSnapshot) int64 {
+	if effect.ServerDurationSeconds == nil {
+		return -1
+	}
+	return int64(math.Round(*effect.ServerDurationSeconds * 1000))
+}
+
+func effectCellIdentityOf(effect EffectInstanceSnapshot) effectCellIdentity {
+	identity := effectCellIdentity{target: effectDisplayFor(effect).Target, kind: effect.Kind, stack: effectStackOf(effect), durationMs: effectDurationMs(effect), stale: effect.StaleSinceTransportLoss}
+	if effect.EffectID != nil {
+		identity.effectID = *effect.EffectID
+	}
+	return identity
+}
+
+func (a effectCellIdentity) less(b effectCellIdentity) bool {
+	switch {
+	case a.effectID != b.effectID:
+		return a.effectID < b.effectID
+	case a.target != b.target:
+		return a.target < b.target
+	case a.kind != b.kind:
+		return a.kind < b.kind
+	case a.stack != b.stack:
+		return a.stack < b.stack
+	case a.durationMs != b.durationMs:
+		return a.durationMs < b.durationMs
+	}
+	return !a.stale && b.stale
 }
 
 // instances returns how many tracker instances the cell stands for.
@@ -286,6 +337,12 @@ func sameCellTiming(a, b EffectInstanceSnapshot) bool {
 	return gap <= effectCellExpiryTolerance && gap >= -effectCellExpiryTolerance
 }
 
+// endTogether reports whether two instances may share a cell by time. A maintained instance shows no countdown, so its
+// refresh phase cannot be told apart on screen.
+func endTogether(a, b EffectInstanceSnapshot) bool {
+	return (effectIsMaintained(a) && effectIsMaintained(b)) || sameCellTiming(a, b)
+}
+
 // sortForCells puts instances in expiry order, untimed last, so that instances ending together are adjacent.
 func sortForCells(effects []EffectInstanceSnapshot) {
 	sort.SliceStable(effects, func(i, j int) bool {
@@ -301,14 +358,54 @@ func sortForCells(effects []EffectInstanceSnapshot) {
 	})
 }
 
+func effectEndsBefore(a, b EffectInstanceSnapshot) bool {
+	expiryA, timedA := effectExpiryOf(a)
+	expiryB, timedB := effectExpiryOf(b)
+	if timedA != timedB {
+		return timedA
+	}
+	if timedA && !expiryA.Equal(expiryB) {
+		return expiryA.Before(expiryB)
+	}
+	return effectViewKey(a) < effectViewKey(b)
+}
+
 func newEffectDisplayCell(members []EffectInstanceSnapshot) effectDisplayCell {
-	representative := members[0]
+	representative, earliest := members[0], members[0]
 	for _, member := range members[1:] {
 		if effectViewKey(member) < effectViewKey(representative) {
 			representative = member
 		}
+		if effectEndsBefore(member, earliest) {
+			earliest = member
+		}
 	}
-	return effectDisplayCell{representative: representative, members: members}
+	return effectDisplayCell{representative: representative, earliest: earliest, members: members}
+}
+
+// effectCellRuns splits instances of one identity into cells. A cell ends within the tolerance of its earliest member and
+// holds at most one instance per holder.
+func effectCellRuns(instances []EffectInstanceSnapshot) [][]EffectInstanceSnapshot {
+	sortForCells(instances)
+	var runs [][]EffectInstanceSnapshot
+	for len(instances) > 0 {
+		type holderKey struct{ entity, generation uint64 }
+		first := instances[0]
+		holders := map[holderKey]struct{}{}
+		var run, rest []EffectInstanceSnapshot
+		for _, instance := range instances {
+			holder := holderKey{instance.HolderEntityID, instance.HolderGeneration}
+			if _, taken := holders[holder]; taken || !endTogether(first, instance) {
+				rest = append(rest, instance)
+				continue
+			}
+			holders[holder] = struct{}{}
+			run = append(run, instance)
+		}
+		runs = append(runs, run)
+		instances = rest
+	}
+	return runs
 }
 
 // effectHolderSignature names the set of holders of a cell, independent of their order.
@@ -325,36 +422,29 @@ func effectHolderSignature(members []EffectInstanceSnapshot) string {
 	return signature.String()
 }
 
-// effectDisplayCells groups eligible instances into cells. Instances of one effect ID that end together and share a
-// stack count become one cell. Then cells that together cover all six elements of one element attribute family, on the
-// same holders, ending together and with the same stack count, become one cell; five of six stay separate. The result
-// is deterministic for a given input and independent of the input order.
+// effectDisplayCells groups eligible instances into cells. Instances of one identity on different holders that end
+// together become one cell. Then cells that together cover all six elements of one element attribute family, on the same
+// holders, ending together and agreeing on stack, duration and trust, become one cell; five of six stay separate. The
+// result is deterministic for a given input and independent of the input order.
 func effectDisplayCells(eligible []EffectInstanceSnapshot) []effectDisplayCell {
-	byID := make(map[uint64][]EffectInstanceSnapshot, len(eligible))
-	var ids []uint64
+	groups := make(map[effectCellIdentity][]EffectInstanceSnapshot, len(eligible))
+	var identities []effectCellIdentity
 	cells := make([]effectDisplayCell, 0, len(eligible))
 	for _, effect := range eligible {
 		if effect.EffectID == nil {
 			cells = append(cells, newEffectDisplayCell([]EffectInstanceSnapshot{effect}))
 			continue
 		}
-		id := *effect.EffectID
-		if _, seen := byID[id]; !seen {
-			ids = append(ids, id)
+		identity := effectCellIdentityOf(effect)
+		if _, seen := groups[identity]; !seen {
+			identities = append(identities, identity)
 		}
-		byID[id] = append(byID[id], effect)
+		groups[identity] = append(groups[identity], effect)
 	}
-	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
-	for _, id := range ids {
-		instances := byID[id]
-		sortForCells(instances)
-		for start := 0; start < len(instances); {
-			end := start + 1
-			for end < len(instances) && sameCellTiming(instances[end-1], instances[end]) && effectStackOf(instances[end-1]) == effectStackOf(instances[end]) {
-				end++
-			}
-			cells = append(cells, newEffectDisplayCell(append([]EffectInstanceSnapshot(nil), instances[start:end]...)))
-			start = end
+	sort.Slice(identities, func(i, j int) bool { return identities[i].less(identities[j]) })
+	for _, identity := range identities {
+		for _, run := range effectCellRuns(groups[identity]) {
+			cells = append(cells, newEffectDisplayCell(run))
 		}
 	}
 	return mergeElementFanOut(cells)
@@ -364,9 +454,11 @@ func effectDisplayCells(eligible []EffectInstanceSnapshot) []effectDisplayCell {
 // element: it concerns all of them.
 func mergeElementFanOut(cells []effectDisplayCell) []effectDisplayCell {
 	type fanOutKey struct {
-		family  uint64
-		stack   uint64
-		holders string
+		family     uint64
+		stack      uint64
+		durationMs int64
+		stale      bool
+		holders    string
 	}
 	groups := map[fanOutKey][]int{}
 	var keys []fanOutKey
@@ -375,7 +467,7 @@ func mergeElementFanOut(cells []effectDisplayCell) []effectDisplayCell {
 		if static == nil || static.ElementFamily == 0 || cell.representative.Kind != EffectKindStatModifier {
 			continue
 		}
-		key := fanOutKey{family: static.ElementFamily, stack: effectStackOf(cell.representative), holders: effectHolderSignature(cell.members)}
+		key := fanOutKey{family: static.ElementFamily, stack: effectStackOf(cell.representative), durationMs: effectDurationMs(cell.representative), stale: cell.representative.StaleSinceTransportLoss, holders: effectHolderSignature(cell.members)}
 		if _, seen := groups[key]; !seen {
 			keys = append(keys, key)
 		}
@@ -389,6 +481,12 @@ func mergeElementFanOut(cells []effectDisplayCell) []effectDisplayCell {
 		if a.stack != b.stack {
 			return a.stack < b.stack
 		}
+		if a.durationMs != b.durationMs {
+			return a.durationMs < b.durationMs
+		}
+		if a.stale != b.stale {
+			return !a.stale
+		}
 		return a.holders < b.holders
 	})
 	absorbed := make([]bool, len(cells))
@@ -396,16 +494,11 @@ func mergeElementFanOut(cells []effectDisplayCell) []effectDisplayCell {
 	for _, key := range keys {
 		indexes := groups[key]
 		sort.SliceStable(indexes, func(i, j int) bool {
-			expiryI, timedI := effectExpiryOf(cells[indexes[i]].representative)
-			expiryJ, timedJ := effectExpiryOf(cells[indexes[j]].representative)
-			if timedI != timedJ {
-				return timedI
-			}
-			return timedI && expiryI.Before(expiryJ)
+			return effectEndsBefore(cells[indexes[i]].earliest, cells[indexes[j]].earliest)
 		})
 		for start := 0; start < len(indexes); {
 			end := start + 1
-			for end < len(indexes) && sameCellTiming(cells[indexes[end-1]].representative, cells[indexes[end]].representative) {
+			for end < len(indexes) && endTogether(cells[indexes[start]].earliest, cells[indexes[end]].earliest) {
 				end++
 			}
 			elements := map[uint64]bool{}

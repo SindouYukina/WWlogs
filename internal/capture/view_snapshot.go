@@ -531,17 +531,19 @@ func (p *processor) viewEffects() ViewEffects {
 	return view
 }
 
-// viewEffectCell projects one Effects Overlay cell. The instances of a cell end together; it shows the largest stack.
+// viewEffectCell projects one Effects Overlay cell. Every member agrees on its stack count (effectCellIdentity), so the
+// count is never a sum across holders. The countdown is the earliest member's, so a cell never reads later than its first
+// end and it sorts where its first end belongs.
 func (p *processor) viewEffectCell(cell effectDisplayCell) ViewEffect {
 	view := p.viewEffect(cell.representative)
 	view.Display = effectDisplayFor(cell.representative)
 	view.Instances = cell.instances()
 	view.Maintained = effectIsMaintained(cell.representative)
-	for _, member := range cell.members {
-		if member.StackCount != nil && (view.StackCount == nil || *member.StackCount > *view.StackCount) {
-			stack := *member.StackCount
-			view.StackCount = &stack
-		}
+	view.RemainingStatus, view.RemainingSeconds = cell.earliest.RemainingStatus, cloneFloat64(cell.earliest.RemainingSeconds)
+	view.ExpectedExpiry = nil
+	if cell.earliest.ExpectedExpiry != nil {
+		expiry := *cell.earliest.ExpectedExpiry
+		view.ExpectedExpiry = &expiry
 	}
 	if cell.instances() > 1 {
 		view.HolderRoleID = nil

@@ -4,6 +4,7 @@ package capture
 
 import (
 	"errors"
+	"time"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
@@ -23,5 +24,7 @@ func openSessionDiagnostics(requested bool, _ layers.LinkType) (*sessionDiagnost
 func (*sessionDiagnostics) attach(*processor) {}
 
 func (*sessionDiagnostics) packet(gopacket.CaptureInfo, []byte) {}
+
+func (*sessionDiagnostics) observeEffectDisplay(*processor, time.Time) {}
 
 func (*sessionDiagnostics) finish(string, CaptureCounter) string { return "" }
