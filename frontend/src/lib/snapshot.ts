@@ -145,13 +145,16 @@ export interface Skill {
   skillId: number
   /**
    * Master name in the selected locale. nameStatus VERIFIED is the skill's own official name; DERIVED is the official
-   * name of the related record nameSource names (a UI skill whose damage list holds the hits, or the casting Echo);
+   * name of the related record nameSource names (a UI skill whose damage list holds the hits, the UI skill the row's
+   * genre selects, or the casting Echo);
    * UNKNOWN leaves it empty.
    */
   name: string
   nameStatus: string
-  /** "official", "damage_list", "tune_break" or "echo"; absent when there is no name. */
+  /** "official", "damage_list", "skill_type", "tune_break" or "echo"; absent when there is no name. */
   nameSource?: string
+  /** The engine's decision to print skillId beside the row. */
+  showSkillId?: boolean
   /** The row's image, resolved separately from its name. */
   iconKind?: string
   iconId?: number

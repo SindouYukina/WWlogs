@@ -7,10 +7,12 @@ import { dataState, type Connection, type DPS, type Encounter, type Snapshot, ty
 
 export interface SkillRow {
   skillId: number
-  /** Master display name; absent names show the raw ID. */
+  /** The engine's display name; absent means the skill is unnamed. */
   name?: string
+  /** The engine's decision to print the raw SkillId beside the row. */
+  showId: boolean
   /** Set when name is not the skill's own official name but that of a related record; the table marks such rows. */
-  derived?: "damage_list" | "tune_break" | "echo"
+  derived?: "damage_list" | "skill_type" | "tune_break" | "echo"
   iconKind?: GameAssetKind
   iconId?: number
   damage: number
@@ -24,7 +26,7 @@ export interface SkillRow {
 export interface SkillBreakdown {
   rows: SkillRow[]
   /** Confirmed damage of the contributor without a skill source; absent when there is none. */
-  unassigned?: { damage: number; events: number; share?: number; name?: string; iconKind?: GameAssetKind; iconId?: number }
+  unassigned?: { damage: number; events: number; share?: number; name?: string; derived?: "echo" | "damage_list"; iconKind?: GameAssetKind; iconId?: number }
 }
 
 export interface CombatTimeline {

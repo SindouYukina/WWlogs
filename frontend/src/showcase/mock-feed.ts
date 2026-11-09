@@ -331,7 +331,7 @@ export class MockFeed {
     return {
       rows: master.skills.map((skill, index) => {
         const damage = role.damage * (skillWeights[index] ?? 0)
-        return { skillId: skill.skillId, name: this.localized(skill.names), damage, events: Math.floor(damage / (skillHitSize[index] ?? 5000)), share: skillWeights[index] ?? 0 }
+        return { skillId: skill.skillId, name: this.localized(skill.names), showId: false, damage, events: Math.floor(damage / (skillHitSize[index] ?? 5000)), share: skillWeights[index] ?? 0 }
       }),
     }
   }

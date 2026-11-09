@@ -200,9 +200,12 @@ type ViewSkill struct {
 	SkillID    uint64 `json:"skillId"`
 	Name       string `json:"name"`
 	NameStatus string `json:"nameStatus"`
-	// NameSource is "official", "damage_list", "tune_break" or "echo"; empty when Name is empty.
+	// NameSource is "official", "damage_list", "skill_type", "tune_break" or "echo"; empty when Name is empty.
 	NameSource string `json:"nameSource,omitempty"`
-	// SourceID is the record Name belongs to for a DERIVED name: Skill.Id (damage_list, tune_break) or PhantomItem.Id (echo).
+	// ShowSkillID says the skill table prints SkillID beside the row. A VERIFIED row is identified by its own official name; a
+	// DERIVED row keeps the ID beside a name that belongs to a related record; an UNKNOWN row has only the ID to show.
+	ShowSkillID bool `json:"showSkillId"`
+	// SourceID is the record Name belongs to for a DERIVED name: Skill.Id (damage_list, skill_type, tune_break) or PhantomItem.Id (echo).
 	SourceID uint64 `json:"sourceId,omitempty"`
 	// IconKind and IconID address the row's image; the name and the image are resolved separately (skill_names.go).
 	IconKind       string   `json:"iconKind,omitempty"`
@@ -213,7 +216,7 @@ type ViewSkill struct {
 }
 
 // ViewUnassignedSkill is a contributor's confirmed damage without a skill row. The hits have no SkillId, so a name here is
-// only ever DERIVED from the Echo their DamageIds belong to; the row stays the unassigned row.
+// only ever DERIVED from the Echo or the UI skill their DamageIds belong to; the row stays the unassigned row.
 type ViewUnassignedSkill struct {
 	UnassignedSkillTotals
 	DamageShare *float64 `json:"damageShare,omitempty"`
@@ -456,6 +459,7 @@ func (p *processor) viewSkills(roleID uint64, skills []SkillDamageSnapshot, unas
 		iconKind, iconID := p.masters.skillRowIcon(skill, source, sourceID)
 		view = append(view, ViewSkill{
 			SkillID: skill.SkillID, Name: name, NameStatus: status, NameSource: source, SourceID: sourceID, IconKind: iconKind, IconID: iconID,
+			ShowSkillID: status != string(resolutionVerified),
 			DamageDealt: skill.DamageDealt, DamageShare: share(skill.DamageDealt), OutgoingEvents: skill.OutgoingEvents,
 		})
 	}
@@ -463,6 +467,9 @@ func (p *processor) viewSkills(roleID uint64, skills []SkillDamageSnapshot, unas
 	if name, item, vision, ok := p.masters.unassignedSkillEcho(unassigned); ok {
 		row.Name, row.NameStatus, row.NameSource, row.SourceID = name, skillNameStatusDerived, skillNameSourceEcho, item
 		row.IconKind, row.IconID = skillIconKindEchoSkill, vision
+	} else if name, uiSkill, ok := p.masters.unassignedSkillDamageList(roleID, unassigned); ok {
+		row.Name, row.NameStatus, row.NameSource, row.SourceID = name, skillNameStatusDerived, skillNameSourceDamageList, uiSkill
+		row.IconKind, row.IconID = skillIconKindSkillConfig, uiSkill
 	}
 	return view, row
 }

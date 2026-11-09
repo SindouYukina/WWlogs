@@ -2,6 +2,7 @@ package capture
 
 import (
 	"database/sql"
+	"io"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -30,11 +31,11 @@ func TestSkillRowKeepsDistinctSortedDamageIDsWithoutChangingTotals(t *testing.T)
 
 func TestSkillRowMarksDamageIDsIncompleteForMissingOrTooManyIDs(t *testing.T) {
 	var missing skillAggregate
-	missing.add(11, 501, 10)
-	missing.add(11, 0, 10)
+	missing.add(11, 501, 10, nil)
+	missing.add(11, 0, 10, nil)
 	var many skillAggregate
 	for i := uint64(0); i <= maxDamageIDsPerSkill; i++ {
-		many.add(22, 1000+i, 1)
+		many.add(22, 1000+i, 1, nil)
 	}
 	missingRows, _ := missing.snapshot()
 	manyRows, _ := many.snapshot()
@@ -46,7 +47,7 @@ func TestSkillRowMarksDamageIDsIncompleteForMissingOrTooManyIDs(t *testing.T) {
 	}
 	// A snapshot is an independent copy: later hits must not show up in an earlier snapshot.
 	before, _ := missing.snapshot()
-	missing.add(11, 400, 1)
+	missing.add(11, 400, 1, nil)
 	if !reflect.DeepEqual(before[0].DamageIDs, []uint64{501}) {
 		t.Fatalf("snapshot shares its DamageIds with the aggregate: %v", before[0].DamageIDs)
 	}
@@ -65,6 +66,74 @@ func testSkillNameMaster() *gameMaster {
 		1312011: {ID: 1312011, Name: "攏傘形", NameStatus: string(resolutionVerified)},
 		1312050: {ID: 1312050, NameStatus: string(resolutionUnknown)},
 	}, skillNames: names}
+}
+
+// TestSkillTypeRuleNeedsTheForteAsTheOnlyOtherLister covers every way a row with several listers can fail to name a skill.
+func TestSkillTypeRuleNeedsTheForteAsTheOnlyOtherLister(t *testing.T) {
+	names := newSkillNameMaster()
+	names.damageListSkills = map[uint64]uint64{1: 10, 2: 11, 3: 12, 4: 13, 5: 20}
+	names.uiSkillRoles = map[uint64]map[uint64]struct{}{10: {7: {}}, 11: {7: {}}, 12: {7: {}}, 13: {7: {}}, 20: {8: {}}}
+	names.uiSkillTypes = map[uint64]int64{10: 5, 11: uiSkillTypeForte, 12: 2, 13: 5, 20: uiSkillTypeForte}
+	names.skillGenres = map[uint64]int64{100: 4, 101: 0, 102: 99}
+	cases := []struct {
+		name  string
+		role  uint64
+		skill SkillDamageSnapshot
+		want  uint64
+	}{
+		{"the intro lister wins over the Forte", 7, SkillDamageSnapshot{SkillID: 100, DamageIDs: []uint64{1, 2}}, 10},
+		{"a single lister is the damage list rule's", 7, SkillDamageSnapshot{SkillID: 100, DamageIDs: []uint64{1}}, 0},
+		{"a non-Forte other lister stops it", 7, SkillDamageSnapshot{SkillID: 100, DamageIDs: []uint64{1, 3}}, 0},
+		{"two listers of the wanted type stop it", 7, SkillDamageSnapshot{SkillID: 100, DamageIDs: []uint64{1, 4, 2}}, 0},
+		{"no lister of the wanted type names nothing", 7, SkillDamageSnapshot{SkillID: 101, DamageIDs: []uint64{1, 2}}, 0},
+		{"a genre without a UI type names nothing", 7, SkillDamageSnapshot{SkillID: 102, DamageIDs: []uint64{1, 2}}, 0},
+		{"a skill without one genre names nothing", 7, SkillDamageSnapshot{SkillID: 103, DamageIDs: []uint64{1, 2}}, 0},
+		{"another role's lister stops it", 7, SkillDamageSnapshot{SkillID: 100, DamageIDs: []uint64{1, 5}}, 0},
+		{"an unlisted hit stops it", 7, SkillDamageSnapshot{SkillID: 100, DamageIDs: []uint64{1, 2, 9}}, 0},
+		{"an incomplete row stops it", 7, SkillDamageSnapshot{SkillID: 100, DamageIDs: []uint64{1, 2}, DamageIDsIncomplete: true}, 0},
+		{"no role stops it", 0, SkillDamageSnapshot{SkillID: 100, DamageIDs: []uint64{1, 2}}, 0},
+	}
+	for _, c := range cases {
+		got, ok := names.skillTypeSkill(c.role, c.skill)
+		if got != c.want || ok != (c.want != 0) {
+			t.Errorf("%s: got %d/%v, want %d", c.name, got, ok, c.want)
+		}
+	}
+}
+
+func TestSkillRowKeepsTheCastingRolesEchoIdentitiesBounded(t *testing.T) {
+	var aggregate skillAggregate
+	aggregate.add(7, 1, 10, []uint64{3, 1})
+	aggregate.add(7, 1, 10, []uint64{3, 2, 4, 5, 6})
+	skills, _ := aggregate.snapshot()
+	if !reflect.DeepEqual(skills[0].EchoVisions, []uint64{1, 2, 3, 4}) {
+		t.Fatalf("Echo identities = %v", skills[0].EchoVisions)
+	}
+	if skills[0].DamageDealt != 20 || skills[0].OutgoingEvents != 2 {
+		t.Fatalf("totals changed: %+v", skills[0])
+	}
+}
+
+// TestViewSkillsDecideWhetherARowShowsItsID pins the three row kinds: a verified name hides the ID, a derived name and an
+// unknown row keep it.
+func TestViewSkillsDecideWhetherARowShowsItsID(t *testing.T) {
+	p := newProcessor(nil, io.Discard, io.Discard, nil)
+	p.masters = testSkillNameMaster()
+	skills := []SkillDamageSnapshot{
+		{SkillID: 1312011, DamageDealt: 3, OutgoingEvents: 1},
+		{SkillID: 1312050, DamageDealt: 2, OutgoingEvents: 1, DamageIDs: []uint64{9001, 9002}},
+		{SkillID: 77, DamageDealt: 1, OutgoingEvents: 1},
+	}
+	view, _ := p.viewSkills(1312, skills, UnassignedSkillTotals{}, 6)
+	want := map[uint64]struct {
+		status string
+		show   bool
+	}{1312011: {"VERIFIED", false}, 1312050: {"DERIVED", true}, 77: {"UNKNOWN", true}}
+	for _, row := range view {
+		if got := want[row.SkillID]; row.NameStatus != got.status || row.ShowSkillID != got.show {
+			t.Errorf("skill %d: status %s show %v, want %+v", row.SkillID, row.NameStatus, row.ShowSkillID, got)
+		}
+	}
 }
 
 func TestSkillRowNameSources(t *testing.T) {
@@ -232,8 +301,20 @@ func TestTrackedMasterDerivesObservedSkillNames(t *testing.T) {
 		{1209, SkillDamageSnapshot{SkillID: 1209991, DamageIDs: []uint64{1000009901, 1000009903}}, "tune_break", 1004410, "解耦"},
 		// The same genre on a role whose Tune Break skill is another role's stays unnamed through damage it does not own.
 		{1312, SkillDamageSnapshot{SkillID: 1508991, DamageIDs: []uint64{28003401}}, "", 0, ""},
-		// Mixed UI skills and an unlisted DamageId stay unnamed.
-		{1102, SkillDamageSnapshot{SkillID: 1102030, DamageIDs: []uint64{1102030002, 1102030010}}, "", 0, ""},
+		// Hits listed by the Forte Circuit too: the UI skill of the type the row's genre names is the row's skill.
+		{1102, SkillDamageSnapshot{SkillID: 1102030, DamageIDs: []uint64{1102030002, 1102030010}}, "skill_type", 1000503, "焦瞑凍土"},
+		{1102, SkillDamageSnapshot{SkillID: 1102020, DamageIDs: []uint64{1102020003, 1102020011}}, "skill_type", 1000502, "朔雪永凍"},
+		{1102, SkillDamageSnapshot{SkillID: 1102040, DamageIDs: []uint64{1102040002, 1102040003}}, "skill_type", 1000506, "凜刺"},
+		{1209, SkillDamageSnapshot{SkillID: 1209400, DamageIDs: []uint64{120900502, 120940001}}, "skill_type", 1004406, "歸斂"},
+		{1505, SkillDamageSnapshot{SkillID: 1505201, DamageIDs: []uint64{1505009980, 1505201001}}, "skill_type", 1002501, "真源構演"},
+		// A role must own every UI skill that lists the hits.
+		{1312, SkillDamageSnapshot{SkillID: 1209400, DamageIDs: []uint64{120900502, 120940001}}, "", 0, ""},
+		// An Echo skill several Visions cast is named only by the casting role's own Echo.
+		{1505, SkillDamageSnapshot{SkillID: 280013010, DamageIDs: []uint64{280013010}}, "", 0, ""},
+		{1505, SkillDamageSnapshot{SkillID: 280013010, DamageIDs: []uint64{280013010}, EchoVisions: []uint64{281013}}, "echo", 60200103, "異構武裝"},
+		{1505, SkillDamageSnapshot{SkillID: 280013010, DamageIDs: []uint64{280013010}, EchoVisions: []uint64{280013}}, "echo", 60000602, "無歸的謬誤"},
+		{1505, SkillDamageSnapshot{SkillID: 280013010, DamageIDs: []uint64{280013010}, EchoVisions: []uint64{280013, 281013}}, "", 0, ""},
+		{1505, SkillDamageSnapshot{SkillID: 280013010, DamageIDs: []uint64{280013010}, EchoVisions: []uint64{280034}}, "", 0, ""},
 		// A role must own the UI skill: Chisa's DamageIds never name a Lockdawn row.
 		{1312, SkillDamageSnapshot{SkillID: 1508404, DamageIDs: []uint64{15084040013}}, "", 0, ""},
 	}
@@ -269,6 +350,21 @@ func TestTrackedMasterDerivesObservedSkillNames(t *testing.T) {
 		if kind, id := master.skillRowIcon(SkillDamageSnapshot{SkillID: c.skill}, skillNameSourceEcho, 0); kind != skillIconKindEchoSkill || id != c.vision {
 			t.Errorf("skill %d Echo icon = %s/%d, want %d", c.skill, kind, id, c.vision)
 		}
+	}
+	if kind, id := master.skillRowIcon(SkillDamageSnapshot{SkillID: 280013010}, skillNameSourceEcho, 60200103); kind != skillIconKindEchoSkill || id != 281013 {
+		t.Fatalf("runtime Echo icon = %s/%d", kind, id)
+	}
+	if kind, id := master.skillRowIcon(SkillDamageSnapshot{SkillID: 1209400}, skillNameSourceSkillType, 1004406); kind != skillIconKindSkillConfig || id != 1004406 {
+		t.Fatalf("skill type icon = %s/%d", kind, id)
+	}
+	if name, uiSkill, ok := master.unassignedSkillDamageList(1311, UnassignedSkillTotals{DamageIDs: []uint64{1311291202, 1311291203, 1311291204, 1311291301}}); !ok || name != "乘興一顧" || uiSkill != 1006106 {
+		t.Fatalf("unassigned UI skill = (%q, %d, %v)", name, uiSkill, ok)
+	}
+	if _, _, ok := master.unassignedSkillDamageList(1311, UnassignedSkillTotals{DamageIDs: []uint64{1311291202}, DamageIDsIncomplete: true}); ok {
+		t.Fatal("an incomplete unassigned row must not be named")
+	}
+	if _, _, ok := master.unassignedSkillDamageList(1312, UnassignedSkillTotals{DamageIDs: []uint64{1311291202}}); ok {
+		t.Fatal("another role's UI skill must not name an unassigned row")
 	}
 	if kind, id := master.skillRowIcon(SkillDamageSnapshot{SkillID: 1409011}, skillNameSourceEcho, 0); kind != "" || id != 0 {
 		t.Fatalf("a skill of no Echo got an Echo icon: %s/%d", kind, id)

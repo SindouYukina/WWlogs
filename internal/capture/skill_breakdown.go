@@ -30,6 +30,9 @@ type SkillDamageSnapshot struct {
 	// DamageIDsIncomplete marks a row with a hit that carried no DamageId, or with more distinct DamageIds than
 	// maxDamageIDsPerSkill; DamageIDs then does not describe every hit.
 	DamageIDsIncomplete bool `json:"damageIdsIncomplete,omitempty"`
+	// EchoVisions are the distinct Vision ids (ascending) of the ConcomitantVision entities the casting role held when these
+	// hits landed. They are runtime evidence for the display name only and are not part of the statistics output.
+	EchoVisions []uint64 `json:"-"`
 }
 
 // UnassignedSkillTotals is a contributor's confirmed damage that has no skill row.
@@ -53,12 +56,16 @@ const maxSkillsPerContributor = 512
 // maxDamageIDsPerSkill bounds the distinct DamageIds one skill row keeps. Archived rows hold at most ten.
 const maxDamageIDsPerSkill = 32
 
+// maxEchoVisionsPerSkill bounds the Echo identities one skill row keeps. A role holds one Echo at a time; a row can see
+// more only across a loadout change, and more than a few would not name anything anyway.
+const maxEchoVisionsPerSkill = 4
+
 type skillAggregate struct {
 	skills     map[uint64]*SkillDamageSnapshot
 	unassigned UnassignedSkillTotals
 }
 
-func (a *skillAggregate) add(skillID, damageID uint64, amount int64) {
+func (a *skillAggregate) add(skillID, damageID uint64, amount int64, echoVisions []uint64) {
 	if skillID == 0 {
 		a.unassigned.DamageDealt += amount
 		a.unassigned.OutgoingEvents++
@@ -83,6 +90,23 @@ func (a *skillAggregate) add(skillID, damageID uint64, amount int64) {
 	entry.DamageDealt += amount
 	entry.OutgoingEvents++
 	entry.recordDamageID(damageID)
+	for _, vision := range echoVisions {
+		entry.recordEchoVision(vision)
+	}
+}
+
+// recordEchoVision keeps the row's distinct Echo identities sorted and bounded.
+func (entry *SkillDamageSnapshot) recordEchoVision(vision uint64) {
+	index := sort.Search(len(entry.EchoVisions), func(i int) bool { return entry.EchoVisions[i] >= vision })
+	if index < len(entry.EchoVisions) && entry.EchoVisions[index] == vision {
+		return
+	}
+	if len(entry.EchoVisions) >= maxEchoVisionsPerSkill {
+		return
+	}
+	entry.EchoVisions = append(entry.EchoVisions, 0)
+	copy(entry.EchoVisions[index+1:], entry.EchoVisions[index:])
+	entry.EchoVisions[index] = vision
 }
 
 // recordDamageID keeps the row's distinct DamageIds sorted and bounded.
@@ -116,6 +140,7 @@ func (a *skillAggregate) snapshot() ([]SkillDamageSnapshot, UnassignedSkillTotal
 	for _, entry := range a.skills {
 		copied := *entry
 		copied.DamageIDs = append([]uint64(nil), entry.DamageIDs...)
+		copied.EchoVisions = append([]uint64(nil), entry.EchoVisions...)
 		skills = append(skills, copied)
 	}
 	sort.Slice(skills, func(i, j int) bool {

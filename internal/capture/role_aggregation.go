@@ -167,7 +167,7 @@ func (a *roleAggregate) add(record CombatEventRecord) (TimelineContributor, bool
 			a.vehicle.Evidence = string(resolutionCorrelated)
 			a.vehicle.DamageDealt += record.Amount
 			a.vehicle.OutgoingEvents++
-			a.vehicleSkills.add(record.SkillID, record.DamageID, record.Amount)
+			a.vehicleSkills.add(record.SkillID, record.DamageID, record.Amount, nil)
 			return TimelineContributor{Kind: TimelineContributorVehicle, VehicleKind: vehicleKindMotorcycle}, true
 		}
 		entry := a.entry(record.SourceRole)
@@ -178,7 +178,7 @@ func (a *roleAggregate) add(record CombatEventRecord) (TimelineContributor, bool
 		}
 		entry.DamageDealt += record.Amount
 		entry.OutgoingEvents++
-		entry.skills.add(record.SkillID, record.DamageID, record.Amount)
+		entry.skills.add(record.SkillID, record.DamageID, record.Amount, record.EchoVisions)
 		if record.SourceRole.Basis == roleBasisSummonerChain {
 			entry.SummonDamage += record.Amount
 		} else {
