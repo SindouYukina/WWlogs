@@ -103,17 +103,23 @@ func TestEffectDisplayDecision(t *testing.T) {
 	}
 }
 
-func TestEffectPolarityOnlyFromAilmentTerm(t *testing.T) {
+func TestEffectPolarityComesOnlyFromTheHUDCue(t *testing.T) {
 	term := &EffectStaticInfo{Term: &EffectTermInfo{TermID: 850009, Name: "term", Status: string(resolutionCorrelated)}}
-	if got := effectPolarityFor(EffectInstanceSnapshot{Kind: EffectKindElementAilment, Static: term}); got != EffectPolarityDebuff {
-		t.Fatalf("ailment term polarity = %s", got)
+	for want, static := range map[EffectPolarity]*EffectStaticInfo{
+		EffectPolarityBuff:   {HUDCueTypes: []int32{2}, HUDPolarity: EffectPolarityBuff},
+		EffectPolarityDebuff: {HUDCueTypes: []int32{2}, HUDPolarity: EffectPolarityDebuff},
+	} {
+		if got := effectPolarityFor(EffectInstanceSnapshot{Static: static}); got != want {
+			t.Fatalf("polarity = %s, want %s", got, want)
+		}
 	}
+	// A term, an attribute, or a HUD cue that draws no arrow proves nothing about direction.
 	for _, effect := range []EffectInstanceSnapshot{
 		{Kind: EffectKindStatModifier},
-		{Kind: EffectKindBuffMarker},
 		{Kind: EffectKindElementAilment},
-		{Kind: EffectKindRuntimeLink},
-		{Kind: EffectKindInternalState, Static: term},
+		{Kind: EffectKindElementAilment, Static: term},
+		{Kind: EffectKindHUDEffect, Static: &EffectStaticInfo{HUDCueTypes: []int32{24}, HUDPolarity: EffectPolarityUnclassified}},
+		{Kind: EffectKindHUDEffect, Static: &EffectStaticInfo{HUDCueTypes: []int32{2}}},
 	} {
 		if got := effectPolarityFor(effect); got != EffectPolarityUnclassified {
 			t.Fatalf("%s polarity = %s, want unclassified", effect.Kind, got)
@@ -123,7 +129,7 @@ func TestEffectPolarityOnlyFromAilmentTerm(t *testing.T) {
 
 func TestEffectTrackerSnapshotCarriesKindAndPolarity(t *testing.T) {
 	tracker := newTestEffectTracker()
-	term := &EffectStaticInfo{DeveloperTags: []string{"战斗状态.异常状态.基础元素异常.风蚀效应"}, Term: &EffectTermInfo{TermID: 850009, Name: "term", Status: string(resolutionCorrelated)}}
+	term := &EffectStaticInfo{DeveloperTags: []string{"战斗状态.异常状态.基础元素异常.风蚀效应"}, HUDCueTypes: []int32{2}, HUDPolarity: EffectPolarityDebuff, Term: &EffectTermInfo{TermID: 850009, Name: "term", Status: string(resolutionCorrelated)}}
 	tracker.ObserveApply(testEffectApply(1, 0, func(e *EffectApplyEvent) {
 		e.DefinitionLinked, e.Static, e.CombatClass, e.CombatBasis = true, term, EffectCombatClassCombat, effectCombatBasisTerm
 	}))
