@@ -198,11 +198,70 @@ func semanticCheckRankingScope(roles []ViewRole, vehicle *ViewVehicle, unassigne
 	return nil
 }
 
+// semanticCheckSkillPartition splits one scope's confirmed contributor damage by what is known about its skill. Every hit
+// falls in exactly one class: a row with its own official name, a row with a derived name, a row with a SkillId and no name, or
+// no row at all (the hit carried no SkillId). An UNKNOWN row and a hit without a SkillId are different gaps, so a scope can
+// have no UNKNOWN row and still lack a skill for some of its damage; the classes must add up either way.
+func semanticCheckSkillPartition(roles []ViewRole, vehicle *ViewVehicle, completeness ViewDamageCompleteness) error {
+	var noSkillDamage int64
+	var noSkillEvents uint64
+	check := func(label string, dealt int64, events uint64, skills []ViewSkill, unassigned ViewUnassignedSkill) error {
+		rowDamage, rowEvents := int64(0), uint64(0)
+		for _, skill := range skills {
+			if skill.SkillID == 0 {
+				return fmt.Errorf("%s has a row without a SkillId", label)
+			}
+			switch skill.NameStatus {
+			case "VERIFIED", "DERIVED", "UNKNOWN":
+			default:
+				return fmt.Errorf("%s skill %d has status %q", label, skill.SkillID, skill.NameStatus)
+			}
+			if (skill.Name == "") != (skill.NameStatus == "UNKNOWN") {
+				return fmt.Errorf("%s skill %d: name %q with status %s", label, skill.SkillID, skill.Name, skill.NameStatus)
+			}
+			rowDamage += skill.DamageDealt
+			rowEvents += skill.OutgoingEvents
+		}
+		if rowDamage+unassigned.DamageDealt != dealt || rowEvents+unassigned.OutgoingEvents != events {
+			return fmt.Errorf("%s: rows %d/%d and no-skill %d/%d do not add up to %d/%d", label, rowDamage, rowEvents, unassigned.DamageDealt, unassigned.OutgoingEvents, dealt, events)
+		}
+		if unassigned.OutgoingEvents != unassigned.MissingSkillEvents+unassigned.OverflowEvents {
+			return fmt.Errorf("%s: %d no-skill events are not %d missing and %d overflow", label, unassigned.OutgoingEvents, unassigned.MissingSkillEvents, unassigned.OverflowEvents)
+		}
+		if unassigned.Name != "" && unassigned.NameStatus != "DERIVED" {
+			return fmt.Errorf("%s: a row without a SkillId has a %q name", label, unassigned.NameStatus)
+		}
+		noSkillDamage += unassigned.DamageDealt
+		noSkillEvents += unassigned.OutgoingEvents
+		return nil
+	}
+	for _, role := range roles {
+		if err := check(fmt.Sprintf("role %d", role.RoleID), role.DamageDealt, role.OutgoingEvents, role.Skills, role.UnassignedSkill); err != nil {
+			return err
+		}
+	}
+	if vehicle != nil {
+		if err := check("vehicle "+vehicle.Kind, vehicle.DamageDealt, vehicle.OutgoingEvents, vehicle.Skills, vehicle.UnassignedSkill); err != nil {
+			return err
+		}
+	}
+	if noSkillDamage != completeness.NoSkillDamage || noSkillEvents != completeness.NoSkillEvents {
+		return fmt.Errorf("no-skill rows %d/%d differ from the scope's completeness %d/%d", noSkillDamage, noSkillEvents, completeness.NoSkillDamage, completeness.NoSkillEvents)
+	}
+	if completeness.SkillBreakdownComplete != (noSkillEvents == 0) {
+		return fmt.Errorf("skill breakdown complete = %v with %d no-skill events", completeness.SkillBreakdownComplete, noSkillEvents)
+	}
+	return nil
+}
+
 // semanticCheckRanking checks every scope of a view, and that the timeline belongs to the encounter the rows of the screen
 // come from.
 func semanticCheckRanking(view ViewSnapshot) error {
 	if err := semanticCheckRankingScope(view.Roles, view.Vehicle, view.UnassignedRole, view.UnassignedRoleShare, view.Statistics.DamageDealt, nil); err != nil {
 		return fmt.Errorf("interval: %w", err)
+	}
+	if err := semanticCheckSkillPartition(view.Roles, view.Vehicle, view.Completeness); err != nil {
+		return fmt.Errorf("interval skills: %w", err)
 	}
 	encounters := append([]ViewEncounter(nil), view.Encounters.Recent...)
 	if view.Encounters.Current != nil {
@@ -212,6 +271,9 @@ func semanticCheckRanking(view ViewSnapshot) error {
 		encounter := &encounters[i]
 		if err := semanticCheckRankingScope(encounter.Roles, encounter.Vehicle, encounter.UnassignedRole, encounter.UnassignedRoleShare, encounter.Totals.DamageDealt, &encounter.DPS); err != nil {
 			return fmt.Errorf("encounter %d: %w", encounter.Sequence, err)
+		}
+		if err := semanticCheckSkillPartition(encounter.Roles, encounter.Vehicle, encounter.Completeness); err != nil {
+			return fmt.Errorf("encounter %d skills: %w", encounter.Sequence, err)
 		}
 		if encounter.DPS.Damage != 0 && encounter.DPS.Damage != encounter.Totals.DamageDealt {
 			return fmt.Errorf("encounter %d: dps damage %d differs from the total %d", encounter.Sequence, encounter.DPS.Damage, encounter.Totals.DamageDealt)
