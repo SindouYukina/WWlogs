@@ -234,7 +234,7 @@ type ViewEffects struct {
 	Active      []ViewEffect         `json:"active"`
 	RecentEnded []ViewEffect         `json:"recentEnded"`
 	Counts      ViewEffectCounts     `json:"counts"`
-	// ClockStalled reports that a live capture has seen no game frame for liveViewClockLeadLimit: the countdowns stopped
+	// ClockStalled reports that a live capture has seen no game frame for LiveFrameSilenceLimit: the countdowns stopped
 	// advancing because the capture no longer knows what the game is doing. A replay never sets it.
 	ClockStalled bool `json:"clockStalled,omitempty"`
 }
@@ -479,7 +479,7 @@ func (p *processor) viewEffects() ViewEffects {
 	// (effectDisplayCells). Effects with a server duration come first, so the bound and a short window keep the
 	// countdowns; within the timed and the untimed group, effects the game itself draws in a HUD buff bar come first
 	// (effect_hud_cues.go). The order only decides which cells fit; it never removes one from the display set.
-	view := ViewEffects{Status: snapshot.Status, Reason: snapshot.Reason, Active: []ViewEffect{}, ClockStalled: p.viewClockLead >= liveViewClockLeadLimit}
+	view := ViewEffects{Status: snapshot.Status, Reason: snapshot.Reason, Active: []ViewEffect{}, ClockStalled: p.viewClockStalled}
 	eligible := make([]EffectInstanceSnapshot, 0, len(snapshot.Effects))
 	for _, effect := range snapshot.Effects {
 		display := effectDisplayFor(effect)

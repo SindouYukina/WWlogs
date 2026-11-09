@@ -257,11 +257,13 @@ func (s *Session) Run(ctx context.Context, publish func(ViewSnapshot)) (result S
 	}()
 
 	lastPublish := time.Time{}
-	var newestFrame, newestFrameWall time.Time
+	var viewClock liveViewClock
 	maybePublish := func(now time.Time) {
 		if publish != nil && (lastPublish.IsZero() || now.Sub(lastPublish) >= time.Duration(s.publishInterval.Load())) {
 			lastPublish = now
-			p.viewClockLead = liveViewClockLead(newestFrameWall, now)
+			if live {
+				p.viewClockLead, p.viewClockStalled = viewClock.read(now, p.currentFrameTime)
+			}
 			publish(p.viewSnapshot())
 			s.diagnostics.observeEffectDisplay(p, now)
 		}
@@ -329,9 +331,7 @@ loop:
 		direction := packetDirection(packet, s.cfg.LocalIPv4, udp, s.cfg.MinPort, s.cfg.MaxPort)
 		consumeDatagram(udp.Payload, direction, capturedAt, streams, p, &stats)
 		if live {
-			if !p.currentFrameTime.Equal(newestFrame) {
-				newestFrame, newestFrameWall = p.currentFrameTime, receivedAt
-			}
+			viewClock.observeFrame(p.currentFrameTime, receivedAt)
 			p.observePacketTiming(capturedAt, receivedAt, time.Now())
 			p.sessionHealth.observeClock(time.Now())
 		} else {
@@ -343,7 +343,7 @@ loop:
 	p.sampleCaptureStats(handle, time.Now(), true)
 	p.finishCapture()
 	if publish != nil {
-		p.viewClockLead = 0
+		p.viewClockLead, p.viewClockStalled = 0, false
 		final := p.viewSnapshot()
 		final.Final = true
 		publish(final)
@@ -351,20 +351,53 @@ loop:
 	return result, err
 }
 
-// liveViewClockLeadLimit bounds how long countdowns keep running with no new game frame. It matches the listening
-// status's stale threshold. In the 24 valid archived captures 113,300 frame gaps stay under 3 s, the longest gap of an
-// established session is 5.98 s, and the only two longer ones (18.6 s and 39.6 s) precede a new handshake, so past 8 s
-// the capture is no longer known to be seeing the game. The view then reports ClockStalled rather than a countdown.
-const liveViewClockLeadLimit = 8 * time.Second
+// LiveFrameSilenceLimit is how long a live capture may see no game frame at all before it no longer knows what the game is
+// doing. A quiet fight is not silence: the game keeps sending frames while nothing happens, and in the 24 valid archived
+// captures 96 stretches of 10 s to over 60 s without a combat event never lasted longer than this between frames, except one
+// 39.6 s gap before a new handshake. Across those captures the longest gap of an established session is 5.98 s. The listening
+// status uses the same limit for its stale state.
+const LiveFrameSilenceLimit = 8 * time.Second
 
-// liveViewClockLead returns how far a live publish reads the Effects view past the newest frame. The game clock keeps
-// running between packets, so without it a quiet connection would freeze every countdown until the next frame. A replay
-// never records a frame's wall time, so its view stays exactly at capture time.
-func liveViewClockLead(newestFrameWall, now time.Time) time.Duration {
-	if newestFrameWall.IsZero() {
-		return 0
+// liveClockStepLimit separates a frame reassembled late from a capture clock that was set back. The largest backward step
+// between frames in the archived captures is 15.6 ms.
+const liveClockStepLimit = 5 * time.Second
+
+// liveViewClock estimates the game clock of a live session between frames, so a quiet connection does not freeze every
+// countdown until its next frame. It runs only on a live session: a replay reads exactly at capture time, so the same
+// capture gives the same view at any speed, and a recorded silence reads the same however long it took to replay.
+type liveViewClock struct {
+	newestFrame time.Time // the newest frame's capture time
+	newestWall  time.Time // when that frame was received
+	highWater   time.Time // the latest query time handed out; time read from this clock never runs backwards
+}
+
+// observeFrame records a decoded frame. A frame with an older capture time, such as one reassembled late, does not move
+// the clock. A large backward step means the capture clock itself was set back, so the clock starts over from it.
+func (c *liveViewClock) observeFrame(frame, wall time.Time) {
+	if frame.IsZero() {
+		return
 	}
-	return min(max(now.Sub(newestFrameWall), 0), liveViewClockLeadLimit)
+	switch {
+	case frame.After(c.newestFrame):
+		c.newestFrame, c.newestWall = frame, wall
+	case c.newestFrame.Sub(frame) > liveClockStepLimit:
+		c.newestFrame, c.newestWall, c.highWater = frame, wall, time.Time{}
+	}
+}
+
+// read returns how far a publish at now reads the Effects view past frame, the processor's current frame time, and whether
+// the clock has stalled. The reading never passes LiveFrameSilenceLimit beyond the newest frame.
+func (c *liveViewClock) read(now, frame time.Time) (lead time.Duration, stalled bool) {
+	if c.newestWall.IsZero() || frame.IsZero() {
+		return 0, false
+	}
+	silence := max(now.Sub(c.newestWall), 0)
+	query := c.newestFrame.Add(min(silence, LiveFrameSilenceLimit))
+	if query.Before(c.highWater) {
+		query = c.highWater
+	}
+	c.highWater = query
+	return query.Sub(frame), silence >= LiveFrameSilenceLimit
 }
 
 // waitUntil sleeps until deadline; it returns false when ctx ends first.
