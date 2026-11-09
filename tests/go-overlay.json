@@ -237,6 +237,8 @@
     "internal/capture/central_skill_names_test.go": "tests/capture/skill_names_test.go",
     "tests/capture/view_snapshot_test.go": "",
     "internal/capture/central_view_snapshot_test.go": "tests/capture/view_snapshot_test.go",
+    "tests/capture/view_ranking_test.go": "",
+    "internal/capture/central_view_ranking_test.go": "tests/capture/view_ranking_test.go",
     "tests/capture/session_publish_test.go": "",
     "internal/capture/central_session_publish_test.go": "tests/capture/session_publish_test.go",
     "tests/capture/listening_replay_dev_test.go": "",

@@ -44,7 +44,7 @@ test("contributor lines split the team line exactly and use the ranking row keys
     const sum = ["role-7-1102", "vehicle-motorcycle", unassignedSeriesKey].reduce((total, key) => total + result.series.get(key)[slot], 0)
     assert.ok(Math.abs(sum - team[slot]) < 1e-9)
   }
-  const rows = combatRows({ dps: { status: "available", durationSeconds: 3.5 }, roles: [{ playerId: 7, roleId: 1102, damageDealt: 150, directDamage: 150, summonDamage: 0, damageTaken: 0, nameStatus: "UNKNOWN", name: "" }], vehicle: { kind: "motorcycle", damageDealt: 300 } })
+  const rows = combatRows({ dps: { status: "available", durationSeconds: 3.5 }, roles: [{ playerId: 7, roleId: 1102, damageDealt: 150, directDamage: 150, summonDamage: 0, damageTaken: 0, nameStatus: "UNKNOWN", name: "", rank: 1 }], vehicle: { kind: "motorcycle", damageDealt: 300, rank: 0 } })
   for (const row of rows) assert.ok(result.series.has(row.key), `${row.key} has no series`)
   assert.equal(contributorKey({ kind: "unassigned" }), unassignedSeriesKey)
 })

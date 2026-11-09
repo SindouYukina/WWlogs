@@ -4,6 +4,7 @@ package capture
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"strings"
 	"testing"
@@ -129,6 +130,99 @@ func semanticCheckRows(view ViewEffects) error {
 	return check(view.Debuffs, EffectPolarityDebuff)
 }
 
+// semanticCheckRankingScope checks one scope of a real view: the order, each row's numerator and the shared denominator, and
+// that the per-contributor DPS uses the scope's own duration. Percentages adding up would not catch two rows using different
+// denominators, so every row is checked against the scope's total.
+func semanticCheckRankingScope(roles []ViewRole, vehicle *ViewVehicle, unassigned UnassignedRoleTotals, unassignedShare *float64, total int64, dps *ViewDPS) error {
+	type row struct {
+		key    string
+		damage int64
+		share  *float64
+		rate   *float64
+		rank   int
+	}
+	rows := make([]row, 0, len(roles)+1)
+	for _, role := range roles {
+		rows = append(rows, row{fmt.Sprintf("role-%d-%d", role.PlayerID, role.RoleID), role.DamageDealt, role.DamageShare, role.DPS, role.Rank})
+	}
+	if vehicle != nil {
+		rows = append(rows, row{"vehicle-" + vehicle.Kind, vehicle.DamageDealt, vehicle.DamageShare, vehicle.DPS, vehicle.Rank})
+	}
+	ordered := make([]*row, len(rows))
+	sum, shares, rates := unassigned.DamageDealt, 0.0, 0.0
+	usable := dps != nil && (dps.Status == DPSStatusAvailable || dps.Status == DPSStatusLowerBound) && dps.DurationSeconds > 0
+	for i := range rows {
+		item := &rows[i]
+		if item.rank < 0 || item.rank >= len(rows) || ordered[item.rank] != nil {
+			return fmt.Errorf("%s has rank %d of %d rows", item.key, item.rank, len(rows))
+		}
+		ordered[item.rank] = item
+		sum += item.damage
+		if total > 0 {
+			if item.share == nil || *item.share != float64(item.damage)/float64(total) {
+				return fmt.Errorf("%s share %v is not %d over %d", item.key, item.share, item.damage, total)
+			}
+			shares += *item.share
+		} else if item.share != nil {
+			return fmt.Errorf("%s has a share of a zero total", item.key)
+		}
+		if usable {
+			if item.rate == nil || *item.rate != float64(item.damage)/dps.DurationSeconds {
+				return fmt.Errorf("%s dps %v is not %d over %v s", item.key, item.rate, item.damage, dps.DurationSeconds)
+			}
+			rates += *item.rate
+		} else if item.rate != nil {
+			return fmt.Errorf("%s has a dps without a usable scope dps", item.key)
+		}
+	}
+	for i := 1; i < len(ordered); i++ {
+		a, b := ordered[i-1], ordered[i]
+		if a.damage < b.damage || (a.damage == b.damage && a.key >= b.key) {
+			return fmt.Errorf("%s (%d) is ranked above %s (%d)", a.key, a.damage, b.key, b.damage)
+		}
+	}
+	if sum != total {
+		return fmt.Errorf("rows and unassigned add up to %d of %d", sum, total)
+	}
+	if total > 0 {
+		if unassignedShare == nil || *unassignedShare != float64(unassigned.DamageDealt)/float64(total) {
+			return fmt.Errorf("unassigned share %v is not %d over %d", unassignedShare, unassigned.DamageDealt, total)
+		}
+		if math.Abs(shares+*unassignedShare-1) > 1e-9 {
+			return fmt.Errorf("shares add up to %v", shares+*unassignedShare)
+		}
+	}
+	if usable && dps.Damage == total && math.Abs(rates+float64(unassigned.DamageDealt)/dps.DurationSeconds-dps.Value) > 1e-6*math.Max(1, dps.Value) {
+		return fmt.Errorf("row dps %v does not add up to the scope's %v", rates, dps.Value)
+	}
+	return nil
+}
+
+// semanticCheckRanking checks every scope of a view, and that the timeline belongs to the encounter the rows of the screen
+// come from.
+func semanticCheckRanking(view ViewSnapshot) error {
+	if err := semanticCheckRankingScope(view.Roles, view.Vehicle, view.UnassignedRole, view.UnassignedRoleShare, view.Statistics.DamageDealt, nil); err != nil {
+		return fmt.Errorf("interval: %w", err)
+	}
+	encounters := append([]ViewEncounter(nil), view.Encounters.Recent...)
+	if view.Encounters.Current != nil {
+		encounters = append(encounters, *view.Encounters.Current)
+	}
+	for i := range encounters {
+		encounter := &encounters[i]
+		if err := semanticCheckRankingScope(encounter.Roles, encounter.Vehicle, encounter.UnassignedRole, encounter.UnassignedRoleShare, encounter.Totals.DamageDealt, &encounter.DPS); err != nil {
+			return fmt.Errorf("encounter %d: %w", encounter.Sequence, err)
+		}
+		if encounter.DPS.Damage != 0 && encounter.DPS.Damage != encounter.Totals.DamageDealt {
+			return fmt.Errorf("encounter %d: dps damage %d differs from the total %d", encounter.Sequence, encounter.DPS.Damage, encounter.Totals.DamageDealt)
+		}
+	}
+	if view.Timeline != nil && len(encounters) > 0 && view.Timeline.EncounterID != encounters[len(encounters)-1].EncounterID {
+		return fmt.Errorf("timeline of %s beside rows of %s", view.Timeline.EncounterID, encounters[len(encounters)-1].EncounterID)
+	}
+	return nil
+}
+
 func semanticCaptureMatches(name, capture string) bool { return strings.Contains(name, capture) }
 
 func TestSemanticReplayCollector(t *testing.T) {
@@ -169,6 +263,9 @@ func TestSemanticReplayCollector(t *testing.T) {
 					return
 				}
 				last = p.currentFrameTime
+				if err := semanticCheckRanking(p.viewSnapshot()); err != nil && rowsErr == nil {
+					rowsErr = fmt.Errorf("ranking at %s: %w", p.currentFrameTime.UTC().Format(time.RFC3339Nano), err)
+				}
 				view := p.viewEffects()
 				if err := view.Counts.accountingError(len(view.Active)); err != nil && rowsErr == nil {
 					rowsErr = err
@@ -250,6 +347,9 @@ func TestSemanticReplayCollector(t *testing.T) {
 				}
 			}
 			view := p.viewSnapshot()
+			if err := semanticCheckRanking(view); err != nil {
+				t.Errorf("final ranking: %v", err)
+			}
 			rows := map[string]ViewSkill{}
 			collect := func(roles []ViewRole) {
 				for _, role := range roles {

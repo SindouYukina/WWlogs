@@ -83,14 +83,14 @@ function encounter(overrides = {}) {
   return {
     dps: { status: "available", durationSeconds: 10, damage: 0, value: 0 },
     roles: [
-      { playerId: 1, roleId: 1205, name: "A", nameStatus: "VERIFIED", damageDealt: 100, damageShare: 0.25, damageTaken: 0 },
-      { playerId: 1, roleId: 1506, name: "", nameStatus: "UNKNOWN", damageDealt: 300, damageShare: 0.75, damageTaken: 5 },
+      { playerId: 1, roleId: 1205, name: "A", nameStatus: "VERIFIED", damageDealt: 100, damageShare: 0.25, damageTaken: 0, rank: 1, dps: 10 },
+      { playerId: 1, roleId: 1506, name: "", nameStatus: "UNKNOWN", damageDealt: 300, damageShare: 0.75, damageTaken: 5, rank: 0, dps: 30 },
     ],
     ...overrides,
   }
 }
 
-test("combat rows rank by damage, keep identity and never invent a name", () => {
+test("combat rows follow the engine's rank, keep identity and never invent a name", () => {
   const rows = combatRows(encounter())
   assert.deepEqual(rows.map(row => [row.key, row.rank]), [["role-1-1506", 0], ["role-1-1205", 1]])
   assert.equal(rows[0].name, null, "an unverified name stays null with its raw role ID")
@@ -99,15 +99,15 @@ test("combat rows rank by damage, keep identity and never invent a name", () => 
   assert.equal(rows[0].dps, 30)
 })
 
-test("per-role DPS is absent unless the engine's encounter DPS is usable", () => {
-  for (const status of ["unreliable", "unavailable", "insufficient_data", "invalid_duration"]) {
-    assert.equal(combatRows(encounter({ dps: { status, durationSeconds: 10 } }))[0].dps, undefined, status)
-  }
-  assert.equal(combatRows(encounter({ dps: { status: "available", durationSeconds: 0 } }))[0].dps, undefined)
+test("a row's DPS is the engine's value and nothing is worked out here", () => {
+  const withoutDps = encounter({ roles: [{ playerId: 1, roleId: 1205, name: "A", nameStatus: "VERIFIED", damageDealt: 100, damageTaken: 0, rank: 0 }] })
+  assert.equal(combatRows(withoutDps)[0].dps, undefined, "the engine reported none, so an available encounter DPS adds none")
+  const odd = encounter({ dps: { status: "unreliable", durationSeconds: 10 }, roles: [{ playerId: 1, roleId: 1205, name: "A", nameStatus: "VERIFIED", damageDealt: 100, damageTaken: 0, rank: 0, dps: 7 }] })
+  assert.equal(combatRows(odd)[0].dps, 7, "the value is passed through, not derived from damage and duration")
 })
 
 test("a vehicle is a separate contributor, not a synthetic role", () => {
-  const rows = combatRows(encounter({ vehicle: { kind: "motorcycle", damageDealt: 200, damageShare: 0.3 } }))
+  const rows = combatRows(encounter({ vehicle: { kind: "motorcycle", damageDealt: 200, damageShare: 0.3, rank: 1, dps: 20 } }))
   const vehicle = rows.find(row => row.kind === "vehicle")
   assert.equal(vehicle.roleId, undefined)
   assert.equal(vehicle.name, null)

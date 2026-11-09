@@ -130,6 +130,10 @@ export interface Role {
   elementId?: number
   damageDealt: number
   damageShare?: number
+  /** The engine's place for this row among its scope's contributors, 0 is the most damage. */
+  rank: number
+  /** The engine's DPS of this row; absent unless its scope has a DPS the UI may show. */
+  dps?: number
   directDamage: number
   summonDamage: number
   outgoingEvents: number
@@ -438,21 +442,10 @@ export interface Vehicle {
  damageDealt: number
  outgoingEvents: number
  damageShare?: number
+ /** The engine's place for this row among its scope's contributors. */
+ rank: number
+ /** The engine's DPS of this row; absent unless its scope has a DPS the UI may show. */
+ dps?: number
  skills?: Skill[]
  unassignedSkill?: UnassignedSkill
-}
-
-export interface DamageContributor {
- key: string
- role?: Role
- vehicle?: Vehicle
- damageDealt: number
- damageTaken: number
- damageShare?: number
-}
-
-export function damageContributors(roles: Role[], vehicle?: Vehicle): DamageContributor[] {
- const rows: DamageContributor[] = roles.map(role=>({key:`role-${role.playerId}-${role.roleId}`,role,damageDealt:role.damageDealt,damageTaken:role.damageTaken,damageShare:role.damageShare}))
- if(vehicle)rows.push({key:`vehicle-${vehicle.kind}`,vehicle,damageDealt:vehicle.damageDealt,damageTaken:0,damageShare:vehicle.damageShare})
- return rows.sort((a,b)=>b.damageDealt-a.damageDealt)
 }
