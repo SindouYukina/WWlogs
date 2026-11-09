@@ -252,9 +252,6 @@ type buffStaticParameters struct {
 	// hudCueTypes are the distinct HUD cue types (ascending) of the row's GameplayCueIds that have a Path
 	// (effect_hud_cues.go): the game draws the effect in a HUD buff bar.
 	hudCueTypes []int32
-	// hudIconGeneric reports that every HUD icon of the row is one the game shares across many definitions
-	// (effect_hud_cues.go): it is drawn, but it does not tell this effect from the others.
-	hudIconGeneric bool
 	// hudPolarity and hudHiddenOnMonsterHead are the direction and monster-head visibility of the row's first HUD cue
 	// (effect_hud_cues.go); polarity stays empty for a row without one.
 	hudPolarity            EffectPolarity

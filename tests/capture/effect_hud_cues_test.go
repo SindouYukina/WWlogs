@@ -39,47 +39,8 @@ func TestClassifyEffectKindUsesTheHUDCueOnlyWithoutAMoreSpecificKind(t *testing.
 		}
 	}
 	effect := EffectInstanceSnapshot{Lifecycle: EffectLifecycleActive, HolderRelation: EffectRelationLocalRole, SourceRelation: EffectRelationLocalRole, Kind: EffectKindHUDEffect}
-	if got := effectDisplayFor(effect); got != (EffectDisplay{EffectDisplayEligible, EffectTargetTeam}) {
-		t.Fatalf("HUD effect display = %+v", got)
-	}
 	if got := effectPolarityFor(effect); got != EffectPolarityUnclassified {
 		t.Fatalf("a HUD effect without a direction cue must stay unclassified: %s", got)
-	}
-}
-
-func TestViewEffectsListHUDEffectsFirstWithinEachCountdownGroup(t *testing.T) {
-	p := newEffectViewProcessor()
-	hud := func(e *EffectApplyEvent) {
-		e.DefinitionLinked, e.Static = true, &EffectStaticInfo{HUDCueTypes: []int32{2}}
-	}
-	untimed := func(e *EffectApplyEvent) { e.DurationSeconds, e.RemainingSeconds = nil, nil }
-	p.effects.ObserveApply(displayApply(1, 900, 0, untimed))
-	p.effects.ObserveApply(displayApply(2, 901, 0, nil))
-	p.effects.ObserveApply(displayApply(3, 902, 0, func(e *EffectApplyEvent) { untimed(e); hud(e) }))
-	p.effects.ObserveApply(displayApply(4, 903, 0, hud))
-	p.effects.ObserveApply(displayApply(5, 904, 0, nil))
-	// An unknown effect with a HUD cue becomes eligible; one without stays counted as unclassified.
-	p.effects.ObserveApply(displayApply(6, 905, 0, func(e *EffectApplyEvent) {
-		e.CombatClass, e.CombatBasis = EffectCombatClassUnknown, effectCombatBasisNoEvidence
-		hud(e)
-	}))
-	p.effects.ObserveApply(displayApply(7, 906, 0, func(e *EffectApplyEvent) {
-		e.CombatClass, e.CombatBasis = EffectCombatClassUnknown, effectCombatBasisNoEvidence
-	}))
-	view := effectViewAt(p, 0.5)
-	requireEffectCounts(t, view, ViewEffectCounts{Tracked: 7, Active: 7, Local: 7, Unclassified: 1, Eligible: 6, Listed: 6, Cells: 6, ListedCells: 6})
-	var order []uint64
-	for _, effect := range view.Active {
-		order = append(order, *effect.EffectID)
-	}
-	if want := []uint64{903, 905, 901, 904, 902, 900}; !reflect.DeepEqual(order, want) {
-		t.Fatalf("order = %v, want timed HUD %v", order, want)
-	}
-	for _, effect := range view.Active {
-		hud := *effect.EffectID == 902 || *effect.EffectID == 903 || *effect.EffectID == 905
-		if effect.HUDIcon != hud {
-			t.Fatalf("effect %d HUDIcon = %v, want %v", *effect.EffectID, effect.HUDIcon, hud)
-		}
 	}
 }
 

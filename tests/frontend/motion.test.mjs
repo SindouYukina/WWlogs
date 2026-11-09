@@ -124,6 +124,6 @@ test("a countdown is shown only for what the engine reported", () => {
 })
 
 test("no-timer effects stay unknown", () => {
-  const base = { key: "k", polarity: "unclassified", firstObservedAt: "t0", lastUpdatedAt: "t0", remainingStatus: "unknown" }
+  const base = { key: "k", polarity: "unclassified", display: { eligibility: "eligible" }, firstObservedAt: "t0", lastUpdatedAt: "t0", remainingStatus: "unknown" }
   assert.deepEqual(effectRow(base, undefined).countdown, { kind: "unknown" })
 })

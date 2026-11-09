@@ -126,13 +126,14 @@
   },
   "effectsLegend": {
     "title": "Effect strip",
-    "gameIcon": "Icon: the icon the game itself shows for this effect in its HUD. The colored area inside is the share of the duration left, below it are the estimated seconds left, and at the top right are the stacks from two.",
-    "generic": "Dim icon in a narrow cell: an icon the game shares across many effects (such as crossed swords), so it cannot tell them apart.",
-    "gauge": "Narrow cell: the game has no icon for this effect. The small center mark is its kind: square changes a combat attribute, circle is another combat state, diamond relates to enemies. Direction and meaning are not confirmed.",
+    "gameIcon": "Icon: the icon the game itself shows for this status in its HUD. The colored area inside is the share of the duration left, below it are the estimated seconds left, and at the top right are the stacks from two.",
+    "target": "Small corner mark: this status is on an enemy. A status without it is on your team.",
     "color": "Fill color: the element the effect's definition states; gray when it states none or it cannot be confirmed. Color does not mean buff or debuff.",
     "untimed": "Hatched with no seconds: the game gives no reliable time.",
     "more": "+N: effects that do not fit the width of the window. The window can be widened in Edit Mode.",
-    "order": "Effects run left to right by when they end: soonest first, effects without a time last.",
+    "rows": "The first line is BUFF and the second is DEBUFF. The direction comes from the game's own HUD setting for the status.",
+    "order": "Each line runs left to right by when a status ends: soonest first, statuses without a time last.",
+    "onlyHud": "Only statuses the game draws in its HUD with its own icon and direction are shown. Internal states are left out.",
     "noNames": "Effects are shown without names, as in the game; most effects have no name in the game data."
   }
 }

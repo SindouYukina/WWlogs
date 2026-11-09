@@ -138,22 +138,24 @@ function OverlayPage({ kind, controller }: { kind: OverlayKind; controller: Sett
 function EffectsLegend() {
   const { t } = useTranslation("settings")
   const describe = () => ""
-  const cell = (key: string, props: Partial<ComponentProps<typeof EffectCell>> & Pick<ComponentProps<typeof EffectCell>, "size" | "icon">) => <span key={key} className="ww-effects-legend-sample" data-size={props.size}><EffectCell kind="stat_modifier" fill={0.6} untimed={false} seconds="8" low={false} stale={false} describe={describe} {...props} /></span>
+  const cell = (key: string, props: Partial<ComponentProps<typeof EffectCell>> & Pick<ComponentProps<typeof EffectCell>, "effectId">) => <span key={key} className="ww-effects-legend-sample"><EffectCell fill={0.6} untimed={false} seconds="8" low={false} stale={false} describe={describe} {...props} /></span>
   const samples = (...content: ReactNode[]) => <span className="ww-effects-legend-samples" aria-hidden="true">{content}</span>
-  // Sample cells use the game's own Aero Erosion icon and a shared weapon icon; every other sample draws no icon.
+  // The sample cell uses the game's own Aero Erosion icon.
+  const aero = 10041000
   const items: { key: string; swatch: ReactNode }[] = [
-    { key: "gameIcon", swatch: samples(cell("icon", { size: "icon", icon: "game", effectId: 10041000, elementId: 4, stackCount: 3 })) },
-    { key: "generic", swatch: samples(cell("generic", { size: "gauge", icon: "generic", effectId: 110025020 })) },
-    { key: "gauge", swatch: samples(cell("attribute", { size: "gauge", icon: "none" }), cell("state", { size: "gauge", icon: "none", kind: "buff_marker" }), cell("enemy", { size: "gauge", icon: "none", kind: "runtime_link" })) },
-    { key: "color", swatch: samples(cell("element", { size: "gauge", icon: "none", elementId: 2 }), cell("neutral", { size: "gauge", icon: "none" })) },
-    { key: "untimed", swatch: samples(cell("untimed", { size: "gauge", icon: "none", fill: undefined, untimed: true, seconds: undefined })) },
+    { key: "gameIcon", swatch: samples(cell("icon", { effectId: aero, elementId: 4, stackCount: 3 })) },
+    { key: "target", swatch: samples(cell("enemy", { effectId: aero, elementId: 4, target: "enemy" })) },
+    { key: "color", swatch: samples(cell("element", { effectId: aero, elementId: 4 }), cell("neutral", { effectId: aero })) },
+    { key: "untimed", swatch: samples(cell("untimed", { effectId: aero, fill: undefined, untimed: true, seconds: undefined })) },
     { key: "more", swatch: <span className="ww-effects-legend-samples ww-effects-legend-more" aria-hidden="true"><EffectMore count={12} label="" /></span> },
   ]
   return <SettingsSection title={t("effectsLegend.title")}>
     <ul className="ww-effects-legend" data-field="effects-legend">
       {items.map(item => <li key={item.key}><span className="ww-effects-legend-mark">{item.swatch}</span><span>{t(`effectsLegend.${item.key}`)}</span></li>)}
     </ul>
+    <p className="ww-effects-legend-note">{t("effectsLegend.rows")}</p>
     <p className="ww-effects-legend-note">{t("effectsLegend.order")}</p>
+    <p className="ww-effects-legend-note">{t("effectsLegend.onlyHud")}</p>
     <p className="ww-effects-legend-note">{t("effectsLegend.noNames")}</p>
   </SettingsSection>
 }

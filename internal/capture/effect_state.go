@@ -150,8 +150,6 @@ type EffectStaticInfo struct {
 	// HUDCueTypes are the HUD buff-bar cue types (2, 14, 24, 37) with an icon Path among the definition's
 	// GameplayCueIds: the game shows this effect in a HUD buff bar (effect_hud_cues.go).
 	HUDCueTypes []int32 `json:"hudCueTypes,omitempty"`
-	// HUDIconGeneric reports that every HUD icon of the definition is shared by many definitions.
-	HUDIconGeneric bool `json:"hudIconGeneric,omitempty"`
 	// HUDPolarity is the direction of the definition's first HUD cue; unclassified means the game draws no arrow for it.
 	HUDPolarity EffectPolarity `json:"hudPolarity,omitempty"`
 	// HUDHiddenOnMonsterHead reports that the cue is hidden on monster head views (GameplayCue.Parameters[4]).
@@ -159,9 +157,6 @@ type EffectStaticInfo struct {
 	// ElementID is the element the definition states (effect_element.go); zero means none is established.
 	ElementID    uint64 `json:"elementId,omitempty"`
 	ElementBasis string `json:"elementBasis,omitempty"`
-	// ElementFamily is the first attribute of the element attribute family the definition's modifier belongs to; zero when
-	// the element does not come from an attribute (effect_element.go).
-	ElementFamily uint64 `json:"elementFamily,omitempty"`
 }
 
 // EffectTermInfo is the localized glossary term tied to an effect definition.
@@ -464,7 +459,7 @@ func (info *EffectStaticInfo) clone() *EffectStaticInfo {
 	if info == nil {
 		return nil
 	}
-	copied := &EffectStaticInfo{DeveloperTags: append([]string(nil), info.DeveloperTags...), HUDCueTypes: append([]int32(nil), info.HUDCueTypes...), HUDIconGeneric: info.HUDIconGeneric, HUDPolarity: info.HUDPolarity, HUDHiddenOnMonsterHead: info.HUDHiddenOnMonsterHead, ElementID: info.ElementID, ElementBasis: info.ElementBasis, ElementFamily: info.ElementFamily}
+	copied := &EffectStaticInfo{DeveloperTags: append([]string(nil), info.DeveloperTags...), HUDCueTypes: append([]int32(nil), info.HUDCueTypes...), HUDPolarity: info.HUDPolarity, HUDHiddenOnMonsterHead: info.HUDHiddenOnMonsterHead, ElementID: info.ElementID, ElementBasis: info.ElementBasis}
 	if info.Term != nil {
 		term := *info.Term
 		copied.Term = &term

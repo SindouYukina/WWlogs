@@ -144,15 +144,6 @@ export const CombatPanel = memo(function CombatPanel({ rows, elementOf, nameOf, 
   </div>
 })
 
-/** The neutral mark of an effect that the game draws without an icon of its own, by what its definition says it is for. */
-export type EffectMark = "attribute" | "enemy-link" | "state"
-
-export function effectMarkOf(kind: string): EffectMark {
-  if (kind === "stat_modifier") return "attribute"
-  if (kind === "runtime_link") return "enemy-link"
-  return "state"
-}
-
 /** Seconds as a cell shows them: whole seconds, rounded up, and whole minutes from 100 seconds. */
 export function effectSeconds(remaining: number): string {
   return remaining < 100 ? String(Math.ceil(remaining)) : `${Math.round(remaining / 60)}m`
@@ -173,9 +164,8 @@ const refreshStep = 0.08
 
 export interface EffectCellProps {
   effectId?: number
-  size: "icon" | "gauge"
-  icon: "game" | "generic" | "none"
-  kind: string
+  /** Whom the effect is on. An effect on an enemy carries a small corner mark, so it reads apart from one on the team. */
+  target?: "team" | "enemy" | "unresolved"
   elementId?: number
   /** Time left as a share of the duration, from effectFill; undefined draws no proportion. */
   fill?: number
@@ -194,10 +184,10 @@ export interface EffectCellProps {
  * One effect of the strip: the remaining time fills the cell behind its icon, so the icon stays fully visible and the
  * time reads from the whole cell rather than a bar under it. The fill follows each engine value and stops when snapshots
  * stop; only a refresh animates, as one short spring. Its color is the effect's own element, never the applier's, and
- * neutral otherwise. An icon is requested only when the game draws one for this effect, and a gauge never borrows one.
+ * neutral otherwise. Every listed effect is one the game draws with its own icon, and no other image ever replaces it.
  */
-export const EffectCell = memo(function EffectCell({ effectId, size, icon, kind, elementId, fill, untimed, seconds, low, stackCount, stale, describe }: EffectCellProps) {
-  const iconUrl = icon !== "none" && effectId !== undefined ? gameAssetUrl("buff", effectId) : undefined
+export const EffectCell = memo(function EffectCell({ effectId, target, elementId, fill, untimed, seconds, low, stackCount, stale, describe }: EffectCellProps) {
+  const iconUrl = effectId !== undefined ? gameAssetUrl("buff", effectId) : undefined
   const asset = useGameAsset(iconUrl)
   const previous = useRef(fill)
   const rising = fill !== undefined && previous.current !== undefined && fill > previous.current + 0.001
@@ -212,12 +202,10 @@ export const EffectCell = memo(function EffectCell({ effectId, size, icon, kind,
   const drawn = iconUrl !== undefined && asset.state !== "missing" && asset.state !== "failed"
   const shownStacks = stackCount !== undefined && stackCount > 1 ? stackCount : undefined
   const label = useMemo(() => describe(seconds, shownStacks, drawn), [describe, seconds, shownStacks, drawn])
-  return <div className="ww-effect-cell" role="img" aria-label={label} data-size={size} data-icon={drawn ? icon : "none"} data-effect-id={effectId} data-element={elementId} data-pulse={pulse} data-stale={stale}>
+  return <div className="ww-effect-cell" role="img" aria-label={label} data-icon={drawn ? "game" : "none"} data-target={target} data-effect-id={effectId} data-element={elementId} data-pulse={pulse} data-stale={stale}>
     <div className="ww-effect-face" data-jump={rising} data-untimed={untimed}>
       {fill !== undefined && <span className="ww-effect-fill" aria-hidden="true" style={{ "--ww-remaining": fill } as CSSProperties} />}
-      {drawn
-        ? <img src={iconUrl} alt="" decoding="async" draggable={false} onLoad={asset.onLoad} onError={asset.onError} />
-        : <span className="ww-effect-mark" aria-hidden="true" data-mark={effectMarkOf(kind)} />}
+      {drawn && <img src={iconUrl} alt="" decoding="async" draggable={false} onLoad={asset.onLoad} onError={asset.onError} />}
       {shownStacks !== undefined && <span className="ww-effect-stack ww-num" aria-hidden="true" data-pulse={stackPulse}>{shownStacks}</span>}
     </div>
     <span className="ww-effect-seconds ww-num" aria-hidden="true" data-low={low}>{seconds}</span>

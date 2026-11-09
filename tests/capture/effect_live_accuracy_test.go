@@ -7,7 +7,7 @@ import (
 )
 
 func infinitePolicy() *int64 {
-	policy := int64(effectDurationPolicyInfinite)
+	policy := int64(1)
 	return &policy
 }
 
@@ -16,7 +16,7 @@ func finitePolicy() *int64 {
 	return &policy
 }
 
-// passiveApply is a permanent stat modifier from a scene snapshot on local role 10.
+// passiveApply is a permanent modifier without a HUD cue on local role 10.
 func passiveApply(handle, effectID uint64, seconds float64, mutate func(*EffectApplyEvent)) EffectApplyEvent {
 	return displayApply(handle, effectID, seconds, func(e *EffectApplyEvent) {
 		e.HolderRelation = EffectRelationLocalRole
@@ -28,68 +28,25 @@ func passiveApply(handle, effectID uint64, seconds float64, mutate func(*EffectA
 	})
 }
 
-func TestEffectIsPassive(t *testing.T) {
-	seconds := 5.0
-	cases := []struct {
-		name   string
-		effect EffectInstanceSnapshot
-		want   bool
-	}{
-		{"permanent modifier", EffectInstanceSnapshot{Kind: EffectKindStatModifier, Static: &EffectStaticInfo{DurationPolicy: infinitePolicy()}}, true},
-		{"snapshot buff marker", EffectInstanceSnapshot{Kind: EffectKindBuffMarker, Origin: EffectOriginSnapshot, Static: &EffectStaticInfo{DurationPolicy: infinitePolicy()}}, true},
-		{"marker applied in combat", EffectInstanceSnapshot{Kind: EffectKindBuffMarker, Origin: EffectOriginApply, Static: &EffectStaticInfo{DurationPolicy: infinitePolicy()}}, false},
-		{"HUD icon means the game shows it", EffectInstanceSnapshot{Kind: EffectKindStatModifier, Static: &EffectStaticInfo{DurationPolicy: infinitePolicy(), HUDCueTypes: []int32{2}}}, false},
-		{"a reported duration is a timer", EffectInstanceSnapshot{Kind: EffectKindStatModifier, ServerDurationSeconds: &seconds, Static: &EffectStaticInfo{DurationPolicy: infinitePolicy()}}, false},
-		{"finite by definition", EffectInstanceSnapshot{Kind: EffectKindStatModifier, Static: &EffectStaticInfo{DurationPolicy: finitePolicy()}}, false},
-		{"no definition proves nothing", EffectInstanceSnapshot{Kind: EffectKindStatModifier}, false},
-		{"other kinds are not passive", EffectInstanceSnapshot{Kind: EffectKindCombatState, Static: &EffectStaticInfo{DurationPolicy: infinitePolicy()}}, false},
-	}
-	for _, tc := range cases {
-		if got := effectIsPassive(tc.effect); got != tc.want {
-			t.Errorf("%s: passive = %v, want %v", tc.name, got, tc.want)
-		}
-	}
-}
-
-func TestEffectIsMaintained(t *testing.T) {
-	duration := func(value float64) *float64 { return &value }
-	cases := []struct {
-		name   string
-		effect EffectInstanceSnapshot
-		want   bool
-	}{
-		{"refresh-period modifier", EffectInstanceSnapshot{Kind: EffectKindStatModifier, ServerDurationSeconds: duration(1.2)}, true},
-		{"the limit is inclusive", EffectInstanceSnapshot{Kind: EffectKindStatModifier, ServerDurationSeconds: duration(effectMaintainedDurationLimit)}, true},
-		{"a longer modifier is timed", EffectInstanceSnapshot{Kind: EffectKindStatModifier, ServerDurationSeconds: duration(2.5)}, false},
-		{"a HUD icon keeps the countdown", EffectInstanceSnapshot{Kind: EffectKindStatModifier, ServerDurationSeconds: duration(1.2), Static: &EffectStaticInfo{HUDCueTypes: []int32{2}}}, false},
-		{"only modifiers", EffectInstanceSnapshot{Kind: EffectKindBuffMarker, ServerDurationSeconds: duration(1.2)}, false},
-		{"no duration is not maintained", EffectInstanceSnapshot{Kind: EffectKindStatModifier}, false},
-	}
-	for _, tc := range cases {
-		if got := effectIsMaintained(tc.effect); got != tc.want {
-			t.Errorf("%s: maintained = %v, want %v", tc.name, got, tc.want)
-		}
-	}
-}
-
-func TestViewEffectsCountPassiveAndUnknownMeaningWithoutListingThem(t *testing.T) {
+func TestViewEffectsCountPermanentAndMonsterEffectsWithoutAHUDCueWithoutListingThem(t *testing.T) {
 	p := newEffectViewProcessor()
 	p.effects.ObserveApply(passiveApply(1, 500, 0, nil))
 	p.effects.ObserveApply(passiveApply(2, 501, 0, func(e *EffectApplyEvent) {
-		e.Static = &EffectStaticInfo{DurationPolicy: infinitePolicy(), HUDCueTypes: []int32{2}}
+		e.Static = &EffectStaticInfo{DurationPolicy: infinitePolicy(), HUDCueTypes: []int32{2}, HUDPolarity: EffectPolarityBuff}
 	}))
-	// A monster's effect on the team with no definition evidence: only its combat context is known.
+	// A monster's effect on the team that no buff bar can draw: only its combat context is known.
 	p.effects.ObserveApply(displayApply(3, 502, 0, func(e *EffectApplyEvent) {
 		e.HolderRelation, e.SourceRelation = EffectRelationLocalRole, EffectRelationNonPlayer
 		e.CombatClass, e.CombatBasis = EffectCombatClassUnknown, effectCombatBasisNoEvidence
 		e.HolderMonster, e.SourceMonster = false, true
+		e.Static = noHUDStatic()
 	}))
 	view := effectViewAt(p, 1)
-	requireEffectCounts(t, view, ViewEffectCounts{Tracked: 3, Active: 3, Local: 3, Unclassified: 1, Passive: 1, Eligible: 1, Listed: 1, Cells: 1, ListedCells: 1})
-	if len(view.Active) != 1 || *view.Active[0].EffectID != 501 {
+	requireEffectCounts(t, view, ViewEffectCounts{Tracked: 3, Active: 3, Local: 3, NonHUD: 2, Eligible: 1, Listed: 1, Cells: 1, ListedCells: 1})
+	if len(view.Active) != 1 || *view.Active[0].EffectID != 501 || view.Active[0].Polarity != EffectPolarityBuff {
 		t.Fatalf("listed = %+v", view.Active)
 	}
-	// Counting a passive instance does not end it: it stays tracked with its raw identity.
+	// Leaving an instance out does not end it: it stays tracked with its raw identity.
 	if snapshot := p.effects.SnapshotAt(effectQuery(1)); len(snapshot.Effects) != 3 {
 		t.Fatalf("tracked instances = %d", len(snapshot.Effects))
 	}
@@ -121,14 +78,14 @@ func TestViewEffectsPredictedExpiryNeverDeletesAndARefreshBringsItBack(t *testin
 	requireEffectCounts(t, effectViewAt(p, 14), ViewEffectCounts{})
 }
 
-// teamCopy is one team member's instance of a timed modifier of the given attribute family element.
+// teamCopy is one team member's instance of a timed HUD status, optionally stating an element.
 func teamCopy(handle, effectID, holder uint64, seconds float64, element uint64) EffectApplyEvent {
 	return displayApply(handle, effectID, seconds, func(e *EffectApplyEvent) {
 		e.HolderEntityID, e.HolderRelation = holder, EffectRelationLocalRole
 		e.DurationSeconds, e.RemainingSeconds = effectFloat(20), effectFloat(20)
-		static := &EffectStaticInfo{DurationPolicy: finitePolicy()}
+		static := hudStatic()
 		if element != 0 {
-			static.ElementID, static.ElementBasis, static.ElementFamily = element, effectElementBasisAttribute, 22
+			static.ElementID, static.ElementBasis = element, effectElementBasisAttribute
 		}
 		e.DefinitionLinked, e.Static = true, static
 	})
@@ -158,63 +115,6 @@ func TestViewEffectsKeepSeparateTimingsAndStacksApart(t *testing.T) {
 	requireEffectCounts(t, view, ViewEffectCounts{Tracked: 3, Active: 3, Local: 3, Eligible: 3, Listed: 3, Cells: 3, ListedCells: 3})
 }
 
-func TestViewEffectsOneCellForACompleteElementFanOut(t *testing.T) {
-	holders := []uint64{10, 11, 12}
-	apply := func(p *processor, elements []uint64) {
-		handle := uint64(1)
-		for _, holder := range holders {
-			for _, element := range elements {
-				p.effects.ObserveApply(teamCopy(handle, 700+element, holder, 0, element))
-				handle++
-			}
-		}
-	}
-	p := newEffectViewProcessor()
-	apply(p, []uint64{1, 2, 3, 4, 5, 6})
-	view := effectViewAt(p, 1)
-	requireEffectCounts(t, view, ViewEffectCounts{Tracked: 18, Active: 18, Local: 18, Eligible: 18, Listed: 18, Cells: 1, ListedCells: 1})
-	if view.Active[0].Instances != 18 || view.Active[0].ElementID != nil {
-		t.Fatalf("fan-out cell = %+v", view.Active[0])
-	}
-
-	// Five of six elements are five bonuses, not one.
-	p = newEffectViewProcessor()
-	apply(p, []uint64{1, 2, 3, 4, 5})
-	view = effectViewAt(p, 1)
-	requireEffectCounts(t, view, ViewEffectCounts{Tracked: 15, Active: 15, Local: 15, Eligible: 15, Listed: 15, Cells: 5, ListedCells: 5})
-	for _, cell := range view.Active {
-		if cell.ElementID == nil {
-			t.Fatalf("a separate element bonus lost its element: %+v", cell)
-		}
-	}
-}
-
-func TestViewEffectsFanOutRequiresTheSameHoldersAndEnd(t *testing.T) {
-	p := newEffectViewProcessor()
-	for element := uint64(1); element <= 6; element++ {
-		seconds := 0.0
-		if element == 6 {
-			seconds = 1
-		}
-		p.effects.ObserveApply(teamCopy(element, 700+element, 10, seconds, element))
-	}
-	view := effectViewAt(p, 2)
-	if view.Counts.Cells != 6 {
-		t.Fatalf("one element ending later must not merge: cells = %d", view.Counts.Cells)
-	}
-	p = newEffectViewProcessor()
-	for element := uint64(1); element <= 6; element++ {
-		holder := uint64(10)
-		if element == 1 {
-			holder = 11
-		}
-		p.effects.ObserveApply(teamCopy(element, 700+element, holder, 0, element))
-	}
-	if view := effectViewAt(p, 1); view.Counts.Cells != 6 {
-		t.Fatalf("different holders must not merge: cells = %d", view.Counts.Cells)
-	}
-}
-
 func TestEffectDisplayCellsAreIndependentOfInputOrder(t *testing.T) {
 	p := newEffectViewProcessor()
 	handle := uint64(1)
@@ -238,23 +138,8 @@ func TestEffectDisplayCellsAreIndependentOfInputOrder(t *testing.T) {
 		}
 		return out
 	}
-	if a, b := keys(effectDisplayCells(snapshot.Effects)), keys(effectDisplayCells(reversed)); !reflect.DeepEqual(a, b) || len(a) != 2 {
+	if a, b := keys(effectDisplayCells(snapshot.Effects)), keys(effectDisplayCells(reversed)); !reflect.DeepEqual(a, b) || len(a) != 7 {
 		t.Fatalf("cells depend on input order: %v vs %v", a, b)
-	}
-}
-
-func TestViewEffectsMaintainedFlagFollowsTheRepresentative(t *testing.T) {
-	p := newEffectViewProcessor()
-	p.effects.ObserveApply(displayApply(1, 500, 0, func(e *EffectApplyEvent) { e.DurationSeconds, e.RemainingSeconds = effectFloat(1.2), effectFloat(1.2) }))
-	p.effects.ObserveApply(displayApply(2, 501, 0, func(e *EffectApplyEvent) { e.DurationSeconds, e.RemainingSeconds = effectFloat(15), effectFloat(15) }))
-	view := effectViewAt(p, 0.5)
-	if len(view.Active) != 2 {
-		t.Fatalf("listed = %d", len(view.Active))
-	}
-	for _, cell := range view.Active {
-		if want := *cell.EffectID == 500; cell.Maintained != want {
-			t.Fatalf("effect %d maintained = %v, want %v", *cell.EffectID, cell.Maintained, want)
-		}
 	}
 }
 

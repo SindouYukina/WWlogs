@@ -175,12 +175,10 @@
   /* Component metrics that Overlay layouts rely on; list positions are computed from them. */
   --ww-row-combat: 46px;
   --ww-effect-icon: 36px;
-  --ww-effect-gauge: 22px;
   --ww-effect-gap: 4px;
   --ww-effect-more: 34px;
   --ww-effect-seconds-height: 14px;
   /* An icon the game shares across many definitions stays visible but gives way to the fill and the seconds. */
-  --ww-effect-generic-alpha: 0.42;
   --ww-overlay-edit-height: 36px;
   --ww-sidebar-width: 236px;
   --ww-license-text-height: 320px;

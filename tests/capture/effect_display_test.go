@@ -15,11 +15,22 @@ func effectViewAt(p *processor, seconds float64) ViewEffects {
 	return p.viewEffects()
 }
 
-// displayApply is a stat-modifier effect on enemy holder 10 from local role 20, on handle and effect id.
+// hudStatic is the definition of a status the game draws in a buff bar with a DEBUFF arrow.
+func hudStatic() *EffectStaticInfo {
+	return &EffectStaticInfo{DurationPolicy: finitePolicy(), HUDCueTypes: []int32{2}, HUDPolarity: EffectPolarityDebuff}
+}
+
+// noHUDStatic is the definition of an effect no buff bar can draw.
+func noHUDStatic() *EffectStaticInfo {
+	return &EffectStaticInfo{DurationPolicy: finitePolicy()}
+}
+
+// displayApply is a verified HUD status on enemy holder 10 from local role 20, on handle and effect id.
 func displayApply(handle, effectID uint64, seconds float64, mutate func(*EffectApplyEvent)) EffectApplyEvent {
 	return testEffectApply(handle, seconds, func(event *EffectApplyEvent) {
 		event.EffectID = effectID
 		event.CombatClass, event.CombatBasis = EffectCombatClassCombat, effectCombatBasisAttribute+"Atk"
+		event.DefinitionLinked, event.Static = true, hudStatic()
 		if mutate != nil {
 			mutate(event)
 		}
@@ -75,26 +86,34 @@ func TestClassifyEffectKind(t *testing.T) {
 }
 
 func TestEffectDisplayDecision(t *testing.T) {
-	active := func(holder, source EffectEntityRelation, kind EffectKind) EffectInstanceSnapshot {
-		return EffectInstanceSnapshot{Lifecycle: EffectLifecycleActive, HolderRelation: holder, SourceRelation: source, Kind: kind}
+	active := func(holder, source EffectEntityRelation, static *EffectStaticInfo) EffectInstanceSnapshot {
+		return EffectInstanceSnapshot{Lifecycle: EffectLifecycleActive, HolderRelation: holder, SourceRelation: source, Kind: EffectKindHUDEffect, Static: static}
 	}
+	buff := &EffectStaticInfo{HUDCueTypes: []int32{2}, HUDPolarity: EffectPolarityBuff}
+	debuff := &EffectStaticInfo{HUDCueTypes: []int32{2}, HUDPolarity: EffectPolarityDebuff}
+	unique := &EffectStaticInfo{HUDCueTypes: []int32{24}, HUDPolarity: EffectPolarityBuff}
+	noArrow := &EffectStaticInfo{HUDCueTypes: []int32{24}, HUDPolarity: EffectPolarityUnclassified}
+	headHidden := &EffectStaticInfo{HUDCueTypes: []int32{2}, HUDPolarity: EffectPolarityDebuff, HUDHiddenOnMonsterHead: true}
+	noCue := &EffectStaticInfo{}
 	cases := []struct {
 		name   string
 		effect EffectInstanceSnapshot
 		want   EffectDisplay
 	}{
-		{"team buff from teammate", active(EffectRelationLocalRole, EffectRelationLocalRole, EffectKindBuffMarker), EffectDisplay{EffectDisplayEligible, EffectTargetTeam}},
-		{"summon holder", active(EffectRelationLocalOwned, EffectRelationUnknown, EffectKindStatModifier), EffectDisplay{EffectDisplayEligible, EffectTargetTeam}},
-		{"enemy ailment from team", active(EffectRelationNonPlayer, EffectRelationLocalRole, EffectKindElementAilment), EffectDisplay{EffectDisplayEligible, EffectTargetEnemy}},
-		{"monster effect of unknown meaning on team", active(EffectRelationLocalRole, EffectRelationNonPlayer, EffectKindRuntimeLink), EffectDisplay{EffectDisplayUnclassified, EffectTargetTeam}},
-		{"team effect of unknown meaning on an enemy", active(EffectRelationNonPlayer, EffectRelationLocalRole, EffectKindRuntimeLink), EffectDisplay{EffectDisplayUnclassified, EffectTargetEnemy}},
-		{"unresolved holder from team", active(EffectRelationUnknown, EffectRelationLocalRole, EffectKindCombatState), EffectDisplay{EffectDisplayEligible, EffectTargetUnresolved}},
-		{"unknown kind stays unclassified", active(EffectRelationLocalRole, EffectRelationLocalRole, EffectKindUnknown), EffectDisplay{EffectDisplayUnclassified, EffectTargetTeam}},
-		{"empty kind is unclassified", active(EffectRelationLocalRole, EffectRelationUnknown, ""), EffectDisplay{EffectDisplayUnclassified, EffectTargetTeam}},
-		{"internal state on team", active(EffectRelationLocalRole, EffectRelationLocalRole, EffectKindInternalState), EffectDisplay{EffectDisplayInternal, EffectTargetTeam}},
-		{"non-combat on team", active(EffectRelationLocalRole, EffectRelationLocalRole, EffectKindNonCombat), EffectDisplay{EffectDisplayNonCombat, EffectTargetTeam}},
-		{"no local end", active(EffectRelationUnknown, EffectRelationNonPlayer, EffectKindStatModifier), EffectDisplay{Eligibility: EffectDisplayNotLocal}},
-		{"estimated expired first", EffectInstanceSnapshot{Lifecycle: EffectLifecycleEstimatedExpired, HolderRelation: EffectRelationLocalRole, Kind: EffectKindStatModifier}, EffectDisplay{Eligibility: EffectDisplayEstimatedExpired}},
+		{"buff on a role", active(EffectRelationLocalRole, EffectRelationLocalRole, buff), EffectDisplay{EffectDisplayEligible, EffectTargetTeam, ""}},
+		{"role-unique buff", active(EffectRelationLocalRole, EffectRelationLocalRole, unique), EffectDisplay{EffectDisplayEligible, EffectTargetTeam, ""}},
+		{"debuff a monster put on a role", active(EffectRelationLocalRole, EffectRelationNonPlayer, debuff), EffectDisplay{EffectDisplayEligible, EffectTargetTeam, ""}},
+		{"debuff a monster put on the player entity", active(EffectRelationLocalPlayer, EffectRelationNonPlayer, debuff), EffectDisplay{EffectDisplayEligible, EffectTargetTeam, ""}},
+		{"debuff the team put on a monster", active(EffectRelationNonPlayer, EffectRelationLocalRole, debuff), EffectDisplay{EffectDisplayEligible, EffectTargetEnemy, ""}},
+		{"a summon holder is on no HUD surface", active(EffectRelationLocalOwned, EffectRelationLocalRole, buff), EffectDisplay{EffectDisplayNonHUD, EffectTargetTeam, effectDisplayBasisSummonHolder}},
+		{"a definition without a HUD cue", active(EffectRelationLocalRole, EffectRelationLocalRole, noCue), EffectDisplay{EffectDisplayNonHUD, EffectTargetTeam, effectDisplayBasisNoCue}},
+		{"no definition is unresolved", active(EffectRelationLocalRole, EffectRelationLocalRole, nil), EffectDisplay{EffectDisplayHUDUnresolved, EffectTargetTeam, effectDisplayBasisNoDefinition}},
+		{"a HUD cue the game draws no arrow for", active(EffectRelationLocalRole, EffectRelationLocalRole, noArrow), EffectDisplay{EffectDisplayHUDUnresolved, EffectTargetTeam, effectDisplayBasisNoDirection}},
+		{"a cue hidden on monster heads", active(EffectRelationNonPlayer, EffectRelationLocalRole, headHidden), EffectDisplay{EffectDisplayHUDUnresolved, EffectTargetEnemy, effectDisplayBasisMonsterHead}},
+		{"a monster-head cue on a role is still drawn", active(EffectRelationLocalRole, EffectRelationNonPlayer, headHidden), EffectDisplay{EffectDisplayEligible, EffectTargetTeam, ""}},
+		{"an unresolved holder of a team effect", active(EffectRelationUnknown, EffectRelationLocalRole, debuff), EffectDisplay{EffectDisplayHUDUnresolved, EffectTargetUnresolved, effectDisplayBasisHolderUnresolved}},
+		{"no local end", active(EffectRelationUnknown, EffectRelationNonPlayer, debuff), EffectDisplay{Eligibility: EffectDisplayNotLocal}},
+		{"estimated expired first", EffectInstanceSnapshot{Lifecycle: EffectLifecycleEstimatedExpired, HolderRelation: EffectRelationLocalRole, Static: debuff}, EffectDisplay{Eligibility: EffectDisplayEstimatedExpired}},
 	}
 	for _, tc := range cases {
 		if got := effectDisplayFor(tc.effect); got != tc.want {
@@ -141,7 +160,7 @@ func TestEffectTrackerSnapshotCarriesKindAndPolarity(t *testing.T) {
 
 func TestViewEffectsListsOnlyEligibleAndAccountsForTheRest(t *testing.T) {
 	p := newEffectViewProcessor()
-	// Eligible: an unnamed, icon-less stat modifier; a short one; a stacked one; the same effect id from two sources
+	// Eligible: a verified HUD status; a short one; a stacked one; the same effect id from two sources
 	// on one holder, which stay two cells because they are independent instances; the same effect id on another holder,
 	// which shares a cell with one of them.
 	p.effects.ObserveApply(displayApply(1, 500, 0, nil))
@@ -153,9 +172,11 @@ func TestViewEffectsListsOnlyEligibleAndAccountsForTheRest(t *testing.T) {
 	// Not eligible, each for one reason.
 	p.effects.ObserveApply(displayApply(7, 600, 0, func(e *EffectApplyEvent) {
 		e.CombatClass, e.CombatBasis = EffectCombatClassUnknown, effectCombatBasisNoEvidence
+		e.Static = noHUDStatic()
 	}))
 	p.effects.ObserveApply(displayApply(8, 601, 0, func(e *EffectApplyEvent) {
 		e.CombatClass, e.CombatBasis = EffectCombatClassNonCombat, effectCombatBasisTag+"跌落无伤"
+		e.Static = noHUDStatic()
 	}))
 	p.effects.ObserveApply(displayApply(9, 602, 0, func(e *EffectApplyEvent) { e.SourceRelation = EffectRelationUnknown }))
 	p.effects.ObserveApply(displayApply(10, 603, 0, func(e *EffectApplyEvent) {
@@ -164,7 +185,7 @@ func TestViewEffectsListsOnlyEligibleAndAccountsForTheRest(t *testing.T) {
 	}))
 
 	view := effectViewAt(p, 0.25)
-	requireEffectCounts(t, view, ViewEffectCounts{Tracked: 10, Active: 10, NotLocal: 1, Local: 9, NonCombat: 1, Internal: 1, Unclassified: 1, Eligible: 6, Listed: 6, Cells: 5, ListedCells: 5})
+	requireEffectCounts(t, view, ViewEffectCounts{Tracked: 10, Active: 10, NotLocal: 1, Local: 9, NonHUD: 3, Eligible: 6, Listed: 6, Cells: 5, ListedCells: 5})
 	ids := map[uint64]int{}
 	for _, effect := range view.Active {
 		if effect.Display.Eligibility != EffectDisplayEligible || effect.Display.Target != EffectTargetEnemy || effect.Kind != EffectKindStatModifier {
@@ -183,19 +204,19 @@ func TestViewEffectsListsOnlyEligibleAndAccountsForTheRest(t *testing.T) {
 	}
 }
 
-func TestViewEffectsListCountdownsFirstInTrackerOrder(t *testing.T) {
+func TestViewEffectsListCellsWithATimeBeforeThoseWithout(t *testing.T) {
 	p := newEffectViewProcessor()
 	p.effects.ObserveApply(displayApply(1, 900, 0, func(e *EffectApplyEvent) { e.DurationSeconds, e.RemainingSeconds = nil, nil }))
-	p.effects.ObserveApply(displayApply(2, 901, 0, nil))
+	p.effects.ObserveApply(displayApply(2, 901, 0, func(e *EffectApplyEvent) { e.DurationSeconds, e.RemainingSeconds = effectFloat(9), effectFloat(9) }))
 	p.effects.ObserveApply(displayApply(3, 902, 0, func(e *EffectApplyEvent) { e.DurationSeconds, e.RemainingSeconds = effectFloat(-1), effectFloat(-1) }))
-	p.effects.ObserveApply(displayApply(4, 903, 0, nil))
+	p.effects.ObserveApply(displayApply(4, 903, 0, func(e *EffectApplyEvent) { e.DurationSeconds, e.RemainingSeconds = effectFloat(4), effectFloat(4) }))
 	view := effectViewAt(p, 0.5)
 	var order []uint64
 	for _, effect := range view.Active {
 		order = append(order, *effect.EffectID)
 	}
-	if len(order) != 4 || order[0] != 901 || order[1] != 903 || order[2] != 900 || order[3] != 902 {
-		t.Fatalf("order = %v, want countdowns 901 903 then 900 902", order)
+	if len(order) != 4 || order[0] != 903 || order[1] != 901 {
+		t.Fatalf("order = %v, want 903 and 901 first, soonest to end first", order)
 	}
 }
 
@@ -247,12 +268,13 @@ func TestViewEffectsCountsAreStableUnderDuplicatesAndLifecycle(t *testing.T) {
 
 func TestViewEffectsBoundAppliesToTheDisplaySetOnly(t *testing.T) {
 	p := newEffectViewProcessor()
-	// Unclassified instances sort ahead of the eligible ones in the tracker's order (lower holder ID); they must not
-	// take the bounded rows.
+	// Instances the game does not draw sort ahead of the eligible ones in the tracker's order (lower holder ID); they must
+	// not take the bounded rows.
 	for handle := uint64(1); handle <= 50; handle++ {
 		p.effects.ObserveApply(displayApply(handle, 700, 0, func(e *EffectApplyEvent) {
 			e.HolderEntityID, e.HolderRelation = 5, EffectRelationLocalRole
 			e.CombatClass, e.CombatBasis = EffectCombatClassUnknown, effectCombatBasisNoEvidence
+			e.Static = noHUDStatic()
 		}))
 	}
 	for handle := uint64(1); handle <= maxViewEffects+3; handle++ {
@@ -260,10 +282,10 @@ func TestViewEffectsBoundAppliesToTheDisplaySetOnly(t *testing.T) {
 	}
 	total := 50 + maxViewEffects + 3
 	view := effectViewAt(p, 0.5)
-	requireEffectCounts(t, view, ViewEffectCounts{Tracked: total, Active: total, Local: total, Unclassified: 50, Eligible: maxViewEffects + 3, Listed: maxViewEffects, Truncated: 3, Cells: maxViewEffects + 3, ListedCells: maxViewEffects, TruncatedCells: 3})
+	requireEffectCounts(t, view, ViewEffectCounts{Tracked: total, Active: total, Local: total, NonHUD: 50, Eligible: maxViewEffects + 3, Listed: maxViewEffects, Truncated: 3, Cells: maxViewEffects + 3, ListedCells: maxViewEffects, TruncatedCells: 3})
 	for _, effect := range view.Active {
 		if *effect.EffectID <= 800 {
-			t.Fatalf("an unclassified instance took a bounded row: %+v", effect)
+			t.Fatalf("an instance the game does not draw took a bounded row: %+v", effect)
 		}
 	}
 }

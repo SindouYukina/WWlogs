@@ -16,11 +16,6 @@ import (
 // arrow) and "2" (DEBUFF arrow). Anything else draws no arrow, so the game itself states no direction for it.
 var hudCueTypes = map[int32]bool{2: true, 14: true, 24: true, 37: true}
 
-// hudGenericIconShare is how many buff definitions must share a HUD icon before it stops telling them apart. In 3.7.17
-// the three icons above it are the crossed swords and weapon marks used by 241 to 448 definitions, and the next one is
-// used by 79. An effect with only such an icon keeps it, at a lower visual weight.
-const hudGenericIconShare = 100
-
 const (
 	// hudParameterDirection is GameplayCue.Parameters[0], read by BuffItem.Activate.
 	hudParameterDirection = 0
@@ -85,7 +80,7 @@ func loadBuffHUDCues(db *sql.DB, statics map[uint64]buffStaticParameters) error 
 	if err != nil {
 		return err
 	}
-	rows, err := db.Query(`SELECT b.owner_id, g.id, g.cue_type, g.path_asset_id FROM buff_gameplay_cue_ids b
+	rows, err := db.Query(`SELECT b.owner_id, g.id, g.cue_type FROM buff_gameplay_cue_ids b
 		JOIN gameplaycue g ON g.id = CAST(CAST(b.value AS INTEGER) AS TEXT)
 		WHERE g.path_asset_id IS NOT NULL AND g.path_asset_id <> ''
 		ORDER BY b.owner_id, b.ordinal`)
@@ -93,12 +88,10 @@ func loadBuffHUDCues(db *sql.DB, statics map[uint64]buffStaticParameters) error 
 		return fmt.Errorf("query Buff HUD cues: %w", err)
 	}
 	defer rows.Close()
-	iconsOf := map[uint64]map[string]bool{}
-	sharedBy := map[string]int{}
 	for rows.Next() {
-		var raw, cue, icon string
+		var raw, cue string
 		var cueType int32
-		if err := rows.Scan(&raw, &cue, &cueType, &icon); err != nil {
+		if err := rows.Scan(&raw, &cue, &cueType); err != nil {
 			return fmt.Errorf("read Buff HUD cue: %w", err)
 		}
 		if !hudCueTypes[cueType] {
@@ -107,13 +100,6 @@ func loadBuffHUDCues(db *sql.DB, statics map[uint64]buffStaticParameters) error 
 		id, err := parseMasterID(raw, "buff_gameplay_cue_ids.owner_id")
 		if err != nil {
 			return err
-		}
-		if iconsOf[id] == nil {
-			iconsOf[id] = map[string]bool{}
-		}
-		if !iconsOf[id][icon] {
-			iconsOf[id][icon] = true
-			sharedBy[icon]++
 		}
 		entry := statics[id]
 		if len(entry.hudCueTypes) == 0 {
@@ -130,17 +116,5 @@ func loadBuffHUDCues(db *sql.DB, statics map[uint64]buffStaticParameters) error 
 		entry.hudCueTypes[index] = cueType
 		statics[id] = entry
 	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
-	for id, icons := range iconsOf {
-		generic := true
-		for icon := range icons {
-			generic = generic && sharedBy[icon] >= hudGenericIconShare
-		}
-		entry := statics[id]
-		entry.hudIconGeneric = generic
-		statics[id] = entry
-	}
-	return nil
+	return rows.Err()
 }

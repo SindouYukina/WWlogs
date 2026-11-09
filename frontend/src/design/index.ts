@@ -8,6 +8,6 @@ export { AnimatedNumber, type AnimatedNumberProps } from "./components/AnimatedN
 export { BrandEmblem } from "./components/BrandEmblem"
 export { Button, Chip, NumberField, Segmented, Select, Slider, Stepper, Toggle, Tooltip, useSlidingIndicator } from "./components/controls"
 export { Card, Collapse, ContentSwitch, Reveal, SettingsRow, SettingsSection, Sidebar, StackList, StackRow, type SidebarGroupModel } from "./components/layout"
-export { CharacterAvatar, CharacterDamageRow, CombatPanel, DamageBar, EffectCell, EffectMore, GameAssetImage, effectFill, effectMarkOf, effectSeconds, lowEffectSeconds, type CombatState, type EffectMark } from "./components/combat"
+export { CharacterAvatar, CharacterDamageRow, CombatPanel, DamageBar, EffectCell, EffectMore, GameAssetImage, effectFill, effectSeconds, lowEffectSeconds, type CombatState } from "./components/combat"
 export { LiveChart, type ChartSeries } from "./components/LiveChart"
 export { Icon, type IconName } from "./components/Icon"

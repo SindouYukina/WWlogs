@@ -17,12 +17,12 @@ func TestEffectDisplayAuditExplainsCellsAndExclusions(t *testing.T) {
 	}
 	p.effects.ObserveApply(cellInstance(4, 501, 10, 0, 8, func(e *EffectApplyEvent) {
 		e.StackCount = 3
-		e.Static = &EffectStaticInfo{DurationPolicy: finitePolicy(), HUDCueTypes: []int32{2}, HUDIconGeneric: true}
+		e.Static = &EffectStaticInfo{DurationPolicy: finitePolicy(), HUDCueTypes: []int32{14}, HUDPolarity: EffectPolarityBuff}
 	}))
 	p.effects.ObserveApply(passiveApply(5, 502, 0, nil))
 	p.currentFrameTime = effectAt(1)
 	row, cells, excluded := p.effectDisplayAudit()
-	if len(row.Cells) != 2 || row.Counts.Eligible != 4 || row.Counts.Passive != 1 {
+	if len(row.Cells) != 2 || row.Counts.Eligible != 4 || row.Counts.NonHUD != 1 {
 		t.Fatalf("audit = %+v", row)
 	}
 	byID := map[uint64]effectAuditCell{}
@@ -33,7 +33,7 @@ func TestEffectDisplayAuditExplainsCellsAndExclusions(t *testing.T) {
 	if team.Merge != "same_effect_on_several_holders" || team.Instances != 3 || len(team.Members) != 3 {
 		t.Fatalf("team cell = %+v", team)
 	}
-	if team.Shown != string(EffectKindStatModifier) || team.Evidence != "CORRELATED" || team.Target != string(EffectTargetTeam) || team.Icon != "none" {
+	if team.Shown != string(EffectKindStatModifier) || team.Evidence != "CORRELATED" || team.Target != string(EffectTargetTeam) || team.Icon != "hud_cue" {
 		t.Fatalf("team cell reasons = %+v", team)
 	}
 	if team.Countdown != string(EffectRemainingEstimated) || team.StackFrom != "every_member_equal" || team.Leaves != "server_remove_or_expiry_plus_grace" {
@@ -43,26 +43,16 @@ func TestEffectDisplayAuditExplainsCellsAndExclusions(t *testing.T) {
 		t.Fatalf("hidden after = %v, want %v", team.HiddenAfter, want)
 	}
 	hud := byID[501]
-	if hud.Merge != "single_instance" || hud.Icon != "hud_cue_generic" || *hud.Stack != 3 || hud.StackFrom != "single_instance" {
+	if hud.Merge != "single_instance" || hud.Icon != "hud_cue" || *hud.Stack != 3 || hud.StackFrom != "single_instance" {
 		t.Fatalf("HUD cell = %+v", hud)
 	}
-	if len(row.Excluded) != 1 || row.Excluded[0].Reason != string(EffectDisplayPassive) || row.Excluded[0].EffectID != 502 {
+	if len(row.Excluded) != 1 || row.Excluded[0].Reason != string(EffectDisplayNonHUD) || row.Excluded[0].DisplayBasis != effectDisplayBasisNoCue || row.Excluded[0].EffectID != 502 {
 		t.Fatalf("excluded = %+v", row.Excluded)
 	}
 	// Time passing changes neither set: a countdown alone never produces a new row.
 	p.currentFrameTime = effectAt(2)
 	if _, laterCells, laterExcluded := p.effectDisplayAudit(); laterCells != cells || laterExcluded != excluded {
 		t.Fatal("the audit signature depends on time")
-	}
-}
-
-func TestEffectDisplayAuditMaintainedCellHasNoCountdown(t *testing.T) {
-	p := newEffectViewProcessor()
-	p.effects.ObserveApply(cellInstance(1, 500, 10, 0, 1.2, func(e *EffectApplyEvent) { e.DurationSeconds = effectFloat(1.2) }))
-	p.currentFrameTime = effectAt(0.5)
-	row, _, _ := p.effectDisplayAudit()
-	if len(row.Cells) != 1 || row.Cells[0].Countdown != "none_maintained" {
-		t.Fatalf("maintained audit = %+v", row.Cells)
 	}
 }
 

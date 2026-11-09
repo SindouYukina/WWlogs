@@ -187,12 +187,10 @@ export interface EffectRowModel {
   effectId?: number
   /** The game draws this effect with an icon of its own (Go ViewEffect.HUDIcon); only then is an icon requested. */
   hudIcon: boolean
-  /** The icon is shared by many definitions (Go ViewEffect.HUDIconGeneric): it is drawn at a lower visual weight. */
-  hudIconGeneric: boolean
   /** The element the effect's own definition states; undefined keeps the neutral color. */
   elementId?: number
-  /** The engine's EffectKind; it chooses the neutral mark of an effect without a game icon. */
-  kind: string
+  /** Whom the effect is on, from the engine's display decision. */
+  target?: "team" | "enemy" | "unresolved"
   stackCount?: number
   countdown: CountdownState
   stale: boolean
@@ -203,9 +201,8 @@ export function effectRow(effect: Effect, remaining: number | undefined): Effect
     key: effect.key,
     effectId: effect.effectId,
     hudIcon: effect.hudIcon === true,
-    hudIconGeneric: effect.hudIconGeneric === true,
     elementId: effect.elementId,
-    kind: effect.kind,
+    target: effect.display.target,
     stackCount: effect.stackCount,
     countdown: countdownState(effect, remaining),
     stale: effect.stale === true,
