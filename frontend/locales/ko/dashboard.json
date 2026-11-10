@@ -79,6 +79,7 @@
   "derivedUnassignedOutroNote": "이 피해에는 스킬 ID가 없습니다. 피해 데이터가 반주 스킬 피해로 표시하고 있어 이 캐릭터의 반주 스킬 공식 이름으로 표시합니다.",
   "unassignedSkill": "스킬 미확인",
   "unassignedSkillNote": "이 소스의 피해로 확인되었지만 프로토콜에 스킬 ID가 없습니다.",
+  "noSkillIdTag": "스킬 ID 없음",
   "noSkillRows": "이 소스에는 세부 내역으로 나눌 스킬 피해가 없습니다.",
   "damageColumn": "피해량",
   "shareColumn": "비율",

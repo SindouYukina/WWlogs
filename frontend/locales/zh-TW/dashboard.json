@@ -79,6 +79,7 @@
   "derivedUnassignedOutroNote": "這些傷害沒有技能 ID；傷害資料標記為延奏技能傷害，以此角色延奏技能的官方名稱顯示。",
   "unassignedSkill": "未確認技能來源",
   "unassignedSkillNote": "已確認屬於此來源，但協議沒有提供技能 ID 的傷害。",
+  "noSkillIdTag": "無技能 ID",
   "noSkillRows": "此來源沒有可分解的技能傷害。",
   "damageColumn": "傷害",
   "shareColumn": "占比",

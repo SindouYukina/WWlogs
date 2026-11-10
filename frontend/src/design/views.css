@@ -85,7 +85,9 @@ body[data-view="desktop"] { margin: 0; background: var(--ww-surface-canvas); ove
 .ww-dash-skill-name { display: flex; align-items: center; gap: var(--ww-space-2); min-width: 0; max-width: 240px; }
 .ww-dash-skill-name img { width: 22px; height: 22px; flex: none; }
 .ww-dash-skills-wrap { max-height: 320px; overflow-y: auto; }
-.ww-dash-skill-id { flex: none; font-size: var(--ww-text-2xs); color: var(--ww-text-4); }
+.ww-dash-skill-id, .ww-dash-skill-noid { flex: none; font-size: var(--ww-text-2xs); color: var(--ww-text-4); }
+/* The tag takes the place of the ID, so this row keeps room for a whole name beside it. */
+.ww-dash-skill-unassigned .ww-dash-skill-name { max-width: 340px; }
 .ww-dash-skill-derived { flex: none; font-size: var(--ww-text-2xs); color: var(--ww-text-4); cursor: help; }
 .ww-dash-skill-unassigned td { color: var(--ww-text-3); font-style: italic; }
 .ww-dash-skill-unassigned[data-named="true"] td { color: inherit; font-style: normal; }

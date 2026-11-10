@@ -151,6 +151,12 @@ test("whether a row shows its ID is the engine's decision, and an unassigned row
   assert.doesNotMatch(unassignedRow, /ww-dash-skill-id|skillId/, "an unassigned row never shows an ID")
   assert.match(unassignedRow, /\{unassigned\.name \?\? t\("unassignedSkill"\)\}/, "a row without an engine name reads as an unconfirmed source; a named row shows the engine's name")
   assert.match(unassignedRow, /data-field="derived-name"/, "a derived name carries the derivation mark")
+  assert.match(unassignedRow, /\{unassigned\.derived && <span className="ww-dash-skill-noid" data-field="no-skill-id">\{t\("noSkillIdTag"\)\}<\/span>\}/, "a derived row says it has no ID, in the place an ID would be")
+  for (const locale of ["en", "ja", "ko", "zh-CN", "zh-TW"]) {
+    const tag = JSON.parse(readFileSync(`frontend/locales/${locale}/dashboard.json`, "utf8")).noSkillIdTag
+    assert.match(tag, /ID/, `${locale}: the tag names the missing ID`)
+    assert.doesNotMatch(tag, /\d/, `${locale}: the tag never reads as an ID`)
+  }
   const adapter = readFileSync("frontend/src/lib/combat-view.ts", "utf8")
   assert.doesNotMatch(adapter.slice(adapter.indexOf("export function skillBreakdown"), adapter.indexOf("export function skillBreakdowns")), /nameStatus === "VERIFIED"/, "the frontend does not grade skill evidence")
 })

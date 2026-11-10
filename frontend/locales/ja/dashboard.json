@@ -79,6 +79,7 @@
   "derivedUnassignedOutroNote": "これらのダメージにスキル ID はありません。ダメージデータが終奏スキルダメージを示すため、このキャラクターの終奏スキルの公式名称で表示します。",
   "unassignedSkill": "スキル未確認",
   "unassignedSkillNote": "このソースのダメージとして確認済みですが、プロトコルにスキル ID がありません。",
+  "noSkillIdTag": "スキル ID なし",
   "noSkillRows": "このソースには内訳を表示できるスキルダメージがありません。",
   "damageColumn": "ダメージ",
   "shareColumn": "割合",
