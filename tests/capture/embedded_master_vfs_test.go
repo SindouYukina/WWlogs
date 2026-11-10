@@ -113,6 +113,8 @@ func TestMasterLookupDigest(t *testing.T) {
 		writeSortedLookups(digest, "damageVision", master.skillNames.damageVisions)
 		writeSortedLookups(digest, "visionItem", master.skillNames.visionItems)
 		writeSortedLookups(digest, "roleTuneBreak", master.skillNames.roleTuneBreak)
+		writeSortedLookups(digest, "roleOutro", master.skillNames.roleOutro)
+		writeSortedLookups(digest, "outroDamage", master.skillNames.outroDamage)
 		hudCues := map[uint64]string{}
 		for id, static := range master.buffStatics {
 			if len(static.hudCueTypes) > 0 {

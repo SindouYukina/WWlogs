@@ -76,6 +76,7 @@
   "derivedTuneBreakNote": "非此技能本身的名稱：此角色的諧度破壞技能官方名稱。",
   "derivedUnassignedEchoNote": "這些傷害沒有技能 ID；依其傷害 ID 對應到此聲骸的官方名稱。",
   "derivedUnassignedSkillNote": "非此列本身的技能：列出這些傷害之技能的官方名稱。",
+  "derivedUnassignedOutroNote": "這些傷害沒有技能 ID；傷害資料標記為延奏技能傷害，以此角色延奏技能的官方名稱顯示。",
   "unassignedSkill": "未確認技能來源",
   "unassignedSkillNote": "已確認屬於此來源，但協議沒有提供技能 ID 的傷害。",
   "noSkillRows": "此來源沒有可分解的技能傷害。",

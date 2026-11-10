@@ -44,9 +44,12 @@ type UnassignedSkillTotals struct {
 	MissingSkillEvents uint64 `json:"missingSkillEvents"`
 	OverflowEvents     uint64 `json:"overflowEvents"`
 	// DamageIDs are the distinct DamageIds of the hits without a SkillId, as on a skill row. They never move a hit out of
-	// this bucket; the view may name the Echo behind them (skill_names.go).
+	// this bucket; the view may name what caused them (skill_names.go).
 	DamageIDs           []uint64 `json:"damageIds,omitempty"`
 	DamageIDsIncomplete bool     `json:"damageIdsIncomplete,omitempty"`
+	// EchoVisions are the Vision ids (ascending) of the ConcomitantVision entities the attacker held at every one of these
+	// hits. They are runtime evidence for the display name only and are not part of the statistics output.
+	EchoVisions []uint64 `json:"-"`
 }
 
 // maxSkillsPerContributor bounds one contributor's skill table. Archived encounters show at most a few dozen SkillIds
@@ -63,6 +66,8 @@ const maxEchoVisionsPerSkill = 4
 type skillAggregate struct {
 	skills     map[uint64]*SkillDamageSnapshot
 	unassigned UnassignedSkillTotals
+	// unassignedEchoSeen is set once a hit without a SkillId has been recorded, so the first hit seeds EchoVisions.
+	unassignedEchoSeen bool
 }
 
 func (a *skillAggregate) add(skillID, damageID uint64, amount int64, echoVisions []uint64) {
@@ -71,6 +76,7 @@ func (a *skillAggregate) add(skillID, damageID uint64, amount int64, echoVisions
 		a.unassigned.OutgoingEvents++
 		a.unassigned.MissingSkillEvents++
 		a.unassigned.DamageIDs, a.unassigned.DamageIDsIncomplete = insertDamageID(a.unassigned.DamageIDs, a.unassigned.DamageIDsIncomplete, damageID)
+		a.intersectUnassignedEchoVisions(echoVisions)
 		return
 	}
 	entry, ok := a.skills[skillID]
@@ -93,6 +99,27 @@ func (a *skillAggregate) add(skillID, damageID uint64, amount int64, echoVisions
 	for _, vision := range echoVisions {
 		entry.recordEchoVision(vision)
 	}
+}
+
+// intersectUnassignedEchoVisions keeps the Echo identities every hit without a SkillId reported. Hits of one bucket must all
+// agree before a name may rely on them, so a loadout change or a hit without its Echo clears the claim. visions is sorted.
+func (a *skillAggregate) intersectUnassignedEchoVisions(visions []uint64) {
+	if !a.unassignedEchoSeen {
+		a.unassignedEchoSeen = true
+		if len(visions) > maxEchoVisionsPerSkill {
+			visions = visions[:maxEchoVisionsPerSkill]
+		}
+		a.unassigned.EchoVisions = append([]uint64(nil), visions...)
+		return
+	}
+	kept := a.unassigned.EchoVisions[:0]
+	for _, vision := range a.unassigned.EchoVisions {
+		index := sort.Search(len(visions), func(i int) bool { return visions[i] >= vision })
+		if index < len(visions) && visions[index] == vision {
+			kept = append(kept, vision)
+		}
+	}
+	a.unassigned.EchoVisions = kept
 }
 
 // recordEchoVision keeps the row's distinct Echo identities sorted and bounded.
@@ -151,5 +178,6 @@ func (a *skillAggregate) snapshot() ([]SkillDamageSnapshot, UnassignedSkillTotal
 	})
 	unassigned := a.unassigned
 	unassigned.DamageIDs = append([]uint64(nil), a.unassigned.DamageIDs...)
+	unassigned.EchoVisions = append([]uint64(nil), a.unassigned.EchoVisions...)
 	return skills, unassigned
 }

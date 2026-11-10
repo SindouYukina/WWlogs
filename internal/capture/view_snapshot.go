@@ -224,16 +224,20 @@ type ViewSkill struct {
 }
 
 // ViewUnassignedSkill is a contributor's confirmed damage without a skill row. The hits have no SkillId, so a name here is
-// only ever DERIVED from the Echo or the UI skill their DamageIds belong to; the row stays the unassigned row.
+// only ever DERIVED, from the relations in skill_names.go; the row stays the unassigned row and a hit never gains a SkillId.
 type ViewUnassignedSkill struct {
 	UnassignedSkillTotals
 	DamageShare *float64 `json:"damageShare,omitempty"`
-	Name        string   `json:"name,omitempty"`
-	NameStatus  string   `json:"nameStatus,omitempty"`
-	NameSource  string   `json:"nameSource,omitempty"`
-	SourceID    uint64   `json:"sourceId,omitempty"`
-	IconKind    string   `json:"iconKind,omitempty"`
-	IconID      uint64   `json:"iconId,omitempty"`
+	// Name is set when the engine has a reliable source for these hits; the UI then shows it with the derivation mark.
+	Name       string `json:"name,omitempty"`
+	NameStatus string `json:"nameStatus,omitempty"`
+	// NameSource is "echo", "damage_type" (Outro Skill DMG) or "damage_list"; empty when Name is empty.
+	NameSource string `json:"nameSource,omitempty"`
+	SourceID   uint64 `json:"sourceId,omitempty"`
+	IconKind   string `json:"iconKind,omitempty"`
+	IconID     uint64 `json:"iconId,omitempty"`
+	// UnnamedReason is a stable code saying why these hits have no name (skill_names.go); empty when named or when the row is empty.
+	UnnamedReason string `json:"unnamedReason,omitempty"`
 }
 
 // ViewEffects is the display set of the tracked effect state at the capture time. Active lists display-eligible
@@ -521,13 +525,11 @@ func (p *processor) viewSkills(roleID uint64, skills []SkillDamageSnapshot, unas
 		})
 	}
 	row := ViewUnassignedSkill{UnassignedSkillTotals: unassigned, DamageShare: share(unassigned.DamageDealt)}
-	if name, item, vision, ok := p.masters.unassignedSkillEcho(unassigned); ok {
-		row.Name, row.NameStatus, row.NameSource, row.SourceID = name, skillNameStatusDerived, skillNameSourceEcho, item
-		row.IconKind, row.IconID = skillIconKindEchoSkill, vision
-	} else if name, uiSkill, ok := p.masters.unassignedSkillDamageList(roleID, unassigned); ok {
-		row.Name, row.NameStatus, row.NameSource, row.SourceID = name, skillNameStatusDerived, skillNameSourceDamageList, uiSkill
-		row.IconKind, row.IconID = skillIconKindSkillConfig, uiSkill
+	source, reason := p.masters.unassignedSkillName(roleID, unassigned)
+	if source.name != "" {
+		row.Name, row.NameStatus, row.NameSource, row.SourceID, row.IconKind, row.IconID = source.name, skillNameStatusDerived, source.source, source.sourceID, source.iconKind, source.iconID
 	}
+	row.UnnamedReason = reason
 	return view, row
 }
 

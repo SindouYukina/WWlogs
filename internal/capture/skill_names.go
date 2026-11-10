@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -35,6 +36,25 @@ import (
 // carry an unlisted DamageId, or belong to another role keeps no name. Names never change a row, its totals, its owner,
 // or the order of rows.
 //
+// A hit without a SkillId has no row and keeps its place in the contributor's unassigned bucket: SkillId zero means the client
+// created the bullet without a skill context. Buff extra effects 3 (AddBulletTrigger) and 29 (ExecuteAddBulletByStackCount)
+// fire bullets on the Buff's instigator with no SkillId (client ExtraEffect code), so no field of the hit names a skill. Such
+// hits can still be named, DERIVED, but only by a relation that says what the hit is, tried in this order (unassignedSkillName):
+//
+//   - echo: every DamageId is one Vision's common bullet, and the attacker held that Vision's ConcomitantVision entity at every
+//     one of the hits. The holder check is the runtime proof that the bullet is this role's Echo: the instigator of the Echo's
+//     Buff is the bullet's owner, so the wearer is the attacker. A DamageId of a Vision the attacker does not hold stays
+//     unnamed rather than credited to an Echo nothing ties to this role.
+//   - damage_type: every DamageId is damage.type 7, the game's Outro Skill DMG (client DamageType requirement 7, whose official
+//     Buff texts say Outro Skill DMG); every one is listed by a UI skill of the role, which proves the damage row is the role's
+//     own; and the role has exactly one Outro UI skill (Skill.SkillType 11). The listing names the owner, not the skill: a role's
+//     Outro damage can sit in another UI skill's list, which is why damage_list below refuses such a list.
+//   - damage_list: as for a row, every DamageId is listed by exactly one UI skill of the role, except that a list holding Outro
+//     damage under a UI skill of another type never names it.
+//
+// The hit stays no-SkillId in every total; the name is display evidence only, and it never enters the skill rows or their
+// order. A SkillId is never invented.
+//
 // A row's icon is resolved separately from its name, because either can exist without the other: the name and the image
 // of an official row come from different records, and a Vision's HUD icon is keyed by the Vision, not by the PhantomItem
 // that names it.
@@ -45,6 +65,7 @@ const (
 	skillNameSourceSkillType  = "skill_type"
 	skillNameSourceTuneBreak  = "tune_break"
 	skillNameSourceEcho       = "echo"
+	skillNameSourceDamageType = "damage_type"
 	// skillNameStatusDerived marks a name taken from a related record (see the file comment).
 	skillNameStatusDerived = "DERIVED"
 )
@@ -65,12 +86,26 @@ const (
 	uiSkillTypeBreak = 12
 	// uiSkillTypeForte is Skill.SkillType for a role's Forte Circuit, whose DamageList also holds hits of other skills.
 	uiSkillTypeForte = 6
+	// uiSkillTypeOutro is Skill.SkillType for a role's Outro skill.
+	uiSkillTypeOutro = 11
+	// damageTypeOutro is damage.type for Outro Skill DMG.
+	damageTypeOutro = 7
 	// echoSummonLabelPrefix starts the developer label of the common skills that summon one Echo.
 	echoSummonLabelPrefix = "召唤幻象-"
 	// visionActorPathSegment marks a Vision's own actor blueprint.
 	visionActorPathSegment = "/Character/Vision/"
 	// visionBulletNameSeparator ends the Vision part of a common bullet's developer name.
 	visionBulletNameSeparator = "-"
+)
+
+// unnamedReason values say why a bucket of hits without a SkillId has no name. They are diagnostics, never shown as a name.
+const (
+	unnamedReasonOverflow             = "overflow"               // some hits had a SkillId past the row bound
+	unnamedReasonDamageIDMissing      = "damage_id_missing"      // a hit carried no DamageId, or more distinct ones than a row keeps
+	unnamedReasonEchoNotHeld          = "echo_not_held"          // the hits are one Vision's bullets but the attacker did not hold that Vision at every hit
+	unnamedReasonMixedSources         = "mixed_sources"          // the DamageIds point at different records
+	unnamedReasonOutroListedElsewhere = "outro_listed_elsewhere" // Outro damage listed by a UI skill of another type, and no Outro skill to name instead
+	unnamedReasonNoRelation           = "no_relation"            // nothing relates the DamageIds to this role
 )
 
 // skillGenreUITypes maps SkillInfo.SkillGenre to the Skill.SkillType of the UI skill that describes it. The genres are the
@@ -98,6 +133,10 @@ type skillNameMaster struct {
 	tuneBreakDamage map[uint64]struct{}
 	// roleTuneBreak maps a role to its Tune Break UI skill; a role with more than one is left out.
 	roleTuneBreak map[uint64]uint64
+	// outroDamage holds DamageIds of damage.type 7, the game's Outro Skill DMG.
+	outroDamage map[uint64]struct{}
+	// roleOutro maps a role to its Outro UI skill (Skill.SkillType 11); a role with more than one is left out.
+	roleOutro map[uint64]uint64
 	// echoItems maps a Vision skill key to one PhantomItem.Id whose official name every candidate Echo shares.
 	echoItems map[uint64]uint64
 	// echoVisions maps a skill key to the Vision.Id of the PhantomItem in echoItems. The game draws an Echo's button from the
@@ -119,7 +158,7 @@ type skillNameMaster struct {
 func newSkillNameMaster() *skillNameMaster {
 	return &skillNameMaster{damageListSkills: map[uint64]uint64{}, uiSkillRoles: map[uint64]map[uint64]struct{}{},
 		uiSkillNames: map[uint64]string{}, tuneBreakSkills: map[uint64]struct{}{}, tuneBreakDamage: map[uint64]struct{}{},
-		roleTuneBreak: map[uint64]uint64{}, echoItems: map[uint64]uint64{}, echoVisions: map[uint64]uint64{},
+		roleTuneBreak: map[uint64]uint64{}, outroDamage: map[uint64]struct{}{}, roleOutro: map[uint64]uint64{}, echoItems: map[uint64]uint64{}, echoVisions: map[uint64]uint64{},
 		damageVisions: map[uint64]uint64{}, visionItems: map[uint64]uint64{}, itemVisions: map[uint64]uint64{}, echoNames: map[uint64]string{},
 		uiSkillTypes: map[uint64]int64{}, skillGenres: map[uint64]int64{}, ambiguousEchoVisions: map[uint64]map[uint64]struct{}{}}
 }
@@ -186,38 +225,137 @@ func (m *gameMaster) skillRowIcon(skill SkillDamageSnapshot, source string, sour
 	return skillIconKindSkill, skill.SkillID
 }
 
-// unassignedSkillEcho names the Echo behind a contributor's hits that carried no SkillId: every hit must have a DamageId
-// and every DamageId must belong to one Vision's common bullets. The hits stay in the unassigned row.
-func (m *gameMaster) unassignedSkillEcho(unassigned UnassignedSkillTotals) (name string, item, vision uint64, ok bool) {
-	if m == nil || m.skillNames == nil || unassigned.OverflowEvents != 0 || unassigned.DamageIDsIncomplete || len(unassigned.DamageIDs) == 0 {
-		return "", 0, 0, false
+// unassignedSkillSource is the record that names a bucket of hits without a SkillId.
+type unassignedSkillSource struct {
+	name     string
+	source   string
+	sourceID uint64
+	iconKind string
+	iconID   uint64
+}
+
+// unassignedSkillName decides whether a contributor's hits without a SkillId have a reliable source (see the file comment).
+// roleID is zero for a vehicle. When there is no name it returns the reason, which is empty only for an empty bucket.
+func (m *gameMaster) unassignedSkillName(roleID uint64, unassigned UnassignedSkillTotals) (unassignedSkillSource, string) {
+	switch {
+	case unassigned.OutgoingEvents == 0:
+		return unassignedSkillSource{}, ""
+	case unassigned.OverflowEvents != 0:
+		return unassignedSkillSource{}, unnamedReasonOverflow
+	case unassigned.DamageIDsIncomplete || len(unassigned.DamageIDs) == 0:
+		return unassignedSkillSource{}, unnamedReasonDamageIDMissing
+	case m == nil || m.skillNames == nil:
+		return unassignedSkillSource{}, unnamedReasonNoRelation
 	}
 	names := m.skillNames
-	for index, damageID := range unassigned.DamageIDs {
-		found, known := names.damageVisions[damageID]
+	if vision, ok := names.damageVision(unassigned.DamageIDs); ok {
+		if !containsID(unassigned.EchoVisions, vision) {
+			return unassignedSkillSource{}, unnamedReasonEchoNotHeld
+		}
+		item, known := names.visionItems[vision]
+		if !known || names.echoNames[item] == "" {
+			return unassignedSkillSource{}, unnamedReasonNoRelation
+		}
+		return unassignedSkillSource{names.echoNames[item], skillNameSourceEcho, item, skillIconKindEchoSkill, vision}, ""
+	}
+	if uiSkill, ok := names.outroSkill(roleID, unassigned.DamageIDs); ok {
+		if names.uiSkillNames[uiSkill] == "" {
+			return unassignedSkillSource{}, unnamedReasonNoRelation
+		}
+		return unassignedSkillSource{names.uiSkillNames[uiSkill], skillNameSourceDamageType, uiSkill, skillIconKindSkillConfig, uiSkill}, ""
+	}
+	if uiSkill, ok := names.damageListOwner(roleID, unassigned.DamageIDs, false); ok {
+		if names.listsOutroDamageOfAnotherType(uiSkill, unassigned.DamageIDs) {
+			return unassignedSkillSource{}, unnamedReasonOutroListedElsewhere
+		}
+		if names.uiSkillNames[uiSkill] == "" {
+			return unassignedSkillSource{}, unnamedReasonNoRelation
+		}
+		return unassignedSkillSource{names.uiSkillNames[uiSkill], skillNameSourceDamageList, uiSkill, skillIconKindSkillConfig, uiSkill}, ""
+	}
+	return unassignedSkillSource{}, names.unnamedReasonForDamageIDs(roleID, unassigned.DamageIDs)
+}
+
+// containsID reports whether a sorted ID list holds id.
+func containsID(ids []uint64, id uint64) bool {
+	index := sort.Search(len(ids), func(i int) bool { return ids[i] >= id })
+	return index < len(ids) && ids[index] == id
+}
+
+// damageVision returns the one Vision whose common bullets deal every DamageId.
+func (m *skillNameMaster) damageVision(damageIDs []uint64) (uint64, bool) {
+	var vision uint64
+	for index, damageID := range damageIDs {
+		found, known := m.damageVisions[damageID]
 		if !known || (index > 0 && found != vision) {
-			return "", 0, 0, false
+			return 0, false
 		}
 		vision = found
 	}
-	item, known := names.visionItems[vision]
-	if !known || names.echoNames[item] == "" {
-		return "", 0, 0, false
-	}
-	return names.echoNames[item], item, vision, true
+	return vision, len(damageIDs) > 0
 }
 
-// unassignedSkillDamageList names the UI skill behind a contributor's hits that carried no SkillId: every hit must have a
-// DamageId and one UI skill of the role must list them all. The hits stay in the unassigned row.
-func (m *gameMaster) unassignedSkillDamageList(roleID uint64, unassigned UnassignedSkillTotals) (string, uint64, bool) {
-	if m == nil || m.skillNames == nil || unassigned.OverflowEvents != 0 {
-		return "", 0, false
+// outroSkill returns roleID's Outro UI skill when every DamageId is Outro Skill DMG listed by a UI skill of the role.
+func (m *skillNameMaster) outroSkill(roleID uint64, damageIDs []uint64) (uint64, bool) {
+	if roleID == 0 || len(damageIDs) == 0 {
+		return 0, false
 	}
-	uiSkill, ok := m.skillNames.damageListOwner(roleID, unassigned.DamageIDs, unassigned.DamageIDsIncomplete)
-	if !ok || m.skillNames.uiSkillNames[uiSkill] == "" {
-		return "", 0, false
+	uiSkill, ok := m.roleOutro[roleID]
+	if !ok {
+		return 0, false
 	}
-	return m.skillNames.uiSkillNames[uiSkill], uiSkill, true
+	for _, damageID := range damageIDs {
+		if !m.isOutroDamageOfRole(roleID, damageID) {
+			return 0, false
+		}
+	}
+	return uiSkill, true
+}
+
+// listsOutroDamageOfAnotherType reports whether a UI skill that is not an Outro skill lists Outro Skill DMG among damageIDs.
+func (m *skillNameMaster) listsOutroDamageOfAnotherType(uiSkill uint64, damageIDs []uint64) bool {
+	if m.uiSkillTypes[uiSkill] == uiSkillTypeOutro {
+		return false
+	}
+	for _, damageID := range damageIDs {
+		if _, ok := m.outroDamage[damageID]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+// unnamedReasonForDamageIDs explains a bucket no relation named: mixed when its DamageIds resolve to different records.
+func (m *skillNameMaster) unnamedReasonForDamageIDs(roleID uint64, damageIDs []uint64) string {
+	kinds := map[string]struct{}{}
+	for _, damageID := range damageIDs {
+		if vision, ok := m.damageVisions[damageID]; ok {
+			kinds["echo:"+strconv.FormatUint(vision, 10)] = struct{}{}
+		} else if m.isOutroDamageOfRole(roleID, damageID) {
+			kinds["outro"] = struct{}{}
+		} else if listed, ok := m.damageListSkills[damageID]; ok {
+			kinds["skill:"+strconv.FormatUint(listed, 10)] = struct{}{}
+		} else {
+			kinds["none"] = struct{}{}
+		}
+	}
+	if len(kinds) > 1 {
+		return unnamedReasonMixedSources
+	}
+	return unnamedReasonNoRelation
+}
+
+// isOutroDamageOfRole reports whether damageID is Outro Skill DMG that a UI skill of the role lists.
+func (m *skillNameMaster) isOutroDamageOfRole(roleID, damageID uint64) bool {
+	if _, ok := m.outroDamage[damageID]; !ok {
+		return false
+	}
+	listed, ok := m.damageListSkills[damageID]
+	if !ok {
+		return false
+	}
+	_, belongs := m.uiSkillRoles[listed][roleID]
+	return belongs
 }
 
 // damageListOwner returns the single UI skill of roleID that lists every DamageId.
@@ -425,23 +563,32 @@ func loadSQLiteSkillNameSources(db *sql.DB, locale string, master *gameMaster) e
 			if err := rows.Err(); err != nil {
 				return err
 			}
-			breaks := map[uint64]map[uint64]struct{}{}
-			if err := pairs(`SELECT CAST(r.role_id AS TEXT),CAST(s.id AS TEXT) FROM skill s
+			roleSkillOfType := func(skillType int64, into map[uint64]uint64) error {
+				found := map[uint64]map[uint64]struct{}{}
+				if err := pairs(`SELECT CAST(r.role_id AS TEXT),CAST(s.id AS TEXT) FROM skill s
 				JOIN role_skill_group_ref r ON CAST(r.skill_group_id AS TEXT)=CAST(s.skill_group_id AS TEXT) WHERE s.skill_type=?`, func(roleID, uiSkill uint64) error {
-				if breaks[roleID] == nil {
-					breaks[roleID] = map[uint64]struct{}{}
+					if found[roleID] == nil {
+						found[roleID] = map[uint64]struct{}{}
+					}
+					found[roleID][uiSkill] = struct{}{}
+					return nil
+				}, skillType); err != nil {
+					return err
 				}
-				breaks[roleID][uiSkill] = struct{}{}
-				return nil
-			}, uiSkillTypeBreak); err != nil {
-				return err
-			}
-			for roleID, skills := range breaks {
-				if len(skills) == 1 {
-					for uiSkill := range skills {
-						names.roleTuneBreak[roleID] = uiSkill
+				for roleID, skills := range found {
+					if len(skills) == 1 {
+						for uiSkill := range skills {
+							into[roleID] = uiSkill
+						}
 					}
 				}
+				return nil
+			}
+			if err := roleSkillOfType(uiSkillTypeBreak, names.roleTuneBreak); err != nil {
+				return err
+			}
+			if err := roleSkillOfType(uiSkillTypeOutro, names.roleOutro); err != nil {
+				return err
 			}
 		}
 	}
@@ -492,7 +639,8 @@ func loadSQLiteSkillGenres(db *sql.DB, names *skillNameMaster, exists func(...st
 	return rows.Err()
 }
 
-// loadSQLiteTuneBreakSkills reads the SkillIds of the weakness-break genre and the DamageIds of its damage type.
+// loadSQLiteTuneBreakSkills reads the SkillIds of the weakness-break genre, the DamageIds of its damage type, and the DamageIds
+// of the Outro damage type.
 func loadSQLiteTuneBreakSkills(db *sql.DB, names *skillNameMaster, exists func(...string) (bool, error)) error {
 	if ok, err := exists("skillinfo"); err != nil {
 		return err
@@ -527,21 +675,32 @@ func loadSQLiteTuneBreakSkills(db *sql.DB, names *skillNameMaster, exists func(.
 	if hasType, err := masterColumnExists(db, "damage", "type"); err != nil || !hasType {
 		return err
 	}
-	rows, err := db.Query(`SELECT CAST(id AS TEXT) FROM damage WHERE type=?`, damageTypeBreak)
+	if err := loadDamageIDsOfType(db, damageTypeBreak, names.tuneBreakDamage); err != nil {
+		return fmt.Errorf("read weakness-break damage: %w", err)
+	}
+	if err := loadDamageIDsOfType(db, damageTypeOutro, names.outroDamage); err != nil {
+		return fmt.Errorf("read Outro damage: %w", err)
+	}
+	return nil
+}
+
+// loadDamageIDsOfType adds the DamageIds of one damage.type.
+func loadDamageIDsOfType(db *sql.DB, damageType int64, into map[uint64]struct{}) error {
+	rows, err := db.Query(`SELECT CAST(id AS TEXT) FROM damage WHERE type=?`, damageType)
 	if err != nil {
-		return fmt.Errorf("query weakness-break damage: %w", err)
+		return err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var raw string
 		if err := rows.Scan(&raw); err != nil {
-			return fmt.Errorf("read weakness-break damage: %w", err)
+			return err
 		}
 		id, err := parseMasterID(raw, "damage.id")
 		if err != nil {
 			return err
 		}
-		names.tuneBreakDamage[id] = struct{}{}
+		into[id] = struct{}{}
 	}
 	return rows.Err()
 }

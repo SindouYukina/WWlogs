@@ -26,7 +26,7 @@ export interface SkillRow {
 export interface SkillBreakdown {
   rows: SkillRow[]
   /** Confirmed damage of the contributor without a skill source; absent when there is none. */
-  unassigned?: { damage: number; events: number; share?: number; name?: string; derived?: "echo" | "damage_list"; iconKind?: GameAssetKind; iconId?: number }
+  unassigned?: { damage: number; events: number; share?: number; name?: string; derived?: "echo" | "damage_list" | "damage_type"; iconKind?: GameAssetKind; iconId?: number }
 }
 
 export interface CombatTimeline {

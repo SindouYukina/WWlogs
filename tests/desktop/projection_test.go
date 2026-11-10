@@ -312,7 +312,7 @@ func TestDisplayProjectionRelocalizesDerivedSkillNamesThroughTheirSource(t *test
 		"CREATE TABLE phantomitem_locale (id TEXT,locale TEXT,name TEXT,PRIMARY KEY(id,locale))",
 		// The runtime SkillId shares its number with an unrelated SkillDescription row; the source must decide.
 		"INSERT INTO skilldescription_locale VALUES('1006203','en-US','Wrong runtime row')",
-		"INSERT INTO skill_locale VALUES('1006203','en-US','Liberation'),('1006203','ja-JP','解放')",
+		"INSERT INTO skill_locale VALUES('1006203','en-US','Liberation'),('1006203','ja-JP','解放'),('1004406','en-US','Intro'),('1006109','en-US','Herself a Thousand Lanterns'),('1006109','ja-JP','身を千灯と為す'),('1006106','en-US','Glance on a Whim')",
 		"INSERT INTO phantomitem_locale VALUES('60001062','en-US','Reminiscence: Fleurdelys')",
 	} {
 		if _, err := db.Exec(statement); err != nil {
@@ -331,8 +331,12 @@ func TestDisplayProjectionRelocalizesDerivedSkillNamesThroughTheirSource(t *test
 		{SkillID: 280026010, Name: "x", NameStatus: "DERIVED", NameSource: "echo", SourceID: 60001062, DamageDealt: 100, OutgoingEvents: 2},
 		{SkillID: 1006203, NameStatus: "UNKNOWN", DamageDealt: 5, OutgoingEvents: 1},
 		{SkillID: 1409099, Name: "x", NameStatus: "DERIVED", NameSource: "damage_list", SourceID: 1009999, DamageDealt: 1, OutgoingEvents: 1},
+		{SkillID: 1209400, Name: "x", NameStatus: "DERIVED", NameSource: "skill_type", SourceID: 1004406, DamageDealt: 2, OutgoingEvents: 1},
 	}
-	view := capture.ViewSnapshot{Roles: []capture.ViewRole{{RoleID: 1312, DamageDealt: 406, Skills: skills}}}
+	outro := capture.ViewUnassignedSkill{UnassignedSkillTotals: capture.UnassignedSkillTotals{DamageDealt: 19012, OutgoingEvents: 8, MissingSkillEvents: 8}, Name: "x", NameStatus: "DERIVED", NameSource: "damage_type", SourceID: 1006109, IconKind: "skill-config", IconID: 1006109}
+	unnamed := capture.ViewUnassignedSkill{UnassignedSkillTotals: capture.UnassignedSkillTotals{DamageDealt: 3, OutgoingEvents: 1, MissingSkillEvents: 1}, UnnamedReason: "no_relation"}
+	stale := capture.ViewUnassignedSkill{UnassignedSkillTotals: capture.UnassignedSkillTotals{DamageDealt: 4, OutgoingEvents: 1, MissingSkillEvents: 1}, Name: "x", NameStatus: "DERIVED", NameSource: "damage_type", SourceID: 1009999, IconKind: "skill-config", IconID: 1009999}
+	view := capture.ViewSnapshot{Roles: []capture.ViewRole{{RoleID: 1312, DamageDealt: 406, Skills: skills, UnassignedSkill: outro}, {RoleID: 1311, DamageDealt: 3, UnassignedSkill: unnamed}, {RoleID: 1209, DamageDealt: 4, UnassignedSkill: stale}}}
 	source := &service.Snapshot{Sequence: 4, View: &view}
 	projection := &displayProjection{resolver: resolver}
 	decode := func(raw []byte) (result struct{ View capture.ViewSnapshot }) {
@@ -354,7 +358,7 @@ func TestDisplayProjectionRelocalizesDerivedSkillNamesThroughTheirSource(t *test
 		t.Fatal(err)
 	}
 	en, ja := decode(first).View.Roles[0].Skills, decode(second).View.Roles[0].Skills
-	want := []struct{ en, ja, status string }{{"Liberation", "解放", "DERIVED"}, {"Reminiscence: Fleurdelys", "Reminiscence: Fleurdelys", "DERIVED"}, {"Wrong runtime row", "Wrong runtime row", "VERIFIED"}, {"", "", "UNKNOWN"}}
+	want := []struct{ en, ja, status string }{{"Liberation", "解放", "DERIVED"}, {"Reminiscence: Fleurdelys", "Reminiscence: Fleurdelys", "DERIVED"}, {"Wrong runtime row", "Wrong runtime row", "VERIFIED"}, {"", "", "UNKNOWN"}, {"Intro", "Intro", "DERIVED"}}
 	for i, w := range want {
 		if en[i].Name != w.en || ja[i].Name != w.ja || en[i].NameStatus != w.status || ja[i].NameStatus != w.status {
 			t.Fatalf("row %d: en=%q/%s ja=%q/%s, want %q/%q/%s", i, en[i].Name, en[i].NameStatus, ja[i].Name, ja[i].NameStatus, w.en, w.ja, w.status)
@@ -362,5 +366,16 @@ func TestDisplayProjectionRelocalizesDerivedSkillNamesThroughTheirSource(t *test
 		if en[i].NameSource != skills[i].NameSource || en[i].SourceID != skills[i].SourceID || en[i].DamageDealt != skills[i].DamageDealt || en[i].OutgoingEvents != skills[i].OutgoingEvents {
 			t.Fatalf("row %d: projection changed the row: %+v", i, en[i])
 		}
+	}
+	enOutro, jaOutro := decode(first).View.Roles[0].UnassignedSkill, decode(second).View.Roles[0].UnassignedSkill
+	if enOutro.Name != "Herself a Thousand Lanterns" || jaOutro.Name != "身を千灯と為す" || enOutro.NameStatus != "DERIVED" || enOutro.NameSource != "damage_type" || enOutro.DamageDealt != 19012 || enOutro.MissingSkillEvents != 8 {
+		t.Fatalf("Outro row: en=%+v ja=%+v", enOutro, jaOutro)
+	}
+	if plain := decode(first).View.Roles[1].UnassignedSkill; plain.Name != "" || plain.UnnamedReason != "no_relation" || plain.DamageDealt != 3 {
+		t.Fatalf("an unnamed row was changed: %+v", plain)
+	}
+	// A source whose record has no name in any locale falls back to plainly unassigned.
+	if gone := decode(first).View.Roles[2].UnassignedSkill; gone.Name != "" || gone.NameSource != "" || gone.SourceID != 0 || gone.IconKind != "" || gone.DamageDealt != 4 {
+		t.Fatalf("a source without a name kept its reference: %+v", gone)
 	}
 }

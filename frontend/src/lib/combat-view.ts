@@ -106,7 +106,7 @@ function isSkillIconKind(kind: string | undefined): kind is GameAssetKind {
   return skillIconKinds.includes(kind as GameAssetKind)
 }
 
-/** The Echo or UI skill the engine named an unassigned row after, from its DamageIds. */
+/** The Echo or UI skill the engine named an unassigned row after. The engine decides; without a name the row stays unconfirmed. */
 function unassignedSkillSource(unassigned: UnassignedSkill): Pick<NonNullable<SkillBreakdown["unassigned"]>, "name" | "derived" | "iconKind" | "iconId"> {
   return {
     ...(unassigned.name ? { name: unassigned.name, derived: unassigned.nameSource as NonNullable<SkillBreakdown["unassigned"]>["derived"] } : {}),

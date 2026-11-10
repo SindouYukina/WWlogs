@@ -196,16 +196,18 @@ func TestSkillNameSourcesLoaderExcludesAmbiguousRelations(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, statement := range []string{
-		"CREATE TABLE skill(id TEXT PRIMARY KEY,skill_group_id TEXT)",
+		"CREATE TABLE skill(id TEXT PRIMARY KEY,skill_group_id TEXT,skill_type INTEGER)",
 		"CREATE TABLE skill_locale(id TEXT,locale TEXT,name TEXT,PRIMARY KEY(id,locale))",
 		"CREATE TABLE role_skill_group_ref(role_id TEXT,skill_group_id TEXT,PRIMARY KEY(role_id,skill_group_id))",
 		"CREATE TABLE skill_damage_ref(skill_id TEXT,ordinal INTEGER,damage_id TEXT,PRIMARY KEY(skill_id,ordinal))",
+		"CREATE TABLE damage(id TEXT PRIMARY KEY,type INTEGER)",
+		"INSERT INTO damage VALUES('9101',7),('9102',7),('9001',0),('9004',0)",
 		"CREATE TABLE vision(id TEXT PRIMARY KEY,skill_id TEXT,birth_cast_skill_id TEXT)",
 		"CREATE TABLE phantomitem(id TEXT PRIMARY KEY,skill_id TEXT)",
 		"CREATE TABLE phantomitem_locale(id TEXT,locale TEXT,name TEXT,PRIMARY KEY(id,locale))",
-		"INSERT INTO skill VALUES('1006203','1312'),('1006201','1312')",
+		"INSERT INTO skill VALUES('1006203','1312',3),('1006201','1312',1),('1006209','1312',11),('1006301','1313',11),('1006302','1313',11)",
 		"INSERT INTO skill_locale VALUES('1006203','en-US','Liberation'),('1006203','zh-TW','解放'),('1006201','en-US','Basic')",
-		"INSERT INTO role_skill_group_ref VALUES('1312','1312')",
+		"INSERT INTO role_skill_group_ref VALUES('1312','1312'),('1313','1313')",
 		// 9001 belongs to one UI skill; 9004 is listed by two and must not name anything.
 		"INSERT INTO skill_damage_ref VALUES('1006203',0,'9001'),('1006203',1,'9004'),('1006201',0,'9004')",
 		// Vision 280026: one Echo name in both locales. Vision 280013 and 281013 share skill 280013010 with different names.
@@ -247,6 +249,12 @@ func TestSkillNameSourcesLoaderExcludesAmbiguousRelations(t *testing.T) {
 	}
 	if names.echoNames[60001062] != "共鳴迴響·芙露德莉斯" {
 		t.Fatalf("echo names = %v", names.echoNames)
+	}
+	if !reflect.DeepEqual(names.outroDamage, map[uint64]struct{}{9101: {}, 9102: {}}) {
+		t.Fatalf("Outro damage = %v", names.outroDamage)
+	}
+	if !reflect.DeepEqual(names.roleOutro, map[uint64]uint64{1312: 1006209}) {
+		t.Fatalf("role Outro skills = %v, want only roles with exactly one", names.roleOutro)
 	}
 }
 
@@ -331,16 +339,45 @@ func TestTrackedMasterDerivesObservedSkillNames(t *testing.T) {
 	if name, status, source, _ := master.skillRowName(1312, SkillDamageSnapshot{SkillID: 1312011, DamageIDs: []uint64{1312011001}}); name != "攏傘形" || status != "VERIFIED" || source != "official" {
 		t.Fatalf("an official name changed: (%q, %s, %q)", name, status, source)
 	}
-	// Hits without a SkillId are named only when every DamageId belongs to one Echo's common bullets.
-	unassigned := UnassignedSkillTotals{DamageDealt: 10, OutgoingEvents: 1, MissingSkillEvents: 1, DamageIDs: []uint64{28003302}}
-	if name, item, vision, ok := master.unassignedSkillEcho(unassigned); !ok || name != "共鳴迴響·鳴式·利維亞坦" || item != 60001672 || vision != 280033 {
-		t.Fatalf("unassigned Echo = (%q, %d, %d, %v)", name, item, vision, ok)
+	// Hits without a SkillId: an Echo's bullets need the attacker to hold that Echo; Outro Skill DMG names the role's Outro skill.
+	hit := func(ids ...uint64) UnassignedSkillTotals {
+		return UnassignedSkillTotals{DamageDealt: 10, OutgoingEvents: uint64(len(ids)), MissingSkillEvents: uint64(len(ids)), DamageIDs: ids}
 	}
-	if _, _, _, ok := master.unassignedSkillEcho(UnassignedSkillTotals{DamageIDs: []uint64{28003302, 1409011001}}); ok {
-		t.Fatal("a DamageId of no Echo must not name the row")
+	echo := hit(28003302)
+	echo.EchoVisions = []uint64{280033}
+	if source, reason := master.unassignedSkillName(1508, echo); source.name != "共鳴迴響·鳴式·利維亞坦" || source.source != "echo" || source.sourceID != 60001672 || source.iconKind != "echo-skill" || source.iconID != 280033 || reason != "" {
+		t.Fatalf("unassigned Echo = %+v / %q", source, reason)
 	}
-	if _, _, _, ok := master.unassignedSkillEcho(UnassignedSkillTotals{DamageIDs: []uint64{28003302}, DamageIDsIncomplete: true}); ok {
-		t.Fatal("an incomplete list must not name the row")
+	outro := hit(1311291202, 1311291203, 1311291204, 1311291301)
+	if source, reason := master.unassignedSkillName(1311, outro); source.name != "身作千燈" || source.source != "damage_type" || source.sourceID != 1006109 || source.iconKind != "skill-config" || source.iconID != 1006109 || reason != "" {
+		t.Fatalf("unassigned Outro = %+v / %q", source, reason)
+	}
+	refused := []struct {
+		label  string
+		role   uint64
+		totals UnassignedSkillTotals
+		want   string
+	}{
+		{"an Echo the attacker did not hold", 1508, func() UnassignedSkillTotals { h := hit(28003302); h.EchoVisions = []uint64{280045}; return h }(), "echo_not_held"},
+		{"an Echo with no runtime Echo identity", 1508, hit(28003302), "echo_not_held"},
+		{"the same Echo DamageId on another role without it", 1311, func() UnassignedSkillTotals { h := hit(28003302); h.EchoVisions = []uint64{280045}; return h }(), "echo_not_held"},
+		{"a DamageId of no Echo among the hits", 1508, func() UnassignedSkillTotals {
+			h := hit(28003302, 1409011001)
+			h.EchoVisions = []uint64{280033}
+			return h
+		}(), "mixed_sources"},
+		{"an incomplete DamageId list", 1311, func() UnassignedSkillTotals { h := hit(1311291202); h.DamageIDsIncomplete = true; return h }(), "damage_id_missing"},
+		{"another role's Outro DamageIds", 1312, hit(1311291202, 1311291301), "no_relation"},
+		{"Outro damage of the role beside Echo damage", 1311, func() UnassignedSkillTotals {
+			h := hit(28003302, 1311291202)
+			h.EchoVisions = []uint64{280033}
+			return h
+		}(), "mixed_sources"},
+	}
+	for _, c := range refused {
+		if source, reason := master.unassignedSkillName(c.role, c.totals); source.name != "" || reason != c.want {
+			t.Errorf("%s: got %+v / %q, want reason %q", c.label, source, reason, c.want)
+		}
 	}
 	if kind, id := master.skillRowIcon(SkillDamageSnapshot{SkillID: 280026010}, skillNameSourceEcho, 60001062); kind != skillIconKindEchoSkill || id != 280026 {
 		t.Fatalf("Echo icon = %s/%d", kind, id)
@@ -356,15 +393,6 @@ func TestTrackedMasterDerivesObservedSkillNames(t *testing.T) {
 	}
 	if kind, id := master.skillRowIcon(SkillDamageSnapshot{SkillID: 1209400}, skillNameSourceSkillType, 1004406); kind != skillIconKindSkillConfig || id != 1004406 {
 		t.Fatalf("skill type icon = %s/%d", kind, id)
-	}
-	if name, uiSkill, ok := master.unassignedSkillDamageList(1311, UnassignedSkillTotals{DamageIDs: []uint64{1311291202, 1311291203, 1311291204, 1311291301}}); !ok || name != "乘興一顧" || uiSkill != 1006106 {
-		t.Fatalf("unassigned UI skill = (%q, %d, %v)", name, uiSkill, ok)
-	}
-	if _, _, ok := master.unassignedSkillDamageList(1311, UnassignedSkillTotals{DamageIDs: []uint64{1311291202}, DamageIDsIncomplete: true}); ok {
-		t.Fatal("an incomplete unassigned row must not be named")
-	}
-	if _, _, ok := master.unassignedSkillDamageList(1312, UnassignedSkillTotals{DamageIDs: []uint64{1311291202}}); ok {
-		t.Fatal("another role's UI skill must not name an unassigned row")
 	}
 	if kind, id := master.skillRowIcon(SkillDamageSnapshot{SkillID: 1409011}, skillNameSourceEcho, 0); kind != "" || id != 0 {
 		t.Fatalf("a skill of no Echo got an Echo icon: %s/%d", kind, id)
@@ -434,16 +462,100 @@ func TestViewSkillsNameTheEchoOfAnUnassignedRowWithoutMovingIt(t *testing.T) {
 	master.skillNames.visionItems = map[uint64]uint64{280033: 60001672}
 	master.skillNames.echoNames[60001672] = "共鳴迴響·鳴式·利維亞坦"
 	p.masters = master
-	unassigned := UnassignedSkillTotals{DamageDealt: 42025, OutgoingEvents: 27, MissingSkillEvents: 27, DamageIDs: []uint64{28003302}}
+	unassigned := UnassignedSkillTotals{DamageDealt: 42025, OutgoingEvents: 27, MissingSkillEvents: 27, DamageIDs: []uint64{28003302}, EchoVisions: []uint64{280033}}
 	skills, row := p.viewSkills(1508, nil, unassigned, 42025)
-	if len(skills) != 0 || row.Name != "共鳴迴響·鳴式·利維亞坦" || row.NameStatus != "DERIVED" || row.NameSource != "echo" || row.SourceID != 60001672 || row.IconKind != "echo-skill" || row.IconID != 280033 {
+	if len(skills) != 0 || row.Name != "共鳴迴響·鳴式·利維亞坦" || row.NameStatus != "DERIVED" || row.NameSource != "echo" || row.SourceID != 60001672 || row.IconKind != "echo-skill" || row.IconID != 280033 || row.UnnamedReason != "" {
 		t.Fatalf("unassigned row = %+v, rows %+v", row, skills)
 	}
-	if row.DamageDealt != 42025 || row.OutgoingEvents != 27 {
+	if row.DamageDealt != 42025 || row.OutgoingEvents != 27 || row.MissingSkillEvents != 27 {
 		t.Fatalf("naming the row changed its totals: %+v", row)
 	}
 	_, other := p.viewSkills(1508, nil, UnassignedSkillTotals{DamageDealt: 9, OutgoingEvents: 1, MissingSkillEvents: 1, DamageIDs: []uint64{1}}, 9)
-	if other.Name != "" || other.NameStatus != "" || other.IconKind != "" {
+	if other.Name != "" || other.NameStatus != "" || other.IconKind != "" || other.UnnamedReason != "no_relation" {
 		t.Fatalf("an unknown DamageId named the row: %+v", other)
+	}
+	_, empty := p.viewSkills(1508, nil, UnassignedSkillTotals{}, 9)
+	if empty.Name != "" || empty.UnnamedReason != "" {
+		t.Fatalf("an empty bucket got a name or a reason: %+v", empty)
+	}
+}
+
+// testOutroNameMaster has role 1311 with Outro UI skill 1006109, an Intro UI skill 1006106 whose list holds Outro damage 9101 and
+// 9102 and Intro damage 9103, role 1312 with its own list (9104 is its Outro damage), and role 1209 with two Outro skills.
+func testOutroNameMaster() *gameMaster {
+	names := newSkillNameMaster()
+	names.damageListSkills = map[uint64]uint64{9101: 1006106, 9102: 1006106, 9103: 1006106, 9104: 1006203, 9105: 1006204, 9110: 1009901}
+	names.uiSkillRoles = map[uint64]map[uint64]struct{}{1006106: {1311: {}}, 1006109: {1311: {}}, 1006203: {1312: {}}, 1006204: {1209: {}}, 1009901: {1209: {}}}
+	names.uiSkillNames = map[uint64]string{1006106: "乘興一顧", 1006109: "身作千燈", 1006203: "暝傘形", 1006204: "雙延奏", 1009901: "雙延奏二"}
+	names.uiSkillTypes = map[uint64]int64{1006106: 5, 1006109: 11, 1006203: 5, 1006204: 11, 1009901: 11}
+	names.outroDamage = map[uint64]struct{}{9101: {}, 9102: {}, 9104: {}, 9105: {}, 9110: {}}
+	names.roleOutro = map[uint64]uint64{1311: 1006109}
+	return &gameMaster{skillNames: names}
+}
+
+func TestUnassignedSkillNameOutroDamageRequiresTheRolesOwnRowAndOneOutroSkill(t *testing.T) {
+	master := testOutroNameMaster()
+	hit := func(ids ...uint64) UnassignedSkillTotals {
+		return UnassignedSkillTotals{DamageDealt: 5, OutgoingEvents: uint64(len(ids)), MissingSkillEvents: uint64(len(ids)), DamageIDs: ids}
+	}
+	cases := []struct {
+		label        string
+		role         uint64
+		totals       UnassignedSkillTotals
+		wantName     string
+		wantSource   string
+		wantSourceID uint64
+		wantReason   string
+	}{
+		{"Outro damage in another UI skill's list names the Outro skill", 1311, hit(9101, 9102), "身作千燈", "damage_type", 1006109, ""},
+		{"a damage list that holds Outro damage never names that list's skill", 1311, hit(9101, 9103), "", "", 0, "outro_listed_elsewhere"},
+		{"Intro damage of the same list is not Outro damage", 1311, hit(9103), "乘興一顧", "damage_list", 1006106, ""},
+		{"Outro damage of another role does not name this one's Outro", 1311, hit(9104), "", "", 0, "no_relation"},
+		{"a role with two Outro skills is ambiguous", 1209, hit(9105, 9110), "", "", 0, "no_relation"},
+		{"a vehicle never names a role's Outro", 0, hit(9101), "", "", 0, "no_relation"},
+	}
+	for _, c := range cases {
+		source, reason := master.unassignedSkillName(c.role, c.totals)
+		if source.name != c.wantName || source.source != c.wantSource || source.sourceID != c.wantSourceID || reason != c.wantReason {
+			t.Errorf("%s: got %+v / %q", c.label, source, reason)
+		}
+	}
+}
+
+func TestUnassignedSkillNameEchoNeedsEveryHitToHoldTheVision(t *testing.T) {
+	master := testOutroNameMaster()
+	master.skillNames.damageVisions = map[uint64]uint64{28003302: 280033, 28003401: 280034}
+	master.skillNames.visionItems = map[uint64]uint64{280033: 60001672, 280034: 60001902}
+	master.skillNames.echoNames = map[uint64]string{60001672: "鳴式·利維亞坦", 60001902: "爐芯機骸"}
+	var aggregate skillAggregate
+	aggregate.add(0, 28003302, 100, []uint64{280033})
+	aggregate.add(0, 28003302, 200, []uint64{280033, 280045})
+	_, totals := aggregate.snapshot()
+	if !reflect.DeepEqual(totals.EchoVisions, []uint64{280033}) {
+		t.Fatalf("Echo identities of the bucket = %v", totals.EchoVisions)
+	}
+	if source, reason := master.unassignedSkillName(1508, totals); source.name != "鳴式·利維亞坦" || reason != "" {
+		t.Fatalf("named = %+v / %q", source, reason)
+	}
+	// A hit without the Echo clears the claim for the whole bucket; later hits cannot restore it.
+	aggregate.add(0, 28003302, 50, nil)
+	aggregate.add(0, 28003302, 50, []uint64{280033})
+	_, totals = aggregate.snapshot()
+	if len(totals.EchoVisions) != 0 {
+		t.Fatalf("a hit without the Echo left %v", totals.EchoVisions)
+	}
+	if source, reason := master.unassignedSkillName(1508, totals); source.name != "" || reason != "echo_not_held" {
+		t.Fatalf("a hit without the Echo: %+v / %q", source, reason)
+	}
+	// Two Visions' bullets in one bucket are not one Echo, even when the attacker holds both.
+	mixed := UnassignedSkillTotals{OutgoingEvents: 2, MissingSkillEvents: 2, DamageIDs: []uint64{28003302, 28003401}, EchoVisions: []uint64{280033, 280034}}
+	if source, reason := master.unassignedSkillName(1508, mixed); source.name != "" || reason != "mixed_sources" {
+		t.Fatalf("two Echoes: %+v / %q", source, reason)
+	}
+	var overflow skillAggregate
+	overflow.unassigned = UnassignedSkillTotals{OutgoingEvents: 1, OverflowEvents: 1, DamageIDs: []uint64{28003302}, EchoVisions: []uint64{280033}}
+	_, totals = overflow.snapshot()
+	if source, reason := master.unassignedSkillName(1508, totals); source.name != "" || reason != "overflow" {
+		t.Fatalf("overflow: %+v / %q", source, reason)
 	}
 }

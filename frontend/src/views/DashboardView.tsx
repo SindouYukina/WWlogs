@@ -48,7 +48,7 @@ function RoleBoard({ rows, selected, onSelect, scope, stale, numberMode }: { row
 }
 
 const derivedNoteKey = { damage_list: "derivedSkillNote", skill_type: "derivedSkillTypeNote", tune_break: "derivedTuneBreakNote", echo: "derivedEchoSkillNote" } as const
-const derivedUnassignedNoteKey = { echo: "derivedUnassignedEchoNote", damage_list: "derivedUnassignedSkillNote" } as const
+const derivedUnassignedNoteKey = { echo: "derivedUnassignedEchoNote", damage_list: "derivedUnassignedSkillNote", damage_type: "derivedUnassignedOutroNote" } as const
 
 /** The engine's skill split of one contributor. Rows plus the unassigned row add up to the contributor's damage. */
 const SkillTable = memo(function SkillTable({ breakdown, color }: { breakdown: SkillBreakdown; color: string }) {
@@ -65,8 +65,8 @@ const SkillTable = memo(function SkillTable({ breakdown, color }: { breakdown: S
       <td className="ww-num">{format.integer(row.events)}</td>
       <td><div className="ww-dash-skill-share"><DamageBar share={row.share} /><span className="ww-num">{share(row.share)}</span></div></td>
     </tr>)}
-    {unassigned && <tr className="ww-dash-skill-unassigned" data-field="unassigned-skill">
-      <td><span className="ww-dash-skill-name" title={t("unassignedSkillNote")}>{unassigned.iconKind !== undefined && unassigned.iconId !== undefined && <GameAssetImage kind={unassigned.iconKind} id={unassigned.iconId} />}<span className="ww-truncate">{t("unassignedSkill")}</span>{unassigned.name && <><span className="ww-dash-skill-derived" data-field="derived-name" title={t(derivedUnassignedNoteKey[unassigned.derived ?? "echo"])} aria-label={t(derivedUnassignedNoteKey[unassigned.derived ?? "echo"])}>≈</span><span className="ww-truncate" data-field="derived-source">{unassigned.name}</span></>}</span></td>
+    {unassigned && <tr className="ww-dash-skill-unassigned" data-field="unassigned-skill" data-named={unassigned.name !== undefined} data-name-source={unassigned.derived}>
+      <td><span className="ww-dash-skill-name" title={unassigned.derived ? t(derivedUnassignedNoteKey[unassigned.derived]) : t("unassignedSkillNote")}>{unassigned.iconKind !== undefined && unassigned.iconId !== undefined && <GameAssetImage kind={unassigned.iconKind} id={unassigned.iconId} />}<span className="ww-truncate" data-field="unassigned-name">{unassigned.name ?? t("unassignedSkill")}</span>{unassigned.derived && <span className="ww-dash-skill-derived" data-field="derived-name" title={t(derivedUnassignedNoteKey[unassigned.derived])} aria-label={t(derivedUnassignedNoteKey[unassigned.derived])}>≈</span>}</span></td>
       <td className="ww-num"><AnimatedNumber value={unassigned.damage} format={format.integer} /></td>
       <td className="ww-num">{format.integer(unassigned.events)}</td>
       <td><div className="ww-dash-skill-share"><DamageBar share={unassigned.share} /><span className="ww-num">{share(unassigned.share)}</span></div></td>
