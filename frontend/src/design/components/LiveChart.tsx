@@ -1,4 +1,5 @@
 import { memo, useMemo, useRef, useState } from "react"
+import { lineVertices, nearestLine } from "./chart-hit"
 import { legendFocus, toggleLegendLock } from "./legend-focus"
 
 export interface ChartSeries {
@@ -26,6 +27,8 @@ export interface LiveChartProps {
 }
 
 const plotWidth = 1000
+/** How far the pointer may travel between press and release, in CSS pixels, for the release to still be a click. */
+const clickMoveLimit = 5
 
 function niceMax(value: number): number {
   if (value <= 0) return 1
@@ -36,28 +39,22 @@ function niceMax(value: number): number {
   return 10 * magnitude
 }
 
-/** Unwritten future slots collapse onto the last known point so the path keeps its point count while it grows. */
+/** The path through a line's vertices. */
 function linePath(values: ReadonlyArray<number | null>, slots: number, max: number, height: number): string {
-  let lastY = height
-  let lastX = 0
-  const parts: string[] = []
-  for (let slot = 0; slot < slots; slot++) {
-    const value = values[slot]
-    if (value !== null && value !== undefined) {
-      lastX = (slot / Math.max(1, slots - 1)) * plotWidth
-      lastY = height - (value / max) * height
-    }
-    parts.push(`${slot === 0 ? "M" : "L"}${lastX.toFixed(1)} ${lastY.toFixed(1)}`)
-  }
-  return parts.join(" ")
+  return lineVertices(values, slots, max, height, plotWidth).map(([x, y], slot) => `${slot === 0 ? "M" : "L"}${x.toFixed(1)} ${y.toFixed(1)}`).join(" ")
 }
 
 /**
  * Hand-written SVG: a chart library would outweigh the rest of the dashboard. One y-axis, recessive grid, hover layer.
  *
- * The legend focuses a series without changing any color: hovering or focusing an item previews it, clicking locks it,
- * and Escape releases the lock. The focused line stays fully opaque and a little thicker while the others fade. Every
- * line is its own SVG layer, and every line also has a thicker copy, drawn after all lines and hidden until its line is
+ * A click on a line selects it: the selection is the nearest line within reach of the pointer, never whichever line is
+ * drawn on top. Clicking another line moves the selection, clicking the selected line releases it, and clicking anywhere
+ * else in the chart releases it. Selection lives only in this component and does not ask the engine for anything.
+ *
+ * The legend focuses a series without changing any color: hovering or focusing an item previews it while nothing is
+ * selected, clicking locks it, and Escape releases the lock. A locked series keeps its emphasis however the pointer moves.
+ *
+ * The focused line stays fully opaque and a little thicker while the others fade. Every line is its own SVG layer, and every line also has a thicker copy, drawn after all lines and hidden until its line is
  * focused, so a focused line is never covered by another of the same element color. Focus therefore changes only layer
  * opacity, both ways: the others fade, the copy fades in and back out. The compositor can run that without repainting a
  * line or restyling per frame, and nothing is mounted or removed. The transitions run only when the focus changes and
@@ -74,7 +71,10 @@ export const LiveChart = memo(function LiveChart({ series, slots, height = 200, 
     setHovered(null)
     setLocked(null)
   }
+  // A selection is cleared when its series leaves the chart; a data update of the same series keeps it.
+  if (locked !== null && !series.some(s => s.key === locked)) setLocked(null)
   const plot = useRef<HTMLDivElement>(null)
+  const pressedAt = useRef<{ x: number; y: number } | null>(null)
   const max = useMemo(() => niceMax(Math.max(0, ...series.flatMap(s => s.values.map(v => v ?? 0)))), [series])
   const hasData = series.some(s => s.values.some(v => v !== null))
   // Paths depend on the data only, so a focus change never rebuilds them.
@@ -85,6 +85,17 @@ export const LiveChart = memo(function LiveChart({ series, slots, height = 200, 
     setHover(Math.max(0, Math.min(slots - 1, Math.round(((event.clientX - bounds.left) / bounds.width) * (slots - 1)))))
   }
   const release = (key: string) => setHovered(current => current === key ? null : current)
+  const onChartPointerDown = (event: React.PointerEvent<HTMLDivElement>) => { pressedAt.current = { x: event.clientX, y: event.clientY } }
+  const onChartClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    const press = pressedAt.current
+    pressedAt.current = null
+    // Only a press and release in place is a click on the chart; a drag that ends here is not.
+    if (press === null || Math.hypot(event.clientX - press.x, event.clientY - press.y) > clickMoveLimit) return
+    const box = plot.current?.getBoundingClientRect()
+    const inside = box !== undefined && event.clientX >= box.left && event.clientX <= box.right && event.clientY >= box.top && event.clientY <= box.bottom
+    const hit = inside && hasData ? nearestLine(series.map(s => ({ key: s.key, aggregate: s.aggregate, vertices: lineVertices(s.values, slots, max, height, plotWidth) })), event.clientX - box.left, event.clientY - box.top, box.width / plotWidth, box.height / height) : null
+    setLocked(current => hit === null ? null : toggleLegendLock(current, hit))
+  }
   const hoverX = hover === null ? 0 : (hover / Math.max(1, slots - 1)) * 100
   const ticks = [1, 0.5, 0]
   return <div className="ww-chart" data-focusing={focus !== null}>
@@ -95,7 +106,7 @@ export const LiveChart = memo(function LiveChart({ series, slots, height = 200, 
         <i style={{ background: s.color }} />{s.label}
       </button>)}
     </div>
-    <div className="ww-chart-body" style={{ height }} role="img" aria-label={ariaLabel}>
+    <div className="ww-chart-body" style={{ height }} role="img" aria-label={ariaLabel} onPointerDown={onChartPointerDown} onClick={onChartClick}>
       <div className="ww-chart-axis ww-num" aria-hidden="true">{ticks.map(t => <span key={t} style={{ top: `${(1 - t) * 100}%` }}>{formatValue(max * t)}</span>)}</div>
       <div ref={plot} className="ww-chart-plot" onPointerMove={onPointerMove} onPointerLeave={() => setHover(null)}>
         {ticks.map(t => <div key={t} className="ww-chart-grid" style={{ top: `${(1 - t) * 100}%` }} />)}

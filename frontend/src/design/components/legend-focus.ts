@@ -1,10 +1,10 @@
 /**
- * The focused series of a chart legend: a hovered or keyboard-focused item previews, otherwise the locked one is shown.
- * A key that is no longer charted focuses nothing. Keys are the series' stable identities, never ranks or positions.
+ * The focused series of a chart: a selected series keeps its emphasis, otherwise a hovered or keyboard-focused legend item
+ * previews. A key that is no longer charted focuses nothing. Keys are the series' stable identities, never ranks or positions.
  */
 export function legendFocus(hovered: string | null, locked: string | null, keys: readonly string[]): string | null {
-  if (hovered !== null && keys.includes(hovered)) return hovered
-  return locked !== null && keys.includes(locked) ? locked : null
+  if (locked !== null && keys.includes(locked)) return locked
+  return hovered !== null && keys.includes(hovered) ? hovered : null
 }
 
 /** Clicking the locked item releases it; clicking another item moves the lock there. */
