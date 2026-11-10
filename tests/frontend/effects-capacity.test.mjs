@@ -35,6 +35,20 @@ test("the drawn effects do not change while only time passes", () => {
   for (let tick = 0; tick < 50; tick++) assert.deepEqual(fitEffectStrip(list, 25, layout(300)), first)
 })
 
+test("the empty state covers exactly the area both rows draw in, with its text in the middle", () => {
+  const panel = read("frontend/src/views/EffectsOverlayPanel.tsx")
+  const views = read("frontend/src/design/views.css")
+  assert.match(views, /\.ww-effects-empty \{ grid-row: 1 \/ -1; min-width: 0; display: flex; align-items: center; justify-content: center;/)
+  assert.match(panel, /ww-effects-empty"><span className="ww-truncate">\{t\("noEffects"\)\}<\/span>/, "a long label shortens inside the block instead of widening it")
+})
+
+test("a cell keeps its frame line unbroken and its art off the frame", () => {
+  const components = read("frontend/src/design/components.css")
+  assert.match(components, /\.ww-effect-face \{[^}]*border: 1px solid var\(--ww-line-soft\);/, "the fill is clipped inside a real border")
+  assert.match(components, /\.ww-effect-face img \{ position: absolute; inset: 1px; width: calc\(100% - 2px\); height: calc\(100% - 2px\); object-fit: contain; \}/)
+  assert.doesNotMatch(components, /\.ww-effect-fill \{[^}]*inset: 1px/, "the progress edge stays straight because the frame clips it, not a rounded fill")
+})
+
 test("the production strip orders the engine's set, never filters it, and never names an effect", () => {
   const panel = read("frontend/src/views/EffectsOverlayPanel.tsx")
   assert.ok(panel.includes("view?.effects.buffs") && panel.includes("view?.effects.debuffs"), "the rows come from the engine")
