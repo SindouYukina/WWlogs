@@ -247,7 +247,8 @@ body[data-view] img { -webkit-user-drag: none; }
 @keyframes ww-effect-in { from { opacity: 0; transform: scale(0.82); } to { opacity: 1; transform: none; } }
 @keyframes ww-effect-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: scale(0.82); } }
 .ww-effect-cell { width: 100%; display: flex; flex-direction: column; align-items: stretch; }
-.ww-effect-face { position: relative; height: var(--ww-effect-icon); border-radius: var(--ww-radius-sm); overflow: hidden; background: var(--ww-surface-overlay); box-shadow: inset 0 0 0 1px var(--ww-line-soft); contain: strict; --ww-effect-color: var(--ww-series, var(--ww-element-unknown)); }
+/* A real border rather than an inset shadow: children are clipped inside it, so the fill never covers the frame line. */
+.ww-effect-face { position: relative; height: var(--ww-effect-icon); border: 1px solid var(--ww-line-soft); border-radius: var(--ww-radius-sm); overflow: hidden; background: var(--ww-surface-overlay); contain: strict; --ww-effect-color: var(--ww-series, var(--ww-element-unknown)); }
 /* The remaining time fills the whole cell behind the icon, drawn as the original effect rows drew it, so the icon is never
    covered. It steps with each engine update and has no transition: a running transition keeps the compositor producing
    every display frame (measured 51-60% of a core for the process tree against 10% without), and a step is about a pixel. */
@@ -255,9 +256,10 @@ body[data-view] img { -webkit-user-drag: none; }
 .ww-effect-face[data-jump="true"] .ww-effect-fill { transition: transform var(--ww-spring-snappy-dur) var(--ww-spring-snappy); }
 /* No reliable time: a static hatch instead of a countdown. */
 .ww-effect-face[data-untimed="true"] { background-image: repeating-linear-gradient(115deg, oklch(1 0 0 / 0.05) 0 3px, transparent 3px 6px); }
-.ww-effect-face img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+/* Game art often reaches the edge of its canvas; the inset keeps it off the frame and its rounded corners. */
+.ww-effect-face img { position: absolute; inset: 1px; width: calc(100% - 2px); height: calc(100% - 2px); object-fit: contain; }
 .ww-effect-cell[data-target="enemy"] .ww-effect-face::after { content: ""; position: absolute; left: 0; bottom: 0; width: 7px; height: 7px; clip-path: polygon(0 0, 100% 100%, 0 100%); background: oklch(1 0 0 / 0.5); pointer-events: none; }
-.ww-effect-stack { position: absolute; top: 1px; right: 1px; min-width: 13px; height: 13px; padding-inline: 2px; display: grid; place-items: center; border-radius: var(--ww-radius-xs); background: oklch(0 0 0 / 0.62); font-size: var(--ww-text-2xs); line-height: 1; }
+.ww-effect-stack { position: absolute; top: 0; right: 0; min-width: 13px; height: 13px; padding-inline: 2px; display: grid; place-items: center; border-radius: var(--ww-radius-xs); background: oklch(0 0 0 / 0.62); font-size: var(--ww-text-2xs); line-height: 1; }
 .ww-effect-stack[data-pulse="0"] { animation: ww-stack-pop-a var(--ww-spring-lively-dur) var(--ww-spring-lively); }
 .ww-effect-stack[data-pulse="1"] { animation: ww-stack-pop-b var(--ww-spring-lively-dur) var(--ww-spring-lively); }
 @keyframes ww-stack-pop-a { from { transform: scale(1.32); } to { transform: none; } }
@@ -268,7 +270,7 @@ body[data-view] img { -webkit-user-drag: none; }
 @keyframes ww-icon-pop-b { from { transform: scale(1.22); } to { transform: none; } }
 .ww-effect-seconds { height: var(--ww-effect-seconds-height); font-size: var(--ww-text-xs); line-height: var(--ww-effect-seconds-height); text-align: center; color: var(--ww-text); text-shadow: 0 0 2px oklch(0 0 0), 0 1px 2px oklch(0 0 0 / 0.9); }
 .ww-effect-seconds[data-low="true"] { color: var(--ww-warn); }
-.ww-effect-more { display: grid; place-items: center; height: var(--ww-effect-icon); border-radius: var(--ww-radius-sm); background: var(--ww-surface-overlay); box-shadow: inset 0 0 0 1px var(--ww-line-soft); font-size: var(--ww-text-xs); color: var(--ww-text-2); }
+.ww-effect-more { display: grid; place-items: center; height: var(--ww-effect-icon); border: 1px solid var(--ww-line-soft); border-radius: var(--ww-radius-sm); background: var(--ww-surface-overlay); font-size: var(--ww-text-xs); color: var(--ww-text-2); }
 .ww-effect-cell[data-stale="true"] .ww-effect-face { filter: saturate(0.2); }
 
 /* ------------------------------ Settings ------------------------------ */

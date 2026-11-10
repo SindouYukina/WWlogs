@@ -118,7 +118,7 @@ export function EffectsOverlayPanel({ data, alpha }: EffectsOverlayPanelProps) {
   return <div className="ww-effects" style={style} data-field="effects" data-count={cells}>
     <div ref={rows} className="ww-effects-rows" data-field="effect-rows">
       {cells === 0
-        ? <div className="ww-combat-empty ww-effects-empty">{t("noEffects")}</div>
+        ? <div className="ww-combat-empty ww-effects-empty"><span className="ww-truncate">{t("noEffects")}</span></div>
         : <>
           <EffectRow polarity="buff" effects={buffs?.effects ?? noEffects} cells={buffCells} layout={layout} frozen={frozen} snapshot={snapshot} connection={connection} now={now} />
           <EffectRow polarity="debuff" effects={debuffs?.effects ?? noEffects} cells={debuffCells} layout={layout} frozen={frozen} snapshot={snapshot} connection={connection} now={now} />
