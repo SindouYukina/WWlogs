@@ -79,6 +79,7 @@
   "derivedUnassignedOutroNote": "These hits have no skill ID; their damage data marks them as Outro Skill DMG, shown by this character's Outro Skill name.",
   "unassignedSkill": "Unconfirmed skill source",
   "unassignedSkillNote": "Damage confirmed for this source whose protocol data carries no skill ID.",
+  "noSkillIdTag": "No skill ID",
   "noSkillRows": "This source has no skill damage to break down.",
   "damageColumn": "Damage",
   "shareColumn": "Share",
