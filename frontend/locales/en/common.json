@@ -20,7 +20,7 @@
   "unknown": "Unknown",
   "role": "Role {{id}}",
   "unknownRole": "Unknown role ({{id}})",
-  "encounterDps": "Encounter DPS",
+  "encounterDps": "DPS",
   "rolling5": "Rolling 5 s DPS",
   "rolling10": "Rolling 10 s DPS",
   "damageSpan": "Damage-span DPS",

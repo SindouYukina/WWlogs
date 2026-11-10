@@ -13,8 +13,9 @@ test("the first card shows the encounter's peak 1-second DPS instead of the roll
 })
 
 test("the fourth card is the local healing, never the event count", () => {
-  assert.match(view, /<StatCard index=\{3\} icon="heal" label=\{t\("healing"\)\} field="healing" status=\{healing\?\.status \?\? "unavailable"\} value=\{healingShown \? healing\.effective : undefined\}/)
-  assert.match(view, /note=\{healingShown \? t\(encounter \? "healingNote" : "interval"\) : t\("healingUnavailable"\)\}/)
+  // The main value is the server-confirmed healing magnitude; the note is the HP actually restored. The frontend only reads both.
+  assert.match(view, /<StatCard index=\{3\} icon="heal" label=\{t\("healing"\)\} field="healing" status=\{healing\?\.status \?\? "unavailable"\} value=\{healingShown \? healing\.reported : undefined\}/)
+  assert.match(view, /note=\{healingShown \? t\("healingNote", \{ value: healingFormat\(healing\.effective\) \}\) : t\("healingUnavailable"\)\}/)
   assert.doesNotMatch(view, /eventsLabel|eventsNote|field="events"/)
   // Four summary cards, as before.
   assert.equal(view.match(/<StatCard index=\{\d\}/g).length, 4)
@@ -31,6 +32,8 @@ test("every bundled language names the peak and the healing card", () => {
   for (const locale of ["en", "ja", "ko", "zh-CN", "zh-TW"]) {
     const strings = JSON.parse(read(`frontend/locales/${locale}/dashboard.json`))
     assert.match(strings.peakNote, /\{\{value\}\}/, locale)
+    assert.match(strings.healingNote, /\{\{value\}\}/, `${locale} healingNote is the restored HP value`)
+    assert.notEqual(strings.healing, strings.healingNote.replace("{{value}}", "").trim(), `${locale}: the two healing figures have different names`)
     for (const key of ["healing", "healingNote", "healingUnavailable"]) assert.ok(strings[key], `${locale} ${key}`)
     for (const key of ["rollingNote", "eventsLabel", "eventsNote"]) assert.equal(strings[key], undefined, `${locale} ${key} is no longer used`)
   }
@@ -71,4 +74,35 @@ test("every bundled language says unknown ownership is outside the total", () =>
     assert.match(common.unknownOwnershipNote, /\{\{value\}\}/, locale)
     assert.ok(common.attributionIncomplete.length > 0, locale)
   }
+})
+
+test("the four summary cards carry the encounter header's scope, so they do not repeat it", () => {
+  const copy = {
+    "zh-TW": { dps: "DPS", damage: "總傷害", damageNote: "已確認的輸出傷害", taken: "承受傷害", takenNote: "包含護盾吸收", peak: "峰值 DPS：{{value}}", healing: "治療量", healingNote: "實際恢復生命值：{{value}}" },
+  }
+  for (const locale of Object.keys(copy)) {
+    const dashboard = JSON.parse(read(`frontend/locales/${locale}/dashboard.json`))
+    const common = JSON.parse(read(`frontend/locales/${locale}/common.json`))
+    assert.equal(common.encounterDps, copy[locale].dps)
+    assert.equal(dashboard.peakNote, copy[locale].peak)
+    assert.equal(dashboard.confirmedDamage, copy[locale].damage)
+    assert.equal(dashboard.damageNote, copy[locale].damageNote)
+    assert.equal(dashboard.damageTaken, copy[locale].taken)
+    assert.equal(dashboard.takenNote, copy[locale].takenNote)
+    assert.equal(dashboard.healing, copy[locale].healing)
+    assert.equal(dashboard.healingNote, copy[locale].healingNote)
+  }
+  for (const locale of ["en", "ja", "ko", "zh-CN", "zh-TW"]) {
+    const dashboard = JSON.parse(read(`frontend/locales/${locale}/dashboard.json`))
+    const common = JSON.parse(read(`frontend/locales/${locale}/common.json`))
+    const shown = [common.encounterDps, dashboard.peakNote, dashboard.confirmedDamage, dashboard.damageNote, dashboard.damageTaken, dashboard.takenNote, dashboard.healing, dashboard.healingNote]
+    for (const text of shown) assert.doesNotMatch(text, /本場|本机|本機|本场|Local\b|local\b|この戦闘|ローカル|이번 전투|로컬|in this encounter/, `${locale}: ${text}`)
+  }
+})
+
+test("a skill row without an engine name keeps the unconfirmed label, and a named row never shows an id for it", () => {
+  const row = view.slice(view.indexOf('data-field="unassigned-skill"'), view.indexOf("</tbody>"))
+  assert.match(row, /\{unassigned\.name \?\? t\("unassignedSkill"\)\}/, "the fallback label remains for a row without a reliable name")
+  assert.doesNotMatch(row, /skillId|damageId|DamageId/, "a damage id is never shown as if it were a skill id")
+  assert.match(row, /derivedUnassignedNoteKey\[unassigned\.derived\]/, "a derived name carries the evidence note")
 })

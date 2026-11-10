@@ -20,7 +20,7 @@
   "unknown": "未知",
   "role": "角色 {{id}}",
   "unknownRole": "未知角色（{{id}}）",
-  "encounterDps": "本場 DPS",
+  "encounterDps": "DPS",
   "rolling5": "近 5 秒 DPS",
   "rolling10": "近 10 秒 DPS",
   "damageSpan": "傷害區間 DPS",

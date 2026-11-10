@@ -339,3 +339,10 @@ func TestHealingIsHeldBackWhileLocalAttributionIsSuspect(t *testing.T) {
 		t.Fatalf("both entities referenced again: %+v (damage gate counter %d)", got, p.context.downgradedEvents)
 	}
 }
+
+func TestViewHealingKeepsTheReportedAndEffectiveFiguresApart(t *testing.T) {
+	view := viewHealing(HealingResult{Status: DPSStatusAvailable, HealingTotals: HealingTotals{Effective: 3464, Reported: 12500, Overheal: 9036, Events: 7}})
+	if view.Reported != 12500 || view.Effective != 3464 || view.Overheal != 9036 || view.Events != 7 || view.Status != DPSStatusAvailable {
+		t.Fatalf("view = %+v", view)
+	}
+}
