@@ -141,13 +141,25 @@ func (p *displayProjection) encode(source *service.Snapshot, settings SettingsSt
 	return append(json.RawMessage(nil), encoded...), nil
 }
 
-// projectUnassignedSkill re-resolves the Echo name of an unassigned row for the UI locale. When the Echo has no name in any
-// locale the row goes back to being plainly unassigned.
+// skillSourceKind is the display-name namespace of a derived skill source: a UI skill (Skill.Id) or an Echo (PhantomItem.Id).
+func skillSourceKind(source string) (string, bool) {
+	switch source {
+	case "damage_list", "skill_type", "tune_break", "damage_type":
+		return "skill", true
+	case "echo":
+		return "echo", true
+	}
+	return "", false
+}
+
+// projectUnassignedSkill re-resolves the name of an unassigned row for the UI locale through the source the engine selected.
+// When the record has no name in any locale the row goes back to being plainly unassigned.
 func projectUnassignedSkill(ctx context.Context, resolver *capture.DisplayResolver, skill capture.ViewUnassignedSkill, locale string, projectionErr *error) capture.ViewUnassignedSkill {
-	if skill.NameSource != "echo" {
+	kind, ok := skillSourceKind(skill.NameSource)
+	if !ok {
 		return skill
 	}
-	name, err := resolver.Resolve(ctx, "echo", skill.SourceID, locale)
+	name, err := resolver.Resolve(ctx, kind, skill.SourceID, locale)
 	if err != nil {
 		*projectionErr = err
 	}
@@ -162,11 +174,8 @@ func projectUnassignedSkill(ctx context.Context, resolver *capture.DisplayResolv
 // source keeps its DERIVED status; when its record has no name in any locale the row falls back to UNKNOWN.
 func projectSkillName(ctx context.Context, resolver *capture.DisplayResolver, skill capture.ViewSkill, locale string, projectionErr *error) (string, string) {
 	kind, id, status := "combat_skill", skill.SkillID, ""
-	switch skill.NameSource {
-	case "damage_list", "tune_break":
-		kind, id, status = "skill", skill.SourceID, "DERIVED"
-	case "echo":
-		kind, id, status = "echo", skill.SourceID, "DERIVED"
+	if sourceKind, ok := skillSourceKind(skill.NameSource); ok {
+		kind, id, status = sourceKind, skill.SourceID, "DERIVED"
 	}
 	name, err := resolver.Resolve(ctx, kind, id, locale)
 	if err != nil {

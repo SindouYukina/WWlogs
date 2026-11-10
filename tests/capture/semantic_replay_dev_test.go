@@ -77,6 +77,26 @@ var semanticSkillFacts = []semanticSkillFact{
 	{"LIVE_20261105_195015", 1102, 1102030, "DERIVED", "skill_type", "焦瞑凍土", true},
 }
 
+// semanticNoSkillFact is what a capture's confirmed damage without a SkillId must show for one role. The damage and event
+// counts stay exactly the no-SkillId damage of the capture: a name never moves a hit out of the bucket.
+type semanticNoSkillFact struct {
+	capture string
+	roleID  uint64
+	name    string
+	source  string
+	damage  int64
+	events  uint64
+}
+
+var semanticNoSkillFacts = []semanticNoSkillFact{
+	{"LIVE_20261107_201525", 1508, "共鳴迴響·鳴式·利維亞坦", "echo", 17837, 12},
+	{"LIVE_20261108_230549", 1508, "共鳴迴響·鳴式·利維亞坦", "echo", 42025, 27},
+	{"LIVE_20261109_121001", 1508, "共鳴迴響·鳴式·利維亞坦", "echo", 10416, 4},
+	{"MATRIX-01_20261027_032147", 1508, "共鳴迴響·鳴式·利維亞坦", "echo", 40827, 7},
+	{"MATRIX-01_20261027_032147", 1311, "身作千燈", "damage_type", 19012, 8},
+	{"wuwa-session-20261025", 1508, "共鳴迴響·鳴式·利維亞坦", "echo", 28955, 8},
+}
+
 // semanticCompletenessFact is what one encounter must report about its own damage.
 type semanticCompletenessFact struct {
 	capture       string
@@ -230,6 +250,12 @@ func semanticCheckSkillPartition(roles []ViewRole, vehicle *ViewVehicle, complet
 		}
 		if unassigned.Name != "" && unassigned.NameStatus != "DERIVED" {
 			return fmt.Errorf("%s: a row without a SkillId has a %q name", label, unassigned.NameStatus)
+		}
+		if unassigned.OutgoingEvents > 0 && (unassigned.Name == "") == (unassigned.UnnamedReason == "") {
+			return fmt.Errorf("%s: name %q with unnamed reason %q", label, unassigned.Name, unassigned.UnnamedReason)
+		}
+		if unassigned.Name != "" && unassigned.NameSource == "" {
+			return fmt.Errorf("%s: name %q has no source", label, unassigned.Name)
 		}
 		noSkillDamage += unassigned.DamageDealt
 		noSkillEvents += unassigned.OutgoingEvents
@@ -440,6 +466,23 @@ func TestSemanticReplayCollector(t *testing.T) {
 					t.Errorf("role %d skill %d = %q %s/%s show %v, want %q %s/%s show %v", fact.roleID, fact.skillID, got.Name, got.NameStatus, got.NameSource, got.ShowSkillID, fact.name, fact.status, fact.source, fact.showID)
 				}
 			}
+			noSkill := map[uint64]ViewUnassignedSkill{}
+			for _, role := range view.Roles {
+				noSkill[role.RoleID] = role.UnassignedSkill
+			}
+			for _, fact := range semanticNoSkillFacts {
+				if !semanticCaptureMatches(capture.name, fact.capture) {
+					continue
+				}
+				got, ok := noSkill[fact.roleID]
+				if !ok {
+					t.Errorf("role %d is missing from the view", fact.roleID)
+					continue
+				}
+				if got.Name != fact.name || got.NameStatus != "DERIVED" || got.NameSource != fact.source || got.DamageDealt != fact.damage || got.OutgoingEvents != fact.events || got.MissingSkillEvents != fact.events || got.UnnamedReason != "" {
+					t.Errorf("role %d no-skill row = %q %s/%s %d/%d (%d missing) reason %q, want %+v", fact.roleID, got.Name, got.NameStatus, got.NameSource, got.DamageDealt, got.OutgoingEvents, got.MissingSkillEvents, got.UnnamedReason, fact)
+				}
+			}
 			for key, skill := range rows {
 				switch skill.NameStatus {
 				case "VERIFIED":
@@ -465,6 +508,11 @@ func TestSemanticReplayCollector(t *testing.T) {
 		}
 	}
 	for _, fact := range semanticSkillFacts {
+		if !covered(fact.capture) {
+			absent = append(absent, fact.capture)
+		}
+	}
+	for _, fact := range semanticNoSkillFacts {
 		if !covered(fact.capture) {
 			absent = append(absent, fact.capture)
 		}

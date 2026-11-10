@@ -174,12 +174,15 @@ export interface UnassignedSkill {
   missingSkillEvents: number
   overflowEvents: number
   damageShare?: number
-  /** The Echo these hits belong to, DERIVED from their DamageIds; the hits still have no skill row of their own. */
+  /** The source the engine names these hits by, always DERIVED; the hits have no SkillId and no skill row of their own. */
   name?: string
   nameStatus?: string
+  /** "echo", "damage_type" or "damage_list"; absent when the engine has no reliable source. */
   nameSource?: string
   iconKind?: string
   iconId?: number
+  /** Why the engine has no name for these hits; a stable diagnostic code, absent when named or empty. */
+  unnamedReason?: string
 }
 
 export interface UnassignedRole {

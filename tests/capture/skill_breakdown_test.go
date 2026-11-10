@@ -103,6 +103,33 @@ func TestSkillBreakdownKeepsDamageWithoutSkillIDOnItsRole(t *testing.T) {
 	}
 }
 
+func TestUnassignedSkillEchoVisionsKeepOnlyWhatEveryHitHeld(t *testing.T) {
+	var aggregate skillAggregate
+	aggregate.add(0, 1, 10, []uint64{280033, 280045})
+	aggregate.add(0, 2, 10, []uint64{280033})
+	_, first := aggregate.snapshot()
+	if !reflect.DeepEqual(first.EchoVisions, []uint64{280033}) {
+		t.Fatalf("Echo identities = %v", first.EchoVisions)
+	}
+	// A snapshot is an independent copy.
+	aggregate.add(0, 3, 10, nil)
+	if !reflect.DeepEqual(first.EchoVisions, []uint64{280033}) {
+		t.Fatalf("a later hit changed an earlier snapshot: %v", first.EchoVisions)
+	}
+	_, second := aggregate.snapshot()
+	if len(second.EchoVisions) != 0 || second.OutgoingEvents != 3 || second.DamageDealt != 30 {
+		t.Fatalf("bucket = %+v", second)
+	}
+	// Hits with a SkillId never touch the bucket's Echo identities.
+	var withSkill skillAggregate
+	withSkill.add(0, 1, 10, []uint64{280033})
+	withSkill.add(11, 2, 10, []uint64{280045})
+	_, totals := withSkill.snapshot()
+	if !reflect.DeepEqual(totals.EchoVisions, []uint64{280033}) {
+		t.Fatalf("a skill row changed the bucket: %v", totals.EchoVisions)
+	}
+}
+
 func TestSkillBreakdownCreditsVerifiedSummonAndExcludesUnverifiedSummon(t *testing.T) {
 	p := newPairingTestProcessor()
 	addTestRuntimeEntity(p, 300, func(entity *runtimeEntity) { entity.summonerID, entity.hasSummonerID = 100, true })

@@ -76,6 +76,7 @@
   "derivedTuneBreakNote": "Not this skill's own name: the official name of this character's Tune Break skill.",
   "derivedUnassignedEchoNote": "These hits have no skill ID; their damage IDs belong to this Echo, shown by its official name.",
   "derivedUnassignedSkillNote": "Not a skill of this row's own: the official name of the skill whose damage list holds these hits.",
+  "derivedUnassignedOutroNote": "These hits have no skill ID; their damage data marks them as Outro Skill DMG, shown by this character's Outro Skill name.",
   "unassignedSkill": "Unconfirmed skill source",
   "unassignedSkillNote": "Damage confirmed for this source whose protocol data carries no skill ID.",
   "noSkillRows": "This source has no skill damage to break down.",
