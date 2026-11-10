@@ -7,14 +7,14 @@ const read = path => readFileSync(path, "utf8").replace(/\r\n/g, "\n")
 const chart = read("frontend/src/design/components/LiveChart.tsx")
 const css = read("frontend/src/design/components.css")
 
-test("hover previews over the lock, and leaving returns to the lock", () => {
+test("a hover previews only while nothing is selected, and never takes the emphasis away from a selection", () => {
   const keys = ["team", "role-7-1205", "role-7-1409"]
   assert.equal(legendFocus(null, null, keys), null)
   assert.equal(legendFocus("role-7-1205", null, keys), "role-7-1205")
   assert.equal(legendFocus(null, "role-7-1409", keys), "role-7-1409")
-  assert.equal(legendFocus("role-7-1205", "role-7-1409", keys), "role-7-1205", "a hover previews another series while one is locked")
-  assert.equal(legendFocus("role-7-9999", "role-7-1409", keys), "role-7-1409", "a hover on a series that left the chart falls back to the lock")
-  assert.equal(legendFocus(null, "role-7-9999", keys), null, "a lock on a series that left the chart focuses nothing")
+  assert.equal(legendFocus("role-7-1205", "role-7-1409", keys), "role-7-1409", "a selection keeps its emphasis while the pointer hovers another series")
+  assert.equal(legendFocus("role-7-9999", "role-7-1409", keys), "role-7-1409", "a hover on a series that left the chart falls back to the selection")
+  assert.equal(legendFocus(null, "role-7-9999", keys), null, "a selection of a series that left the chart focuses nothing")
 })
 
 test("a click locks, the same click releases, another click moves the lock", () => {
