@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/gopacket"
@@ -27,7 +28,8 @@ type SessionConfig struct {
 	ReplayPacing float64
 	// MinPort and MaxPort bound the game server UDP ports; zero selects the defaults.
 	MinPort, MaxPort int
-	// PublishInterval is the minimum wall time between published snapshots; zero selects DefaultPublishInterval.
+	// PublishInterval is the initial minimum wall time between published snapshots; zero selects
+	// DefaultPublishInterval. SetPublishInterval changes it while the session runs. It never affects packet handling.
 	PublishInterval time.Duration
 	// Diagnostics writes the Development diagnostic PCAP for a live session. Public builds reject it.
 	Diagnostics bool
@@ -75,20 +77,45 @@ type SessionResult struct {
 // MasterData is a loaded, read-only Master database shared by sessions.
 type MasterData struct {
 	masters *gameMaster
+	display *DisplayResolver
 }
 
-// LoadMasterData loads the combat Master database for locale.
+// LoadMasterData loads the combat Master database for locale and retains its one read-only connection for display lookups.
 func LoadMasterData(path, locale string) (*MasterData, error) {
-	masters, err := loadGameMasterDatabase(path, locale)
+	if _, ok := supportedMasterLocales[locale]; !ok {
+		return nil, fmt.Errorf("unsupported master locale %q", locale)
+	}
+	db, databasePath, hash, err := openMasterDatabase(path)
 	if err != nil {
 		return nil, err
 	}
-	return &MasterData{masters: masters}, nil
+	masters, err := loadMasterDataFromDatabase(db, databasePath, hash, locale)
+	if err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	display, err := newDisplayResolver(db)
+	if err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	return &MasterData{masters: masters, display: display}, nil
 }
 
-// DefaultMasterDatabasePath resolves data/master_data.db next to the executable or the working directory.
-func DefaultMasterDatabasePath() string {
-	return defaultMasterDatabasePath()
+// DisplayResolver returns the locale-aware query resolver sharing this MasterData's SQLite connection.
+func (m *MasterData) DisplayResolver() *DisplayResolver {
+	if m == nil {
+		return nil
+	}
+	return m.display
+}
+
+// Close releases the read-only Master database shared by this data set and its display resolver.
+func (m *MasterData) Close() error {
+	if m == nil || m.display == nil {
+		return nil
+	}
+	return m.display.Close()
 }
 
 // Session is an opened capture session.
@@ -99,6 +126,16 @@ type Session struct {
 	diagnostics *sessionDiagnostics
 	info        SessionInfo
 	used        bool
+	// publishInterval is read by the Run goroutine before every publish decision and written by SetPublishInterval.
+	publishInterval atomic.Int64
+}
+
+// normalizePublishInterval maps zero to the default and caps the snapshot rate at MinPublishInterval.
+func normalizePublishInterval(interval time.Duration) time.Duration {
+	if interval == 0 {
+		return DefaultPublishInterval
+	}
+	return max(interval, MinPublishInterval)
 }
 
 // OpenSession validates cfg, opens the packet source, and prepares a fresh processor. All resources it opened are
@@ -113,12 +150,7 @@ func OpenSession(cfg SessionConfig, masters *MasterData) (*Session, error) {
 	if cfg.MinPort < 1 || cfg.MaxPort > 65535 || cfg.MinPort > cfg.MaxPort {
 		return nil, fmt.Errorf("invalid port range %d-%d", cfg.MinPort, cfg.MaxPort)
 	}
-	if cfg.PublishInterval == 0 {
-		cfg.PublishInterval = DefaultPublishInterval
-	}
-	if cfg.PublishInterval < MinPublishInterval {
-		cfg.PublishInterval = MinPublishInterval
-	}
+	cfg.PublishInterval = normalizePublishInterval(cfg.PublishInterval)
 	if cfg.ReplayPacing < 0 {
 		return nil, fmt.Errorf("invalid replay pacing %g", cfg.ReplayPacing)
 	}
@@ -134,6 +166,7 @@ func OpenSession(cfg SessionConfig, masters *MasterData) (*Session, error) {
 		return nil, fmt.Errorf("load embedded key: %w", err)
 	}
 	session := &Session{cfg: cfg, info: SessionInfo{LocalIPv4: cfg.LocalIPv4, Diagnostics: cfg.Diagnostics}}
+	session.publishInterval.Store(int64(cfg.PublishInterval))
 	if live {
 		device, err := findDeviceByIP(cfg.LocalIPv4)
 		if err != nil {
@@ -177,6 +210,14 @@ func OpenSession(cfg SessionConfig, masters *MasterData) (*Session, error) {
 	return session, nil
 }
 
+// SetPublishInterval changes the minimum wall time between published snapshots of a running or unopened session. It is
+// safe to call from any goroutine. The next publish decision uses it, so a shorter interval applies at the next packet
+// or read timeout. Only the UI snapshot cadence changes: every packet is still processed, and the statistics, the
+// timeline bins and effect lifecycles do not depend on when snapshots are taken.
+func (s *Session) SetPublishInterval(interval time.Duration) {
+	s.publishInterval.Store(int64(normalizePublishInterval(interval)))
+}
+
 // Info describes the session.
 func (s *Session) Info() SessionInfo {
 	return s.info
@@ -216,10 +257,15 @@ func (s *Session) Run(ctx context.Context, publish func(ViewSnapshot)) (result S
 	}()
 
 	lastPublish := time.Time{}
+	var viewClock liveViewClock
 	maybePublish := func(now time.Time) {
-		if publish != nil && (lastPublish.IsZero() || now.Sub(lastPublish) >= s.cfg.PublishInterval) {
+		if publish != nil && (lastPublish.IsZero() || now.Sub(lastPublish) >= time.Duration(s.publishInterval.Load())) {
 			lastPublish = now
+			if live {
+				p.viewClockLead, p.viewClockStalled = viewClock.read(now, p.currentFrameTime)
+			}
 			publish(p.viewSnapshot())
+			s.diagnostics.observeEffectDisplay(p, now)
 		}
 	}
 	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
@@ -241,6 +287,9 @@ loop:
 			case readErr == pcap.NextErrorTimeoutExpired:
 				failingSince = time.Time{}
 				p.sampleCaptureStats(handle, time.Now(), false)
+				if live {
+					p.sessionHealth.observeClock(time.Now())
+				}
 				maybePublish(time.Now())
 				continue
 			case !live && readErr == io.EOF:
@@ -282,7 +331,11 @@ loop:
 		direction := packetDirection(packet, s.cfg.LocalIPv4, udp, s.cfg.MinPort, s.cfg.MaxPort)
 		consumeDatagram(udp.Payload, direction, capturedAt, streams, p, &stats)
 		if live {
+			viewClock.observeFrame(p.currentFrameTime, receivedAt)
 			p.observePacketTiming(capturedAt, receivedAt, time.Now())
+			p.sessionHealth.observeClock(time.Now())
+		} else {
+			p.sessionHealth.observeClock(capturedAt)
 		}
 		maybePublish(time.Now())
 	}
@@ -290,11 +343,61 @@ loop:
 	p.sampleCaptureStats(handle, time.Now(), true)
 	p.finishCapture()
 	if publish != nil {
+		p.viewClockLead, p.viewClockStalled = 0, false
 		final := p.viewSnapshot()
 		final.Final = true
 		publish(final)
 	}
 	return result, err
+}
+
+// LiveFrameSilenceLimit is how long a live capture may see no game frame at all before it no longer knows what the game is
+// doing. A quiet fight is not silence: the game keeps sending frames while nothing happens, and in the 24 valid archived
+// captures 96 stretches of 10 s to over 60 s without a combat event never lasted longer than this between frames, except one
+// 39.6 s gap before a new handshake. Across those captures the longest gap of an established session is 5.98 s. The listening
+// status uses the same limit for its stale state.
+const LiveFrameSilenceLimit = 8 * time.Second
+
+// liveClockStepLimit separates a frame reassembled late from a capture clock that was set back. The largest backward step
+// between frames in the archived captures is 15.6 ms.
+const liveClockStepLimit = 5 * time.Second
+
+// liveViewClock estimates the game clock of a live session between frames, so a quiet connection does not freeze every
+// countdown until its next frame. It runs only on a live session: a replay reads exactly at capture time, so the same
+// capture gives the same view at any speed, and a recorded silence reads the same however long it took to replay.
+type liveViewClock struct {
+	newestFrame time.Time // the newest frame's capture time
+	newestWall  time.Time // when that frame was received
+	highWater   time.Time // the latest query time handed out; time read from this clock never runs backwards
+}
+
+// observeFrame records a decoded frame. A frame with an older capture time, such as one reassembled late, does not move
+// the clock. A large backward step means the capture clock itself was set back, so the clock starts over from it.
+func (c *liveViewClock) observeFrame(frame, wall time.Time) {
+	if frame.IsZero() {
+		return
+	}
+	switch {
+	case frame.After(c.newestFrame):
+		c.newestFrame, c.newestWall = frame, wall
+	case c.newestFrame.Sub(frame) > liveClockStepLimit:
+		c.newestFrame, c.newestWall, c.highWater = frame, wall, time.Time{}
+	}
+}
+
+// read returns how far a publish at now reads the Effects view past frame, the processor's current frame time, and whether
+// the clock has stalled. The reading never passes LiveFrameSilenceLimit beyond the newest frame.
+func (c *liveViewClock) read(now, frame time.Time) (lead time.Duration, stalled bool) {
+	if c.newestWall.IsZero() || frame.IsZero() {
+		return 0, false
+	}
+	silence := max(now.Sub(c.newestWall), 0)
+	query := c.newestFrame.Add(min(silence, LiveFrameSilenceLimit))
+	if query.Before(c.highWater) {
+		query = c.highWater
+	}
+	c.highWater = query
+	return query.Sub(frame), silence >= LiveFrameSilenceLimit
 }
 
 // waitUntil sleeps until deadline; it returns false when ctx ends first.
@@ -311,28 +414,4 @@ func waitUntil(ctx context.Context, deadline time.Time) bool {
 	case <-timer.C:
 		return true
 	}
-}
-
-// Adapter is an Npcap interface address that can carry game traffic.
-type Adapter struct {
-	IPv4        string `json:"ipv4"`
-	Description string `json:"description"`
-}
-
-// ListIPv4Adapters lists the IPv4 addresses of the Npcap interfaces.
-func ListIPv4Adapters() ([]Adapter, error) {
-	devices, err := pcap.FindAllDevs()
-	if err != nil {
-		return nil, fmt.Errorf("list Npcap network interfaces: %w", err)
-	}
-	adapters := []Adapter{}
-	for _, device := range devices {
-		for _, address := range device.Addresses {
-			if address.IP == nil || address.IP.To4() == nil {
-				continue
-			}
-			adapters = append(adapters, Adapter{IPv4: address.IP.String(), Description: device.Description})
-		}
-	}
-	return adapters, nil
 }

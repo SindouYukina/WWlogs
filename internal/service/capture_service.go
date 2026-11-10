@@ -35,10 +35,15 @@ type Status struct {
 	App        AppIdentity            `json:"app"`
 }
 
-// AppIdentity is the build identity shown in the UI. It carries no paths or hashes.
+// AppIdentity is the build identity shown in the UI, taken from buildinfo. It carries no paths or hashes.
 type AppIdentity struct {
 	Version string `json:"version"`
-	Commit  string `json:"commit"`
+	// BuildNumber is the official Build Number; zero with Official false marks an unofficial build.
+	BuildNumber uint64 `json:"buildNumber"`
+	Official    bool   `json:"official"`
+	Commit      string `json:"commit"`
+	// Dirty is "true" when tracked sources were modified at build time, "false", or "unknown".
+	Dirty   string `json:"dirty"`
 	Profile string `json:"profile"`
 }
 
@@ -47,6 +52,8 @@ type Session interface {
 	Info() capture.SessionInfo
 	Run(ctx context.Context, publish func(capture.ViewSnapshot)) (capture.SessionResult, error)
 	Close()
+	// SetPublishInterval changes the snapshot cadence while the session runs; it must be safe for concurrent use.
+	SetPublishInterval(interval time.Duration)
 }
 
 // Opener opens a session for cfg. It must release everything it opened when it fails.
@@ -71,16 +78,21 @@ type CaptureService struct {
 	status     Status
 	generation uint64 // increases with every Start; snapshots of any other generation are ignored
 	view       *capture.ViewSnapshot
-	cancel     context.CancelFunc
-	done       chan struct{} // closed when the current session goroutine has released everything
-	stopAsked  bool          // Stop arrived while the session was still opening
-	closed     bool
+	// publishInterval is the user's snapshot cadence; zero leaves each session's configured value. session is the
+	// running session of the current generation, so a cadence change reaches it without a restart.
+	publishInterval time.Duration
+	session         Session
+	cancel          context.CancelFunc
+	done            chan struct{} // closed when the current session goroutine has released everything
+	stopAsked       bool          // Stop arrived while the session was still opening
+	closed          bool
 }
 
 // NewCaptureService creates a stopped service using open to create sessions.
 func NewCaptureService(open Opener) *CaptureService {
 	record := buildinfo.Current()
-	identity := AppIdentity{Version: record.Version, Commit: record.Commit, Profile: string(record.Profile)}
+	identity := AppIdentity{Version: record.Version, BuildNumber: record.BuildNumber, Official: record.Official(),
+		Commit: record.Commit, Dirty: record.Dirty, Profile: string(record.Profile)}
 	status := Status{State: StateStopped, App: identity}
 	return &CaptureService{open: open, publisher: NewPublisher(status), identity: identity, status: status}
 }
@@ -124,6 +136,9 @@ func (s *CaptureService) Start(cfg capture.SessionConfig) error {
 	}
 	s.generation++
 	generation := s.generation
+	if s.publishInterval != 0 {
+		cfg.PublishInterval = s.publishInterval
+	}
 	s.stopAsked = false
 	s.view = nil // the new session's first snapshot replaces the old view; nothing is carried over
 	s.status = Status{State: StateStarting, App: s.identity}
@@ -157,6 +172,11 @@ func (s *CaptureService) Start(cfg capture.SessionConfig) error {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	s.cancel = cancel
+	// A change that arrived while the session was opening still applies.
+	if s.publishInterval != 0 {
+		session.SetPublishInterval(s.publishInterval)
+	}
+	s.session = session
 	s.status = Status{State: StateRunning, Session: &info, StartedAt: time.Now(), App: s.identity}
 	s.publishLocked()
 	s.mu.Unlock()
@@ -181,6 +201,7 @@ func (s *CaptureService) run(ctx context.Context, generation uint64, session Ses
 		return
 	}
 	s.cancel = nil
+	s.session = nil
 	status := s.status
 	status.LastResult = &result
 	if err != nil {
@@ -190,6 +211,19 @@ func (s *CaptureService) run(ctx context.Context, generation uint64, session Ses
 	}
 	s.status = status
 	s.publishLocked()
+}
+
+// SetPublishInterval sets the minimum wall time between published snapshots for the running session and every later
+// one. It is the single control point for the UI data cadence: the capture goroutine still processes every packet, so
+// statistics, encounters and effects are identical at any interval; only how often a view snapshot is built and
+// published changes. Zero restores each session's configured value for later sessions.
+func (s *CaptureService) SetPublishInterval(interval time.Duration) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.publishInterval = interval
+	if s.session != nil && interval != 0 {
+		s.session.SetPublishInterval(interval)
+	}
 }
 
 // Stop asks the current session to stop and waits until it has released the capture handle, the diagnostic writers,

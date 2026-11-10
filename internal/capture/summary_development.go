@@ -560,7 +560,11 @@ func (p *processor) writeEncounterSummary() error {
 		return err
 	}
 	if p.masters != nil {
-		if _, err := fmt.Fprintf(p.encounterSummary, "\nCombat master: %s (Global, %s, SHA-256 %s)\n", filepath.Base(p.masters.databasePath), p.masters.locale, p.masters.manifest.SourceHash); err != nil {
+		source := masterDatabaseSourceLabel(p.masters.databasePath)
+		if p.masters.databasePath != "embedded" {
+			source += ": " + filepath.Base(p.masters.databasePath)
+		}
+		if _, err := fmt.Fprintf(p.encounterSummary, "\nCombat master: %s (Global, %s, SHA-256 %s)\n", source, p.masters.locale, p.masters.manifest.SourceHash); err != nil {
 			return err
 		}
 	}
@@ -954,7 +958,7 @@ func writeHealingAttributions(w io.Writer, summary *encounterSummary) error {
 	if _, err := fmt.Fprintln(w, "\n### Healing source-to-target attribution candidates"); err != nil {
 		return err
 	}
-	if _, err := fmt.Fprintln(w, "\nAmounts are reported absolute CombatResult magnitudes for HEALING_CANDIDATE events; they are not effective HP changes. Effective Healing and Overheal are not established and remain UNKNOWN."); err != nil {
+	if _, err := fmt.Fprintln(w, "\nAmounts are reported absolute CombatResult magnitudes for HEALING_CANDIDATE events; they are not effective HP changes. This table does not compute Effective Healing or Overheal; the encounter statistics take the applied HP change from ChangeLife."); err != nil {
 		return err
 	}
 	keys := make([]healingAttributionKey, 0, len(summary.healingAttributions))

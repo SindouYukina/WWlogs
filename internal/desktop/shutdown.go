@@ -14,11 +14,13 @@ const shutdownWaitLimit = 15 * time.Second
 
 // shutdownGate defers native teardown until cleanup ends, without blocking the Windows message loop.
 type shutdownGate struct {
-	once  sync.Once
-	ready atomic.Bool
-	stop  func(context.Context) error
-	quit  func()
-	err   error
+	once sync.Once
+	// requested is set as soon as the application starts to close; ready once cleanup has ended.
+	requested atomic.Bool
+	ready     atomic.Bool
+	stop      func(context.Context) error
+	quit      func()
+	err       error
 }
 
 func newShutdownGate(stop func(context.Context) error, quit func()) *shutdownGate {
@@ -26,6 +28,7 @@ func newShutdownGate(stop func(context.Context) error, quit func()) *shutdownGat
 }
 
 func (g *shutdownGate) request() {
+	g.requested.Store(true)
 	g.once.Do(func() {
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), shutdownWaitLimit)

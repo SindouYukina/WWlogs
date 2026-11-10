@@ -1,4 +1,8 @@
 # Private local files
+# Development-only font candidates and proprietary font sources stay local.
+/work/fonts/src/misans/
+/work/fonts/candidates/
+/.local/
 /AGENTS.md
 /HANDOFF.md
 /bin/
@@ -9,6 +13,14 @@
 /logs/
 /references/
 /work/
+
+# Product game images: only WebP images, their manifest and its README are tracked under assets/, so caches, previews,
+# source extracts and anything else placed there stay local.
+/assets/**
+!/assets/**/
+!/assets/README.md
+!/assets/manifest.json
+!/assets/game/**/*.webp
 
 # Secrets and machine-local artifacts
 Thumbs.db

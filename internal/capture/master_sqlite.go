@@ -25,17 +25,83 @@ func loadGameMasterDatabase(path, locale string) (*gameMaster, error) {
 	if _, ok := supportedMasterLocales[locale]; !ok {
 		return nil, fmt.Errorf("unsupported master locale %q", locale)
 	}
+	db, databasePath, hash, err := openMasterDatabase(path)
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+	return loadMasterDataFromDatabase(db, databasePath, hash, locale)
+}
+
+func openMasterDatabase(path string) (*sql.DB, string, string, error) {
+	if path == "" {
+		db, err := openEmbeddedMasterDatabase()
+		if err != nil {
+			return nil, "", "", err
+		}
+		hash, err := embeddedMasterDatabaseHash()
+		if err != nil {
+			_ = db.Close()
+			return nil, "", "", fmt.Errorf("hash embedded combat Master database: %w", err)
+		}
+		return db, "embedded", hash, nil
+	}
+	return openFileMasterDatabase(path)
+}
+
+func masterDatabaseSourceLabel(databasePath string) string {
+	if databasePath == "embedded" {
+		return "embedded"
+	}
+	return "external test override"
+}
+
+// openEmbeddedMasterDatabase opens the embedded file through the read-only VFS. immutable tells SQLite there is nothing to
+// lock or recover, and temp_store keeps sorting in memory because this file system cannot create files. The pragmas are
+// in the DSN so they hold for any connection the pool opens, and the page cache stays at SQLite's default bound.
+func openEmbeddedMasterDatabase() (*sql.DB, error) {
+	if embeddedMasterDatabase == "" {
+		return nil, fmt.Errorf("embedded combat Master database is unavailable")
+	}
+	vfsName, err := embeddedMasterVFS()
+	if err != nil {
+		return nil, fmt.Errorf("register embedded combat Master file system: %w", err)
+	}
+	db, err := sql.Open("sqlite", "file:"+embeddedMasterDatabaseName+"?vfs="+vfsName+"&mode=ro&immutable=1&_pragma=query_only(1)&_pragma=temp_store(2)")
+	if err != nil {
+		return nil, fmt.Errorf("open embedded combat Master database: %w", err)
+	}
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+	if err := db.Ping(); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("open embedded combat Master database: %w", err)
+	}
+	return db, nil
+}
+
+// embeddedMasterDatabaseHash hashes in chunks, because converting the whole string would copy the database to the heap.
+func embeddedMasterDatabaseHash() (string, error) {
+	hash := sha256.New()
+	reader := struct{ io.Reader }{strings.NewReader(embeddedMasterDatabase)}
+	if _, err := io.CopyBuffer(hash, reader, make([]byte, 1<<16)); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(hash.Sum(nil)), nil
+}
+
+func openFileMasterDatabase(path string) (*sql.DB, string, string, error) {
 	info, err := os.Stat(path)
 	if err != nil {
-		return nil, fmt.Errorf("inspect master database: %w", err)
+		return nil, "", "", fmt.Errorf("inspect master database: %w", err)
 	}
 	if !info.Mode().IsRegular() {
-		return nil, fmt.Errorf("master database path is not a regular file: %s", path)
+		return nil, "", "", fmt.Errorf("master database path is not a regular file: %s", path)
 	}
 
 	absPath, err := filepath.Abs(path)
 	if err != nil {
-		return nil, fmt.Errorf("resolve master database path: %w", err)
+		return nil, "", "", fmt.Errorf("resolve master database path: %w", err)
 	}
 	uriPath := filepath.ToSlash(absPath)
 	if len(uriPath) >= 2 && uriPath[1] == ':' {
@@ -44,24 +110,30 @@ func loadGameMasterDatabase(path, locale string) (*gameMaster, error) {
 	dsn := (&url.URL{Scheme: "file", Path: uriPath}).String() + "?mode=ro"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
-		return nil, fmt.Errorf("open master database read-only: %w", err)
+		return nil, "", "", fmt.Errorf("open master database read-only: %w", err)
 	}
-	defer db.Close()
 	db.SetMaxOpenConns(1)
 	if _, err := db.Exec("PRAGMA query_only=ON"); err != nil {
-		return nil, fmt.Errorf("set master database query-only: %w", err)
+		_ = db.Close()
+		return nil, "", "", fmt.Errorf("set master database query-only: %w", err)
 	}
 	if err := db.Ping(); err != nil {
-		return nil, fmt.Errorf("open master database: %w", err)
+		_ = db.Close()
+		return nil, "", "", fmt.Errorf("open master database: %w", err)
 	}
 
 	hash, err := hashFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("hash master database: %w", err)
+		_ = db.Close()
+		return nil, "", "", fmt.Errorf("hash master database: %w", err)
 	}
+	return db, absPath, hash, nil
+}
+
+func loadMasterDataFromDatabase(db *sql.DB, databasePath, hash, locale string) (*gameMaster, error) {
 	master := &gameMaster{
 		manifest:                      masterManifest{Language: locale, ClientRegion: "Global", SourceHash: hash},
-		databasePath:                  absPath,
+		databasePath:                  databasePath,
 		locale:                        locale,
 		characters:                    make(map[uint64]masterRecord),
 		charactersSkin:                make(map[uint64]masterRecord),
@@ -182,6 +254,9 @@ func loadGameMasterDatabase(path, locale string) (*gameMaster, error) {
 		return nil, err
 	}
 	if err := loadSQLiteCommonSkills(db, master); err != nil {
+		return nil, err
+	}
+	if err := loadSQLiteSkillNameSources(db, locale, master); err != nil {
 		return nil, err
 	}
 	if err := loadSQLiteDamage(db, hash, master); err != nil {
@@ -631,6 +706,9 @@ func loadSQLiteBuffStaticParameters(db *sql.DB, master *gameMaster) error {
 		return err
 	}
 	if err := loadBuffModifierPresence(db, statics); err != nil {
+		return err
+	}
+	if err := loadBuffHUDCues(db, statics); err != nil {
 		return err
 	}
 	master.buffStatics = make(map[uint64]buffStaticParameters, len(statics))
@@ -1406,6 +1484,9 @@ func loadTemplateRelations(db *sql.DB, master *gameMaster) error {
 		return fmt.Errorf("query scene template relations: %w", err)
 	}
 	defer rows.Close()
+	// Almost every level entity has exactly one template, so entities of one template share one read-only slice instead of
+	// each holding a copy of the candidate. A second template on a key appends to a fresh slice, never to a shared one.
+	single := make(map[uint64][]sceneTemplateCandidate)
 	for rows.Next() {
 		var mapRaw, entityRaw, templateRaw string
 		if err := rows.Scan(&mapRaw, &entityRaw, &templateRaw); err != nil {
@@ -1428,7 +1509,17 @@ func loadTemplateRelations(db *sql.DB, master *gameMaster) error {
 			return fmt.Errorf("scene template relation references missing TemplateConfig Id %d", templateID)
 		}
 		key := sceneLevelKey{mapID: mapID, entityID: entityID}
-		master.sceneIdentity.levelTemplates[key] = append(master.sceneIdentity.levelTemplates[key], candidate)
+		existing, repeated := master.sceneIdentity.levelTemplates[key]
+		if repeated {
+			master.sceneIdentity.levelTemplates[key] = append(existing[:len(existing):len(existing)], candidate)
+			continue
+		}
+		shared, known := single[templateID]
+		if !known {
+			shared = []sceneTemplateCandidate{candidate}
+			single[templateID] = shared
+		}
+		master.sceneIdentity.levelTemplates[key] = shared
 	}
 	return rows.Err()
 }

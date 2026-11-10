@@ -7,15 +7,48 @@ export function snapshotStale(snapshot:Snapshot|null, now:number):boolean {
   return !Number.isFinite(at) || now-at>5000
 }
 
-// Do not extrapolate wall time: Go remainingSeconds already uses the capture clock, including paced replay.
-// Game time-stop is not proven, so even a fresh finite result remains explicitly estimated.
+// The engine decides whether a countdown can be trusted (ViewEffect.showCountdown) and what it reads; this only adds the
+// frontend's own state: the connection, a stopped service and a snapshot too old to be current. It never extrapolates.
 export function effectRemaining(effect:Effect,snapshot:Snapshot|null,connection:Connection,now:number):number|undefined {
   if(!snapshot?.view || connection!=="connected" || snapshot.service.state!=="running" || snapshotStale(snapshot,now))return undefined
-  if(snapshot.view.health.context.state!=="VALID" || snapshot.view.effects.status!=="complete" || effect.stale)return undefined
-  if(effect.lifecycle!=="active" || effect.remainingStatus!=="estimated" || effect.remainingSeconds===undefined || !Number.isFinite(effect.remainingSeconds))return undefined
+  if(effect.showCountdown!==true || effect.remainingSeconds===undefined || !Number.isFinite(effect.remainingSeconds))return undefined
   return Math.max(0,effect.remainingSeconds)
 }
 
-export function relevantEffect(effect:Effect):boolean {
-  return effect.combatClass!=="non_combat" && [effect.holderRelation,effect.sourceRelation].some(value=>value==="local_role"||value==="local_owned")
+/** The measured sizes of a row, in CSS pixels. */
+export interface EffectStripLayout {
+  width: number
+  icon: number
+  gap: number
+  /** The count of effects that did not fit. */
+  more: number
+}
+
+export interface EffectStrip {
+  /** How many of the ordered effects are drawn. */
+  visible: number
+  /** Cells not drawn: visible + overflow always equals the cells the row was given. */
+  overflow: number
+}
+
+/**
+ * Splits a row's ordered effects into the longest prefix that fits one line and a count of the rest, leaving room for that
+ * count whenever one is needed, so the soonest to end stay visible. It depends only on the row's length and the measured
+ * width, so a countdown cannot change it. The engine's display set is never filtered here.
+ */
+export function fitEffectStrip<T>(ordered: readonly T[], eligible: number, layout: EffectStripLayout | undefined): EffectStrip {
+  const total = Math.min(ordered.length, eligible)
+  if (layout === undefined) return { visible: 0, overflow: eligible }
+  let used = 0
+  let fitting = 0
+  let fittingWithCount = 0
+  for (let index = 0; index < total; index++) {
+    const next = used + (index > 0 ? layout.gap : 0) + layout.icon
+    if (next > layout.width) break
+    used = next
+    fitting = index + 1
+    if (next + layout.gap + layout.more <= layout.width) fittingWithCount = fitting
+  }
+  const visible = fitting === eligible ? fitting : fittingWithCount
+  return { visible, overflow: eligible - visible }
 }

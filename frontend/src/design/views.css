@@ -1,0 +1,125 @@
+/* Product view layouts: the Desktop window, the Dashboard and the Overlay windows. Values come from the design tokens. */
+html, body, #root { height: 100%; }
+
+/* ------------------------------ Desktop window ------------------------------ */
+body[data-view="desktop"] { margin: 0; background: var(--ww-surface-canvas); overflow: hidden; }
+.ww-app { display: flex; flex-direction: column; height: 100vh; background: var(--ww-surface-canvas); }
+.ww-app-header { display: grid; grid-template-columns: minmax(150px, 1fr) auto minmax(0, 2fr); align-items: center; gap: var(--ww-space-4); padding: var(--ww-space-2) var(--ww-space-5); background: var(--ww-surface-rail); border-bottom: 1px solid var(--ww-line-soft); }
+.ww-app-brand { display: flex; align-items: center; gap: var(--ww-space-3); min-width: 0; }
+.ww-app-brand > div { display: flex; flex-direction: column; line-height: 1.25; }
+.ww-app-brand strong { font-family: var(--ww-font-display); font-size: var(--ww-text-base); }
+.ww-app-brand span { font-size: var(--ww-text-2xs); color: var(--ww-text-3); }
+.ww-brand-emblem { display: block; flex: none; width: 30px; height: 30px; object-fit: contain; }
+.ww-app-tools { display: flex; align-items: center; justify-content: flex-end; gap: var(--ww-space-3); min-width: 0; }
+.ww-app-tools > [data-field="listening"] { min-width: 0; overflow: hidden; }
+.ww-app-tools .ww-listening-detail { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ww-app-overlays { display: flex; gap: var(--ww-space-1); flex: none; }
+.ww-app-capture { display: flex; align-items: center; gap: var(--ww-space-2); flex: none; }
+.ww-app-notices { display: flex; flex-direction: column; gap: var(--ww-space-1); padding: var(--ww-space-2) var(--ww-space-5); background: var(--ww-warn-soft); font-size: var(--ww-text-xs); color: var(--ww-warn); }
+.ww-app-notices > p { margin: 0; }
+.ww-app-notices > p[data-tone="critical"] { color: var(--ww-critical); }
+.ww-env-notice { display: flex; align-items: center; justify-content: space-between; gap: var(--ww-space-4); }
+.ww-env-notice-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ww-env-notice-text strong { font-size: var(--ww-text-sm); font-weight: var(--ww-weight-semibold); }
+.ww-env-notice-text > span { color: var(--ww-text-2); }
+.ww-env-notice-text > .ww-env-notice-detail { color: var(--ww-text-3); }
+.ww-env-notice-actions { display: flex; align-items: center; gap: var(--ww-space-2); flex: none; }
+.ww-app-main { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+.ww-app-page { height: 100%; min-height: 0; }
+.ww-settings-notice { margin: 0 0 var(--ww-space-4); padding: var(--ww-space-2) var(--ww-space-3); border-radius: var(--ww-radius-md); background: var(--ww-warn-soft); font-size: var(--ww-text-sm); color: var(--ww-warn); }
+.ww-settings-notice[data-tone="critical"] { background: var(--ww-critical-soft); color: var(--ww-critical); }
+.ww-license-intro { margin: var(--ww-space-2) 0 var(--ww-space-4); font-size: var(--ww-text-sm); color: var(--ww-text-3); }
+.ww-license { display: flex; flex-direction: column; align-items: flex-start; gap: var(--ww-space-3); padding: var(--ww-space-4) 0; border-top: 1px solid var(--ww-line-soft); }
+.ww-license > .ww-collapse { align-self: stretch; }
+.ww-license-name { margin: 0; font-size: var(--ww-text-base); font-weight: var(--ww-weight-semibold); color: var(--ww-text); }
+.ww-license-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--ww-space-1_5) var(--ww-space-4); margin: 0; font-size: var(--ww-text-sm); }
+.ww-license-facts dt { color: var(--ww-text-3); }
+.ww-license-facts dd { margin: 0; min-width: 0; overflow-wrap: anywhere; color: var(--ww-text-2); }
+.ww-license-links { display: flex; flex-wrap: wrap; gap: var(--ww-space-1); }
+.ww-license-text { max-height: var(--ww-license-text-height); margin: 0; padding: var(--ww-space-3); overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; border-radius: var(--ww-radius-md); background: var(--ww-surface-rail); font-family: var(--ww-font-ui); font-size: var(--ww-text-xs); line-height: 1.6; color: var(--ww-text-2); }
+.ww-license-text:focus-visible { outline: none; box-shadow: var(--ww-focus-ring); }
+@media (max-width: 1240px) { .ww-app-tools .ww-listening-detail { display: none; } }
+
+/* ------------------------------ Dashboard ------------------------------ */
+.ww-dash { position: relative; height: 100%; background: var(--ww-surface-canvas); isolation: isolate; }
+.ww-dash-layout { display: flex; flex-direction: column; gap: var(--ww-space-3); height: 100%; padding: var(--ww-space-4) var(--ww-space-5); overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--ww-surface-4) transparent; }
+.ww-dash-top { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--ww-space-4); }
+.ww-dash-title { margin: 2px 0 0; font-family: var(--ww-font-display); font-size: var(--ww-text-xl); font-weight: var(--ww-weight-display); letter-spacing: calc(var(--ww-tracking-display) + var(--ww-tracking-shift)); }
+.ww-dash-top-right { display: flex; align-items: center; gap: var(--ww-space-3); }
+.ww-dash-clock { display: inline-flex; align-items: center; gap: var(--ww-space-1); font-size: var(--ww-text-lg); color: var(--ww-time); }
+.ww-dash-stats { display: grid; grid-template-columns: 1.5fr 1.15fr 1fr 1fr; gap: var(--ww-space-3); }
+.ww-dash-stat { padding: var(--ww-space-3) var(--ww-space-4); height: 100%; }
+.ww-dash-stat > .ww-card-body { display: flex; flex-direction: column; height: 100%; }
+.ww-dash-stat-note { margin-top: auto !important; padding-top: var(--ww-space-1); }
+.ww-dash-stat-wrap { min-width: 0; }
+.ww-dash-stat-label { display: flex; align-items: center; gap: var(--ww-space-1_5); font-size: var(--ww-text-xs); color: var(--ww-text-3); }
+.ww-dash-stat-value { margin-top: var(--ww-space-1); font-size: var(--ww-text-2xl); line-height: 1.15; }
+/* The smaller numbers take the DPS number's line and centre in it, so all four share one centre line. */
+.ww-dash-stat-wrap:not(.ww-dash-stat-hero) .ww-dash-stat-value { display: flex; align-items: center; min-height: calc(var(--ww-text-hero) * 1.05); }
+.ww-dash-stat-hero .ww-dash-stat-value { font-size: var(--ww-text-hero); line-height: 1.05; font-weight: var(--ww-weight-display); letter-spacing: var(--ww-tracking-display); color: var(--ww-hero-number); }
+.ww-dash-stat-note { margin-top: var(--ww-space-1); font-size: var(--ww-text-2xs); color: var(--ww-text-4); }
+.ww-dash-main { display: grid; grid-template-columns: minmax(280px, 0.8fr) minmax(0, 1.5fr); gap: var(--ww-space-3); flex: 1; min-height: 0; }
+.ww-dash-board-wrap, .ww-dash-detail-wrap { min-width: 0; }
+.ww-dash-detail-wrap { display: flex; flex-direction: column; gap: var(--ww-space-3); }
+.ww-dash-board { position: relative; height: 100%; min-height: 380px; padding: var(--ww-space-3) var(--ww-space-3) 0; overflow: hidden; }
+.ww-dash-board .ww-card-body { height: 100%; display: flex; flex-direction: column; }
+.ww-dash-chart-card, .ww-dash-detail { padding: var(--ww-space-3) var(--ww-space-4); }
+.ww-dash-card-head { display: flex; align-items: center; justify-content: space-between; gap: var(--ww-space-3); min-height: 28px; margin-bottom: var(--ww-space-2); }
+.ww-dash-card-head h3 { margin: 0; font-size: var(--ww-text-base); font-weight: var(--ww-weight-semibold); }
+.ww-dash-role { display: flex; align-items: center; gap: var(--ww-space-3); height: 100%; padding: 0 var(--ww-space-2); border-radius: var(--ww-radius-md); cursor: pointer; transition: background-color var(--ww-dur-fast) var(--ww-ease-standard); }
+.ww-dash-role:hover { background: var(--ww-surface-hover); }
+.ww-dash-role[data-selected="true"] { background: var(--ww-surface-selected); }
+.ww-dash-role:focus-visible { outline: none; box-shadow: var(--ww-focus-ring); }
+.ww-dash-role-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.ww-dash-role-line { display: flex; align-items: baseline; justify-content: space-between; gap: var(--ww-space-2); }
+.ww-dash-role-line strong { font-size: var(--ww-text-md); font-weight: var(--ww-weight-semibold); }
+.ww-dash-role-dps { font-size: var(--ww-text-lg); }
+.ww-dash-role-sub { font-size: var(--ww-text-2xs); color: var(--ww-text-3); }
+.ww-dash-portrait { position: relative; flex: 1; min-height: 110px; margin: var(--ww-space-2) calc(var(--ww-space-3) * -1) 0; overflow: hidden; }
+.ww-dash-portrait img { position: absolute; right: -8%; top: -6%; width: 92%; opacity: 0.5; -webkit-mask-image: linear-gradient(180deg, #000 40%, transparent 96%), linear-gradient(90deg, transparent, #000 35%); -webkit-mask-composite: source-in; mask-composite: intersect; }
+.ww-dash-skills { width: 100%; border-collapse: collapse; font-size: var(--ww-text-sm); }
+.ww-dash-skills th { padding: 0 var(--ww-space-2) var(--ww-space-1); font-size: var(--ww-text-2xs); font-weight: var(--ww-weight-medium); color: var(--ww-text-4); text-align: end; }
+.ww-dash-skills th:first-child { text-align: start; padding-inline-start: 0; }
+.ww-dash-skills td { padding: 5px var(--ww-space-2); border-top: 1px solid var(--ww-line-soft); text-align: end; }
+.ww-dash-skills td:first-child { padding-inline-start: 0; text-align: start; }
+.ww-dash-skill-name { display: flex; align-items: center; gap: var(--ww-space-2); min-width: 0; max-width: 240px; }
+.ww-dash-skill-name img { width: 22px; height: 22px; flex: none; }
+.ww-dash-skills-wrap { max-height: 320px; overflow-y: auto; }
+.ww-dash-skill-id, .ww-dash-skill-noid { flex: none; font-size: var(--ww-text-2xs); color: var(--ww-text-4); }
+/* The tag takes the place of the ID, so this row keeps room for a whole name beside it. */
+.ww-dash-skill-unassigned .ww-dash-skill-name { max-width: 340px; }
+.ww-dash-skill-derived { flex: none; font-size: var(--ww-text-2xs); color: var(--ww-text-4); cursor: help; }
+.ww-dash-skill-unassigned td { color: var(--ww-text-3); font-style: italic; }
+.ww-dash-skill-unassigned[data-named="true"] td { color: inherit; font-style: normal; }
+.ww-dash-skill-share { display: grid; grid-template-columns: minmax(60px, 1fr) 48px; align-items: center; gap: var(--ww-space-2); min-width: 130px; }
+
+.ww-dash-empty-note { margin: 0; padding-block: var(--ww-space-3); font-size: var(--ww-text-sm); color: var(--ww-text-3); }
+.ww-dash-warning { margin: var(--ww-space-2) 0 0; font-size: var(--ww-text-xs); color: var(--ww-warn); }
+.ww-dash-facts { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--ww-space-1) var(--ww-space-4); margin: 0; font-size: var(--ww-text-sm); }
+.ww-dash-facts dt { color: var(--ww-text-3); }
+.ww-dash-facts dd { margin: 0; text-align: end; }
+
+/* ------------------------------ Overlay windows ------------------------------ */
+body[data-view="overlay"] { margin: 0; background: transparent; overflow: hidden; user-select: none; }
+/* Wails reads this at mouse down: outside Edit Mode the window cannot be dragged. Edge resize has priority over drag, so
+   the transparent gutter stays inside the drag region. */
+body[data-view="overlay"][data-editing="true"] { --wails-draggable: drag; }
+/* The display scale is a CSS zoom of the whole surface, matched by the host resizing the window by the same factor, so
+   layout, hit testing and the window agree. Inside a zoomed element 100vh is multiplied by the zoom, hence the division. */
+.ww-overlay-surface { position: relative; zoom: var(--ww-overlay-scale, 1); height: calc(100vh / var(--ww-overlay-scale, 1)); padding: var(--ww-space-2); overflow: hidden; user-select: none; }
+/* Wails checks the drag target's client size; keep hits on the surface even over inline text. */
+.ww-overlay-surface[data-editing="true"] * { pointer-events: none; }
+.ww-overlay-surface[data-editing="true"]::after { content: ""; position: absolute; inset: 2px; border: 1px dashed var(--ww-accent-bright); border-radius: var(--ww-radius-md); pointer-events: none; }
+.ww-overlay-edit { position: absolute; inset-inline: var(--ww-space-2); bottom: var(--ww-space-2); z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: var(--ww-space-2); padding: var(--ww-space-1) var(--ww-space-1) var(--ww-space-1) var(--ww-space-2); border-radius: var(--ww-radius-md); background: var(--ww-surface-3); box-shadow: var(--ww-shadow-popover); font-size: var(--ww-text-2xs); color: var(--ww-text-2); }
+.ww-overlay-edit .ww-btn { flex: none; pointer-events: auto; --wails-draggable: no-drag; }
+/* The empty state covers exactly the area the BUFF and DEBUFF rows draw in, with its text in the middle of that area. */
+.ww-effects-empty { grid-row: 1 / -1; min-width: 0; display: flex; align-items: center; justify-content: center; padding: 0 var(--ww-space-3); background: var(--ww-surface-overlay); border-radius: var(--ww-radius-md); }
+.ww-effects-legend { display: grid; gap: var(--ww-space-2); margin: 0; padding: var(--ww-space-2) 0; list-style: none; font-size: var(--ww-text-sm); color: var(--ww-text-2); }
+.ww-effects-legend li { display: grid; grid-template-columns: 84px minmax(0, 1fr); align-items: center; column-gap: var(--ww-space-3); }
+.ww-effects-legend-mark { display: flex; justify-content: center; }
+.ww-effects-legend-samples { display: inline-flex; gap: var(--ww-effect-gap); }
+.ww-effects-legend-sample { display: block; flex: none; }
+.ww-effects-legend-sample { width: var(--ww-effect-icon); }
+.ww-effects-legend-more { width: var(--ww-effect-more); }
+.ww-effects-legend-note { margin: 0; padding-bottom: var(--ww-space-2); font-size: var(--ww-text-xs); color: var(--ww-text-3); }
+.ww-overlay-surface[data-surface="effects"]:has(> .ww-overlay-edit) { padding-bottom: calc(var(--ww-space-2) * 2 + var(--ww-overlay-edit-height)); }

@@ -1,14 +1,20 @@
 package capture
 
+import "time"
+
 // effectEntityRelation classifies an entity with the same evidence rules as damage
 // attribution. A role of the local team, whether reported as the current entity or
-// listed in the local PlayerSceneGroup, is local_role; other entities that reach
-// the local team through a confirmed owner chain are local_owned.
+// listed in the local PlayerSceneGroup, is local_role; the local player's own
+// Proto_PlayerEntity is local_player; other entities that reach the local team through
+// a confirmed owner chain are local_owned.
 func (p *processor) effectEntityRelation(entityID uint64) EffectEntityRelation {
 	if p == nil || p.entities == nil || entityID == 0 {
 		return EffectRelationUnknown
 	}
 	identity := resolveEntityIdentity(p.entities, p.masters, entityID)
+	if identity.Runtime.entityID == entityID && p.playerRelevance.isLocalPlayerEntity(identity.Runtime) {
+		return EffectRelationLocalPlayer
+	}
 	switch p.playerRelationForEntity(entityID, identity) {
 	case playerRelationLocal:
 		if p.playerRelevance.isRoleEntity(entityID) || p.playerRelevance.isLocalPlayerRoleEntity(identity.Runtime) {
@@ -49,7 +55,8 @@ func (p *processor) effectStaticInfo(effectID uint64) *EffectStaticInfo {
 	if !hasStatic && !hasTerm {
 		return nil
 	}
-	info := &EffectStaticInfo{DeveloperTags: append([]string(nil), static.tags...)}
+	info := &EffectStaticInfo{DeveloperTags: append([]string(nil), static.tags...), HUDCueTypes: append([]int32(nil), static.hudCueTypes...), HUDPolarity: static.hudPolarity, HUDHiddenOnMonsterHead: static.hudHiddenOnMonsterHead}
+	info.ElementID, info.ElementBasis = effectElementFor(term.termID, hasTerm, static)
 	if hasTerm {
 		info.Term = &EffectTermInfo{TermID: term.termID, Name: term.name, Description: term.description, Status: string(term.status)}
 	}
@@ -271,9 +278,19 @@ func correlatedEffectHolder(row buffLifecycleAuditRow) (uint64, bool) {
 // effectSnapshotAtLastFrame evaluates the tracker at the newest frame time, which
 // is the capture clock the tracker's events use.
 func (p *processor) effectSnapshotAtLastFrame() EffectSnapshot {
+	return p.effectSnapshotAfterLastFrame(0)
+}
+
+// effectSnapshotAfterLastFrame evaluates the tracker lead past the newest frame. Querying never changes the tracker, so a
+// later query only reads the same countdowns further along.
+func (p *processor) effectSnapshotAfterLastFrame(lead time.Duration) EffectSnapshot {
 	if p == nil || p.effects == nil {
 		return emptyEffectSnapshot()
 	}
 	p.refreshEffectRelations()
-	return p.effects.SnapshotAt(CaptureQueryTime{CaptureSessionID: p.effects.captureSessionID, Timestamp: p.currentFrameTime})
+	query := p.currentFrameTime
+	if !query.IsZero() {
+		query = query.Add(lead)
+	}
+	return p.effects.SnapshotAt(CaptureQueryTime{CaptureSessionID: p.effects.captureSessionID, Timestamp: query})
 }

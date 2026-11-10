@@ -145,6 +145,12 @@ func (r *playerRelevanceResolver) isLocalPlayerRoleEntity(entity runtimeEntity) 
 	return exists
 }
 
+// isLocalPlayerEntity reports the local player's Proto_PlayerEntity. It holds team-level effects, so it is a local effect
+// holder without being a role, and it says nothing about damage: only the effect relation uses it.
+func (r *playerRelevanceResolver) isLocalPlayerEntity(entity runtimeEntity) bool {
+	return entity.hasEntityType && entity.entityTypeCode == entityTypePlayerEntity && entity.hasPlayerID && r.isLocalPlayerID(entity.playerID)
+}
+
 func (r *playerRelevanceResolver) isLocalPlayerID(playerID uint64) bool {
 	if r == nil || playerID == 0 {
 		return false
@@ -257,9 +263,7 @@ func hasUnresolvedPlayerOrOwnerLink(entity runtimeEntity) bool {
 			(entity.hasPlayerEntityID && entity.playerEntityID != 0) ||
 			(entity.hasPhantomRoleEntityID && entity.phantomRoleEntityID != 0) ||
 			(entity.hasWeakVisionEntityID && entity.weakVisionEntityID != 0) ||
-			(entity.hasSummonConfigID && entity.summonConfigID != 0) ||
-			(entity.hasSummonSkillID && entity.summonSkillID != 0) ||
-			(entity.hasSummonType && entity.summonType != 0) ||
+			monsterSummonHasNoLink(entity) ||
 			(entity.hasFollowerSummonConfigID && entity.followerSummonConfigID != 0) ||
 			(entity.hasFollowEntityID && entity.followEntityID != 0) ||
 			len(entity.concomitantVisionIDs) > 0 || len(entity.concomitantCustomIDs) > 0 || len(entity.playerFollowers) > 0
@@ -281,6 +285,18 @@ func hasUnresolvedPlayerOrOwnerLink(entity runtimeEntity) bool {
 		(entity.hasFollowEntityID && entity.followEntityID != 0) ||
 		len(entity.concomitantVisionIDs) > 0 || len(entity.concomitantCustomIDs) > 0 ||
 		len(entity.playerFollowers) > 0
+}
+
+// monsterSummonHasNoLink reports a Monster that carries summon details but no SummonerId to follow, so its owner is unknown.
+// With a SummonerId those details describe that one link, which playerRelationForEntity walks to a verified parent: a chain
+// ending at a role is local, and one ending at a Monster with no player link is the enemy's own summon.
+func monsterSummonHasNoLink(entity runtimeEntity) bool {
+	if entity.hasSummonerID && entity.summonerID != 0 {
+		return false
+	}
+	return (entity.hasSummonConfigID && entity.summonConfigID != 0) ||
+		(entity.hasSummonSkillID && entity.summonSkillID != 0) ||
+		(entity.hasSummonType && entity.summonType != 0)
 }
 
 func isExplicitMonsterEntity(entity runtimeEntity) bool {

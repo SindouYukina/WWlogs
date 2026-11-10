@@ -126,6 +126,7 @@ type processor struct {
 	rsa                       *staticRSA
 	session                   []byte
 	sessionGeneration         uint64
+	sessionHealth             sessionHealthState
 	pending                   map[uint64]pendingDamageRequest
 	pendingOrder              []pendingRef
 	pendingHead               int
@@ -142,6 +143,8 @@ type processor struct {
 	pendingSummaryCredits     map[uint64][]pendingSummaryCredit
 	pendingSummaryCreditCount int
 	currentFrameTime          time.Time
+	viewClockLead             time.Duration // how far past currentFrameTime the Effects view reads countdowns; only a live session sets it
+	viewClockStalled          bool          // a live session has seen no game frame for LiveFrameSilenceLimit
 	clientVersion             *clientVersionReport
 	stdout                    io.Writer
 	diagnostic                io.Writer
@@ -410,6 +413,7 @@ func (p *processor) handleFrame(frame gameFrame) {
 	p.currentFrameTime = frame.timestamp
 	p.observePairingClock(frame.timestamp)
 	p.observeEncounterClock(frame.timestamp)
+	p.sessionHealth.observeFrame(frame.timestamp)
 	var censusEntry *commandCensusEntry
 	if p.census != nil {
 		censusEntry = p.census.observeFrame(frame, p.sessionNumber)
@@ -418,12 +422,15 @@ func (p *processor) handleFrame(frame gameFrame) {
 		p.stats.handshakeFrames++
 		if err := p.handleProtoKeyResponse(frame.body); err != nil {
 			p.stats.handshakeErrors++
+			p.sessionHealth.lastHandshakeFailed = true
 			if censusEntry != nil {
 				censusEntry.FailureReasons["ProtoKeyResponse decode failed"]++
 			}
 			return
 		}
 		p.stats.handshakeOK++
+		p.sessionHealth.lastHandshakeFailed = false
+		p.sessionHealth.consecutiveDecryptFailures = 0
 		if censusEntry != nil {
 			censusEntry.DecodedFrames++
 		}
@@ -469,11 +476,13 @@ func (p *processor) handleFrame(frame gameFrame) {
 	plain, err := decryptGameBody(frame.sequence, frame.body, p.session)
 	if err != nil {
 		p.stats.decryptErrors++
+		p.sessionHealth.consecutiveDecryptFailures++
 		if censusEntry != nil {
 			censusEntry.FailureReasons["decrypt failed"]++
 		}
 		return
 	}
+	p.sessionHealth.consecutiveDecryptFailures = 0
 	if censusEntry != nil {
 		censusEntry.DecryptedFrames++
 	}
@@ -571,21 +580,10 @@ func (p *processor) handleFrame(frame gameFrame) {
 		p.stats.entityAdds += added
 		p.refreshEffectRelations()
 	case 17769:
-		removed, removedIDs, err := p.entities.applyEntityRemoveNotify(plain)
-		if err != nil {
+		if err := p.handleEntityRemoveNotify(plain); err != nil {
 			p.stats.parseErrors++
 			fmt.Fprintf(p.diagnostic, "entity_remove_parse_error=%v\n", err)
 			return
-		}
-		p.stats.entityRemoves += removed
-		for _, id := range removedIDs {
-			p.effects.ObserveHolderRemoved(p.sessionNumber, id, p.currentFrameTime)
-			p.playerRelevance.removeEntity(id)
-			if roleID, correlated := p.sourceRoles.correlatedRole(id); correlated {
-				p.backfillEncounterSummary(id, roleID)
-			}
-			p.sourceRoles.remove(id)
-			p.removePendingSummaryCredits(id)
 		}
 	case 28481:
 		if err := p.handleActiveRequest(frame.token, plain); err != nil {
@@ -608,6 +606,25 @@ func (p *processor) handleFrame(frame gameFrame) {
 			censusEntry.FailureReasons["protobuf or message schema decode failed"]++
 		}
 	}
+}
+
+// handleEntityRemoveNotify applies an EntityRemoveNotify. A held damage response may name an entity removed here, so the
+// state an in-order pair would have seen is kept first (see rpc_pairing.go). On a parse error nothing but the registry
+// removal of the IDs read before the fault is applied.
+func (p *processor) handleEntityRemoveNotify(body []byte) error {
+	p.rememberRemovalsForHeldResponses(body)
+	removed, removedIDs, err := p.entities.applyEntityRemoveNotify(body)
+	if err != nil {
+		return err
+	}
+	p.stats.entityRemoves += removed
+	for _, id := range removedIDs {
+		p.effects.ObserveHolderRemoved(p.sessionNumber, id, p.currentFrameTime)
+		p.playerRelevance.removeEntity(id)
+		p.settleRemovedSource(id)
+		p.sourceRoles.remove(id)
+	}
+	return nil
 }
 
 // emptyBodyFailureReason labels frames whose command body is zero-length.

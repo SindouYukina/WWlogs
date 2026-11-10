@@ -1,6 +1,7 @@
 import i18n from "i18next"
 import { initReactI18next } from "react-i18next"
 import manifest from "../../locales/manifest.json"
+import { bootLocale } from "./boot"
 
 // Vite bundles approved JSON resources; no network backend, file scanner, or language detector is installed.
 const modules=import.meta.glob("../../locales/*/*.json",{eager:true,import:"default"})
@@ -14,7 +15,10 @@ for(const locale of manifest.supportedLocales) {
   }
   resources[locale]=namespaces
 }
-void i18n.use(initReactI18next).init({resources,lng:manifest.fallbackLocale,fallbackLng:manifest.fallbackLocale,supportedLngs:manifest.supportedLocales,load:"currentOnly",ns:manifest.namespaces,defaultNS:"common",initAsync:false,interpolation:{escapeValue:false},react:{useSuspense:false}})
+// The host names the saved language in the window's URL, so the first render is already in it; fallbackLng is unchanged.
+const firstLocale=bootLocale(window.location.search,manifest.supportedLocales,manifest.fallbackLocale)
+document.documentElement.lang=firstLocale
+void i18n.use(initReactI18next).init({resources,lng:firstLocale,fallbackLng:manifest.fallbackLocale,supportedLngs:manifest.supportedLocales,load:"currentOnly",ns:manifest.namespaces,defaultNS:"common",initAsync:false,interpolation:{escapeValue:false},react:{useSuspense:false}})
 export { manifest }
 export default i18n
 

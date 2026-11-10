@@ -45,7 +45,7 @@ func TestEncounterSummarySeparatesCreditedDamageHealingAndOwnerCandidates(t *tes
 	}
 	text := output.String()
 	for _, want := range []string{
-		"Combat master: master_data.db (Global, zh-TW, SHA-256 " + strings.Repeat("a", 64) + ")",
+		"Combat master: external test override: master_data.db (Global, zh-TW, SHA-256 " + strings.Repeat("a", 64) + ")",
 		"no Echo or summon attribution is inferred here",
 		"DAMAGE_CANDIDATE: Damage master CalculateType 0",
 		"Damage candidates: 300",
@@ -63,7 +63,7 @@ func TestEncounterSummarySeparatesCreditedDamageHealingAndOwnerCandidates(t *tes
 			t.Errorf("summary missing %q:\n%s", want, text)
 		}
 	}
-	if strings.Contains(text, "Effective Healing") && !strings.Contains(text, "not established") {
+	if strings.Contains(text, "Effective Healing") && !strings.Contains(text, "does not compute Effective Healing") {
 		t.Fatal("summary implied effective healing without its evidence limitation")
 	}
 }
@@ -227,7 +227,7 @@ func TestEncounterSummaryGroupsHealingByCreditedSourceTargetAndDamageID(t *testi
 		"target evidence: target RoleId field",
 		"Classification evidence: Damage CalculateType=1",
 		"Healing events without both source and target Character identities: 1 (reported magnitude 25)",
-		"Effective Healing and Overheal are not established and remain UNKNOWN.",
+		"This table does not compute Effective Healing or Overheal; the encounter statistics take the applied HP change from ChangeLife.",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("healing summary missing %q:\n%s", want, text)

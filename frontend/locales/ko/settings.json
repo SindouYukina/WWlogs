@@ -1,21 +1,139 @@
 {
   "title": "설정",
-  "description": "이 Windows 사용자의 환경설정입니다.",
   "language": "언어",
   "languageHint": "두 창과 게임 명칭에 즉시 적용됩니다.",
-  "startup": "시작 환경설정",
-  "defaultAdapter": "기본 네트워크 인터페이스",
-  "chooseAtLaunch": "시작할 때마다 선택",
-  "adapterHint": "시작할 때 미리 선택합니다. 캡처는 수동으로 시작합니다.",
-  "showOnStartup": "시작 시 오버레이 표시",
-  "visibilityHint": "현재 표시 상태는 위의 버튼으로 변경하세요.",
-  "save": "환경설정 저장",
-  "saving": "저장 중…",
-  "saved": "환경설정을 저장했습니다.",
-  "unsaved": "저장하지 않은 변경사항",
+  "languageAuto": "자동",
+  "languageAutoHint": "Windows 표시 언어를 따릅니다. 현재: {{language}}",
+  "defaultAdapter": "네트워크 인터페이스",
+  "adapterHint": "캡처에 이 인터페이스를 사용합니다.",
+  "adapterChoose": "게임 연결에 사용하는 인터페이스를 선택하세요.",
+  "adapterLocked": "변경하려면 먼저 캡처를 중지하세요.",
+  "autoStartCapture": "실행 시 자동으로 캡처 시작",
+  "autoStartCaptureHint": "게임에 로그인하기 전에 WWlogs를 먼저 실행하세요. 로그인 후에 시작한 캡처는 해당 연결을 해석할 수 없습니다.",
   "storage": "저장 위치: %LOCALAPPDATA%\\WWlogs\\settings.json.",
   "invalid": "설정을 안전하게 불러올 수 없어 기본값을 사용합니다.",
   "saveFailed": "환경설정을 저장하지 못했습니다. 이전 설정은 유지됩니다.",
-  "resetOverlay": "오버레이 위치 초기화",
-  "geometryHint": "오버레이 제목 표시줄을 드래그하고 가장자리에서 크기를 조절하세요. 위치와 크기는 자동 저장됩니다."
+  "loadFailed": "환경설정을 불러오지 못했습니다. 기본값을 표시합니다.",
+  "appearance": "외관",
+  "theme": "테마",
+  "reduceMotion": "동작 줄이기",
+  "reduceMotionHint": "전환 효과와 숫자 카운트 애니메이션을 끕니다. 값은 바로 갱신됩니다. Windows 애니메이션 설정도 따릅니다.",
+  "themes": {
+    "electro": {
+      "name": "전도",
+      "character": "쇄명"
+    },
+    "aero": {
+      "name": "기류",
+      "character": "카르티시아"
+    },
+    "havoc": {
+      "name": "인멸",
+      "character": "치사"
+    },
+    "glacio": {
+      "name": "응결",
+      "character": "카를로타"
+    },
+    "fusion": {
+      "name": "용융",
+      "character": "모니에"
+    }
+  },
+  "groups": {
+    "basic": "기본 설정",
+    "overlays": "오버레이",
+    "about": "정보"
+  },
+  "pages": {
+    "general": "일반",
+    "appearance": "외관",
+    "combatOverlay": "전투 오버레이",
+    "effectsOverlay": "효과 오버레이",
+    "about": "WWlogs",
+    "licenses": "라이선스"
+  },
+  "sections": {
+    "language": "언어",
+    "motion": "모션",
+    "window": "창",
+    "look": "외관",
+    "capture": "네트워크 캡처",
+    "about": "버전 정보",
+    "fontLicenses": "글꼴 라이선스",
+    "displayPerformance": "표시 및 성능"
+  },
+  "showWindow": "이 오버레이 표시",
+  "alwaysOnTop": "항상 위에 표시",
+  "clickThrough": "마우스 클릭 통과",
+  "clickThroughHint": "켜면 마우스 입력이 오버레이를 통과해 게임 조작을 방해하지 않습니다.",
+  "editMode": "편집 모드",
+  "editModeHint": "일시적으로 마우스 입력을 받아 이동과 크기 조정을 할 수 있습니다. 완료하면 원래 설정으로 돌아갑니다.",
+  "startEditing": "편집 시작",
+  "finishEditing": "편집 완료",
+  "position": "위치와 크기",
+  "positionNote": "오버레이별로 자동 저장",
+  "resetPosition": "위치 초기화",
+  "mainWindow": "메인 창 크기와 위치",
+  "mainWindowNote": "자동으로 저장되어 다음 실행 때도 같은 크기와 위치로 열립니다",
+  "resetMainWindow": "기본값으로 복원",
+  "opacity": "배경 불투명도",
+  "opacityHint": "패널 배경에만 적용되며 글자는 선명하게 유지됩니다.",
+  "scale": "표시 배율",
+  "scaleHint": "창과 내용 전체를 확대·축소합니다({{min}}–{{max}}%). 위치는 유지되고 직접 조정한 크기도 같은 비율로 바뀌며, 화면보다 커도 창은 화면 안에 머뭅니다.",
+  "scaleInput": "표시 배율(퍼센트)",
+  "decrease": "줄이기",
+  "increase": "늘리기",
+  "buildVersion": "버전",
+  "buildNumber": "빌드 번호",
+  "buildUnofficial": "비공식 빌드",
+  "buildProfile": "빌드 유형",
+  "buildRevision": "소스 리비전",
+  "buildModified": "커밋되지 않은 변경 포함",
+  "buildStateUnknown": "작업 트리 상태 알 수 없음",
+  "buildUnavailable": "확인할 수 없음",
+  "buildProfileDevelopment": "Development",
+  "buildProfilePublic": "Public",
+  "geometryReset": "오버레이 위치 데이터가 유효하지 않아 기본값으로 되돌렸습니다.",
+  "licenses": {
+    "intro": "이 앱에 내장된 글꼴과 라이선스 정보입니다. 라이선스 조항은 원문 그대로 표시하며 번역본은 제공하지 않습니다.",
+    "usage": "용도",
+    "faces": "서체",
+    "version": "버전",
+    "authors": "제작자",
+    "copyright": "저작권 고지",
+    "license": "라이선스",
+    "links": "링크",
+    "showText": "전체 조항 표시",
+    "hideText": "전체 조항 숨기기",
+    "linkFailed": "브라우저를 열 수 없습니다. 주소로 직접 이동하세요.",
+    "usageOf": {
+      "inter": "라틴 문자와 숫자",
+      "noto": "중국어 번체, 중국어 간체, 일본어, 한국어"
+    },
+    "link": {
+      "project": "공식 프로젝트",
+      "fontSource": "글꼴 파일 출처",
+      "license": "라이선스 공식 사이트"
+    }
+  },
+  "updateInterval": "전투 정보 업데이트 간격",
+  "updateIntervalHint": "대시보드와 두 오버레이에 공통으로 적용되며 효과 카운트다운도 포함합니다. 화면 업데이트 빈도만 바뀌고 모든 전투 이벤트는 그대로 집계됩니다.",
+  "updateIntervalNote": "대시보드와 오버레이 공통 · 기본값 {{value}}",
+  "units": {
+    "milliseconds": "{{value}} ms",
+    "seconds": "{{value}} s"
+  },
+  "effectsLegend": {
+    "title": "효과 스트립 안내",
+    "gameIcon": "아이콘: 게임이 HUD에서 이 상태에 표시하는 아이콘입니다. 안쪽의 색상 영역은 남은 시간 비율, 아래는 예상 남은 초, 오른쪽 위는 중첩 수(2 이상)입니다.",
+    "target": "왼쪽 아래 작은 표시: 이 상태는 적에게 적용되어 있습니다. 표시가 없으면 아군에게 적용된 상태입니다.",
+    "color": "채움 색상: 효과 정의에 명시된 속성입니다. 속성이 없거나 확인할 수 없으면 회색입니다. 색상은 버프나 디버프를 뜻하지 않습니다.",
+    "untimed": "빗금에 초 표시 없음: 게임에서 신뢰할 수 있는 시간을 제공하지 않습니다.",
+    "more": "+N: 창 너비에 들어가지 않는 효과 수입니다. 편집 모드에서 창을 넓힐 수 있습니다.",
+    "rows": "첫째 줄은 버프, 둘째 줄은 디버프입니다. 방향은 게임 자체의 HUD 설정을 따릅니다.",
+    "order": "각 줄은 빨리 끝나는 순서로 왼쪽부터 놓이고, 시간이 없는 상태는 맨 뒤에 놓입니다.",
+    "onlyHud": "게임 HUD가 공식 아이콘과 방향으로 그리는 상태만 표시합니다. 내부 상태는 표시하지 않습니다.",
+    "noNames": "게임과 같이 효과 이름은 표시하지 않습니다. 게임 데이터의 효과 대부분에는 이름이 없습니다."
+  }
 }

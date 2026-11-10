@@ -10,7 +10,12 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
+
+// sessionReplayIntervals are the user-selectable UI update intervals (Settings, General). The session runs once per
+// interval and once switching between them while it runs; every run must end with the same view.
+var sessionReplayIntervals = []time.Duration{250 * time.Millisecond, 500 * time.Millisecond, 750 * time.Millisecond, 1000 * time.Millisecond}
 
 // intervalTotals are the statistics totals of one interval, read directly from the engine.
 type intervalTotals struct {
@@ -59,6 +64,8 @@ func viewTotals(v ViewSnapshot) intervalTotals {
 func comparableView(v ViewSnapshot) ViewSnapshot {
 	v.CaptureSessionID = 0
 	v.Health.Capture = ViewCaptureHealth{}
+	// Frame ages depend on the clock of the capture loop, not on decoding. Every other session field is still compared.
+	v.Health.Session.FirstFrameAgeSeconds, v.Health.Session.FrameIdleSeconds = nil, nil
 	fix := func(e *ViewEncounter) {
 		if _, rest, ok := strings.Cut(e.EncounterID, "-"); ok {
 			e.EncounterID = rest
@@ -74,20 +81,30 @@ func comparableView(v ViewSnapshot) ViewSnapshot {
 		fix(&recent[i])
 	}
 	v.Encounters.Recent = recent
+	// The timeline names its encounter with the same process-local prefix; everything else in it is compared.
+	if v.Timeline != nil {
+		timeline := *v.Timeline
+		if _, rest, ok := strings.Cut(timeline.EncounterID, "-"); ok {
+			timeline.EncounterID = rest
+		}
+		v.Timeline = &timeline
+	}
 	return v
 }
 
 type sessionReplaySummary struct {
-	Name              string         `json:"name"`
-	ProtocolSessions  int            `json:"protocolSessions"`
-	Intervals         int            `json:"intervals"`
-	CLI               intervalTotals `json:"cli"`
-	HostIntervalsSum  intervalTotals `json:"hostIntervalsSum"`
-	SessionFinal      intervalTotals `json:"sessionFinal"`
-	Snapshots         int            `json:"snapshots"`
-	FinalIntegrity    string         `json:"finalIntegrity"`
-	FinalEncounterDPS string         `json:"finalEncounterDps"`
-	Encounters        uint64         `json:"encounters"`
+	Name             string         `json:"name"`
+	ProtocolSessions int            `json:"protocolSessions"`
+	Intervals        int            `json:"intervals"`
+	CLI              intervalTotals `json:"cli"`
+	HostIntervalsSum intervalTotals `json:"hostIntervalsSum"`
+	SessionFinal     intervalTotals `json:"sessionFinal"`
+	Snapshots        int            `json:"snapshots"`
+	// SnapshotsByInterval counts the views each update interval published ("switching" changes it while running).
+	SnapshotsByInterval map[string]int `json:"snapshotsByInterval"`
+	FinalIntegrity      string         `json:"finalIntegrity"`
+	FinalEncounterDPS   string         `json:"finalEncounterDps"`
+	Encounters          uint64         `json:"encounters"`
 }
 
 // TestSessionReplayCollector checks that the application host path changes no analysis result. For every capture:
@@ -110,6 +127,7 @@ func TestSessionReplayCollector(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer masters.Close()
 	if err := os.MkdirAll(out, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -140,30 +158,50 @@ func TestSessionReplayCollector(t *testing.T) {
 			hostFinal := host.viewSnapshot()
 			hostFinal.Final = true
 
-			session, err := OpenSession(SessionConfig{LocalIPv4: inputs.localIP, ReplayPath: capture.path}, masters)
-			if err != nil {
-				t.Fatal(err)
+			// The update interval only decides when views are built; the final view must not depend on it.
+			runSession := func(label string, interval time.Duration, switching bool) []ViewSnapshot {
+				session, err := OpenSession(SessionConfig{LocalIPv4: inputs.localIP, ReplayPath: capture.path, PublishInterval: interval}, masters)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var views []ViewSnapshot
+				result, err := session.Run(context.Background(), func(v ViewSnapshot) {
+					views = append(views, v)
+					if switching {
+						session.SetPublishInterval(sessionReplayIntervals[len(views)%len(sessionReplayIntervals)])
+					}
+				})
+				if err != nil || result.StopReason != StopReasonReplayEnd {
+					t.Fatalf("%s session run: %+v, %v", label, result, err)
+				}
+				final := views[len(views)-1]
+				if !final.Final {
+					t.Fatalf("%s: the last published view is not final", label)
+				}
+				if !reflect.DeepEqual(comparableView(final), comparableView(hostFinal)) {
+					a, _ := json.Marshal(comparableView(final))
+					b, _ := json.Marshal(comparableView(hostFinal))
+					t.Errorf("%s: session final view differs from the processor's view:\nsession=%s\nhost=%s", label, a, b)
+				}
+				return views
 			}
+			byInterval := map[string]int{}
 			var views []ViewSnapshot
-			result, err := session.Run(context.Background(), func(v ViewSnapshot) { views = append(views, v) })
-			if err != nil || result.StopReason != StopReasonReplayEnd {
-				t.Fatalf("session run: %+v, %v", result, err)
+			for _, interval := range sessionReplayIntervals {
+				run := runSession(interval.String(), interval, false)
+				byInterval[interval.String()] = len(run)
+				if interval == DefaultPublishInterval {
+					views = run
+				}
 			}
+			byInterval["switching"] = len(runSession("switching", sessionReplayIntervals[0], true))
 			final := views[len(views)-1]
-			if !final.Final {
-				t.Fatal("the last published view is not final")
-			}
-			if !reflect.DeepEqual(comparableView(final), comparableView(hostFinal)) {
-				a, _ := json.Marshal(comparableView(final))
-				b, _ := json.Marshal(comparableView(hostFinal))
-				t.Errorf("session final view differs from the processor's view:\nsession=%s\nhost=%s", a, b)
-			}
 			if host.sessionNumber <= 1 && viewTotals(final) != cliTotals {
 				t.Errorf("single protocol session: session totals %+v differ from the CLI %+v", viewTotals(final), cliTotals)
 			}
 			summary := sessionReplaySummary{
 				Name: capture.name, ProtocolSessions: host.sessionNumber, Intervals: len(last), CLI: cliTotals, HostIntervalsSum: sum,
-				SessionFinal: viewTotals(final), Snapshots: len(views), FinalIntegrity: string(final.Health.DataIntegrity),
+				SessionFinal: viewTotals(final), Snapshots: len(views), SnapshotsByInterval: byInterval, FinalIntegrity: string(final.Health.DataIntegrity),
 				FinalEncounterDPS: string(final.Statistics.EncounterDPS.Status), Encounters: final.Encounters.CompletedTotal,
 			}
 			data, _ := json.MarshalIndent(summary, "", "  ")

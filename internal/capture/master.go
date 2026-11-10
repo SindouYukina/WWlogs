@@ -123,6 +123,8 @@ type gameMaster struct {
 	elementNames  map[int32]string
 	damage        map[uint64]damageMasterRecord
 	sceneIdentity *sceneIdentityMaster
+	// skillNames holds the static relations behind derived skill-row names (skill_names.go).
+	skillNames *skillNameMaster
 }
 
 func (m *gameMaster) sceneMonster(instanceID, entityID uint64) (uint64, bool) {
@@ -247,6 +249,13 @@ type buffStaticParameters struct {
 	attribute    uint64
 	hasAttribute bool
 	hasModifier  bool
+	// hudCueTypes are the distinct HUD cue types (ascending) of the row's GameplayCueIds that have a Path
+	// (effect_hud_cues.go): the game draws the effect in a HUD buff bar.
+	hudCueTypes []int32
+	// hudPolarity and hudHiddenOnMonsterHead are the direction and monster-head visibility of the row's first HUD cue
+	// (effect_hud_cues.go); polarity stays empty for a row without one.
+	hudPolarity            EffectPolarity
+	hudHiddenOnMonsterHead bool
 }
 
 // effectTermRecord is the localized glossary term of an element-ailment buff row. The link comes

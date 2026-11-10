@@ -1,5 +1,6 @@
 import { Call } from "@wailsio/runtime"
-import type { Snapshot } from "./snapshot"
+import type { CaptureEnvironment, NpcapDownload } from "./capture-environment"
+import type { OverlayKind, OverlayState, OverlayStates, Snapshot } from "./snapshot"
 
 // Calls into the Go Bridge (internal/desktop.Bridge) by fully qualified name; no generated bindings are needed.
 const bridge = "wwlogs/internal/desktop.Bridge."
@@ -8,17 +9,16 @@ function call<T>(method: string, ...args: unknown[]): Promise<T> {
   return Call.ByName(bridge + method, ...args) as Promise<T>
 }
 
-export interface Adapter {
-  ipv4: string
-  description: string
-}
+export type { Adapter } from "./capture-environment"
 
 export interface Settings {
   version: number
   defaultAdapterIPv4: string
-  showOverlayOnStartup: boolean
   locale: string
-  overlay?: { x: number; y: number; width: number; height: number }
+  theme?: string
+  reduceMotion?: boolean
+  updateIntervalMs?: number
+  autoStartCapture?: boolean
 }
 
 export interface SettingsState {
@@ -27,16 +27,25 @@ export interface SettingsState {
   localeRevision: number
 }
 
+export type OverlayChange = Partial<OverlayState>
+
 export const host = {
   nextSnapshot: (after: number) => call<Snapshot>("NextSnapshot", after),
   currentSnapshot: () => call<Snapshot>("CurrentSnapshot"),
-  listAdapters: () => call<Adapter[]>("ListAdapters"),
+  checkCaptureEnvironment: () => call<CaptureEnvironment>("CheckCaptureEnvironment"),
+  npcapDownloadInfo: () => call<NpcapDownload>("NpcapDownloadInfo"),
+  openNpcapDownload: () => call<NpcapDownload>("OpenNpcapDownload"),
+  openLicenseLink: (url: string) => call<void>("OpenLicenseLink", url),
   startCapture: (localIPv4: string) => call<void>("StartCapture", { localIPv4 }),
   stopCapture: () => call<void>("StopCapture"),
-  setOverlayVisible: (visible: boolean) => call<boolean>("SetOverlayVisible", visible),
-  overlayVisible: () => call<boolean>("OverlayVisible"),
   getSettings: () => call<SettingsState>("GetSettings"),
-  saveSettings: (settings: Settings) => call<SettingsState>("SaveSettings", settings),
+  setDefaultAdapter: (ipv4: string) => call<SettingsState>("SetDefaultAdapter", ipv4),
+  setAutoStartCapture: (enabled: boolean) => call<SettingsState>("SetAutoStartCapture", enabled),
   setLocale: (locale: string) => call<SettingsState>("SetLocale", locale),
-  resetOverlayPosition: () => call<void>("ResetOverlayPosition"),
+  setAppearance: (theme: string, reduceMotion: boolean) => call<SettingsState>("SetAppearance", theme, reduceMotion),
+  setUpdateInterval: (ms: number) => call<SettingsState>("SetUpdateInterval", ms),
+  updateOverlay: (kind: OverlayKind, change: OverlayChange) => call<OverlayStates>("UpdateOverlay", kind, change),
+  resetOverlay: (kind: OverlayKind) => call<void>("ResetOverlay", kind),
+  /** Forgets the Desktop window's remembered size and position and returns it to the first-launch default. */
+  resetDesktopWindow: () => call<void>("ResetDesktopWindow"),
 }

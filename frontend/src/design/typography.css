@@ -1,0 +1,51 @@
+/*
+ * Typeface scheme and language rules. Fonts ship inside the executable as WOFF2; nothing is read from the user's system
+ * unless a glyph is outside the bundled subset, where the language's system font keeps the correct regional form.
+ *
+ * Inter's range excludes shared punctuation, so CJK text uses full-width quotes and the middle dot from its own font.
+ * Only properties verified in WebView2 are used here. -webkit-font-smoothing has no effect on Windows and is not set;
+ * text filters, shadows on body text and scale transforms are avoided because they blur CJK strokes.
+ */
+@font-face { font-family: "WW Inter"; src: url("./fonts/inter-var.woff2") format("woff2"); font-weight: 300 800; font-display: swap; unicode-range: U+0020-007E, U+00A0-00B6, U+00B8-017F, U+2013-2014, U+20AC, U+2122, U+2190-2193, U+2212, U+2248, U+2264-2265; }
+@font-face { font-family: "WW Inter Punctuation"; src: url("./fonts/inter-var.woff2") format("woff2"); font-weight: 300 800; font-display: swap; unicode-range: U+00B7, U+2018-201D, U+2022, U+2026; }
+@font-face { font-family: "WW Noto TC"; src: url("./fonts/noto-tc-var.woff2") format("woff2"); font-weight: 300 800; font-display: swap; }
+@font-face { font-family: "WW Noto SC"; src: url("./fonts/noto-sc-var.woff2") format("woff2"); font-weight: 300 800; font-display: swap; }
+@font-face { font-family: "WW Noto JP"; src: url("./fonts/noto-jp-var.woff2") format("woff2"); font-weight: 300 800; font-display: swap; }
+@font-face { font-family: "WW Noto KR"; src: url("./fonts/noto-kr-var.woff2") format("woff2"); font-weight: 300 800; font-display: swap; }
+
+:root {
+  --ww-font-latin: "WW Inter";
+  --ww-font-cjk: "WW Noto TC", "Microsoft JhengHei UI", "Microsoft YaHei UI", "Yu Gothic UI", "Malgun Gothic";
+}
+:root:lang(en) { --ww-font-latin: "WW Inter", "WW Inter Punctuation"; }
+:root:lang(zh-CN) { --ww-font-cjk: "WW Noto SC", "Microsoft YaHei UI", "Microsoft JhengHei UI", "Yu Gothic UI", "Malgun Gothic"; }
+:root:lang(ja) { --ww-font-cjk: "WW Noto JP", "Yu Gothic UI", "Meiryo UI", "Microsoft JhengHei UI", "Malgun Gothic"; }
+:root:lang(ko) { --ww-font-cjk: "WW Noto KR", "Malgun Gothic", "Microsoft JhengHei UI", "Yu Gothic UI"; }
+
+/* CJK reads best with open tracking and more leading than Latin UI text; Japanese additionally benefits from palt. */
+:root:lang(zh-TW), :root:lang(zh-CN) { --ww-tracking-ui: 0.012em; --ww-tracking-small: 0.02em; --ww-tracking-display: 0.004em; --ww-leading-normal: calc(1.58 + var(--ww-leading-shift)); }
+:root:lang(ja) { --ww-tracking-ui: 0.01em; --ww-tracking-small: 0.016em; --ww-tracking-display: 0em; --ww-leading-normal: calc(1.6 + var(--ww-leading-shift)); }
+:root:lang(ko) { --ww-tracking-ui: -0.002em; --ww-tracking-small: 0.004em; --ww-tracking-display: -0.012em; --ww-leading-normal: calc(1.55 + var(--ww-leading-shift)); }
+
+/* The scheme applies wherever tokens are read. A typeface scope redeclares the stacks for its own subtree. */
+.ww-typeface-scope {
+  --ww-font-ui: var(--ww-font-latin), var(--ww-font-cjk), var(--ww-font-system);
+  --ww-font-display: var(--ww-font-latin), var(--ww-font-cjk), var(--ww-font-system);
+  --ww-font-numeric: var(--ww-font-numeric-face, var(--ww-font-latin)), var(--ww-font-cjk), var(--ww-font-system);
+}
+
+body {
+  font-family: var(--ww-font-ui);
+  font-kerning: normal;
+  font-optical-sizing: auto;
+  font-synthesis: none;
+  text-rendering: geometricPrecision;
+}
+:lang(ja) { font-feature-settings: "palt"; }
+:lang(ko) { word-break: keep-all; }
+
+/* Roles. Display is for headline numbers and page titles, UI for controls and prose, Data for columns of numbers. */
+.ww-type-display { font-family: var(--ww-font-display); font-weight: var(--ww-weight-display); letter-spacing: calc(var(--ww-tracking-display) + var(--ww-tracking-shift)); line-height: var(--ww-leading-tight); }
+.ww-type-ui { font-family: var(--ww-font-ui); font-weight: var(--ww-weight-regular); letter-spacing: calc(var(--ww-tracking-ui) + var(--ww-tracking-shift)); line-height: var(--ww-leading-normal); }
+.ww-type-small { font-family: var(--ww-font-ui); font-weight: var(--ww-weight-regular); letter-spacing: calc(var(--ww-tracking-small) + var(--ww-tracking-shift)); line-height: var(--ww-leading-normal); }
+.ww-type-data, .ww-num { font-family: var(--ww-font-numeric); font-weight: var(--ww-weight-data); font-variant-numeric: tabular-nums lining-nums; font-feature-settings: "tnum", "lnum"; letter-spacing: calc(var(--ww-tracking-data) + var(--ww-tracking-shift)); }

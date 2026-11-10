@@ -21,6 +21,7 @@ import "sort"
 //   sum(Roles.DamageDealt) + Vehicle.DamageDealt + UnassignedRole.DamageDealt == DamageDealt (confirmed local outgoing), events likewise;
 //   sum(Roles.DamageTaken) + UnassignedRole.DamageTaken == DamageTaken (confirmed local incoming), events likewise;
 //   per role, DirectDamage + SummonDamage == DamageDealt;
+//   per role and for the vehicle, sum(Skills) + UnassignedSkill == DamageDealt, events likewise (skill_breakdown.go);
 //   the same holds per encounter against its Totals.
 
 // Role credit bases.
@@ -92,6 +93,9 @@ type RoleDamageSnapshot struct {
 	SummonDamage   int64  `json:"summonDamage"`
 	DamageTaken    int64  `json:"damageTaken"`
 	IncomingEvents uint64 `json:"incomingEvents"`
+	// Skills and UnassignedSkill split DamageDealt by DamageContext.SkillId.
+	Skills          []SkillDamageSnapshot `json:"skills"`
+	UnassignedSkill UnassignedSkillTotals `json:"unassignedSkill"`
 }
 
 // VehicleDamageSnapshot is a local motorcycle contributor, not a character or a replacement of raw source identity.
@@ -100,6 +104,9 @@ type VehicleDamageSnapshot struct {
 	Evidence       string `json:"evidence"`
 	DamageDealt    int64  `json:"damageDealt"`
 	OutgoingEvents uint64 `json:"outgoingEvents"`
+	// Skills and UnassignedSkill split DamageDealt by DamageContext.SkillId.
+	Skills          []SkillDamageSnapshot `json:"skills"`
+	UnassignedSkill UnassignedSkillTotals `json:"unassignedSkill"`
 }
 
 // UnassignedRoleTotals is confirmed local damage without a role or recognized vehicle contributor.
@@ -118,12 +125,19 @@ const maxAggregatedRoles = 256
 type roleKey struct{ playerID, roleID uint64 }
 
 type roleAggregate struct {
-	vehicle    VehicleDamageSnapshot
-	roles      map[roleKey]*RoleDamageSnapshot
-	unassigned UnassignedRoleTotals
+	vehicle       VehicleDamageSnapshot
+	vehicleSkills skillAggregate
+	roles         map[roleKey]*roleEntry
+	unassigned    UnassignedRoleTotals
 }
 
-func (a *roleAggregate) entry(role *CombatRole) *RoleDamageSnapshot {
+// roleEntry holds one role's totals and its skill split; Skills on the embedded snapshot stay nil until snapshot().
+type roleEntry struct {
+	RoleDamageSnapshot
+	skills skillAggregate
+}
+
+func (a *roleAggregate) entry(role *CombatRole) *roleEntry {
 	if role == nil {
 		return nil
 	}
@@ -136,15 +150,16 @@ func (a *roleAggregate) entry(role *CombatRole) *RoleDamageSnapshot {
 		return nil
 	}
 	if a.roles == nil {
-		a.roles = make(map[roleKey]*RoleDamageSnapshot)
+		a.roles = make(map[roleKey]*roleEntry)
 	}
-	entry := &RoleDamageSnapshot{PlayerID: role.PlayerID, RoleID: role.RoleID}
+	entry := &roleEntry{RoleDamageSnapshot: RoleDamageSnapshot{PlayerID: role.PlayerID, RoleID: role.RoleID}}
 	a.roles[key] = entry
 	return entry
 }
 
-// add credits one statistics record. Only confirmed local flows are aggregated.
-func (a *roleAggregate) add(record CombatEventRecord) {
+// add credits one statistics record. Only confirmed local flows are aggregated. For confirmed local outgoing damage
+// it returns the contributor it credited, so the DPS timeline splits damage exactly as these totals do.
+func (a *roleAggregate) add(record CombatEventRecord) (TimelineContributor, bool) {
 	switch record.Flow {
 	case CombatFlowLocalOutgoing:
 		if record.VehicleKind == vehicleKindMotorcycle {
@@ -152,38 +167,44 @@ func (a *roleAggregate) add(record CombatEventRecord) {
 			a.vehicle.Evidence = string(resolutionCorrelated)
 			a.vehicle.DamageDealt += record.Amount
 			a.vehicle.OutgoingEvents++
-			return
+			a.vehicleSkills.add(record.SkillID, record.DamageID, record.Amount, nil)
+			return TimelineContributor{Kind: TimelineContributorVehicle, VehicleKind: vehicleKindMotorcycle}, true
 		}
 		entry := a.entry(record.SourceRole)
 		if entry == nil {
 			a.unassigned.DamageDealt += record.Amount
 			a.unassigned.OutgoingEvents++
-			return
+			return TimelineContributor{Kind: TimelineContributorUnassigned}, true
 		}
 		entry.DamageDealt += record.Amount
 		entry.OutgoingEvents++
+		entry.skills.add(record.SkillID, record.DamageID, record.Amount, record.EchoVisions)
 		if record.SourceRole.Basis == roleBasisSummonerChain {
 			entry.SummonDamage += record.Amount
 		} else {
 			entry.DirectDamage += record.Amount
 		}
+		return TimelineContributor{Kind: TimelineContributorRole, PlayerID: entry.PlayerID, RoleID: entry.RoleID}, true
 	case CombatFlowLocalIncoming:
 		entry := a.entry(record.TargetRole)
 		if entry == nil {
 			a.unassigned.DamageTaken += record.Amount
 			a.unassigned.IncomingEvents++
-			return
+			return TimelineContributor{}, false
 		}
 		entry.DamageTaken += record.Amount
 		entry.IncomingEvents++
 	}
+	return TimelineContributor{}, false
 }
 
 // snapshot returns an independent copy, ordered by PlayerId then RoleId.
 func (a *roleAggregate) snapshot() ([]RoleDamageSnapshot, UnassignedRoleTotals) {
 	roles := make([]RoleDamageSnapshot, 0, len(a.roles))
 	for _, entry := range a.roles {
-		roles = append(roles, *entry)
+		role := entry.RoleDamageSnapshot
+		role.Skills, role.UnassignedSkill = entry.skills.snapshot()
+		roles = append(roles, role)
 	}
 	sort.Slice(roles, func(i, j int) bool {
 		if roles[i].PlayerID != roles[j].PlayerID {
@@ -200,5 +221,6 @@ func (a *roleAggregate) vehicleSnapshot() *VehicleDamageSnapshot {
 		return nil
 	}
 	copied := a.vehicle
+	copied.Skills, copied.UnassignedSkill = a.vehicleSkills.snapshot()
 	return &copied
 }

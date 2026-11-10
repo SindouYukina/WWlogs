@@ -1,10 +1,25 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { host } from "./host"
 import type { Connection, Snapshot } from "./snapshot"
-import { snapshotSupersedes } from "./snapshot"
+import { shellChanged, snapshotSupersedes, withShell } from "./snapshot"
 import i18n, { manifest } from "@/i18n"
+import { applyAppearance } from "@/design/appearance"
 
-// A single long-poll per window consumes the shared Go publisher. Locale revisions also order same-sequence copies.
+/** Resolves when the window is visible. A hidden window holds no long-poll, so it costs the host nothing. */
+function whenVisible(): Promise<void> {
+  if (!document.hidden) return Promise.resolve()
+  return new Promise(resolve => {
+    const onChange = () => {
+      if (document.hidden) return
+      document.removeEventListener("visibilitychange", onChange)
+      resolve()
+    }
+    document.addEventListener("visibilitychange", onChange)
+  })
+}
+
+// A single long-poll per visible window consumes the shared Go publisher. Locale revisions also order same-sequence
+// copies. Statistics are never computed here: every window reads the one result the engine published.
 export function useSnapshot() {
   const [snapshot,setSnapshot]=useState<Snapshot|null>(null)
   const [connection,setConnection]=useState<Connection>("connecting")
@@ -13,7 +28,12 @@ export function useSnapshot() {
   const mounted=useRef(false)
   const accept=useCallback((next:Snapshot)=>{
     const previous=latest.current
-    if(!snapshotSupersedes(next,previous,minimumRevision.current)) return
+    applyAppearance(next.theme,next.reduceMotion===true)
+    if(!snapshotSupersedes(next,previous,minimumRevision.current)) {
+      // A heartbeat keeps the core sequence, but listening state, appearance and window state may still have moved.
+      setSnapshot(current=>current&&next.sequence===current.sequence&&shellChanged(next,current)?withShell(current,next):current)
+      return
+    }
     const locale=manifest.supportedLocales.includes(next.locale) ? next.locale : manifest.fallbackLocale
     // All resources are eager; language and names become visible in the same React batch.
     void i18n.changeLanguage(locale)
@@ -32,11 +52,14 @@ export function useSnapshot() {
     let cancelled=false
     const loop=async()=>{
       while(!cancelled) {
+        await whenVisible()
+        if(cancelled) return
         try {
           const next=await host.nextSnapshot(latest.current.sequence)
           if(cancelled) return
           setConnection("connected")
-          accept(next)
+          // A reply that arrives just after hiding is dropped; the current state is fetched again when shown.
+          if(!document.hidden) accept(next)
         } catch {
           if(cancelled) return
           setConnection("disconnected")

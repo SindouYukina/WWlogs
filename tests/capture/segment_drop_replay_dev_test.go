@@ -28,6 +28,7 @@ import (
 //   - no damage is invented: confirmed and unattributed totals never exceed the unmodified replay,
 //   - the dropped direction reports exactly one loss that recovered, and nothing is left unrecovered,
 //   - an encounter overlapping the loss is not reported INTACT,
+//   - roles, skills, every encounter's timeline and the effect view counts still reconcile after recovery,
 //   - one repeated drop replays identically.
 //
 // It writes one JSON summary per capture. It is skipped unless WWLOGS_SEGMENT_DROP_OUT is set, reads only paths
@@ -339,6 +340,25 @@ func segmentDropReplay(t *testing.T, masters *gameMaster, key *staticRSA, path s
 		frames = append(frames, fmt.Sprintf("%s/%d/%d/%d/%s/%s", record.Direction, record.SessionNumber, record.Sequence, record.CommandID, record.BodySHA256, record.Timestamp))
 	}
 	statistics := p.damageStatisticsSnapshot()
+	// After recovery every retained encounter's timeline must still add up to it, and the effect view must still
+	// account for each tracked instance exactly once.
+	timelines := p.damageStatistics.encounterTimelines()
+	encounters := append([]EncounterSnapshot{}, statistics.Encounters.Completed...)
+	if statistics.Encounters.Current != nil {
+		encounters = append(encounters, *statistics.Encounters.Current)
+	}
+	if len(encounters) != len(timelines) {
+		t.Errorf("%d encounters but %d timelines", len(encounters), len(timelines))
+	} else {
+		for i, encounter := range encounters {
+			if err := timelineConservationError(timelines[i], encounter); err != nil {
+				t.Errorf("encounter %s: %v", encounter.EncounterID, err)
+			}
+		}
+	}
+	if view := p.viewSnapshot(); view.Effects.Counts.accountingError(len(view.Effects.Active)) != nil {
+		t.Errorf("effect view counts: %v", view.Effects.Counts.accountingError(len(view.Effects.Active)))
+	}
 	pushes := map[segmentDropStream][]uint32{}
 	for stream, sequences := range seen {
 		for sequence := range sequences {

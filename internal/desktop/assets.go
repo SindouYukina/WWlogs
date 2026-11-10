@@ -2,9 +2,9 @@ package desktop
 
 import (
 	"archive/zip"
-	"bytes"
 	"fmt"
 	"io/fs"
+	"strings"
 	"testing/fstest"
 )
 
@@ -16,10 +16,10 @@ const missingFrontendPage = `<!doctype html><html lang="en"><head><meta charset=
 
 // frontendFS returns the embedded frontend, or a one-page fallback when none was embedded.
 func frontendFS() (fs.FS, bool, error) {
-	if len(frontendArchive) == 0 {
+	if frontendArchive == "" {
 		return fstest.MapFS{"index.html": &fstest.MapFile{Data: []byte(missingFrontendPage)}}, false, nil
 	}
-	reader, err := zip.NewReader(bytes.NewReader(frontendArchive), int64(len(frontendArchive)))
+	reader, err := zip.NewReader(strings.NewReader(frontendArchive), int64(len(frontendArchive)))
 	if err != nil {
 		return nil, false, fmt.Errorf("open embedded frontend archive: %w", err)
 	}

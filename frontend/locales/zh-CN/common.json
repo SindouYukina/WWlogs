@@ -3,6 +3,7 @@
   "vehicle": "载具",
   "diagnosticsIncomplete": "开发诊断录制不完整或无法启用，请检查本地容量与诊断状态。",
   "attributionIncomplete": "角色伤害明细尚不完整，总伤害仍完整保留。",
+  "unknownOwnershipNote": "另有 {{value}} 点伤害归属未知，未计入总伤害。",
   "roleTitle": "伤害来源",
   "appSubtitle": "战斗分析",
   "dashboard": "战斗总览",
@@ -19,7 +20,7 @@
   "unknown": "未知",
   "role": "角色 {{id}}",
   "unknownRole": "未知角色（{{id}}）",
-  "encounterDps": "本场 DPS",
+  "encounterDps": "DPS",
   "rolling5": "近 5 秒 DPS",
   "rolling10": "近 10 秒 DPS",
   "damageSpan": "伤害区间 DPS",
@@ -72,5 +73,33 @@
     "requested": "按要求停止",
     "replay_end": "回放结束",
     "unknown": "未知"
+  },
+  "listening": {
+    "state": {
+      "off": "未捕获",
+      "waiting": "等待游戏",
+      "establishing": "建立中",
+      "active": "监听中",
+      "stale": "近期无数据",
+      "error": "捕获异常",
+      "closed": "游戏已关闭"
+    },
+    "reason": {
+      "capture_off": "开始捕获后才会监听游戏流量",
+      "capture_starting": "正在启动捕获",
+      "capture_failed": "网络捕获无法运行",
+      "no_game_traffic": "尚未检测到游戏流量",
+      "game_not_running": "游戏尚未运行",
+      "handshake_in_progress": "正在读取登录握手",
+      "traffic_without_key": "已看到游戏流量，但错过了登录。请重新登录游戏",
+      "awaiting_login": "游戏已重新启动，等待登录",
+      "handshake_failed": "无法读取登录握手",
+      "decrypt_failing": "无法解密游戏数据",
+      "transport_unrecoverable": "数据包恢复失败",
+      "receiving": "正在接收游戏数据",
+      "transport_recovering": "正在从数据包丢失中恢复",
+      "no_recent_frames": "游戏闲置中或连接暂停",
+      "game_process_ended": "游戏进程已结束"
+    }
   }
 }

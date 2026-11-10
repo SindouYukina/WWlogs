@@ -1,21 +1,139 @@
 {
   "title": "设置",
-  "description": "此 Windows 用户的偏好设置。",
   "language": "语言",
   "languageHint": "立即应用到两个窗口与游戏名称。",
-  "startup": "启动偏好",
-  "defaultAdapter": "默认网络接口",
-  "chooseAtLaunch": "每次启动时选择",
-  "adapterHint": "启动时预选，采集仍需手动开始。",
-  "showOnStartup": "启动时显示 Overlay",
-  "visibilityHint": "当前显示状态请使用上方控制按钮调整。",
-  "save": "保存偏好",
-  "saving": "保存中…",
-  "saved": "偏好设置已保存。",
-  "unsaved": "尚未保存",
+  "languageAuto": "自动",
+  "languageAutoHint": "跟随 Windows 显示语言。当前：{{language}}",
+  "defaultAdapter": "网络接口",
+  "adapterHint": "开始采集时使用此接口。",
+  "adapterChoose": "选择游戏连接使用的网络接口。",
+  "adapterLocked": "采集中无法更改，请先停止采集。",
+  "autoStartCapture": "启动时自动开始采集",
+  "autoStartCaptureHint": "请先打开 WWlogs，再登录游戏；登录后才开始采集，将无法正常解析该次连接。",
   "storage": "保存于 %LOCALAPPDATA%\\WWlogs\\settings.json。",
   "invalid": "设置无法安全加载，已使用默认值。",
   "saveFailed": "偏好保存失败，原设置已保留。",
-  "resetOverlay": "重置 Overlay 位置",
-  "geometryHint": "拖动 Overlay 标题栏，从边缘调整大小；位置和尺寸会自动保存。"
+  "loadFailed": "偏好加载失败，当前显示默认值。",
+  "appearance": "外观",
+  "theme": "主题",
+  "reduceMotion": "减少动态",
+  "reduceMotionHint": "关闭过渡与数字滚动动画，数值仍即时更新。也会遵守 Windows 的动画设置。",
+  "themes": {
+    "electro": {
+      "name": "导电",
+      "character": "锁暝"
+    },
+    "aero": {
+      "name": "气动",
+      "character": "卡提希娅"
+    },
+    "havoc": {
+      "name": "湮灭",
+      "character": "千咲"
+    },
+    "glacio": {
+      "name": "冷凝",
+      "character": "珂莱塔"
+    },
+    "fusion": {
+      "name": "热熔",
+      "character": "莫宁"
+    }
+  },
+  "groups": {
+    "basic": "基础设置",
+    "overlays": "Overlay",
+    "about": "关于"
+  },
+  "pages": {
+    "general": "常规",
+    "appearance": "外观",
+    "combatOverlay": "战斗 Overlay",
+    "effectsOverlay": "效果 Overlay",
+    "about": "WWlogs",
+    "licenses": "授权"
+  },
+  "sections": {
+    "language": "语言",
+    "motion": "动态",
+    "window": "窗口",
+    "look": "外观",
+    "capture": "网络捕获",
+    "about": "版本信息",
+    "fontLicenses": "字体授权",
+    "displayPerformance": "显示与性能"
+  },
+  "showWindow": "显示此 Overlay",
+  "alwaysOnTop": "保持在最上层",
+  "clickThrough": "鼠标穿透",
+  "clickThroughHint": "启用后，鼠标操作会穿透 Overlay，不影响游戏操作。",
+  "editMode": "编辑模式",
+  "editModeHint": "暂时解除鼠标穿透，可拖动与调整大小；完成后恢复原本设置。",
+  "startEditing": "进入编辑",
+  "finishEditing": "完成编辑",
+  "position": "位置与尺寸",
+  "positionNote": "每个 Overlay 分开自动保存",
+  "resetPosition": "重置位置",
+  "mainWindow": "主窗口大小与位置",
+  "mainWindowNote": "自动保存，下次启动时以相同大小与位置打开",
+  "resetMainWindow": "恢复默认",
+  "opacity": "背景不透明度",
+  "opacityHint": "只影响面板背景，文字保持清晰。",
+  "scale": "显示倍率",
+  "scaleHint": "缩放整个窗口与内容（{{min}}–{{max}}%）。位置会保留，手动调整过的大小会一起等比缩放；比屏幕大时窗口仍会留在屏幕内。",
+  "scaleInput": "显示倍率（百分比）",
+  "decrease": "减少",
+  "increase": "增加",
+  "buildVersion": "版本",
+  "buildNumber": "构建编号",
+  "buildUnofficial": "非正式构建",
+  "buildProfile": "版本类型",
+  "buildRevision": "源代码修订",
+  "buildModified": "含未提交的修改",
+  "buildStateUnknown": "工作目录状态未知",
+  "buildUnavailable": "无法获取",
+  "buildProfileDevelopment": "Development",
+  "buildProfilePublic": "Public",
+  "geometryReset": "Overlay 的位置数据无效，已还原为默认位置。",
+  "licenses": {
+    "intro": "以下是本程序内置的字体与授权信息。授权条款以原文显示，不提供翻译版本。",
+    "usage": "用途",
+    "faces": "字型",
+    "version": "版本",
+    "authors": "作者",
+    "copyright": "版权声明",
+    "license": "授权条款",
+    "links": "链接",
+    "showText": "显示完整条款",
+    "hideText": "隐藏完整条款",
+    "linkFailed": "无法打开浏览器，请手动前往该网址。",
+    "usageOf": {
+      "inter": "拉丁字符与数字",
+      "noto": "繁体中文、简体中文、日文与韩文"
+    },
+    "link": {
+      "project": "官方项目",
+      "fontSource": "字型文件来源",
+      "license": "授权条款官方网站"
+    }
+  },
+  "updateInterval": "战斗信息更新间隔",
+  "updateIntervalHint": "仪表盘与两个 Overlay 共用，包含效果倒计时。只改变画面更新频率，所有战斗事件仍会完整计算。",
+  "updateIntervalNote": "仪表盘与 Overlay 共用 · 默认 {{value}}",
+  "units": {
+    "milliseconds": "{{value}} ms",
+    "seconds": "{{value}} s"
+  },
+  "effectsLegend": {
+    "title": "效果状态条说明",
+    "gameIcon": "图标：游戏本身在 HUD 为此状态显示的图标。格内的色块是剩余时间比例，下方是估计剩余秒数，右上是层数（2 层以上）。",
+    "target": "左下角小标记：此状态在敌人身上；没有标记的在我方身上。",
+    "color": "色块颜色：效果定义明确对应的元素属性；没有元素属性或无法确认时为灰色。颜色不代表增益或减益。",
+    "untimed": "斜纹且没有秒数：游戏没有提供可信的时间。",
+    "more": "+N：窗口宽度放不下的效果数量。可在编辑模式中拉宽窗口。",
+    "rows": "第一行是增益，第二行是减益，方向直接来自游戏 HUD 对此状态的设置。",
+    "order": "每行从左到右按到期时间排列：最快到期的在最左边，没有时间的在最后。",
+    "onlyHud": "只显示游戏 HUD 会绘制、带有官方图标与方向的状态，内部状态不显示。",
+    "noNames": "效果不显示名称，与游戏相同；游戏数据中多数效果没有名称。"
+  }
 }

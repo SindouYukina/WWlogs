@@ -1,21 +1,139 @@
 {
   "title": "Settings",
-  "description": "Preferences for this Windows user.",
   "language": "Language",
   "languageHint": "Applies immediately to both windows and Master names.",
-  "startup": "Startup preferences",
-  "defaultAdapter": "Default network interface",
-  "chooseAtLaunch": "Choose at each launch",
-  "adapterHint": "Preselected on launch. Capture always starts manually.",
-  "showOnStartup": "Show overlay on startup",
-  "visibilityHint": "Use capture controls to change current visibility.",
-  "save": "Save preferences",
-  "saving": "Saving…",
-  "saved": "Preferences saved.",
-  "unsaved": "Unsaved changes",
+  "languageAuto": "Automatic",
+  "languageAutoHint": "Follows the Windows display language. Now: {{language}}",
+  "defaultAdapter": "Network interface",
+  "adapterHint": "Capture uses this interface.",
+  "adapterChoose": "Choose the interface your game connection uses.",
+  "adapterLocked": "Stop the capture to change the interface.",
+  "autoStartCapture": "Start capture when WWlogs launches",
+  "autoStartCaptureHint": "Open WWlogs before you log in to the game. A capture started after login cannot decode that connection.",
   "storage": "Stored in %LOCALAPPDATA%\\WWlogs\\settings.json.",
   "invalid": "Settings could not be loaded safely. Defaults are in use.",
   "saveFailed": "Preferences could not be saved. Previous settings are preserved.",
-  "resetOverlay": "Reset overlay position",
-  "geometryHint": "Drag the overlay header; resize from its edges. Position and size save automatically."
+  "loadFailed": "Preferences could not be loaded. Defaults are shown.",
+  "appearance": "Appearance",
+  "theme": "Theme",
+  "reduceMotion": "Reduce motion",
+  "reduceMotionHint": "Turns off transitions and counting numbers; values still update at once. Windows' own animation setting is also respected.",
+  "themes": {
+    "electro": {
+      "name": "Electro",
+      "character": "Suoming"
+    },
+    "aero": {
+      "name": "Aero",
+      "character": "Cartethyia"
+    },
+    "havoc": {
+      "name": "Havoc",
+      "character": "Chisa"
+    },
+    "glacio": {
+      "name": "Glacio",
+      "character": "Carlotta"
+    },
+    "fusion": {
+      "name": "Fusion",
+      "character": "Mornye"
+    }
+  },
+  "groups": {
+    "basic": "Basics",
+    "overlays": "Overlays",
+    "about": "About"
+  },
+  "pages": {
+    "general": "General",
+    "appearance": "Appearance",
+    "combatOverlay": "Combat Overlay",
+    "effectsOverlay": "Effects Overlay",
+    "about": "WWlogs",
+    "licenses": "Licenses"
+  },
+  "sections": {
+    "language": "Language",
+    "motion": "Motion",
+    "window": "Window",
+    "look": "Appearance",
+    "capture": "Network capture",
+    "about": "Version",
+    "fontLicenses": "Font licenses",
+    "displayPerformance": "Display and performance"
+  },
+  "showWindow": "Show this overlay",
+  "alwaysOnTop": "Always on top",
+  "clickThrough": "Mouse click-through",
+  "clickThroughHint": "When on, mouse input passes through the overlay and never interrupts the game.",
+  "editMode": "Edit Mode",
+  "editModeHint": "Temporarily accepts the mouse so you can drag and resize. Your settings return when you finish.",
+  "startEditing": "Edit",
+  "finishEditing": "Finish editing",
+  "position": "Position and size",
+  "positionNote": "Saved automatically for each overlay",
+  "resetPosition": "Reset position",
+  "mainWindow": "Main window size and position",
+  "mainWindowNote": "Saved automatically; the next launch opens the same way",
+  "resetMainWindow": "Restore default",
+  "opacity": "Background opacity",
+  "opacityHint": "Affects the panel background only; text stays clear.",
+  "scale": "Display scale",
+  "scaleHint": "Scales the window and everything in it, {{min}}–{{max}}%. The position is kept and a size you set scales with it; a window larger than the screen stays inside it.",
+  "scaleInput": "Display scale in percent",
+  "decrease": "Decrease",
+  "increase": "Increase",
+  "buildVersion": "Version",
+  "buildNumber": "Build number",
+  "buildUnofficial": "Unofficial build",
+  "buildProfile": "Build type",
+  "buildRevision": "Source revision",
+  "buildModified": "with uncommitted changes",
+  "buildStateUnknown": "working tree state unknown",
+  "buildUnavailable": "Unavailable",
+  "buildProfileDevelopment": "Development",
+  "buildProfilePublic": "Public",
+  "geometryReset": "Saved overlay placement was invalid and has been reset.",
+  "licenses": {
+    "intro": "The fonts built into this application and their licenses. License terms are shown in their original language and are not translated.",
+    "usage": "Used for",
+    "faces": "Typefaces",
+    "version": "Version",
+    "authors": "Authors",
+    "copyright": "Copyright",
+    "license": "License",
+    "links": "Links",
+    "showText": "Show full license",
+    "hideText": "Hide full license",
+    "linkFailed": "The browser could not be opened. Go to the address manually.",
+    "usageOf": {
+      "inter": "Latin characters and numbers",
+      "noto": "Traditional Chinese, Simplified Chinese, Japanese and Korean"
+    },
+    "link": {
+      "project": "Official project",
+      "fontSource": "Font file source",
+      "license": "License website"
+    }
+  },
+  "updateInterval": "Combat data update interval",
+  "updateIntervalHint": "Shared by the Dashboard and both Overlays, including effect countdowns. Only the screen update rate changes; every combat event is still counted.",
+  "updateIntervalNote": "Dashboard and Overlays · Default {{value}}",
+  "units": {
+    "milliseconds": "{{value}} ms",
+    "seconds": "{{value}} s"
+  },
+  "effectsLegend": {
+    "title": "Effect strip",
+    "gameIcon": "Icon: the icon the game itself shows for this status in its HUD. The colored area inside is the share of the duration left, below it are the estimated seconds left, and at the top right are the stacks from two.",
+    "target": "Small corner mark: this status is on an enemy. A status without it is on your team.",
+    "color": "Fill color: the element the effect's definition states; gray when it states none or it cannot be confirmed. Color does not mean buff or debuff.",
+    "untimed": "Hatched with no seconds: the game gives no reliable time.",
+    "more": "+N: effects that do not fit the width of the window. The window can be widened in Edit Mode.",
+    "rows": "The first line is BUFF and the second is DEBUFF. The direction comes from the game's own HUD setting for the status.",
+    "order": "Each line runs left to right by when a status ends: soonest first, statuses without a time last.",
+    "onlyHud": "Only statuses the game draws in its HUD with its own icon and direction are shown. Internal states are left out.",
+    "noNames": "Effects are shown without names, as in the game; most effects have no name in the game data."
+  }
 }

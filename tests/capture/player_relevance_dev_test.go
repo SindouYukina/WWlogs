@@ -575,6 +575,103 @@ func TestPlayerRelevanceKeepsUnownedMonsterSummonUnknown(t *testing.T) {
 	}
 }
 
+func addTestMonsterCompanion(p *processor, entityID, summonerID uint64, extra func(*runtimeEntity)) {
+	addTestRuntimeEntity(p, entityID, func(entity *runtimeEntity) {
+		entity.entityTypeCode, entity.hasEntityType = entityTypeMonster, true
+		entity.playerID, entity.hasPlayerID = 77, true
+		entity.summonerID, entity.hasSummonerID = summonerID, true
+		entity.summonConfigID, entity.hasSummonConfigID = 3980056, true
+		entity.summonType, entity.hasSummonType = 2, true
+		if extra != nil {
+			extra(entity)
+		}
+	})
+}
+
+func addTestPlainMonster(p *processor, entityID uint64) {
+	addTestRuntimeEntity(p, entityID, func(entity *runtimeEntity) {
+		entity.entityTypeCode, entity.hasEntityType = entityTypeMonster, true
+		entity.playerID, entity.hasPlayerID = 77, true
+	})
+}
+
+func TestPlayerRelevanceCountsTheEnemysOwnSummon(t *testing.T) {
+	p, _, _ := newPlayerRelevanceTestProcessor()
+	addTestPlayerRoleGroupEntity(p, 100, 77, 1409)
+	observeTestLocalRole(p, 100)
+	addTestPlainMonster(p, 300)
+	addTestMonsterCompanion(p, 200, 300, nil)
+
+	outgoing := testDamageEvent(p, 100, 200)
+	outgoing.EventTypeCandidate = "DAMAGE_CANDIDATE"
+	source, target, _ := p.playerRelevantDamageEvent(outgoing)
+	if source != playerRelationLocal || target != playerRelationUnrelated {
+		t.Fatalf("relations of a hit on a Monster summoned by a Monster = (%d, %d)", source, target)
+	}
+	if !p.writeDamageEvent(outgoing) {
+		t.Fatal("hit on the enemy's summon was not retained")
+	}
+	incoming := testDamageEvent(p, 200, 100)
+	incoming.EventTypeCandidate = "DAMAGE_CANDIDATE"
+	if !p.writeDamageEvent(incoming) {
+		t.Fatal("hit from the enemy's summon was not retained")
+	}
+	if got := p.damageStatistics.Snapshot(); got.DamageDealt != 10 || got.DamageTaken != 10 || got.UnattributedOutgoingDamage != 0 || got.UnattributedIncomingDamage != 0 {
+		t.Fatalf("the enemy's summon was not classified by direction: %+v", got)
+	}
+}
+
+func TestPlayerRelevanceKeepsMonsterSummonUnknownWithoutAClosedChain(t *testing.T) {
+	cases := []struct {
+		name  string
+		setup func(p *processor)
+	}{
+		{"the summoner was never observed", func(p *processor) { addTestMonsterCompanion(p, 200, 300, nil) }},
+		{"the summoner is another player's character", func(p *processor) {
+			addTestPlayerRoleGroupEntity(p, 300, 88, 1209)
+			addTestMonsterCompanion(p, 200, 300, nil)
+		}},
+		{"the summoner chain ends at an unclassified entity", func(p *processor) {
+			addTestRuntimeEntity(p, 300, nil)
+			addTestMonsterCompanion(p, 200, 300, nil)
+		}},
+		{"a second owner link is unresolved", func(p *processor) {
+			addTestPlainMonster(p, 300)
+			addTestMonsterCompanion(p, 200, 300, func(entity *runtimeEntity) { entity.ownerID, entity.hasOwnerID = 900, true })
+		}},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			p, _, _ := newPlayerRelevanceTestProcessor()
+			addTestPlayerRoleGroupEntity(p, 100, 77, 1409)
+			observeTestLocalRole(p, 100)
+			test.setup(p)
+			event := testDamageEvent(p, 100, 200)
+			event.EventTypeCandidate = "DAMAGE_CANDIDATE"
+			if source, target, _ := p.playerRelevantDamageEvent(event); source != playerRelationLocal || target != playerRelationUnknown {
+				t.Fatalf("relations = (%d, %d), want (local, unknown)", source, target)
+			}
+			p.writeDamageEvent(event)
+			if got := p.damageStatistics.Snapshot(); got.DamageDealt != 0 || got.UnattributedOutgoingDamage != 10 {
+				t.Fatalf("an unproven summon entered the confirmed totals: %+v", got)
+			}
+		})
+	}
+}
+
+func TestPlayerRelevanceCreditsAMonsterTypedSummonOfALocalRole(t *testing.T) {
+	p, _, _ := newPlayerRelevanceTestProcessor()
+	addTestPlayerRoleGroupEntity(p, 100, 77, 1409)
+	observeTestLocalRole(p, 100)
+	addTestMonsterCompanion(p, 101, 100, nil)
+	addTestPlainMonster(p, 300)
+	event := testDamageEvent(p, 101, 300)
+	event.EventTypeCandidate = "DAMAGE_CANDIDATE"
+	if source, target, _ := p.playerRelevantDamageEvent(event); source != playerRelationLocal || target != playerRelationUnrelated {
+		t.Fatalf("relations = (%d, %d), want (local, unrelated)", source, target)
+	}
+}
+
 func TestPlayerRelevanceDoesNotCountMonsterVersusMonster(t *testing.T) {
 	p, _, _ := newPlayerRelevanceTestProcessor()
 	addTestPlayerRoleGroupEntity(p, 100, 77, 1409)

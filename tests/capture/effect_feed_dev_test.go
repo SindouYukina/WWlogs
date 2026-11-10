@@ -193,14 +193,46 @@ func TestEffectFeedLabelsEveryLocalTeamRoleAndKeepsOtherPlayersUnknown(t *testin
 	addTestRuntimeEntity(p, 300, func(entity *runtimeEntity) {
 		entity.summonerID, entity.hasSummonerID = 101, true // a summon of the second team role
 	})
+	// Each player's Proto_PlayerEntity holds team-level effects; only the local player's counts as local.
+	playerEntity := func(playerID uint64) func(*runtimeEntity) {
+		return func(entity *runtimeEntity) {
+			entity.entityTypeCode, entity.hasEntityType = entityTypePlayerEntity, true
+			entity.playerID, entity.hasPlayerID = playerID, true
+		}
+	}
+	addTestRuntimeEntity(p, 400, playerEntity(77))
+	addTestRuntimeEntity(p, 401, playerEntity(88))
 
 	for entityID, want := range map[uint64]EffectEntityRelation{
 		100: EffectRelationLocalRole, 101: EffectRelationLocalRole, 102: EffectRelationUnknown,
 		200: EffectRelationNonPlayer, 300: EffectRelationLocalOwned,
+		400: EffectRelationLocalPlayer, 401: EffectRelationUnknown,
 	} {
 		if got := p.effectEntityRelation(entityID); got != want {
 			t.Errorf("entity %d relation = %s, want %s", entityID, got, want)
 		}
+	}
+}
+
+// TestEffectFeedPlayerEntityHoldsMonsterDebuffs is the event-level shape of the Glacio case: a monster applies an element
+// ailment to the local player's Proto_PlayerEntity, which is on the team's side although it is not a role.
+func TestEffectFeedPlayerEntityHoldsMonsterDebuffs(t *testing.T) {
+	p, _, _ := newPlayerRelevanceTestProcessor()
+	p.sessionNumber = 1
+	addTestPlayerRoleGroupEntity(p, 100, 77, 1409)
+	observeTestLocalRole(p, 100)
+	addTestRuntimeEntity(p, 200, func(entity *runtimeEntity) { entity.monsterID, entity.hasMonsterID = 9001, true })
+	addTestRuntimeEntity(p, 400, func(entity *runtimeEntity) {
+		entity.entityTypeCode, entity.hasEntityType = entityTypePlayerEntity, true
+		entity.playerID, entity.hasPlayerID = 77, true
+	})
+	deliverEffectMessage(t, p, 0, effectPackBody(400, 5, effectApplyPayload(171, 10010000, 400, 200, 1, 15, 15)))
+	effect := onlyEffect(t, p.effects.SnapshotAt(effectQueryFor(p, 1)))
+	if effect.HolderRelation != EffectRelationLocalPlayer || effect.SourceRelation != EffectRelationNonPlayer {
+		t.Fatalf("relations = %s/%s, want local_player/non_player", effect.HolderRelation, effect.SourceRelation)
+	}
+	if got := effectDisplayFor(effect); got.Eligibility == EffectDisplayNotLocal || got.Target != EffectTargetTeam {
+		t.Fatalf("display = %+v, want a team-side effect", got)
 	}
 }
 

@@ -4,8 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"net/url"
-	"path/filepath"
 	"strconv"
 	"sync"
 )
@@ -28,21 +26,20 @@ type DisplayResolver struct {
 const maxDisplayNames = 2048
 
 func OpenDisplayResolver(path string) (*DisplayResolver, error) {
-	absolute, err := filepath.Abs(path)
+	db, _, _, err := openMasterDatabase(path)
 	if err != nil {
 		return nil, err
 	}
-	uri := filepath.ToSlash(absolute)
-	if len(uri) > 1 && uri[1] == ':' {
-		uri = "/" + uri
-	}
-	db, err := sql.Open("sqlite", (&url.URL{Scheme: "file", Path: uri}).String()+"?mode=ro")
+	resolver, err := newDisplayResolver(db)
 	if err != nil {
+		_ = db.Close()
 		return nil, err
 	}
-	db.SetMaxOpenConns(1)
-	if err = db.Ping(); err != nil {
-		db.Close()
+	return resolver, nil
+}
+
+func newDisplayResolver(db *sql.DB) (*DisplayResolver, error) {
+	if err := db.Ping(); err != nil {
 		return nil, errors.New("the display Master database is unavailable")
 	}
 	return &DisplayResolver{db: db, names: map[string]DisplayName{}}, nil
@@ -52,8 +49,12 @@ func (r *DisplayResolver) Close() error { return r.db.Close() }
 
 // Resolve uses official localized rows and then English. An effect term lookup requires an existing term link;
 // looking up a raw effect ID as a glossary ID is never allowed by the projection.
+//
+// "skill" is the UI skill-tree namespace (Skill.Id). "combat_skill" is the runtime namespace of DamageContext.SkillId,
+// whose official names are SkillDescription rows; the two ID spaces are different and must not be mixed. "echo" is
+// PhantomItem.Id; a skill row reaches "skill" or "echo" only through the derived sources of skill_names.go.
 func (r *DisplayResolver) Resolve(ctx context.Context, kind string, id uint64, locale string) (DisplayName, error) {
-	tables := map[string]string{"role": "roleinfo_locale", "skill": "skill_locale", "monster": "monsterinfo_locale", "term": "term_locale"}
+	tables := map[string]string{"role": "roleinfo_locale", "skill": "skill_locale", "combat_skill": "skilldescription_locale", "echo": "phantomitem_locale", "monster": "monsterinfo_locale", "term": "term_locale"}
 	table, ok := tables[kind]
 	if !ok {
 		return DisplayName{}, errors.New("unsupported Master name kind")
@@ -76,11 +77,35 @@ func (r *DisplayResolver) Resolve(ctx context.Context, kind string, id uint64, l
 			break
 		}
 	}
+	r.remember(key, result)
+	return result, nil
+}
+
+// remember caches a lookup within the bound. The caller holds mu.
+func (r *DisplayResolver) remember(key string, value DisplayName) {
 	if len(r.order) >= maxDisplayNames {
 		delete(r.names, r.order[0])
 		r.order = r.order[1:]
 	}
-	r.names[key] = result
+	r.names[key] = value
 	r.order = append(r.order, key)
-	return result, nil
+}
+
+// RoleElement returns a role's static element ID from Master, or zero when it is unknown. It selects a display color
+// only, so a failed lookup is not an error: the UI then uses its neutral series color.
+func (r *DisplayResolver) RoleElement(ctx context.Context, roleID uint64) uint64 {
+	key := "element:" + strconv.FormatUint(roleID, 10)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if cached, ok := r.names[key]; ok {
+		element, _ := strconv.ParseUint(cached.Name, 10, 64)
+		return element
+	}
+	var text sql.NullString
+	if err := r.db.QueryRowContext(ctx, "SELECT element_id FROM roleinfo WHERE id=?", strconv.FormatUint(roleID, 10)).Scan(&text); err != nil {
+		text = sql.NullString{}
+	}
+	r.remember(key, DisplayName{Name: text.String})
+	element, _ := strconv.ParseUint(text.String, 10, 64)
+	return element
 }

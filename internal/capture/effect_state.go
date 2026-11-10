@@ -32,6 +32,8 @@ const (
 	EffectRelationLocalRole EffectEntityRelation = "local_role"
 	// EffectRelationLocalOwned is a non-role entity whose confirmed owner chain ends at the local team.
 	EffectRelationLocalOwned EffectEntityRelation = "local_owned"
+	// EffectRelationLocalPlayer is the local player's Proto_PlayerEntity, the holder of team-level effects.
+	EffectRelationLocalPlayer EffectEntityRelation = "local_player"
 	// EffectRelationNonPlayer is a closed-chain runtime entity known as a monster or template.
 	// Hostility is not separately verified.
 	EffectRelationNonPlayer EffectEntityRelation = "non_player"
@@ -96,11 +98,17 @@ const (
 	EffectOriginSnapshot EffectOrigin = "snapshot"
 )
 
-// EffectPolarity is the buff/debuff classification. No verified protocol field or
-// Master relation gives it, so every instance stays unclassified.
+// EffectPolarity is the direction the game's HUD gives a status. No protocol field carries it; it comes from the
+// definition's HUD GameplayCue (effect_hud_cues.go), and an instance the game draws no arrow for stays unclassified.
 type EffectPolarity string
 
-const EffectPolarityUnclassified EffectPolarity = "unclassified"
+const (
+	EffectPolarityUnclassified EffectPolarity = "unclassified"
+	// EffectPolarityBuff is drawn with the game's BUFF arrow.
+	EffectPolarityBuff EffectPolarity = "buff"
+	// EffectPolarityDebuff is drawn with the game's DEBUFF arrow.
+	EffectPolarityDebuff EffectPolarity = "debuff"
+)
 
 // EffectSnapshotStatus tells a consumer whether the tracked set is complete.
 type EffectSnapshotStatus string
@@ -139,6 +147,16 @@ type EffectStaticInfo struct {
 	// Term is the official glossary text of an element-ailment effect. Its link to the effect is
 	// correlated, never verified, because it joins on the GameplayTag rather than on an engine key.
 	Term *EffectTermInfo `json:"term,omitempty"`
+	// HUDCueTypes are the HUD buff-bar cue types (2, 14, 24, 37) with an icon Path among the definition's
+	// GameplayCueIds: the game shows this effect in a HUD buff bar (effect_hud_cues.go).
+	HUDCueTypes []int32 `json:"hudCueTypes,omitempty"`
+	// HUDPolarity is the direction of the definition's first HUD cue; unclassified means the game draws no arrow for it.
+	HUDPolarity EffectPolarity `json:"hudPolarity,omitempty"`
+	// HUDHiddenOnMonsterHead reports that the cue is hidden on monster head views (GameplayCue.Parameters[4]).
+	HUDHiddenOnMonsterHead bool `json:"hudHiddenOnMonsterHead,omitempty"`
+	// ElementID is the element the definition states (effect_element.go); zero means none is established.
+	ElementID    uint64 `json:"elementId,omitempty"`
+	ElementBasis string `json:"elementBasis,omitempty"`
 }
 
 // EffectTermInfo is the localized glossary term tied to an effect definition.
@@ -282,9 +300,12 @@ type EffectInstanceSnapshot struct {
 	Evidence EffectEvidence `json:"evidence"`
 	// CombatClass says whether the effect is evidently part of combat; CombatBasis names the evidence.
 	// unknown means no evidence either way and is never a statement that the effect is harmless.
-	CombatClass     EffectCombatClass `json:"combatClass"`
-	CombatBasis     string            `json:"combatBasis"`
-	FirstObservedAt time.Time         `json:"firstObservedAt"`
+	CombatClass EffectCombatClass `json:"combatClass"`
+	CombatBasis string            `json:"combatBasis"`
+	// Kind says what the definition says the effect is for (see classifyEffectKind); KindBasis names the evidence.
+	Kind            EffectKind `json:"kind"`
+	KindBasis       string     `json:"kindBasis"`
+	FirstObservedAt time.Time  `json:"firstObservedAt"`
 	// AppliedAt is set only for origin apply; a snapshot-origin instance has an unknown application time.
 	AppliedAt     *time.Time `json:"appliedAt,omitempty"`
 	LastUpdatedAt time.Time  `json:"lastUpdatedAt"`
@@ -293,7 +314,9 @@ type EffectInstanceSnapshot struct {
 	RemainingStatus       EffectRemainingStatus `json:"remainingStatus"`
 	RemainingReason       string                `json:"remainingReason,omitempty"`
 	RemainingSeconds      *float64              `json:"remainingSeconds,omitempty"`
-	ExpectedExpiry        *time.Time            `json:"expectedExpiry,omitempty"`
+	// OverdueSeconds is how far the query time is past the expected expiry; set only when RemainingStatus is overdue.
+	OverdueSeconds *float64   `json:"overdueSeconds,omitempty"`
+	ExpectedExpiry *time.Time `json:"expectedExpiry,omitempty"`
 	// StaleSinceTransportLoss is set when no message updated the instance since a transport loss began; its
 	// removal or refresh may have been lost.
 	StaleSinceTransportLoss bool `json:"staleSinceTransportLoss,omitempty"`
@@ -436,7 +459,7 @@ func (info *EffectStaticInfo) clone() *EffectStaticInfo {
 	if info == nil {
 		return nil
 	}
-	copied := &EffectStaticInfo{DeveloperTags: append([]string(nil), info.DeveloperTags...)}
+	copied := &EffectStaticInfo{DeveloperTags: append([]string(nil), info.DeveloperTags...), HUDCueTypes: append([]int32(nil), info.HUDCueTypes...), HUDPolarity: info.HUDPolarity, HUDHiddenOnMonsterHead: info.HUDHiddenOnMonsterHead, ElementID: info.ElementID, ElementBasis: info.ElementBasis}
 	if info.Term != nil {
 		term := *info.Term
 		copied.Term = &term
@@ -815,7 +838,7 @@ func emptyEffectSnapshot() EffectSnapshot {
 
 func normalizeEffectRelation(relation EffectEntityRelation) EffectEntityRelation {
 	switch relation {
-	case EffectRelationLocalRole, EffectRelationLocalOwned, EffectRelationNonPlayer:
+	case EffectRelationLocalRole, EffectRelationLocalOwned, EffectRelationLocalPlayer, EffectRelationNonPlayer:
 		return relation
 	default:
 		return EffectRelationUnknown
@@ -1071,6 +1094,8 @@ func (t *EffectTracker) instanceSnapshotLocked(instance *effectInstance, query C
 		holder: instance.holderRelation, source: instance.sourceRelation,
 		holderMonster: instance.holderMonster, sourceMonster: instance.sourceMonster,
 	})
+	snapshot.Kind, snapshot.KindBasis = classifyEffectKind(snapshot.CombatClass, snapshot.CombatBasis, snapshot.Static)
+	snapshot.Polarity = effectPolarityFor(snapshot)
 	if instance.hasStack {
 		count := instance.stack
 		snapshot.StackCount = &count
@@ -1099,6 +1124,8 @@ func (t *EffectTracker) instanceSnapshotLocked(instance *effectInstance, query C
 		}
 		zero := 0.0
 		snapshot.RemainingStatus, snapshot.RemainingSeconds = EffectRemainingOverdue, &zero
+		overdue := -remaining
+		snapshot.OverdueSeconds = &overdue
 		if -remaining > effectOverdueRetention.Seconds() {
 			snapshot.Lifecycle = EffectLifecycleEstimatedExpired
 		}

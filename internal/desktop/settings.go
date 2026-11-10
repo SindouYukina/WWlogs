@@ -5,27 +5,189 @@ import (
 	"errors"
 	"io"
 	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 )
 
 const settingsVersion = 1
 
 // Settings contains only supported user preferences, never capture or diagnostic internals.
 type Settings struct {
-	Version              int            `json:"version"`
-	DefaultAdapterIPv4   string         `json:"defaultAdapterIPv4"`
-	ShowOverlayOnStartup bool           `json:"showOverlayOnStartup"`
-	Locale               string         `json:"locale"`
-	Overlay              *OverlayBounds `json:"overlay,omitempty"`
+	Version            int    `json:"version"`
+	DefaultAdapterIPv4 string `json:"defaultAdapterIPv4"`
+	Locale             string `json:"locale"`
+	// LanguagePreference is languagePreferenceAuto when the UI language follows Windows; Locale then holds the language it
+	// resolved to. Empty means Locale is a language the user chose, which is what a file without the field means.
+	LanguagePreference string `json:"languagePreference,omitempty"`
+	// ShowOverlayOnStartup is read from v0.5 files only: it migrates to Overlays.Combat.Visible on load.
+	ShowOverlayOnStartup bool `json:"showOverlayOnStartup,omitempty"`
+	// Overlays keeps each Overlay's preferences separately. Nil in a file means it predates the two-window Overlay.
+	Overlays *OverlaySet `json:"overlays,omitempty"`
+	// Theme is one of the official theme IDs; empty means the default theme.
+	Theme        string `json:"theme,omitempty"`
+	ReduceMotion bool   `json:"reduceMotion,omitempty"`
+	// UpdateIntervalMs is the one cadence for live combat data in every window; zero means the default. Older files
+	// have no value and newer unsupported values fall back to the default. A field from an earlier build that is no
+	// longer a preference (such as animationFps) is ignored when read and not written again.
+	UpdateIntervalMs int `json:"updateIntervalMs,omitempty"`
+	// AutoStartCapture starts one capture on DefaultAdapterIPv4 when WWlogs launches. Off by default; older files have
+	// no value.
+	AutoStartCapture bool `json:"autoStartCapture,omitempty"`
+	// DesktopWindow is where the user last left the Desktop window. Nil until the window has been shown once, and in
+	// older files; the window then opens at its default size.
+	DesktopWindow *DesktopPlacement `json:"desktopWindow,omitempty"`
 }
 
-type OverlayBounds struct {
-	X      int `json:"x"`
-	Y      int `json:"y"`
-	Width  int `json:"width"`
-	Height int `json:"height"`
+// DesktopPlacement is the Desktop window's last normal (not maximized, not minimized) bounds in physical pixels, with
+// the scale of the display they were on, and whether the window was maximized on top of them.
+type DesktopPlacement struct {
+	X         int     `json:"x"`
+	Y         int     `json:"y"`
+	Width     int     `json:"width"`
+	Height    int     `json:"height"`
+	Scale     float64 `json:"scale"`
+	Maximized bool    `json:"maximized,omitempty"`
+}
+
+// validDesktopPlacement applies the bounds Overlay placements use; anything else is not trusted.
+func validDesktopPlacement(p *DesktopPlacement) bool {
+	return p != nil && validPlacement(&OverlayPlacement{X: p.X, Y: p.Y, Width: p.Width, Height: p.Height, Scale: p.Scale})
+}
+
+func copyDesktopPlacement(p *DesktopPlacement) *DesktopPlacement {
+	if p == nil {
+		return nil
+	}
+	copied := *p
+	return &copied
+}
+
+// OverlaySet holds independent preferences per Overlay; a change to one never touches the other.
+type OverlaySet struct {
+	Combat  OverlayPreferences `json:"combat"`
+	Effects OverlayPreferences `json:"effects"`
+}
+
+// OverlayPreferences are the persisted properties of one Overlay window.
+type OverlayPreferences struct {
+	Visible      bool `json:"visible"`
+	Opacity      int  `json:"opacity"`
+	AlwaysOnTop  bool `json:"alwaysOnTop"`
+	ClickThrough bool `json:"clickThrough"`
+	// Scale is the Overlay's display scale in percent (75 to 200). It multiplies the window's size and its content
+	// together; Windows display scaling is applied on top by the system and is never folded into it. Zero in an older
+	// file means 100.
+	Scale     int               `json:"scale,omitempty"`
+	Placement *OverlayPlacement `json:"placement,omitempty"`
+}
+
+// OverlayPlacement is in physical pixels, with the scale of the display it was saved on. Wails DIP coordinates are per
+// screen, so they are not stable across monitors with different scaling; Scale lets a restore keep the logical size.
+type OverlayPlacement struct {
+	X      int     `json:"x"`
+	Y      int     `json:"y"`
+	Width  int     `json:"width"`
+	Height int     `json:"height"`
+	Scale  float64 `json:"scale"`
+	// OverlayScale is the Overlay display scale (percent) the size was saved at; zero in an older file means 100. The
+	// size the user chose at 100% is Width / Scale / (OverlayScale / 100), so a scale change never compounds.
+	OverlayScale int `json:"overlayScale,omitempty"`
+}
+
+func (p OverlayPreferences) state(editing bool) OverlayState {
+	return OverlayState{Visible: p.Visible, Opacity: p.Opacity, AlwaysOnTop: p.AlwaysOnTop, ClickThrough: p.ClickThrough, Scale: effectiveOverlayScale(p.Scale), Editing: editing}
+}
+
+// Overlay display scale bounds, in percent. 100 keeps the measured default sizes (overlaySpecs).
+const minOverlayScale, maxOverlayScale, defaultOverlayScale = 75, 200, 100
+
+func clampOverlayScale(value int) int {
+	return max(minOverlayScale, min(value, maxOverlayScale))
+}
+
+// effectiveOverlayScale reads a stored scale: zero (an older file) is the default, anything else is clamped.
+func effectiveOverlayScale(value int) int {
+	if value == 0 {
+		return defaultOverlayScale
+	}
+	return clampOverlayScale(value)
+}
+
+const minOverlayOpacity, maxOverlayOpacity = 20, 100
+
+func clampOpacity(value int) int {
+	return max(minOverlayOpacity, min(value, maxOverlayOpacity))
+}
+
+// defaultOverlayPreferences starts in click-through so a first-run Overlay cannot take clicks from the game; Edit Mode
+// in Settings is the way to move it.
+func defaultOverlayPreferences(kind string) OverlayPreferences {
+	return OverlayPreferences{Opacity: overlaySpecs[kind].defaultOpacity, AlwaysOnTop: true, ClickThrough: true}
+}
+
+func defaultOverlays() *OverlaySet {
+	return &OverlaySet{Combat: defaultOverlayPreferences(overlayCombat), Effects: defaultOverlayPreferences(overlayEffects)}
+}
+
+func validPlacement(p *OverlayPlacement) bool {
+	return p != nil && p.Scale > 0 && p.Scale <= 16 && p.Width > 0 && p.Width <= 20000 && p.Height > 0 && p.Height <= 20000 && p.X >= -200000 && p.X <= 200000 && p.Y >= -200000 && p.Y <= 200000 &&
+		(p.OverlayScale == 0 || (p.OverlayScale >= minOverlayScale && p.OverlayScale <= maxOverlayScale))
+}
+
+func normalizeOverlay(kind string, prefs *OverlayPreferences) (reset bool) {
+	if prefs.Opacity == 0 {
+		prefs.Opacity = defaultOverlayPreferences(kind).Opacity
+	}
+	prefs.Opacity = clampOpacity(prefs.Opacity)
+	prefs.Scale = effectiveOverlayScale(prefs.Scale)
+	if prefs.Placement != nil && !validPlacement(prefs.Placement) {
+		prefs.Placement = nil
+		return true
+	}
+	return false
+}
+
+// defaultTheme is the brand theme used until the user chooses another.
+const defaultTheme = "electro"
+
+// validTheme lists stable, language-independent theme IDs. Frontend tokens use the same IDs.
+func validTheme(theme string) bool {
+	switch theme {
+	case "electro", "aero", "havoc", "glacio", "fusion":
+		return true
+	}
+	return false
+}
+
+// effectiveTheme maps stored preferences to the theme to display. An unknown value from a newer version is not an error.
+func effectiveTheme(settings Settings) string {
+	if validTheme(settings.Theme) {
+		return settings.Theme
+	}
+	return defaultTheme
+}
+
+// defaultUpdateIntervalMs equals capture.DefaultPublishInterval.
+const defaultUpdateIntervalMs = 250
+
+func validUpdateInterval(ms int) bool {
+	switch ms {
+	case 250, 500, 750, 1000:
+		return true
+	}
+	return false
+}
+
+// effectiveUpdateInterval is the snapshot cadence to apply for stored preferences.
+func effectiveUpdateInterval(settings Settings) time.Duration {
+	ms := settings.UpdateIntervalMs
+	if !validUpdateInterval(ms) {
+		ms = defaultUpdateIntervalMs
+	}
+	return time.Duration(ms) * time.Millisecond
 }
 
 type SettingsState struct {
@@ -39,6 +201,34 @@ type settingsStore struct {
 	path    string
 	state   SettingsState
 	catalog localeCatalog
+	// dirty marks a change held in memory until the next write, such as an opacity slider drag.
+	dirty bool
+	// localeSeed says whether this launch has no valid saved language, and whether one chosen now may be written.
+	localeSeed localeSeedMode
+	// systemLanguages reads the user's preferred Windows languages when the preference is set back to Automatic.
+	systemLanguages func() []string
+	// languageResolved makes the launch-time resolution run once.
+	languageResolved bool
+}
+
+// languagePreferenceAuto is the saved language preference that follows the Windows display language.
+const languagePreferenceAuto = "auto"
+
+// localeSeedMode is what a launch may do about the UI language. A valid saved language is the user's and is never touched.
+type localeSeedMode int
+
+const (
+	localeSeedNone localeSeedMode = iota
+	// localeSeedPersist has no usable language in a readable state, so a chosen language is saved.
+	localeSeedPersist
+	// localeSeedMemoryOnly is a damaged settings file: it is kept as evidence, so the choice lasts for this launch only.
+	localeSeedMemoryOnly
+)
+
+// bootLocaleQuery names the current language in a window's URL, so the first render is already in it rather than in the
+// frontend's fallback until the first snapshot arrives.
+func bootLocaleQuery(s *settingsStore) string {
+	return "lang=" + url.QueryEscape(s.current().Settings.Locale)
 }
 
 func settingsPath() string {
@@ -66,13 +256,15 @@ func validateSettings(value Settings) error {
 }
 
 func loadSettings(path string, catalog localeCatalog) *settingsStore {
-	store := &settingsStore{path: path, catalog: catalog, state: SettingsState{Settings: Settings{Version: settingsVersion, Locale: catalog.FallbackLocale}, LocaleRevision: 1}}
+	store := &settingsStore{path: path, catalog: catalog, state: SettingsState{Settings: Settings{Version: settingsVersion, Locale: catalog.FallbackLocale, Overlays: defaultOverlays()}, LocaleRevision: 1}}
 	file, err := os.Open(path)
 	if errors.Is(err, os.ErrNotExist) && path != "" {
+		store.localeSeed = localeSeedPersist
 		return store
 	}
 	if err != nil {
 		store.state.Warning = "settings_read_failed"
+		store.localeSeed = localeSeedMemoryOnly
 		return store
 	}
 	defer file.Close()
@@ -93,74 +285,290 @@ func loadSettings(path string, catalog localeCatalog) *settingsStore {
 	}
 	if err != nil {
 		store.state.Warning = "settings_invalid"
+		store.localeSeed = localeSeedMemoryOnly
 		return store
+	}
+	if value.Theme != "" && !validTheme(value.Theme) {
+		value.Theme = ""
+	}
+	if value.UpdateIntervalMs != 0 && !validUpdateInterval(value.UpdateIntervalMs) {
+		value.UpdateIntervalMs = 0
 	}
 	if !catalog.valid(value.Locale) {
 		value.Locale = catalog.FallbackLocale
+		store.localeSeed = localeSeedPersist
 	}
-	if value.Overlay != nil && !validOverlayBounds(*value.Overlay) {
-		value.Overlay = nil
+	if value.LanguagePreference != languagePreferenceAuto {
+		value.LanguagePreference = ""
+	}
+	if value.Overlays == nil {
+		// v0.5 had one Overlay with a different layout. Its visibility carries over; its geometry does not fit either window.
+		value.Overlays = defaultOverlays()
+		value.Overlays.Combat.Visible = value.ShowOverlayOnStartup
+	}
+	value.ShowOverlayOnStartup = false
+	if value.DesktopWindow != nil && !validDesktopPlacement(value.DesktopWindow) {
+		// An untrusted placement only loses the remembered window; the default opens instead.
+		value.DesktopWindow = nil
+	}
+	combatReset := normalizeOverlay(overlayCombat, &value.Overlays.Combat)
+	effectsReset := normalizeOverlay(overlayEffects, &value.Overlays.Effects)
+	if combatReset || effectsReset {
 		store.state.Warning = "overlay_geometry_reset"
 	}
 	store.state.Settings = value
 	return store
 }
 
+// useSystemLanguages sets the source of the Windows display languages for a later change back to Automatic.
+func (s *settingsStore) useSystemLanguages(languages func() []string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.systemLanguages = languages
+}
+
+// seedInitialLocale resolves the UI language at launch. A launch with no valid saved language starts on Automatic. A saved
+// Automatic preference is resolved again, so a changed Windows display language applies from this launch. A language the
+// user chose, including one an older build seeded, has no marker and is never touched.
+func (s *settingsStore) seedInitialLocale(preferred []string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.languageResolved {
+		return
+	}
+	s.languageResolved = true
+	mode := s.localeSeed
+	s.localeSeed = localeSeedNone
+	value := s.state.Settings
+	switch {
+	case mode != localeSeedNone:
+		value.LanguagePreference = languagePreferenceAuto
+	case value.LanguagePreference != languagePreferenceAuto:
+		return
+	}
+	value.Locale = initialLocaleFor(preferred, s.catalog)
+	if mode == localeSeedNone && value.Locale == s.state.Settings.Locale {
+		return
+	}
+	if mode != localeSeedMemoryOnly {
+		if _, err := s.writeLocked(value); err == nil {
+			return
+		}
+	}
+	s.state.Settings = value
+}
+
 func (s *settingsStore) current() SettingsState {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	state := s.state
-	if state.Settings.Overlay != nil {
-		bounds := *state.Settings.Overlay
-		state.Settings.Overlay = &bounds
-	}
+	state.Settings.Overlays = copyOverlays(state.Settings.Overlays)
+	state.Settings.DesktopWindow = copyDesktopPlacement(state.Settings.DesktopWindow)
 	return state
 }
 
-// save replaces the file only after a complete, validated write. Failed writes preserve the previous preferences.
-func (s *settingsStore) save(value Settings) (SettingsState, error) {
-	if value.Locale != "" && !s.catalog.valid(value.Locale) {
-		return SettingsState{}, errors.New("unsupported_locale")
+func copyOverlays(set *OverlaySet) *OverlaySet {
+	if set == nil {
+		return nil
 	}
+	copied := *set
+	copied.Combat.Placement = copyPlacement(set.Combat.Placement)
+	copied.Effects.Placement = copyPlacement(set.Effects.Placement)
+	return &copied
+}
+
+func copyPlacement(placement *OverlayPlacement) *OverlayPlacement {
+	if placement == nil {
+		return nil
+	}
+	copied := *placement
+	return &copied
+}
+
+func (set *OverlaySet) of(kind string) *OverlayPreferences {
+	if kind == overlayEffects {
+		return &set.Effects
+	}
+	return &set.Combat
+}
+
+// setDefaultAdapter persists the capture interface. Every preference has its own update, so settings apply at once and
+// no stale form can overwrite another preference.
+func (s *settingsStore) setDefaultAdapter(ipv4 string) (SettingsState, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	value := s.state.Settings
+	value.DefaultAdapterIPv4 = ipv4
 	if err := validateSettings(value); err != nil {
 		return SettingsState{}, err
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	// Locale and geometry have dedicated updates; a stale Settings form must not overwrite either.
-	value.Locale = s.state.Settings.Locale
-	value.Overlay = s.state.Settings.Overlay
 	return s.writeLocked(value)
 }
 
+// setAppearance persists the theme and motion preference. Every window picks them up from its next snapshot.
+func (s *settingsStore) setAppearance(theme string, reduceMotion bool) (SettingsState, error) {
+	if !validTheme(theme) {
+		return SettingsState{}, errors.New("unsupported_theme")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	value := s.state.Settings
+	value.Theme, value.ReduceMotion = theme, reduceMotion
+	return s.writeLocked(value)
+}
+
+// setUpdateInterval persists the live combat data cadence shared by the Dashboard and both Overlays.
+func (s *settingsStore) setUpdateInterval(ms int) (SettingsState, error) {
+	if !validUpdateInterval(ms) {
+		return SettingsState{}, errors.New("unsupported_update_interval")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	value := s.state.Settings
+	value.UpdateIntervalMs = ms
+	return s.writeLocked(value)
+}
+
+// setAutoStartCapture persists whether a launch starts a capture by itself. It takes effect at the next launch.
+func (s *settingsStore) setAutoStartCapture(enabled bool) (SettingsState, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	value := s.state.Settings
+	value.AutoStartCapture = enabled
+	return s.writeLocked(value)
+}
+
+// setLocale saves a language the user chose, or Automatic, which resolves the Windows display language at once.
 func (s *settingsStore) setLocale(locale string) (SettingsState, error) {
-	if !s.catalog.valid(locale) {
+	if locale != languagePreferenceAuto && !s.catalog.valid(locale) {
 		return SettingsState{}, errors.New("unsupported_locale")
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	value := s.state.Settings
-	value.Locale = locale
+	if locale == languagePreferenceAuto {
+		var preferred []string
+		if s.systemLanguages != nil {
+			preferred = s.systemLanguages()
+		}
+		value.LanguagePreference, value.Locale = languagePreferenceAuto, initialLocaleFor(preferred, s.catalog)
+	} else {
+		value.LanguagePreference, value.Locale = "", locale
+	}
 	return s.writeLocked(value)
 }
 
-func (s *settingsStore) setOverlay(bounds OverlayBounds) error {
-	if !validOverlayBounds(bounds) {
-		return errors.New("invalid_overlay_bounds")
-	}
+// overlay returns a copy of one Overlay's preferences.
+func (s *settingsStore) overlay(kind string) OverlayPreferences {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.state.Settings.Overlay != nil && *s.state.Settings.Overlay == bounds {
+	prefs := *s.state.Settings.Overlays.of(kind)
+	prefs.Placement = copyPlacement(prefs.Placement)
+	return prefs
+}
+
+// changeOverlay edits one Overlay's preferences. Without persist the change stays in memory until the next write.
+func (s *settingsStore) changeOverlay(kind string, persist bool, change func(*OverlayPreferences)) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !persist {
+		change(s.state.Settings.Overlays.of(kind))
+		s.dirty = true
 		return nil
 	}
 	value := s.state.Settings
-	value.Overlay = &bounds
-	if s.state.Warning == "settings_invalid" || s.state.Warning == "settings_read_failed" {
-		s.state.Settings.Overlay = &bounds
-		return nil
-	}
+	value.Overlays = copyOverlays(value.Overlays)
+	change(value.Overlays.of(kind))
 	_, err := s.writeLocked(value)
 	return err
+}
+
+// saveOverlayPlacement records where a window is. It runs on its own without a user request, so it must not replace a
+// settings file that could not be read; the placement then lasts for this session only.
+func (s *settingsStore) saveOverlayPlacement(kind string, placement OverlayPlacement) error {
+	if !validPlacement(&placement) {
+		return errors.New("invalid_overlay_placement")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	current := s.state.Settings.Overlays.of(kind).Placement
+	if current != nil && *current == placement && !s.dirty {
+		return nil
+	}
+	if s.state.Warning == "settings_invalid" || s.state.Warning == "settings_read_failed" {
+		s.state.Settings.Overlays.of(kind).Placement = &placement
+		return nil
+	}
+	value := s.state.Settings
+	value.Overlays = copyOverlays(value.Overlays)
+	value.Overlays.of(kind).Placement = &placement
+	_, err := s.writeLocked(value)
+	return err
+}
+
+// desktopPlacement returns where the Desktop window was last left, or nil.
+func (s *settingsStore) desktopPlacement() *DesktopPlacement {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return copyDesktopPlacement(s.state.Settings.DesktopWindow)
+}
+
+// saveDesktopPlacement records where the Desktop window is. It follows the same rule as saveOverlayPlacement for
+// unreadable files: the value is kept in memory and the file is not replaced.
+func (s *settingsStore) saveDesktopPlacement(placement DesktopPlacement) error {
+	if !validDesktopPlacement(&placement) {
+		return errors.New("invalid_desktop_placement")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	current := s.state.Settings.DesktopWindow
+	if current != nil && *current == placement && !s.dirty {
+		return nil
+	}
+	if s.state.Warning == "settings_invalid" || s.state.Warning == "settings_read_failed" {
+		s.state.Settings.DesktopWindow = &placement
+		return nil
+	}
+	value := s.state.Settings
+	value.Overlays = copyOverlays(value.Overlays)
+	value.DesktopWindow = &placement
+	_, err := s.writeLocked(value)
+	return err
+}
+
+// clearDesktopPlacement forgets the Desktop window, so the next launch opens at the default again.
+func (s *settingsStore) clearDesktopPlacement() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.state.Settings.DesktopWindow == nil && !s.dirty {
+		return nil
+	}
+	if s.state.Warning == "settings_invalid" || s.state.Warning == "settings_read_failed" {
+		s.state.Settings.DesktopWindow = nil
+		return nil
+	}
+	value := s.state.Settings
+	value.Overlays = copyOverlays(value.Overlays)
+	value.DesktopWindow = nil
+	_, err := s.writeLocked(value)
+	return err
+}
+
+// flush writes changes that were held in memory. It follows the same rule as saveOverlayPlacement for unreadable files.
+func (s *settingsStore) flush() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.dirty || s.state.Warning == "settings_invalid" || s.state.Warning == "settings_read_failed" {
+		return nil
+	}
+	_, err := s.writeLocked(s.state.Settings)
+	return err
+}
+
+func (s *settingsStore) setWarning(warning string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.state.Warning = warning
 }
 
 func (s *settingsStore) writeLocked(value Settings) (SettingsState, error) {
@@ -198,5 +606,6 @@ func (s *settingsStore) writeLocked(value Settings) (SettingsState, error) {
 		revision++
 	}
 	s.state = SettingsState{Settings: value, LocaleRevision: revision}
+	s.dirty = false
 	return s.state, nil
 }

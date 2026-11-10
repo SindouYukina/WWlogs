@@ -19,14 +19,15 @@ import (
 // through the same asynchronous pipeline, PCAP writer, and integrity record the CLI uses. The capture loop only
 // queues records; a slow or failed writer never delays packet processing (diagnostic_pipeline_development.go).
 type sessionDiagnostics struct {
-	pipeline  *diagnosticPipeline
-	pcap      *diagnosticPCAP
-	finished  bool
-	directory string
-	outputs   map[string]io.Writer
-	files     map[*asyncDiagnosticWriter]*os.File
-	release   func()
-	processor *processor
+	pipeline      *diagnosticPipeline
+	pcap          *diagnosticPCAP
+	finished      bool
+	directory     string
+	outputs       map[string]io.Writer
+	files         map[*asyncDiagnosticWriter]*os.File
+	release       func()
+	processor     *processor
+	effectDisplay *effectDisplayAuditWriter
 }
 
 func openSessionDiagnostics(requested bool, link layers.LinkType) (*sessionDiagnostics, error) {
@@ -60,7 +61,7 @@ func openDevelopmentSessionDiagnostics(requested bool, link layers.LinkType) (*s
 		return nil, fmt.Errorf("create diagnostic PCAP: %w", err)
 	}
 	d := &sessionDiagnostics{pipeline: pipeline, pcap: pcapWriter, directory: bundle.directory, release: release, outputs: make(map[string]io.Writer), files: make(map[*asyncDiagnosticWriter]*os.File)}
-	for _, name := range []string{"console.log", "combat-events.jsonl", "buff-events.jsonl", "buff-snapshots.jsonl", "encounter-events.jsonl", "dps-effects.jsonl", "effect-state-final.json"} {
+	for _, name := range []string{"console.log", "combat-events.jsonl", "buff-events.jsonl", "buff-snapshots.jsonl", "encounter-events.jsonl", "dps-effects.jsonl", "effect-display.jsonl", "effect-state-final.json"} {
 		file, err := os.OpenFile(filepath.Join(bundle.directory, name), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 		if err != nil {
 			d.finish(StopReasonError, CaptureCounter{})
@@ -82,7 +83,13 @@ func (d *sessionDiagnostics) attach(p *processor) {
 		p.combatEventsJSONL = d.outputs["combat-events.jsonl"]
 		p.buffLifecycle, p.buffSnapshots = d.outputs["buff-events.jsonl"], d.outputs["buff-snapshots.jsonl"]
 		p.encounterOut = d.outputs["encounter-events.jsonl"]
+		d.effectDisplay = &effectDisplayAuditWriter{target: d.outputs["effect-display.jsonl"]}
 	}
+}
+
+// observeEffectDisplay records why the Effects Overlay shows what it shows (effect_display_audit_development.go).
+func (d *sessionDiagnostics) observeEffectDisplay(p *processor, now time.Time) {
+	d.effectDisplay.observe(p, now)
 }
 
 func (d *sessionDiagnostics) packet(info gopacket.CaptureInfo, data []byte) {

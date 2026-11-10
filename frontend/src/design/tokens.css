@@ -1,0 +1,192 @@
+/*
+ * WWlogs design tokens. Raw values live only here and in themes.css. Components reference --ww-* variables.
+ * Motion tokens are generated from design/motion/tokens.ts and installed on the root element at startup.
+ *
+ * Layers: this file defines every token from a small set of theme inputs; themes.css sets those inputs per theme.
+ */
+:root {
+  color-scheme: dark;
+
+  /* ---- Theme inputs (overridden per theme) ---- */
+  --ww-ink-h: 20;
+  --ww-ink-c: 0.008;
+  --ww-ink-lift: 0;
+  --ww-accent-h: 21;
+  --ww-accent-c: 0.19;
+  --ww-radius-scale: 1;
+
+  /* Neutral ramp, tinted by the theme. */
+  --ww-ink-0: oklch(0.985 calc(var(--ww-ink-c) * 0.3) var(--ww-ink-h));
+  --ww-ink-100: oklch(0.93 calc(var(--ww-ink-c) * 0.6) var(--ww-ink-h));
+  --ww-ink-200: oklch(0.8 var(--ww-ink-c) var(--ww-ink-h));
+  --ww-ink-300: oklch(0.67 var(--ww-ink-c) var(--ww-ink-h));
+  --ww-ink-400: oklch(0.53 var(--ww-ink-c) var(--ww-ink-h));
+  --ww-ink-500: oklch(0.39 var(--ww-ink-c) var(--ww-ink-h));
+  --ww-ink-600: oklch(calc(0.3 + var(--ww-ink-lift)) var(--ww-ink-c) var(--ww-ink-h));
+  --ww-ink-700: oklch(calc(0.255 + var(--ww-ink-lift)) var(--ww-ink-c) var(--ww-ink-h));
+  --ww-ink-800: oklch(calc(0.215 + var(--ww-ink-lift)) var(--ww-ink-c) var(--ww-ink-h));
+  --ww-ink-850: oklch(calc(0.185 + var(--ww-ink-lift)) var(--ww-ink-c) var(--ww-ink-h));
+  --ww-ink-900: oklch(calc(0.16 + var(--ww-ink-lift)) var(--ww-ink-c) var(--ww-ink-h));
+  --ww-ink-950: oklch(calc(0.135 + var(--ww-ink-lift)) var(--ww-ink-c) var(--ww-ink-h));
+
+  /* Accents. */
+  --ww-accent: oklch(0.67 var(--ww-accent-c) var(--ww-accent-h));
+  --ww-accent-strong: oklch(0.59 var(--ww-accent-c) var(--ww-accent-h));
+  --ww-accent-bright: oklch(0.78 calc(var(--ww-accent-c) * 0.72) var(--ww-accent-h));
+  --ww-accent-soft: oklch(0.67 var(--ww-accent-c) var(--ww-accent-h) / 0.16);
+  --ww-accent-line: oklch(0.67 var(--ww-accent-c) var(--ww-accent-h) / 0.42);
+  --ww-on-accent: oklch(0.99 0.004 var(--ww-accent-h));
+  /* Filled controls are a step darker than the accent so their label stays above 4.5:1. */
+  --ww-accent-fill-top: oklch(0.56 var(--ww-accent-c) var(--ww-accent-h));
+  --ww-accent-fill-bottom: oklch(0.5 var(--ww-accent-c) var(--ww-accent-h));
+  --ww-accent-fill-hover: oklch(0.6 var(--ww-accent-c) var(--ww-accent-h));
+  --ww-accent-2: oklch(0.83 0.095 85);
+  --ww-accent-2-soft: oklch(0.83 0.095 85 / 0.14);
+  /* The mark for selected and active items; usually the accent, separate so a theme can differ. */
+  --ww-indicator: var(--ww-accent);
+  --ww-hero-number: var(--ww-accent-bright);
+  --ww-time: var(--ww-accent-2);
+
+  /* Status colors never change with the theme, so a red theme cannot be mistaken for an alarm. */
+  --ww-good: oklch(0.8 0.14 160);
+  --ww-good-soft: oklch(0.8 0.14 160 / 0.14);
+  --ww-warn: oklch(0.84 0.14 85);
+  --ww-warn-soft: oklch(0.84 0.14 85 / 0.14);
+  --ww-critical: oklch(0.72 0.18 38);
+  --ww-critical-soft: oklch(0.72 0.18 38 / 0.15);
+  --ww-info: oklch(0.78 0.11 235);
+  --ww-info-soft: oklch(0.78 0.11 235 / 0.14);
+  --ww-idle: oklch(0.7 0.012 265);
+  --ww-idle-soft: oklch(0.7 0.012 265 / 0.14);
+
+  /* Element series colors follow the character, never the theme (validated: OKLCH L 0.48-0.67, CVD delta E >= 8). */
+  --ww-element-glacio: #2f9fd8;
+  --ww-element-fusion: #e0633a;
+  --ww-element-electro: #8f6fe8;
+  --ww-element-aero: #14a884;
+  --ww-element-spectro: #b48c1c;
+  --ww-element-havoc: #cc5a94;
+  --ww-element-unknown: oklch(0.52 0.009 265);
+
+  /* Text. */
+  --ww-text: var(--ww-ink-0);
+  --ww-text-2: var(--ww-ink-200);
+  --ww-text-3: var(--ww-ink-300);
+  --ww-text-4: var(--ww-ink-400);
+
+  /* Surfaces. Cards are translucent over a backdrop; no backdrop-filter is used anywhere. */
+  --ww-surface-canvas: var(--ww-ink-900);
+  --ww-surface-rail: var(--ww-ink-950);
+  --ww-surface-1: var(--ww-ink-850);
+  --ww-surface-2: var(--ww-ink-800);
+  --ww-surface-3: var(--ww-ink-700);
+  --ww-surface-4: var(--ww-ink-600);
+  --ww-surface-hover: oklch(1 0 0 / 0.045);
+  --ww-surface-press: oklch(1 0 0 / 0.07);
+  --ww-surface-selected: oklch(1 0 0 / 0.085);
+  --ww-card-opacity: 100%;
+
+  /* Hairlines and ornament. */
+  --ww-line-soft: oklch(1 0 0 / 0.065);
+  --ww-line: oklch(1 0 0 / 0.1);
+  --ww-line-strong: oklch(1 0 0 / 0.18);
+  --ww-sheen: oklch(1 0 0 / 0.06);
+  --ww-card-edge: none;
+  --ww-card-corner: none;
+  --ww-chart-grid: var(--ww-line-soft);
+
+  /* Backdrop layers. */
+  --ww-theme-ambient: none;
+
+  /* Overlay surfaces. */
+  --ww-alpha-overlay-strong: 0.86;
+  --ww-alpha-overlay: 0.74;
+  --ww-alpha-overlay-subtle: 0.58;
+  --ww-surface-overlay: color-mix(in oklab, var(--ww-ink-950) calc(var(--ww-alpha-overlay) * 100%), transparent);
+  --ww-surface-overlay-strong: color-mix(in oklab, var(--ww-ink-950) calc(var(--ww-alpha-overlay-strong) * 100%), transparent);
+  --ww-surface-overlay-subtle: color-mix(in oklab, var(--ww-ink-950) calc(var(--ww-alpha-overlay-subtle) * 100%), transparent);
+
+  /* Elevation. Shadows are drawn once and never animated; hover lifts fade a pseudo-element. */
+  --ww-glow: 0 0 0 0 transparent;
+  --ww-shadow-hairline: 0 0 0 1px var(--ww-line-soft);
+  --ww-shadow-card: inset 0 1px 0 var(--ww-sheen), 0 1px 2px oklch(0 0 0 / 0.4), 0 0 0 1px var(--ww-line-soft);
+  --ww-shadow-lift: inset 0 1px 0 var(--ww-sheen), 0 1px 2px oklch(0 0 0 / 0.45), 0 18px 40px -18px oklch(0 0 0 / 0.72), 0 0 0 1px var(--ww-line), var(--ww-glow);
+  --ww-shadow-popover: inset 0 1px 0 var(--ww-sheen), 0 2px 6px oklch(0 0 0 / 0.4), 0 22px 48px -14px oklch(0 0 0 / 0.78), 0 0 0 1px var(--ww-line);
+  --ww-shadow-knob: 0 1px 2px oklch(0 0 0 / 0.5), 0 2px 6px oklch(0 0 0 / 0.28);
+  --ww-focus-ring: 0 0 0 2px var(--ww-surface-canvas), 0 0 0 4px var(--ww-accent-line);
+
+  /* ---- Typography ---- */
+  /* --ww-font-latin and --ww-font-cjk select the typeface scheme; fonts.css sets them per language. */
+  --ww-font-system: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --ww-font-numeric-face: var(--ww-font-latin);
+  --ww-font-ui: var(--ww-font-latin), var(--ww-font-cjk), var(--ww-font-system);
+  --ww-font-display: var(--ww-font-latin), var(--ww-font-cjk), var(--ww-font-system);
+  --ww-font-numeric: var(--ww-font-numeric-face), var(--ww-font-cjk), var(--ww-font-system);
+  --ww-text-2xs: 10px;
+  --ww-text-xs: 11px;
+  --ww-text-sm: 12px;
+  --ww-text-md: 13px;
+  --ww-text-base: 14px;
+  --ww-text-lg: 16px;
+  --ww-text-xl: 20px;
+  --ww-text-2xl: 26px;
+  --ww-text-3xl: 34px;
+  --ww-text-hero: 46px;
+  /* The shifts let the typography comparison tune a scheme without editing components. */
+  --ww-weight-shift: 0;
+  --ww-tracking-shift: 0em;
+  --ww-leading-shift: 0;
+  --ww-weight-regular: calc(420 + var(--ww-weight-shift));
+  --ww-weight-medium: calc(510 + var(--ww-weight-shift));
+  --ww-weight-semibold: calc(600 + var(--ww-weight-shift));
+  --ww-weight-bold: calc(680 + var(--ww-weight-shift));
+  --ww-weight-display: calc(620 + var(--ww-weight-shift));
+  --ww-weight-data: calc(480 + var(--ww-weight-shift));
+  --ww-leading-tight: calc(1.18 + var(--ww-leading-shift));
+  --ww-leading-normal: calc(1.5 + var(--ww-leading-shift));
+  /* Inter's own guidance: tighter as text grows. CJK overrides these in fonts.css. */
+  --ww-tracking-ui: -0.006em;
+  --ww-tracking-small: 0.002em;
+  --ww-tracking-display: -0.022em;
+  --ww-tracking-data: -0.003em;
+  --ww-tracking-caps: 0.08em;
+
+  /* Spacing on a 4px grid with half steps for dense Overlay layouts. */
+  --ww-space-0_5: 2px;
+  --ww-space-1: 4px;
+  --ww-space-1_5: 6px;
+  --ww-space-2: 8px;
+  --ww-space-3: 12px;
+  --ww-space-4: 16px;
+  --ww-space-5: 20px;
+  --ww-space-6: 24px;
+  --ww-space-8: 32px;
+  --ww-space-10: 40px;
+  --ww-space-12: 48px;
+
+  /* Corner treatment is scaled per theme. */
+  --ww-radius-xs: calc(4px * var(--ww-radius-scale));
+  --ww-radius-sm: calc(6px * var(--ww-radius-scale));
+  --ww-radius-md: calc(8px * var(--ww-radius-scale));
+  --ww-radius-lg: calc(12px * var(--ww-radius-scale));
+  --ww-radius-xl: calc(16px * var(--ww-radius-scale));
+  --ww-radius-full: 999px;
+
+  /* Component metrics that Overlay layouts rely on; list positions are computed from them. */
+  --ww-row-combat: 46px;
+  --ww-effect-icon: 36px;
+  --ww-effect-gap: 4px;
+  --ww-effect-more: 34px;
+  --ww-effect-seconds-height: 14px;
+  /* An icon the game shares across many definitions stays visible but gives way to the fill and the seconds. */
+  --ww-overlay-edit-height: 36px;
+  --ww-sidebar-width: 236px;
+  --ww-license-text-height: 320px;
+}
+
+[data-element="1"] { --ww-series: var(--ww-element-glacio); }
+[data-element="2"] { --ww-series: var(--ww-element-fusion); }
+[data-element="3"] { --ww-series: var(--ww-element-electro); }
+[data-element="4"] { --ww-series: var(--ww-element-aero); }
+[data-element="5"] { --ww-series: var(--ww-element-spectro); }
+[data-element="6"] { --ww-series: var(--ww-element-havoc); }

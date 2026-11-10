@@ -3,6 +3,7 @@
   "vehicle": "Vehicle",
   "diagnosticsIncomplete": "Development recording is incomplete or unavailable. Check local storage and diagnostic status.",
   "attributionIncomplete": "Role breakdown is incomplete. Total damage is retained.",
+  "unknownOwnershipNote": "{{value}} more damage has unknown ownership and is not in the total.",
   "roleTitle": "Contributor",
   "appSubtitle": "Combat analysis",
   "dashboard": "Dashboard",
@@ -19,7 +20,7 @@
   "unknown": "Unknown",
   "role": "Role {{id}}",
   "unknownRole": "Unknown role ({{id}})",
-  "encounterDps": "Encounter DPS",
+  "encounterDps": "DPS",
   "rolling5": "Rolling 5 s DPS",
   "rolling10": "Rolling 10 s DPS",
   "damageSpan": "Damage-span DPS",
@@ -72,5 +73,33 @@
     "requested": "Stopped by request",
     "replay_end": "Replay ended",
     "unknown": "Unknown"
+  },
+  "listening": {
+    "state": {
+      "off": "Not capturing",
+      "waiting": "Waiting for game",
+      "establishing": "Establishing",
+      "active": "Listening",
+      "stale": "No recent data",
+      "error": "Capture problem",
+      "closed": "Game closed"
+    },
+    "reason": {
+      "capture_off": "Start capture to listen for game traffic",
+      "capture_starting": "Capture is starting",
+      "capture_failed": "The network capture could not run",
+      "no_game_traffic": "No game traffic yet",
+      "game_not_running": "The game is not running",
+      "handshake_in_progress": "Reading the login handshake",
+      "traffic_without_key": "Game traffic is visible, but its login was missed. Log in to the game again",
+      "awaiting_login": "The game restarted. Waiting for login",
+      "handshake_failed": "The login handshake could not be read",
+      "decrypt_failing": "Game data cannot be decrypted",
+      "transport_unrecoverable": "Packet recovery failed",
+      "receiving": "Receiving game data",
+      "transport_recovering": "Recovering from packet loss",
+      "no_recent_frames": "The game is idle or the connection paused",
+      "game_process_ended": "The game process has ended"
+    }
   }
 }

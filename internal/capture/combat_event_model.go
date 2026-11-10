@@ -84,9 +84,17 @@ type CombatEventRecord struct {
 	ContextDowngrade string `json:"contextDowngrade,omitempty"`
 	// VehicleKind classifies a local vehicle contribution without changing source or role evidence.
 	VehicleKind string `json:"vehicleKind,omitempty"`
+	// EchoVisions are the SummonCfg ids of the ConcomitantVision entities the attacker held. They only help name a skill.
+	EchoVisions []uint64 `json:"-"`
 	// SourceRole and TargetRole preserve runtime role evidence independently of contributor classification.
 	SourceRole *CombatRole `json:"sourceRole,omitempty"`
 	TargetRole *CombatRole `json:"targetRole,omitempty"`
+	// AppliedHealing is, on a healing record, the HP the server applied to the target: the response's ChangeLife
+	// negated. An absent ChangeLife is the proto3 zero, so none was applied; whether the target was at full HP is known
+	// only where Life was also reported (see healing.go). Amount stays the reported magnitude. HealingInconsistent marks
+	// a healing result whose ChangeLife lowered HP; it applies nothing.
+	AppliedHealing      int64 `json:"appliedHealing,omitempty"`
+	HealingInconsistent bool  `json:"healingInconsistent,omitempty"`
 }
 
 func (r playerRelation) String() string {
@@ -150,7 +158,7 @@ func normalizeCombatEvent(event combatEvent, source, target playerRelation) (Com
 		kind = CombatEventHealing
 	}
 	flow := classifyCombatFlow(source, target)
-	return CombatEventRecord{
+	record := CombatEventRecord{
 		Kind:       kind,
 		Key:        CombatEventKey{ProtocolSession: event.SessionNumber, RPCID: event.RPCID},
 		ObservedAt: event.Timestamp,
@@ -166,5 +174,16 @@ func normalizeCombatEvent(event combatEvent, source, target playerRelation) (Com
 		Amount:     event.Damage,
 		DamageID:   event.DamageID,
 		SkillID:    event.SkillID,
-	}, true
+
+		EchoVisions: event.SourceVisionSummonCfgs,
+	}
+	if kind == CombatEventHealing && event.HasChangeLife {
+		switch {
+		case event.ChangeLifeRaw < 0:
+			record.AppliedHealing = -int64(event.ChangeLifeRaw)
+		case event.ChangeLifeRaw > 0:
+			record.HealingInconsistent = true
+		}
+	}
+	return record, true
 }

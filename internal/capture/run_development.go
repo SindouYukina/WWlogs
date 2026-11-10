@@ -129,7 +129,7 @@ func Main() {
 	duration := flag.Duration("duration", 0, "Live capture duration; 0 runs until Ctrl+C is pressed")
 	pcapIn := flag.String("pcap-in", "", "Replay the specified PCAP file without live capture")
 	pcapOut := flag.String("pcap-out", "", "Optionally write captured UDP packets to a PCAP file")
-	masterDatabase := flag.String("master-db", defaultMasterDatabasePath(), "Read-only combat ID Master SQLite database")
+	masterDatabase := flag.String("master-db", "", "Development: use an explicit read-only Master SQLite database for testing (default: embedded)")
 	showVersion := flag.Bool("version", false, "Print the WWlogs version")
 	verifyBaseline := flag.Bool("verify-baseline", false, "Verify the decoding and player-output regression baseline for the Locking PCAP")
 	auditOut := flag.String("audit-out", "", "Optionally write RPC, entity, and damage-pairing TSV without secrets")
@@ -260,7 +260,7 @@ func Main() {
 		if err := handle.SetBPFFilter(filterExpression); err != nil {
 			fatal("set capture filter", err)
 		}
-		fmt.Fprintf(os.Stderr, "capture_preflight=PASS adapter=%s local_ipv4=%s filter=%q master_sha256=%s locale=%s %s\n", device, *ip, filterExpression, masters.manifest.SourceHash, masters.locale, applied)
+		fmt.Fprintf(os.Stderr, "capture_preflight=PASS adapter=%s local_ipv4=%s filter=%q master_source=%q master_sha256=%s locale=%s %s\n", device, *ip, filterExpression, masterDatabaseSourceLabel(masters.databasePath), masters.manifest.SourceHash, masters.locale, applied)
 		return
 	}
 	if (*stopFile != "" || *statusFile != "" || *maxPCAPBytes > 0) && (*pcapIn != "" || *pcapOut == "") {
@@ -717,8 +717,8 @@ func Main() {
 		flushers[frameArchiveWriter] = frameArchiveWriter.Flush
 	}
 	restoreDiagnostics := wrapProcessorDiagnostics(processor, diagnostics, flushers)
-	fmt.Fprintf(os.Stderr, "master_data_loaded database=%s sha256=%s locale=%s characters=%d monsters=%d skills=%d damage=%d\n",
-		masters.databasePath, masters.manifest.SourceHash, masters.locale,
+	fmt.Fprintf(os.Stderr, "master_data_loaded source=%q sha256=%s locale=%s characters=%d monsters=%d skills=%d damage=%d\n",
+		masterDatabaseSourceLabel(masters.databasePath), masters.manifest.SourceHash, masters.locale,
 		len(masters.characters), len(masters.monsters), len(masters.skills), len(masters.damage))
 
 	var device string

@@ -4,9 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"sync"
 	"time"
-
-	"github.com/wailsapp/wails/v3/pkg/application"
 
 	"wwlogs/internal/capture"
 	"wwlogs/internal/service"
@@ -16,16 +15,29 @@ import (
 // returns snapshots as JSON copies, so no window ever holds a reference to Go state. Every window calls it on its
 // own schedule; a slow window only receives fewer snapshots.
 type Bridge struct {
-	capture    *service.CaptureService
-	defaults   capture.SessionConfig
-	overlay    func() *application.WebviewWindow
-	shutdown   *shutdownGate
-	settings   *settingsStore
-	catalog    localeCatalog
-	projection *displayProjection
+	capture  *service.CaptureService
+	defaults capture.SessionConfig
+	overlays *overlayManager
+	// desktopWindow remembers the Desktop window; nil for the Showcase review window, which saves nothing.
+	desktopWindow *desktopWindowKeeper
+	shell         shellSignal
+	shutdown      *shutdownGate
+	settings      *settingsStore
+	catalog       localeCatalog
+	projection    *displayProjection
+	listening     service.ListeningMonitor
+	process       *service.GameProcessWatcher
+	// environment and npcap answer the first-use questions; openBrowser hands a checked URL to the system browser.
+	environment *environmentChecker
+	npcap       *npcapDownloadResolver
+	openBrowser func(string) error
+	// startup is the launch-time automatic start; a manual start or stop settles it for the rest of the run.
+	startup startupCapture
 }
 
-// snapshotWaitLimit bounds one NextSnapshot call; an unchanged snapshot returned at the limit is a heartbeat.
+// snapshotWaitLimit is the heartbeat base: one NextSnapshot call waits at most this plus one update interval, and an
+// unchanged snapshot returned at the limit is a heartbeat. Adding the interval keeps a running capture's own snapshots
+// ahead of the heartbeat, so a slower update interval is not undone by full duplicate payloads.
 const snapshotWaitLimit = time.Second
 
 // stopWaitLimit bounds an interactive StopCapture request; native shutdown allows a separate drain budget.
@@ -39,76 +51,181 @@ type StartRequest struct {
 // GetSettings returns validated preferences and a recoverable startup warning, if any.
 func (b *Bridge) GetSettings() SettingsState { return b.settings.current() }
 
-// SaveSettings persists supported preferences in the current Windows user's data directory.
-func (b *Bridge) SaveSettings(value Settings) (SettingsState, error) { return b.settings.save(value) }
-
-// SetLocale persists the single global display locale without touching capture or statistics.
-func (b *Bridge) SetLocale(locale string) (SettingsState, error) { return b.settings.setLocale(locale) }
-
-// ResetOverlayPosition recovers an overlay after a display configuration change.
-func (b *Bridge) ResetOverlayPosition() {
-	if w := b.overlay(); w != nil {
-		w.SetSize(440, 640)
-		w.Center()
-	}
+// SetDefaultAdapter persists the capture interface. A running capture keeps the interface it started on.
+func (b *Bridge) SetDefaultAdapter(ipv4 string) (SettingsState, error) {
+	return b.settings.setDefaultAdapter(ipv4)
 }
 
-// NextSnapshot returns the newest snapshot once its sequence is greater than after, or the current one after about
-// a second. The returned JSON is a copy.
+// SetAutoStartCapture persists whether the next launch starts a capture by itself. It never starts or stops a capture.
+func (b *Bridge) SetAutoStartCapture(enabled bool) (SettingsState, error) {
+	return b.settings.setAutoStartCapture(enabled)
+}
+
+// SetLocale persists the single global display locale without touching capture or statistics.
+func (b *Bridge) SetLocale(locale string) (SettingsState, error) {
+	state, err := b.settings.setLocale(locale)
+	b.shell.fire()
+	return state, err
+}
+
+// SetAppearance persists the theme and motion preference; every window applies them from its next snapshot.
+func (b *Bridge) SetAppearance(theme string, reduceMotion bool) (SettingsState, error) {
+	state, err := b.settings.setAppearance(theme, reduceMotion)
+	b.shell.fire()
+	return state, err
+}
+
+// SetUpdateInterval persists the live combat data cadence and applies it to the running capture at once. It changes
+// only how often snapshots are published to the windows; packet processing and statistics are unaffected.
+func (b *Bridge) SetUpdateInterval(ms int) (SettingsState, error) {
+	state, err := b.settings.setUpdateInterval(ms)
+	if err == nil {
+		b.capture.SetPublishInterval(effectiveUpdateInterval(state.Settings))
+	}
+	b.shell.fire()
+	return state, err
+}
+
+// UpdateOverlay changes one Overlay's window properties. The other Overlay is not touched.
+func (b *Bridge) UpdateOverlay(kind string, change OverlayChange) (OverlayStates, error) {
+	if b.overlays == nil {
+		return OverlayStates{}, errors.New("overlays are unavailable")
+	}
+	return b.overlays.update(kind, change)
+}
+
+// ResetDesktopWindow forgets the Desktop window's remembered size and position and returns it to its default.
+func (b *Bridge) ResetDesktopWindow() error {
+	if b.desktopWindow == nil {
+		return errors.New("the desktop window is unavailable")
+	}
+	return b.desktopWindow.reset()
+}
+
+// ResetOverlay returns one Overlay to its default position and size.
+func (b *Bridge) ResetOverlay(kind string) error {
+	if b.overlays == nil {
+		return errors.New("overlays are unavailable")
+	}
+	return b.overlays.reset(kind)
+}
+
+// NextSnapshot returns the newest snapshot once its sequence is greater than after, when host state changes, or the
+// current one after the heartbeat limit (one second plus the update interval). The returned JSON is a copy.
 func (b *Bridge) NextSnapshot(ctx context.Context, after uint64) (json.RawMessage, error) {
-	waitCtx, cancel := context.WithTimeout(ctx, snapshotWaitLimit)
+	waitCtx, cancel := context.WithTimeout(ctx, snapshotWait(b.settings.current().Settings))
 	defer cancel()
+	changed := b.shell.changed()
+	go func() {
+		select {
+		case <-changed:
+			cancel()
+		case <-waitCtx.Done():
+		}
+	}()
 	snapshot, err := b.capture.Publisher().Next(waitCtx, after)
-	if err != nil && !errors.Is(err, context.DeadlineExceeded) {
+	if err != nil && ctx.Err() == nil && (errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled)) {
+		err = nil
+	}
+	if err != nil {
 		return nil, err
 	}
-	return b.projection.encode(snapshot, b.settings.current(), b.catalog)
+	return b.encode(snapshot)
+}
+
+// snapshotWait bounds one NextSnapshot call for the stored update interval.
+func snapshotWait(settings Settings) time.Duration {
+	return snapshotWaitLimit + effectiveUpdateInterval(settings)
 }
 
 // CurrentSnapshot returns the newest snapshot without waiting.
 func (b *Bridge) CurrentSnapshot() (json.RawMessage, error) {
-	return b.projection.encode(b.capture.Publisher().Latest(), b.settings.current(), b.catalog)
+	return b.encode(b.capture.Publisher().Latest())
 }
 
-// ListAdapters lists the Npcap IPv4 interfaces.
-func (b *Bridge) ListAdapters() ([]capture.Adapter, error) {
-	return capture.ListIPv4Adapters()
+func (b *Bridge) encode(snapshot *service.Snapshot) (json.RawMessage, error) {
+	return b.projection.encode(snapshot, b.settings.current(), b.catalog, b.listeningStatus(snapshot), b.overlays.states())
 }
 
-// StartCapture starts a live capture on the interface with request.LocalIPv4, using the host's other options.
+// shellSignal wakes long-polling windows when host state changes, so a setting applies at once instead of at the next
+// heartbeat. Its zero value is ready to use.
+type shellSignal struct {
+	mu     sync.Mutex
+	signal chan struct{}
+}
+
+func (s *shellSignal) changed() <-chan struct{} {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.signal == nil {
+		s.signal = make(chan struct{})
+	}
+	return s.signal
+}
+
+func (s *shellSignal) fire() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.signal != nil {
+		close(s.signal)
+		s.signal = nil
+	}
+}
+
+// listeningStatus is evaluated on every call, because silence changes the status while the snapshot stays the same.
+func (b *Bridge) listeningStatus(snapshot *service.Snapshot) service.ListeningStatus {
+	var process service.GameProcess
+	// A replay has no game process, so absence must not count as evidence.
+	if b.process != nil && (snapshot.Service.Session == nil || snapshot.Service.Session.Source != "replay") {
+		process = b.process.Latest()
+	}
+	return b.listening.Evaluate(snapshot.Service, snapshot.View, process, time.Now())
+}
+
+// CheckCaptureEnvironment detects Npcap, enumerates its interfaces and classifies the result. Repeated calls during a
+// check share it, and no call touches a running capture.
+func (b *Bridge) CheckCaptureEnvironment(ctx context.Context) capture.CaptureEnvironment {
+	return b.environment.check(ctx)
+}
+
+// NpcapDownloadInfo returns the latest official installer, or the official download page when it cannot be confirmed.
+func (b *Bridge) NpcapDownloadInfo(ctx context.Context) NpcapDownload {
+	return b.npcap.resolve(ctx)
+}
+
+// OpenNpcapDownload hands the official installer URL to the user's browser. The frontend cannot choose the URL, and
+// WWlogs neither runs the installer nor keeps a copy of it.
+func (b *Bridge) OpenNpcapDownload(ctx context.Context) (NpcapDownload, error) {
+	download := b.npcap.resolve(ctx)
+	if !validNpcapURL(download.URL) {
+		return download, errors.New("the download address is not an official Npcap address")
+	}
+	return download, b.openBrowser(download.URL)
+}
+
+// StartCapture starts a live capture on the interface with request.LocalIPv4, using the host's other options. A manual
+// start settles the launch-time automatic start.
 func (b *Bridge) StartCapture(request StartRequest) error {
+	b.startup.claim()
+	return b.startCapture(request.LocalIPv4)
+}
+
+// startCapture is the one start path, for the user's start and the launch-time start alike.
+func (b *Bridge) startCapture(localIPv4 string) error {
 	cfg := b.defaults
-	if request.LocalIPv4 != "" {
-		cfg.LocalIPv4 = request.LocalIPv4
+	if localIPv4 != "" {
+		cfg.LocalIPv4 = localIPv4
 	}
 	return b.capture.Start(cfg)
 }
 
-// StopCapture stops the current capture and waits until its resources are released.
+// StopCapture stops the current capture and waits until its resources are released. A manual stop also cancels a
+// launch-time start that has not begun, so the capture stays stopped for the rest of the run.
 func (b *Bridge) StopCapture(ctx context.Context) error {
+	b.startup.claim()
 	stopCtx, cancel := context.WithTimeout(ctx, stopWaitLimit)
 	defer cancel()
 	return b.capture.Stop(stopCtx)
-}
-
-// SetOverlayVisible shows or hides the overlay window.
-func (b *Bridge) SetOverlayVisible(visible bool) bool {
-	window := b.overlay()
-	if window == nil {
-		return false
-	}
-	if visible {
-		window.Show()
-	} else {
-		window.Hide()
-	}
-	return window.IsVisible()
-}
-
-// OverlayVisible reports whether the overlay window is shown.
-func (b *Bridge) OverlayVisible() bool {
-	window := b.overlay()
-	return window != nil && window.IsVisible()
 }
 
 // ServiceShutdown is a fallback for startup failure and non-window exits. Normal native exits use shutdownGate first.

@@ -46,17 +46,38 @@ test("late core and locale responses cannot overwrite newer state",()=>{
   assert.equal(snapshotSupersedes({sequence:11,localeRevision:3},current,4),false)
 })
 
-import {damageContributors} from "../../frontend/src/lib/snapshot.ts"
+import {combatRows} from "../../frontend/src/lib/combat-view.ts"
 test("motorcycle is a separate contributor using Go shares without a synthetic Role ID",()=>{
- const role={playerId:1,roleId:42,damageDealt:75,damageTaken:9,damageShare:0.75}
- const vehicle={kind:"motorcycle",evidence:"CORRELATED",damageDealt:25,outgoingEvents:2,damageShare:0.25}
- const rows=damageContributors([role],vehicle)
+ const role={playerId:1,roleId:42,name:"",nameStatus:"UNKNOWN",damageDealt:75,damageTaken:9,damageShare:0.75,rank:0,dps:7.5}
+ const vehicle={kind:"motorcycle",evidence:"CORRELATED",damageDealt:25,outgoingEvents:2,damageShare:0.25,rank:1,dps:2.5}
+ const rows=combatRows({roles:[role],vehicle})
  assert.equal(rows.length,2)
- assert.equal(rows[0].role,role)
- assert.equal(rows[1].vehicle,vehicle)
- assert.equal(rows[1].role,undefined)
- assert.equal(rows[1].damageShare,0.25)
- assert.equal(rows[0].damageShare,0.75)
- assert.equal(damageContributors([],vehicle)[0].key,"vehicle-motorcycle")
- assert.equal(damageContributors([role]).length,1)
+ assert.equal(rows[0].kind,"role")
+ assert.equal(rows[0].roleId,42)
+ assert.equal(rows[1].kind,"vehicle")
+ assert.equal(rows[1].roleId,undefined)
+ assert.equal(rows[1].share,0.25)
+ assert.equal(rows[0].share,0.75)
+ assert.equal(rows[1].dps,2.5)
+ assert.equal(combatRows({roles:[],vehicle:{...vehicle,rank:0}})[0].key,"vehicle-motorcycle")
+ assert.equal(combatRows({roles:[role]}).length,1)
+})
+
+import { defaultUpdateInterval, normalizeUpdateInterval, shellChanged, updateIntervals, withShell } from "../../frontend/src/lib/snapshot.ts"
+
+test("only the selectable update intervals are accepted; anything else is the 250 ms default", () => {
+  assert.deepEqual([...updateIntervals], [250, 500, 750, 1000])
+  for (const value of updateIntervals) assert.equal(normalizeUpdateInterval(value), value)
+  for (const value of [undefined, null, 0, 100, 125, 2000, "250"]) assert.equal(normalizeUpdateInterval(value), defaultUpdateInterval)
+  assert.equal(defaultUpdateInterval, 250)
+})
+
+test("a display setting change on a heartbeat updates the shell without replacing core data", () => {
+  const current = { sequence: 9, localeRevision: 1, view: { marker: "core" }, updateIntervalMs: 250, theme: "electro" }
+  const heartbeat = { ...current, view: { marker: "must not replace" }, updateIntervalMs: 1000 }
+  assert.equal(shellChanged(heartbeat, current), true)
+  const next = withShell(current, heartbeat)
+  assert.equal(next.view, current.view)
+  assert.equal(next.updateIntervalMs, 1000)
+  assert.equal(shellChanged({ ...current }, current), false)
 })

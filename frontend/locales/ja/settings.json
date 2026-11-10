@@ -1,21 +1,139 @@
 {
   "title": "設定",
-  "description": "この Windows ユーザーの設定です。",
   "language": "言語",
   "languageHint": "両方のウィンドウとゲーム内名称に即時反映します。",
-  "startup": "起動時の設定",
-  "defaultAdapter": "既定のインターフェース",
-  "chooseAtLaunch": "起動時に選択",
-  "adapterHint": "起動時に選択します。キャプチャは手動で開始します。",
-  "showOnStartup": "起動時にオーバーレイを表示",
-  "visibilityHint": "現在の表示状態は上部のボタンで変更できます。",
-  "save": "設定を保存",
-  "saving": "保存中…",
-  "saved": "設定を保存しました。",
-  "unsaved": "未保存の変更",
+  "languageAuto": "自動",
+  "languageAutoHint": "Windows の表示言語に従います。現在：{{language}}",
+  "defaultAdapter": "ネットワークインターフェース",
+  "adapterHint": "キャプチャにはこのインターフェースを使用します。",
+  "adapterChoose": "ゲームの通信に使うインターフェースを選択してください。",
+  "adapterLocked": "変更するには、先にキャプチャを停止してください。",
+  "autoStartCapture": "起動時にキャプチャを自動開始",
+  "autoStartCaptureHint": "ゲームにログインする前に WWlogs を起動してください。ログイン後に開始したキャプチャでは、その接続を解析できません。",
   "storage": "保存先：%LOCALAPPDATA%\\WWlogs\\settings.json。",
   "invalid": "設定を読み込めないため既定値を使用しています。",
   "saveFailed": "設定を保存できませんでした。以前の設定は保持されています。",
-  "resetOverlay": "オーバーレイの位置をリセット",
-  "geometryHint": "ヘッダーで移動、端でサイズ変更できます。位置とサイズは自動保存します。"
+  "loadFailed": "設定を読み込めませんでした。既定値を表示しています。",
+  "appearance": "外観",
+  "theme": "テーマ",
+  "reduceMotion": "動きを減らす",
+  "reduceMotionHint": "トランジションと数値のカウントアニメーションをオフにします。数値はすぐに更新されます。Windows のアニメーション設定も尊重します。",
+  "themes": {
+    "electro": {
+      "name": "電導",
+      "character": "鎖暝"
+    },
+    "aero": {
+      "name": "気動",
+      "character": "カルテジア"
+    },
+    "havoc": {
+      "name": "消滅",
+      "character": "千咲"
+    },
+    "glacio": {
+      "name": "凝縮",
+      "character": "カルロッタ"
+    },
+    "fusion": {
+      "name": "焦熱",
+      "character": "モーニエ"
+    }
+  },
+  "groups": {
+    "basic": "基本設定",
+    "overlays": "オーバーレイ",
+    "about": "このアプリについて"
+  },
+  "pages": {
+    "general": "一般",
+    "appearance": "外観",
+    "combatOverlay": "戦闘オーバーレイ",
+    "effectsOverlay": "効果オーバーレイ",
+    "about": "WWlogs",
+    "licenses": "ライセンス"
+  },
+  "sections": {
+    "language": "言語",
+    "motion": "モーション",
+    "window": "ウィンドウ",
+    "look": "外観",
+    "capture": "ネットワークキャプチャ",
+    "about": "バージョン情報",
+    "fontLicenses": "フォントのライセンス",
+    "displayPerformance": "表示とパフォーマンス"
+  },
+  "showWindow": "このオーバーレイを表示",
+  "alwaysOnTop": "常に最前面に表示",
+  "clickThrough": "マウスクリックを透過",
+  "clickThroughHint": "オンにすると、マウス操作がオーバーレイを通り抜け、ゲームの操作を妨げません。",
+  "editMode": "編集モード",
+  "editModeHint": "一時的にマウス操作を受け付け、移動とサイズ変更ができます。完了すると元の設定に戻ります。",
+  "startEditing": "編集を開始",
+  "finishEditing": "編集を完了",
+  "position": "位置とサイズ",
+  "positionNote": "オーバーレイごとに自動保存",
+  "resetPosition": "位置をリセット",
+  "mainWindow": "メインウィンドウのサイズと位置",
+  "mainWindowNote": "自動で保存され、次回起動時も同じサイズと位置で開きます",
+  "resetMainWindow": "既定に戻す",
+  "opacity": "背景の不透明度",
+  "opacityHint": "パネルの背景のみに影響し、文字は鮮明なままです。",
+  "scale": "表示倍率",
+  "scaleHint": "ウィンドウと内容全体を拡大・縮小します（{{min}}–{{max}}%）。位置は保持され、手動で変更したサイズも同じ比率で拡大・縮小され、画面より大きくてもウィンドウは画面内に収まります。",
+  "scaleInput": "表示倍率（パーセント）",
+  "decrease": "減らす",
+  "increase": "増やす",
+  "buildVersion": "バージョン",
+  "buildNumber": "ビルド番号",
+  "buildUnofficial": "非公式ビルド",
+  "buildProfile": "ビルド種別",
+  "buildRevision": "ソースリビジョン",
+  "buildModified": "未コミットの変更あり",
+  "buildStateUnknown": "作業ツリーの状態不明",
+  "buildUnavailable": "取得できません",
+  "buildProfileDevelopment": "Development",
+  "buildProfilePublic": "Public",
+  "geometryReset": "オーバーレイの位置データが無効だったため、既定に戻しました。",
+  "licenses": {
+    "intro": "このアプリに内蔵されているフォントとそのライセンスです。ライセンス条項は原文のまま表示し、翻訳版はありません。",
+    "usage": "用途",
+    "faces": "書体",
+    "version": "バージョン",
+    "authors": "作者",
+    "copyright": "著作権表示",
+    "license": "ライセンス",
+    "links": "リンク",
+    "showText": "全文を表示",
+    "hideText": "全文を隠す",
+    "linkFailed": "ブラウザーを開けませんでした。アドレスに直接アクセスしてください。",
+    "usageOf": {
+      "inter": "ラテン文字と数字",
+      "noto": "繁体字中国語、簡体字中国語、日本語、韓国語"
+    },
+    "link": {
+      "project": "公式プロジェクト",
+      "fontSource": "フォントファイルの入手元",
+      "license": "ライセンスの公式サイト"
+    }
+  },
+  "updateInterval": "戦闘情報の更新間隔",
+  "updateIntervalHint": "ダッシュボードと 2 つのオーバーレイで共通です（効果のカウントダウンを含む）。変わるのは画面の更新頻度だけで、戦闘イベントはすべて集計されます。",
+  "updateIntervalNote": "ダッシュボードとオーバーレイで共通 · 既定 {{value}}",
+  "units": {
+    "milliseconds": "{{value}} ms",
+    "seconds": "{{value}} s"
+  },
+  "effectsLegend": {
+    "title": "効果ストリップの見方",
+    "gameIcon": "アイコン：ゲーム自身が HUD でこの状態に表示するアイコンです。内側の色付き部分は残り時間の割合、下は推定残り秒数、右上はスタック数（2 以上）です。",
+    "target": "左下の小さな印：この状態は敵に付いています。印がないものは味方に付いています。",
+    "color": "塗りの色：効果の定義に明記された属性です。属性がない、または確認できない場合はグレーです。色はバフ／デバフを意味しません。",
+    "untimed": "斜線で秒数なし：ゲームから信頼できる時間が得られていません。",
+    "more": "+N：ウィンドウの幅に収まらない効果の数です。編集モードでウィンドウを広げられます。",
+    "rows": "1 行目がバフ、2 行目がデバフです。方向はゲーム自身の HUD 設定によるものです。",
+    "order": "各行は終了が早い順に左から並びます。時間のない状態は最後です。",
+    "onlyHud": "ゲームの HUD が公式アイコンと方向付きで描画する状態のみ表示します。内部状態は表示しません。",
+    "noNames": "ゲームと同じく効果名は表示しません。ゲームデータの多くの効果には名前がありません。"
+  }
 }
