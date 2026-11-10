@@ -185,7 +185,7 @@ export function DashboardView({ data, theme, numberMode = "tween", actions, deta
       <StatCard index={0} hero icon="bolt" label={c("encounterDps")} field="encounter-dps" status={dps?.status ?? "unavailable"} value={usableDps(dps) ? dps?.value : undefined} format={dpsFormat} note={view ? t("peakNote", { value: peakText }) : undefined} scope={scope} stale={stale} numberMode={numberMode} />
       <StatCard index={1} icon="spark" label={t("confirmedDamage")} field="damage-dealt" value={encounter?.totals.damageDealt ?? view?.statistics.damageDealt} format={format.integer} note={t(encounter ? "damageNote" : "interval")} scope={scope} stale={stale} numberMode={numberMode} />
       <StatCard index={2} icon="shield" label={t("damageTaken")} field="damage-taken" value={encounter?.totals.damageTaken ?? view?.statistics.damageTaken} format={format.integer} note={t(encounter ? "takenNote" : "interval")} scope={scope} stale={stale} numberMode={numberMode} />
-      <StatCard index={3} icon="heal" label={t("healing")} field="healing" status={healing?.status ?? "unavailable"} value={healingShown ? healing.effective : undefined} format={healingFormat} note={healingShown ? t(encounter ? "healingNote" : "interval") : t("healingUnavailable")} scope={scope} stale={stale} numberMode={numberMode} />
+      <StatCard index={3} icon="heal" label={t("healing")} field="healing" status={healing?.status ?? "unavailable"} value={healingShown ? healing.reported : undefined} format={healingFormat} note={healingShown ? t("healingNote", { value: healingFormat(healing.effective) }) : t("healingUnavailable")} scope={scope} stale={stale} numberMode={numberMode} />
     </div>
     <div className="ww-dash-main">
       <Reveal index={4} className="ww-dash-board-wrap">

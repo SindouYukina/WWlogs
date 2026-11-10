@@ -113,8 +113,9 @@ type ViewStatistics struct {
 	Healing ViewHealing `json:"healing"`
 }
 
-// ViewHealing is the local team's healing. Effective is the HP applied and is what the UI shows; Status follows data
-// integrity as ViewDPS does, and the UI must show the status, never a bare number, for unreliable.
+// ViewHealing is the local team's healing. Reported is the magnitude of the server-confirmed healing results, the summary
+// card's main value; Effective is the HP actually applied, shown beneath it. Status follows data integrity as ViewDPS does,
+// and the UI must show the status, never a bare number, for unreliable.
 type ViewHealing struct {
 	Status                 DPSStatus `json:"status"`
 	Reason                 string    `json:"reason,omitempty"`

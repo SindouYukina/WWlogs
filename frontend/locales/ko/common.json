@@ -20,7 +20,7 @@
   "unknown": "알 수 없음",
   "role": "캐릭터 {{id}}",
   "unknownRole": "알 수 없는 캐릭터 ({{id}})",
-  "encounterDps": "전투 DPS",
+  "encounterDps": "DPS",
   "rolling5": "최근 5초 DPS",
   "rolling10": "최근 10초 DPS",
   "damageSpan": "피해 구간 DPS",

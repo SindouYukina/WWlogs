@@ -231,8 +231,9 @@ export interface DamageCompleteness {
 }
 
 /**
- * The local team's healing: healing results from a local source to a local target. Effective is the HP the server
- * applied and is what the UI shows; Status follows data integrity as DPS does.
+ * The local team's healing: healing results from a local source to a local target. Reported is the magnitude the server
+ * confirmed for those results and is the card's main value; Effective is the HP it actually applied, shown beneath it.
+ * Status follows data integrity as DPS does.
  */
 export interface Healing {
   status: DPS["status"]
