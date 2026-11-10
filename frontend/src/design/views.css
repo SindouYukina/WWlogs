@@ -54,6 +54,8 @@ body[data-view="desktop"] { margin: 0; background: var(--ww-surface-canvas); ove
 .ww-dash-stat-wrap { min-width: 0; }
 .ww-dash-stat-label { display: flex; align-items: center; gap: var(--ww-space-1_5); font-size: var(--ww-text-xs); color: var(--ww-text-3); }
 .ww-dash-stat-value { margin-top: var(--ww-space-1); font-size: var(--ww-text-2xl); line-height: 1.15; }
+/* The smaller numbers take the DPS number's line and centre in it, so all four share one centre line. */
+.ww-dash-stat-wrap:not(.ww-dash-stat-hero) .ww-dash-stat-value { display: flex; align-items: center; min-height: calc(var(--ww-text-hero) * 1.05); }
 .ww-dash-stat-hero .ww-dash-stat-value { font-size: var(--ww-text-hero); line-height: 1.05; font-weight: var(--ww-weight-display); letter-spacing: var(--ww-tracking-display); color: var(--ww-hero-number); }
 .ww-dash-stat-note { margin-top: var(--ww-space-1); font-size: var(--ww-text-2xs); color: var(--ww-text-4); }
 .ww-dash-main { display: grid; grid-template-columns: minmax(280px, 0.8fr) minmax(0, 1.5fr); gap: var(--ww-space-3); flex: 1; min-height: 0; }

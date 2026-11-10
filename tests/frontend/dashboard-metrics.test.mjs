@@ -100,6 +100,12 @@ test("the four summary cards carry the encounter header's scope, so they do not 
   }
 })
 
+test("the three smaller summary numbers share the DPS number's centre line and the DPS card keeps its own layout", () => {
+  const css = read("frontend/src/design/views.css")
+  assert.match(css, /\.ww-dash-stat-wrap:not\(\.ww-dash-stat-hero\) \.ww-dash-stat-value \{ display: flex; align-items: center; min-height: calc\(var\(--ww-text-hero\) \* 1\.05\); \}/)
+  assert.match(css, /\.ww-dash-stat-hero \.ww-dash-stat-value \{ font-size: var\(--ww-text-hero\); line-height: 1\.05;/, "the reserved line is exactly the DPS number's line")
+})
+
 test("a skill row without an engine name keeps the unconfirmed label, and a named row never shows an id for it", () => {
   const row = view.slice(view.indexOf('data-field="unassigned-skill"'), view.indexOf("</tbody>"))
   assert.match(row, /\{unassigned\.name \?\? t\("unassignedSkill"\)\}/, "the fallback label remains for a row without a reliable name")
