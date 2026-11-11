@@ -76,7 +76,7 @@ try {
     foreach ($profile in @(@{ Name = 'Public'; Tags = @() }, @{ Name = 'Development'; Tags = @('-tags', 'wwdev') })) {
         $vet = Invoke-Go (@('vet', "-overlay=$overlay") + $profile.Tags + $packages)
         Set-Result "go vet ($($profile.Name))" $(if ($vet.Code -eq 0) { 'PASS' } else { 'FAIL' }) $(if ($vet.Code -ne 0) { $vet.Output.Trim() })
-        $test = Invoke-Go (@('test', '-count=1', "-overlay=$overlay") + $profile.Tags + @('./cmd/capture', './internal/buildinfo', './internal/capture', './internal/service', './internal/desktop', './internal/keyembed', './tests/assets', './tests/buildrun', './tests/versioninfo'))
+        $test = Invoke-Go (@('test', '-count=1', "-overlay=$overlay") + $profile.Tags + @('./cmd/capture', './internal/buildinfo', './internal/capture', './internal/history', './internal/service', './internal/desktop', './internal/keyembed', './tests/assets', './tests/buildrun', './tests/versioninfo'))
         Set-Result "go test ($($profile.Name))" $(if ($test.Code -eq 0) { 'PASS' } else { 'FAIL' }) $(if ($test.Code -ne 0) { $test.Output.Trim() })
     }
 
@@ -296,6 +296,33 @@ try {
                                 Remove-Item Env:WWLOGS_SEMANTIC_REPLAY_PCAPS, Env:WWLOGS_SEMANTIC_REPLAY_MASTER_DB -ErrorAction SilentlyContinue
                             }
                             Set-Result 'replay: effect and skill semantics' $(if ($semanticCode -eq 0) { 'PASS' } else { 'FAIL' }) "$($pcaps.Count) captures$(if ($semanticCode -ne 0) { '; ' + (($semanticOut | Select-Object -Last 12) -join ' ') })"
+
+                            # 9. Combat History: every capture through the host session path into a fresh history file, in both
+                            # profiles. History must not change the final view, must store every finished encounter and accepted
+                            # result exactly once as the engine produced them, recompute from its results, read the same after
+                            # reopening, and both profiles must store the same history (see the test's header).
+                            $historySummaries = @{}
+                            $historyFailures = @()
+                            foreach ($historyProfile in @('public', 'development')) {
+                                $historyBinary = Join-Path $buildDirectory "history-$historyProfile.test.exe"
+                                $historyBuild = Invoke-Go @('run', './scripts/embed-key.go', '-profile', $historyProfile, '-test-binary', './internal/history', '-o', $historyBinary)
+                                if ($historyBuild.Code -ne 0) { $historyFailures += "$historyProfile build: $($historyBuild.Output.Trim())"; continue }
+                                $historyOut = Join-Path $buildDirectory "history-$historyProfile"
+                                $env:WWLOGS_HISTORY_REPLAY_OUT = $historyOut
+                                $env:WWLOGS_HISTORY_REPLAY_PCAPS = $listPath
+                                $env:WWLOGS_HISTORY_REPLAY_MASTER_DB = Join-Path $repoRoot 'data/master_data.db'
+                                try {
+                                    $historyRun = & $historyBinary '-test.run' '^TestHistoryReplayCollector$' '-test.count' '1' 2>&1
+                                    $historyCode = $LASTEXITCODE
+                                } finally {
+                                    Remove-Item Env:WWLOGS_HISTORY_REPLAY_OUT, Env:WWLOGS_HISTORY_REPLAY_PCAPS, Env:WWLOGS_HISTORY_REPLAY_MASTER_DB -ErrorAction SilentlyContinue
+                                }
+                                if ($historyCode -ne 0) { $historyFailures += "$historyProfile`: $(($historyRun | Select-Object -Last 12) -join ' ')"; continue }
+                                $historySummaries[$historyProfile] = Get-Content -LiteralPath (Join-Path $historyOut 'summary.json') -Raw
+                            }
+                            if ($historyFailures.Count -eq 0 -and $historySummaries['public'] -ne $historySummaries['development']) { $historyFailures += 'Public and Development stored different histories' }
+                            $historyDetail = if ($historySummaries['public']) { $summary = $historySummaries['public'] | ConvertFrom-Json; "$($pcaps.Count) captures, $($summary.listedEncounters) encounters, $($summary.storedEvents) results, both profiles equal" } else { '' }
+                            Set-Result 'replay: combat history fidelity' $(if ($historyFailures.Count -eq 0) { 'PASS' } else { 'FAIL' }) $(if ($historyFailures.Count -eq 0) { $historyDetail } else { $historyFailures -join '; ' })
                         }
                     }
                 }

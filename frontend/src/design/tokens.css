@@ -94,6 +94,12 @@
   --ww-card-edge: none;
   --ww-card-corner: none;
   --ww-chart-grid: var(--ww-line-soft);
+  /* Activity heatmap: the theme accent mixed over the card surface, so each theme draws its own ramp. */
+  --ww-heat-0: var(--ww-surface-2);
+  --ww-heat-1: color-mix(in oklab, var(--ww-accent) 30%, var(--ww-surface-2));
+  --ww-heat-2: color-mix(in oklab, var(--ww-accent) 52%, var(--ww-surface-2));
+  --ww-heat-3: color-mix(in oklab, var(--ww-accent) 76%, var(--ww-surface-2));
+  --ww-heat-4: var(--ww-accent-bright);
 
   /* Backdrop layers. */
   --ww-theme-ambient: none;

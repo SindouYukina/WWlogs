@@ -309,6 +309,8 @@ func (s *DamageStatistics) beginTransportLoss(id uint64, direction string, from 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.encounters.beginLoss(id, direction, from)
+	s.history.add(HistoryEntry{Kind: HistoryLossBegan, Loss: &HistoryLoss{ID: id, Direction: direction, From: from}})
+	s.encounters.journalCompletedIntegrity()
 }
 
 func (s *DamageStatistics) endTransportLoss(id uint64, to time.Time) {
@@ -318,6 +320,8 @@ func (s *DamageStatistics) endTransportLoss(id uint64, to time.Time) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.encounters.endLoss(id, to)
+	s.history.add(HistoryEntry{Kind: HistoryLossEnded, Loss: &HistoryLoss{ID: id, To: to}})
+	s.encounters.journalCompletedIntegrity()
 }
 
 func (s *DamageStatistics) failTransportLoss(id uint64) {
@@ -327,6 +331,8 @@ func (s *DamageStatistics) failTransportLoss(id uint64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.encounters.failLoss(id)
+	s.history.add(HistoryEntry{Kind: HistoryLossFailed, Loss: &HistoryLoss{ID: id}})
+	s.encounters.journalCompletedIntegrity()
 }
 
 // setTransportGap records that a stream's data after since is delayed behind a gap; a zero since clears it.

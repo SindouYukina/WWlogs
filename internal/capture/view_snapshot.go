@@ -410,21 +410,36 @@ func (p *processor) viewEncounters(encounters EncounterTrackerSnapshot) ViewEnco
 }
 
 func (p *processor) viewEncounter(encounter EncounterSnapshot) ViewEncounter {
+	return projectEncounter(p.masters, encounter, p.currentFrameTime)
+}
+
+// ProjectEncounter builds the view of a finished encounter with the same projection the live view uses: Master names, the
+// skill split, contributor ranks and per-row DPS. Combat History uses it to show a stored encounter exactly as it was shown.
+func (m *MasterData) ProjectEncounter(encounter EncounterSnapshot) ViewEncounter {
+	var masters *gameMaster
+	if m != nil {
+		masters = m.masters
+	}
+	return projectEncounter(masters, encounter, time.Time{})
+}
+
+// projectEncounter projects one encounter. now is the capture time an open encounter's elapsed time is measured to.
+func projectEncounter(masters *gameMaster, encounter EncounterSnapshot, now time.Time) ViewEncounter {
 	view := ViewEncounter{
 		EncounterID: encounter.EncounterID, Sequence: encounter.Sequence, ProtocolSession: encounter.ProtocolSession,
 		State: encounter.State, Outcome: encounter.Outcome, StartedAt: encounter.StartedAt, StartBasis: encounter.StartBasis,
 		EndedAt: encounter.EndedAt, EndBasis: encounter.EndBasis, Totals: encounter.Totals,
 		Integrity: cloneIntegrity(encounter.Integrity), DPS: viewDPS(encounter.EncounterDPS),
 		PeakDPS: viewDPS(encounter.PeakDPS), Healing: viewHealing(encounter.Healing),
-		Roles: p.viewRoles(encounter.Roles, encounter.Totals.DamageDealt), UnassignedRole: encounter.UnassignedRole,
+		Roles: projectRoles(masters, encounter.Roles, encounter.Totals.DamageDealt), UnassignedRole: encounter.UnassignedRole,
 		UnassignedRoleShare: unassignedRoleShare(encounter.UnassignedRole, encounter.Totals.DamageDealt),
-		Vehicle:             p.viewVehicle(encounter.Vehicle, encounter.Totals.DamageDealt),
+		Vehicle:             projectVehicle(masters, encounter.Vehicle, encounter.Totals.DamageDealt),
 		Completeness:        encounterDamageCompleteness(encounter),
 	}
 	rankViewContributors(view.Roles, view.Vehicle, &view.DPS)
 	end := encounter.EndedAt
 	if end.IsZero() {
-		end = p.currentFrameTime
+		end = now
 	}
 	if encounter.Integrity.Status != IntegrityUnreliable && !encounter.StartedAt.IsZero() && !end.IsZero() && !end.Before(encounter.StartedAt) {
 		elapsed := end.Sub(encounter.StartedAt).Seconds()
@@ -488,15 +503,19 @@ func unassignedRoleShare(unassigned UnassignedRoleTotals, total int64) *float64 
 }
 
 func (p *processor) viewRoles(roles []RoleDamageSnapshot, total int64) []ViewRole {
+	return projectRoles(p.masters, roles, total)
+}
+
+func projectRoles(masters *gameMaster, roles []RoleDamageSnapshot, total int64) []ViewRole {
 	view := make([]ViewRole, 0, len(roles))
 	for _, role := range roles {
-		name, status := p.roleDisplayName(role.RoleID)
+		name, status := roleDisplayName(masters, role.RoleID)
 		view = append(view, ViewRole{
 			PlayerID: role.PlayerID, RoleID: role.RoleID, Name: name, NameStatus: status,
 			DamageDealt: role.DamageDealt, DirectDamage: role.DirectDamage, SummonDamage: role.SummonDamage,
 			OutgoingEvents: role.OutgoingEvents, DamageTaken: role.DamageTaken, IncomingEvents: role.IncomingEvents,
 		})
-		view[len(view)-1].Skills, view[len(view)-1].UnassignedSkill = p.viewSkills(role.RoleID, role.Skills, role.UnassignedSkill, role.DamageDealt)
+		view[len(view)-1].Skills, view[len(view)-1].UnassignedSkill = projectSkills(masters, role.RoleID, role.Skills, role.UnassignedSkill, role.DamageDealt)
 		if total > 0 {
 			share := float64(role.DamageDealt) / float64(total)
 			view[len(view)-1].DamageShare = &share
@@ -508,6 +527,10 @@ func (p *processor) viewRoles(roles []RoleDamageSnapshot, total int64) []ViewRol
 // viewSkills projects a contributor's skill split. Shares use the contributor's own confirmed damage, never the team's.
 // roleID is zero for the vehicle, which has no skill group.
 func (p *processor) viewSkills(roleID uint64, skills []SkillDamageSnapshot, unassigned UnassignedSkillTotals, total int64) ([]ViewSkill, ViewUnassignedSkill) {
+	return projectSkills(p.masters, roleID, skills, unassigned, total)
+}
+
+func projectSkills(masters *gameMaster, roleID uint64, skills []SkillDamageSnapshot, unassigned UnassignedSkillTotals, total int64) ([]ViewSkill, ViewUnassignedSkill) {
 	share := func(amount int64) *float64 {
 		if total <= 0 {
 			return nil
@@ -517,8 +540,8 @@ func (p *processor) viewSkills(roleID uint64, skills []SkillDamageSnapshot, unas
 	}
 	view := make([]ViewSkill, 0, len(skills))
 	for _, skill := range skills {
-		name, status, source, sourceID := p.masters.skillRowName(roleID, skill)
-		iconKind, iconID := p.masters.skillRowIcon(skill, source, sourceID)
+		name, status, source, sourceID := masters.skillRowName(roleID, skill)
+		iconKind, iconID := masters.skillRowIcon(skill, source, sourceID)
 		view = append(view, ViewSkill{
 			SkillID: skill.SkillID, Name: name, NameStatus: status, NameSource: source, SourceID: sourceID, IconKind: iconKind, IconID: iconID,
 			ShowSkillID: status != string(resolutionVerified),
@@ -526,7 +549,7 @@ func (p *processor) viewSkills(roleID uint64, skills []SkillDamageSnapshot, unas
 		})
 	}
 	row := ViewUnassignedSkill{UnassignedSkillTotals: unassigned, DamageShare: share(unassigned.DamageDealt)}
-	source, reason := p.masters.unassignedSkillName(roleID, unassigned)
+	source, reason := masters.unassignedSkillName(roleID, unassigned)
 	if source.name != "" {
 		row.Name, row.NameStatus, row.NameSource, row.SourceID, row.IconKind, row.IconID = source.name, skillNameStatusDerived, source.source, source.sourceID, source.iconKind, source.iconID
 	}
@@ -537,10 +560,14 @@ func (p *processor) viewSkills(roleID uint64, skills []SkillDamageSnapshot, unas
 // roleDisplayName returns the Master name of a RoleId. A name is shown only when Master marks it verified; anything
 // else stays UNKNOWN rather than a plausible guess.
 func (p *processor) roleDisplayName(roleID uint64) (string, string) {
-	if p.masters == nil {
+	return roleDisplayName(p.masters, roleID)
+}
+
+func roleDisplayName(masters *gameMaster, roleID uint64) (string, string) {
+	if masters == nil {
 		return "", string(resolutionUnknown)
 	}
-	character, ok := p.masters.characters[roleID]
+	character, ok := masters.characters[roleID]
 	if !ok || character.Name == "" || character.NameStatus != string(resolutionVerified) {
 		return "", string(resolutionUnknown)
 	}
@@ -712,12 +739,16 @@ type ViewVehicle struct {
 }
 
 func (p *processor) viewVehicle(vehicle *VehicleDamageSnapshot, total int64) *ViewVehicle {
+	return projectVehicle(p.masters, vehicle, total)
+}
+
+func projectVehicle(masters *gameMaster, vehicle *VehicleDamageSnapshot, total int64) *ViewVehicle {
 	if vehicle == nil {
 		return nil
 	}
 	view := &ViewVehicle{VehicleDamageSnapshot: *vehicle}
 	view.VehicleDamageSnapshot.Skills = nil
-	view.Skills, view.UnassignedSkill = p.viewSkills(0, vehicle.Skills, vehicle.UnassignedSkill, vehicle.DamageDealt)
+	view.Skills, view.UnassignedSkill = projectSkills(masters, 0, vehicle.Skills, vehicle.UnassignedSkill, vehicle.DamageDealt)
 	if total > 0 {
 		share := float64(vehicle.DamageDealt) / float64(total)
 		view.DamageShare = &share

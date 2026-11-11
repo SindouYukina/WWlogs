@@ -123,3 +123,46 @@ body[data-view="overlay"][data-editing="true"] { --wails-draggable: drag; }
 .ww-effects-legend-more { width: var(--ww-effect-more); }
 .ww-effects-legend-note { margin: 0; padding-bottom: var(--ww-space-2); font-size: var(--ww-text-xs); color: var(--ww-text-3); }
 .ww-overlay-surface[data-surface="effects"]:has(> .ww-overlay-edit) { padding-bottom: calc(var(--ww-space-2) * 2 + var(--ww-overlay-edit-height)); }
+
+/* ------------------------------ Combat History ------------------------------ */
+.ww-history { position: relative; height: 100%; background: var(--ww-surface-canvas); isolation: isolate; }
+/* The gutter is kept even when nothing scrolls, so a day list loading in never shifts the heatmap sideways. */
+.ww-history-layout { display: flex; flex-direction: column; gap: var(--ww-space-3); height: 100%; padding: var(--ww-space-4) var(--ww-space-5); overflow-y: auto; scrollbar-gutter: stable; scrollbar-width: thin; scrollbar-color: var(--ww-surface-4) transparent; }
+.ww-history-top { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--ww-space-4); }
+.ww-history-title { margin: var(--ww-space-0_5) 0 0; font-family: var(--ww-font-display); font-size: var(--ww-text-xl); font-weight: var(--ww-weight-display); }
+.ww-history-years { display: flex; align-items: center; gap: var(--ww-space-2); }
+.ww-history-year { min-width: 4ch; text-align: center; font-size: var(--ww-text-lg); font-weight: var(--ww-weight-semibold); }
+.ww-history-heat { padding: var(--ww-space-3) var(--ww-space-4); }
+.ww-history-heat-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--ww-space-3); margin-bottom: var(--ww-space-2); }
+.ww-history-heat-head h3 { margin: 0; font-size: var(--ww-text-base); font-weight: var(--ww-weight-semibold); }
+.ww-history-total { font-size: var(--ww-text-sm); color: var(--ww-text-3); }
+.ww-history-note { margin: 0; font-size: var(--ww-text-xs); color: var(--ww-text-3); }
+.ww-history-note[data-tone="warn"] { color: var(--ww-warn); }
+.ww-history-note[data-tone="critical"] { color: var(--ww-critical); }
+.ww-history-day { padding: var(--ww-space-3) var(--ww-space-4); min-height: 160px; }
+.ww-history-table { width: 100%; border-collapse: collapse; font-size: var(--ww-text-sm); }
+.ww-history-table th { padding: 0 var(--ww-space-2) var(--ww-space-1_5); font-size: var(--ww-text-2xs); font-weight: var(--ww-weight-medium); color: var(--ww-text-4); text-align: start; white-space: nowrap; }
+.ww-history-table td { padding: 7px var(--ww-space-2); border-top: 1px solid var(--ww-line-soft); text-align: start; vertical-align: middle; }
+.ww-history-table th:first-child, .ww-history-table td:first-child { padding-inline-start: 0; }
+.ww-history-table .ww-num { text-align: end; }
+.ww-history-table td.ww-history-time { text-align: start; }
+.ww-history-table th.ww-num { text-align: end; }
+.ww-history-row { cursor: pointer; transition: background-color var(--ww-dur-fast) var(--ww-ease-standard); }
+.ww-history-row:hover { background: var(--ww-surface-hover); }
+.ww-history-row:focus-visible { outline: none; box-shadow: var(--ww-focus-ring); }
+.ww-history-unknown { color: var(--ww-text-4); }
+.ww-history-mark { margin-inline-start: var(--ww-space-1); font-size: var(--ww-text-2xs); color: var(--ww-text-4); cursor: help; }
+.ww-history-more { display: flex; align-items: center; justify-content: space-between; gap: var(--ww-space-3); margin-top: var(--ww-space-2); font-size: var(--ww-text-xs); color: var(--ww-text-3); }
+.ww-history-detail { display: flex; flex-direction: column; gap: var(--ww-space-3); }
+.ww-history-detail-head { display: flex; align-items: center; justify-content: space-between; gap: var(--ww-space-3); flex-wrap: wrap; }
+.ww-history-detail-head h3 { margin: 0; font-size: var(--ww-text-lg); font-weight: var(--ww-weight-semibold); }
+.ww-history-chips { display: flex; flex-wrap: wrap; gap: var(--ww-space-1_5); }
+.ww-history-facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: var(--ww-space-2) var(--ww-space-4); margin: 0; font-size: var(--ww-text-sm); }
+.ww-history-facts > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ww-history-facts dt { font-size: var(--ww-text-2xs); color: var(--ww-text-4); }
+.ww-history-facts dd { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ww-history-context { padding: var(--ww-space-3) var(--ww-space-4); }
+.ww-history-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--ww-space-3); }
+.ww-history-main { display: grid; grid-template-columns: minmax(280px, 0.8fr) minmax(0, 1.5fr); gap: var(--ww-space-3); }
+.ww-history-main .ww-dash-board { min-height: 300px; }
+.ww-history-enemies { padding: var(--ww-space-3) var(--ww-space-4); }
