@@ -86,7 +86,8 @@ type Status struct {
 // Options configure a Store. Zero values use the running build and the host clock and time zone.
 type Options struct {
 	Path string
-	// Location is the time zone local dates are taken in; nil uses the host's.
+	// Location is the zone an encounter's recorded date and offset are taken in; nil uses the host's. Views choose their
+	// own zone per query.
 	Location *time.Location
 	Now      func() time.Time
 	// Build, ProtocolSchema and MasterSHA256 identify what decoded a session; they are stored with it.
@@ -571,7 +572,8 @@ func timeFromNanos(value sql.NullInt64) time.Time {
 	return time.Unix(0, value.Int64)
 }
 
-// localDate is the calendar date of at in the store's time zone, with that zone's offset at that instant.
+// localDate is the calendar date of at in the store's recording zone, with that zone's offset at that instant: the
+// recorded provenance of an encounter (local_date, utc_offset_s), never the date a view shows it on.
 func (s *Store) localDate(at time.Time) (string, int) {
 	local := at.In(s.location)
 	_, offset := local.Zone()

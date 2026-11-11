@@ -1,7 +1,9 @@
 import type { DPS, Encounter, Timeline } from "./snapshot.ts"
 
 // The Combat History contracts the Go host returns (internal/desktop/history.go) and the calendar arithmetic of the History
-// view. Every count, state, DPS and identity is the backend's; this file only lays out dates and formats times.
+// view. Every count, state, DPS and identity is the backend's, and so is every date and clock: Go lays each stored UTC
+// instant out in the zone the view names (hostTimeZone), so the heatmap, the day list and the detail always agree. This
+// file only lays out a calendar grid of the dates Go returned and formats offsets.
 
 export type HistoryState = "ready" | "read_only" | "unavailable"
 
@@ -31,19 +33,38 @@ export interface HistoryCoverage {
 }
 
 export interface HistoryDayCount {
-  /** A local date, YYYY-MM-DD, where the encounters started. */
+  /** A date, YYYY-MM-DD, of the view's zone where the encounters started. */
   date: string
   encounters: number
 }
 
+/** The zone Go laid an answer out in: the IANA zone the view asked for, or Local (the Windows zone Go read at start). */
+export interface HistoryZone {
+  id: string
+  /** The zone the view asked for could not be loaded, so Local was used. */
+  fallback?: boolean
+  /** The zone's UTC offset now. */
+  offsetSeconds: number
+}
+
+/** One stored instant in the view's zone: its date, its clock (HH:MM:SS) and that zone's UTC offset at the instant. */
+export interface HistoryLocalTime {
+  date: string
+  clock: string
+  offsetSeconds: number
+}
+
 export interface HistoryYear {
   status: HistoryStatus
+  zone: HistoryZone
   year: number
   days: HistoryDayCount[]
   total: number
   /** Years with any encounter; both 0 for an empty history. */
   firstYear: number
   lastYear: number
+  /** The current date in the view's zone. */
+  today: string
 }
 
 /** A Master name reached through a versioned link from an observed ID: at most CORRELATED, otherwise UNKNOWN. */
@@ -56,11 +77,14 @@ export type HistoryEncounterState = "open" | "finished" | "abandoned"
 
 export interface HistoryEncounterSummary {
   id: number
-  /** UTC ISO time; utcOffsetSeconds is the offset where the encounter started. */
+  /** UTC ISO time; start lays it out in the view's zone and localDate is start's date. */
   startedAt: string
-  utcOffsetSeconds: number
+  start: HistoryLocalTime
   localDate: string
+  /** Where the encounter was recorded: provenance only, never the date it is listed on. */
+  recorded: { date: string; offsetSeconds: number }
   endedAt?: string
+  end?: HistoryLocalTime
   durationSeconds?: number
   state: HistoryEncounterState
   outcome: string
@@ -79,11 +103,13 @@ export interface HistoryEncounterSummary {
   incompleteReason?: string
   /** UTC time the stored values of an unfinished encounter describe (its last checkpoint). */
   checkpointAt?: string
+  checkpoint?: HistoryLocalTime
   coverage: HistoryCoverage
 }
 
 export interface HistoryDay {
   status: HistoryStatus
+  zone: HistoryZone
   date: string
   total: number
   offset: number
@@ -136,6 +162,7 @@ export interface HistoryEffects {
 
 export interface HistoryEncounterDetail {
   status: HistoryStatus
+  zone: HistoryZone
   summary: HistoryEncounterSummary
   session: HistorySession
   /** The engine's view of the finished encounter, as the Dashboard showed it; null for an unfinished one. */
@@ -267,23 +294,17 @@ export function heatmapLayout(year: number, days: readonly HistoryDayCount[]): H
   return { year, weeks, monthStarts, total, max, days: last - first + 1 }
 }
 
-/** The local date of an instant in the host's time zone now, for "today". */
-export function localDateOf(instant: Date): string {
-  const y = instant.getFullYear(), m = instant.getMonth() + 1, d = instant.getDate()
-  return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`
-}
-
 /**
- * The wall-clock time an encounter started where it was recorded: its UTC instant shifted by the offset stored with it, so a
- * later change of the host's time zone never moves a fight to another hour or day.
+ * The IANA name of the zone this WebView runs in, which is the zone Windows is set to. History queries pass it to Go, which
+ * lays every date out in it; the view itself never converts an instant. An empty name makes Go use the zone it read from
+ * Windows at start and say so.
  */
-export function recordedClock(startedAt: string, offsetSeconds: number): { hours: number; minutes: number; seconds: number } {
-  const shifted = new Date(Date.parse(startedAt) + offsetSeconds * 1000)
-  return { hours: shifted.getUTCHours(), minutes: shifted.getUTCMinutes(), seconds: shifted.getUTCSeconds() }
-}
-
-export function clockText(clock: { hours: number; minutes: number; seconds: number }): string {
-  return [clock.hours, clock.minutes, clock.seconds].map(value => String(value).padStart(2, "0")).join(":")
+export function hostTimeZone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone ?? ""
+  } catch {
+    return ""
+  }
 }
 
 /** "UTC+09:00" for an offset in seconds. */

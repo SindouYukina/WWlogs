@@ -354,14 +354,14 @@ func readViews(ctx context.Context, store *Store) (map[string]latencySummary, *c
 		h.Write([]byte{'\n'})
 	}
 	started := time.Now()
-	first, err := store.Year(ctx, compatNow.Year())
+	first, err := store.Year(ctx, compatNow.Year(), time.Local)
 	timing["year"].add(time.Since(started))
 	if err != nil {
 		write(h, "year error: "+err.Error())
 	}
 	for year := first.FirstYear; err == nil && year != 0 && year <= first.LastYear; year++ {
 		started = time.Now()
-		view, err := store.Year(ctx, year)
+		view, err := store.Year(ctx, year, time.Local)
 		timing["year"].add(time.Since(started))
 		write(h, view)
 		write(h, err)
@@ -369,14 +369,14 @@ func readViews(ctx context.Context, store *Store) (map[string]latencySummary, *c
 		for _, day := range view.Days {
 			for offset := 0; ; offset += MaxDayPage {
 				started = time.Now()
-				page, err := store.Day(ctx, day.Date, offset, MaxDayPage)
+				page, err := store.Day(ctx, day.Date, offset, MaxDayPage, time.Local)
 				timing["day"].add(time.Since(started))
 				write(h, page)
 				write(h, err)
 				result.Days++
 				for _, summary := range page.Encounters {
 					started = time.Now()
-					detail, err := store.Encounter(ctx, summary.ID)
+					detail, err := store.Encounter(ctx, summary.ID, time.Local)
 					timing["encounter"].add(time.Since(started))
 					write(h, detail)
 					write(h, detail.Snapshot)
@@ -402,7 +402,7 @@ func readViews(ctx context.Context, store *Store) (map[string]latencySummary, *c
 // appendAndReopen records one more encounter into the opened fixture, closes it and opens it again.
 func appendAndReopen(t *testing.T, store *Store, path string) (*compatAppended, error) {
 	ctx := context.Background()
-	before, err := store.Year(ctx, compatNow.Year())
+	before, err := store.Year(ctx, compatNow.Year(), time.Local)
 	if err != nil {
 		return nil, err
 	}
@@ -414,7 +414,7 @@ func appendAndReopen(t *testing.T, store *Store, path string) (*compatAppended, 
 	if err := recorder.Finish(ctx, capture.StopReasonRequested); err != nil {
 		return nil, err
 	}
-	after, err := store.Year(ctx, compatNow.Year())
+	after, err := store.Year(ctx, compatNow.Year(), time.Local)
 	if err != nil {
 		return nil, err
 	}

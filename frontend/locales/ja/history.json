@@ -91,6 +91,10 @@
     "duplicate_source": "このキャプチャファイルはすでに履歴にあるため、再度は保存されません。"
   },
   "localEncrypted": "戦闘履歴はこのPCにのみ保存され、Windows がユーザーアカウントごとに保護する鍵で暗号化されています。",
+  "zoneNote": "日付と時刻はこの PC の現在のタイムゾーンで表示しています：{{zone}}（{{offset}}）。",
+  "zoneLocal": "Windows のタイムゾーン",
+  "zoneFallback": "現在のタイムゾーンの完全なルールを読み込めなかったため、WWlogs の起動時に Windows から読み取ったタイムゾーンを使用しています。",
+  "recordedZone": "記録時は {{offset}}",
   "indicator": {
     "unknown": "履歴の状態を確認中",
     "recording": "この戦闘を記録中",

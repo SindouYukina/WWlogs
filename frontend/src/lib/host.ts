@@ -51,10 +51,13 @@ export const host = {
   resetOverlay: (kind: OverlayKind) => call<void>("ResetOverlay", kind),
   /** Forgets the Desktop window's remembered size and position and returns it to the first-launch default. */
   resetDesktopWindow: () => call<void>("ResetDesktopWindow"),
-  /** Combat History: encounter counts per local date of a year, one page of a date, and one encounter. */
-  historyYear: (year: number) => call<HistoryYear>("HistoryYear", year),
-  historyDay: (date: string, offset: number) => call<HistoryDay>("HistoryDay", date, offset),
-  historyEncounter: (id: number) => call<HistoryEncounterDetail>("HistoryEncounter", id),
+  /**
+   * Combat History: encounter counts per date of a year (0: the current year), one page of a date, and one encounter. zone is
+   * the IANA zone Go lays every date and clock out in (hostTimeZone).
+   */
+  historyYear: (year: number, zone: string) => call<HistoryYear>("HistoryYear", year, zone),
+  historyDay: (date: string, offset: number, zone: string) => call<HistoryDay>("HistoryDay", date, offset, zone),
+  historyEncounter: (id: number, zone: string) => call<HistoryEncounterDetail>("HistoryEncounter", id, zone),
   /** Saves whether Combat History records and applies it to a running capture. */
   setHistoryRecording: (enabled: boolean) => call<SettingsState>("SetHistoryRecording", enabled),
   /** Deletes one stored encounter, or every one; the UI asks the user to confirm first. */

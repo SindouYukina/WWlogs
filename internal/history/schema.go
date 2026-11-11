@@ -4,7 +4,8 @@ package history
 //
 // One local SQLite file keeps what the player actually fought, separate from the read-only Master. Times are UTC
 // nanoseconds of the capture clock (the engine's own times, so durations and DPS reproduce exactly); local_date is the
-// calendar date where the encounter started, in the host's local time at that moment, with the offset kept beside it.
+// calendar date where the encounter started, in the host's local time at that moment, with the offset kept beside it. Both
+// are provenance and an index key only: a view lays every instant out in the host's current zone (zone.go).
 //
 // Facts and engine results are kept apart: boundaries, outcomes, integrity facts and per-contributor totals are what the
 // engine decided when an encounter finished. Encounter DPS, peak DPS and healing are stored as the engine computed them

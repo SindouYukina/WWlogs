@@ -51,7 +51,7 @@ func TestSchemaTwoIsUpgradedWithoutRaisingItsCoverage(t *testing.T) {
 		t.Fatalf("pre-migration copies = %v", backups)
 	}
 	ctx := context.Background()
-	day, err := store.Day(ctx, "2023-11-15", 0, 10)
+	day, err := store.Day(ctx, "2023-11-15", 0, 10, mustZone(t, "Asia/Tokyo"))
 	if err != nil || len(day.Encounters) != 1 {
 		t.Fatalf("day = %+v (%v)", day, err)
 	}
@@ -60,7 +60,7 @@ func TestSchemaTwoIsUpgradedWithoutRaisingItsCoverage(t *testing.T) {
 		!old.Scene.Known || old.Scene.InstanceID != 2117 || old.MainEnemy == nil || old.DPS.Value != 50 {
 		t.Fatalf("upgraded row = %+v", old)
 	}
-	detail, err := store.Encounter(ctx, old.ID)
+	detail, err := store.Encounter(ctx, old.ID, time.UTC)
 	if err != nil || detail.Session.Coverage.EffectEvents || detail.Effects != (EffectWindow{}) {
 		t.Fatalf("an old encounter claims effect data: %+v %+v (%v)", detail.Session.Coverage, detail.Effects, err)
 	}
@@ -174,11 +174,11 @@ func TestEffectLifecycleIsStoredInOrderWithItsInstance(t *testing.T) {
 		Scan(&startRecorded, &effectID); err != nil || startRecorded != 0 || effectID.Valid {
 		t.Fatalf("instance 2 = %d %v (%v)", startRecorded, effectID, err)
 	}
-	day, err := store.Day(ctx, start.Format("2006-01-02"), 0, 10)
+	day, err := store.Day(ctx, start.Format("2006-01-02"), 0, 10, time.UTC)
 	if err != nil || len(day.Encounters) != 1 || !day.Encounters[0].Coverage.EffectEvents || day.Encounters[0].Coverage.SkillCasts {
 		t.Fatalf("day = %+v (%v)", day.Encounters, err)
 	}
-	detail, err := store.Encounter(ctx, day.Encounters[0].ID)
+	detail, err := store.Encounter(ctx, day.Encounters[0].ID, time.UTC)
 	if err != nil || detail.Effects != (EffectWindow{Changes: 4, Instances: 1, Observed: 4}) {
 		t.Fatalf("effects during the encounter = %+v (%v)", detail.Effects, err)
 	}
@@ -229,7 +229,7 @@ func TestRecordingSpansCloseAndOpenRows(t *testing.T) {
 	if !reflect.DeepEqual(spans, []string{"closed/recording_enabled/recording_disabled", "closed/recording_enabled/requested"}) {
 		t.Fatalf("spans = %v", spans)
 	}
-	day, err := store.Day(ctx, start.Format("2006-01-02"), 0, 10)
+	day, err := store.Day(ctx, start.Format("2006-01-02"), 0, 10, time.UTC)
 	if err != nil || len(day.Encounters) != 3 {
 		t.Fatalf("day = %+v (%v)", day.Encounters, err)
 	}
@@ -264,7 +264,7 @@ func TestCheckpointSurvivesAnAbnormalExitAsUnfinished(t *testing.T) {
 		t.Fatalf("status = %+v", status)
 	}
 	ctx := context.Background()
-	day, err := reopened.Day(ctx, start.Format("2006-01-02"), 0, 10)
+	day, err := reopened.Day(ctx, start.Format("2006-01-02"), 0, 10, time.UTC)
 	if err != nil || len(day.Encounters) != 1 {
 		t.Fatalf("day = %+v (%v)", day, err)
 	}
@@ -273,7 +273,7 @@ func TestCheckpointSurvivesAnAbnormalExitAsUnfinished(t *testing.T) {
 		!summary.CheckpointAt.Equal(start.Add(12*time.Second)) || summary.DPS.Status != capture.DPSStatusUnavailable {
 		t.Fatalf("summary = %+v", summary)
 	}
-	detail, err := reopened.Encounter(ctx, summary.ID)
+	detail, err := reopened.Encounter(ctx, summary.ID, time.UTC)
 	if err != nil || detail.Snapshot == nil || detail.Snapshot.State != capture.EncounterActive || detail.Snapshot.Outcome != capture.EncounterOutcomeOpen ||
 		detail.Snapshot.Totals.DamageDealt != 800 {
 		t.Fatalf("detail = %+v (%v)", detail.Snapshot, err)

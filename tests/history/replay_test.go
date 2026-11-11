@@ -330,7 +330,7 @@ func replayIntoHistory(t *testing.T, store *Store, masters *capture.MasterData, 
 		if !ok {
 			t.Fatalf("encounter %s is not stored", key)
 		}
-		detail, err := store.Encounter(ctx, id)
+		detail, err := store.Encounter(ctx, id, time.Local)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -372,7 +372,7 @@ func replayIntoHistory(t *testing.T, store *Store, masters *capture.MasterData, 
 			if !ok {
 				t.Fatalf("live encounter %s is not stored", key)
 			}
-			detail, err := store.Encounter(ctx, id)
+			detail, err := store.Encounter(ctx, id, time.Local)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -385,7 +385,7 @@ func replayIntoHistory(t *testing.T, store *Store, masters *capture.MasterData, 
 		}
 		if timeline := view.Timeline; timeline != nil && view.Encounters.Current == nil && len(view.Encounters.Recent) > 0 {
 			last := view.Encounters.Recent[len(view.Encounters.Recent)-1]
-			detail, err := store.Encounter(ctx, stored[fmt.Sprintf("%d-%d", interval, last.Sequence)])
+			detail, err := store.Encounter(ctx, stored[fmt.Sprintf("%d-%d", interval, last.Sequence)], time.Local)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -641,7 +641,8 @@ func recompute(t *testing.T, store *Store, id int64, snapshot capture.EncounterS
 	}
 }
 
-// checkHeatmap checks that every year's day counts are the listed encounters of those dates.
+// checkHeatmap checks, in the host's zone and in zones on both sides of UTC, that every year's day counts are the listed
+// encounters of those dates, that each encounter is listed exactly once, on the date its UTC start has in that zone.
 func checkHeatmap(t *testing.T, store *Store) {
 	t.Helper()
 	ctx := context.Background()
@@ -649,39 +650,47 @@ func checkHeatmap(t *testing.T, store *Store) {
 	if err := store.db.QueryRowContext(ctx, "SELECT count(*) FROM encounter WHERE state IN "+listedStates).Scan(&listed); err != nil {
 		t.Fatal(err)
 	}
-	first, err := store.Year(ctx, time.Now().Year())
-	if err != nil {
-		t.Fatal(err)
+	zones := []*time.Location{time.Local, time.UTC}
+	for _, name := range []string{"Asia/Tokyo", "America/Los_Angeles", "Pacific/Kiritimati", "Etc/GMT+12"} {
+		zones = append(zones, ResolveViewZone(name).Location)
 	}
-	if listed == 0 {
-		return
-	}
-	counted := 0
-	for year := first.FirstYear; year <= first.LastYear; year++ {
-		view, err := store.Year(ctx, year)
+	for _, zone := range zones {
+		first, err := store.Year(ctx, 0, zone)
 		if err != nil {
 			t.Fatal(err)
 		}
-		days := 0
-		for _, day := range view.Days {
-			page, err := store.Day(ctx, day.Date, 0, MaxDayPage)
-			if err != nil || page.Total != day.Encounters {
-				t.Fatalf("%s: the heatmap counts %d, the day lists %d (%v)", day.Date, day.Encounters, page.Total, err)
+		if listed == 0 {
+			return
+		}
+		counted := 0
+		seen := map[int64]bool{}
+		for year := first.FirstYear; year <= first.LastYear; year++ {
+			view, err := store.Year(ctx, year, zone)
+			if err != nil {
+				t.Fatal(err)
 			}
-			for _, encounter := range page.Encounters {
-				if encounter.LocalDate != day.Date {
-					t.Fatalf("%s lists an encounter of %s", day.Date, encounter.LocalDate)
+			days := 0
+			for _, day := range view.Days {
+				page, err := store.Day(ctx, day.Date, 0, MaxDayPage, zone)
+				if err != nil || page.Total != day.Encounters {
+					t.Fatalf("%s %s: the heatmap counts %d, the day lists %d (%v)", zone, day.Date, day.Encounters, page.Total, err)
 				}
+				for _, encounter := range page.Encounters {
+					if encounter.LocalDate != day.Date || encounter.StartedAt.In(zone).Format(dateLayout) != day.Date || seen[encounter.ID] {
+						t.Fatalf("%s %s lists encounter %d of %s", zone, day.Date, encounter.ID, encounter.LocalDate)
+					}
+					seen[encounter.ID] = true
+				}
+				days += day.Encounters
 			}
-			days += day.Encounters
+			if days != view.Total {
+				t.Fatalf("%s %d: days add up to %d, total %d", zone, year, days, view.Total)
+			}
+			counted += view.Total
 		}
-		if days != view.Total {
-			t.Fatalf("%d: days add up to %d, total %d", year, days, view.Total)
+		if counted != listed || len(seen) != listed {
+			t.Fatalf("%s: the heatmap counts %d encounters (%d distinct), the history lists %d", zone, counted, len(seen), listed)
 		}
-		counted += view.Total
-	}
-	if counted != listed {
-		t.Fatalf("the heatmap counts %d encounters, the history lists %d", counted, listed)
 	}
 }
 
@@ -690,24 +699,24 @@ func historyDigest(t *testing.T, store *Store) string {
 	t.Helper()
 	ctx := context.Background()
 	hash := sha256.New()
-	first, err := store.Year(ctx, time.Now().Year())
+	first, err := store.Year(ctx, time.Now().Year(), time.Local)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for year := first.FirstYear; year != 0 && year <= first.LastYear; year++ {
-		view, err := store.Year(ctx, year)
+		view, err := store.Year(ctx, year, time.Local)
 		if err != nil {
 			t.Fatal(err)
 		}
 		writeHash(t, hash, view)
 		for _, day := range view.Days {
-			page, err := store.Day(ctx, day.Date, 0, MaxDayPage)
+			page, err := store.Day(ctx, day.Date, 0, MaxDayPage, time.Local)
 			if err != nil {
 				t.Fatal(err)
 			}
 			writeHash(t, hash, page)
 			for _, encounter := range page.Encounters {
-				detail, err := store.Encounter(ctx, encounter.ID)
+				detail, err := store.Encounter(ctx, encounter.ID, time.Local)
 				if err != nil {
 					t.Fatal(err)
 				}
