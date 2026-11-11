@@ -16,7 +16,7 @@
   "emptyDay": "이 날에는 기록된 전투가 없습니다.",
   "emptyYear": "{{year}}년에는 기록된 전투가 없습니다.",
   "emptyHistory": "아직 전투 기록이 없습니다. 캡처를 시작하고 전투하면 끝난 전투가 여기에 표시됩니다.",
-  "localOnly": "전투 기록은 이 PC에만 저장되며 암호화되지 않습니다.",
+  "localOnly": "전투 기록은 이 PC에만 저장되며, 이 파일은 암호화되어 있지 않습니다.",
   "loadFailed": "전투 기록을 읽을 수 없습니다.",
   "recovered": "이전 실행에서 끝나지 않은 전투 {{n}}회를 미완료로 표시했습니다.",
   "columns": {
@@ -83,6 +83,70 @@
     "open_failed": "전투 기록을 열 수 없습니다. 캡처는 평소대로 동작하지만 기록은 저장되지 않습니다.",
     "migration_failed": "전투 기록을 업그레이드할 수 없습니다. 백업을 남겼으며 기록은 저장되지 않습니다.",
     "no_history_file": "사용할 수 있는 전투 기록이 없습니다.",
-    "storage_stopped": "쓰기 오류가 반복되어 기록 저장을 중단했습니다. 캡처는 평소대로 동작합니다."
+    "storage_stopped": "쓰기 오류가 반복되어 기록 저장을 중단했습니다. 캡처는 평소대로 동작합니다.",
+    "key_missing": "기록 파일은 있지만 키 파일이 없습니다. 파일은 변경되지 않았고 기록도 저장되지 않습니다. 읽으려면 combat-history.key를 복원하세요.",
+    "key_unavailable": "Windows가 이 사용자의 기록 키를 풀지 못했습니다. 파일은 변경되지 않았고 기록도 저장되지 않습니다.",
+    "key_mismatch": "기록 키로 이 기록 파일을 열 수 없습니다. 파일은 변경되지 않았고 기록도 저장되지 않습니다.",
+    "encryption_migration_failed": "암호화되지 않은 기존 기록을 암호화하지 못했습니다. 파일은 그대로이며 기록도 저장되지 않습니다. WWlogs는 다음 실행 때 다시 시도합니다."
+  },
+  "localEncrypted": "전투 기록은 이 PC에만 저장되며, Windows가 사용자 계정별로 보호하는 키로 암호화됩니다.",
+  "indicator": {
+    "unknown": "기록 상태 확인 중",
+    "recording": "이 전투를 기록 중",
+    "waitingCombat": "기록 켜짐, 전투 대기 중",
+    "ready": "기록 켜짐",
+    "starting": "이 전투가 끝나면 기록 시작",
+    "disabled": "기록 꺼짐",
+    "readOnly": "기록 읽기 전용",
+    "writeFailed": "기록 저장 실패",
+    "unavailable": "기록을 사용할 수 없음",
+    "lost": "이번 캡처의 기록 항목 {{n}}개를 저장하지 못했습니다. 해당 전투는 불완전으로 표시됩니다."
+  },
+  "incompleteReason": {
+    "entries_lost": "이 기록의 일부를 저장하지 못해 저장된 값이 실제보다 낮을 수 있습니다.",
+    "application_exit": "이 전투가 끝나기 전에 WWlogs가 종료되었습니다.",
+    "recording_disabled": "이 전투 도중 기록이 꺼져서 끝까지 기록되지 않았습니다.",
+    "not_finished": "이 전투가 끝나기 전에 캡처가 종료되었습니다."
+  },
+  "checkpointNote": "아래 값은 {{time}}의 마지막 체크포인트입니다. 이 전투는 불완전하며 최종 결과가 아닙니다.",
+  "versionCorrected": "{{version}}(으)로 기록되었습니다(v0.7.0 개발 라인 빌드, {{commit}}). 기록을 업그레이드할 때 수정되었습니다.",
+  "coverage": {
+    "title": "이 기록에 포함된 내용",
+    "combat": "피해와 치유",
+    "combatStored": "확인된 모든 피해와 치유 결과",
+    "combatTotalsOnly": "전투 합계만",
+    "effects": "효과 수명 주기",
+    "effectsStored": "이 전투 동안 효과 {{instances}}개에서 총 {{changes}}회 변화",
+    "effectsNotStored": "저장되지 않음: 이 기록은 WWlogs가 효과 이벤트를 저장하기 전에 만들어졌습니다",
+    "skillCasts": "스킬 시전",
+    "skillCastsNotStored": "저장되지 않음: 스킬 시전에 대한 신뢰할 수 있는 출처가 없으며, 스킬 표는 피해 적중을 집계합니다",
+    "effectsDerived": "이 중 {{derived}}회의 종료는 다른 사실(보유자 퇴장 등)에서 추론한 것이고, {{untracked}}회는 추적 종료로 관측된 해제가 아닙니다.",
+    "effectsRejected": "이번 캡처에서 효과 {{n}}개를 추적하지 못해 저장되지 않았습니다."
+  },
+  "delete": {
+    "action": "이 전투 삭제",
+    "recording": "기록 중인 전투는 삭제할 수 없습니다.",
+    "confirmTitle": "삭제 확인",
+    "confirm": "이 전투와 저장된 모든 데이터를 삭제할까요? 되돌릴 수 없습니다. 데이터는 기록 파일에서 제거되지만 디스크의 안전한 삭제는 아닙니다.",
+    "confirmAction": "삭제",
+    "cancel": "취소",
+    "done": "이 전투를 기록에서 삭제했습니다.",
+    "failed": "삭제하지 못했습니다. 아무것도 변경되지 않았습니다.",
+    "refused": {
+      "encounter_recording": "이 전투는 아직 기록 중이라 지금은 삭제할 수 없습니다.",
+      "recording_active": "캡처가 기록에 저장하는 중입니다. 지우기 전에 캡처를 중지하세요.",
+      "not_writable": "이 창에서는 이 기록을 변경할 수 없습니다.",
+      "not_found": "이 전투는 더 이상 기록에 없습니다."
+    }
+  },
+  "clear": {
+    "done": "기록을 지웠습니다: 전투 {{n}}개를 삭제했습니다."
+  },
+  "migration": {
+    "insufficient_space": "디스크 여유 공간이 부족해 기존 기록을 암호화할 수 없습니다. 파일은 그대로입니다. 공간을 확보한 뒤 WWlogs를 다시 시작하세요.",
+    "file_in_use": "다른 프로그램이 기존 기록을 사용 중이라 암호화할 수 없습니다. 파일은 그대로입니다. 그 프로그램을 닫은 뒤 WWlogs를 다시 시작하세요.",
+    "verification_failed": "기존 기록의 암호화 사본이 원본과 일치하지 않아 폐기했습니다. 기록은 그대로입니다.",
+    "copy_failed": "기존 기록을 암호화 파일로 복사하지 못했습니다. 파일은 그대로입니다.",
+    "unreadable": "기존 기록을 읽을 수 없어 암호화하지 않았습니다. 파일은 그대로입니다."
   }
 }

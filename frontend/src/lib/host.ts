@@ -1,6 +1,6 @@
 import { Call } from "@wailsio/runtime"
 import type { CaptureEnvironment, NpcapDownload } from "./capture-environment"
-import type { HistoryDay, HistoryEncounterDetail, HistoryYear } from "./history"
+import type { HistoryChange, HistoryDay, HistoryEncounterDetail, HistoryYear } from "./history"
 import type { OverlayKind, OverlayState, OverlayStates, Snapshot } from "./snapshot"
 
 // Calls into the Go Bridge (internal/desktop.Bridge) by fully qualified name; no generated bindings are needed.
@@ -20,6 +20,8 @@ export interface Settings {
   reduceMotion?: boolean
   updateIntervalMs?: number
   autoStartCapture?: boolean
+  /** Combat History recording is on unless this is true. */
+  historyRecordingDisabled?: boolean
 }
 
 export interface SettingsState {
@@ -53,4 +55,9 @@ export const host = {
   historyYear: (year: number) => call<HistoryYear>("HistoryYear", year),
   historyDay: (date: string, offset: number) => call<HistoryDay>("HistoryDay", date, offset),
   historyEncounter: (id: number) => call<HistoryEncounterDetail>("HistoryEncounter", id),
+  /** Saves whether Combat History records and applies it to a running capture. */
+  setHistoryRecording: (enabled: boolean) => call<SettingsState>("SetHistoryRecording", enabled),
+  /** Deletes one stored encounter, or every one; the UI asks the user to confirm first. */
+  deleteHistoryEncounter: (id: number) => call<HistoryChange>("DeleteHistoryEncounter", id),
+  clearHistory: () => call<HistoryChange>("ClearHistory"),
 }

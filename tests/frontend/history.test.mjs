@@ -1,7 +1,7 @@
 import test from "node:test"
 import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
-import { clockText, dateOfDay, dayNumber, defaultDate, heatLevel, heatmapLayout, isLeapYear, offsetText, recordedClock, yearBounds } from "../../frontend/src/lib/history.ts"
+import { clockText, dateOfDay, dayNumber, defaultDate, heatLevel, heatmapLayout, indicatorText, isLeapYear, offsetText, recordedClock, yearBounds } from "../../frontend/src/lib/history.ts"
 import { timelineFromSnapshot } from "../../frontend/src/lib/timeline.ts"
 
 const cells = layout => layout.weeks.flat().filter(cell => cell !== null)
@@ -108,7 +108,48 @@ test("every history string exists in every bundled language and the namespace is
   const baseline = flatten(read(manifest.fallbackLocale)).sort()
   for (const locale of manifest.supportedLocales) assert.deepEqual(flatten(read(locale)).sort(), baseline, locale)
   // The view reads these keys; a missing one would show the raw key.
-  for (const key of ["unidentified", "notRecorded", "incomplete", "state.abandoned", "state.open", "integrity.UNRELIABLE", "outcome.INCOMPLETE", "unavailable.newer_schema", "localOnly"]) {
+  for (const key of ["unidentified", "notRecorded", "incomplete", "state.abandoned", "state.open", "integrity.UNRELIABLE", "outcome.INCOMPLETE", "unavailable.newer_schema", "localOnly",
+    "localEncrypted", "checkpointNote", "coverage.effectsNotStored", "coverage.skillCastsNotStored", "delete.confirm", "clear.done"]) {
     assert.ok(baseline.includes(key), key)
+  }
+  // Every indicator label and reason the mapping can name exists, and every incomplete reason the host stores.
+  const states = ["disabled", "waiting", "recording", "starting", "unavailable", "read_only", "write_failed"]
+  const reasons = ["newer_schema", "locked_by_other_process", "not_a_history_file", "integrity_check_failed", "open_failed", "migration_failed", "storage_stopped", "key_missing", "key_unavailable", "key_mismatch", "encryption_migration_failed"]
+  for (const state of states) for (const reason of reasons) for (const capturing of [false, true]) {
+    const text = indicatorText({ state, reason, enabled: true, capturing, encrypted: true })
+    assert.ok(baseline.includes(text.key), text.key)
+    if (text.detail) assert.ok(baseline.includes(text.detail), text.detail)
+  }
+  for (const failure of ["insufficient_space", "file_in_use", "verification_failed", "copy_failed", "unreadable"]) {
+    const text = indicatorText({ state: "unavailable", reason: "encryption_migration_failed", migrationFailure: failure, enabled: true, capturing: false, encrypted: false })
+    assert.ok(baseline.includes(text.detail), text.detail)
+  }
+  for (const reason of ["entries_lost", "application_exit", "recording_disabled", "not_finished"]) assert.ok(baseline.includes(`incompleteReason.${reason}`), reason)
+  for (const refusal of ["encounter_recording", "recording_active", "not_writable", "not_found"]) assert.ok(baseline.includes(`delete.refused.${refusal}`), refusal)
+})
+
+test("the indicator only maps the host state to text and tone", () => {
+  assert.deepEqual(indicatorText({ state: "recording", enabled: true, capturing: true, encrypted: true }), { key: "indicator.recording", tone: "good" })
+  assert.deepEqual(indicatorText({ state: "waiting", enabled: true, capturing: true, encrypted: true }), { key: "indicator.waitingCombat", tone: "neutral" })
+  assert.deepEqual(indicatorText({ state: "waiting", enabled: true, capturing: false, encrypted: true }), { key: "indicator.ready", tone: "neutral" })
+  assert.deepEqual(indicatorText({ state: "starting", enabled: true, capturing: true, encrypted: true }), { key: "indicator.starting", tone: "warn" })
+  assert.deepEqual(indicatorText({ state: "disabled", enabled: false, capturing: true, encrypted: true }), { key: "indicator.disabled", tone: "neutral" })
+  assert.deepEqual(indicatorText({ state: "unavailable", reason: "key_missing", enabled: true, capturing: false, encrypted: false }), { key: "indicator.unavailable", tone: "critical", detail: "unavailable.key_missing" })
+  assert.deepEqual(indicatorText({ state: "unavailable", reason: "encryption_migration_failed", migrationFailure: "insufficient_space", enabled: true, capturing: false, encrypted: false }),
+    { key: "indicator.unavailable", tone: "critical", detail: "migration.insufficient_space" })
+  assert.deepEqual(indicatorText({ state: "write_failed", reason: "storage_stopped", enabled: true, capturing: true, encrypted: true }), { key: "indicator.writeFailed", tone: "critical", detail: "unavailable.storage_stopped" })
+  assert.deepEqual(indicatorText(undefined), { key: "indicator.unknown", tone: "neutral" })
+})
+
+test("every Combat History settings string exists in every bundled language", () => {
+  const manifest = JSON.parse(readFileSync(new URL("../../frontend/locales/manifest.json", import.meta.url), "utf8"))
+  const read = locale => JSON.parse(readFileSync(new URL(`../../frontend/locales/${locale}/settings.json`, import.meta.url), "utf8"))
+  const flatten = (value, prefix = "") => Object.entries(value).flatMap(([key, entry]) => typeof entry === "string" ? [prefix + key] : flatten(entry, `${prefix}${key}.`))
+  const keys = locale => flatten(read(locale).historySettings).sort()
+  const baseline = keys(manifest.fallbackLocale)
+  assert.ok(baseline.includes("clearConfirm") && baseline.includes("encryptedHint") && baseline.includes("recordingHint"))
+  for (const locale of manifest.supportedLocales) {
+    assert.deepEqual(keys(locale), baseline, locale)
+    assert.ok(read(locale).pages.history, locale)
   }
 })

@@ -4,7 +4,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs"
 import { defaultTheme, resolveTheme, themeCharacters, themeIds } from "../../frontend/src/design/themes/registry.ts"
 import { flavors, motionVariables, springs } from "../../frontend/src/design/motion/tokens.ts"
 import { springPosition } from "../../frontend/src/design/motion/spring.ts"
-import { shellChanged, snapshotSupersedes } from "../../frontend/src/lib/snapshot.ts"
+import { shellChanged, snapshotSupersedes, withShell } from "../../frontend/src/lib/snapshot.ts"
 
 const themesCss = readFileSync("frontend/src/design/themes.css", "utf8")
 
@@ -126,6 +126,15 @@ test("a heartbeat updates listening and theme without moving core sequence rules
   assert.equal(shellChanged({ ...base, theme: "aero" }, base), true)
   assert.equal(shellChanged({ ...base, reduceMotion: true }, base), true)
   assert.equal(shellChanged({ ...base, listening: { ...base.listening, since: "t9" } }, base), false, "the timestamp alone causes no render")
+})
+
+test("a heartbeat carries a Combat History indicator change, such as switching recording off", () => {
+  const history = { state: "waiting", enabled: true, capturing: false, encrypted: true }
+  const base = { sequence: 5, localeRevision: 1, theme: "electro", reduceMotion: false, history }
+  assert.equal(shellChanged({ ...base, history: { ...history } }, base), false)
+  const off = { ...base, history: { ...history, state: "disabled", enabled: false } }
+  assert.equal(shellChanged(off, base), true)
+  assert.deepEqual(withShell(base, off).history, off.history)
 })
 
 test("translations name every listening state, reason and theme in every language", () => {
