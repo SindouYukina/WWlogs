@@ -25,6 +25,11 @@ import (
 // IEEE 1619) in 512-byte sectors, the cipher mode of disk encryption. Only the write-ahead log index (-shm) is not encrypted:
 // it holds page numbers and checksums, never content. The key is random and stored only sealed by a KeyProvider (keys.go).
 //
+// The VFS rewrites a sector that a write only partly covers, and write-ahead log frames do not line up with sectors, so a
+// reader on another connection or in another process could read a sector half rewritten and decrypt noise. Since
+// github.com/ncruces/go-sqlite3 v0.37.0 the VFS holds locks shared through the write-ahead log index around every partial
+// sector read and write, which keeps that from happening; the history must not use an earlier version of it.
+//
 // XTS hides the content from anyone without the key, including copies and backups of the file. It is deterministic and has
 // no authentication: comparing two copies shows which sectors changed, and a modified file is not detected as such (SQLite
 // may still report it as corrupt). Any process of the same Windows user can unseal a DPAPI key, so encryption at rest does
