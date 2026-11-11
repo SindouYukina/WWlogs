@@ -120,6 +120,7 @@ func (p *processor) observeSceneJoin(body []byte, at time.Time) {
 	p.scenePlayerIDs = ids
 	if p.damageStatistics != nil {
 		p.damageStatistics.observeSceneTransition(at)
+		p.damageStatistics.observeScene(p.entities.sceneInstanceID, p.entities.hasSceneInstanceID)
 		p.flushEncounterTransitions()
 	}
 }

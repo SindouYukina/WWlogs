@@ -95,7 +95,16 @@ type CombatEventRecord struct {
 	// a healing result whose ChangeLife lowered HP; it applies nothing.
 	AppliedHealing      int64 `json:"appliedHealing,omitempty"`
 	HealingInconsistent bool  `json:"healingInconsistent,omitempty"`
+	// SourceActor and TargetActor are the static identity evidence of each endpoint at event time (history_journal.go).
+	// They only group enemy instances for Combat History and never change a statistic.
+	SourceActor *CombatActorType `json:"-"`
+	TargetActor *CombatActorType `json:"-"`
+	// historySequence numbers the record in the Combat History journal once the statistics accepted it; zero otherwise.
+	historySequence uint64
 }
+
+// HistorySequence is the record's place in its capture session's Combat History journal; zero when it was not journaled.
+func (r CombatEventRecord) HistorySequence() uint64 { return r.historySequence }
 
 func (r playerRelation) String() string {
 	switch r {

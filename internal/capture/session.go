@@ -33,6 +33,9 @@ type SessionConfig struct {
 	PublishInterval time.Duration
 	// Diagnostics writes the Development diagnostic PCAP for a live session. Public builds reject it.
 	Diagnostics bool
+	// History receives the session's Combat History journal (history_journal.go); nil keeps no history. It never affects
+	// packet handling, statistics or snapshots.
+	History HistorySink
 }
 
 // Session defaults and bounds.
@@ -72,6 +75,8 @@ type SessionResult struct {
 	UDPPackets int    `json:"udpPackets"`
 	// DiagnosticsSummary is the Development diagnostic outcome (PCAP integrity state); empty otherwise.
 	DiagnosticsSummary string `json:"diagnosticsSummary,omitempty"`
+	// HistoryIncomplete reports that the session's Combat History could not be stored completely before the capture ended.
+	HistoryIncomplete bool `json:"historyIncomplete,omitempty"`
 }
 
 // MasterData is a loaded, read-only Master database shared by sessions.
@@ -108,6 +113,14 @@ func (m *MasterData) DisplayResolver() *DisplayResolver {
 		return nil
 	}
 	return m.display
+}
+
+// SHA256 is the SHA-256 of the loaded Master database bytes.
+func (m *MasterData) SHA256() string {
+	if m == nil || m.masters == nil {
+		return ""
+	}
+	return m.masters.manifest.SourceHash
 }
 
 // Close releases the read-only Master database shared by this data set and its display resolver.
@@ -205,6 +218,9 @@ func OpenSession(cfg SessionConfig, masters *MasterData) (*Session, error) {
 	p.intervalPerProtocolSession = true
 	p.observeCaptureSource(live)
 	session.diagnostics.attach(p)
+	if cfg.History != nil {
+		p.damageStatistics.EnableHistory(cfg.History.Level())
+	}
 	session.processor = p
 	session.info.CaptureSessionID = p.damageStatistics.Snapshot().CaptureSessionID
 	return session, nil
@@ -256,6 +272,15 @@ func (s *Session) Run(ctx context.Context, publish func(ViewSnapshot)) (result S
 		handle.Close()
 	}()
 
+	// handOffHistory passes what the engine journaled to the history sink. The sink only queues, so this never waits.
+	handOffHistory := func() {
+		if s.cfg.History == nil {
+			return
+		}
+		if entries, dropped := p.damageStatistics.TakeHistory(); len(entries) > 0 || dropped > 0 {
+			s.cfg.History.Submit(entries, dropped)
+		}
+	}
 	lastPublish := time.Time{}
 	var viewClock liveViewClock
 	maybePublish := func(now time.Time) {
@@ -330,6 +355,7 @@ loop:
 		stats.udpPackets++
 		direction := packetDirection(packet, s.cfg.LocalIPv4, udp, s.cfg.MinPort, s.cfg.MaxPort)
 		consumeDatagram(udp.Payload, direction, capturedAt, streams, p, &stats)
+		handOffHistory()
 		if live {
 			viewClock.observeFrame(p.currentFrameTime, receivedAt)
 			p.observePacketTiming(capturedAt, receivedAt, time.Now())
@@ -342,6 +368,7 @@ loop:
 	finishTransport(streams, p, &stats)
 	p.sampleCaptureStats(handle, time.Now(), true)
 	p.finishCapture()
+	handOffHistory()
 	if publish != nil {
 		p.viewClockLead, p.viewClockStalled = 0, false
 		final := p.viewSnapshot()

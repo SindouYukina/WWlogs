@@ -395,6 +395,7 @@ func (p *processor) writeDamageEvent(event combatEvent) bool {
 	sourceRelation, targetRelation, visible := p.playerRelevantDamageEvent(event)
 	if record, ok := normalizeCombatEvent(event, sourceRelation, targetRelation); ok && p.damageStatistics != nil {
 		record = p.gateAttribution(record)
+		record.SourceActor, record.TargetActor = combatActorTypeOf(event.Source), combatActorTypeOf(event.Target)
 		switch record.Flow {
 		case CombatFlowLocalOutgoing:
 			record.SourceRole = p.localRoleForEntity(event.SourceEntityID, event.Source)

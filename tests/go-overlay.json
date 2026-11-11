@@ -310,6 +310,8 @@
     "tests/capture/effect_display_audit_dev_test.go": "",
     "internal/capture/central_effect_display_audit_dev_test.go": "tests/capture/effect_display_audit_dev_test.go",
     "tests/desktop/language_preference_test.go": "",
-    "internal/desktop/central_language_preference_test.go": "tests/desktop/language_preference_test.go"
+    "internal/desktop/central_language_preference_test.go": "tests/desktop/language_preference_test.go",
+    "tests/capture/history_journal_test.go": "",
+    "internal/capture/central_history_journal_test.go": "tests/capture/history_journal_test.go"
   }
 }

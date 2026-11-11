@@ -188,6 +188,11 @@ type encounterRecord struct {
 	integrity       encounterIntegrityState
 	roles           roleAggregate
 	timeline        *encounterTimeline
+	// enemies, scene and historyActive are kept for Combat History only (history_journal.go); enemies is filled only while
+	// the journal is on.
+	enemies       enemyAggregate
+	scene         SceneContext
+	historyActive bool
 }
 
 // encounterTracker owns the encounter lifecycle of one statistics interval. It is driven only by capture-observed
@@ -237,6 +242,12 @@ type encounterTracker struct {
 	// healingDropped counts results evicted at the bound (healing.go).
 	healing        []healingEvent
 	healingDropped uint64
+	// history is the owning DamageStatistics' Combat History journal; nil records nothing. completedHistory is aligned with
+	// completed and holds the integrity last journaled for each finished encounter.
+	history          *historyJournal
+	completedHistory []DataIntegrity
+	// scene is the scene of the current protocol session, as the last JoinSceneNotify reported it.
+	scene SceneContext
 }
 
 func newEncounterTracker(captureSessionID, intervalID uint64) *encounterTracker {
@@ -264,6 +275,7 @@ func (t *encounterTracker) nextInterval(intervalID uint64) *encounterTracker {
 		next.openGaps[key] = since
 	}
 	next.battleStateUnverified = t.battleStateUnverified
+	next.history, next.scene = t.history, t.scene
 	return next
 }
 
@@ -415,6 +427,15 @@ func (t *encounterTracker) addToCurrent(record CombatEventRecord) {
 	if record.ContextDowngrade != "" {
 		t.current.integrity.contextDowngraded++
 	}
+	if t.history.on() {
+		t.current.enemies.add(record)
+		key := historyKey(t.intervalID, t.current.sequence)
+		t.history.assign(record.historySequence, key)
+		if isConfirmedActivity(record.Flow) && !t.current.historyActive {
+			t.current.historyActive = true
+			t.history.add(HistoryEntry{Kind: HistoryEncounterActive, Encounter: key})
+		}
+	}
 	if !isConfirmedActivity(record.Flow) {
 		return
 	}
@@ -430,8 +451,11 @@ func (t *encounterTracker) open(at time.Time, protocolSession int, basis string,
 	t.nextSequence++
 	t.current = &encounterRecord{
 		sequence: t.nextSequence, protocolSession: protocolSession, state: EncounterActive,
-		startAt: at, startBasis: basis, startConfirmed: confirmed, timeline: newEncounterTimeline(at),
+		startAt: at, startBasis: basis, startConfirmed: confirmed, timeline: newEncounterTimeline(at), scene: t.scene,
 	}
+	t.history.add(HistoryEntry{Kind: HistoryEncounterOpened, Encounter: historyKey(t.intervalID, t.nextSequence), Opened: &HistoryEncounterOpening{
+		ProtocolSession: protocolSession, StatisticsInterval: t.intervalID, Sequence: t.nextSequence, StartedAt: at, StartBasis: basis, Scene: t.scene,
+	}})
 	if basis == encounterStartBattleState {
 		t.current.battleEntered = at
 	} else if t.battleStateUnverified {
@@ -520,6 +544,16 @@ func (t *encounterTracker) observeSceneTransition(at time.Time) {
 func (t *encounterTracker) observeSessionChange(at time.Time) {
 	t.observeTime(at)
 	t.interrupt(at, encounterEndSessionChange)
+	// A new protocol session has not joined a scene yet.
+	t.scene = SceneContext{}
+}
+
+// observeScene records the scene a JoinSceneNotify reported; encounters opened from now on belong to it.
+func (t *encounterTracker) observeScene(instanceID uint64, known bool) {
+	t.scene = SceneContext{InstanceID: instanceID, Known: known && instanceID != 0}
+	if !t.scene.Known {
+		t.scene.InstanceID = 0
+	}
 }
 
 func (t *encounterTracker) interrupt(at time.Time, basis string) {
@@ -585,11 +619,13 @@ func (t *encounterTracker) finish(decidedAt time.Time, interruptBasis string) {
 	}
 	// Healing at or before this end can no longer join a later encounter.
 	defer t.pruneHealing(record)
+	key := historyKey(t.intervalID, record.sequence)
 	if !record.totals.confirmedActivity() {
 		// Unattributed events seen during an empty battle interval stay counted, outside any encounter.
 		t.outside.merge(record.totals)
 		t.discardedEmpty++
 		t.emit("discarded", record, decidedAt, record.endBasis, nil)
+		t.history.add(HistoryEntry{Kind: HistoryEncounterDiscarded, Encounter: key})
 		return
 	}
 	snapshot := t.snapshotOf(record, outcome, time.Time{})
@@ -602,6 +638,7 @@ func (t *encounterTracker) finish(decidedAt time.Time, interruptBasis string) {
 		t.completed = t.completed[1:]
 		t.completedIntegrity = t.completedIntegrity[1:]
 		t.completedTimelines = t.completedTimelines[1:]
+		t.completedHistory = t.completedHistory[1:]
 		t.completedDropped++
 	}
 	t.completed = append(t.completed, base)
@@ -609,6 +646,13 @@ func (t *encounterTracker) finish(decidedAt time.Time, interruptBasis string) {
 	t.completedTimelines = append(t.completedTimelines, completedTimeline{
 		encounterID: t.encounterID(record.sequence), timeline: record.timeline, start: record.startAt, end: record.endAt,
 	})
+	t.completedHistory = append(t.completedHistory, cloneIntegrity(snapshot.Integrity))
+	if t.history.on() {
+		t.journalHealingMembers(record, key)
+		t.history.add(HistoryEntry{Kind: HistoryEncounterFinished, Encounter: key, Finished: &HistoryEncounter{
+			Snapshot: base, Timeline: record.timeline.store(), Enemies: record.enemies.snapshot(), EnemiesOverflow: record.enemies.overflow, Scene: record.scene,
+		}})
+	}
 	detail := snapshot
 	t.emit("finished", record, decidedAt, record.endBasis, &detail)
 }
@@ -732,13 +776,26 @@ func (t *encounterTracker) renderCompleted() []EncounterSnapshot {
 	}
 	rendered := make([]EncounterSnapshot, len(t.completed))
 	for i, base := range t.completed {
-		rendered[i] = base
-		rendered[i].Integrity = t.integrityFrom(t.completedIntegrity[i])
-		rendered[i].EncounterDPS = applyIntegrityToDPS(base.EncounterDPS, rendered[i].Integrity)
-		rendered[i].PeakDPS = applyIntegrityToDPS(base.PeakDPS, rendered[i].Integrity)
-		rendered[i].Healing = applyIntegrityToHealing(base.Healing, rendered[i].Integrity)
+		rendered[i] = ApplyEncounterIntegrity(base, t.integrityFrom(t.completedIntegrity[i]))
 	}
 	return rendered
+}
+
+// journalCompletedIntegrity journals every finished encounter whose integrity a transport report changed since it was last
+// journaled: a loss detected late marks an encounter, a recovery releases one, a failure or an evicted loss record raises it.
+func (t *encounterTracker) journalCompletedIntegrity() {
+	if !t.history.on() || len(t.completedHistory) != len(t.completed) {
+		return
+	}
+	for i := range t.completed {
+		current := t.integrityFrom(t.completedIntegrity[i])
+		if integrityEqual(current, t.completedHistory[i]) {
+			continue
+		}
+		t.completedHistory[i] = cloneIntegrity(current)
+		changed := cloneIntegrity(current)
+		t.history.add(HistoryEntry{Kind: HistoryEncounterIntegrity, Encounter: historyKey(t.intervalID, t.completed[i].Sequence), Integrity: &changed})
+	}
 }
 
 // headlineDPS is the Encounter DPS shown at the top level: the open encounter's live value, otherwise the most
@@ -790,6 +847,16 @@ func (s *DamageStatistics) observeSceneTransition(at time.Time) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.encounters.observeSceneTransition(at)
+}
+
+// observeScene records the scene a JoinSceneNotify reported, for the encounters that open in it.
+func (s *DamageStatistics) observeScene(instanceID uint64, known bool) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.encounters.observeScene(instanceID, known)
 }
 
 func (s *DamageStatistics) observeSessionChange(at time.Time) {

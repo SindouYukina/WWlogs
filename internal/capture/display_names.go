@@ -52,11 +52,17 @@ func (r *DisplayResolver) Close() error { return r.db.Close() }
 //
 // "skill" is the UI skill-tree namespace (Skill.Id). "combat_skill" is the runtime namespace of DamageContext.SkillId,
 // whose official names are SkillDescription rows; the two ID spaces are different and must not be mixed. "echo" is
-// PhantomItem.Id; a skill row reaches "skill" or "echo" only through the derived sources of skill_names.go.
+// PhantomItem.Id; a skill row reaches "skill" or "echo" only through the derived sources of skill_names.go. "instance" is
+// InstanceDungeon.Id, the namespace of JoinSceneNotify.SceneInfo.InstanceId; "template" is TemplateConfig.Id.
 func (r *DisplayResolver) Resolve(ctx context.Context, kind string, id uint64, locale string) (DisplayName, error) {
-	tables := map[string]string{"role": "roleinfo_locale", "skill": "skill_locale", "combat_skill": "skilldescription_locale", "echo": "phantomitem_locale", "monster": "monsterinfo_locale", "term": "term_locale"}
-	table, ok := tables[kind]
-	if !ok {
+	tables := map[string]string{"role": "roleinfo_locale", "skill": "skill_locale", "combat_skill": "skilldescription_locale", "echo": "phantomitem_locale", "monster": "monsterinfo_locale", "term": "term_locale", "instance": "instancedungeon_locale"}
+	query := ""
+	if table, ok := tables[kind]; ok {
+		query = "SELECT name FROM " + table + " WHERE id=? AND locale=?"
+	} else if kind == "template" {
+		// A template's name is the locale row of its own TidName key, as the engine reads template candidates.
+		query = "SELECT l.name FROM templateconfig t JOIN templateconfig_locale l ON l.id=t.id AND l.name_text_key=t.tid_name WHERE t.id=? AND l.locale=?"
+	} else {
 		return DisplayName{}, errors.New("unsupported Master name kind")
 	}
 	key := kind + ":" + strconv.FormatUint(id, 10) + ":" + locale
@@ -68,7 +74,7 @@ func (r *DisplayResolver) Resolve(ctx context.Context, kind string, id uint64, l
 	result := DisplayName{Status: "UNKNOWN"}
 	for _, candidate := range []string{locale, "en-US"} {
 		var name string
-		err := r.db.QueryRowContext(ctx, "SELECT name FROM "+table+" WHERE id=? AND locale=?", strconv.FormatUint(id, 10), candidate).Scan(&name)
+		err := r.db.QueryRowContext(ctx, query, strconv.FormatUint(id, 10), candidate).Scan(&name)
 		if err != nil && err != sql.ErrNoRows {
 			return result, errors.New("Master display names could not be read")
 		}

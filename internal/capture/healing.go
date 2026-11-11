@@ -67,12 +67,14 @@ type healingEvent struct {
 	reported     int64
 	healer       *CombatRole
 	inconsistent bool
+	// sequence is the result's Combat History journal number (history_journal.go); zero when the journal is off.
+	sequence uint64
 }
 
 func healingEventOf(record CombatEventRecord) healingEvent {
 	return healingEvent{
 		session: record.Key.ProtocolSession, at: record.ObservedAt, applied: record.AppliedHealing, reported: record.Amount,
-		healer: record.SourceRole, inconsistent: record.HealingInconsistent,
+		healer: record.SourceRole, inconsistent: record.HealingInconsistent, sequence: record.historySequence,
 	}
 }
 
@@ -164,6 +166,20 @@ func (t *encounterTracker) encounterHealing(record *encounterRecord, end time.Ti
 		result.Status, result.Reason = DPSStatusLowerBound, "healing_capacity_exceeded"
 	}
 	return result
+}
+
+// journalHealingMembers journals, at the event level, the healing results a finishing encounter includes: the same results
+// encounterHealing sums at its end.
+func (t *encounterTracker) journalHealingMembers(record *encounterRecord, key string) {
+	if !t.history.events() {
+		return
+	}
+	for _, event := range t.healing {
+		if event.session != record.protocolSession || event.at.Before(record.startAt) || event.at.After(record.endAt) {
+			continue
+		}
+		t.history.assign(event.sequence, key)
+	}
 }
 
 // pruneHealing forgets healing results no later encounter can include: those of older protocol sessions, and those of
