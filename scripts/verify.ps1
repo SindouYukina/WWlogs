@@ -191,12 +191,18 @@ try {
                         $trackedMaster = Join-Path $repoRoot 'data/master_data.db'
                         $masterSize = (Get-Item -LiteralPath $trackedMaster).Length
                         $masterHash = (Get-FileHash -LiteralPath $trackedMaster -Algorithm SHA256).Hash
+                        # The SQLite libraries in the executable carry the "SQLite format 3" magic string too, so the copy
+                        # is located by the tracked file's own 100-byte database header and every candidate is hashed.
+                        $masterHead = [Text.Encoding]::GetEncoding(28591).GetString([byte[]](Get-Content -LiteralPath $trackedMaster -AsByteStream -TotalCount 100))
                         $embeddedHash = {
                             param([string]$latin)
-                            $start = $latin.IndexOf("SQLite format 3$([char]0)", [StringComparison]::Ordinal)
-                            if ($start -lt 0 -or $start + $masterSize -gt $latin.Length) { return '' }
-                            $bytes = [Text.Encoding]::GetEncoding(28591).GetBytes($latin.Substring($start, $masterSize))
-                            return [BitConverter]::ToString([Security.Cryptography.SHA256]::HashData($bytes)).Replace('-', '')
+                            $found = ''
+                            for ($start = $latin.IndexOf($masterHead, [StringComparison]::Ordinal); $start -ge 0 -and $start + $masterSize -le $latin.Length; $start = $latin.IndexOf($masterHead, $start + 1, [StringComparison]::Ordinal)) {
+                                $bytes = [Text.Encoding]::GetEncoding(28591).GetBytes($latin.Substring($start, $masterSize))
+                                $found = [BitConverter]::ToString([Security.Cryptography.SHA256]::HashData($bytes)).Replace('-', '')
+                                if ($found -eq $masterHash) { break }
+                            }
+                            return $found
                         }
                         $publicMaster = & $embeddedHash $desktopLatin
                         $developmentMaster = if ($desktopDevelopment.Code -eq 0) { & $embeddedHash $developmentLatin } else { '' }
@@ -204,8 +210,13 @@ try {
                             $run = Invoke-Go (@('test', '-count=1', '-v', "-overlay=$overlay") + $profile.Tags + @('-run', '^TestMasterLookupDigest$', './internal/capture'))
                             if ($run.Output -match 'master lookup digest: ([0-9a-f]{64})') { $Matches[1] } else { "missing-$($profile.Name)" }
                         }
-                        $masterOk = $publicMaster -eq $masterHash -and $developmentMaster -eq $masterHash -and $digests[0] -eq $digests[1] -and $digests[0] -notlike 'missing-*'
-                        Set-Result 'master: embedded bytes + profile lookup parity' $(if ($masterOk) { 'PASS' } else { 'FAIL' }) "SHA-256 $($masterHash.Substring(0, 16)); lookup digest $($digests[0].Substring(0, 16))"
+                        $masterProblems = @(
+                            if ($publicMaster -ne $masterHash) { 'no Public copy' }
+                            if ($developmentMaster -ne $masterHash) { 'no Development copy' }
+                            if ($digests[0] -ne $digests[1] -or $digests[0] -like 'missing-*') { "lookup digests $($digests -join ' / ')" }
+                        )
+                        $digestText = if ($digests[0].Length -gt 16) { $digests[0].Substring(0, 16) } else { $digests[0] }
+                        Set-Result 'master: embedded bytes + profile lookup parity' $(if ($masterProblems.Count -eq 0) { 'PASS' } else { 'FAIL' }) "SHA-256 $($masterHash.Substring(0, 16)); lookup digest $digestText$(if ($masterProblems.Count) { '; ' + ($masterProblems -join '; ') })"
                     }
                 }
 
