@@ -1,5 +1,6 @@
 // Public surface of the WWlogs design system. Desktop, Combat Overlay and Effects Overlay all use these same modules.
 export { installMotionTokens, durations, easings, springs } from "./motion/tokens.ts"
+export { useEntrance } from "./motion/useEntrance.ts"
 export { gameAssetUrl, type GameAssetKind } from "./assets"
 export { applyAppearance } from "./appearance"
 export { defaultTheme, resolveTheme, themeCharacters, themeIds, type ThemeId } from "./themes/registry.ts"

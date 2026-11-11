@@ -69,6 +69,14 @@ export const presenceExitMs = durations.moderate
 
 export const staggerMs = 45
 
+/**
+ * The entrance of damage bars when an encounter's history opens: each bar grows from zero to its share, left to right, with
+ * a decelerating ease-out cubic and no overshoot, row after row. Like data springs it is not themed, so every theme reads a
+ * bar's growth the same way; reduced motion makes it instant. Rows past maxSteps start with the last step, so a long skill
+ * list still finishes within durationMs + maxSteps × staggerMs.
+ */
+export const barEntrance = { durationMs: 650, staggerMs: 50, maxSteps: 10, easing: "cubic-bezier(0.33, 1, 0.68, 1)" } as const
+
 export type MotionPreference = "full" | "reduced"
 
 export interface InstallOptions {
@@ -93,6 +101,9 @@ export function motionVariables({ scale = 1, preference = "full", flavor = "elec
     variables[`--ww-spring-${name}-dur`] = time(curve.durationMs)
   }
   variables["--ww-stagger"] = time(staggerMs)
+  variables["--ww-bar-enter-dur"] = time(barEntrance.durationMs)
+  variables["--ww-bar-enter-stagger"] = time(barEntrance.staggerMs)
+  variables["--ww-ease-bar-enter"] = barEntrance.easing
   return variables
 }
 

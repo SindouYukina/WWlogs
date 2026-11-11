@@ -34,14 +34,15 @@ export const StatCard = memo(function StatCard({ icon, label, value, format, not
   </Reveal>
 })
 
-export function RoleBoard({ rows, selected, onSelect, scope, stale, numberMode }: { rows: readonly CombatRowModel[]; selected: string; onSelect: (key: string) => void; scope: string; stale: boolean; numberMode: "tween" | "roll" }) {
+/** The ranking. With enter, each bar grows in once when its row mounts, in rank order (History opens an encounter this way). */
+export function RoleBoard({ rows, selected, onSelect, scope, stale, numberMode, enter = false }: { rows: readonly CombatRowModel[]; selected: string; onSelect: (key: string) => void; scope: string; stale: boolean; numberMode: "tween" | "roll"; enter?: boolean }) {
   const format = useFormatters()
   const nameOf = useRowNames()
   return <StackList items={rows} keyOf={row => row.key} rowHeight={58} gap={6} renderItem={row => <div className="ww-dash-role" data-key={row.key} data-rank={row.rank} data-field={row.kind === "vehicle" ? "vehicle" : undefined} data-selected={row.key === selected} data-element={row.elementId} role="button" tabIndex={0} onClick={() => onSelect(row.key)} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") onSelect(row.key) }}>
     <CharacterAvatar roleId={row.roleId} elementId={row.elementId} size={42} fallback={row.kind === "vehicle" ? <Icon name="bolt" size={18} /> : "?"} />
     <div className="ww-dash-role-main">
       <div className="ww-dash-role-line"><strong className="ww-truncate">{nameOf(row)}</strong><span className="ww-num ww-dash-role-dps"><AnimatedNumber value={row.dps} format={format.integer} mode={numberMode} scope={scope} stale={stale} /></span></div>
-      <DamageBar share={row.share} scope={scope} />
+      <DamageBar share={row.share} scope={scope} enter={enter ? row.rank : undefined} />
       <div className="ww-dash-role-line ww-dash-role-sub"><span className="ww-num"><AnimatedNumber value={row.damage} format={format.integer} mode="tween" scope={scope} stale={stale} /></span><span className="ww-num">{row.share === undefined ? "—" : format.percent(row.share)}</span></div>
     </div>
   </div>} />
@@ -51,7 +52,7 @@ const derivedNoteKey = { damage_list: "derivedSkillNote", skill_type: "derivedSk
 const derivedUnassignedNoteKey = { echo: "derivedUnassignedEchoNote", damage_list: "derivedUnassignedSkillNote", damage_type: "derivedUnassignedOutroNote" } as const
 
 /** The engine's skill split of one contributor. Rows plus the unassigned row add up to the contributor's damage. */
-export const SkillTable = memo(function SkillTable({ breakdown, color }: { breakdown: SkillBreakdown; color: string }) {
+export const SkillTable = memo(function SkillTable({ breakdown, color, enter = false }: { breakdown: SkillBreakdown; color: string; enter?: boolean }) {
   const { t } = useTranslation("dashboard")
   const format = useFormatters()
   const share = (value: number | undefined) => value === undefined ? "—" : format.percent(value)
@@ -59,17 +60,17 @@ export const SkillTable = memo(function SkillTable({ breakdown, color }: { break
   if (rows.length === 0 && !unassigned) return <p className="ww-dash-empty-note">{t("noSkillRows")}</p>
   return <div className="ww-dash-skills-wrap"><table className="ww-dash-skills" data-field="skills" style={{ "--ww-series": color } as React.CSSProperties}>
     <thead><tr><th>{t("skill")}</th><th>{t("damageColumn")}</th><th>{t("damageEvents")}</th><th>{t("shareColumn")}</th></tr></thead>
-    <tbody>{rows.map(row => <tr key={row.skillId} data-skill-id={row.skillId} data-named={row.name !== undefined} data-name-source={row.derived}>
+    <tbody>{rows.map((row, index) => <tr key={row.skillId} data-skill-id={row.skillId} data-named={row.name !== undefined} data-name-source={row.derived}>
       <td><span className="ww-dash-skill-name" title={row.showId ? `SkillId ${row.skillId}` : undefined}><GameAssetImage kind={row.iconKind ?? "skill"} id={row.iconId ?? row.skillId} /><span className="ww-truncate">{row.name ?? t("unnamedSkill")}</span>{row.derived && <span className="ww-dash-skill-derived" data-field="derived-name" title={t(derivedNoteKey[row.derived])} aria-label={t(derivedNoteKey[row.derived])}>≈</span>}{row.showId && <span className="ww-dash-skill-id ww-num ww-selectable" data-field="skill-id">{row.skillId}</span>}</span></td>
       <td className="ww-num"><AnimatedNumber value={row.damage} format={format.integer} /></td>
       <td className="ww-num">{format.integer(row.events)}</td>
-      <td><div className="ww-dash-skill-share"><DamageBar share={row.share} /><span className="ww-num">{share(row.share)}</span></div></td>
+      <td><div className="ww-dash-skill-share"><DamageBar share={row.share} enter={enter ? index : undefined} /><span className="ww-num">{share(row.share)}</span></div></td>
     </tr>)}
     {unassigned && <tr className="ww-dash-skill-unassigned" data-field="unassigned-skill" data-named={unassigned.name !== undefined} data-name-source={unassigned.derived}>
       <td><span className="ww-dash-skill-name" title={unassigned.derived ? t(derivedUnassignedNoteKey[unassigned.derived]) : t("unassignedSkillNote")}>{unassigned.iconKind !== undefined && unassigned.iconId !== undefined && <GameAssetImage kind={unassigned.iconKind} id={unassigned.iconId} />}<span className="ww-truncate" data-field="unassigned-name">{unassigned.name ?? t("unassignedSkill")}</span>{unassigned.derived && <span className="ww-dash-skill-derived" data-field="derived-name" title={t(derivedUnassignedNoteKey[unassigned.derived])} aria-label={t(derivedUnassignedNoteKey[unassigned.derived])}>≈</span>}{unassigned.derived && <span className="ww-dash-skill-noid" data-field="no-skill-id">{t("noSkillIdTag")}</span>}</span></td>
       <td className="ww-num"><AnimatedNumber value={unassigned.damage} format={format.integer} /></td>
       <td className="ww-num">{format.integer(unassigned.events)}</td>
-      <td><div className="ww-dash-skill-share"><DamageBar share={unassigned.share} /><span className="ww-num">{share(unassigned.share)}</span></div></td>
+      <td><div className="ww-dash-skill-share"><DamageBar share={unassigned.share} enter={enter ? rows.length : undefined} /><span className="ww-num">{share(unassigned.share)}</span></div></td>
     </tr>}</tbody>
   </table></div>
 })

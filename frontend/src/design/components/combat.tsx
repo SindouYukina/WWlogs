@@ -1,5 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react"
 import { gameAssetUrl, type GameAssetKind } from "../assets"
+import { barEntrance, motionReduced } from "../motion/tokens.ts"
 import { useGameAsset } from "../useGameAsset"
 import { AnimatedNumber } from "./AnimatedNumber"
 import { Icon } from "./Icon"
@@ -13,18 +14,40 @@ export interface DamageBarProps {
   fill?: "track" | "row"
   /** A new scope snaps instead of animating from the previous encounter's share. */
   scope?: string
+  /**
+   * The bar's place in a list that plays the entrance: the bar grows from zero once, when it mounts, after this many stagger
+   * steps (at most barEntrance.maxSteps). Only its value at mount counts, and the entrance plays to its end; later value
+   * changes animate from the current length as usual. Without it, or under reduced motion, a bar appears at its value.
+   */
+  enter?: number
 }
 
 /** About one pixel on the widest bars. Smaller changes keep the bar settled, so a steady fight draws no bar frames. */
 const shareQuantum = 1 / 480
 
 /** Three transform-only layers: a fast fill, a slower trail that shows recent change, and a bright leading edge. */
-export const DamageBar = memo(function DamageBar({ share, fill = "track", scope = "" }: DamageBarProps) {
+export const DamageBar = memo(function DamageBar({ share, fill = "track", scope = "", enter }: DamageBarProps) {
   const previousScope = useRef(scope)
   const snap = previousScope.current !== scope
   useEffect(() => { previousScope.current = scope })
+  // Decided once, at mount: a list that stops offering the entrance afterwards never cuts a growing bar short, and a bar that
+  // stays mounted never grows in again. The attribute goes when the animation ends or is cancelled by reduced motion.
+  const [entrance, setEntrance] = useState(() => enter === undefined || motionReduced() ? undefined : Math.min(Math.max(0, enter), barEntrance.maxSteps))
+  const bar = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const element = bar.current
+    if (entrance === undefined || !element) return
+    const done = (event: AnimationEvent) => { if (event.animationName === "ww-bar-grow") setEntrance(undefined) }
+    element.addEventListener("animationend", done)
+    element.addEventListener("animationcancel", done)
+    return () => {
+      element.removeEventListener("animationend", done)
+      element.removeEventListener("animationcancel", done)
+    }
+  }, [entrance])
   const value = share === undefined || !Number.isFinite(share) ? 0 : Math.round(Math.min(1, Math.max(0, share)) / shareQuantum) * shareQuantum
-  return <div className="ww-bar" aria-hidden="true" data-fill={fill} data-unknown={share === undefined} data-snap={snap} style={{ "--ww-share": value } as CSSProperties}>
+  const style = entrance === undefined ? { "--ww-share": value } : { "--ww-share": value, "--ww-bar-index": entrance }
+  return <div ref={bar} className="ww-bar" aria-hidden="true" data-fill={fill} data-unknown={share === undefined} data-snap={snap} data-enter={entrance !== undefined || undefined} style={style as CSSProperties}>
     <div className="ww-bar-trail" /><div className="ww-bar-fill" /><div className="ww-bar-edge" />
   </div>
 })

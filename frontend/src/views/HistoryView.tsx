@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from "react"
 import { useTranslation } from "react-i18next"
-import { ActivityHeatmap, Button, Card, Chip, ContentSwitch, Icon, LiveChart, Reveal, ThemeBackdrop, type HeatmapDay, type ThemeId } from "@/design"
+import { ActivityHeatmap, Button, Card, Chip, ContentSwitch, Icon, LiveChart, Reveal, ThemeBackdrop, useEntrance, type HeatmapDay, type ThemeId } from "@/design"
 import { usableDps } from "@/lib/combat-data"
 import { combatRows, detailRow, skillBreakdowns } from "@/lib/combat-view"
 import { useFormatters, useRowNames, elementColor } from "@/lib/format"
@@ -216,6 +216,8 @@ function EncounterDetail({ detail, backLabel, onBack, onDeleted }: { detail: His
   const rows = useMemo(() => encounter ? combatRows(encounter) : [], [encounter])
   const [manual, pick] = useDetailPick(scope)
   const selected = detailRow(rows, scope, manual).row
+  // The checkpoint's bars grow in once, when the encounter opens; another role's skills then appear at their value.
+  const entering = useEntrance(summary.id, true)
   const breakdowns = useMemo(() => encounter ? skillBreakdowns(encounter) : new Map(), [encounter])
   const timeline = useMemo(() => timelineFromSnapshot(detail.timeline, encounter?.encounterId), [detail.timeline, encounter])
   const series = useMemo(() => chartSeries(timeline, rows, { team: d("teamDps"), unassigned: c("unassigned") }, nameOf), [timeline, rows, nameOf, i18n.language])
@@ -274,7 +276,7 @@ function EncounterDetail({ detail, backLabel, onBack, onDeleted }: { detail: His
       <div className="ww-history-main">
         <Card className="ww-dash-board">
           <div className="ww-dash-card-head"><h3>{d("ranking")}</h3></div>
-          <div data-field="roles">{rows.length === 0 ? <p className="ww-dash-empty-note">{d("noRoles")}</p> : <RoleBoard rows={rows} selected={selected?.key ?? ""} onSelect={pick} scope={scope} stale={false} numberMode="tween" />}</div>
+          <div data-field="roles">{rows.length === 0 ? <p className="ww-dash-empty-note">{d("noRoles")}</p> : <RoleBoard rows={rows} selected={selected?.key ?? ""} onSelect={pick} scope={scope} stale={false} numberMode="tween" enter={entering} />}</div>
           {encounter.completeness.roleAttributionComplete === false && <p className="ww-dash-warning">{c("attributionIncomplete")}</p>}
         </Card>
         <div className="ww-dash-detail-wrap">
@@ -285,7 +287,7 @@ function EncounterDetail({ detail, backLabel, onBack, onDeleted }: { detail: His
           <Card className="ww-dash-detail">
             <div className="ww-dash-card-head" data-field="detail" data-key={selected?.key ?? ""}><h3>{selected ? nameOf(selected) : "—"}</h3></div>
             <ContentSwitch contentKey={`skills-${selected?.key ?? ""}`}>
-              {skills === undefined ? <p className="ww-dash-empty-note">{d("skillsUnavailable")}</p> : <SkillTable breakdown={skills} color={elementColor(selected?.elementId)} />}
+              {skills === undefined ? <p className="ww-dash-empty-note">{d("skillsUnavailable")}</p> : <SkillTable breakdown={skills} color={elementColor(selected?.elementId)} enter={entering} />}
             </ContentSwitch>
           </Card>
         </div>

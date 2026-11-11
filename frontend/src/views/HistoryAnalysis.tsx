@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
-import { AnalysisTimeline, Button, Card, Chip, ContentSwitch, DamageBar, EffectLanes, GameAssetImage, Segmented, Select, type LaneRowModel, type TimelineLine } from "@/design"
+import { AnalysisTimeline, Button, Card, Chip, ContentSwitch, DamageBar, EffectLanes, GameAssetImage, Segmented, Select, useEntrance, type LaneRowModel, type TimelineLine } from "@/design"
 import { usableDps } from "@/lib/combat-data"
 import { combatRows, skillBreakdown, type CombatRowModel } from "@/lib/combat-view"
 import { elementColor, useFormatters, useRowNames } from "@/lib/format"
@@ -176,6 +176,9 @@ export function AnalysisWorkspace({ detail }: AnalysisWorkspaceProps) {
   }, [id, lanesQuery])
 
   const encounter: Encounter | null = analysis?.encounter ?? null
+  // The damage bars of an encounter grow in once, when its analysis first arrives; later tab switches and filter changes
+  // move them from where they are.
+  const entering = useEntrance(id, analysis?.state === "ready")
   const rows = useMemo(() => encounter ? combatRows(encounter) : [], [encounter])
   const rowByKey = useMemo(() => new Map(rows.map(row => [row.key, row])), [rows])
   const durationMs = analysis?.range.durationMs ?? 0
@@ -249,7 +252,7 @@ export function AnalysisWorkspace({ detail }: AnalysisWorkspaceProps) {
           options={[{ value: "skills", label: a("tab.skills") }, { value: "effects", label: a("tab.effects") }, { value: "events", label: a("tab.events") }]} />
       </div>
       <ContentSwitch contentKey={tab}>
-        {tab === "skills" && <SkillsTab analysis={analysis} encounter={encounter} rows={rows} query={query} setQuery={setQuery} setContributor={setContributor} range={range} />}
+        {tab === "skills" && <SkillsTab analysis={analysis} encounter={encounter} rows={rows} query={query} setQuery={setQuery} setContributor={setContributor} range={range} entering={entering} />}
         {tab === "effects" && <EffectsTab lanes={lanes} analysis={analysis} focus={focus} setFocus={setFocus} actorName={actorName} enemyLabel={enemyLabel} range={range} />}
         {tab === "events" && <EventsTab id={id} query={query} analysis={analysis} lanes={lanes} actorName={actorName} enemyLabel={enemyLabel} rowByKey={rowByKey} />}
       </ContentSwitch>
@@ -394,10 +397,12 @@ interface SkillsTabProps {
   setQuery: (update: (query: AnalysisQuery) => AnalysisQuery) => void
   setContributor: (key: string | null) => void
   range: { fromMs: number; toMs: number } | null
+  /** The encounter just opened: the bars play their entrance. */
+  entering: boolean
 }
 
 /** The Skills tab: the range's ranking, the selected contributor's skill rows with hit statistics, and the selected skill. */
-const SkillsTab = memo(function SkillsTab({ analysis, encounter, rows, query, setQuery, setContributor, range }: SkillsTabProps) {
+const SkillsTab = memo(function SkillsTab({ analysis, encounter, rows, query, setQuery, setContributor, range, entering }: SkillsTabProps) {
   const { t } = useTranslation(["history", "dashboard"])
   const d = (key: string, options?: Record<string, unknown>) => t(key, { ns: "dashboard", ...options })
   const format = useFormatters()
@@ -418,7 +423,9 @@ const SkillsTab = memo(function SkillsTab({ analysis, encounter, rows, query, se
     setQuery(q => ({ ...q, skillRow: q.skillRow === key ? "" : key }))
   }
   const color = elementColor(current?.elementId)
-  const scope = `analysis:${analysis.query.contributor}:${analysis.query.enemy}`
+  // This tab mounts afresh for each encounter (it waits for that encounter's analysis), so one scope serves it: a filter change
+  // moves the ranking's bars and numbers from their current values rather than snapping.
+  const scope = "analysis-ranking"
   const skillRows: Array<{ key: string; skillId: number; name: ReactNode; damage: number; share?: number; stat?: SkillStats }> = []
   if (breakdown && current) {
     for (const row of breakdown.rows) skillRows.push({ key: skillRowKey(current.key, row.skillId), skillId: row.skillId, damage: row.damage, share: row.share, stat: stats.get(row.skillId),
@@ -430,7 +437,7 @@ const SkillsTab = memo(function SkillsTab({ analysis, encounter, rows, query, se
   return <div className="ww-analysis-skills">
     <div className="ww-analysis-board" data-field="analysis-ranking">
       <div className="ww-dash-card-head"><h3>{d("ranking")}</h3></div>
-      {rows.length === 0 ? <p className="ww-dash-empty-note">{d("noRoles")}</p> : <RoleBoard rows={rows} selected={current?.key ?? ""} onSelect={key => setContributor(key === query.contributor ? null : key)} scope={scope} stale={false} numberMode="tween" />}
+      {rows.length === 0 ? <p className="ww-dash-empty-note">{d("noRoles")}</p> : <RoleBoard rows={rows} selected={current?.key ?? ""} onSelect={key => setContributor(key === query.contributor ? null : key)} scope={scope} stale={false} numberMode="tween" enter={entering} />}
       {encounter?.completeness.roleAttributionComplete === false && <p className="ww-dash-warning">{t("attributionIncomplete", { ns: "common" })}</p>}
     </div>
     <div className="ww-analysis-stack">
@@ -439,11 +446,11 @@ const SkillsTab = memo(function SkillsTab({ analysis, encounter, rows, query, se
         {skillRows.length === 0 ? <p className="ww-dash-empty-note">{d("noSkillRows")}</p> :
           <div className="ww-dash-skills-wrap ww-analysis-scroll"><table className="ww-dash-skills ww-analysis-skill-table" data-field="analysis-skills" style={{ "--ww-series": color } as React.CSSProperties}>
             <thead><tr><th>{d("skill")}</th><th>{d("damageColumn")}</th><th>{d("shareColumn")}</th><th>{t("analysis.skills.hits")}</th><th>{t("analysis.skills.maxHit")}</th><th>{t("analysis.skills.averageHit")}</th><th>{t("analysis.skills.distribution")}</th></tr></thead>
-            <tbody>{skillRows.map(row => <tr key={row.key} className="ww-history-row" tabIndex={0} data-skill-row={row.key} data-selected={focused?.key === row.key} onClick={() => pick(row.skillId)}
+            <tbody>{skillRows.map((row, index) => <tr key={row.key} className="ww-history-row" tabIndex={0} data-skill-row={row.key} data-selected={focused?.key === row.key} onClick={() => pick(row.skillId)}
               onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); pick(row.skillId) } }}>
               <td>{row.name}</td>
               <td className="ww-num">{format.integer(row.damage)}</td>
-              <td><div className="ww-dash-skill-share"><DamageBar share={row.share} scope={`skills:${analysis.query.contributor}`} /><span className="ww-num">{row.share === undefined ? "—" : format.percent(row.share)}</span></div></td>
+              <td><div className="ww-dash-skill-share"><DamageBar share={row.share} scope={`skills:${analysis.query.contributor}`} enter={entering ? index : undefined} /><span className="ww-num">{row.share === undefined ? "—" : format.percent(row.share)}</span></div></td>
               <td className="ww-num">{row.stat ? format.integer(row.stat.hits) : "—"}</td>
               <td className="ww-num">{row.stat ? format.integer(row.stat.maxHit) : "—"}</td>
               <td className="ww-num">{row.stat && row.stat.hits > 0 ? format.integer(row.stat.averageHit) : "—"}</td>

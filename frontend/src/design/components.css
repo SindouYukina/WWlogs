@@ -196,6 +196,14 @@ body[data-view] img { -webkit-user-drag: none; }
 .ww-bar[data-fill="row"] .ww-bar-edge { opacity: 0.95; }
 .ww-bar[data-snap="true"] > * { transition: none; }
 .ww-bar[data-unknown="true"] { background-image: repeating-linear-gradient(135deg, oklch(1 0 0 / 0.05) 0 4px, transparent 4px 8px); }
+/* The entrance of a bar that opts in (DamageBar enter): it grows from zero to its share once, when it mounts. Only from-keyframes
+   are given, so each layer grows to its own current value; backwards fill holds zero through the stagger delay and nothing
+   afterwards, so later value changes animate with the transitions above. Transform only; reduced motion makes it instant. */
+@keyframes ww-bar-grow { from { transform: scaleX(0); } }
+@keyframes ww-bar-edge-grow { from { transform: translateX(0); } }
+.ww-bar[data-enter="true"] > .ww-bar-fill, .ww-bar[data-enter="true"] > .ww-bar-trail { animation: ww-bar-grow var(--ww-bar-enter-dur) var(--ww-ease-bar-enter) backwards; animation-delay: calc(var(--ww-bar-index, 0) * var(--ww-bar-enter-stagger)); }
+.ww-bar[data-enter="true"] > .ww-bar-edge { animation: ww-bar-edge-grow var(--ww-bar-enter-dur) var(--ww-ease-bar-enter) backwards; animation-delay: calc(var(--ww-bar-index, 0) * var(--ww-bar-enter-stagger)); }
+:root[data-ww-motion="reduced"] .ww-bar[data-enter="true"] > * { animation: none; }
 
 /* ------------------------------ Character avatar ------------------------------ */
 .ww-avatar { position: relative; display: inline-block; flex: none; width: var(--ww-avatar-size, 34px); height: var(--ww-avatar-size, 34px); border-radius: 28%; overflow: hidden; background: linear-gradient(160deg, color-mix(in oklab, var(--ww-series, var(--ww-element-unknown)) 42%, var(--ww-ink-800)), var(--ww-ink-850)); box-shadow: inset 0 0 0 1px var(--ww-line), inset 0 -8px 12px -8px oklch(0 0 0 / 0.5); contain: strict; }
