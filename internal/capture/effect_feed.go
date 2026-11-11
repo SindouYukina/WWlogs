@@ -50,8 +50,32 @@ func (p *processor) effectStaticInfo(effectID uint64) *EffectStaticInfo {
 	if p == nil {
 		return nil
 	}
-	static, hasStatic := p.masters.buffStatic(effectID)
-	term, hasTerm := p.masters.buffTerm(effectID)
+	return p.masters.effectStaticInfo(effectID)
+}
+
+// EffectDefinition is the static Master evidence of one effect id for a view of stored effects: the same definition the
+// effect tracker attaches to a live instance. Polarity is the game's HUD arrow (effectPolarityFor) and HUDIcon reports that a
+// HUD buff bar draws the effect with an icon of its own; neither says what the effect does.
+type EffectDefinition struct {
+	Static   *EffectStaticInfo
+	Polarity EffectPolarity
+	HUDIcon  bool
+}
+
+// EffectDefinition looks up an effect id the way the effect tracker does. An id without a static row has a nil Static and
+// stays unclassified.
+func (m *MasterData) EffectDefinition(effectID uint64) EffectDefinition {
+	var static *EffectStaticInfo
+	if m != nil {
+		static = m.masters.effectStaticInfo(effectID)
+	}
+	return EffectDefinition{Static: static, Polarity: effectPolarityFor(EffectInstanceSnapshot{Static: static}), HUDIcon: static != nil && len(static.HUDCueTypes) > 0}
+}
+
+// effectStaticInfo builds the static definition parameters of an effect id, or nil without a static row or a term.
+func (m *gameMaster) effectStaticInfo(effectID uint64) *EffectStaticInfo {
+	static, hasStatic := m.buffStatic(effectID)
+	term, hasTerm := m.buffTerm(effectID)
 	if !hasStatic && !hasTerm {
 		return nil
 	}

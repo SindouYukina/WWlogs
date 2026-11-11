@@ -174,3 +174,134 @@ body[data-view="overlay"][data-editing="true"] { --wails-draggable: drag; }
 .ww-history-confirm { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--ww-space-2) var(--ww-space-3); max-width: 100%; padding: var(--ww-space-2) var(--ww-space-3); border: 1px solid var(--ww-critical); border-radius: var(--ww-radius-md); background: var(--ww-critical-soft); }
 .ww-history-confirm p { flex: 1 1 280px; min-width: 0; margin: 0; font-size: var(--ww-text-sm); }
 .ww-history-confirm-actions { display: flex; gap: var(--ww-space-2); }
+
+/* ------------------------------ History analysis ------------------------------ */
+/* One gutter is shared by the DPS timeline's value axis, the time axis and the effect lanes' labels, so a moment of the
+   encounter lines up across all of them. */
+.ww-history-detail { --ww-analysis-gutter: 184px; }
+.ww-history-summary-row { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--ww-space-3); }
+.ww-history-summary-row > .ww-history-facts { flex: 1 1 auto; min-width: 0; }
+.ww-history-coverage { margin-top: var(--ww-space-2); padding-top: var(--ww-space-2); border-top: 1px solid var(--ww-line-soft); }
+.ww-history-coverage .ww-history-facts { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); font-size: var(--ww-text-xs); }
+.ww-analysis { display: flex; flex-direction: column; gap: var(--ww-space-3); min-width: 0; }
+.ww-analysis-toolbar { padding: var(--ww-space-2) var(--ww-space-4); }
+.ww-analysis-toolbar-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ww-space-2) var(--ww-space-4); }
+.ww-analysis-filter { display: flex; align-items: center; gap: var(--ww-space-2); min-width: 0; font-size: var(--ww-text-xs); color: var(--ww-text-3); }
+.ww-analysis-filter > span:first-child { white-space: nowrap; }
+.ww-analysis-filter .ww-select-trigger { min-width: 150px; max-width: 240px; }
+.ww-analysis-range strong { font-size: var(--ww-text-sm); font-weight: var(--ww-weight-semibold); color: var(--ww-text); white-space: nowrap; }
+.ww-analysis-timeline, .ww-analysis-tabs { padding: var(--ww-space-3) var(--ww-space-4); min-width: 0; }
+.ww-analysis-tabs-head { margin-bottom: var(--ww-space-3); }
+.ww-analysis-lanes-head { display: flex; align-items: baseline; justify-content: space-between; margin: var(--ww-space-3) 0 var(--ww-space-1); padding-top: var(--ww-space-3); border-top: 1px solid var(--ww-line-soft); }
+.ww-analysis-lanes-head h4 { margin: 0; font-size: var(--ww-text-sm); font-weight: var(--ww-weight-semibold); }
+.ww-analysis-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 300px); gap: var(--ww-space-4); align-items: start; min-width: 0; }
+/* A stack keeps its content at the full width of the card, so lanes line up with the timeline above; details follow. */
+.ww-analysis-stack { display: flex; flex-direction: column; gap: var(--ww-space-2); min-width: 0; }
+.ww-analysis-stack > .ww-analysis-detail { position: static; }
+.ww-analysis-stack > .ww-analysis-detail .ww-analysis-facts { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
+.ww-analysis-main-col { min-width: 0; display: flex; flex-direction: column; gap: var(--ww-space-2); }
+.ww-analysis-detail { position: sticky; top: 0; display: flex; flex-direction: column; gap: var(--ww-space-2); min-width: 0; padding: var(--ww-space-3); border-radius: var(--ww-radius-md); background: var(--ww-surface-overlay-subtle); font-size: var(--ww-text-sm); }
+.ww-analysis-detail h4 { margin: 0; font-size: var(--ww-text-md); font-weight: var(--ww-weight-semibold); min-width: 0; }
+.ww-analysis-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--ww-space-1_5) var(--ww-space-3); margin: 0; }
+.ww-analysis-facts > div { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.ww-analysis-facts dt { font-size: var(--ww-text-2xs); color: var(--ww-text-4); }
+.ww-analysis-facts dd { margin: 0; overflow: hidden; text-overflow: ellipsis; }
+.ww-analysis-intervals { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; max-height: 220px; overflow-y: auto; font-size: var(--ww-text-xs); }
+.ww-analysis-intervals li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: var(--ww-space-2); padding: 2px 0; border-top: 1px solid var(--ww-line-soft); }
+.ww-analysis-intervals li[data-evidence="stated"] { color: var(--ww-text-3); }
+.ww-analysis-intervals li[data-evidence="unknown"] { color: var(--ww-text-4); font-style: italic; }
+.ww-analysis-skills { display: grid; grid-template-columns: minmax(220px, 0.42fr) minmax(0, 2fr); gap: var(--ww-space-4); min-width: 0; }
+.ww-analysis-board { min-width: 0; }
+.ww-analysis-scroll { max-height: 420px; }
+.ww-analysis-table td { vertical-align: middle; }
+.ww-analysis-table tr[data-selected="true"], .ww-analysis-skill-table tr[data-selected="true"] { background: var(--ww-surface-selected); }
+.ww-analysis-skill-table th { white-space: nowrap; }
+.ww-analysis-skill-table .ww-dash-skill-name { max-width: 220px; }
+.ww-analysis-skill-table .ww-dash-skill-share { grid-template-columns: minmax(48px, 1fr) 46px; min-width: 104px; }
+.ww-analysis-skill-table .ww-history-row { cursor: pointer; }
+.ww-analysis-spark { width: 96px; height: 18px; display: block; fill: var(--ww-series, var(--ww-element-unknown)); }
+.ww-analysis-spark-range { fill: var(--ww-accent-soft); }
+.ww-analysis-effect { display: inline-flex; align-items: center; gap: var(--ww-space-1_5); min-width: 0; max-width: 100%; }
+.ww-analysis-effect img { width: 18px; height: 18px; flex: none; }
+.ww-analysis-legend { display: flex; flex-wrap: wrap; gap: var(--ww-space-1) var(--ww-space-3); font-size: var(--ww-text-2xs); color: var(--ww-text-3); }
+.ww-analysis-legend > span { display: inline-flex; align-items: center; gap: var(--ww-space-1); }
+.ww-analysis-events { display: flex; flex-direction: column; gap: var(--ww-space-2); min-width: 0; }
+.ww-analysis-kinds, .ww-analysis-pager { display: flex; gap: var(--ww-space-1); }
+.ww-analysis-pager { margin-inline-start: auto; }
+.ww-analysis-events-wrap { max-height: 480px; }
+.ww-analysis-kind { font-size: var(--ww-text-xs); }
+.ww-analysis-kind[data-kind="damage"] { color: var(--ww-text-2); }
+.ww-analysis-kind[data-kind="healing"] { color: var(--ww-good); }
+.ww-analysis-kind[data-kind="effect"] { color: var(--ww-info); }
+.ww-analysis-event-detail { display: inline-flex; align-items: center; gap: var(--ww-space-2); min-width: 0; }
+
+/* The analysis timeline: a value axis in the gutter, one SVG layer per line, a range drawn over the plot. */
+.ww-atl { min-width: 0; }
+.ww-atl-legend { display: flex; flex-wrap: wrap; gap: var(--ww-space-1) var(--ww-space-3); margin: 0 0 var(--ww-space-2) var(--ww-analysis-gutter); font-size: var(--ww-text-xs); color: var(--ww-text-2); }
+.ww-atl[data-focusing="true"] .ww-chart-legend-item[data-focused="false"] { opacity: 0.55; }
+.ww-atl-body { display: grid; grid-template-columns: var(--ww-analysis-gutter) minmax(0, 1fr); }
+.ww-atl-axis { position: relative; font-size: var(--ww-text-2xs); color: var(--ww-text-4); }
+.ww-atl-axis > span { position: absolute; right: var(--ww-space-2); transform: translateY(-50%); }
+.ww-atl-plot { position: relative; min-width: 0; cursor: crosshair; touch-action: none; }
+.ww-atl-plot:focus-visible { outline: none; box-shadow: var(--ww-focus-ring); border-radius: var(--ww-radius-xs); }
+.ww-atl-plot > svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.ww-atl-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.ww-atl-line[data-focused="true"] { stroke-width: 3; }
+.ww-atl[data-focusing="true"] .ww-chart-layer[data-focused="false"] { opacity: 0.2; }
+.ww-atl[data-focusing="true"] .ww-chart-layer[data-aggregate="true"][data-focused="false"] { opacity: 0.42; }
+.ww-atl-dim { position: absolute; top: 0; bottom: 0; background: color-mix(in oklch, var(--ww-surface-canvas) 55%, transparent); pointer-events: none; }
+.ww-atl-range { position: absolute; top: 0; bottom: 0; border-inline: 1px solid var(--ww-accent); background: var(--ww-accent-soft); pointer-events: none; }
+.ww-atl-range[data-pending="true"] { border-style: dashed; }
+.ww-atl-gap { position: absolute; top: 0; bottom: 0; border-inline: 1px dashed var(--ww-warn); background: repeating-linear-gradient(135deg, var(--ww-warn-soft) 0 4px, transparent 4px 8px); pointer-events: none; }
+.ww-atl-plot > svg.ww-atl-marks { inset: auto 0 0 0; height: 12px; pointer-events: none; }
+.ww-atl-marks line { stroke: var(--ww-accent-bright); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.ww-atl-time { display: grid; grid-template-columns: var(--ww-analysis-gutter) minmax(0, 1fr); height: 18px; margin-top: var(--ww-space-1); font-size: var(--ww-text-2xs); color: var(--ww-text-4); }
+.ww-atl-time-track { position: relative; }
+.ww-atl-time-track > span { position: absolute; top: 2px; transform: translateX(-50%); white-space: nowrap; }
+.ww-atl-time-track > span:first-child { transform: none; }
+
+/* Effect lanes: the label column is the shared gutter; an interval's look says how it is known. */
+.ww-lanes { min-width: 0; }
+/* The lanes keep exactly the width of the DPS plot above them: a scrollbar would narrow them and shift every moment, so the
+   list scrolls by wheel and focus, and a fade at its edge says that more rows follow. */
+.ww-lanes-scroll { position: relative; overflow-y: auto; scrollbar-width: none; }
+.ww-lanes-scroll::-webkit-scrollbar { display: none; }
+.ww-lanes[data-more="true"] .ww-lanes-scroll { mask-image: linear-gradient(to bottom, black calc(100% - 28px), transparent); }
+.ww-lanes-inner { position: relative; }
+.ww-lanes-overlay { position: absolute; inset: 0 0 0 var(--ww-analysis-gutter); pointer-events: none; z-index: 1; }
+.ww-lane { position: absolute; top: 0; left: 0; right: 0; height: var(--ww-lane-height); display: grid; grid-template-columns: var(--ww-analysis-gutter) minmax(0, 1fr); --ww-lane-color: var(--ww-ink-400); }
+.ww-lane[data-polarity="buff"] { --ww-lane-color: var(--ww-good); }
+.ww-lane[data-polarity="debuff"] { --ww-lane-color: var(--ww-critical); }
+.ww-lane[data-selected="true"] { background: var(--ww-surface-selected); border-radius: var(--ww-radius-xs); }
+.ww-lane-label { display: flex; flex-direction: column; justify-content: center; gap: 2px; min-width: 0; overflow: hidden; padding: 2px var(--ww-space-2) 2px 0; border: 0; background: transparent; color: inherit; font: inherit; font-size: var(--ww-text-xs); line-height: 1.2; text-align: start; cursor: pointer; }
+.ww-lane-label:focus-visible { outline: none; box-shadow: var(--ww-focus-ring); border-radius: var(--ww-radius-xs); }
+.ww-lane-name, .ww-lane-sub { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.25; }
+.ww-lane-name .ww-analysis-effect img { width: 14px; height: 14px; }
+.ww-lane-sub { font-size: var(--ww-text-2xs); color: var(--ww-text-4); }
+.ww-lane-track { position: relative; border-top: 1px solid var(--ww-line-soft); cursor: pointer; }
+.ww-lane-seg { position: absolute; top: 5px; bottom: 5px; min-width: 1px; display: flex; align-items: center; justify-content: flex-end; overflow: hidden; border-radius: 3px; background: var(--ww-lane-color); opacity: 0.85; }
+.ww-lane-seg > b { padding-inline-end: 3px; font-size: 9px; font-weight: var(--ww-weight-semibold); color: var(--ww-ink-950); }
+.ww-lane-seg[data-evidence="stated"] { background: color-mix(in oklch, var(--ww-lane-color) 32%, transparent); box-shadow: inset 0 0 0 1px var(--ww-lane-color); opacity: 1; }
+.ww-lane-seg[data-evidence="stated"] > b { color: var(--ww-text); }
+.ww-lane-seg[data-evidence="unknown"] { background: repeating-linear-gradient(135deg, color-mix(in oklch, var(--ww-lane-color) 30%, transparent) 0 3px, transparent 3px 6px); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--ww-lane-color) 45%, transparent); opacity: 1; }
+.ww-lane-mark { position: absolute; top: 3px; bottom: 3px; width: 2px; margin-inline-start: -1px; background: var(--ww-text-2); pointer-events: auto; z-index: 1; }
+.ww-lane-mark[data-kind="applied"] { background: var(--ww-lane-color); }
+.ww-lane-mark[data-kind="start_unconfirmed"] { width: 0; margin-inline-start: 0; background: none; border-inline-start: 2px dotted var(--ww-warn); }
+.ww-lane-mark[data-kind="removed"] { background: var(--ww-text); }
+.ww-lane-mark[data-kind="holder_removed"] { width: 0; margin-inline-start: 0; background: none; border-inline-start: 2px dashed var(--ww-text-2); }
+.ww-lane-mark[data-kind="superseded"], .ww-lane-mark[data-kind="untracked"] { background: var(--ww-text-4); }
+.ww-lane-mark[data-kind="instant"] { top: 50%; bottom: auto; width: 7px; height: 7px; margin: -3.5px 0 0 -3.5px; background: var(--ww-lane-color); transform: rotate(45deg); }
+.ww-lane-mark[data-kind="continues"] { width: 0; margin-inline-start: -6px; background: none; border-block: 5px solid transparent; border-inline-start: 6px solid var(--ww-text-3); top: calc(50% - 5px); bottom: auto; }
+.ww-lane-swatch { display: inline-block; width: 18px; height: 8px; border-radius: 2px; --ww-lane-color: var(--ww-good); background: var(--ww-lane-color); }
+.ww-lane-swatch[data-evidence="stated"] { background: color-mix(in oklch, var(--ww-lane-color) 32%, transparent); box-shadow: inset 0 0 0 1px var(--ww-lane-color); }
+.ww-lane-swatch[data-evidence="unknown"] { background: repeating-linear-gradient(135deg, color-mix(in oklch, var(--ww-lane-color) 30%, transparent) 0 3px, transparent 3px 6px); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--ww-lane-color) 45%, transparent); }
+.ww-lane-swatch[data-evidence="gap"] { border: 1px dashed var(--ww-warn); background: repeating-linear-gradient(135deg, var(--ww-warn-soft) 0 3px, transparent 3px 6px); }
+.ww-lane-mark-swatch { display: inline-block; width: 0; height: 10px; border-inline-start: 2px dotted var(--ww-warn); }
+
+@media (max-width: 1180px) {
+  .ww-history-detail { --ww-analysis-gutter: 136px; }
+  .ww-analysis-split { grid-template-columns: minmax(0, 1fr); }
+  .ww-analysis-detail { position: static; }
+  .ww-analysis-skills { grid-template-columns: minmax(0, 1fr); }
+  .ww-history-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

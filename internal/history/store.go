@@ -112,6 +112,9 @@ type Store struct {
 	// key is the unsealed database key, kept for the connections the pool opens; Close clears it.
 	key []byte
 
+	// models caches the analysis models of recently analysed encounters (analysis.go).
+	models modelCache
+
 	mu       sync.Mutex
 	status   Status
 	closed   bool

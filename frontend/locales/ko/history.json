@@ -154,5 +154,156 @@
     "verification_failed": "기존 기록의 암호화 사본이 원본과 일치하지 않아 폐기했습니다. 기록은 그대로입니다.",
     "copy_failed": "기존 기록을 암호화 파일로 복사하지 못했습니다. 파일은 그대로입니다.",
     "unreadable": "기존 기록을 읽을 수 없어 암호화하지 않았습니다. 파일은 그대로입니다."
+  },
+  "analysis": {
+    "loading": "이 전투를 분석하는 중…",
+    "toolbar": "분석 필터",
+    "contributor": "캐릭터",
+    "team": "팀 전체",
+    "enemy": "적",
+    "allEnemies": "모든 적",
+    "enemyInstance": "{{name}} #{{n}}",
+    "enemyUnmapped": "이 적을 개별 결과에 대응시킬 수 없어 이 적으로 필터링할 수 없습니다.",
+    "range": "시간 범위",
+    "fullRange": "전투 전체",
+    "rangeValue": "{{from}} – {{to}}",
+    "resetRange": "전투 전체로 재설정",
+    "effectScope": "효과",
+    "scope": {
+      "hud": "게임 HUD에 표시",
+      "all": "추적한 전체"
+    },
+    "inconsistent": "이 기록에 저장된 개별 결과로는 전투 결과를 완전히 재현할 수 없습니다. 범위 수치는 저장된 부분만 나타냅니다.",
+    "hitsNote": "적중 {{n}}회",
+    "takenHitsNote": "피격 {{n}}회",
+    "healingNoEnemy": "치유는 어떤 적에도 속하지 않으므로 적으로 필터링하는 동안에는 표시하지 않습니다.",
+    "timelineTitle": "전투 타임라인",
+    "dragHint": "타임라인을 드래그해 범위를 선택하고, 선을 클릭해 캐릭터를 선택합니다",
+    "hitsShown": "타임라인에 적중 {{n}}회 표시",
+    "gap": "캡처 누락: 이 구간에 패킷이 손실되었을 수 있습니다",
+    "gapNote": "이 전투에는 캡처 누락 구간이 {{n}}개 있으며, 해당 구간의 효과와 이벤트는 불완전할 수 있습니다.",
+    "lanesTitle": "BUFF/DEBUFF 적용 구간",
+    "tabsLabel": "분석 탭",
+    "tab": {
+      "skills": "스킬",
+      "effects": "효과",
+      "events": "이벤트"
+    },
+    "state": {
+      "ready": "분석 가능",
+      "not_finished": "시간별 분석은 종료된 전투만 가능합니다. 종료되지 않은 기록에는 대조할 최종 결과가 없습니다.",
+      "no_events": "이 기록에는 전투 합계만 저장되어 개별 결과가 없으므로 시간별로 분석할 수 없습니다.",
+      "too_large": "이 전투에 저장된 이벤트 수가 한 번의 분석 한도를 넘어 분석하지 않습니다."
+    },
+    "actor": {
+      "role": "알 수 없는 캐릭터 {{id}}",
+      "summon": "{{name}}의 소환물",
+      "vehicle": "오토바이",
+      "team": "팀",
+      "teamUnassigned": "아군(캐릭터 미확인)",
+      "other": "기타 엔티티",
+      "unknown": "미확인"
+    },
+    "evidence": {
+      "confirmed": "적용 확인",
+      "stated": "서버가 제시한 시간 기준(종료 미관측)",
+      "unknown": "판정 불가"
+    },
+    "evidenceShort": {
+      "confirmed": "확인됨",
+      "stated": "제시된 시간",
+      "unknown": "판정 불가"
+    },
+    "marker": {
+      "applied": "부여 관측",
+      "start_unconfirmed": "시작 미확인",
+      "removed": "해제 관측",
+      "holder_removed": "보유자 이탈(추론된 종료)",
+      "superseded": "새 부여로 대체(종료는 이 시점 이전)",
+      "untracked": "추적 종료",
+      "instant": "즉시 효과",
+      "continues": "전투 종료 후에도 지속"
+    },
+    "polarity": {
+      "buff": "BUFF",
+      "debuff": "DEBUFF",
+      "unclassified": "미분류"
+    },
+    "effects": {
+      "effect": "효과",
+      "holder": "보유자",
+      "source": "출처",
+      "coverage": "유지율",
+      "maxStack": "최대 중첩",
+      "applies": "부여 횟수",
+      "unknownEffect": "미확인 효과",
+      "none": "이 범위에 해당하는 효과가 없습니다.",
+      "notStored": "이 기록에는 효과 이벤트가 저장되지 않았습니다.",
+      "selectHint": "효과를 선택하면 적용 구간과 그 근거를 볼 수 있습니다.",
+      "hidden": "게임 HUD에 표시되지 않는 효과가 {{n}}개 더 있습니다. ‘추적한 전체’로 전환하면 볼 수 있습니다.",
+      "stale": "효과 {{n}}개는 전투 시작 전에 서버가 제시한 시간이 지났고 이후 메시지도 없어 표시하지 않습니다.",
+      "more": "표시 한도를 넘는 {{n}}개 행은 표시하지 않습니다.",
+      "truncated": "이 전투의 효과 이벤트가 한 번의 분석 한도를 넘어 효과를 표시하지 않습니다.",
+      "exactNote": "이 범위의 모든 구간이 관측된 메시지로 확인되었고 캡처 누락도 없어 유지율은 정확한 값입니다.",
+      "boundsNote": "이 범위에 미확인 부분(제시된 시간만 있음, 판정 불가, 시작 미확인, 캡처 누락)이 있어 하한과 가능한 상한만 표시합니다.",
+      "moreIntervals": "구간 {{n}}개가 더 있습니다."
+    },
+    "skills": {
+      "hits": "적중 횟수",
+      "maxHit": "최대 적중",
+      "averageHit": "평균 적중",
+      "distribution": "전투 전체 분포",
+      "hitsAreNotCasts": "적중 횟수는 피해 적중이며 스킬 시전 횟수가 아닙니다",
+      "selectHint": "스킬을 선택하면 각 적중을 타임라인에 표시합니다.",
+      "detailHint": "스킬을 선택하면 이 범위의 적중 통계를 볼 수 있습니다.",
+      "marked": "타임라인의 적중",
+      "distributionNote": "분포도는 전투 전체에서 이 스킬의 피해(적 필터 적용)를 보여 주며, 강조된 부분이 선택한 범위입니다."
+    },
+    "events": {
+      "kinds": "이벤트 종류",
+      "kind": {
+        "damage": "피해",
+        "healing": "치유",
+        "effect": "효과"
+      },
+      "none": "해당하는 이벤트가 없습니다.",
+      "range": "{{from}}–{{to}} / 총 {{total}}건",
+      "previous": "이전",
+      "next": "다음",
+      "time": "시간",
+      "kindColumn": "종류",
+      "source": "출처",
+      "target": "대상",
+      "detail": "스킬/효과",
+      "amount": "수치",
+      "downgraded": "전송 손실 후 귀속을 보류하여 이 결과는 아군에 반영되지 않았습니다"
+    },
+    "change": {
+      "apply": "부여",
+      "snapshot": "적용 중(스냅샷)",
+      "refresh": "갱신",
+      "stack": "중첩 변화",
+      "duration": "시간 변화",
+      "remove": "해제",
+      "holder_removed": "보유자 이탈",
+      "superseded": "대체됨",
+      "untracked": "추적 종료",
+      "instant": "즉시 효과"
+    },
+    "observation": {
+      "observed": "관측",
+      "derived": "추론",
+      "untracked": "추적 종료"
+    },
+    "flow": {
+      "local_outgoing": "아군 피해",
+      "local_incoming": "아군 피격",
+      "local_internal": "아군 간",
+      "unattributed_outgoing": "귀속 불명 피해",
+      "unattributed_incoming": "귀속 불명 피격",
+      "excluded": "제외",
+      "unresolved": "미해결",
+      "unknown": "미확인"
+    }
   }
 }
