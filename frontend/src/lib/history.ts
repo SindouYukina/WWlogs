@@ -147,7 +147,7 @@ export interface HistoryEncounterDetail {
 }
 
 /** The Combat History indicator the host decides (internal/desktop/history_status.go). */
-export type HistoryIndicatorState = "disabled" | "waiting" | "recording" | "starting" | "unavailable" | "read_only" | "write_failed"
+export type HistoryIndicatorState = "disabled" | "waiting" | "recording" | "starting" | "unavailable" | "read_only" | "write_failed" | "not_recorded"
 
 export interface HistoryIndicator {
   state: HistoryIndicatorState
@@ -187,6 +187,7 @@ export function indicatorText(indicator: HistoryIndicator | undefined): { key: s
     case "disabled": return { key: "indicator.disabled", tone: "neutral" }
     case "read_only": return { key: "indicator.readOnly", tone: "warn", detail: `unavailable.${indicator.reason ?? "open_failed"}` }
     case "write_failed": return { key: "indicator.writeFailed", tone: "critical", detail: "unavailable.storage_stopped" }
+    case "not_recorded": return { key: "indicator.notRecorded", tone: "warn", detail: `unavailable.${indicator.reason ?? "open_failed"}` }
     case "unavailable":
       return { key: "indicator.unavailable", tone: "critical", detail: indicator.reason === "encryption_migration_failed" && indicator.migrationFailure ? `migration.${indicator.migrationFailure}` : `unavailable.${indicator.reason ?? "open_failed"}` }
   }

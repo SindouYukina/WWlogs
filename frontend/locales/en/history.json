@@ -87,7 +87,8 @@
     "key_missing": "The history file exists but its key file is missing. The file was left unchanged and no history is recorded. Restore combat-history.key to read it.",
     "key_unavailable": "Windows could not unlock the history key for this user. The file was left unchanged and no history is recorded.",
     "key_mismatch": "The history key does not open the history file. The file was left unchanged and no history is recorded.",
-    "encryption_migration_failed": "The existing unencrypted history could not be encrypted. It was left unchanged and no history is recorded; WWlogs tries again at the next start."
+    "encryption_migration_failed": "The existing unencrypted history could not be encrypted. It was left unchanged and no history is recorded; WWlogs tries again at the next start.",
+    "duplicate_source": "This capture file is already in the history, so it is not stored again."
   },
   "localEncrypted": "Combat history is stored only on this PC, encrypted with a key that Windows protects for your user account.",
   "indicator": {
@@ -100,7 +101,8 @@
     "readOnly": "History is read-only",
     "writeFailed": "Saving history failed",
     "unavailable": "History unavailable",
-    "lost": "{{n}} history entries of this capture could not be saved; the encounters they belong to are marked incomplete."
+    "lost": "{{n}} history entries of this capture could not be saved; the encounters they belong to are marked incomplete.",
+    "notRecorded": "This capture is not recorded"
   },
   "incompleteReason": {
     "entries_lost": "Part of this record could not be saved, so the stored values may be lower than what happened.",

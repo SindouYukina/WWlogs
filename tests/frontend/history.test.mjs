@@ -113,8 +113,8 @@ test("every history string exists in every bundled language and the namespace is
     assert.ok(baseline.includes(key), key)
   }
   // Every indicator label and reason the mapping can name exists, and every incomplete reason the host stores.
-  const states = ["disabled", "waiting", "recording", "starting", "unavailable", "read_only", "write_failed"]
-  const reasons = ["newer_schema", "locked_by_other_process", "not_a_history_file", "integrity_check_failed", "open_failed", "migration_failed", "storage_stopped", "key_missing", "key_unavailable", "key_mismatch", "encryption_migration_failed"]
+  const states = ["disabled", "waiting", "recording", "starting", "unavailable", "read_only", "write_failed", "not_recorded"]
+  const reasons = ["newer_schema", "locked_by_other_process", "not_a_history_file", "integrity_check_failed", "open_failed", "migration_failed", "storage_stopped", "key_missing", "key_unavailable", "key_mismatch", "encryption_migration_failed", "duplicate_source"]
   for (const state of states) for (const reason of reasons) for (const capturing of [false, true]) {
     const text = indicatorText({ state, reason, enabled: true, capturing, encrypted: true })
     assert.ok(baseline.includes(text.key), text.key)
@@ -138,6 +138,7 @@ test("the indicator only maps the host state to text and tone", () => {
   assert.deepEqual(indicatorText({ state: "unavailable", reason: "encryption_migration_failed", migrationFailure: "insufficient_space", enabled: true, capturing: false, encrypted: false }),
     { key: "indicator.unavailable", tone: "critical", detail: "migration.insufficient_space" })
   assert.deepEqual(indicatorText({ state: "write_failed", reason: "storage_stopped", enabled: true, capturing: true, encrypted: true }), { key: "indicator.writeFailed", tone: "critical", detail: "unavailable.storage_stopped" })
+  assert.deepEqual(indicatorText({ state: "not_recorded", reason: "open_failed", enabled: true, capturing: true, encrypted: true }), { key: "indicator.notRecorded", tone: "warn", detail: "unavailable.open_failed" })
   assert.deepEqual(indicatorText(undefined), { key: "indicator.unknown", tone: "neutral" })
 })
 

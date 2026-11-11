@@ -87,7 +87,8 @@
     "key_missing": "历史文件存在，但其密钥文件丢失。文件未被更改，也不会记录历史。请恢复 combat-history.key 才能读取。",
     "key_unavailable": "Windows 无法为此用户解开历史密钥。文件未被更改，也不会记录历史。",
     "key_mismatch": "历史密钥无法打开这个历史文件。文件未被更改，也不会记录历史。",
-    "encryption_migration_failed": "现有的未加密历史无法完成加密。文件保持原样，也不会记录历史；WWlogs 会在下次启动时重试。"
+    "encryption_migration_failed": "现有的未加密历史无法完成加密。文件保持原样，也不会记录历史；WWlogs 会在下次启动时重试。",
+    "duplicate_source": "这个采集文件已在历史中，因此不会再次保存。"
   },
   "localEncrypted": "战斗历史只保存在这台电脑上，并使用 Windows 为你的用户账户保护的密钥加密。",
   "indicator": {
@@ -100,7 +101,8 @@
     "readOnly": "历史仅可读取",
     "writeFailed": "历史保存失败",
     "unavailable": "历史不可用",
-    "lost": "本次采集有 {{n}} 条历史条目未能保存，相关的战斗已标记为不完整。"
+    "lost": "本次采集有 {{n}} 条历史条目未能保存，相关的战斗已标记为不完整。",
+    "notRecorded": "本次采集未记录"
   },
   "incompleteReason": {
     "entries_lost": "这条记录有部分内容未能保存，保存的数值可能低于实际情况。",

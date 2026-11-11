@@ -34,6 +34,9 @@ const (
 	historyReadOnly = "read_only"
 	// historyWriteFailed: storage failed repeatedly during this capture and stopped; the capture itself runs on.
 	historyWriteFailed = "write_failed"
+	// historyNotRecorded: the running capture got no recorder (Reason open_failed: the history could not begin it;
+	// duplicate_source: this replayed file is already stored); the capture itself runs on.
+	historyNotRecorded = "not_recorded"
 )
 
 // historyIndicator is comparable, so the snapshot encoder can tell when it changed.
@@ -80,8 +83,9 @@ func (t *recorderTracker) health() history.RecorderHealth {
 	return recorder.Health()
 }
 
-// historyIndicatorOf decides the indicator. A store problem outranks the setting, which outranks the capture's state.
-func historyIndicatorOf(enabled bool, store history.Status, running bool, journal capture.HistoryRecordingState, health history.RecorderHealth) historyIndicator {
+// historyIndicatorOf decides the indicator. A store problem outranks the setting, which outranks the capture's state. begin is
+// how the running capture's history began (service.Status.History).
+func historyIndicatorOf(enabled bool, store history.Status, running bool, begin string, journal capture.HistoryRecordingState, health history.RecorderHealth) historyIndicator {
 	indicator := historyIndicator{
 		Enabled: enabled, Capturing: running, Encrypted: store.Encrypted, KeyProtection: store.KeyProtection,
 		PlaintextConverted: store.PlaintextMigration == history.PlaintextConverted, PlaintextBackups: store.PlaintextBackups,
@@ -96,6 +100,10 @@ func historyIndicatorOf(enabled bool, store history.Status, running bool, journa
 		indicator.State, indicator.Reason = historyReadOnly, store.Reason
 	case !enabled:
 		indicator.State = historyDisabled
+	case running && begin == service.HistoryUnavailable:
+		indicator.State, indicator.Reason = historyNotRecorded, history.ReasonOpenFailed
+	case running && begin == service.HistoryDuplicate:
+		indicator.State, indicator.Reason = historyNotRecorded, service.HistoryDuplicate
 	case running && health.Stopped:
 		indicator.State, indicator.Reason = historyWriteFailed, history.ReasonStorageStopped
 	case running && journal.Recording && journal.InProgress:
@@ -109,14 +117,15 @@ func historyIndicatorOf(enabled bool, store history.Status, running bool, journa
 }
 
 func (b *Bridge) historyIndicator() historyIndicator {
-	running := b.capture.Status().State == service.StateRunning
+	status := b.capture.Status()
+	running := status.State == service.StateRunning
 	var journal capture.HistoryRecordingState
 	var health history.RecorderHealth
 	if running {
 		journal = b.capture.HistoryRecording()
 		health = b.recorders.health()
 	}
-	return historyIndicatorOf(!b.settings.current().Settings.HistoryRecordingDisabled, b.history.Status(), running, journal, health)
+	return historyIndicatorOf(!b.settings.current().Settings.HistoryRecordingDisabled, b.history.Status(), running, status.History, journal, health)
 }
 
 // SetHistoryRecording saves whether Combat History records and applies it to the running capture: off stops recording at
