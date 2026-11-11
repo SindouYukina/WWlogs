@@ -173,8 +173,9 @@ type DamageStatistics struct {
 	healingDuplicates      uint64
 	appliedHealingKeys     map[CombatEventKey]struct{}
 	appliedHealingKeyOrder []CombatEventKey
-	// history is the Combat History journal (history_journal.go); it outlives Reset like appliedKeys.
-	history historyJournal
+	// history is the Combat History journal (history_journal.go); it outlives Reset like appliedKeys, and the processor
+	// shares it with its effect tracker.
+	history *historyJournal
 }
 
 // NewDamageStatistics creates an empty damage statistics accumulator.
@@ -185,8 +186,9 @@ func NewDamageStatistics() *DamageStatistics {
 		statisticsIntervalID: 1,
 		entities:             make(map[combatStatisticsKey]PlayerEntityDamageSnapshot),
 		encounters:           newEncounterTracker(captureSessionID, 1),
+		history:              &historyJournal{},
 	}
-	statistics.encounters.history = &statistics.history
+	statistics.encounters.history = statistics.history
 	return statistics
 }
 

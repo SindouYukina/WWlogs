@@ -6,6 +6,16 @@ import (
 	"time"
 )
 
+// takeSpan drains the journal and checks that it opens with the span marker of a capture that records from its start.
+func takeSpan(t *testing.T, statistics *DamageStatistics) ([]HistoryEntry, uint64) {
+	t.Helper()
+	entries, dropped := statistics.TakeHistory()
+	if len(entries) == 0 || entries[0].Kind != HistoryRecordingStarted || entries[0].Recording == nil || entries[0].Recording.Reason != HistoryStartCapture {
+		t.Fatalf("the journal does not open with the capture's span: %v", journalKinds(entries))
+	}
+	return entries[1:], dropped
+}
+
 // journalKinds lists the kinds of the entries in order.
 func journalKinds(entries []HistoryEntry) []HistoryEntryKind {
 	kinds := make([]HistoryEntryKind, 0, len(entries))
@@ -54,7 +64,7 @@ func TestHistoryJournalRepeatsTheEncounterLifecycle(t *testing.T) {
 	statistics.addCombatEvent(enemyRecord(CombatFlowLocalIncoming, 30, 13, 501, 340000040))
 	statistics.observeBattleState(false, encounterAt(20), 1)
 	statistics.observeCaptureTime(encounterAt(22))
-	entries, dropped := statistics.TakeHistory()
+	entries, dropped := takeSpan(t, statistics)
 	if dropped != 0 {
 		t.Fatalf("dropped %d", dropped)
 	}
@@ -115,7 +125,7 @@ func TestHistoryJournalDiscardsAnEmptyEncounter(t *testing.T) {
 	statistics.addCombatEvent(testEncounterRecord(CombatFlowUnattributedOutgoing, 5, 11))
 	statistics.observeBattleState(false, encounterAt(12), 1)
 	statistics.observeCaptureTime(encounterAt(20))
-	entries, _ := statistics.TakeHistory()
+	entries, _ := takeSpan(t, statistics)
 	// The encounter level journals no event entries.
 	if got, want := journalKinds(entries), []HistoryEntryKind{HistoryEncounterOpened, HistoryEncounterDiscarded}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("journal = %v, want %v", got, want)
@@ -180,6 +190,7 @@ func TestHistoryJournalSurvivesAnIntervalReset(t *testing.T) {
 func TestHistoryJournalBoundCountsWhatItRefuses(t *testing.T) {
 	statistics := NewDamageStatistics()
 	statistics.EnableHistory(HistoryEvents)
+	takeSpan(t, statistics)
 	for i := 0; i < maxHistoryJournalEntries+5; i++ {
 		statistics.addCombatEvent(testEncounterRecord(CombatFlowUnattributedIncoming, 1, float64(i)*0.001))
 	}

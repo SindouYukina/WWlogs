@@ -193,6 +193,10 @@ type encounterRecord struct {
 	enemies       enemyAggregate
 	scene         SceneContext
 	historyActive bool
+	// checkpointEvents and checkpointState are what the last checkpoint journaled (checkpointed is set once one was).
+	checkpointed     bool
+	checkpointEvents uint64
+	checkpointState  EncounterState
 }
 
 // encounterTracker owns the encounter lifecycle of one statistics interval. It is driven only by capture-observed
@@ -246,6 +250,9 @@ type encounterTracker struct {
 	// completed and holds the integrity last journaled for each finished encounter.
 	history          *historyJournal
 	completedHistory []DataIntegrity
+	// completedRecorded is aligned with completed: whether a recorded span journaled the encounter's finished entry, so its
+	// later integrity changes are journaled too.
+	completedRecorded []bool
 	// scene is the scene of the current protocol session, as the last JoinSceneNotify reported it.
 	scene SceneContext
 }
@@ -639,6 +646,7 @@ func (t *encounterTracker) finish(decidedAt time.Time, interruptBasis string) {
 		t.completedIntegrity = t.completedIntegrity[1:]
 		t.completedTimelines = t.completedTimelines[1:]
 		t.completedHistory = t.completedHistory[1:]
+		t.completedRecorded = t.completedRecorded[1:]
 		t.completedDropped++
 	}
 	t.completed = append(t.completed, base)
@@ -647,7 +655,9 @@ func (t *encounterTracker) finish(decidedAt time.Time, interruptBasis string) {
 		encounterID: t.encounterID(record.sequence), timeline: record.timeline, start: record.startAt, end: record.endAt,
 	})
 	t.completedHistory = append(t.completedHistory, cloneIntegrity(snapshot.Integrity))
-	if t.history.on() {
+	recorded := t.history.on()
+	t.completedRecorded = append(t.completedRecorded, recorded)
+	if recorded {
 		t.journalHealingMembers(record, key)
 		t.history.add(HistoryEntry{Kind: HistoryEncounterFinished, Encounter: key, Finished: &HistoryEncounter{
 			Snapshot: base, Timeline: record.timeline.store(), Enemies: record.enemies.snapshot(), EnemiesOverflow: record.enemies.overflow, Scene: record.scene,
@@ -784,17 +794,20 @@ func (t *encounterTracker) renderCompleted() []EncounterSnapshot {
 // journalCompletedIntegrity journals every finished encounter whose integrity a transport report changed since it was last
 // journaled: a loss detected late marks an encounter, a recovery releases one, a failure or an evicted loss record raises it.
 func (t *encounterTracker) journalCompletedIntegrity() {
-	if !t.history.on() || len(t.completedHistory) != len(t.completed) {
+	if t.history == nil || len(t.completedHistory) != len(t.completed) || len(t.completedRecorded) != len(t.completed) {
 		return
 	}
 	for i := range t.completed {
+		if !t.completedRecorded[i] {
+			continue
+		}
 		current := t.integrityFrom(t.completedIntegrity[i])
 		if integrityEqual(current, t.completedHistory[i]) {
 			continue
 		}
 		t.completedHistory[i] = cloneIntegrity(current)
 		changed := cloneIntegrity(current)
-		t.history.add(HistoryEntry{Kind: HistoryEncounterIntegrity, Encounter: historyKey(t.intervalID, t.completed[i].Sequence), Integrity: &changed})
+		t.history.addRecorded(HistoryEntry{Kind: HistoryEncounterIntegrity, Encounter: historyKey(t.intervalID, t.completed[i].Sequence), Integrity: &changed})
 	}
 }
 
