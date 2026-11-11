@@ -19,6 +19,9 @@ export interface HistoryViewProps {
 
 type ChipTone = "neutral" | "good" | "warn" | "critical"
 
+/** How long the refresh signal must stay unchanged before the page queries the history again. */
+const historySettleMs = 1500
+
 /** The one status a row or a detail leads with: the most severe of its history state, completeness and integrity. */
 function recordState(summary: HistoryEncounterSummary): { key: string; tone: ChipTone } {
   if (summary.state === "open") return { key: "state.open", tone: "good" }
@@ -237,6 +240,13 @@ export function HistoryView({ theme, refreshKey }: HistoryViewProps) {
   const [detail, setDetail] = useState<HistoryEncounterDetail | null>(null)
   const [failed, setFailed] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
+  // The engine's signal arrives as soon as an encounter finishes; its history is written a moment later by its own writer
+  // (200 ms batches), so queries follow the signal once it has been still for historySettleMs.
+  const [settledKey, setSettledKey] = useState(refreshKey)
+  useEffect(() => {
+    const timer = setTimeout(() => setSettledKey(refreshKey), historySettleMs)
+    return () => clearTimeout(timer)
+  }, [refreshKey])
 
   useEffect(() => {
     let current = true
@@ -247,14 +257,14 @@ export function HistoryView({ theme, refreshKey }: HistoryViewProps) {
       setDate(selected => selected !== undefined && selected.startsWith(`${year}-`) ? selected : defaultDate(view, today))
     }).catch(() => { if (current) setFailed(true) })
     return () => { current = false }
-  }, [year, refreshKey])
+  }, [year, settledKey])
 
   useEffect(() => {
     if (date === undefined) { setDay(null); return }
     let current = true
     host.historyDay(date, 0).then(view => { if (current) setDay(view) }).catch(() => { if (current) setFailed(true) })
     return () => { current = false }
-  }, [date, refreshKey])
+  }, [date, settledKey])
 
   useEffect(() => {
     if (openId === null) { setDetail(null); return }
