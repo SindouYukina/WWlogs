@@ -81,6 +81,10 @@ type Session interface {
 	Close()
 	// SetPublishInterval changes the snapshot cadence while the session runs; it must be safe for concurrent use.
 	SetPublishInterval(interval time.Duration)
+	// SetHistoryRecording and HistoryRecording switch and report Combat History recording of a session that keeps history;
+	// both must be safe for concurrent use.
+	SetHistoryRecording(on bool)
+	HistoryRecording() capture.HistoryRecordingState
 }
 
 // Opener opens a session for cfg. It must release everything it opened when it fails.
@@ -114,6 +118,8 @@ type CaptureService struct {
 	stopAsked       bool          // Stop arrived while the session was still opening
 	closed          bool
 	history         HistoryStarter
+	// historyRecording is the user's recording setting: every session starts with it and a running one follows changes.
+	historyRecording bool
 }
 
 // SetHistory makes every later session keep Combat History through start; nil keeps none.
@@ -123,13 +129,36 @@ func (s *CaptureService) SetHistory(start HistoryStarter) {
 	s.history = start
 }
 
+// SetHistoryRecording sets whether Combat History records. A running session stops recording at once, or starts at its next
+// clean encounter boundary (capture.DamageStatistics.SetHistoryRecording); later sessions start with the setting. Live
+// statistics and views never depend on it.
+func (s *CaptureService) SetHistoryRecording(on bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.historyRecording = on
+	if s.session != nil {
+		s.session.SetHistoryRecording(on)
+	}
+}
+
+// HistoryRecording reports the running session's recording state; without a running session it reports none.
+func (s *CaptureService) HistoryRecording() capture.HistoryRecordingState {
+	s.mu.Lock()
+	session := s.session
+	s.mu.Unlock()
+	if session == nil {
+		return capture.HistoryRecordingState{}
+	}
+	return session.HistoryRecording()
+}
+
 // NewCaptureService creates a stopped service using open to create sessions.
 func NewCaptureService(open Opener) *CaptureService {
 	record := buildinfo.Current()
 	identity := AppIdentity{Version: record.Version, BuildNumber: record.BuildNumber, Official: record.Official(),
 		Commit: record.Commit, Dirty: record.Dirty, Profile: string(record.Profile)}
 	status := Status{State: StateStopped, App: identity}
-	return &CaptureService{open: open, publisher: NewPublisher(status), identity: identity, status: status}
+	return &CaptureService{open: open, publisher: NewPublisher(status), identity: identity, status: status, historyRecording: true}
 }
 
 // SessionOpener adapts capture.OpenSession with preloaded Master data.
@@ -180,6 +209,7 @@ func (s *CaptureService) Start(cfg capture.SessionConfig) error {
 	done := make(chan struct{})
 	s.done = done
 	startHistory := s.history
+	cfg.HistoryPaused = !s.historyRecording
 	s.publishLocked()
 	s.mu.Unlock()
 
@@ -230,6 +260,9 @@ func (s *CaptureService) Start(cfg capture.SessionConfig) error {
 	// A change that arrived while the session was opening still applies.
 	if s.publishInterval != 0 {
 		session.SetPublishInterval(s.publishInterval)
+	}
+	if s.historyRecording == cfg.HistoryPaused {
+		session.SetHistoryRecording(s.historyRecording)
 	}
 	s.session = session
 	s.status = Status{State: StateRunning, Session: &info, StartedAt: time.Now(), History: historyState, App: s.identity}

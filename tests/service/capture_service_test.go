@@ -22,9 +22,26 @@ type fakeSession struct {
 	runErr    error
 	burst     int
 	closeWait <-chan struct{}
-	// intervals records every SetPublishInterval call, in order.
+	// intervals records every SetPublishInterval call and recording every SetHistoryRecording call, in order.
 	intervalMu sync.Mutex
 	intervals  []time.Duration
+	recording  []bool
+}
+
+func (f *fakeSession) SetHistoryRecording(on bool) {
+	f.intervalMu.Lock()
+	defer f.intervalMu.Unlock()
+	f.recording = append(f.recording, on)
+}
+
+func (f *fakeSession) HistoryRecording() capture.HistoryRecordingState {
+	f.intervalMu.Lock()
+	defer f.intervalMu.Unlock()
+	if len(f.recording) == 0 {
+		return capture.HistoryRecordingState{}
+	}
+	on := f.recording[len(f.recording)-1]
+	return capture.HistoryRecordingState{Enabled: on, Recording: on}
 }
 
 func (f *fakeSession) SetPublishInterval(interval time.Duration) {

@@ -34,9 +34,11 @@ type Bridge struct {
 	openBrowser func(string) error
 	// startup is the launch-time automatic start; a manual start or stop settles it for the rest of the run.
 	startup startupCapture
-	// history is the run's Combat History; masters projects a stored encounter with the live view's projection.
-	history *history.Store
-	masters *capture.MasterData
+	// history is the run's Combat History; masters projects a stored encounter with the live view's projection; recorders
+	// follows the running capture's recorder for the history indicator.
+	history   *history.Store
+	masters   *capture.MasterData
+	recorders *recorderTracker
 }
 
 // snapshotWaitLimit is the heartbeat base: one NextSnapshot call waits at most this plus one update interval, and an
@@ -148,7 +150,7 @@ func (b *Bridge) CurrentSnapshot() (json.RawMessage, error) {
 }
 
 func (b *Bridge) encode(snapshot *service.Snapshot) (json.RawMessage, error) {
-	return b.projection.encode(snapshot, b.settings.current(), b.catalog, b.listeningStatus(snapshot), b.overlays.states())
+	return b.projection.encode(snapshot, b.settings.current(), b.catalog, b.listeningStatus(snapshot), b.overlays.states(), b.historyIndicator())
 }
 
 // shellSignal wakes long-polling windows when host state changes, so a setting applies at once instead of at the next

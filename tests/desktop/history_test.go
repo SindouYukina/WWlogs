@@ -23,7 +23,7 @@ func TestReplayNeverEntersTheOwnHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The default history records live captures only.
-	own := historyStarter(store, false)
+	own := historyStarter(store, false, nil)
 	if recorder, state, err := own(capture.SessionConfig{ReplayPath: replay}); recorder != nil || state != "" || err != nil {
 		t.Fatalf("a replay was recorded into the default history: %v %q %v", recorder, state, err)
 	}
@@ -35,7 +35,7 @@ func TestReplayNeverEntersTheOwnHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	// An explicit test history records a replay once.
-	test := historyStarter(store, true)
+	test := historyStarter(store, true, nil)
 	first, _, err := test(capture.SessionConfig{ReplayPath: replay})
 	if err != nil || first == nil {
 		t.Fatalf("an explicit test history did not record the replay: %v", err)

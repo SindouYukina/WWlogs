@@ -22,6 +22,10 @@ func (s *launchSession) Info() capture.SessionInfo {
 }
 func (s *launchSession) Close()                           { s.closes++ }
 func (s *launchSession) SetPublishInterval(time.Duration) {}
+func (s *launchSession) SetHistoryRecording(bool)         {}
+func (s *launchSession) HistoryRecording() capture.HistoryRecordingState {
+	return capture.HistoryRecordingState{}
+}
 func (s *launchSession) Run(ctx context.Context, publish func(capture.ViewSnapshot)) (capture.SessionResult, error) {
 	publish(capture.ViewSnapshot{CaptureSessionID: 7})
 	<-ctx.Done()

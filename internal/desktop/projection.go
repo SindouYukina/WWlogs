@@ -33,13 +33,15 @@ type projectedShell struct {
 	Overlays         OverlayStates `json:"overlays"`
 	// SettingsWarning is a recoverable settings problem to show in the Desktop window.
 	SettingsWarning string `json:"settingsWarning,omitempty"`
+	// History is the Combat History indicator (history_status.go).
+	History historyIndicator `json:"history"`
 }
 
-func (p *displayProjection) encode(source *service.Snapshot, settings SettingsState, catalog localeCatalog, listening service.ListeningStatus, overlays OverlayStates) (json.RawMessage, error) {
+func (p *displayProjection) encode(source *service.Snapshot, settings SettingsState, catalog localeCatalog, listening service.ListeningStatus, overlays OverlayStates, history historyIndicator) (json.RawMessage, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	shell := projectedShell{Listening: listening, LanguagePreference: settings.Settings.LanguagePreference, Theme: effectiveTheme(settings.Settings), ReduceMotion: settings.Settings.ReduceMotion,
-		UpdateIntervalMs: int(effectiveUpdateInterval(settings.Settings) / time.Millisecond), Overlays: overlays, SettingsWarning: settings.Warning}
+		UpdateIntervalMs: int(effectiveUpdateInterval(settings.Settings) / time.Millisecond), Overlays: overlays, SettingsWarning: settings.Warning, History: history}
 	if p.source == source && p.revision == settings.LocaleRevision && p.shell == shell {
 		return append(json.RawMessage(nil), p.encoded...), nil
 	}
