@@ -76,6 +76,9 @@ type Recorder struct {
 	done   chan struct{}
 	// firstSpan is the row id of the first span, once it exists.
 	firstSpan atomic.Int64
+	// lost and halted are Health's view of the losses and of a writer that stopped trying.
+	lost   atomic.Uint64
+	halted atomic.Bool
 
 	mu             sync.Mutex
 	closed         bool
@@ -201,6 +204,7 @@ func (r *Recorder) Submit(entries []capture.HistoryEntry, dropped uint64) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if dropped > 0 {
+		r.lost.Add(dropped)
 		r.journalDropped += dropped
 		// The journal cannot say which encounters lost an entry, so none of this span's encounters can be complete.
 		r.taintedAll = true
@@ -217,7 +221,23 @@ func (r *Recorder) Submit(entries []capture.HistoryEntry, dropped uint64) {
 		}
 	}
 	r.queueDropped += uint64(len(entries))
+	r.lost.Add(uint64(len(entries)))
 	r.taintLocked(entries)
+}
+
+// RecorderHealth is how a recorder's storage is doing. Stopped is set once repeated transaction failures stopped the writer;
+// Lost counts the journal entries of this capture that never reached storage.
+type RecorderHealth struct {
+	Stopped bool   `json:"stopped"`
+	Lost    uint64 `json:"lost"`
+}
+
+// Health reports the recorder's storage state; it is safe to call from any goroutine.
+func (r *Recorder) Health() RecorderHealth {
+	if r == nil {
+		return RecorderHealth{}
+	}
+	return RecorderHealth{Stopped: r.halted.Load(), Lost: r.lost.Load()}
 }
 
 func (r *Recorder) taintLocked(entries []capture.HistoryEntry) {
@@ -291,6 +311,7 @@ func (r *Recorder) write(entries []capture.HistoryEntry) {
 		r.failures++
 		if r.failures >= maxConsecutiveWriteFailures {
 			r.stopped = true
+			r.halted.Store(true)
 		}
 		return
 	}
@@ -312,6 +333,7 @@ func (r *Recorder) write(entries []capture.HistoryEntry) {
 // lose accounts for entries that could not be stored.
 func (r *Recorder) lose(entries []capture.HistoryEntry) {
 	r.writeFailed += uint64(len(entries))
+	r.lost.Add(uint64(len(entries)))
 	r.mu.Lock()
 	r.taintLocked(entries)
 	r.mu.Unlock()
