@@ -1,7 +1,7 @@
 import { memo, useMemo, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { AnimatedNumber, Card, CharacterAvatar, Chip, ContentSwitch, DamageBar, GameAssetImage, Icon, LiveChart, Reveal, Segmented, StackList, ThemeBackdrop, type ChartSeries, type IconName, type ThemeId } from "@/design"
-import { dataChip, displayedEncounter, isFrozen, usableDps, type CombatData, type SkillBreakdown } from "@/lib/combat-data"
+import { dataChip, displayedEncounter, isFrozen, usableDps, type CombatData, type CombatTimeline, type SkillBreakdown } from "@/lib/combat-data"
 import { teamSeriesKey, unassignedSeriesKey } from "@/lib/timeline"
 import { combatRows, detailRow, selectionScope, type CombatRowModel } from "@/lib/combat-view"
 import { useDetailPick, type DetailPick } from "@/lib/useDetailPick"
@@ -24,7 +24,7 @@ interface StatProps {
   status?: string
 }
 
-const StatCard = memo(function StatCard({ icon, label, value, format, note, scope, stale, hero = false, numberMode, index, field, status }: StatProps) {
+export const StatCard = memo(function StatCard({ icon, label, value, format, note, scope, stale, hero = false, numberMode, index, field, status }: StatProps) {
   return <Reveal index={index} className={hero ? "ww-dash-stat-wrap ww-dash-stat-hero" : "ww-dash-stat-wrap"}>
     <Card interactive className="ww-dash-stat">
       <div className="ww-dash-stat-label"><Icon name={icon} size={14} />{label}</div>
@@ -34,7 +34,7 @@ const StatCard = memo(function StatCard({ icon, label, value, format, note, scop
   </Reveal>
 })
 
-function RoleBoard({ rows, selected, onSelect, scope, stale, numberMode }: { rows: readonly CombatRowModel[]; selected: string; onSelect: (key: string) => void; scope: string; stale: boolean; numberMode: "tween" | "roll" }) {
+export function RoleBoard({ rows, selected, onSelect, scope, stale, numberMode }: { rows: readonly CombatRowModel[]; selected: string; onSelect: (key: string) => void; scope: string; stale: boolean; numberMode: "tween" | "roll" }) {
   const format = useFormatters()
   const nameOf = useRowNames()
   return <StackList items={rows} keyOf={row => row.key} rowHeight={58} gap={6} renderItem={row => <div className="ww-dash-role" data-key={row.key} data-rank={row.rank} data-field={row.kind === "vehicle" ? "vehicle" : undefined} data-selected={row.key === selected} data-element={row.elementId} role="button" tabIndex={0} onClick={() => onSelect(row.key)} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") onSelect(row.key) }}>
@@ -51,7 +51,7 @@ const derivedNoteKey = { damage_list: "derivedSkillNote", skill_type: "derivedSk
 const derivedUnassignedNoteKey = { echo: "derivedUnassignedEchoNote", damage_list: "derivedUnassignedSkillNote", damage_type: "derivedUnassignedOutroNote" } as const
 
 /** The engine's skill split of one contributor. Rows plus the unassigned row add up to the contributor's damage. */
-const SkillTable = memo(function SkillTable({ breakdown, color }: { breakdown: SkillBreakdown; color: string }) {
+export const SkillTable = memo(function SkillTable({ breakdown, color }: { breakdown: SkillBreakdown; color: string }) {
   const { t } = useTranslation("dashboard")
   const format = useFormatters()
   const share = (value: number | undefined) => value === undefined ? "—" : format.percent(value)
@@ -102,6 +102,25 @@ function IntegrityPanel({ view, diagnostics }: { view: ViewSnapshot | null; diag
 
 type DetailTab = "skills" | "integrity"
 
+/**
+ * The chart lines of one encounter timeline: the team, each ranked contributor in RoleId order then the vehicle, then unassigned
+ * damage. The Dashboard and the History view draw the same lines from the same engine series.
+ */
+export function chartSeries(timeline: CombatTimeline | undefined, rows: readonly CombatRowModel[], labels: { team: string; unassigned: string }, nameOf: (row: CombatRowModel) => string): ChartSeries[] {
+  if (!timeline) return []
+  const fit = (values: ReadonlyArray<number | null> | undefined) => Array.from({ length: timeline.slots }, (_, slot) => values?.[slot] ?? null)
+  const lines: ChartSeries[] = []
+  const team = timeline.series.get(teamSeriesKey)
+  if (team) lines.push({ key: teamSeriesKey, label: labels.team, color: "var(--ww-ink-100)", values: fit(team), aggregate: true })
+  // Roles keep their element color in RoleId order, then the vehicle; the same contributor keeps its line when ranks change.
+  for (const row of rows.filter(row => timeline.series.has(row.key)).sort((a, b) => (a.kind === b.kind ? (a.roleId ?? 0) - (b.roleId ?? 0) : a.kind === "role" ? -1 : 1))) {
+    lines.push({ key: row.key, label: nameOf(row), color: elementColor(row.elementId), values: fit(timeline.series.get(row.key)) })
+  }
+  const unassigned = timeline.series.get(unassignedSeriesKey)
+  if (unassigned) lines.push({ key: unassignedSeriesKey, label: labels.unassigned, color: "var(--ww-ink-400)", values: fit(unassigned) })
+  return lines
+}
+
 export interface DashboardViewProps {
   data: CombatData
   theme: ThemeId
@@ -151,20 +170,7 @@ export function DashboardView({ data, theme, numberMode = "tween", actions, deta
   const timeline = data.timeline
   // The timeline changes once per second; the memo keeps the chart from re-rendering at the publish rate.
   const timelineKey = timeline ? `${timeline.encounterId ?? ""}:${timeline.slots}:${timeline.slotSeconds}:${timeline.final === true}:` + [...timeline.series].map(([key, values]) => `${key}=${values.length}:${values.at(-1) ?? ""}`).join() : ""
-  const series = useMemo<ChartSeries[]>(() => {
-    if (!timeline) return []
-    const fit = (values: ReadonlyArray<number | null> | undefined) => Array.from({ length: timeline.slots }, (_, slot) => values?.[slot] ?? null)
-    const lines: ChartSeries[] = []
-    const team = timeline.series.get(teamSeriesKey)
-    if (team) lines.push({ key: teamSeriesKey, label: t("teamDps"), color: "var(--ww-ink-100)", values: fit(team), aggregate: true })
-    // Roles keep their element color in RoleId order, then the vehicle; the same contributor keeps its line when ranks change.
-    for (const row of rows.filter(row => timeline.series.has(row.key)).sort((a, b) => (a.kind === b.kind ? (a.roleId ?? 0) - (b.roleId ?? 0) : a.kind === "role" ? -1 : 1))) {
-      lines.push({ key: row.key, label: nameOf(row), color: elementColor(row.elementId), values: fit(timeline.series.get(row.key)) })
-    }
-    const unassigned = timeline.series.get(unassignedSeriesKey)
-    if (unassigned) lines.push({ key: unassignedSeriesKey, label: c("unassigned"), color: "var(--ww-ink-400)", values: fit(unassigned) })
-    return lines
-  }, [timelineKey, rows, nameOf, t])
+  const series = useMemo<ChartSeries[]>(() => chartSeries(timeline, rows, { team: t("teamDps"), unassigned: c("unassigned") }, nameOf), [timelineKey, rows, nameOf, t])
   const skills = data.skillsOf && selected ? data.skillsOf(selected.key) : undefined
   // The engine's facts for the scope on screen: this encounter when one is shown, not the whole capture.
   const completeness = (encounter ?? view)?.completeness

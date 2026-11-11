@@ -1,5 +1,6 @@
 import { Call } from "@wailsio/runtime"
 import type { CaptureEnvironment, NpcapDownload } from "./capture-environment"
+import type { HistoryDay, HistoryEncounterDetail, HistoryYear } from "./history"
 import type { OverlayKind, OverlayState, OverlayStates, Snapshot } from "./snapshot"
 
 // Calls into the Go Bridge (internal/desktop.Bridge) by fully qualified name; no generated bindings are needed.
@@ -48,4 +49,8 @@ export const host = {
   resetOverlay: (kind: OverlayKind) => call<void>("ResetOverlay", kind),
   /** Forgets the Desktop window's remembered size and position and returns it to the first-launch default. */
   resetDesktopWindow: () => call<void>("ResetDesktopWindow"),
+  /** Combat History: encounter counts per local date of a year, one page of a date, and one encounter. */
+  historyYear: (year: number) => call<HistoryYear>("HistoryYear", year),
+  historyDay: (date: string, offset: number) => call<HistoryDay>("HistoryDay", date, offset),
+  historyEncounter: (id: number) => call<HistoryEncounterDetail>("HistoryEncounter", id),
 }

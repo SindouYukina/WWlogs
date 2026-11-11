@@ -417,3 +417,28 @@ body[data-view] img { -webkit-user-drag: none; }
 .ww-row-block { padding-block: var(--ww-space-3); }
 /* Custom properties resolve where they are declared, so a surface that sets its own opacity has to derive these again. */
 .ww-combat, .ww-effects { --ww-surface-overlay: color-mix(in oklab, var(--ww-ink-950) calc(var(--ww-alpha-overlay) * 100%), transparent); --ww-surface-overlay-strong: color-mix(in oklab, var(--ww-ink-950) calc(var(--ww-alpha-overlay-strong) * 100%), transparent); }
+
+/* ------------------------------ Activity heatmap ------------------------------ */
+/* A contribution calendar: week columns, Sunday on top. Cells are buttons; only transform and box-shadow change on hover and
+   selection, and the motion tokens zero the transition under reduced motion. */
+.ww-heatmap { position: relative; container-type: inline-size; --ww-heatmap-gap: 3px; }
+/* Cells grow with the card up to a readable size; the label column keeps 40px. A narrow window scrolls the year sideways. */
+.ww-heatmap-body { --ww-heatmap-cell: clamp(10px, calc((100cqi - 40px) / var(--ww-heatmap-weeks, 53) - var(--ww-heatmap-gap)), 19px); width: max-content; margin-inline: auto; }
+.ww-heatmap-scroll { overflow-x: auto; overflow-y: hidden; padding: var(--ww-space-1) var(--ww-space-1) var(--ww-space-1) 0; scrollbar-width: thin; scrollbar-color: var(--ww-surface-4) transparent; }
+.ww-heatmap-grid { display: grid; grid-template-columns: auto repeat(var(--ww-heatmap-weeks), var(--ww-heatmap-cell)); grid-template-rows: auto repeat(7, var(--ww-heatmap-cell)); gap: var(--ww-heatmap-gap); width: max-content; }
+.ww-heatmap-month { grid-row: 1; padding-bottom: var(--ww-space-0_5); font-size: var(--ww-text-2xs); color: var(--ww-text-3); white-space: nowrap; }
+.ww-heatmap-weekday { grid-column: 1; padding-inline-end: var(--ww-space-1_5); font-size: var(--ww-text-2xs); line-height: var(--ww-heatmap-cell); color: var(--ww-text-4); white-space: nowrap; }
+.ww-heatmap-cell { display: block; width: var(--ww-heatmap-cell); height: var(--ww-heatmap-cell); padding: 0; border: 0; border-radius: calc(3px * var(--ww-radius-scale)); background: var(--ww-heat-0); box-shadow: inset 0 0 0 1px var(--ww-line-soft); cursor: pointer; transition: transform var(--ww-dur-fast) var(--ww-ease-standard), box-shadow var(--ww-dur-fast) var(--ww-ease-standard); }
+.ww-heatmap-cell[data-level="1"] { background: var(--ww-heat-1); }
+.ww-heatmap-cell[data-level="2"] { background: var(--ww-heat-2); }
+.ww-heatmap-cell[data-level="3"] { background: var(--ww-heat-3); }
+.ww-heatmap-cell[data-level="4"] { background: var(--ww-heat-4); }
+.ww-heatmap-cell:not(.ww-heatmap-swatch):hover { transform: scale(1.2); }
+.ww-heatmap-cell[data-today="true"] { box-shadow: inset 0 0 0 1px var(--ww-time); }
+.ww-heatmap-cell[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--ww-surface-1), 0 0 0 3.5px var(--ww-indicator); }
+.ww-heatmap-cell:focus-visible { outline: none; box-shadow: var(--ww-focus-ring); }
+.ww-heatmap-swatch { cursor: default; }
+.ww-heatmap-legend { display: flex; align-items: center; justify-content: flex-end; gap: var(--ww-heatmap-gap); margin-top: var(--ww-space-2); font-size: var(--ww-text-2xs); color: var(--ww-text-4); }
+.ww-heatmap-legend > span:first-child { margin-inline-end: var(--ww-space-1); }
+.ww-heatmap-legend > span:last-child { margin-inline-start: var(--ww-space-1); }
+.ww-heatmap-tip { position: absolute; z-index: 5; transform: translate(-50%, calc(-100% - 6px)); padding: var(--ww-space-1) var(--ww-space-2); border-radius: var(--ww-radius-sm); background: var(--ww-surface-3); box-shadow: var(--ww-shadow-popover); font-size: var(--ww-text-xs); color: var(--ww-text); white-space: nowrap; pointer-events: none; }
