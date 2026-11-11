@@ -3,17 +3,25 @@ package capture
 import (
 	"sort"
 	"strconv"
+	"sync"
 	"time"
 )
 
 // Combat History journal.
 //
-// The engine notes what Combat History keeps while it makes its own decisions, under the statistics lock, in the order it
-// makes them: an encounter opened, became real, finished or was discarded; a finished encounter's integrity changed after a
-// late transport loss; a transport loss began, recovered or failed; and, at the event level, every accepted combat result
-// and the encounter it joined. The capture goroutine drains the journal after every packet and hands it to a HistorySink
-// that must never block (Session.Run). The journal repeats decisions; it never makes one, so statistics, encounter
-// boundaries and views are the same whether it is on or off. Off (HistoryOff, the default) it records nothing.
+// The engine notes what Combat History keeps while it makes its own decisions, in the order it makes them: an encounter
+// opened, became real, finished or was discarded; a finished encounter's integrity changed after a late transport loss; a
+// transport loss began, recovered or failed; and, at the event level, every accepted combat result and the encounter it
+// joined, and every effect lifecycle change the effect tracker accepted (history_effects.go). The statistics journal under
+// the statistics lock and the effect tracker under its own; the journal's lock is a leaf that neither waits on. The capture
+// goroutine drains the journal after every packet and hands it to a HistorySink that must never block (Session.Run). The
+// journal repeats decisions; it never makes one, so statistics, encounter boundaries, effect lifecycles and views are the
+// same whether it is on or off. Off (HistoryOff, the default) it records nothing.
+//
+// Recording can be switched off and on while a capture runs (SetHistoryRecording). Each recorded span starts with
+// HistoryRecordingStarted and ends with HistoryRecordingStopped or the end of the capture. A span never starts inside an
+// encounter: a start waits for a clean boundary (historyBoundary), so a span holds whole encounters only. Stopping is
+// immediate: the encounter in progress is named in the stop entry and stays unfinished in the history, never complete.
 
 // HistoryLevel selects how much of the engine's work the journal repeats.
 type HistoryLevel uint8
@@ -51,7 +59,38 @@ const (
 	HistoryLossBegan  HistoryEntryKind = "loss_began"
 	HistoryLossEnded  HistoryEntryKind = "loss_ended"
 	HistoryLossFailed HistoryEntryKind = "loss_failed"
+	// HistoryRecordingStarted opens a recorded span (Recording.Reason): the entries up to the next HistoryRecordingStopped,
+	// or the end of the capture, belong to it.
+	HistoryRecordingStarted HistoryEntryKind = "recording_started"
+	// HistoryRecordingStopped closes the span (Recording). Recording.Open names the encounter still in progress: it was
+	// not observed to its end and must never be kept as finished.
+	HistoryRecordingStopped HistoryEntryKind = "recording_stopped"
+	// HistoryEncounterCheckpoint is the encounter in progress as the engine renders it at a checkpoint (Finished, with the
+	// outcome OPEN). A later checkpoint or the finished entry replaces it; it never finishes the encounter.
+	HistoryEncounterCheckpoint HistoryEntryKind = "encounter_checkpoint"
+	// HistoryEffectChanged is one effect lifecycle change the effect tracker accepted (Effect). HistoryEvents only.
+	HistoryEffectChanged HistoryEntryKind = "effect_changed"
+	// HistoryEffectRejected is an effect APPLY the tracker could not keep at its capacity bound: its instance and later
+	// changes are missing from the history. HistoryEvents only.
+	HistoryEffectRejected HistoryEntryKind = "effect_rejected"
 )
+
+// Reasons a recorded span starts or stops.
+const (
+	// HistoryStartCapture is a span that starts with the capture.
+	HistoryStartCapture = "capture_start"
+	// HistoryStartEnabled is a span that starts after recording was switched on during the capture.
+	HistoryStartEnabled = "recording_enabled"
+	// HistoryStopDisabled is a span that ends because recording was switched off.
+	HistoryStopDisabled = "recording_disabled"
+)
+
+// HistoryRecordingChange is a recorded span starting or stopping.
+type HistoryRecordingChange struct {
+	Reason string
+	// Open lists the encounter keys still in progress when the span stopped.
+	Open []string
+}
 
 // HistoryEntry is one journal entry. Only the fields of its kind are set; the entry holds no reference into engine state.
 type HistoryEntry struct {
@@ -65,6 +104,8 @@ type HistoryEntry struct {
 	Finished  *HistoryEncounter
 	Integrity *DataIntegrity
 	Loss      *HistoryLoss
+	Recording *HistoryRecordingChange
+	Effect    *HistoryEffect
 }
 
 // HistoryEncounterOpening is an encounter as it opened. Its start may still move back by the pre-roll window, so the
@@ -87,6 +128,8 @@ type HistoryEncounter struct {
 	Enemies         []EncounterEnemySnapshot
 	EnemiesOverflow uint64
 	Scene           SceneContext
+	// CheckpointAt is the capture time a checkpoint describes; zero for a finished encounter.
+	CheckpointAt time.Time
 }
 
 // HistoryLoss is one transport loss episode: data of Direction after From was lost until To (zero while it lasts).
@@ -264,22 +307,73 @@ func (a *enemyAggregate) snapshot() []EncounterEnemySnapshot {
 const maxHistoryJournalEntries = 1 << 16
 
 // historyJournal belongs to a DamageStatistics, so it outlives the statistics interval reset that replaces the encounter
-// tracker. It is used under the statistics lock.
+// tracker, and the processor shares it with the effect tracker. Its lock is a leaf: nothing is locked while it is held, so
+// the statistics (under their lock) and the effect tracker (under its own) both journal into it in processing order.
 type historyJournal struct {
-	level    HistoryLevel
-	entries  []HistoryEntry
-	dropped  uint64
-	sequence uint64
+	mu    sync.Mutex
+	level HistoryLevel
+	// want is the host's recording setting; recording says whether entries are kept now. A start waits for a clean
+	// encounter boundary (DamageStatistics.TakeHistory), so want can be on while recording is still off.
+	want      bool
+	recording bool
+	entries   []HistoryEntry
+	dropped   uint64
+	// sequence numbers accepted combat results, effectSequence journaled effect changes and effectInstances the effect
+	// instances they belong to; all three only grow within the capture session.
+	sequence        uint64
+	effectSequence  uint64
+	effectInstances uint64
 }
 
-func (j *historyJournal) on() bool { return j != nil && j.level != HistoryOff }
+func (j *historyJournal) onLocked() bool { return j.level != HistoryOff && j.recording }
 
-func (j *historyJournal) events() bool { return j != nil && j.level >= HistoryEvents }
+func (j *historyJournal) eventsLocked() bool { return j.level >= HistoryEvents && j.recording }
+
+// on reports whether the journal records now.
+func (j *historyJournal) on() bool {
+	if j == nil {
+		return false
+	}
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	return j.onLocked()
+}
+
+// events reports whether the journal records event-level entries now.
+func (j *historyJournal) events() bool {
+	if j == nil {
+		return false
+	}
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	return j.eventsLocked()
+}
 
 func (j *historyJournal) add(entry HistoryEntry) {
-	if !j.on() {
+	if j == nil {
 		return
 	}
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if j.onLocked() {
+		j.addLocked(entry)
+	}
+}
+
+// addRecorded journals an entry about an encounter a span already recorded, such as a finished encounter's later integrity
+// change. It is kept whenever the journal has a level, even between spans, so a recorded encounter never keeps a stale result.
+func (j *historyJournal) addRecorded(entry HistoryEntry) {
+	if j == nil {
+		return
+	}
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if j.level != HistoryOff {
+		j.addLocked(entry)
+	}
+}
+
+func (j *historyJournal) addLocked(entry HistoryEntry) {
 	if len(j.entries) >= maxHistoryJournalEntries {
 		j.dropped++
 		return
@@ -289,29 +383,48 @@ func (j *historyJournal) add(entry HistoryEntry) {
 
 // accept numbers an accepted combat result and, at the event level, journals it.
 func (j *historyJournal) accept(record *CombatEventRecord) {
-	if !j.on() {
+	if j == nil {
+		return
+	}
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if !j.onLocked() {
 		return
 	}
 	j.sequence++
 	record.historySequence = j.sequence
-	if j.events() {
+	if j.eventsLocked() {
 		copied := *record
 		copied.EchoVisions = append([]uint64(nil), record.EchoVisions...)
-		j.add(HistoryEntry{Kind: HistoryEventAccepted, Sequence: j.sequence, Event: &copied})
+		j.addLocked(HistoryEntry{Kind: HistoryEventAccepted, Sequence: j.sequence, Event: &copied})
 	}
 }
 
 // assign journals that an accepted result joined an encounter.
 func (j *historyJournal) assign(sequence uint64, encounter string) {
-	if j.events() && sequence != 0 {
-		j.add(HistoryEntry{Kind: HistoryEventAssigned, Sequence: sequence, Encounter: encounter})
+	if j == nil || sequence == 0 {
+		return
+	}
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if j.eventsLocked() {
+		j.addLocked(HistoryEntry{Kind: HistoryEventAssigned, Sequence: sequence, Encounter: encounter})
 	}
 }
 
-func (j *historyJournal) take() ([]HistoryEntry, uint64) {
-	if j == nil {
-		return nil, 0
-	}
+// startLocked opens a recorded span. Span markers are never refused at the bound: without them a sink could not tell which
+// entries belong to which span.
+func (j *historyJournal) startLocked(reason string) {
+	j.recording = true
+	j.entries = append(j.entries, HistoryEntry{Kind: HistoryRecordingStarted, Recording: &HistoryRecordingChange{Reason: reason}})
+}
+
+func (j *historyJournal) stopLocked(reason string, open []string) {
+	j.entries = append(j.entries, HistoryEntry{Kind: HistoryRecordingStopped, Recording: &HistoryRecordingChange{Reason: reason, Open: open}})
+	j.recording = false
+}
+
+func (j *historyJournal) takeLocked() ([]HistoryEntry, uint64) {
 	entries, dropped := j.entries, j.dropped
 	j.entries, j.dropped = nil, 0
 	return entries, dropped
@@ -322,27 +435,108 @@ func historyKey(intervalID, sequence uint64) string {
 	return strconv.FormatUint(intervalID, 10) + "-" + strconv.FormatUint(sequence, 10)
 }
 
-// EnableHistory turns the journal on at level for this statistics owner; HistoryOff turns it off and forgets what waits.
+// EnableHistory turns the journal on at level and records from now on; HistoryOff turns it off and forgets what waits.
 func (s *DamageStatistics) EnableHistory(level HistoryLevel) {
+	s.ConfigureHistory(level, true)
+}
+
+// ConfigureHistory sets the journal level and the recording setting. A capture that keeps history calls it before its
+// first packet: with recording on, the first span starts at once (HistoryStartCapture), since nothing is in progress yet.
+func (s *DamageStatistics) ConfigureHistory(level HistoryLevel, recording bool) {
 	if s == nil {
 		return
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.history.level = level
+	j := s.history
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	j.level = level
 	if level == HistoryOff {
-		s.history.entries, s.history.dropped = nil, 0
+		j.entries, j.dropped, j.want, j.recording = nil, 0, false, false
+		return
+	}
+	j.want = recording
+	if recording && !j.recording && s.encounters.historyBoundary() {
+		j.startLocked(HistoryStartCapture)
 	}
 }
 
-// TakeHistory returns the journal entries recorded since the previous call and how many the bound refused.
+// SetHistoryRecording switches recording while a capture runs; it is safe to call from any goroutine. Off stops the span at
+// once and names the encounter in progress, which therefore never becomes a finished history encounter. On starts a span
+// at once at a clean boundary, otherwise at the first one TakeHistory sees, so a span never holds part of an encounter.
+func (s *DamageStatistics) SetHistoryRecording(on bool) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	j := s.history
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if j.level == HistoryOff {
+		return
+	}
+	j.want = on
+	switch {
+	case on && !j.recording && s.encounters.historyBoundary():
+		j.startLocked(HistoryStartEnabled)
+	case !on && j.recording:
+		j.stopLocked(HistoryStopDisabled, s.encounters.historyInProgress())
+	}
+}
+
+// HistoryRecordingState reports the recording setting, whether a span records now, and whether the span is inside an
+// encounter it will keep.
+type HistoryRecordingState struct {
+	Enabled    bool `json:"enabled"`
+	Recording  bool `json:"recording"`
+	InProgress bool `json:"inProgress"`
+}
+
+// HistoryRecording returns the journal's recording state.
+func (s *DamageStatistics) HistoryRecording() HistoryRecordingState {
+	if s == nil {
+		return HistoryRecordingState{}
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	j := s.history
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if j.level == HistoryOff {
+		return HistoryRecordingState{}
+	}
+	return HistoryRecordingState{Enabled: j.want, Recording: j.recording, InProgress: j.recording && len(s.encounters.historyInProgress()) > 0}
+}
+
+// TakeHistory returns the journal entries recorded since the previous call and how many the bound refused. It also starts a
+// span that waits for a clean boundary once the engine reached one.
 func (s *DamageStatistics) TakeHistory() ([]HistoryEntry, uint64) {
 	if s == nil {
 		return nil, 0
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.history.take()
+	j := s.history
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if j.level != HistoryOff && j.want && !j.recording && s.encounters.historyBoundary() {
+		j.startLocked(HistoryStartEnabled)
+	}
+	return j.takeLocked()
+}
+
+// CheckpointHistory journals the encounter in progress as the engine renders it now (HistoryEncounterCheckpoint), so an
+// application that ends abnormally still leaves its observed and stored part. It journals nothing unless the encounter
+// had confirmed activity and changed since its last checkpoint. The host calls it at a low wall-clock rate.
+func (s *DamageStatistics) CheckpointHistory() {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.encounters.checkpoint()
 }
 
 // ApplyEncounterIntegrity sets an encounter's integrity and applies it to its Encounter DPS, peak DPS and healing exactly as
@@ -367,4 +561,58 @@ func integrityEqual(a, b DataIntegrity) bool {
 		}
 	}
 	return true
+}
+
+// historyBoundary reports a clean boundary for a recorded span to start at: no encounter is open, no event waits in the
+// prelude, and no healing result is recent enough to join an encounter that opens later. A span that starts here therefore
+// sees every entry of each encounter it records.
+func (t *encounterTracker) historyBoundary() bool {
+	if t.current != nil || len(t.prelude) > 0 {
+		return false
+	}
+	for _, event := range t.healing {
+		if !event.at.Before(t.highWater.Add(-encounterPreRollWindow)) {
+			return false
+		}
+	}
+	return true
+}
+
+// historyInProgress lists the encounter key a stopping span leaves unfinished.
+func (t *encounterTracker) historyInProgress() []string {
+	if t.current == nil {
+		return nil
+	}
+	return []string{historyKey(t.intervalID, t.current.sequence)}
+}
+
+// checkpoint journals the encounter in progress the way finish journals a finished one: the engine's own rendering, with
+// Encounter DPS, peak DPS and healing before data integrity is applied, evaluated at the newest capture time (live) or at
+// the candidate end. It is skipped before confirmed activity and when nothing changed since the last checkpoint.
+func (t *encounterTracker) checkpoint() {
+	record := t.current
+	if record == nil || !record.historyActive || !t.history.on() {
+		return
+	}
+	events := record.totals.OutgoingEvents + record.totals.IncomingEvents
+	if record.checkpointed && record.checkpointEvents == events && record.checkpointState == record.state {
+		return
+	}
+	end, confidence := t.highWater, "live"
+	if record.state == EncounterEndingCandidate {
+		end, confidence = record.endAt, "ending_candidate"
+	}
+	if end.Before(record.lastActivity) {
+		end = record.lastActivity
+	}
+	snapshot := t.snapshotOf(record, EncounterOutcomeOpen, end)
+	base := snapshot
+	base.EncounterDPS = encounterDPS(record, end, confidence)
+	base.PeakDPS = encounterPeakDPS(record, end, confidence)
+	base.Healing = t.encounterHealing(record, end)
+	record.checkpointed, record.checkpointEvents, record.checkpointState = true, events, record.state
+	t.history.add(HistoryEntry{Kind: HistoryEncounterCheckpoint, Encounter: historyKey(t.intervalID, record.sequence), Finished: &HistoryEncounter{
+		Snapshot: base, Timeline: record.timeline.store(), Enemies: record.enemies.snapshot(), EnemiesOverflow: record.enemies.overflow,
+		Scene: record.scene, CheckpointAt: end,
+	}})
 }

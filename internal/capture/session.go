@@ -36,7 +36,14 @@ type SessionConfig struct {
 	// History receives the session's Combat History journal (history_journal.go); nil keeps no history. It never affects
 	// packet handling, statistics or snapshots.
 	History HistorySink
+	// HistoryPaused opens the session with history recording switched off: the journal records nothing until
+	// SetHistoryRecording(true) starts a span at a clean encounter boundary.
+	HistoryPaused bool
 }
+
+// historyCheckpointInterval is the wall time between checkpoints of the encounter in progress. A checkpoint is one queued
+// journal entry, so the cadence only bounds how much of an unfinished encounter an abnormal exit can lose.
+const historyCheckpointInterval = 15 * time.Second
 
 // Session defaults and bounds.
 const (
@@ -219,7 +226,7 @@ func OpenSession(cfg SessionConfig, masters *MasterData) (*Session, error) {
 	p.observeCaptureSource(live)
 	session.diagnostics.attach(p)
 	if cfg.History != nil {
-		p.damageStatistics.EnableHistory(cfg.History.Level())
+		p.damageStatistics.ConfigureHistory(cfg.History.Level(), !cfg.HistoryPaused)
 	}
 	session.processor = p
 	session.info.CaptureSessionID = p.damageStatistics.Snapshot().CaptureSessionID
@@ -237,6 +244,23 @@ func (s *Session) SetPublishInterval(interval time.Duration) {
 // Info describes the session.
 func (s *Session) Info() SessionInfo {
 	return s.info
+}
+
+// SetHistoryRecording switches Combat History recording of a session that keeps history; it is safe to call from any
+// goroutine, before or while the session runs. See DamageStatistics.SetHistoryRecording for the span boundaries.
+func (s *Session) SetHistoryRecording(on bool) {
+	if s == nil || s.processor == nil || s.cfg.History == nil {
+		return
+	}
+	s.processor.damageStatistics.SetHistoryRecording(on)
+}
+
+// HistoryRecording reports the session's recording state; a session without history reports none.
+func (s *Session) HistoryRecording() HistoryRecordingState {
+	if s == nil || s.processor == nil || s.cfg.History == nil {
+		return HistoryRecordingState{}
+	}
+	return s.processor.damageStatistics.HistoryRecording()
 }
 
 // Close releases a session that will not be run. Run releases its own resources.
@@ -272,10 +296,16 @@ func (s *Session) Run(ctx context.Context, publish func(ViewSnapshot)) (result S
 		handle.Close()
 	}()
 
-	// handOffHistory passes what the engine journaled to the history sink. The sink only queues, so this never waits.
+	// handOffHistory passes what the engine journaled to the history sink. The sink only queues, so this never waits. At a
+	// low wall-clock rate it first checkpoints the encounter in progress.
+	lastCheckpoint := time.Now()
 	handOffHistory := func() {
 		if s.cfg.History == nil {
 			return
+		}
+		if now := time.Now(); now.Sub(lastCheckpoint) >= historyCheckpointInterval {
+			lastCheckpoint = now
+			p.damageStatistics.CheckpointHistory()
 		}
 		if entries, dropped := p.damageStatistics.TakeHistory(); len(entries) > 0 || dropped > 0 {
 			s.cfg.History.Submit(entries, dropped)
@@ -315,6 +345,8 @@ loop:
 				if live {
 					p.sessionHealth.observeClock(time.Now())
 				}
+				// A quiet capture still checkpoints, and still starts a span that waited for a boundary.
+				handOffHistory()
 				maybePublish(time.Now())
 				continue
 			case !live && readErr == io.EOF:

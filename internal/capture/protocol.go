@@ -241,7 +241,7 @@ func newProcessor(rsaKey *staticRSA, stdout, diagnostic, audit io.Writer) *proce
 		sourceRoles:          newSourceRoleResolver(),
 		playerRelevance:      newPlayerRelevanceResolver(),
 		damageStatistics:     statistics,
-		effects:              NewEffectTracker(statistics.captureSessionID),
+		effects:              newJournaledEffectTracker(statistics),
 		stdout:               stdout,
 		diagnostic:           diagnostic,
 		audit:                audit,
@@ -566,7 +566,7 @@ func (p *processor) handleFrame(frame gameFrame) {
 		p.playerRelevance.resetSceneEntities()
 		p.observeContextSceneJoin(frame.timestamp)
 		p.observeSceneJoin(plain, frame.timestamp)
-		p.effects.EndLiveState()
+		p.effects.EndLiveStateFor(EffectUntrackedSceneChange)
 		p.backfillAvailableSummaryCredits()
 		p.sourceRoles.reset()
 		p.resetPendingSummaryCredits()
@@ -734,7 +734,7 @@ func (p *processor) handleProtoKeyResponse(body []byte) error {
 	p.discardHeldResponses(&p.pairing.sessionChange)
 	p.entities.reset()
 	p.playerRelevance.reset()
-	p.effects.EndLiveState()
+	p.effects.EndLiveStateFor(EffectUntrackedSessionChange)
 	p.backfillAvailableSummaryCredits()
 	p.sourceRoles.reset()
 	p.resetPendingSummaryCredits()

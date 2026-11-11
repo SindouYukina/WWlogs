@@ -196,13 +196,19 @@ func (b *Bridge) HistoryEncounter(id int64) (json.RawMessage, error) {
 		Timeline      *capture.EncounterTimelineSnapshot `json:"timeline"`
 		TimelineValid bool                               `json:"timelineValid"`
 		Enemies       []historyEnemyJSON                 `json:"enemies"`
-	}{Status: b.history.Status(), Summary: names.summary(detail.Summary), Session: detail.Session, Enemies: []historyEnemyJSON{}}
+		Effects       history.EffectWindow               `json:"effects"`
+	}{Status: b.history.Status(), Summary: names.summary(detail.Summary), Session: detail.Session, Enemies: []historyEnemyJSON{}, Effects: detail.Effects}
 	if detail.Snapshot != nil {
 		view := b.masters.ProjectEncounter(*detail.Snapshot)
 		names.encounter(&view)
 		out.Encounter = &view
 		if detail.Timeline != nil {
-			timeline, valid := detail.Timeline.RenderForView(view.EncounterID, detail.Snapshot.StartedAt, detail.Snapshot.EndedAt)
+			// An unfinished encounter's stored results describe its checkpoint, so its timeline ends there.
+			end := detail.Snapshot.EndedAt
+			if end.IsZero() && detail.Summary.CheckpointAt != nil {
+				end = time.Unix(0, detail.Summary.CheckpointAt.UnixNano())
+			}
+			timeline, valid := detail.Timeline.RenderForView(view.EncounterID, detail.Snapshot.StartedAt, end)
 			out.Timeline, out.TimelineValid = &timeline, valid
 		}
 	}

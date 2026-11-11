@@ -28,6 +28,8 @@ import (
 //   - every accepted combat result is stored once; from the stored results alone, each finished encounter's totals, contributor
 //     split, skill split and healing are recomputed and equal the stored engine results;
 //   - the stored timeline draws exactly the live timeline; the heatmap counts are the listed encounters by local date;
+//   - every effect lifecycle change the effect tracker journaled is stored once, in the tracker's order, with its instance;
+//     a removal is always an observed message and an end of tracking is never stored as a removal;
 //   - after reopening the file every answer is the same, and replaying the same file again stores nothing.
 //
 // It needs the embedded key, so it runs in a test binary built by scripts/embed-key.go (-test-binary ./internal/history), in
@@ -93,8 +95,9 @@ func TestHistoryReplayCollector(t *testing.T) {
 	assertIntegrity(t, reopened)
 	totals.Captures = len(captures)
 	writeJSON(t, filepath.Join(out, "summary.json"), totals)
-	t.Logf("history replay: %d captures (%d byte-identical copies not stored again), %d encounters (%d finished, %d discarded by the engine), %d accepted results stored, %d recomputed",
-		totals.Captures, totals.Duplicates, totals.ListedEncounters, totals.FinishedEncounters, totals.Discarded, totals.StoredEvents, totals.RecomputedEncounters)
+	t.Logf("history replay: %d captures (%d byte-identical copies not stored again), %d encounters (%d finished, %d discarded by the engine), %d accepted results stored, %d recomputed, %d effect changes of %d instances %v",
+		totals.Captures, totals.Duplicates, totals.ListedEncounters, totals.FinishedEncounters, totals.Discarded, totals.StoredEvents, totals.RecomputedEncounters,
+		totals.EffectChanges, totals.EffectInstances, totals.EffectKinds)
 }
 
 type captureItem struct{ name, path string }
@@ -159,25 +162,39 @@ type replaySummary struct {
 	EnemyInstances       int            `json:"enemyInstances"`
 	EnemiesWithMonster   int            `json:"enemiesWithMonster"`
 	DamageDealt          int64          `json:"damageDealt"`
+	EffectChanges        int            `json:"effectChanges"`
+	EffectInstances      int            `json:"effectInstances"`
+	EffectKinds          map[string]int `json:"effectKinds"`
 }
 
 type replayTotals struct {
-	Captures             int   `json:"captures"`
-	Duplicates           int   `json:"duplicates"`
-	FinishedEncounters   int   `json:"finishedEncounters"`
-	Discarded            int   `json:"discarded"`
-	ListedEncounters     int   `json:"listedEncounters"`
-	StoredEvents         int   `json:"storedEvents"`
-	LiveViewsCompared    int   `json:"liveViewsCompared"`
-	RecomputedEncounters int   `json:"recomputedEncounters"`
-	TimelinesCompared    int   `json:"timelinesCompared"`
-	ScenesKnown          int   `json:"scenesKnown"`
-	EnemyInstances       int   `json:"enemyInstances"`
-	EnemiesWithMonster   int   `json:"enemiesWithMonster"`
-	DamageDealt          int64 `json:"damageDealt"`
+	Captures             int            `json:"captures"`
+	Duplicates           int            `json:"duplicates"`
+	FinishedEncounters   int            `json:"finishedEncounters"`
+	Discarded            int            `json:"discarded"`
+	ListedEncounters     int            `json:"listedEncounters"`
+	StoredEvents         int            `json:"storedEvents"`
+	LiveViewsCompared    int            `json:"liveViewsCompared"`
+	RecomputedEncounters int            `json:"recomputedEncounters"`
+	TimelinesCompared    int            `json:"timelinesCompared"`
+	ScenesKnown          int            `json:"scenesKnown"`
+	EnemyInstances       int            `json:"enemyInstances"`
+	EnemiesWithMonster   int            `json:"enemiesWithMonster"`
+	DamageDealt          int64          `json:"damageDealt"`
+	EffectChanges        int            `json:"effectChanges"`
+	EffectInstances      int            `json:"effectInstances"`
+	EffectKinds          map[string]int `json:"effectKinds"`
 }
 
 func (t *replayTotals) add(s replaySummary) {
+	if t.EffectKinds == nil {
+		t.EffectKinds = map[string]int{}
+	}
+	for kind, count := range s.EffectKinds {
+		t.EffectKinds[kind] += count
+	}
+	t.EffectChanges += s.EffectChanges
+	t.EffectInstances += s.EffectInstances
 	if s.DuplicateOf {
 		t.Duplicates++
 	}
@@ -219,7 +236,7 @@ func runCapture(t *testing.T, masters *capture.MasterData, path string, sink cap
 }
 
 func replayIntoHistory(t *testing.T, store *Store, masters *capture.MasterData, item captureItem) replaySummary {
-	summary := replaySummary{Name: item.name, Outcomes: map[string]int{}, Integrity: map[string]int{}}
+	summary := replaySummary{Name: item.name, Outcomes: map[string]int{}, Integrity: map[string]int{}, EffectKinds: map[string]int{}}
 	digest, err := fileDigestHex(item.path)
 	if err != nil {
 		t.Fatal(err)
@@ -389,7 +406,80 @@ func replayIntoHistory(t *testing.T, store *Store, masters *capture.MasterData, 
 		t.Fatalf("stored %d results of %d accepted; %d keyed, %d distinct keys", events, accepted, keyed, distinct)
 	}
 	summary.StoredEvents = events
+	compareEffects(t, store, recorder.SessionID(), tee.entries, &summary)
 	return summary
+}
+
+// compareEffects checks that the stored effect lifecycle is the journal's: one row per journaled change, in the tracker's
+// order, with the instance, change and observation the tracker gave it, and only observed messages stored as removals.
+func compareEffects(t *testing.T, store *Store, span int64, entries []capture.HistoryEntry, summary *replaySummary) {
+	t.Helper()
+	var journaled []*capture.HistoryEffect
+	instances := map[uint64]struct{}{}
+	spans := 0
+	for _, entry := range entries {
+		switch entry.Kind {
+		case capture.HistoryRecordingStarted:
+			spans++
+		case capture.HistoryEffectChanged:
+			if entry.Effect.Sequence != uint64(len(journaled)+1) {
+				t.Fatalf("effect change %d has sequence %d", len(journaled)+1, entry.Effect.Sequence)
+			}
+			journaled = append(journaled, entry.Effect)
+			instances[entry.Effect.Instance] = struct{}{}
+		}
+	}
+	if spans != 1 {
+		t.Fatalf("a replay recorded from its start has %d spans", spans)
+	}
+	rows, err := store.db.QueryContext(context.Background(), "SELECT sequence, instance, after_combat_sequence, change_kind, observation, evidence, reason FROM effect_event WHERE capture_session_id = ? ORDER BY sequence", span)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	stored := 0
+	for rows.Next() {
+		var sequence, instance, after int64
+		var change, observation, evidence, reason string
+		if err := rows.Scan(&sequence, &instance, &after, &change, &observation, &evidence, &reason); err != nil {
+			t.Fatal(err)
+		}
+		if stored >= len(journaled) {
+			t.Fatalf("stored more effect changes than the tracker journaled")
+		}
+		want := journaled[stored]
+		if uint64(sequence) != want.Sequence || uint64(instance) != want.Instance || uint64(after) != want.AfterCombat || change != string(want.Change) ||
+			observation != want.Observation || evidence != string(want.Evidence) || reason != want.Reason {
+			t.Fatalf("effect change %d stored as %d/%d/%d/%s/%s/%s/%s, journaled %+v", stored+1, sequence, instance, after, change, observation, evidence, reason, *want)
+		}
+		switch change {
+		case string(capture.EffectChangeRemove):
+			if observation != capture.EffectObserved || (evidence != string(capture.EffectEvidenceServerNotify) && evidence != string(capture.EffectEvidenceClientReport)) {
+				t.Fatalf("a removal that is not an observed message: %s/%s", observation, evidence)
+			}
+		case string(capture.EffectChangeUntracked):
+			if observation != capture.EffectUntracked {
+				t.Fatalf("an end of tracking stored as %s", observation)
+			}
+		case string(capture.EffectChangeHolderRemoved), string(capture.EffectChangeSuperseded):
+			if observation != capture.EffectDerived {
+				t.Fatalf("a derived end stored as %s", observation)
+			}
+		}
+		summary.EffectKinds[change]++
+		stored++
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if stored != len(journaled) {
+		t.Fatalf("stored %d effect changes of %d journaled", stored, len(journaled))
+	}
+	var storedInstances int
+	if err := store.db.QueryRowContext(context.Background(), "SELECT count(*) FROM effect_instance WHERE capture_session_id = ?", span).Scan(&storedInstances); err != nil || storedInstances != len(instances) {
+		t.Fatalf("stored %d effect instances of %d journaled (%v)", storedInstances, len(instances), err)
+	}
+	summary.EffectChanges, summary.EffectInstances = stored, storedInstances
 }
 
 // normalizeSnapshot maps nil and empty slices to one form; storage cannot tell them apart and neither can a view.

@@ -120,6 +120,7 @@ func (p *processor) observeEffectLifecycle(row buffLifecycleAuditRow) {
 			event.StackCount, event.HasStackCount = *row.StackCount, true
 		}
 		event.HolderMonster, event.SourceMonster = p.effectMonsterEntity(event.HolderEntityID), event.HasSource && p.effectMonsterEntity(event.SourceEntityID)
+		p.withHistoryActors(&event)
 		p.effects.ObserveApply(event)
 		p.effects.RefreshRelations(row.SessionNumber, holder, p.effectEntityRelation)
 	case "GAMEPLAY_EFFECT_REMOVE":
@@ -188,11 +189,12 @@ func (p *processor) observeClientEffectReport(row buffLifecycleAuditRow) {
 			event.StackCount, event.HasStackCount = *row.StackCount, true
 		}
 		event.HolderMonster, event.SourceMonster = p.effectMonsterEntity(event.HolderEntityID), event.HasSource && p.effectMonsterEntity(event.SourceEntityID)
+		p.withHistoryActors(&event)
 		p.effects.ObserveApply(event)
 	case "CLIENT_EFFECT_STACK_REPORT":
 		event := EffectUpdateEvent{
 			SessionNumber: row.SessionNumber, HolderEntityID: holder, HolderGeneration: generation,
-			HandleID: *row.HandleID, ObservedAt: row.Timestamp,
+			HandleID: *row.HandleID, ObservedAt: row.Timestamp, Evidence: EffectEvidenceClientReport,
 		}
 		// The push carries the full duration it restarts; observed natural expiries follow
 		// the last such push plus its duration on the client clock. NotRefreshDuration
@@ -254,6 +256,7 @@ func (p *processor) observeEffectSnapshot(frame gameFrame, record rawBuffSnapsho
 		event.RemainingSeconds = &remaining
 	}
 	event.HolderMonster, event.SourceMonster = p.effectMonsterEntity(event.HolderEntityID), event.HasSource && p.effectMonsterEntity(event.SourceEntityID)
+	p.withHistoryActors(&event)
 	p.effects.ObserveSnapshot(event)
 	p.effects.RefreshRelations(p.sessionNumber, entityID, p.effectEntityRelation)
 }

@@ -10,15 +10,71 @@ import (
 )
 
 // sessionWriter applies journal entries of one session inside one transaction. staged collects encounter row ids created
-// (or removed, as 0) in the transaction; the recorder keeps them only once the transaction committed.
+// (or removed, as 0) in the transaction; span, sourceUsed and newSpans are the recorded span as the transaction leaves it.
+// The recorder keeps all of them only once the transaction committed.
 type sessionWriter struct {
-	tx       *sql.Tx
-	recorder *Recorder
-	staged   map[string]int64
+	tx         *sql.Tx
+	recorder   *Recorder
+	staged     map[string]int64
+	span       int64
+	sourceUsed bool
+	newSpans   []int64
+}
+
+// spanEntry reports the entries that belong to a recorded span. Between spans only a recorded encounter's later integrity
+// change arrives (historyJournal.addRecorded); anything else there has no span to belong to and is not stored.
+func spanEntry(kind capture.HistoryEntryKind) bool {
+	switch kind {
+	case capture.HistoryRecordingStarted, capture.HistoryRecordingStopped, capture.HistoryEncounterIntegrity:
+		return false
+	}
+	return true
 }
 
 func (w *sessionWriter) apply(ctx context.Context, entry capture.HistoryEntry) error {
+	if w.span == 0 && spanEntry(entry.Kind) {
+		return nil
+	}
 	switch entry.Kind {
+	case capture.HistoryRecordingStarted:
+		if w.span != 0 {
+			// The span that began with the capture was recorded when the session began.
+			return nil
+		}
+		reason := capture.HistoryStartEnabled
+		if entry.Recording != nil && entry.Recording.Reason != "" {
+			reason = entry.Recording.Reason
+		}
+		id, used, err := w.recorder.insertSpan(ctx, w.tx, reason, w.sourceUsed)
+		if err != nil {
+			return err
+		}
+		w.span, w.sourceUsed = id, w.sourceUsed || used
+		w.newSpans = append(w.newSpans, id)
+		return nil
+	case capture.HistoryRecordingStopped:
+		if w.span == 0 {
+			return nil
+		}
+		var open []string
+		reason := capture.HistoryStopDisabled
+		if entry.Recording != nil {
+			open = entry.Recording.Open
+			if entry.Recording.Reason != "" {
+				reason = entry.Recording.Reason
+			}
+		}
+		return w.closeSpan(ctx, reason, open)
+	case capture.HistoryEffectChanged:
+		return w.insertEffect(ctx, entry.Effect)
+	case capture.HistoryEffectRejected:
+		_, err := w.tx.ExecContext(ctx, "UPDATE capture_session SET effects_rejected = effects_rejected + 1 WHERE id = ?", w.span)
+		return err
+	case capture.HistoryEncounterCheckpoint:
+		if entry.Finished == nil {
+			return errors.New("checkpoint entry without its encounter")
+		}
+		return w.writeResults(ctx, entry.Encounter, entry.Finished, false)
 	case capture.HistoryEventAccepted:
 		return w.insertEvent(ctx, entry.Sequence, entry.Event)
 	case capture.HistoryEventAssigned:
@@ -26,14 +82,13 @@ func (w *sessionWriter) apply(ctx context.Context, entry capture.HistoryEntry) e
 		if err != nil || !found {
 			return err
 		}
-		result, err := w.tx.ExecContext(ctx, "UPDATE combat_event SET encounter_id = ? WHERE capture_session_id = ? AND sequence = ?", id, w.recorder.sessionID, int64(entry.Sequence))
+		result, err := w.tx.ExecContext(ctx, "UPDATE combat_event SET encounter_id = ? WHERE capture_session_id = ? AND sequence = ?", id, w.span, int64(entry.Sequence))
 		if err != nil {
 			return err
 		}
 		if changed, err := result.RowsAffected(); err == nil && changed == 0 {
 			// The result itself never reached storage, so the encounter's stored results are not all of its results.
-			_, err = w.tx.ExecContext(ctx, "UPDATE encounter SET complete = 0 WHERE id = ?", id)
-			return err
+			return w.markIncomplete(ctx, id, incompleteEntriesLost)
 		}
 		return nil
 	case capture.HistoryEncounterOpened:
@@ -53,7 +108,7 @@ func (w *sessionWriter) apply(ctx context.Context, entry capture.HistoryEntry) e
 		if entry.Finished == nil {
 			return errors.New("finished entry without its encounter")
 		}
-		return w.writeFinished(ctx, entry.Encounter, entry.Finished)
+		return w.writeResults(ctx, entry.Encounter, entry.Finished, true)
 	case capture.HistoryEncounterDiscarded:
 		id, found, err := w.encounterRow(ctx, entry.Encounter)
 		if err != nil || !found {
@@ -80,25 +135,26 @@ func (w *sessionWriter) apply(ctx context.Context, entry capture.HistoryEntry) e
 			return errors.New("loss entry without its loss")
 		}
 		_, err := w.tx.ExecContext(ctx, "INSERT INTO capture_gap (capture_session_id, loss_id, direction, from_ns) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING",
-			w.recorder.sessionID, int64(loss.ID), loss.Direction, loss.From.UnixNano())
+			w.span, int64(loss.ID), loss.Direction, loss.From.UnixNano())
 		return err
 	case capture.HistoryLossEnded:
 		if entry.Loss == nil {
 			return errors.New("loss entry without its loss")
 		}
-		_, err := w.tx.ExecContext(ctx, "UPDATE capture_gap SET to_ns = ? WHERE capture_session_id = ? AND loss_id = ?", unixNanos(entry.Loss.To), w.recorder.sessionID, int64(entry.Loss.ID))
+		_, err := w.tx.ExecContext(ctx, "UPDATE capture_gap SET to_ns = ? WHERE capture_session_id = ? AND loss_id = ?", unixNanos(entry.Loss.To), w.span, int64(entry.Loss.ID))
 		return err
 	case capture.HistoryLossFailed:
 		if entry.Loss == nil {
 			return errors.New("loss entry without its loss")
 		}
-		_, err := w.tx.ExecContext(ctx, "UPDATE capture_gap SET failed = 1 WHERE capture_session_id = ? AND loss_id = ?", w.recorder.sessionID, int64(entry.Loss.ID))
+		_, err := w.tx.ExecContext(ctx, "UPDATE capture_gap SET failed = 1 WHERE capture_session_id = ? AND loss_id = ?", w.span, int64(entry.Loss.ID))
 		return err
 	}
 	return fmt.Errorf("unknown history entry %q", entry.Kind)
 }
 
-// encounterRow finds the row of an engine encounter key in this session.
+// encounterRow finds the row of an engine encounter key in any span of this capture: the rows this recorder created, then
+// the current span's rows.
 func (w *sessionWriter) encounterRow(ctx context.Context, key string) (int64, bool, error) {
 	if id, ok := w.staged[key]; ok {
 		return id, id != 0, nil
@@ -106,13 +162,16 @@ func (w *sessionWriter) encounterRow(ctx context.Context, key string) (int64, bo
 	if id, ok := w.recorder.encounters[key]; ok {
 		return id, true, nil
 	}
+	if w.span == 0 {
+		return 0, false, nil
+	}
 	interval, sequence, ok := parseEncounterKey(key)
 	if !ok {
 		return 0, false, fmt.Errorf("malformed encounter key %q", key)
 	}
 	var id int64
 	err := w.tx.QueryRowContext(ctx, "SELECT id FROM encounter WHERE capture_session_id = ? AND statistics_interval = ? AND sequence = ?",
-		w.recorder.sessionID, int64(interval), int64(sequence)).Scan(&id)
+		w.span, int64(interval), int64(sequence)).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, false, nil
 	}
@@ -130,7 +189,7 @@ func (w *sessionWriter) insertOpening(ctx context.Context, key string, opening c
 	result, err := w.tx.ExecContext(ctx, `INSERT INTO encounter (capture_session_id, statistics_interval, sequence, protocol_session, state, outcome, complete,
 		started_at_ns, start_basis, local_date, utc_offset_s, scene_instance_id, scene_recorded)
 		VALUES (?, ?, ?, ?, 'pending', 'OPEN', ?, ?, ?, ?, ?, ?, 1)`,
-		w.recorder.sessionID, int64(opening.StatisticsInterval), int64(opening.Sequence), opening.ProtocolSession, boolInt(complete),
+		w.span, int64(opening.StatisticsInterval), int64(opening.Sequence), opening.ProtocolSession, boolInt(complete),
 		opening.StartedAt.UnixNano(), opening.StartBasis, date, offset, sceneValue(opening.Scene))
 	if err != nil {
 		return 0, err
@@ -139,8 +198,19 @@ func (w *sessionWriter) insertOpening(ctx context.Context, key string, opening c
 	if err != nil {
 		return 0, err
 	}
+	if !complete {
+		if _, err := w.tx.ExecContext(ctx, "UPDATE encounter SET incomplete_reason = ? WHERE id = ?", incompleteEntriesLost, id); err != nil {
+			return 0, err
+		}
+	}
 	w.staged[key] = id
 	return id, nil
+}
+
+// markIncomplete marks one encounter incomplete, keeping the first reason recorded for it.
+func (w *sessionWriter) markIncomplete(ctx context.Context, id int64, reason string) error {
+	_, err := w.tx.ExecContext(ctx, "UPDATE encounter SET complete = 0, incomplete_reason = COALESCE(incomplete_reason, ?) WHERE id = ?", reason, id)
+	return err
 }
 
 func sceneValue(scene capture.SceneContext) any {
@@ -192,7 +262,7 @@ func (w *sessionWriter) insertEvent(ctx context.Context, sequence uint64, event 
 		vehicle_kind, context_downgrade, source_monster_id, source_template_id, target_monster_id, target_template_id)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT DO NOTHING`,
-		w.recorder.sessionID, int64(sequence), event.Key.ProtocolSession, int64(event.Key.RPCID), unixNanos(event.ObservedAt), string(event.Kind),
+		w.span, int64(sequence), event.Key.ProtocolSession, int64(event.Key.RPCID), unixNanos(event.ObservedAt), string(event.Kind),
 		string(event.Flow), string(event.Confidence), event.Evidence, event.Amount, event.AppliedHealing, boolInt(event.HealingInconsistent),
 		int64(event.DamageID), int64(event.SkillID),
 		int64(event.Source.EntityID), int64(event.Source.EntityGeneration), event.Source.Relation, sourcePlayer, sourceRole, sourceBasis,
@@ -201,8 +271,10 @@ func (w *sessionWriter) insertEvent(ctx context.Context, sequence uint64, event 
 	return err
 }
 
-// writeFinished stores a finished encounter's boundaries, results and splits.
-func (w *sessionWriter) writeFinished(ctx context.Context, key string, finished *capture.HistoryEncounter) error {
+// writeResults stores an encounter's boundaries, results and splits as the engine rendered them: finished, or at a checkpoint
+// of the encounter in progress, which keeps its state and records the capture time it describes. A later checkpoint or the
+// finished entry replaces every stored result, so a checkpoint never survives as a finished encounter's result.
+func (w *sessionWriter) writeResults(ctx context.Context, key string, finished *capture.HistoryEncounter, final bool) error {
 	snapshot := finished.Snapshot
 	id, found, err := w.encounterRow(ctx, key)
 	if err != nil {
@@ -221,7 +293,12 @@ func (w *sessionWriter) writeFinished(ctx context.Context, key string, finished 
 	date, offset := w.recorder.store.localDate(snapshot.StartedAt)
 	totals, integrity := snapshot.Totals, snapshot.Integrity
 	dps, peak, healing, unassigned := snapshot.EncounterDPS, snapshot.PeakDPS, snapshot.Healing, snapshot.UnassignedRole
-	_, err = w.tx.ExecContext(ctx, `UPDATE encounter SET state = 'finished', outcome = ?, started_at_ns = ?, start_basis = ?, start_confirmed = ?,
+	state, checkpoint := "finished", any(nil)
+	if !final {
+		// A checkpoint arrives only after confirmed activity, so the encounter is open; its outcome stays OPEN.
+		state, checkpoint = "open", unixNanos(finished.CheckpointAt)
+	}
+	_, err = w.tx.ExecContext(ctx, `UPDATE encounter SET state = ?, checkpoint_at_ns = ?, outcome = ?, started_at_ns = ?, start_basis = ?, start_confirmed = ?,
 		battle_entered_at_ns = ?, ended_at_ns = ?, end_basis = ?, end_decided_at_ns = ?, first_activity_at_ns = ?, last_activity_at_ns = ?, reentries = ?,
 		local_date = ?, utc_offset_s = ?, protocol_session = ?,
 		damage_dealt = ?, damage_taken = ?, outgoing_events = ?, incoming_events = ?,
@@ -234,7 +311,7 @@ func (w *sessionWriter) writeFinished(ctx context.Context, key string, finished 
 		unassigned_damage_dealt = ?, unassigned_outgoing_events = ?, unassigned_damage_taken = ?, unassigned_incoming_events = ?, unassigned_overflow_events = ?,
 		scene_instance_id = ?, scene_recorded = 1, enemies_recorded = 1, enemies_overflow = ?
 		WHERE id = ?`,
-		string(snapshot.Outcome), snapshot.StartedAt.UnixNano(), snapshot.StartBasis, boolInt(snapshot.StartConfirmed),
+		state, checkpoint, string(snapshot.Outcome), snapshot.StartedAt.UnixNano(), snapshot.StartBasis, boolInt(snapshot.StartConfirmed),
 		unixNanos(snapshot.BattleEntered), unixNanos(snapshot.EndedAt), snapshot.EndBasis, unixNanos(snapshot.EndDecidedAt),
 		unixNanos(snapshot.FirstActivityAt), unixNanos(snapshot.LastActivityAt), int64(snapshot.Reentries),
 		date, offset, snapshot.ProtocolSession,
@@ -362,11 +439,16 @@ func (w *sessionWriter) insertTimeline(ctx context.Context, id int64, timeline c
 	return nil
 }
 
-// writeIntegrity replaces a finished encounter's integrity facts. Its stored results stay as the engine computed them.
+// writeIntegrity replaces a finished encounter's integrity facts. Its stored results stay as the engine computed them. An
+// encounter the user deleted meanwhile is left deleted.
 func (w *sessionWriter) writeIntegrity(ctx context.Context, id int64, integrity capture.DataIntegrity) error {
-	if _, err := w.tx.ExecContext(ctx, "UPDATE encounter SET integrity_status = ?, transport_losses = ?, unrecovered_losses = ?, context_downgraded_events = ?, first_loss_at_ns = ? WHERE id = ?",
-		string(integrity.Status), integrity.TransportLosses, integrity.UnrecoveredLosses, int64(integrity.ContextDowngradedEvents), unixNanos(integrity.FirstLossAt), id); err != nil {
+	result, err := w.tx.ExecContext(ctx, "UPDATE encounter SET integrity_status = ?, transport_losses = ?, unrecovered_losses = ?, context_downgraded_events = ?, first_loss_at_ns = ? WHERE id = ?",
+		string(integrity.Status), integrity.TransportLosses, integrity.UnrecoveredLosses, int64(integrity.ContextDowngradedEvents), unixNanos(integrity.FirstLossAt), id)
+	if err != nil {
 		return err
+	}
+	if changed, err := result.RowsAffected(); err == nil && changed == 0 {
+		return nil
 	}
 	if _, err := w.tx.ExecContext(ctx, "DELETE FROM encounter_risk WHERE encounter_id = ?", id); err != nil {
 		return err
@@ -376,8 +458,12 @@ func (w *sessionWriter) writeIntegrity(ctx context.Context, id int64, integrity 
 
 // applyTaint marks the encounters whose entries were lost as incomplete and returns the keys that have no row yet.
 func (w *sessionWriter) applyTaint(ctx context.Context, t taint) ([]string, error) {
+	if w.span == 0 && (t.all || len(t.keys) > 0) {
+		// No span is open: the keys wait for the next one.
+		return t.keys, nil
+	}
 	if t.all {
-		_, err := w.tx.ExecContext(ctx, "UPDATE encounter SET complete = 0 WHERE capture_session_id = ?", w.recorder.sessionID)
+		_, err := w.tx.ExecContext(ctx, "UPDATE encounter SET complete = 0, incomplete_reason = COALESCE(incomplete_reason, ?) WHERE capture_session_id = ?", incompleteEntriesLost, w.span)
 		return nil, err
 	}
 	var unresolved []string
@@ -390,9 +476,127 @@ func (w *sessionWriter) applyTaint(ctx context.Context, t taint) ([]string, erro
 			unresolved = append(unresolved, key)
 			continue
 		}
-		if _, err := w.tx.ExecContext(ctx, "UPDATE encounter SET complete = 0 WHERE id = ?", id); err != nil {
+		if err := w.markIncomplete(ctx, id, incompleteEntriesLost); err != nil {
 			return nil, err
 		}
 	}
 	return unresolved, nil
+}
+
+// closeSpan writes the end of the recorded span: what is still queued as lost was marked, a pending encounter with all of its
+// entries stored never had confirmed activity and would have been discarded, and every encounter still open is abandoned,
+// never finished. open names the encounters a recording stop left in progress (reason recording_disabled for them).
+func (w *sessionWriter) closeSpan(ctx context.Context, stopReason string, open []string) error {
+	r := w.recorder
+	if _, err := w.applyTaint(ctx, r.takeTaint()); err != nil {
+		return err
+	}
+	for _, key := range open {
+		id, found, err := w.encounterRow(ctx, key)
+		if err != nil {
+			return err
+		}
+		if found {
+			if err := w.markIncomplete(ctx, id, incompleteRecordingDisabled); err != nil {
+				return err
+			}
+		}
+	}
+	if _, err := w.tx.ExecContext(ctx, "DELETE FROM encounter WHERE capture_session_id = ? AND state = 'pending' AND complete = 1", w.span); err != nil {
+		return err
+	}
+	if _, err := w.tx.ExecContext(ctx, "UPDATE encounter SET state = 'abandoned', complete = 0, incomplete_reason = COALESCE(incomplete_reason, ?) WHERE capture_session_id = ? AND state IN ('open', 'pending')",
+		incompleteNotFinished, w.span); err != nil {
+		return err
+	}
+	journalDropped, queueDropped := r.takeDropCounts()
+	if _, err := w.tx.ExecContext(ctx, `UPDATE capture_session SET status = 'closed', closed_at_ns = ?, stop_reason = ?, journal_dropped = journal_dropped + ?,
+		queue_dropped = queue_dropped + ?, write_failed = write_failed + ? WHERE id = ?`,
+		r.store.now().UnixNano(), stopReason, int64(journalDropped), int64(queueDropped), int64(r.writeFailed), w.span); err != nil {
+		return err
+	}
+	r.writeFailed = 0
+	r.endSpanTaint()
+	w.span = 0
+	return nil
+}
+
+func roleOf(actor *capture.EffectActorIdentity) *capture.CombatRole {
+	if actor == nil {
+		return nil
+	}
+	return actor.Role
+}
+
+func typeOf(actor *capture.EffectActorIdentity) *capture.CombatActorType {
+	if actor == nil {
+		return nil
+	}
+	return actor.Type
+}
+
+func nullableUint(value uint64, known bool) any {
+	if !known {
+		return nil
+	}
+	return int64(value)
+}
+
+func nullableFloat(value float64, known bool) any {
+	if !known {
+		return nil
+	}
+	return value
+}
+
+// insertEffect stores one effect lifecycle change. The instance row is created by the first change of the span that names
+// it; a later change only fills what was unknown (a relation, a role, a type, the effect or the source) and never replaces
+// what is known, as the tracker never downgrades a known relation.
+func (w *sessionWriter) insertEffect(ctx context.Context, effect *capture.HistoryEffect) error {
+	if effect == nil {
+		return errors.New("effect entry without its change")
+	}
+	startRecorded := effect.Change == capture.EffectChangeApply || effect.Change == capture.EffectChangeSnapshot || effect.Change == capture.EffectChangeInstant
+	holderPlayer, holderRole, holderBasis := nullableRole(roleOf(effect.HolderActor))
+	sourcePlayer, sourceRole, sourceBasis := nullableRole(roleOf(effect.SourceActor))
+	holderMonster, holderTemplate := actorIDs(typeOf(effect.HolderActor))
+	sourceMonster, sourceTemplate := actorIDs(typeOf(effect.SourceActor))
+	if _, err := w.tx.ExecContext(ctx, `INSERT INTO effect_instance (capture_session_id, instance, protocol_session, holder_entity_id, holder_generation,
+		effect_id, definition_linked, source_entity_id, holder_relation, source_relation,
+		holder_player_id, holder_role_id, holder_role_basis, holder_monster_id, holder_template_id,
+		source_player_id, source_role_id, source_role_basis, source_monster_id, source_template_id, origin, first_observed_ns, start_recorded)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT (capture_session_id, instance) DO UPDATE SET
+			effect_id = COALESCE(effect_instance.effect_id, excluded.effect_id),
+			definition_linked = max(effect_instance.definition_linked, excluded.definition_linked),
+			source_entity_id = COALESCE(effect_instance.source_entity_id, excluded.source_entity_id),
+			holder_relation = CASE WHEN effect_instance.holder_relation = 'unknown' THEN excluded.holder_relation ELSE effect_instance.holder_relation END,
+			source_relation = CASE WHEN effect_instance.source_relation = 'unknown' THEN excluded.source_relation ELSE effect_instance.source_relation END,
+			holder_player_id = COALESCE(effect_instance.holder_player_id, excluded.holder_player_id),
+			holder_role_id = COALESCE(effect_instance.holder_role_id, excluded.holder_role_id),
+			holder_role_basis = COALESCE(effect_instance.holder_role_basis, excluded.holder_role_basis),
+			holder_monster_id = CASE WHEN effect_instance.holder_monster_id = 0 THEN excluded.holder_monster_id ELSE effect_instance.holder_monster_id END,
+			holder_template_id = CASE WHEN effect_instance.holder_template_id = 0 THEN excluded.holder_template_id ELSE effect_instance.holder_template_id END,
+			source_player_id = COALESCE(effect_instance.source_player_id, excluded.source_player_id),
+			source_role_id = COALESCE(effect_instance.source_role_id, excluded.source_role_id),
+			source_role_basis = COALESCE(effect_instance.source_role_basis, excluded.source_role_basis),
+			source_monster_id = CASE WHEN effect_instance.source_monster_id = 0 THEN excluded.source_monster_id ELSE effect_instance.source_monster_id END,
+			source_template_id = CASE WHEN effect_instance.source_template_id = 0 THEN excluded.source_template_id ELSE effect_instance.source_template_id END`,
+		w.span, int64(effect.Instance), effect.SessionNumber, int64(effect.HolderEntityID), int64(effect.HolderGeneration),
+		nullableUint(effect.EffectID, effect.HasEffectID), boolInt(effect.DefinitionLinked), nullableUint(effect.SourceEntityID, effect.HasSource),
+		string(effect.HolderRelation), string(effect.SourceRelation),
+		holderPlayer, holderRole, holderBasis, holderMonster, holderTemplate, sourcePlayer, sourceRole, sourceBasis, sourceMonster, sourceTemplate,
+		string(effect.Origin), unixNanos(effect.FirstObservedAt), boolInt(startRecorded)); err != nil {
+		return err
+	}
+	var basis any
+	if effect.TimeKnown {
+		basis = unixNanos(effect.BasisAt)
+	}
+	_, err := w.tx.ExecContext(ctx, `INSERT INTO effect_event (capture_session_id, sequence, instance, after_combat_sequence, observed_at_ns, change_kind, observation,
+		evidence, reason, stack, duration_s, remaining_s, basis_ns, time_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`,
+		w.span, int64(effect.Sequence), int64(effect.Instance), int64(effect.AfterCombat), unixNanos(effect.ObservedAt), string(effect.Change), effect.Observation,
+		string(effect.Evidence), effect.Reason, nullableUint(effect.Stack, effect.HasStack), nullableFloat(effect.Duration, effect.HasDuration),
+		nullableFloat(effect.Remaining, effect.TimeKnown), basis, effect.TimeReason)
+	return err
 }

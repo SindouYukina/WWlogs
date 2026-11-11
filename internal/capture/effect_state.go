@@ -215,6 +215,10 @@ type EffectApplyEvent struct {
 	DurationSeconds  *float64
 	RemainingSeconds *float64
 	ObservedAt       time.Time
+	// HolderActor and SourceActor are resolved only while Combat History records effects; the tracker keeps them for the
+	// history and never uses them itself.
+	HolderActor *EffectActorIdentity
+	SourceActor *EffectActorIdentity
 }
 
 // EffectUpdateEvent is a duration or stack-count message addressed to an existing handle.
@@ -228,6 +232,8 @@ type EffectUpdateEvent struct {
 	DurationSeconds  *float64
 	RemainingSeconds *float64
 	ObservedAt       time.Time
+	// Evidence is client_report for the local client's stack report; empty means a server notify.
+	Evidence EffectEvidence
 }
 
 // EffectRemoveEvent is a gameplay-effect REMOVE for one handle.
@@ -328,6 +334,8 @@ type EffectEndedSnapshot struct {
 	EndedAt time.Time `json:"endedAt"`
 	// ExpiryDeltaSeconds is EndedAt minus the estimated expiry, when a finite estimate existed.
 	ExpiryDeltaSeconds *float64 `json:"expiryDeltaSeconds,omitempty"`
+	// instance is the ended instance, kept so a late REMOVE can be journaled for it (history_effects.go).
+	instance *effectInstance
 }
 
 // EffectSnapshot is an independent copy of the tracker state.
@@ -377,6 +385,10 @@ type effectInstance struct {
 	basisAt          time.Time
 	unknownReason    string
 	insertionOrdinal uint64
+	// holderActor, sourceActor and historyNumber are kept for Combat History only (history_effects.go).
+	holderActor   *EffectActorIdentity
+	sourceActor   *EffectActorIdentity
+	historyNumber uint64
 }
 
 // EffectTracker keeps the live set of server-confirmed gameplay-effect
@@ -403,6 +415,8 @@ type EffectTracker struct {
 	ordinal          uint64
 	// lossAt is the start of the latest transport loss since the live state was last rebuilt.
 	lossAt time.Time
+	// history is the Combat History journal the processor shares with its statistics; nil journals nothing.
+	history *historyJournal
 }
 
 // NewEffectTracker creates an empty tracker bound to a capture session ID.
@@ -503,6 +517,7 @@ func (t *EffectTracker) ObserveApply(event EffectApplyEvent) {
 	}
 	if !validEffectHandle(event.HandleID) {
 		t.counters.InstantApplies++
+		t.journalInstantLocked(event, evidence)
 		return
 	}
 	key := effectKey{event.SessionNumber, event.HolderEntityID, event.HolderGeneration, event.HandleID}
@@ -522,6 +537,7 @@ func (t *EffectTracker) ObserveApply(event EffectApplyEvent) {
 		if (existing.hasEffectID && event.HasEffectID && existing.effectID != event.EffectID) || (event.HasSource && existing.hasSource && existing.source != event.SourceEntityID) {
 			// The handle now names a different effect or source: an earlier REMOVE was missed.
 			t.counters.ConflictingApplies++
+			t.journalLocked(existing, EffectChangeSuperseded, EffectDerived, EffectSupersededHandleReused, evidence, event.ObservedAt)
 			delete(t.instances, key)
 		} else {
 			if origin == EffectOriginSnapshot {
@@ -531,7 +547,10 @@ func (t *EffectTracker) ObserveApply(event EffectApplyEvent) {
 				existing.origin = EffectOriginApply
 				existing.evidence = evidence
 			}
-			t.updateLocked(existing, event.ObservedAt, event.StackCount, event.HasStackCount, basis, duration, hasDuration, true)
+			existing.holderActor, existing.sourceActor = existing.holderActor.merge(event.HolderActor), existing.sourceActor.merge(event.SourceActor)
+			if t.updateLocked(existing, event.ObservedAt, event.StackCount, event.HasStackCount, basis, duration, hasDuration, true) {
+				t.journalLocked(existing, EffectChangeRefresh, EffectObserved, "", evidence, event.ObservedAt)
+			}
 			return
 		}
 	}
@@ -540,6 +559,7 @@ func (t *EffectTracker) ObserveApply(event EffectApplyEvent) {
 		if len(t.instances) >= maxEffectInstances {
 			t.counters.CapacityRejected++
 			t.capacityExceeded = true
+			t.history.effectRejected()
 			return
 		}
 	}
@@ -552,15 +572,17 @@ func (t *EffectTracker) ObserveApply(event EffectApplyEvent) {
 		origin: origin, evidence: evidence, combatClass: event.CombatClass, combatBasis: event.CombatBasis,
 		holderMonster: event.HolderMonster, sourceMonster: event.SourceMonster,
 		firstObservedAt: event.ObservedAt, lastUpdatedAt: event.ObservedAt,
-		insertionOrdinal: t.ordinal,
+		insertionOrdinal: t.ordinal, holderActor: event.HolderActor.clone(), sourceActor: event.SourceActor.clone(),
 	}
 	t.setBasisLocked(instance, event.ObservedAt, basis, duration, hasDuration)
 	t.instances[key] = instance
 	delete(t.tombstones, key)
 	if origin == EffectOriginSnapshot {
 		t.counters.SnapshotInstances++
+		t.journalLocked(instance, EffectChangeSnapshot, EffectObserved, "", evidence, event.ObservedAt)
 	} else {
 		t.counters.Applies++
+		t.journalLocked(instance, EffectChangeApply, EffectObserved, "", evidence, event.ObservedAt)
 	}
 }
 
@@ -609,7 +631,15 @@ func (t *EffectTracker) ObserveUpdate(event EffectUpdateEvent) {
 	basis, duration, hasDuration := classifyEffectTime(event.DurationSeconds, event.RemainingSeconds)
 	// A message with no time fields keeps the earlier estimate.
 	timeFields := event.DurationSeconds != nil || event.RemainingSeconds != nil
-	t.updateLocked(instance, event.ObservedAt, event.StackCount, event.HasStackCount, basis, duration, hasDuration, timeFields)
+	if !t.updateLocked(instance, event.ObservedAt, event.StackCount, event.HasStackCount, basis, duration, hasDuration, timeFields) {
+		return
+	}
+	switch {
+	case event.HasStackCount:
+		t.journalLocked(instance, EffectChangeStack, EffectObserved, "", updateEvidence(event), event.ObservedAt)
+	case timeFields:
+		t.journalLocked(instance, EffectChangeDuration, EffectObserved, "", updateEvidence(event), event.ObservedAt)
+	}
 }
 
 // ObserveRemove records a server REMOVE. A REMOVE with no tracked instance is
@@ -637,6 +667,9 @@ func (t *EffectTracker) ObserveRemove(event EffectRemoveEvent) {
 			t.ended[i].Lifecycle = removeLifecycle(event)
 			t.ended[i].EndedAt = event.ObservedAt
 			t.ended[i].ExpiryDeltaSeconds = nil
+			if ended := t.ended[i].instance; ended != nil {
+				t.journalLocked(ended, EffectChangeRemove, EffectObserved, string(removeLifecycle(event)), removeEvidence(event), event.ObservedAt)
+			}
 			return
 		}
 		t.counters.RemovesWithoutInstance++
@@ -653,9 +686,26 @@ func (t *EffectTracker) ObserveRemove(event EffectRemoveEvent) {
 	t.advanceHighWaterLocked(event.ObservedAt)
 	t.counters.Removes++
 	t.endLocked(instance, removeLifecycle(event), event.ObservedAt)
+	t.journalLocked(instance, EffectChangeRemove, EffectObserved, string(removeLifecycle(event)), removeEvidence(event), event.ObservedAt)
 	if !event.ObservedAt.IsZero() {
 		t.addTombstoneLocked(key, event.ObservedAt)
 	}
+}
+
+// removeEvidence is the evidence of a REMOVE message: the local client's own report, or a server notify.
+func removeEvidence(event EffectRemoveEvent) EffectEvidence {
+	if event.Evidence == EffectEvidenceClientReport {
+		return EffectEvidenceClientReport
+	}
+	return EffectEvidenceServerNotify
+}
+
+// updateEvidence is the evidence of a duration or stack message.
+func updateEvidence(event EffectUpdateEvent) EffectEvidence {
+	if event.Evidence == EffectEvidenceClientReport {
+		return EffectEvidenceClientReport
+	}
+	return EffectEvidenceServerNotify
 }
 
 // removeLifecycle keeps a server-confirmed removal apart from a client report.
@@ -687,6 +737,7 @@ func (t *EffectTracker) ObserveHolderRemoved(sessionNumber int, holderEntityID u
 		}
 		t.counters.HolderRemovals++
 		t.endLocked(instance, EffectLifecycleHolderRemoved, observedAt)
+		t.journalLocked(instance, EffectChangeHolderRemoved, EffectDerived, string(EffectLifecycleHolderRemoved), EffectEvidenceServerNotify, observedAt)
 	}
 }
 
@@ -770,11 +821,18 @@ func (t *EffectTracker) MarkTransportLoss(at time.Time) {
 // runtime entity and handle IDs stop being comparable. Counters and the
 // statistics interval are unchanged.
 func (t *EffectTracker) EndLiveState() {
+	t.EndLiveStateFor(EffectUntrackedSceneChange)
+}
+
+// EndLiveStateFor is EndLiveState for a boundary named by reason (EffectUntrackedSceneChange or
+// EffectUntrackedSessionChange); Combat History journals the dropped instances as untracked for it.
+func (t *EffectTracker) EndLiveStateFor(reason string) {
 	if t == nil {
 		return
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	t.untrackAllLocked(reason)
 	t.counters.BoundaryDrops += uint64(len(t.instances))
 	t.clearTrackedLocked()
 }
@@ -824,6 +882,7 @@ func (t *EffectTracker) Reset() {
 }
 
 func (t *EffectTracker) resetLocked() {
+	t.untrackAllLocked(EffectUntrackedReset)
 	t.statisticsIntervalID++
 	t.clearTrackedLocked()
 	t.ended = nil
@@ -856,6 +915,7 @@ func (t *EffectTracker) acceptSessionLocked(session int) bool {
 	case session == t.session:
 		return true
 	case session > t.session:
+		t.untrackAllLocked(EffectUntrackedSessionChange)
 		t.counters.BoundaryDrops += uint64(len(t.instances))
 		t.clearTrackedLocked()
 		t.highWater = time.Time{}
@@ -890,10 +950,11 @@ func (t *EffectTracker) setBasisLocked(instance *effectInstance, at time.Time, b
 
 // updateLocked merges one duration/stack/refresh observation into an instance.
 // An observation older than the last accepted one changes nothing but a counter.
-func (t *EffectTracker) updateLocked(instance *effectInstance, at time.Time, stack uint64, hasStack bool, basis timeBasis, duration float64, hasDuration, timeFields bool) {
+// It reports whether the observation was accepted.
+func (t *EffectTracker) updateLocked(instance *effectInstance, at time.Time, stack uint64, hasStack bool, basis timeBasis, duration float64, hasDuration, timeFields bool) bool {
 	if !at.IsZero() && !instance.lastUpdatedAt.IsZero() && at.Before(instance.lastUpdatedAt) {
 		t.counters.StaleUpdates++
-		return
+		return false
 	}
 	if hasStack {
 		instance.stack, instance.hasStack = stack, true
@@ -902,14 +963,15 @@ func (t *EffectTracker) updateLocked(instance *effectInstance, at time.Time, sta
 		instance.lastUpdatedAt = at
 	}
 	if !timeFields {
-		return
+		return true
 	}
 	if basis.invalid {
 		// Keep the earlier estimate: an unreadable value is not a statement about the duration.
 		t.counters.InvalidTimeValues++
-		return
+		return true
 	}
 	t.setBasisLocked(instance, at, basis, duration, hasDuration)
+	return true
 }
 
 func (t *EffectTracker) addTombstoneLocked(key effectKey, at time.Time) {
@@ -961,7 +1023,7 @@ func (t *EffectTracker) clearTrackedLocked() {
 
 func (t *EffectTracker) endLocked(instance *effectInstance, lifecycle EffectLifecycle, at time.Time) {
 	delete(t.instances, instance.key)
-	record := EffectEndedSnapshot{EffectInstanceSnapshot: t.instanceSnapshotLocked(instance, CaptureQueryTime{}, effectReasonQueryTimeRequired), EndedAt: at}
+	record := EffectEndedSnapshot{EffectInstanceSnapshot: t.instanceSnapshotLocked(instance, CaptureQueryTime{}, effectReasonQueryTimeRequired), EndedAt: at, instance: instance}
 	record.Lifecycle = lifecycle
 	record.RemainingStatus, record.RemainingSeconds = EffectRemainingUnavailable, nil
 	record.RemainingReason = "ended"
@@ -988,6 +1050,7 @@ func (t *EffectTracker) pruneExpiredLocked() {
 		}
 		expiry := instance.basisAt.Add(secondsToDuration(instance.basisRemaining))
 		if t.highWater.Sub(expiry) > effectOverdueRetention {
+			t.journalLocked(instance, EffectChangeUntracked, EffectUntracked, EffectUntrackedOverdue, "", t.highWater)
 			delete(t.instances, key)
 			t.counters.PrunedExpired++
 		}
