@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"wwlogs/internal/capture"
+	"wwlogs/internal/history"
 	"wwlogs/internal/service"
 )
 
@@ -33,6 +34,9 @@ type Bridge struct {
 	openBrowser func(string) error
 	// startup is the launch-time automatic start; a manual start or stop settles it for the rest of the run.
 	startup startupCapture
+	// history is the run's Combat History; masters projects a stored encounter with the live view's projection.
+	history *history.Store
+	masters *capture.MasterData
 }
 
 // snapshotWaitLimit is the heartbeat base: one NextSnapshot call waits at most this plus one update interval, and an

@@ -312,6 +312,14 @@
     "tests/desktop/language_preference_test.go": "",
     "internal/desktop/central_language_preference_test.go": "tests/desktop/language_preference_test.go",
     "tests/capture/history_journal_test.go": "",
-    "internal/capture/central_history_journal_test.go": "tests/capture/history_journal_test.go"
+    "internal/capture/central_history_journal_test.go": "tests/capture/history_journal_test.go",
+    "tests/history/store_test.go": "",
+    "internal/history/central_store_test.go": "tests/history/store_test.go",
+    "tests/history/replay_test.go": "",
+    "internal/history/central_replay_test.go": "tests/history/replay_test.go",
+    "tests/service/capture_history_test.go": "",
+    "internal/service/central_capture_history_test.go": "tests/service/capture_history_test.go",
+    "tests/desktop/history_test.go": "",
+    "internal/desktop/central_history_test.go": "tests/desktop/history_test.go"
   }
 }

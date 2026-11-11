@@ -42,6 +42,9 @@ type Options struct {
 	// GameAssetRoot is an explicitly supplied directory for game images. Empty means the images embedded in the
 	// executable, if any. Only Development flags can set it.
 	GameAssetRoot string
+	// HistoryDatabase is an explicitly supplied Combat History file for tests; empty uses the user's own. Only it records
+	// replays, so a replay never enters the user's own history. Only Development flags can set it.
+	HistoryDatabase string
 	// PreviewFontRoot is an explicitly supplied directory for Development Showcase font candidates.
 	PreviewFontRoot string
 	// WebviewArguments are extra browser arguments for rendering experiments; only Development flags can set them.
@@ -125,9 +128,13 @@ func Run(options Options) error {
 	}
 	defer masters.Close()
 	resolver := masters.DisplayResolver()
+	historyStore := openHistory(options.HistoryDatabase, masters)
+	// Deferred after masters.Close, so it runs first: the capture has stopped and finished its history by then.
+	defer historyStore.Close()
 	captureService := service.NewCaptureService(service.SessionOpener(masters))
 	captureService.SetPublishInterval(effectiveUpdateInterval(settings.current().Settings))
-	bridge := &Bridge{capture: captureService, defaults: options.Session, settings: settings}
+	captureService.SetHistory(historyStarter(historyStore, options.HistoryDatabase != ""))
+	bridge := &Bridge{capture: captureService, defaults: options.Session, settings: settings, history: historyStore, masters: masters}
 	bridge.catalog = catalog
 	bridge.projection = &displayProjection{resolver: resolver}
 	environmentProbe := options.EnvironmentProbe

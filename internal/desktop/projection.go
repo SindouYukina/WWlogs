@@ -44,86 +44,31 @@ func (p *displayProjection) encode(source *service.Snapshot, settings SettingsSt
 		return append(json.RawMessage(nil), p.encoded...), nil
 	}
 	locale := settings.Settings.Locale
-	masterLocale := catalog.Languages[locale].MasterLocale
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	var projectionErr error
-	skills := func(original []capture.ViewSkill) []capture.ViewSkill {
-		result := append([]capture.ViewSkill{}, original...)
-		for i := range result {
-			result[i].Name, result[i].NameStatus = projectSkillName(ctx, p.resolver, result[i], masterLocale, &projectionErr)
-		}
-		return result
-	}
-	roles := func(original []capture.ViewRole) []capture.ViewRole {
-		result := append([]capture.ViewRole{}, original...)
-		for i := range result {
-			name, err := p.resolver.Resolve(ctx, "role", result[i].RoleID, masterLocale)
-			if err != nil {
-				projectionErr = err
-			}
-			result[i].Name, result[i].NameStatus = name.Name, name.Status
-			result[i].ElementID = p.resolver.RoleElement(ctx, result[i].RoleID)
-			result[i].Skills = skills(result[i].Skills)
-			result[i].UnassignedSkill = projectUnassignedSkill(ctx, p.resolver, result[i].UnassignedSkill, masterLocale, &projectionErr)
-		}
-		return result
-	}
-	vehicle := func(original *capture.ViewVehicle) *capture.ViewVehicle {
-		if original == nil {
-			return nil
-		}
-		copied := *original
-		copied.Skills = skills(copied.Skills)
-		copied.UnassignedSkill = projectUnassignedSkill(ctx, p.resolver, copied.UnassignedSkill, masterLocale, &projectionErr)
-		return &copied
-	}
-	effects := func(original []capture.ViewEffect) []capture.ViewEffect {
-		result := append([]capture.ViewEffect{}, original...)
-		for i := range result {
-			effect := &result[i]
-			effect.TermName = ""
-			if effect.HolderRoleID != nil {
-				name, err := p.resolver.Resolve(ctx, "role", *effect.HolderRoleID, masterLocale)
-				if err != nil {
-					projectionErr = err
-				}
-				effect.HolderName, effect.HolderNameStatus = name.Name, name.Status
-			}
-			if effect.TermID != nil && (effect.TermStatus == "VERIFIED" || effect.TermStatus == "CORRELATED") {
-				name, err := p.resolver.Resolve(ctx, "term", *effect.TermID, masterLocale)
-				if err != nil {
-					projectionErr = err
-				}
-				effect.TermName = name.Name
-			}
-		}
-		return result
-	}
+	names := &nameProjection{ctx: ctx, resolver: p.resolver, locale: catalog.Languages[locale].MasterLocale}
 	var view *capture.ViewSnapshot
 	if source.View != nil {
 		copied := *source.View
-		copied.Roles = roles(copied.Roles)
-		copied.Vehicle = vehicle(copied.Vehicle)
+		copied.Roles = names.roles(copied.Roles)
+		copied.Vehicle = names.vehicle(copied.Vehicle)
 		copied.Encounters.Recent = append([]capture.ViewEncounter{}, copied.Encounters.Recent...)
 		for i := range copied.Encounters.Recent {
-			copied.Encounters.Recent[i].Roles = roles(copied.Encounters.Recent[i].Roles)
-			copied.Encounters.Recent[i].Vehicle = vehicle(copied.Encounters.Recent[i].Vehicle)
+			names.encounter(&copied.Encounters.Recent[i])
 		}
 		if copied.Encounters.Current != nil {
 			current := *copied.Encounters.Current
-			current.Roles = roles(current.Roles)
-			current.Vehicle = vehicle(current.Vehicle)
+			names.encounter(&current)
 			copied.Encounters.Current = &current
 		}
-		copied.Effects.Active = effects(copied.Effects.Active)
-		copied.Effects.Buffs.Effects = effects(copied.Effects.Buffs.Effects)
-		copied.Effects.Debuffs.Effects = effects(copied.Effects.Debuffs.Effects)
-		copied.Effects.RecentEnded = effects(copied.Effects.RecentEnded)
+		copied.Effects.Active = names.effects(copied.Effects.Active)
+		copied.Effects.Buffs.Effects = names.effects(copied.Effects.Buffs.Effects)
+		copied.Effects.Debuffs.Effects = names.effects(copied.Effects.Debuffs.Effects)
+		copied.Effects.RecentEnded = names.effects(copied.Effects.RecentEnded)
 		view = &copied
 	}
-	if projectionErr != nil {
-		return nil, projectionErr
+	if names.err != nil {
+		return nil, names.err
 	}
 	encoded, err := json.Marshal(struct {
 		Sequence       uint64                `json:"sequence"`
@@ -139,6 +84,75 @@ func (p *displayProjection) encode(source *service.Snapshot, settings SettingsSt
 	}
 	p.source, p.revision, p.shell, p.encoded = source, settings.LocaleRevision, shell, encoded
 	return append(json.RawMessage(nil), encoded...), nil
+}
+
+// nameProjection resolves the display names of engine views for one Master locale. Every lookup is read-only; the first
+// failed lookup is kept in err, and a caller then returns that error instead of a partly named view.
+type nameProjection struct {
+	ctx      context.Context
+	resolver *capture.DisplayResolver
+	locale   string
+	err      error
+}
+
+func (n *nameProjection) resolve(kind string, id uint64) capture.DisplayName {
+	name, err := n.resolver.Resolve(n.ctx, kind, id, n.locale)
+	if err != nil {
+		n.err = err
+	}
+	return name
+}
+
+func (n *nameProjection) skills(original []capture.ViewSkill) []capture.ViewSkill {
+	result := append([]capture.ViewSkill{}, original...)
+	for i := range result {
+		result[i].Name, result[i].NameStatus = projectSkillName(n.ctx, n.resolver, result[i], n.locale, &n.err)
+	}
+	return result
+}
+
+func (n *nameProjection) roles(original []capture.ViewRole) []capture.ViewRole {
+	result := append([]capture.ViewRole{}, original...)
+	for i := range result {
+		name := n.resolve("role", result[i].RoleID)
+		result[i].Name, result[i].NameStatus = name.Name, name.Status
+		result[i].ElementID = n.resolver.RoleElement(n.ctx, result[i].RoleID)
+		result[i].Skills = n.skills(result[i].Skills)
+		result[i].UnassignedSkill = projectUnassignedSkill(n.ctx, n.resolver, result[i].UnassignedSkill, n.locale, &n.err)
+	}
+	return result
+}
+
+func (n *nameProjection) vehicle(original *capture.ViewVehicle) *capture.ViewVehicle {
+	if original == nil {
+		return nil
+	}
+	copied := *original
+	copied.Skills = n.skills(copied.Skills)
+	copied.UnassignedSkill = projectUnassignedSkill(n.ctx, n.resolver, copied.UnassignedSkill, n.locale, &n.err)
+	return &copied
+}
+
+// encounter names one encounter's contributors in place.
+func (n *nameProjection) encounter(encounter *capture.ViewEncounter) {
+	encounter.Roles = n.roles(encounter.Roles)
+	encounter.Vehicle = n.vehicle(encounter.Vehicle)
+}
+
+func (n *nameProjection) effects(original []capture.ViewEffect) []capture.ViewEffect {
+	result := append([]capture.ViewEffect{}, original...)
+	for i := range result {
+		effect := &result[i]
+		effect.TermName = ""
+		if effect.HolderRoleID != nil {
+			name := n.resolve("role", *effect.HolderRoleID)
+			effect.HolderName, effect.HolderNameStatus = name.Name, name.Status
+		}
+		if effect.TermID != nil && (effect.TermStatus == "VERIFIED" || effect.TermStatus == "CORRELATED") {
+			effect.TermName = n.resolve("term", *effect.TermID).Name
+		}
+	}
+	return result
 }
 
 // skillSourceKind is the display-name namespace of a derived skill source: a UI skill (Skill.Id) or an Echo (PhantomItem.Id).

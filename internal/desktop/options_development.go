@@ -36,6 +36,7 @@ func parseOptions(arguments []string, output io.Writer) (Options, error) {
 	showcaseOverlays := flags.Bool("showcase-overlays", false, "Development: with -showcase, also open its transparent Overlay windows")
 	webviewArgs := flags.String("webview-args", "", "Development: extra WebView2 browser arguments for rendering experiments, separated by spaces")
 	assetRoot := flags.String("asset-root", "", "Development: explicitly override embedded game images with a directory that contains game/")
+	historyDatabase := flags.String("history-db", "", "Development: record and show Combat History in this test file instead of the user's own; only this file records replays")
 	fontRoot := flags.String("font-root", "", "Development: directory that contains local Showcase font candidates; nothing is served without it")
 	simulateEnvironment := flags.String("simulate-capture-environment", "", "Development: comma-separated states, one per check, for UI checks; the last repeats and \"ready\" is the real check")
 	npcapOffline := flags.Bool("simulate-npcap-offline", false, "Development: make the official Npcap sources unreachable, for UI checks")
@@ -85,6 +86,7 @@ func parseOptions(arguments []string, output io.Writer) (Options, error) {
 		Showcase:         *showcase,
 		ShowcaseOverlays: *showcaseOverlays,
 		GameAssetRoot:    *assetRoot,
+		HistoryDatabase:  *historyDatabase,
 		PreviewFontRoot:  *fontRoot,
 		WebviewArguments: strings.Fields(*webviewArgs),
 		EnvironmentProbe: environmentProbe,
