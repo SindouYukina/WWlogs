@@ -154,5 +154,156 @@
     "verification_failed": "既存の履歴の暗号化コピーが元と一致しなかったため、破棄しました。履歴はそのままです。",
     "copy_failed": "既存の履歴を暗号化ファイルにコピーできませんでした。ファイルはそのままです。",
     "unreadable": "既存の履歴を読み取れなかったため、暗号化していません。ファイルはそのままです。"
+  },
+  "analysis": {
+    "loading": "この戦闘を分析しています…",
+    "toolbar": "分析フィルター",
+    "contributor": "キャラクター",
+    "team": "チーム全体",
+    "enemy": "敵",
+    "allEnemies": "すべての敵",
+    "enemyInstance": "{{name}} #{{n}}",
+    "enemyUnmapped": "この敵を個々の結果に対応付けられないため、この敵では絞り込めません。",
+    "range": "時間範囲",
+    "fullRange": "戦闘全体",
+    "rangeValue": "{{from}} – {{to}}",
+    "resetRange": "戦闘全体に戻す",
+    "effectScope": "効果",
+    "scope": {
+      "hud": "ゲームの HUD に表示",
+      "all": "追跡したすべて"
+    },
+    "inconsistent": "この記録に保存された個々の結果では戦闘の結果を完全には再現できません。範囲の数値は保存された部分のみを表します。",
+    "hitsNote": "ヒット {{n}} 回",
+    "takenHitsNote": "被ヒット {{n}} 回",
+    "healingNoEnemy": "回復はどの敵にも属さないため、敵で絞り込んでいる間は表示しません。",
+    "timelineTitle": "戦闘タイムライン",
+    "dragHint": "タイムライン上をドラッグして範囲を選択、線をクリックしてキャラクターを選択",
+    "hitsShown": "タイムラインに {{n}} 回のヒットを表示中",
+    "gap": "キャプチャの欠落：この間にパケットが失われた可能性があります",
+    "gapNote": "この戦闘には {{n}} か所のキャプチャの欠落があり、その間の効果とイベントは不完全な可能性があります。",
+    "lanesTitle": "BUFF／DEBUFF の有効区間",
+    "tabsLabel": "分析タブ",
+    "tab": {
+      "skills": "スキル",
+      "effects": "効果",
+      "events": "イベント"
+    },
+    "state": {
+      "ready": "分析可能",
+      "not_finished": "時間で分析できるのは終了した戦闘のみです。未終了の記録には照合できる最終結果がありません。",
+      "no_events": "この記録には戦闘の合計のみが保存され、個々の結果がないため、時間で分析できません。",
+      "too_large": "この戦闘に保存されたイベント数が 1 回の分析の上限を超えているため、分析しません。"
+    },
+    "actor": {
+      "role": "不明なキャラクター {{id}}",
+      "summon": "{{name}} の召喚物",
+      "vehicle": "バイク",
+      "team": "チーム",
+      "teamUnassigned": "味方（キャラクター未確認）",
+      "other": "その他のエンティティ",
+      "unknown": "未確認"
+    },
+    "evidence": {
+      "confirmed": "有効を確認",
+      "stated": "サーバーが示した時間による（終了は未観測）",
+      "unknown": "判定不能"
+    },
+    "evidenceShort": {
+      "confirmed": "確認済み",
+      "stated": "示された時間",
+      "unknown": "判定不能"
+    },
+    "marker": {
+      "applied": "付与を観測",
+      "start_unconfirmed": "開始未確認",
+      "removed": "解除を観測",
+      "holder_removed": "保持者が離脱（推定された終了）",
+      "superseded": "新しい付与に置き換え（終了はこれ以前）",
+      "untracked": "追跡終了",
+      "instant": "瞬間効果",
+      "continues": "戦闘終了後も継続"
+    },
+    "polarity": {
+      "buff": "BUFF",
+      "debuff": "DEBUFF",
+      "unclassified": "未分類"
+    },
+    "effects": {
+      "effect": "効果",
+      "holder": "保持者",
+      "source": "付与元",
+      "coverage": "カバー率",
+      "maxStack": "最大スタック",
+      "applies": "付与回数",
+      "unknownEffect": "未識別の効果",
+      "none": "この範囲に該当する効果はありません。",
+      "notStored": "この記録には効果イベントが保存されていません。",
+      "selectHint": "効果を選択すると、有効区間とその根拠を表示します。",
+      "hidden": "ゲームの HUD に表示されない効果がほかに {{n}} 件あります。「追跡したすべて」に切り替えると表示されます。",
+      "stale": "{{n}} 件の効果は戦闘開始前にサーバーが示した時間を過ぎ、その後メッセージもないため表示していません。",
+      "more": "表示上限を超えた {{n}} 行は表示していません。",
+      "truncated": "この戦闘の効果イベントが 1 回の分析の上限を超えているため、効果を表示しません。",
+      "exactNote": "この範囲のすべての区間が観測されたメッセージで確認され、キャプチャの欠落もないため、カバー率は正確な値です。",
+      "boundsNote": "この範囲には未確認の部分（示された時間のみ、判定不能、開始未確認、キャプチャの欠落）があるため、下限と可能な上限のみを表示します。",
+      "moreIntervals": "ほかに {{n}} 区間あります。"
+    },
+    "skills": {
+      "hits": "ヒット数",
+      "maxHit": "最大ヒット",
+      "averageHit": "平均ヒット",
+      "distribution": "戦闘全体の分布",
+      "hitsAreNotCasts": "ヒット数はダメージのヒットであり、スキルの発動回数ではありません",
+      "selectHint": "スキルを選択すると、各ヒットをタイムラインに表示します。",
+      "detailHint": "スキルを選択すると、この範囲のヒット統計を表示します。",
+      "marked": "タイムライン上のヒット",
+      "distributionNote": "分布図は戦闘全体でのこのスキルのダメージ（敵の絞り込みを適用）を示し、強調部分が選択範囲です。"
+    },
+    "events": {
+      "kinds": "イベントの種類",
+      "kind": {
+        "damage": "ダメージ",
+        "healing": "回復",
+        "effect": "効果"
+      },
+      "none": "該当するイベントはありません。",
+      "range": "{{from}}–{{to}}／全 {{total}} 件",
+      "previous": "前へ",
+      "next": "次へ",
+      "time": "時間",
+      "kindColumn": "種類",
+      "source": "発生元",
+      "target": "対象",
+      "detail": "スキル／効果",
+      "amount": "数値",
+      "downgraded": "通信の欠落後に帰属を保留したため、この結果は味方に計上されていません"
+    },
+    "change": {
+      "apply": "付与",
+      "snapshot": "有効中（スナップショット）",
+      "refresh": "更新",
+      "stack": "スタック変化",
+      "duration": "時間変化",
+      "remove": "解除",
+      "holder_removed": "保持者が離脱",
+      "superseded": "置き換え",
+      "untracked": "追跡終了",
+      "instant": "瞬間効果"
+    },
+    "observation": {
+      "observed": "観測",
+      "derived": "推定",
+      "untracked": "追跡終了"
+    },
+    "flow": {
+      "local_outgoing": "味方の与ダメージ",
+      "local_incoming": "味方の被ダメージ",
+      "local_internal": "味方同士",
+      "unattributed_outgoing": "帰属不明の与ダメージ",
+      "unattributed_incoming": "帰属不明の被ダメージ",
+      "excluded": "除外",
+      "unresolved": "未解決",
+      "unknown": "未確認"
+    }
   }
 }

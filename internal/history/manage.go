@@ -57,6 +57,8 @@ func (s *Store) writable() error {
 // everything it still holds, unless it is still recording.
 func (s *Store) DeleteEncounter(ctx context.Context, id int64) (DeleteResult, error) {
 	var result DeleteResult
+	// A deletion changes what an analysis reads; cached encounter models are dropped whatever the outcome.
+	defer s.models.clear()
 	if err := s.writable(); err != nil {
 		return result, err
 	}
@@ -123,6 +125,7 @@ func (s *Store) DeleteEncounter(ctx context.Context, id int64) (DeleteResult, er
 // emptied file is still encrypted with it.
 func (s *Store) ClearHistory(ctx context.Context) (DeleteResult, error) {
 	var result DeleteResult
+	defer s.models.clear()
 	if err := s.writable(); err != nil {
 		return result, err
 	}

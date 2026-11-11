@@ -154,5 +154,156 @@
     "verification_failed": "The encrypted copy of the existing history did not match it and was discarded. The history was left unchanged.",
     "copy_failed": "The existing history could not be copied into an encrypted file. It was left unchanged.",
     "unreadable": "The existing history could not be read, so it was not encrypted. It was left unchanged."
+  },
+  "analysis": {
+    "loading": "Analysing this encounter…",
+    "toolbar": "Analysis filters",
+    "contributor": "Character",
+    "team": "Whole team",
+    "enemy": "Enemy",
+    "allEnemies": "All enemies",
+    "enemyInstance": "{{name}} #{{n}}",
+    "enemyUnmapped": "This enemy could not be tied to its stored results, so it cannot be filtered by.",
+    "range": "Time range",
+    "fullRange": "Whole encounter",
+    "rangeValue": "{{from}} – {{to}}",
+    "resetRange": "Reset to whole encounter",
+    "effectScope": "Effects",
+    "scope": {
+      "hud": "Shown on the game HUD",
+      "all": "All tracked"
+    },
+    "inconsistent": "The results stored for this record do not fully rebuild the encounter's result; range values describe only what was stored.",
+    "hitsNote": "Hits: {{n}}",
+    "takenHitsNote": "Hits taken: {{n}}",
+    "healingNoEnemy": "Healing belongs to no enemy, so it is not shown while an enemy is selected.",
+    "timelineTitle": "Combat timeline",
+    "dragHint": "Drag on the timeline to select a range; click a line to select a character",
+    "hitsShown": "Hits marked on the timeline: {{n}}",
+    "gap": "Capture gap: packets may have been lost here",
+    "gapNote": "This encounter has {{n}} capture gaps; effects and events during them may be incomplete.",
+    "lanesTitle": "BUFF / DEBUFF intervals",
+    "tabsLabel": "Analysis tabs",
+    "tab": {
+      "skills": "Skills",
+      "effects": "Effects",
+      "events": "Events"
+    },
+    "state": {
+      "ready": "Ready",
+      "not_finished": "Only a finished encounter can be analysed by time: an unfinished record has no final result to check against.",
+      "no_events": "This record stored encounter totals only, without individual results, so it cannot be analysed by time.",
+      "too_large": "This encounter stored more events than one analysis reads, so it is not analysed."
+    },
+    "actor": {
+      "role": "Unknown character {{id}}",
+      "summon": "Summon of {{name}}",
+      "vehicle": "Motorcycle",
+      "team": "Team",
+      "teamUnassigned": "Own team (character not confirmed)",
+      "other": "Other entity",
+      "unknown": "Not confirmed"
+    },
+    "evidence": {
+      "confirmed": "Confirmed active",
+      "stated": "By the time the server stated (end not observed)",
+      "unknown": "Cannot be determined"
+    },
+    "evidenceShort": {
+      "confirmed": "Confirmed",
+      "stated": "Stated time",
+      "unknown": "Undetermined"
+    },
+    "marker": {
+      "applied": "Observed apply",
+      "start_unconfirmed": "Start not confirmed",
+      "removed": "Observed removal",
+      "holder_removed": "Holder left (derived end)",
+      "superseded": "Replaced by a new apply (ended no later than this)",
+      "untracked": "Tracking stopped",
+      "instant": "Instant effect",
+      "continues": "Continues past the end of the encounter"
+    },
+    "polarity": {
+      "buff": "BUFF",
+      "debuff": "DEBUFF",
+      "unclassified": "Unclassified"
+    },
+    "effects": {
+      "effect": "Effect",
+      "holder": "Holder",
+      "source": "Source",
+      "coverage": "Coverage",
+      "maxStack": "Highest stack",
+      "applies": "Applies",
+      "unknownEffect": "Unidentified effect",
+      "none": "No effect matches in this range.",
+      "notStored": "This record did not store effect events.",
+      "selectHint": "Select an effect to see its active intervals and their evidence.",
+      "hidden": "{{n}} more effects are not shown on the game HUD; switch to All tracked to see them.",
+      "stale": "{{n}} effects had passed the time the server stated before the encounter began and were never heard of again, so they are not listed.",
+      "more": "{{n}} more rows exceed the display bound and are not listed.",
+      "truncated": "This encounter holds more effect events than one analysis reads, so effects are not shown.",
+      "exactNote": "Every part of this range is confirmed by observed messages and there is no capture gap, so the coverage is exact.",
+      "boundsNote": "Part of this range is not confirmed (stated time only, undetermined, an unconfirmed start or a capture gap), so only a lower bound and a possible upper bound are shown.",
+      "moreIntervals": "{{n}} more intervals are not listed."
+    },
+    "skills": {
+      "hits": "Hits",
+      "maxHit": "Largest hit",
+      "averageHit": "Average hit",
+      "distribution": "Over the encounter",
+      "hitsAreNotCasts": "Hits are damage hits, not skill casts",
+      "selectHint": "Select a skill to mark each of its hits on the timeline.",
+      "detailHint": "Select a skill to see its hit statistics in this range.",
+      "marked": "Hits on the timeline",
+      "distributionNote": "The distribution shows this skill's damage over the whole encounter (enemy filter applied); the highlighted part is the selected range."
+    },
+    "events": {
+      "kinds": "Event kinds",
+      "kind": {
+        "damage": "Damage",
+        "healing": "Healing",
+        "effect": "Effect"
+      },
+      "none": "No event matches.",
+      "range": "{{from}}–{{to}} of {{total}}",
+      "previous": "Previous",
+      "next": "Next",
+      "time": "Time",
+      "kindColumn": "Kind",
+      "source": "Source",
+      "target": "Target",
+      "detail": "Skill or effect",
+      "amount": "Value",
+      "downgraded": "Attribution was paused after a transport loss, so this result was not credited to the team"
+    },
+    "change": {
+      "apply": "Apply",
+      "snapshot": "Already active (snapshot)",
+      "refresh": "Refresh",
+      "stack": "Stack change",
+      "duration": "Duration change",
+      "remove": "Removal",
+      "holder_removed": "Holder left",
+      "superseded": "Replaced",
+      "untracked": "Tracking stopped",
+      "instant": "Instant effect"
+    },
+    "observation": {
+      "observed": "observed",
+      "derived": "derived",
+      "untracked": "untracked"
+    },
+    "flow": {
+      "local_outgoing": "Team damage",
+      "local_incoming": "Damage to the team",
+      "local_internal": "Within the team",
+      "unattributed_outgoing": "Unattributed outgoing",
+      "unattributed_incoming": "Unattributed incoming",
+      "excluded": "Excluded",
+      "unresolved": "Unresolved",
+      "unknown": "Not confirmed"
+    }
   }
 }

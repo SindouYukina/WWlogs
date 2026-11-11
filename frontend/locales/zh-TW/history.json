@@ -154,5 +154,156 @@
     "verification_failed": "現有歷史的加密副本與原檔不一致，已捨棄該副本。歷史保持原樣。",
     "copy_failed": "無法將現有的歷史複製為加密檔案。檔案保持原樣。",
     "unreadable": "無法讀取現有的歷史，因此沒有加密。檔案保持原樣。"
+  },
+  "analysis": {
+    "loading": "正在分析這場戰鬥…",
+    "toolbar": "分析篩選",
+    "contributor": "角色",
+    "team": "全隊",
+    "enemy": "敵人",
+    "allEnemies": "全部敵人",
+    "enemyInstance": "{{name}} #{{n}}",
+    "enemyUnmapped": "無法將這個敵人對應到它的逐筆結果，因此不能依它篩選。",
+    "range": "時間範圍",
+    "fullRange": "整場戰鬥",
+    "rangeValue": "{{from}} – {{to}}",
+    "resetRange": "重設為整場",
+    "effectScope": "效果",
+    "scope": {
+      "hud": "遊戲 HUD 顯示",
+      "all": "全部追蹤"
+    },
+    "inconsistent": "這筆紀錄保存的逐筆結果無法完整重現這場戰鬥的結果，區間數值只代表已保存的部分。",
+    "hitsNote": "{{n}} 次命中",
+    "takenHitsNote": "{{n}} 次被命中",
+    "healingNoEnemy": "治療不屬於任何敵人，依敵人篩選時不顯示。",
+    "timelineTitle": "戰鬥時間軸",
+    "dragHint": "在時間軸上拖曳可選取區間；點選曲線可選取角色",
+    "hitsShown": "時間軸上標示了 {{n}} 次命中",
+    "gap": "擷取缺口：這段期間可能有封包遺失",
+    "gapNote": "這場戰鬥有 {{n}} 段擷取缺口，期間的效果與事件可能不完整。",
+    "lanesTitle": "BUFF／DEBUFF 生效區間",
+    "tabsLabel": "分析分頁",
+    "tab": {
+      "skills": "技能",
+      "effects": "效果",
+      "events": "事件"
+    },
+    "state": {
+      "ready": "可以分析",
+      "not_finished": "只有已結束的戰鬥才能依時間分析：未結束的紀錄沒有可核對的最終結果。",
+      "no_events": "這筆紀錄只保存了戰鬥總計，沒有逐筆結果，因此無法依時間分析。",
+      "too_large": "這場戰鬥保存的事件數超過單次分析的上限，因此不分析。"
+    },
+    "actor": {
+      "role": "未知角色 {{id}}",
+      "summon": "{{name}} 的召喚物",
+      "vehicle": "機車",
+      "team": "隊伍",
+      "teamUnassigned": "我方（未確認角色）",
+      "other": "其他實體",
+      "unknown": "未確認"
+    },
+    "evidence": {
+      "confirmed": "已確認生效",
+      "stated": "依伺服器陳述的時間（未觀測到結束）",
+      "unknown": "無法判定"
+    },
+    "evidenceShort": {
+      "confirmed": "已確認",
+      "stated": "依陳述時間",
+      "unknown": "無法判定"
+    },
+    "marker": {
+      "applied": "觀測到施加",
+      "start_unconfirmed": "起點未確認",
+      "removed": "觀測到移除",
+      "holder_removed": "持有者離開（推導的結束）",
+      "superseded": "被新的施加取代（結束時間不晚於此）",
+      "untracked": "停止追蹤",
+      "instant": "瞬間效果",
+      "continues": "持續到戰鬥結束之後"
+    },
+    "polarity": {
+      "buff": "BUFF",
+      "debuff": "DEBUFF",
+      "unclassified": "未分類"
+    },
+    "effects": {
+      "effect": "效果",
+      "holder": "持有者",
+      "source": "來源",
+      "coverage": "覆蓋率",
+      "maxStack": "最高層數",
+      "applies": "施加次數",
+      "unknownEffect": "未識別效果",
+      "none": "這個範圍沒有符合條件的效果。",
+      "notStored": "這筆紀錄沒有保存效果事件。",
+      "selectHint": "點選一個效果，可查看它的生效區間與證據。",
+      "hidden": "另有 {{n}} 個效果不是遊戲 HUD 顯示的效果；切換為「全部追蹤」可查看。",
+      "stale": "{{n}} 個效果在戰鬥開始前已超過伺服器陳述的時間，之後也沒有任何訊息，因此未列出。",
+      "more": "另有 {{n}} 列超過顯示上限，未列出。",
+      "truncated": "這場戰鬥的效果事件超過單次分析的上限，因此不顯示效果。",
+      "exactNote": "這個範圍內的每一段都由觀測到的訊息確認，沒有擷取缺口，覆蓋率是精確值。",
+      "boundsNote": "這個範圍內有未確認的部分（依陳述的時間、無法判定、起點未確認或擷取缺口），因此只顯示下限與可能的上限。",
+      "moreIntervals": "另有 {{n}} 段未列出。"
+    },
+    "skills": {
+      "hits": "命中次數",
+      "maxHit": "單次最大",
+      "averageHit": "平均命中",
+      "distribution": "整場分布",
+      "hitsAreNotCasts": "命中次數是傷害命中，不是技能施放次數",
+      "selectHint": "點選技能，可在時間軸上標示它的每一次命中。",
+      "detailHint": "點選技能，可查看它在這個範圍的命中統計。",
+      "marked": "時間軸上的命中",
+      "distributionNote": "分布圖顯示整場戰鬥中這個技能的傷害（套用敵人篩選），強調的部分是選取的範圍。"
+    },
+    "events": {
+      "kinds": "事件種類",
+      "kind": {
+        "damage": "傷害",
+        "healing": "治療",
+        "effect": "效果"
+      },
+      "none": "沒有符合條件的事件。",
+      "range": "{{from}}–{{to}}／共 {{total}} 筆",
+      "previous": "上一頁",
+      "next": "下一頁",
+      "time": "時間",
+      "kindColumn": "種類",
+      "source": "來源",
+      "target": "目標",
+      "detail": "技能／效果",
+      "amount": "數值",
+      "downgraded": "傳輸遺失後歸屬暫停，這筆結果未歸給我方"
+    },
+    "change": {
+      "apply": "施加",
+      "snapshot": "已生效（快照）",
+      "refresh": "刷新",
+      "stack": "層數變化",
+      "duration": "時間變化",
+      "remove": "移除",
+      "holder_removed": "持有者離開",
+      "superseded": "被取代",
+      "untracked": "停止追蹤",
+      "instant": "瞬間效果"
+    },
+    "observation": {
+      "observed": "觀測",
+      "derived": "推導",
+      "untracked": "停止追蹤"
+    },
+    "flow": {
+      "local_outgoing": "我方輸出",
+      "local_incoming": "我方承受",
+      "local_internal": "我方之間",
+      "unattributed_outgoing": "未歸屬的輸出",
+      "unattributed_incoming": "未歸屬的承受",
+      "excluded": "排除",
+      "unresolved": "未解析",
+      "unknown": "未確認"
+    }
   }
 }

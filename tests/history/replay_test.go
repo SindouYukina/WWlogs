@@ -95,9 +95,10 @@ func TestHistoryReplayCollector(t *testing.T) {
 	assertIntegrity(t, reopened)
 	totals.Captures = len(captures)
 	writeJSON(t, filepath.Join(out, "summary.json"), totals)
-	t.Logf("history replay: %d captures (%d byte-identical copies not stored again), %d encounters (%d finished, %d discarded by the engine), %d accepted results stored, %d recomputed, %d effect changes of %d instances %v",
+	writeJSON(t, filepath.Join(out, "analysis-timing.json"), analysisTimings)
+	t.Logf("history replay: %d captures (%d byte-identical copies not stored again), %d encounters (%d finished, %d discarded by the engine), %d accepted results stored, %d recomputed, %d effect changes of %d instances %v; analysis %+v",
 		totals.Captures, totals.Duplicates, totals.ListedEncounters, totals.FinishedEncounters, totals.Discarded, totals.StoredEvents, totals.RecomputedEncounters,
-		totals.EffectChanges, totals.EffectInstances, totals.EffectKinds)
+		totals.EffectChanges, totals.EffectInstances, totals.EffectKinds, totals.Analysis)
 }
 
 type captureItem struct{ name, path string }
@@ -165,6 +166,194 @@ type replaySummary struct {
 	EffectChanges        int            `json:"effectChanges"`
 	EffectInstances      int            `json:"effectInstances"`
 	EffectKinds          map[string]int `json:"effectKinds"`
+	Analysis             analysisTally  `json:"analysis"`
+}
+
+// analysisTally counts what the analysis checks covered; it holds no timing, so both profiles must report the same.
+type analysisTally struct {
+	Encounters        int            `json:"encounters"`
+	Consistent        int            `json:"consistent"`
+	RangesChecked     int            `json:"rangesChecked"`
+	EnemiesMapped     int            `json:"enemiesMapped"`
+	EnemiesUnmapped   int            `json:"enemiesUnmapped"`
+	EffectRows        int            `json:"effectRows"`
+	HUDRows           int            `json:"hudRows"`
+	EffectSegments    map[string]int `json:"effectSegments"`
+	ExactCoverageRows int            `json:"exactCoverageRows"`
+	StaleInstances    int            `json:"staleInstances"`
+	BrowserEvents     int            `json:"browserEvents"`
+	UntimedResults    int            `json:"untimedResults"`
+}
+
+func (a *analysisTally) add(b analysisTally) {
+	if a.EffectSegments == nil {
+		a.EffectSegments = map[string]int{}
+	}
+	for kind, n := range b.EffectSegments {
+		a.EffectSegments[kind] += n
+	}
+	a.Encounters += b.Encounters
+	a.Consistent += b.Consistent
+	a.RangesChecked += b.RangesChecked
+	a.EnemiesMapped += b.EnemiesMapped
+	a.EnemiesUnmapped += b.EnemiesUnmapped
+	a.EffectRows += b.EffectRows
+	a.HUDRows += b.HUDRows
+	a.ExactCoverageRows += b.ExactCoverageRows
+	a.StaleInstances += b.StaleInstances
+	a.BrowserEvents += b.BrowserEvents
+	a.UntimedResults += b.UntimedResults
+}
+
+// analysisTimings collects how long analysis took on real encounters, outside the summaries the profiles must agree on.
+var analysisTimings []analysisTiming
+
+type analysisTiming struct {
+	Capture     string  `json:"capture"`
+	Encounter   int64   `json:"encounter"`
+	Results     int     `json:"results"`
+	EffectRows  int     `json:"effectRows"`
+	ModelMs     float64 `json:"modelMs"`
+	CachedMs    float64 `json:"cachedMs"`
+	RangeMs     float64 `json:"rangeMs"`
+	EffectsMs   float64 `json:"effectsMs"`
+	EventPageMs float64 `json:"eventPageMs"`
+	// ResponseBytes are the JSON sizes of one analysis, the effect lanes (all) and one event page, as the host sends them.
+	AnalysisBytes int `json:"analysisBytes"`
+	LanesBytes    int `json:"lanesBytes"`
+	PageBytes     int `json:"pageBytes"`
+}
+
+// checkAnalysis checks the analysis workspace on one real finished encounter: the full range rebuilt from the stored results
+// equals the engine's result and projects to the same view; consecutive ranges add up to it; each tied enemy instance's
+// filter reproduces its stored flows; effect intervals are well formed and their coverage never exceeds the range; and the
+// event browser lists every stored result of the encounter.
+func checkAnalysis(t *testing.T, store *Store, masters *capture.MasterData, id int64, detail EncounterDetail, summary *replaySummary) {
+	t.Helper()
+	ctx := context.Background()
+	store.models.clear()
+	timing := analysisTiming{Capture: summary.Name, Encounter: id}
+	started := time.Now()
+	full, err := store.Analysis(ctx, id, AnalysisQuery{Enemy: -1, Effects: "all"}, masters)
+	timing.ModelMs = float64(time.Since(started).Microseconds()) / 1000
+	if err != nil || full.State != AnalysisReady {
+		t.Fatalf("encounter %d: analysis %s (%v)", id, full.State, err)
+	}
+	tally := analysisTally{Encounters: 1, EffectSegments: map[string]int{}, UntimedResults: full.UntimedEvents}
+	if !full.Consistent {
+		t.Fatalf("encounter %d: the stored results do not rebuild the stored result: %s", id, full.Mismatch)
+	}
+	tally.Consistent++
+	projected, stored := masters.ProjectEncounter(*full.Snapshot), masters.ProjectEncounter(*detail.Snapshot)
+	projected.EncounterID, stored.EncounterID = "", ""
+	if !reflect.DeepEqual(projected, stored) {
+		t.Fatalf("encounter %d: the full range projects differently:\n got %+v\nwant %+v", id, projected, stored)
+	}
+	started = time.Now()
+	if _, err := store.Analysis(ctx, id, AnalysisQuery{Enemy: -1, Effects: "all"}, masters); err != nil {
+		t.Fatal(err)
+	}
+	timing.CachedMs = float64(time.Since(started).Microseconds()) / 1000
+	if encoded, err := json.Marshal(full); err == nil {
+		timing.AnalysisBytes = len(encoded)
+	}
+	// Four consecutive ranges add up to the encounter (results without a time belong to the full range only).
+	duration := int64(full.Range.DurationMs)
+	if duration > 0 && full.UntimedEvents == 0 {
+		var dealt, taken, healed int64
+		var outgoing uint64
+		bounds := []int64{0, duration / 4, duration / 2, 3 * duration / 4, 0}
+		for i := 0; i < 4; i++ {
+			started = time.Now()
+			part, err := store.Analysis(ctx, id, AnalysisQuery{FromMs: bounds[i], ToMs: bounds[i+1], Enemy: -1}, masters)
+			if i == 1 {
+				timing.RangeMs = float64(time.Since(started).Microseconds()) / 1000
+			}
+			if err != nil || part.State != AnalysisReady {
+				t.Fatalf("encounter %d part %d: %v", id, i, err)
+			}
+			dealt += part.Snapshot.Totals.DamageDealt
+			taken += part.Snapshot.Totals.DamageTaken
+			outgoing += part.Snapshot.Totals.OutgoingEvents
+			healed += part.Snapshot.Healing.Reported
+			tally.RangesChecked++
+		}
+		totals := full.Snapshot.Totals
+		if dealt != totals.DamageDealt || taken != totals.DamageTaken || outgoing != totals.OutgoingEvents || healed != full.Snapshot.Healing.Reported {
+			t.Fatalf("encounter %d: parts add up to %d/%d/%d/%d, the encounter is %d/%d/%d/%d", id, dealt, taken, outgoing, healed, totals.DamageDealt, totals.DamageTaken, totals.OutgoingEvents, full.Snapshot.Healing.Reported)
+		}
+	}
+	for _, enemy := range full.Enemies {
+		if !enemy.Mapped {
+			tally.EnemiesUnmapped++
+			continue
+		}
+		tally.EnemiesMapped++
+		filtered, err := store.Analysis(ctx, id, AnalysisQuery{Enemy: enemy.Ordinal}, masters)
+		if err != nil || filtered.Query.Enemy != enemy.Ordinal {
+			t.Fatalf("encounter %d enemy %d: %+v (%v)", id, enemy.Ordinal, filtered.Query, err)
+		}
+		for _, storedEnemy := range detail.Enemies {
+			if storedEnemy.Ordinal == enemy.Ordinal && (filtered.Snapshot.Totals.DamageDealt != storedEnemy.DamageTaken || filtered.Snapshot.Totals.DamageTaken != storedEnemy.DamageDealt ||
+				filtered.Timeline != nil && filtered.Timeline.DamageDealt != storedEnemy.DamageTaken) {
+				t.Fatalf("encounter %d enemy %d: the filter shows %d/%d, the stored instance %d/%d", id, enemy.Ordinal, filtered.Snapshot.Totals.DamageDealt, filtered.Snapshot.Totals.DamageTaken, storedEnemy.DamageTaken, storedEnemy.DamageDealt)
+			}
+		}
+	}
+	started = time.Now()
+	lanes, err := store.Effects(ctx, id, AnalysisQuery{Enemy: -1, Effects: "all"}, masters)
+	timing.EffectsMs = float64(time.Since(started).Microseconds()) / 1000
+	if err != nil || lanes.State != AnalysisReady || lanes.Available != detail.Session.Coverage.EffectEvents {
+		t.Fatalf("encounter %d: effect lanes %+v (%v)", id, lanes.State, err)
+	}
+	if encoded, err := json.Marshal(lanes); err == nil {
+		timing.LanesBytes = len(encoded)
+	}
+	tally.EffectRows, tally.StaleInstances, timing.EffectRows = len(lanes.Rows), lanes.Stale, len(lanes.Rows)
+	for _, row := range lanes.Rows {
+		if row.HUD {
+			tally.HUDRows++
+		}
+		for _, segment := range row.Segments {
+			// Lanes are drawn at whole milliseconds, so an end may round up by half of one.
+			if segment.FromMs < 0 || segment.ToMs > full.Range.DurationMs+0.5 || segment.FromMs > segment.ToMs {
+				t.Fatalf("encounter %d row %s: segment %+v outside the encounter", id, row.Key, segment)
+			}
+			switch segment.Evidence {
+			case EffectConfirmed, EffectStated, EffectUnknown:
+				tally.EffectSegments[segment.Evidence]++
+			default:
+				t.Fatalf("encounter %d row %s: segment evidence %q", id, row.Key, segment.Evidence)
+			}
+		}
+	}
+	for _, coverage := range full.Effects.Rows {
+		if coverage.ConfirmedMs+coverage.PartialMs+coverage.UnknownMs > full.Range.DurationMs+1.5 || coverage.Lower < 0 || coverage.Lower > 1+1e-9 ||
+			coverage.Upper != nil && *coverage.Upper > 1+1e-9 || coverage.Exact && (coverage.Ratio == nil || coverage.PartialMs+coverage.UnknownMs != 0) {
+			t.Fatalf("encounter %d: coverage %+v", id, coverage)
+		}
+		if coverage.Exact {
+			tally.ExactCoverageRows++
+		}
+	}
+	var results int
+	if err := store.db.QueryRowContext(ctx, "SELECT count(*) FROM combat_event WHERE encounter_id = ?", id).Scan(&results); err != nil {
+		t.Fatal(err)
+	}
+	timing.Results = results
+	started = time.Now()
+	page, err := store.Events(ctx, id, EventQuery{AnalysisQuery: AnalysisQuery{Enemy: -1, Effects: "all"}, Kinds: []string{EventDamage, EventHealing}}, masters)
+	timing.EventPageMs = float64(time.Since(started).Microseconds()) / 1000
+	if err != nil || page.Total != results || len(page.Rows) != min(results, MaxEventPage) {
+		t.Fatalf("encounter %d: the browser lists %d of %d results (%v)", id, page.Total, results, err)
+	}
+	if encoded, err := json.Marshal(page); err == nil {
+		timing.PageBytes = len(encoded)
+	}
+	tally.BrowserEvents = page.Total
+	summary.Analysis.add(tally)
+	analysisTimings = append(analysisTimings, timing)
+	store.models.clear()
 }
 
 type replayTotals struct {
@@ -184,12 +373,14 @@ type replayTotals struct {
 	EffectChanges        int            `json:"effectChanges"`
 	EffectInstances      int            `json:"effectInstances"`
 	EffectKinds          map[string]int `json:"effectKinds"`
+	Analysis             analysisTally  `json:"analysis"`
 }
 
 func (t *replayTotals) add(s replaySummary) {
 	if t.EffectKinds == nil {
 		t.EffectKinds = map[string]int{}
 	}
+	t.Analysis.add(s.Analysis)
 	for kind, count := range s.EffectKinds {
 		t.EffectKinds[kind] += count
 	}
@@ -363,6 +554,7 @@ func replayIntoHistory(t *testing.T, store *Store, masters *capture.MasterData, 
 		}
 		recompute(t, store, id, *detail.Snapshot)
 		summary.RecomputedEncounters++
+		checkAnalysis(t, store, masters, id, detail, &summary)
 	}
 	// The live view of each encounter equals its history projection.
 	for interval, view := range intervals {

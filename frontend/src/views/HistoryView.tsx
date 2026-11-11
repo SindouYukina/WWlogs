@@ -4,13 +4,14 @@ import { ActivityHeatmap, Button, Card, Chip, ContentSwitch, Icon, LiveChart, Re
 import { usableDps } from "@/lib/combat-data"
 import { combatRows, detailRow, skillBreakdowns } from "@/lib/combat-view"
 import { useFormatters, useRowNames, elementColor } from "@/lib/format"
-import { defaultDate, heatmapLayout, indicatorText, offsetText, yearBounds, type HistoryChange, type HistoryDay, type HistoryEncounterDetail, type HistoryEncounterSummary, type HistoryIndicator, type HistoryLocalTime, type HistoryName, type HistoryStatus, type HistoryYear, type HistoryZone } from "@/lib/history"
+import { defaultDate, heatmapLayout, indicatorText, offsetText, yearBounds, type HistoryChange, type HistoryDay, type HistoryEncounterDetail, type HistoryEncounterSummary, type HistoryIndicator, type HistoryLocalTime, type HistoryStatus, type HistoryYear, type HistoryZone } from "@/lib/history"
 import { host } from "@/lib/host"
 import { dpsText, usableHealing } from "@/lib/snapshot"
 import { timelineFromSnapshot } from "@/lib/timeline"
 import { useDetailPick } from "@/lib/useDetailPick"
 import { useHostTimeZone } from "@/lib/useHostTimeZone"
 import { chartSeries, RoleBoard, SkillTable, StatCard } from "./DashboardView"
+import { AnalysisWorkspace, EnemiesCard, LinkedName } from "./HistoryAnalysis"
 
 export interface HistoryViewProps {
   theme: ThemeId
@@ -91,13 +92,6 @@ function ZoneNote({ zone }: { zone: HistoryZone | undefined }) {
   </p>
 }
 
-/** A Master name that came through a versioned link carries the derivation mark; a missing one says so plainly. */
-function LinkedName({ name, fallback, id, title }: { name: HistoryName; fallback: string; id?: number; title: string }) {
-  if (name.name) return <span className="ww-truncate">{name.name}<span className="ww-history-mark" title={title} aria-label={title}>≈</span></span>
-  // An unnamed identity keeps its raw ID beside the plain word, never a plausible name.
-  return <span className="ww-history-unknown">{fallback}{id ? <span className="ww-history-mark ww-num" data-field="raw-id">#{id}</span> : null}</span>
-}
-
 function SceneCell({ summary }: { summary: HistoryEncounterSummary }) {
   const { t } = useTranslation("history")
   if (!summary.scene.recorded) return <span className="ww-history-unknown">{t("notRecorded")}</span>
@@ -163,13 +157,12 @@ function DayList({ day, dateLabel, onOpen, onMore, loading }: { day: HistoryDay 
 }
 
 /** What the record stored besides its totals: effect lifecycle changes, and that skill casts are never stored. */
-function CoverageCard({ detail }: { detail: HistoryEncounterDetail }) {
+function CoverageFacts({ detail }: { detail: HistoryEncounterDetail }) {
   const { t } = useTranslation("history")
   const format = useFormatters()
   const coverage = detail.session.coverage
   const effects = detail.effects
-  return <Card className="ww-history-context"><div data-field="coverage" data-effects={coverage.effectEvents} data-combat={coverage.combatEvents}>
-    <div className="ww-dash-card-head"><h3>{t("coverage.title")}</h3></div>
+  return <div className="ww-history-coverage" data-field="coverage" data-effects={coverage.effectEvents} data-combat={coverage.combatEvents}>
     <dl className="ww-history-facts ww-history-facts-wrap">
       <div><dt>{t("coverage.combat")}</dt><dd>{t(coverage.combatEvents ? "coverage.combatStored" : "coverage.combatTotalsOnly")}</dd></div>
       <div><dt>{t("coverage.effects")}</dt><dd data-field="coverage-effects" data-changes={effects.changes}>{coverage.effectEvents
@@ -179,7 +172,7 @@ function CoverageCard({ detail }: { detail: HistoryEncounterDetail }) {
     </dl>
     {coverage.effectEvents && effects.derived + effects.untracked > 0 && <p className="ww-history-note">{t("coverage.effectsDerived", { derived: format.integer(effects.derived), untracked: format.integer(effects.untracked) })}</p>}
     {detail.session.effectsRejected > 0 && <p className="ww-history-note" data-tone="warn">{t("coverage.effectsRejected", { n: format.integer(detail.session.effectsRejected) })}</p>}
-  </div></Card>
+  </div>
 }
 
 /** Deleting one stored encounter: the first press asks, the second deletes. The host refuses one still recording. */
@@ -238,6 +231,9 @@ function EncounterDetail({ detail, backLabel, onBack, onDeleted }: { detail: His
   // An encounter that runs past midnight names the date it ended on.
   const end = summary.end ? `${summary.end.date !== summary.start.date ? `${dates.short(summary.end.date)} ` : ""}${summary.end.clock}` : "—"
   const skills = selected ? breakdowns.get(selected.key) : undefined
+  // A finished encounter whose results were stored one by one is explored in the analysis workspace; an unfinished one
+  // shows the checkpoint it left, which is not a final result and is never split by time.
+  const analysed = summary.state === "finished" && encounter !== null && session.coverage.combatEvents
   return <div className="ww-history-detail" data-field="encounter-detail" data-encounter-id={summary.id} data-state={summary.state}>
     <div className="ww-history-detail-head">
       <div className="ww-history-years">
@@ -250,23 +246,25 @@ function EncounterDetail({ detail, backLabel, onBack, onDeleted }: { detail: His
         {summary.source === "replay" && <Chip tone="neutral">{t("source.replay")}</Chip>}
       </div>
     </div>
-    <DeleteEncounter summary={summary} onDeleted={onDeleted} />
-    <Card className="ww-history-context">
-      <dl className="ww-history-facts">
-        <div><dt>{t("columns.mode")}</dt><dd className="ww-history-unknown">{t("unidentified")}</dd></div>
-        <div><dt>{t("columns.scene")}</dt><dd><SceneCell summary={summary} /></dd></div>
-        <div><dt>{t("columns.enemy")}</dt><dd><EnemyCell summary={summary} /></dd></div>
-        <div><dt>{t("timeRange")}</dt><dd className="ww-num" data-field="time-range" title={clockTitle(summary.start, summary.recorded)}>{start} – {end}</dd></div>
-        <div><dt>{t("columns.duration")}</dt><dd className="ww-num">{summary.durationSeconds === undefined ? "—" : format.clock(summary.durationSeconds)}</dd></div>
-        <div><dt>{t("recordedBy")}</dt><dd title={session.recordedAppVersion ? t("versionCorrected", { version: session.recordedAppVersion, commit: session.appCommit }) : session.appCommit}>{t(`source.${session.source}`)} · {session.appVersion}{session.appBuild > 0 ? ` (${session.appBuild})` : ""}</dd></div>
-      </dl>
+    <Card className="ww-history-context ww-history-summary">
+      <div className="ww-history-summary-row">
+        <dl className="ww-history-facts">
+          <div><dt>{t("columns.mode")}</dt><dd className="ww-history-unknown">{t("unidentified")}</dd></div>
+          <div><dt>{t("columns.scene")}</dt><dd><SceneCell summary={summary} /></dd></div>
+          <div><dt>{t("columns.enemy")}</dt><dd><EnemyCell summary={summary} /></dd></div>
+          <div><dt>{t("timeRange")}</dt><dd className="ww-num" data-field="time-range" title={clockTitle(summary.start, summary.recorded)}>{start} – {end}</dd></div>
+          <div><dt>{t("columns.duration")}</dt><dd className="ww-num">{summary.durationSeconds === undefined ? "—" : format.clock(summary.durationSeconds)}</dd></div>
+          <div><dt>{t("recordedBy")}</dt><dd title={session.recordedAppVersion ? t("versionCorrected", { version: session.recordedAppVersion, commit: session.appCommit }) : session.appCommit}>{t(`source.${session.source}`)} · {session.appVersion}{session.appBuild > 0 ? ` (${session.appBuild})` : ""}</dd></div>
+        </dl>
+        <DeleteEncounter summary={summary} onDeleted={onDeleted} />
+      </div>
       {recordNotes(summary).map(note => <p key={note.key} className="ww-history-note" data-tone={note.tone} data-field="record-note">{t(note.key)}</p>)}
       {summary.checkpoint && <p className="ww-history-note" data-tone="warn" data-field="checkpoint-note">{t("checkpointNote", { time: summary.checkpoint.clock })}</p>}
       {summary.integrity === "DEGRADED" && <p className="ww-history-note" data-tone="warn">{d("degradedNote")}</p>}
       {summary.integrity === "UNRELIABLE" && <p className="ww-history-note" data-tone="critical">{d("unreliableNote")}</p>}
+      <CoverageFacts detail={detail} />
     </Card>
-    <CoverageCard detail={detail} />
-    {!encounter ? <Card className="ww-history-context"><p className="ww-dash-empty-note" data-field="no-statistics">{t(summary.state === "open" ? "openNote" : "abandonedNote")}</p></Card> : <>
+    {analysed ? <AnalysisWorkspace detail={detail} /> : !encounter ? <Card className="ww-history-context"><p className="ww-dash-empty-note" data-field="no-statistics">{t(summary.state === "open" ? "openNote" : "abandonedNote")}</p></Card> : <>
       <div className="ww-history-stats">
         <StatCard index={0} hero icon="bolt" label={c("encounterDps")} field="encounter-dps" status={dps?.status ?? "unavailable"} value={usableDps(dps) ? dps?.value : undefined} format={dpsFormat} note={d("peakNote", { value: peakText })} scope={scope} stale={false} numberMode="tween" />
         <StatCard index={1} icon="spark" label={d("confirmedDamage")} field="damage-dealt" value={encounter.totals.damageDealt} format={format.integer} note={d("damageNote")} scope={scope} stale={false} numberMode="tween" />
@@ -293,19 +291,7 @@ function EncounterDetail({ detail, backLabel, onBack, onDeleted }: { detail: His
         </div>
       </div>
     </>}
-    <Card className="ww-history-enemies">
-      <div className="ww-dash-card-head"><h3>{t("enemies")}</h3><span className="ww-history-total">{summary.enemiesRecorded ? t("enemyCount", { n: format.integer(detail.enemies.length) }) : ""}</span></div>
-      {!summary.enemiesRecorded ? <p className="ww-dash-empty-note">{t("enemiesNotRecorded")}</p> : detail.enemies.length === 0 ? <p className="ww-dash-empty-note">{t("noEnemies")}</p> :
-        <div className="ww-dash-skills-wrap"><table className="ww-history-table" data-field="enemies">
-          <thead><tr><th>{t("enemyName")}</th><th className="ww-num">{t("enemyDamageTaken")}</th><th className="ww-num">{t("enemyHits")}</th><th className="ww-num">{t("enemyDamageDealt")}</th></tr></thead>
-          <tbody>{detail.enemies.map(enemy => <tr key={enemy.ordinal} data-ordinal={enemy.ordinal} data-monster-id={enemy.monsterId ?? 0} data-template-id={enemy.templateId ?? 0}>
-            <td><LinkedName name={enemy.name} fallback={t("unidentified")} id={enemy.monsterId ?? enemy.templateId} title={t("correlatedNote")} /></td>
-            <td className="ww-num">{format.integer(enemy.damageTaken)}</td>
-            <td className="ww-num">{format.integer(enemy.hitsTaken)}</td>
-            <td className="ww-num">{format.integer(enemy.damageDealt)}</td>
-          </tr>)}</tbody>
-        </table></div>}
-    </Card>
+    {!analysed && <EnemiesCard detail={detail} />}
   </div>
 }
 
