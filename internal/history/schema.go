@@ -30,6 +30,7 @@ type migration struct {
 var migrations = []migration{
 	{version: 1, name: "combat facts", sql: schemaV1},
 	{version: 2, name: "scene and enemy instances", sql: schemaV2},
+	{version: 3, name: "effect lifecycles, event coverage and checkpoints", sql: schemaV3},
 }
 
 // latestVersion is the schema this build writes.
@@ -313,4 +314,96 @@ ALTER TABLE combat_event ADD COLUMN source_monster_id INTEGER NOT NULL DEFAULT 0
 ALTER TABLE combat_event ADD COLUMN source_template_id INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE combat_event ADD COLUMN target_monster_id INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE combat_event ADD COLUMN target_template_id INTEGER NOT NULL DEFAULT 0;
+`
+
+// schemaV3 adds effect lifecycles, what each recorded span covered, and checkpoints of unfinished encounters.
+//
+// Event coverage is what a span's recorder stored, kept apart from capture integrity (capture_gap and the encounter
+// integrity columns): a span without any transport loss can still lack effect changes because its build never stored
+// them. Rows written before schema 3 stored combat results only at the events level and never stored effect changes or
+// skill casts, so the new coverage columns default to 0 for them and only combat_events_recorded is derived from
+// history_level. skill_casts_recorded stays 0: no build has an independent, server-confirmed skill cast source.
+//
+// Combat History exists only in the v0.7.0 development line, so a session labelled v0.6.0 was written by a v0.7.0-line
+// build that still carried the stale version registry; its label is corrected and the written label kept beside it.
+const schemaV3 = `
+ALTER TABLE capture_session ADD COLUMN combat_events_recorded INTEGER NOT NULL DEFAULT 0 CHECK (combat_events_recorded IN (0, 1));
+ALTER TABLE capture_session ADD COLUMN effect_events_recorded INTEGER NOT NULL DEFAULT 0 CHECK (effect_events_recorded IN (0, 1));
+ALTER TABLE capture_session ADD COLUMN skill_casts_recorded INTEGER NOT NULL DEFAULT 0 CHECK (skill_casts_recorded IN (0, 1));
+-- Effect APPLYs the tracker refused at its capacity bound: their instances are missing from effect_instance.
+ALTER TABLE capture_session ADD COLUMN effects_rejected INTEGER NOT NULL DEFAULT 0;
+-- How the span started: with the capture, or when recording was switched on during it.
+ALTER TABLE capture_session ADD COLUMN start_reason TEXT NOT NULL DEFAULT 'capture_start' CHECK (start_reason IN ('capture_start', 'recording_enabled'));
+-- The version label the session was written with, when a migration corrected app_version; NULL when never corrected.
+ALTER TABLE capture_session ADD COLUMN recorded_app_version TEXT;
+UPDATE capture_session SET combat_events_recorded = 1 WHERE history_level = 'events';
+UPDATE capture_session SET recorded_app_version = app_version, app_version = 'v0.7.0' WHERE app_version = 'v0.6.0';
+
+-- checkpoint_at_ns is the capture time the stored results of an unfinished encounter describe: the engine's rendering at its
+-- last checkpoint. It is NULL for a finished encounter and for one without a checkpoint. incomplete_reason says why
+-- complete is 0 or the encounter was abandoned: entries_lost, application_exit, recording_disabled or not_finished. Rows
+-- written before schema 3 keep NULL: their reason was not recorded.
+ALTER TABLE encounter ADD COLUMN checkpoint_at_ns INTEGER;
+ALTER TABLE encounter ADD COLUMN incomplete_reason TEXT;
+
+-- One effect instance the effect tracker followed within a span: instance numbers it within the capture session, since
+-- handles are reused and are not stored. The identity columns are the normalized holder and source as first stored; a
+-- later change may only fill what was unknown. effect_id is BuffId (NULL when no message named it); a definition link to
+-- the Master is CORRELATED. Roles and monster or template types are resolved like those of combat events.
+CREATE TABLE effect_instance (
+	capture_session_id INTEGER NOT NULL REFERENCES capture_session (id) ON DELETE CASCADE,
+	instance           INTEGER NOT NULL,
+	protocol_session   INTEGER NOT NULL,
+	holder_entity_id   INTEGER NOT NULL,
+	holder_generation  INTEGER NOT NULL,
+	effect_id          INTEGER,
+	definition_linked  INTEGER NOT NULL DEFAULT 0 CHECK (definition_linked IN (0, 1)),
+	source_entity_id   INTEGER,
+	holder_relation    TEXT    NOT NULL,
+	source_relation    TEXT    NOT NULL,
+	holder_player_id   INTEGER,
+	holder_role_id     INTEGER,
+	holder_role_basis  TEXT,
+	holder_monster_id  INTEGER NOT NULL DEFAULT 0,
+	holder_template_id INTEGER NOT NULL DEFAULT 0,
+	source_player_id   INTEGER,
+	source_role_id     INTEGER,
+	source_role_basis  TEXT,
+	source_monster_id  INTEGER NOT NULL DEFAULT 0,
+	source_template_id INTEGER NOT NULL DEFAULT 0,
+	origin             TEXT    NOT NULL,
+	first_observed_ns  INTEGER,
+	-- 1 when the stored changes begin with the instance's first observation (apply, snapshot or instant); 0 when the
+	-- instance was already tracked before the span started or its first change never reached storage.
+	start_recorded     INTEGER NOT NULL CHECK (start_recorded IN (0, 1)),
+	PRIMARY KEY (capture_session_id, instance)
+) WITHOUT ROWID;
+CREATE INDEX effect_instance_by_effect ON effect_instance (effect_id) WHERE effect_id IS NOT NULL;
+
+-- One accepted effect lifecycle change, in the tracker's order (sequence), with the instance's state after it.
+-- after_combat_sequence is the combat_event sequence of the last combat result journaled before it, so effect changes and
+-- combat results interleave exactly. observation is observed (a message stated it), derived (an end implied by the holder's
+-- removal or the handle's reuse) or untracked (tracking stopped; nothing is known afterwards). An estimated expiry is never
+-- stored as a change: remaining_s at basis_ns is what the server stated, and any expiry computed from it is an estimate.
+CREATE TABLE effect_event (
+	capture_session_id    INTEGER NOT NULL,
+	sequence              INTEGER NOT NULL,
+	instance              INTEGER NOT NULL,
+	after_combat_sequence INTEGER NOT NULL,
+	observed_at_ns        INTEGER,
+	change_kind           TEXT    NOT NULL CHECK (change_kind IN ('apply', 'snapshot', 'refresh', 'stack', 'duration', 'remove', 'holder_removed', 'superseded', 'untracked', 'instant')),
+	observation           TEXT    NOT NULL CHECK (observation IN ('observed', 'derived', 'untracked')),
+	evidence              TEXT    NOT NULL,
+	reason                TEXT    NOT NULL DEFAULT '',
+	stack                 INTEGER,
+	duration_s            REAL,
+	remaining_s           REAL,
+	basis_ns              INTEGER,
+	time_reason           TEXT    NOT NULL DEFAULT '',
+	PRIMARY KEY (capture_session_id, sequence),
+	FOREIGN KEY (capture_session_id, instance) REFERENCES effect_instance (capture_session_id, instance) ON DELETE CASCADE
+) WITHOUT ROWID;
+-- A timeline reads an encounter's window through effect_event_by_time; one instance's changes are in sequence order within
+-- the span's primary key range, so no second index is kept for them.
+CREATE INDEX effect_event_by_time ON effect_event (capture_session_id, observed_at_ns);
 `

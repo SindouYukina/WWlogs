@@ -352,7 +352,8 @@ func (s *Store) recover(ctx context.Context) error {
 	if _, err := tx.ExecContext(ctx, "DELETE FROM encounter WHERE state = 'pending' AND complete = 1 AND capture_session_id IN (SELECT id FROM capture_session WHERE status = 'open')"); err != nil {
 		return fmt.Errorf("recover history: %w", err)
 	}
-	result, err := tx.ExecContext(ctx, "UPDATE encounter SET state = 'abandoned', complete = 0 WHERE state IN ('open', 'pending') AND capture_session_id IN (SELECT id FROM capture_session WHERE status = 'open')")
+	result, err := tx.ExecContext(ctx, "UPDATE encounter SET state = 'abandoned', complete = 0, incomplete_reason = COALESCE(incomplete_reason, ?) WHERE state IN ('open', 'pending') AND capture_session_id IN (SELECT id FROM capture_session WHERE status = 'open')",
+		incompleteApplicationExit)
 	if err != nil {
 		return fmt.Errorf("recover history: %w", err)
 	}
