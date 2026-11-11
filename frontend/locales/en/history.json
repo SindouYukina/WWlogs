@@ -91,6 +91,10 @@
     "duplicate_source": "This capture file is already in the history, so it is not stored again."
   },
   "localEncrypted": "Combat history is stored only on this PC, encrypted with a key that Windows protects for your user account.",
+  "zoneNote": "Dates and times follow this PC's current time zone: {{zone}} ({{offset}}).",
+  "zoneLocal": "the Windows time zone",
+  "zoneFallback": "The full rules of the current time zone could not be loaded, so the zone WWlogs read from Windows at start is used.",
+  "recordedZone": "recorded at {{offset}}",
   "indicator": {
     "unknown": "Checking history",
     "recording": "Recording this fight",

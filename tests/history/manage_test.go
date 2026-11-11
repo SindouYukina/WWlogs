@@ -48,7 +48,7 @@ func twoEncounters(t *testing.T, store *Store) (first, second int64) {
 		effectChange(4, 2, 3, capture.EffectChangeRemove, capture.EffectObserved, at(65), func(e *capture.HistoryEffect) { e.Reason = "confirmed_removed" }),
 	)
 	record(t, store, liveStart, entries)
-	day, err := store.Day(context.Background(), start.Format("2006-01-02"), 0, 10)
+	day, err := store.Day(context.Background(), start.Format("2006-01-02"), 0, 10, time.UTC)
 	if err != nil || len(day.Encounters) != 2 {
 		t.Fatalf("day = %+v (%v)", day, err)
 	}
@@ -63,7 +63,7 @@ func TestDeletingAnEncounterRemovesItsResultsEventsAndEffects(t *testing.T) {
 	if err != nil || result.Encounters != 1 || result.Spans != 0 {
 		t.Fatalf("delete = %+v (%v)", result, err)
 	}
-	if _, err := store.Encounter(ctx, first); !errors.Is(err, ErrNotFound) {
+	if _, err := store.Encounter(ctx, first, time.UTC); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("the deleted encounter is still listed: %v", err)
 	}
 	for table, want := range map[string]int{"encounter": 1, "encounter_contributor": 1, "encounter_enemy": 2, "encounter_timeline": 1, "combat_event": 2, "effect_instance": 1, "effect_event": 1} {
@@ -76,7 +76,7 @@ func TestDeletingAnEncounterRemovesItsResultsEventsAndEffects(t *testing.T) {
 	if err := store.db.QueryRow("SELECT start_recorded FROM effect_instance WHERE instance = 2").Scan(&started); err != nil || started != 0 {
 		t.Fatalf("instance 2 start_recorded = %d (%v)", started, err)
 	}
-	if year, err := store.Year(ctx, 2026); err != nil || year.Total != 1 {
+	if year, err := store.Year(ctx, 2026, time.UTC); err != nil || year.Total != 1 {
 		t.Fatalf("the heatmap still counts the deleted encounter: %+v (%v)", year, err)
 	}
 	assertIntegrity(t, store)
@@ -102,7 +102,7 @@ func TestAnEncounterBeingRecordedCannotBeDeleted(t *testing.T) {
 	start := time.Date(2026, 11, 11, 7, 0, 0, 0, time.UTC).Local()
 	recorder.Submit(finishedEncounter(1, 1, start, 10, 100, capture.IntegrityIntact)[:2], 0)
 	waitQueued(t, recorder)
-	day, err := store.Day(context.Background(), start.Format("2006-01-02"), 0, 10)
+	day, err := store.Day(context.Background(), start.Format("2006-01-02"), 0, 10, time.UTC)
 	if err != nil || len(day.Encounters) != 1 || day.Encounters[0].State != "open" {
 		t.Fatalf("day = %+v (%v)", day, err)
 	}
@@ -156,7 +156,7 @@ func TestClearingTheHistoryRemovesEverythingAndItsCopies(t *testing.T) {
 	record(t, store, liveStart, finishedEncounter(1, 1, time.Date(2026, 11, 12, 1, 0, 0, 0, time.UTC), 10, 100, capture.IntegrityIntact))
 	store.Close()
 	requireNoPlaintext(t, filepath.Dir(path))
-	if year, err := openTestStore(t, path, nil).Year(context.Background(), 2026); err != nil || year.Total != 1 {
+	if year, err := openTestStore(t, path, nil).Year(context.Background(), 2026, time.UTC); err != nil || year.Total != 1 {
 		t.Fatalf("after clearing: %+v (%v)", year, err)
 	}
 }

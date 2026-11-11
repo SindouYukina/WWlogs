@@ -88,7 +88,7 @@ func TestHistoryIsEncryptedOnDiskWhileOpenAndAfterClose(t *testing.T) {
 	}
 	// The same key reopens it.
 	reopened := openTestStore(t, path, nil)
-	if year, err := reopened.Year(context.Background(), 2026); err != nil || year.Total != 1 {
+	if year, err := reopened.Year(context.Background(), 2026, time.UTC); err != nil || year.Total != 1 {
 		t.Fatalf("reopened year = %+v (%v)", year, err)
 	}
 }
@@ -171,7 +171,7 @@ func TestMissingKeyNeverGetsANewKey(t *testing.T) {
 	if err := os.WriteFile(keyPath(path), key, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if year, err := openTestStore(t, path, nil).Year(context.Background(), 2026); err != nil || year.Total != 1 {
+	if year, err := openTestStore(t, path, nil).Year(context.Background(), 2026, time.UTC); err != nil || year.Total != 1 {
 		t.Fatalf("restored key: %+v (%v)", year, err)
 	}
 }
@@ -309,7 +309,7 @@ func TestFailedConversionLeavesThePlaintextHistoryUntouched(t *testing.T) {
 	if status.State != StateUnavailable || status.Reason != ReasonEncryptionMigration || status.PlaintextMigration != PlaintextFailed || status.MigrationFailure != MigrationCopyFailed || status.Encrypted {
 		t.Fatalf("status = %+v", status)
 	}
-	if _, err := store.Day(context.Background(), "2023-11-15", 0, 10); !errors.Is(err, ErrUnavailable) {
+	if _, err := store.Day(context.Background(), "2023-11-15", 0, 10, time.UTC); !errors.Is(err, ErrUnavailable) {
 		t.Fatalf("an unconverted history answered a query: %v", err)
 	}
 	if _, err := store.BeginSession(liveStart); !errors.Is(err, ErrNotRecording) {

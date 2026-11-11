@@ -1,7 +1,7 @@
 import test from "node:test"
 import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
-import { clockText, dateOfDay, dayNumber, defaultDate, heatLevel, heatmapLayout, indicatorText, isLeapYear, offsetText, recordedClock, yearBounds } from "../../frontend/src/lib/history.ts"
+import { dateOfDay, dayNumber, defaultDate, heatLevel, heatmapLayout, hostTimeZone, indicatorText, isLeapYear, offsetText, yearBounds } from "../../frontend/src/lib/history.ts"
 import { timelineFromSnapshot } from "../../frontend/src/lib/timeline.ts"
 
 const cells = layout => layout.weeks.flat().filter(cell => cell !== null)
@@ -66,13 +66,14 @@ test("an empty year has no levels and the switcher still reaches this year", () 
   assert.deepEqual(yearBounds({ firstYear: 2024, lastYear: 2025 }, 2026), { first: 2024, last: 2026 })
 })
 
-test("the recorded clock uses the offset stored with the encounter, never the viewer's zone", () => {
-  // 15:30 UTC recorded at UTC+9 is 00:30 the next day there, and the list shows 00:30:00 wherever it is opened.
-  assert.deepEqual(recordedClock("2024-02-28T15:30:00Z", 9 * 3600), { hours: 0, minutes: 30, seconds: 0 })
-  assert.deepEqual(recordedClock("2024-02-28T15:30:00Z", -5 * 3600), { hours: 10, minutes: 30, seconds: 0 })
-  assert.equal(clockText({ hours: 7, minutes: 5, seconds: 9 }), "07:05:09")
+test("the view names its IANA zone for Go and formats offsets; it never converts an instant itself", () => {
+  // Go lays every instant out in the zone the view names, so the view only reports the zone it runs in.
+  assert.equal(hostTimeZone(), Intl.DateTimeFormat().resolvedOptions().timeZone)
   assert.equal(offsetText(9 * 3600), "UTC+09:00")
   assert.equal(offsetText(-(3 * 3600 + 30 * 60)), "UTC-03:30")
+  assert.equal(offsetText(0), "UTC+00:00")
+  const source = readFileSync(new URL("../../frontend/src/lib/history.ts", import.meta.url), "utf8")
+  assert.doesNotMatch(source, /getUTCHours|getHours|toLocaleTimeString|getTimezoneOffset/)
 })
 
 test("calendar arithmetic is time-zone free", () => {

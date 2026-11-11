@@ -91,6 +91,10 @@
     "duplicate_source": "這個擷取檔案已在歷史中，因此不會再次保存。"
   },
   "localEncrypted": "戰鬥歷史只保存在這台電腦上，並以 Windows 為你的使用者帳戶保護的金鑰加密。",
+  "zoneNote": "日期與時間依這台電腦目前的時區顯示：{{zone}}（{{offset}}）。",
+  "zoneLocal": "Windows 時區",
+  "zoneFallback": "無法載入目前時區的完整規則，因此改用 WWlogs 啟動時從 Windows 讀取的時區。",
+  "recordedZone": "記錄時為 {{offset}}",
   "indicator": {
     "unknown": "正在確認歷史狀態",
     "recording": "正在記錄這場戰鬥",

@@ -4,11 +4,12 @@ import { ActivityHeatmap, Button, Card, Chip, ContentSwitch, Icon, LiveChart, Re
 import { usableDps } from "@/lib/combat-data"
 import { combatRows, detailRow, skillBreakdowns } from "@/lib/combat-view"
 import { useFormatters, useRowNames, elementColor } from "@/lib/format"
-import { clockText, defaultDate, heatmapLayout, indicatorText, localDateOf, offsetText, recordedClock, yearBounds, type HistoryChange, type HistoryDay, type HistoryEncounterDetail, type HistoryEncounterSummary, type HistoryIndicator, type HistoryName, type HistoryStatus, type HistoryYear } from "@/lib/history"
+import { defaultDate, heatmapLayout, indicatorText, offsetText, yearBounds, type HistoryChange, type HistoryDay, type HistoryEncounterDetail, type HistoryEncounterSummary, type HistoryIndicator, type HistoryLocalTime, type HistoryName, type HistoryStatus, type HistoryYear, type HistoryZone } from "@/lib/history"
 import { host } from "@/lib/host"
 import { dpsText, usableHealing } from "@/lib/snapshot"
 import { timelineFromSnapshot } from "@/lib/timeline"
 import { useDetailPick } from "@/lib/useDetailPick"
+import { useHostTimeZone } from "@/lib/useHostTimeZone"
 import { chartSeries, RoleBoard, SkillTable, StatCard } from "./DashboardView"
 
 export interface HistoryViewProps {
@@ -72,6 +73,24 @@ function useDateFormats() {
   }, [locale])
 }
 
+/** The tooltip of a clock: the view zone's offset at that instant, and the recorded offset when it was recorded elsewhere. */
+function useClockTitle() {
+  const { t } = useTranslation("history")
+  return useCallback((time: HistoryLocalTime, recorded: HistoryEncounterSummary["recorded"]) => recorded.offsetSeconds === time.offsetSeconds
+    ? offsetText(time.offsetSeconds)
+    : `${offsetText(time.offsetSeconds)} · ${t("recordedZone", { offset: offsetText(recorded.offsetSeconds) })}`, [t])
+}
+
+/** Which zone the dates on the page follow, so a date never reads as the zone where a fight was recorded. */
+function ZoneNote({ zone }: { zone: HistoryZone | undefined }) {
+  const { t } = useTranslation("history")
+  if (!zone) return null
+  const name = zone.id === "Local" ? t("zoneLocal") : zone.id
+  return <p className="ww-history-note" data-field="history-zone" data-zone={zone.id} data-fallback={zone.fallback === true}>
+    {t("zoneNote", { zone: name, offset: offsetText(zone.offsetSeconds) })}{zone.fallback ? ` ${t("zoneFallback")}` : ""}
+  </p>
+}
+
 /** A Master name that came through a versioned link carries the derivation mark; a missing one says so plainly. */
 function LinkedName({ name, fallback, id, title }: { name: HistoryName; fallback: string; id?: number; title: string }) {
   if (name.name) return <span className="ww-truncate">{name.name}<span className="ww-history-mark" title={title} aria-label={title}>≈</span></span>
@@ -114,6 +133,7 @@ function StatusChip({ summary }: { summary: HistoryEncounterSummary }) {
 function DayList({ day, dateLabel, onOpen, onMore, loading }: { day: HistoryDay | null; dateLabel: string; onOpen: (id: number) => void; onMore: () => void; loading: boolean }) {
   const { t } = useTranslation("history")
   const format = useFormatters()
+  const clockTitle = useClockTitle()
   if (!day) return <p className="ww-dash-empty-note">{t("selectDay")}</p>
   if (day.total === 0) return <p className="ww-dash-empty-note" data-field="day-empty">{t("emptyDay")}</p>
   const open = (id: number) => (event: KeyboardEvent) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onOpen(id) } }
@@ -123,9 +143,9 @@ function DayList({ day, dateLabel, onOpen, onMore, loading }: { day: HistoryDay 
         <th>{t("columns.start")}</th><th>{t("columns.mode")}</th><th>{t("columns.scene")}</th><th>{t("columns.enemy")}</th>
         <th className="ww-num">{t("columns.duration")}</th><th className="ww-num">{t("columns.dps")}</th><th>{t("columns.state")}</th>
       </tr></thead>
-      <tbody>{day.encounters.map(summary => <tr key={summary.id} className="ww-history-row" tabIndex={0} role="button" aria-label={t("openEncounter", { time: clockText(recordedClock(summary.startedAt, summary.utcOffsetSeconds)), date: dateLabel })}
-        data-encounter-id={summary.id} data-source={summary.source} onClick={() => onOpen(summary.id)} onKeyDown={open(summary.id)}>
-        <td className="ww-num ww-history-time" title={offsetText(summary.utcOffsetSeconds)}>{clockText(recordedClock(summary.startedAt, summary.utcOffsetSeconds))}</td>
+      <tbody>{day.encounters.map(summary => <tr key={summary.id} className="ww-history-row" tabIndex={0} role="button" aria-label={t("openEncounter", { time: summary.start.clock, date: dateLabel })}
+        data-encounter-id={summary.id} data-source={summary.source} data-local-date={summary.localDate} data-started-at={summary.startedAt} onClick={() => onOpen(summary.id)} onKeyDown={open(summary.id)}>
+        <td className="ww-num ww-history-time" data-field="start-clock" title={clockTitle(summary.start, summary.recorded)}>{summary.start.clock}</td>
         {/* No game mode is identified from protocol evidence yet; the column says so instead of guessing from enemies. */}
         <td><span className="ww-history-unknown" data-field="mode">{t("unidentified")}</span></td>
         <td data-field="scene"><SceneCell summary={summary} /></td>
@@ -213,8 +233,10 @@ function EncounterDetail({ detail, backLabel, onBack, onDeleted }: { detail: His
   const healingShown = usableHealing(healing)
   const healingFormat = (value: number) => healing?.status === "lower_bound" ? `≥ ${format.integer(value)}` : format.integer(value)
   const peakText = usableDps(encounter?.peakDps) ? dpsText(encounter?.peakDps, i18n.language) : "—"
-  const start = clockText(recordedClock(summary.startedAt, summary.utcOffsetSeconds))
-  const end = summary.endedAt ? clockText(recordedClock(summary.endedAt, summary.utcOffsetSeconds)) : "—"
+  const clockTitle = useClockTitle()
+  const start = summary.start.clock
+  // An encounter that runs past midnight names the date it ended on.
+  const end = summary.end ? `${summary.end.date !== summary.start.date ? `${dates.short(summary.end.date)} ` : ""}${summary.end.clock}` : "—"
   const skills = selected ? breakdowns.get(selected.key) : undefined
   return <div className="ww-history-detail" data-field="encounter-detail" data-encounter-id={summary.id} data-state={summary.state}>
     <div className="ww-history-detail-head">
@@ -234,12 +256,12 @@ function EncounterDetail({ detail, backLabel, onBack, onDeleted }: { detail: His
         <div><dt>{t("columns.mode")}</dt><dd className="ww-history-unknown">{t("unidentified")}</dd></div>
         <div><dt>{t("columns.scene")}</dt><dd><SceneCell summary={summary} /></dd></div>
         <div><dt>{t("columns.enemy")}</dt><dd><EnemyCell summary={summary} /></dd></div>
-        <div><dt>{t("timeRange")}</dt><dd className="ww-num" title={offsetText(summary.utcOffsetSeconds)}>{start} – {end}</dd></div>
+        <div><dt>{t("timeRange")}</dt><dd className="ww-num" data-field="time-range" title={clockTitle(summary.start, summary.recorded)}>{start} – {end}</dd></div>
         <div><dt>{t("columns.duration")}</dt><dd className="ww-num">{summary.durationSeconds === undefined ? "—" : format.clock(summary.durationSeconds)}</dd></div>
         <div><dt>{t("recordedBy")}</dt><dd title={session.recordedAppVersion ? t("versionCorrected", { version: session.recordedAppVersion, commit: session.appCommit }) : session.appCommit}>{t(`source.${session.source}`)} · {session.appVersion}{session.appBuild > 0 ? ` (${session.appBuild})` : ""}</dd></div>
       </dl>
       {recordNotes(summary).map(note => <p key={note.key} className="ww-history-note" data-tone={note.tone} data-field="record-note">{t(note.key)}</p>)}
-      {summary.checkpointAt && <p className="ww-history-note" data-tone="warn" data-field="checkpoint-note">{t("checkpointNote", { time: clockText(recordedClock(summary.checkpointAt, summary.utcOffsetSeconds)) })}</p>}
+      {summary.checkpoint && <p className="ww-history-note" data-tone="warn" data-field="checkpoint-note">{t("checkpointNote", { time: summary.checkpoint.clock })}</p>}
       {summary.integrity === "DEGRADED" && <p className="ww-history-note" data-tone="warn">{d("degradedNote")}</p>}
       {summary.integrity === "UNRELIABLE" && <p className="ww-history-note" data-tone="critical">{d("unreliableNote")}</p>}
     </Card>
@@ -302,9 +324,9 @@ export function HistoryView({ theme, refreshKey, indicator }: HistoryViewProps) 
   const { t } = useTranslation(["history", "common"])
   const format = useFormatters()
   const dates = useDateFormats()
-  const today = localDateOf(new Date())
-  const currentYear = Number(today.slice(0, 4))
-  const [year, setYear] = useState(currentYear)
+  const zone = useHostTimeZone()
+  // 0 asks Go for the current year of the zone; a year switch names one.
+  const [year, setYear] = useState(0)
   const [yearView, setYearView] = useState<HistoryYear | null>(null)
   const [date, setDate] = useState<string | undefined>(undefined)
   const [day, setDay] = useState<HistoryDay | null>(null)
@@ -325,38 +347,42 @@ export function HistoryView({ theme, refreshKey, indicator }: HistoryViewProps) 
 
   useEffect(() => {
     let current = true
-    host.historyYear(year).then(view => {
+    host.historyYear(year, zone).then(view => {
       if (!current) return
       setFailed(false)
       setYearView(view)
-      setDate(selected => selected !== undefined && selected.startsWith(`${year}-`) ? selected : defaultDate(view, today))
+      setDate(selected => selected !== undefined && selected.startsWith(`${view.year}-`) ? selected : defaultDate(view, view.today))
     }).catch(() => { if (current) setFailed(true) })
     return () => { current = false }
-  }, [year, settledKey, changes])
+  }, [year, zone, settledKey, changes])
 
   useEffect(() => {
     if (date === undefined) { setDay(null); return }
     let current = true
-    host.historyDay(date, 0).then(view => { if (current) setDay(view) }).catch(() => { if (current) setFailed(true) })
+    host.historyDay(date, 0, zone).then(view => { if (current) setDay(view) }).catch(() => { if (current) setFailed(true) })
     return () => { current = false }
-  }, [date, settledKey, changes])
+  }, [date, zone, settledKey, changes])
 
   useEffect(() => {
     if (openId === null) { setDetail(null); return }
     let current = true
-    host.historyEncounter(openId).then(view => { if (current) setDetail(view) }).catch(() => { if (current) { setFailed(true); setOpenId(null) } })
+    host.historyEncounter(openId, zone).then(view => { if (current) setDetail(view) }).catch(() => { if (current) { setFailed(true); setOpenId(null) } })
     return () => { current = false }
-  }, [openId])
+  }, [openId, zone])
 
   const more = useCallback(() => {
     if (!day || loadingMore) return
     setLoadingMore(true)
-    host.historyDay(day.date, day.encounters.length).then(page => {
+    host.historyDay(day.date, day.encounters.length, zone).then(page => {
       setDay(previous => previous && previous.date === page.date ? { ...page, offset: 0, encounters: [...previous.encounters, ...page.encounters] } : previous)
     }).catch(() => setFailed(true)).finally(() => setLoadingMore(false))
-  }, [day, loadingMore])
+  }, [day, loadingMore, zone])
 
-  const layout = useMemo(() => heatmapLayout(year, yearView?.year === year ? yearView.days : []), [year, yearView])
+  // Until Go answers, the page knows neither the year nor today: both are dates of the zone, and only Go converts instants.
+  const shownYear = year !== 0 ? year : yearView?.year ?? 0
+  const today = yearView?.today
+  const currentYear = today ? Number(today.slice(0, 4)) : shownYear
+  const layout = useMemo(() => heatmapLayout(shownYear, yearView?.year === shownYear ? yearView.days : []), [shownYear, yearView])
   const bounds = yearBounds(yearView ?? { firstYear: 0, lastYear: 0 }, currentYear)
   const status = yearView?.status
   const note = statusNote(status)
@@ -365,7 +391,7 @@ export function HistoryView({ theme, refreshKey, indicator }: HistoryViewProps) 
   const changeYear = (next: number) => { setYear(next); setOpenId(null) }
   const afterDelete = useCallback(() => { setOpenId(null); setDeleted(true); setChanges(count => count + 1) }, [])
   const empty = yearView !== null && yearView.firstYear === 0
-  return <div className="ww-history ww-has-backdrop" data-field="history" data-year={year}><ThemeBackdrop theme={theme} intensity="art" /><div className="ww-history-layout">
+  return <div className="ww-history ww-has-backdrop" data-field="history" data-year={shownYear}><ThemeBackdrop theme={theme} intensity="art" /><div className="ww-history-layout">
     <Reveal className="ww-history-top">
       <div>
         <div className="ww-caps">{t("subtitle")}</div>
@@ -373,23 +399,24 @@ export function HistoryView({ theme, refreshKey, indicator }: HistoryViewProps) 
       </div>
       <HistoryIndicatorChip indicator={indicator} />
       <div className="ww-history-years" data-field="year-switch">
-        <Button size="sm" variant="ghost" aria-label={t("previousYear")} title={t("previousYear")} disabled={year <= bounds.first} onClick={() => changeYear(year - 1)} data-field="year-previous"><span style={{ display: "inline-flex", transform: "rotate(90deg)" }}><Icon name="chevron" size={14} /></span></Button>
-        <span className="ww-history-year ww-num" data-field="year">{year}</span>
-        <Button size="sm" variant="ghost" aria-label={t("nextYear")} title={t("nextYear")} disabled={year >= bounds.last} onClick={() => changeYear(year + 1)} data-field="year-next"><span style={{ display: "inline-flex", transform: "rotate(-90deg)" }}><Icon name="chevron" size={14} /></span></Button>
+        <Button size="sm" variant="ghost" aria-label={t("previousYear")} title={t("previousYear")} disabled={shownYear === 0 || shownYear <= bounds.first} onClick={() => changeYear(shownYear - 1)} data-field="year-previous"><span style={{ display: "inline-flex", transform: "rotate(90deg)" }}><Icon name="chevron" size={14} /></span></Button>
+        <span className="ww-history-year ww-num" data-field="year">{shownYear === 0 ? "—" : shownYear}</span>
+        <Button size="sm" variant="ghost" aria-label={t("nextYear")} title={t("nextYear")} disabled={shownYear === 0 || shownYear >= bounds.last} onClick={() => changeYear(shownYear + 1)} data-field="year-next"><span style={{ display: "inline-flex", transform: "rotate(-90deg)" }}><Icon name="chevron" size={14} /></span></Button>
       </div>
     </Reveal>
     <Reveal index={1}><Card className="ww-history-heat">
       <div className="ww-history-heat-head">
         <h3>{t("heatmapTitle")}</h3>
-        <span className="ww-history-total" data-field="year-total" data-total={layout.total}>{t("yearTotal", { year, n: format.integer(layout.total) })}</span>
+        <span className="ww-history-total" data-field="year-total" data-total={layout.total}>{shownYear === 0 ? "" : t("yearTotal", { year: shownYear, n: format.integer(layout.total) })}</span>
       </div>
-      <ActivityHeatmap weeks={layout.weeks} monthStarts={layout.monthStarts} selected={date} today={today} onSelect={select}
-        monthLabel={dates.month} weekdayLabel={dates.weekday} dayLabel={dayLabel} less={t("less")} more={t("more")} label={t("heatmapLabel", { year })} />
+      {shownYear !== 0 && <ActivityHeatmap weeks={layout.weeks} monthStarts={layout.monthStarts} selected={date} today={today} onSelect={select}
+        monthLabel={dates.month} weekdayLabel={dates.weekday} dayLabel={dayLabel} less={t("less")} more={t("more")} label={t("heatmapLabel", { year: shownYear })} />}
       {note && <p className="ww-history-note" data-tone={note.tone} data-field="history-status" data-reason={status?.reason}>{t(note.key)}</p>}
       {failed && <p className="ww-history-note" data-tone="critical" role="alert">{t("loadFailed")}</p>}
       {status && status.recoveredEncounters > 0 && <p className="ww-history-note" data-tone="warn">{t("recovered", { n: format.integer(status.recoveredEncounters) })}</p>}
-      {empty ? <p className="ww-history-note" data-field="history-empty">{t("emptyHistory")}</p> : layout.total === 0 && yearView !== null && <p className="ww-history-note">{t("emptyYear", { year })}</p>}
+      {empty ? <p className="ww-history-note" data-field="history-empty">{t("emptyHistory")}</p> : layout.total === 0 && yearView !== null && <p className="ww-history-note">{t("emptyYear", { year: shownYear })}</p>}
       {deleted && <p className="ww-history-note" role="status" data-field="history-deleted">{t("delete.done")}</p>}
+      <ZoneNote zone={yearView?.zone} />
       {status && status.state !== "unavailable" && <p className="ww-history-note" data-field="history-storage" data-encrypted={status.encrypted}>{t(status.encrypted ? "localEncrypted" : "localOnly")}</p>}
     </Card></Reveal>
     <Reveal index={2}><ContentSwitch contentKey={detail ? `detail-${detail.summary.id}` : `day-${date ?? ""}`}>

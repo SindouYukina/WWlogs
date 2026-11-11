@@ -145,25 +145,42 @@ func (b *Bridge) historyQuery() (*nameProjection, context.CancelFunc) {
 	return &nameProjection{ctx: ctx, resolver: b.projection.resolver, locale: locale}, cancel
 }
 
-// HistoryYear returns the encounter count of every local date of year, with the history's status.
-func (b *Bridge) HistoryYear(year int) (json.RawMessage, error) {
+// historyZoneJSON says which zone a History answer laid its dates out in: the IANA zone the view asked for, or Local when
+// that zone could not be loaded (fallback), with the zone's UTC offset now.
+type historyZoneJSON struct {
+	ID            string `json:"id"`
+	Fallback      bool   `json:"fallback,omitempty"`
+	OffsetSeconds int    `json:"offsetSeconds"`
+}
+
+func zoneJSON(zone history.ViewZone) historyZoneJSON {
+	_, offset := time.Now().In(zone.Location).Zone()
+	return historyZoneJSON{ID: zone.ID, Fallback: zone.Fallback, OffsetSeconds: offset}
+}
+
+// HistoryYear returns the encounter count of every date of year in the view's time zone (an IANA name; year 0 is the
+// current year there), with the history's status.
+func (b *Bridge) HistoryYear(year int, zoneName string) (json.RawMessage, error) {
 	names, cancel := b.historyQuery()
 	defer cancel()
-	view, err := b.history.Year(names.ctx, year)
+	zone := history.ResolveViewZone(zoneName)
+	view, err := b.history.Year(names.ctx, year, zone.Location)
 	if err != nil && !errors.Is(err, history.ErrUnavailable) {
 		return nil, err
 	}
 	return json.Marshal(struct {
-		Status history.Status `json:"status"`
+		Status history.Status  `json:"status"`
+		Zone   historyZoneJSON `json:"zone"`
 		history.YearView
-	}{b.history.Status(), view})
+	}{b.history.Status(), zoneJSON(zone), view})
 }
 
-// HistoryDay returns one page of a local date's encounters, named in the UI locale.
-func (b *Bridge) HistoryDay(date string, offset int) (json.RawMessage, error) {
+// HistoryDay returns one page of the encounters of a date in the view's time zone, named in the UI locale.
+func (b *Bridge) HistoryDay(date string, offset int, zoneName string) (json.RawMessage, error) {
 	names, cancel := b.historyQuery()
 	defer cancel()
-	view, err := b.history.Day(names.ctx, date, offset, history.MaxDayPage)
+	zone := history.ResolveViewZone(zoneName)
+	view, err := b.history.Day(names.ctx, date, offset, history.MaxDayPage, zone.Location)
 	if err != nil && !errors.Is(err, history.ErrUnavailable) {
 		return nil, err
 	}
@@ -176,24 +193,28 @@ func (b *Bridge) HistoryDay(date string, offset int) (json.RawMessage, error) {
 	}
 	return json.Marshal(struct {
 		Status     history.Status       `json:"status"`
+		Zone       historyZoneJSON      `json:"zone"`
 		Date       string               `json:"date"`
 		Total      int                  `json:"total"`
 		Offset     int                  `json:"offset"`
 		Encounters []historySummaryJSON `json:"encounters"`
-	}{b.history.Status(), view.Date, view.Total, view.Offset, encounters})
+	}{b.history.Status(), zoneJSON(zone), view.Date, view.Total, view.Offset, encounters})
 }
 
-// HistoryEncounter returns one stored encounter: its summary, the capture session that recorded it and, for a finished
-// encounter, the same encounter view and DPS timeline the Dashboard showed when it finished, named in the UI locale.
-func (b *Bridge) HistoryEncounter(id int64) (json.RawMessage, error) {
+// HistoryEncounter returns one stored encounter: its summary with its times in the view's time zone, the capture session
+// that recorded it and, for a finished encounter, the same encounter view and DPS timeline the Dashboard showed when it
+// finished, named in the UI locale.
+func (b *Bridge) HistoryEncounter(id int64, zoneName string) (json.RawMessage, error) {
 	names, cancel := b.historyQuery()
 	defer cancel()
-	detail, err := b.history.Encounter(names.ctx, id)
+	zone := history.ResolveViewZone(zoneName)
+	detail, err := b.history.Encounter(names.ctx, id, zone.Location)
 	if err != nil {
 		return nil, err
 	}
 	out := struct {
 		Status        history.Status                     `json:"status"`
+		Zone          historyZoneJSON                    `json:"zone"`
 		Summary       historySummaryJSON                 `json:"summary"`
 		Session       history.SessionInfo                `json:"session"`
 		Encounter     *capture.ViewEncounter             `json:"encounter"`
@@ -201,7 +222,7 @@ func (b *Bridge) HistoryEncounter(id int64) (json.RawMessage, error) {
 		TimelineValid bool                               `json:"timelineValid"`
 		Enemies       []historyEnemyJSON                 `json:"enemies"`
 		Effects       history.EffectWindow               `json:"effects"`
-	}{Status: b.history.Status(), Summary: names.summary(detail.Summary), Session: detail.Session, Enemies: []historyEnemyJSON{}, Effects: detail.Effects}
+	}{Status: b.history.Status(), Zone: zoneJSON(zone), Summary: names.summary(detail.Summary), Session: detail.Session, Enemies: []historyEnemyJSON{}, Effects: detail.Effects}
 	if detail.Snapshot != nil {
 		view := b.masters.ProjectEncounter(*detail.Snapshot)
 		names.encounter(&view)

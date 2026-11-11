@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -155,11 +156,11 @@ func TestFinishedEncounterRoundTripsAndSurvivesReopen(t *testing.T) {
 	check := func(store *Store) {
 		t.Helper()
 		ctx := context.Background()
-		year, err := store.Year(ctx, 2026)
+		year, err := store.Year(ctx, 2026, time.UTC)
 		if err != nil || year.Total != 1 || len(year.Days) != 1 || year.Days[0] != (DayCount{Date: "2026-11-10", Encounters: 1}) || year.FirstYear != 2026 || year.LastYear != 2026 {
 			t.Fatalf("year = %+v (%v)", year, err)
 		}
-		day, err := store.Day(ctx, "2026-11-10", 0, 50)
+		day, err := store.Day(ctx, "2026-11-10", 0, 50, time.UTC)
 		if err != nil || day.Total != 1 || len(day.Encounters) != 1 {
 			t.Fatalf("day = %+v (%v)", day, err)
 		}
@@ -169,7 +170,7 @@ func TestFinishedEncounterRoundTripsAndSurvivesReopen(t *testing.T) {
 			summary.MainEnemy == nil || summary.MainEnemy.MonsterID != 340000040 || summary.MainEnemy.SameType != 2 || summary.Enemies != 2 || !summary.StartedAt.Equal(start) {
 			t.Fatalf("summary = %+v main=%+v", summary, summary.MainEnemy)
 		}
-		detail, err := store.Encounter(ctx, summary.ID)
+		detail, err := store.Encounter(ctx, summary.ID, time.UTC)
 		if err != nil || detail.Snapshot == nil || detail.Timeline == nil {
 			t.Fatalf("detail = %+v (%v)", detail, err)
 		}
@@ -205,14 +206,14 @@ func TestLaterIntegrityChangesTheShownDPS(t *testing.T) {
 	degraded := capture.DataIntegrity{Status: capture.IntegrityDegraded, Risks: []string{"combat_results_possibly_lost", "server_effects_possibly_lost"}, TransportLosses: 1, FirstLossAt: start.Add(2 * time.Second)}
 	entries = append(entries, capture.HistoryEntry{Kind: capture.HistoryEncounterIntegrity, Encounter: "1-1", Integrity: &degraded})
 	record(t, store, liveStart, entries)
-	day, err := store.Day(context.Background(), "2026-03-01", 0, 10)
+	day, err := store.Day(context.Background(), "2026-03-01", 0, 10, time.UTC)
 	if err != nil || len(day.Encounters) != 1 {
 		t.Fatalf("day = %+v (%v)", day, err)
 	}
 	if got := day.Encounters[0]; got.Integrity != "DEGRADED" || got.DPS.Status != capture.DPSStatusLowerBound || got.DPS.Value != 50 {
 		t.Fatalf("summary after the late loss = %+v", got)
 	}
-	detail, err := store.Encounter(context.Background(), day.Encounters[0].ID)
+	detail, err := store.Encounter(context.Background(), day.Encounters[0].ID, time.UTC)
 	if err != nil || detail.Snapshot.Integrity.Status != capture.IntegrityDegraded || len(detail.Snapshot.Integrity.Risks) != 2 ||
 		detail.Snapshot.EncounterDPS.Status != capture.DPSStatusLowerBound || detail.Snapshot.Healing.Status != capture.DPSStatusLowerBound {
 		t.Fatalf("detail after the late loss = %+v (%v)", detail.Snapshot, err)
@@ -281,7 +282,7 @@ func TestAbnormalExitLeavesNoFinishedLookingEncounter(t *testing.T) {
 	if status.State != StateReady || status.RecoveredSessions != 1 || status.RecoveredEncounters != 1 {
 		t.Fatalf("status after the abnormal exit = %+v", status)
 	}
-	day, err := reopened.Day(context.Background(), "2026-07-01", 0, 10)
+	day, err := reopened.Day(context.Background(), "2026-07-01", 0, 10, time.UTC)
 	if err != nil || day.Total != 1 {
 		t.Fatalf("day = %+v (%v)", day, err)
 	}
@@ -318,7 +319,7 @@ func TestFullQueueIsCountedAndMarksTheEncounterIncomplete(t *testing.T) {
 	if err := store.db.QueryRowContext(context.Background(), "SELECT queue_dropped FROM capture_session WHERE id = ?", recorder.SessionID()).Scan(&queueDropped); err != nil || queueDropped != len(flood) {
 		t.Fatalf("queue_dropped = %d (%v)", queueDropped, err)
 	}
-	day, err := store.Day(context.Background(), "2026-08-08", 0, 10)
+	day, err := store.Day(context.Background(), "2026-08-08", 0, 10, time.UTC)
 	if err != nil || len(day.Encounters) != 1 || day.Encounters[0].Complete || day.Encounters[0].State != "finished" {
 		t.Fatalf("day = %+v (%v)", day, err)
 	}
@@ -353,11 +354,11 @@ func TestReplayedFileIsStoredOnce(t *testing.T) {
 	}
 }
 
-func TestLocalDateFollowsTheStartAcrossMidnightAndZones(t *testing.T) {
+func TestRecordedDateFollowsTheStartWhereItWasRecorded(t *testing.T) {
 	tokyo := time.FixedZone("UTC+9", 9*60*60)
 	newYork := time.FixedZone("UTC-5", -5*60*60)
-	// 15:30 UTC is 00:30 the next day in UTC+9 and 10:30 the same day in UTC-5. The encounter runs past midnight in UTC+9's
-	// predecessor day only by its start; it is counted on the date where it started.
+	// 15:30 UTC is 00:30 the next day in UTC+9 and 10:30 the same day in UTC-5. The recorded date and offset are those of the
+	// host that recorded it; a view in UTC still lists the encounter on its UTC date.
 	start := time.Date(2024, 2, 28, 15, 30, 0, 0, time.UTC)
 	for _, test := range []struct {
 		location *time.Location
@@ -366,14 +367,235 @@ func TestLocalDateFollowsTheStartAcrossMidnightAndZones(t *testing.T) {
 	}{{tokyo, "2024-02-29", 9 * 60 * 60}, {newYork, "2024-02-28", -5 * 60 * 60}, {time.UTC, "2024-02-28", 0}} {
 		store := openTestStore(t, testPath(t), test.location)
 		record(t, store, liveStart, finishedEncounter(1, 1, start, 45*60, 900, capture.IntegrityIntact))
-		year, err := store.Year(context.Background(), 2024)
-		if err != nil || len(year.Days) != 1 || year.Days[0].Date != test.date {
-			t.Fatalf("%s: year = %+v (%v)", test.location, year, err)
-		}
-		day, err := store.Day(context.Background(), test.date, 0, 10)
-		if err != nil || len(day.Encounters) != 1 || day.Encounters[0].UTCOffsetSeconds != test.offset || day.Encounters[0].LocalDate != test.date {
+		day, err := store.Day(context.Background(), "2024-02-28", 0, 10, time.UTC)
+		if err != nil || len(day.Encounters) != 1 {
 			t.Fatalf("%s: day = %+v (%v)", test.location, day, err)
 		}
+		summary := day.Encounters[0]
+		if summary.Recorded.Date != test.date || summary.Recorded.OffsetSeconds != test.offset || summary.LocalDate != "2024-02-28" || summary.Start.Clock != "15:30:00" {
+			t.Fatalf("%s: summary = %+v", test.location, summary)
+		}
+	}
+}
+
+func mustZone(t *testing.T, name string) *time.Location {
+	t.Helper()
+	zone, err := time.LoadLocation(name)
+	if err != nil {
+		t.Fatalf("load %s: %v", name, err)
+	}
+	return zone
+}
+
+// zoneDates reads where every encounter of the history is listed in zone: the heatmap of each year with an encounter, and
+// each date's list, which must hold exactly the encounters the heatmap counted there.
+func zoneDates(t *testing.T, store *Store, zone *time.Location) map[int64]EncounterSummary {
+	t.Helper()
+	ctx := context.Background()
+	first, err := store.Year(ctx, 0, zone)
+	if err != nil {
+		t.Fatal(err)
+	}
+	listed := map[int64]EncounterSummary{}
+	for year := first.FirstYear; year != 0 && year <= first.LastYear; year++ {
+		view, err := store.Year(ctx, year, zone)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sum := 0
+		for _, day := range view.Days {
+			page, err := store.Day(ctx, day.Date, 0, MaxDayPage, zone)
+			if err != nil || page.Total != day.Encounters || len(page.Encounters) != day.Encounters {
+				t.Fatalf("%s %s: the heatmap counts %d, the day lists %d of %d (%v)", zone, day.Date, day.Encounters, len(page.Encounters), page.Total, err)
+			}
+			for _, summary := range page.Encounters {
+				if summary.LocalDate != day.Date || summary.Start.Date != day.Date || !strings.HasPrefix(day.Date, strconv.Itoa(year)) {
+					t.Fatalf("%s %s lists an encounter of %s", zone, day.Date, summary.LocalDate)
+				}
+				if _, again := listed[summary.ID]; again {
+					t.Fatalf("%s: encounter %d is listed twice", zone, summary.ID)
+				}
+				detail, err := store.Encounter(ctx, summary.ID, zone)
+				if err != nil || detail.Summary.LocalDate != day.Date || detail.Summary.Start != summary.Start {
+					t.Fatalf("%s: the detail of %d says %+v (%v)", zone, summary.ID, detail.Summary.Start, err)
+				}
+				listed[summary.ID] = summary
+			}
+			sum += day.Encounters
+		}
+		if sum != view.Total {
+			t.Fatalf("%s %d: days add up to %d, total %d", zone, year, sum, view.Total)
+		}
+	}
+	return listed
+}
+
+// TestDatesFollowTheViewZoneNotTheRecordingZone records encounters in Tokyo and reads them in other zones: each zone lists
+// every encounter exactly once, on the date its UTC start has there, across midnight, a year end, a leap day and both DST
+// changes of Los Angeles, and reading never changes a stored instant.
+func TestDatesFollowTheViewZoneNotTheRecordingZone(t *testing.T) {
+	tokyo, losAngeles, london := mustZone(t, "Asia/Tokyo"), mustZone(t, "America/Los_Angeles"), mustZone(t, "Europe/London")
+	path := testPath(t)
+	store := openTestStore(t, path, tokyo)
+	starts := []time.Time{
+		time.Date(2026, 11, 3, 18, 30, 0, 0, time.UTC), // Tokyo 11-04 03:30, Los Angeles 11-03 10:30
+		time.Date(2024, 2, 28, 15, 30, 0, 0, time.UTC), // Tokyo 02-29 00:30 (leap day), Los Angeles 02-28 07:30
+		time.Date(2024, 2, 29, 23, 0, 0, 0, time.UTC),  // UTC 02-29 23:00, Tokyo 03-01 08:00, Los Angeles 02-29 15:00
+		time.Date(2025, 12, 31, 15, 0, 0, 0, time.UTC), // Tokyo 2026-01-01 00:00, Los Angeles 2025-12-31 07:00, UTC 2025-12-31
+		time.Date(2026, 3, 8, 9, 59, 59, 0, time.UTC),  // Los Angeles 01:59:59 PST, one second before the spring change
+		time.Date(2026, 3, 8, 10, 0, 0, 0, time.UTC),   // Los Angeles 03:00:00 PDT
+		time.Date(2026, 11, 1, 8, 30, 0, 0, time.UTC),  // Los Angeles 01:30 PDT, the first of the repeated hour
+		time.Date(2026, 11, 1, 9, 30, 0, 0, time.UTC),  // Los Angeles 01:30 PST, the second
+		time.Date(2026, 11, 2, 7, 59, 0, 0, time.UTC),  // Los Angeles 11-01 23:59 PST, the last minute of a 25-hour day
+	}
+	var entries []capture.HistoryEntry
+	for i, start := range starts {
+		entries = append(entries, finishedEncounter(1, uint64(i+1), start, 20*60, int64(1000+i), capture.IntegrityIntact)...)
+	}
+	record(t, store, liveStart, entries)
+	stored := func() string {
+		rows, err := store.db.Query("SELECT id, started_at_ns, ended_at_ns, local_date, utc_offset_s FROM encounter ORDER BY id")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+		hash := sha256.New()
+		for rows.Next() {
+			var id, started, ended, offset int64
+			var date string
+			if err := rows.Scan(&id, &started, &ended, &date, &offset); err != nil {
+				t.Fatal(err)
+			}
+			_, _ = hash.Write([]byte(strconv.FormatInt(id, 10) + "|" + strconv.FormatInt(started, 10) + "|" + strconv.FormatInt(ended, 10) + "|" + date + "|" + strconv.FormatInt(offset, 10) + "\n"))
+		}
+		return hex.EncodeToString(hash.Sum(nil))
+	}
+	before := stored()
+	want := map[*time.Location][]string{
+		tokyo:      {"2026-11-04 03:30:00", "2024-02-29 00:30:00", "2024-03-01 08:00:00", "2026-01-01 00:00:00", "2026-03-08 18:59:59", "2026-03-08 19:00:00", "2026-11-01 17:30:00", "2026-11-01 18:30:00", "2026-11-02 16:59:00"},
+		losAngeles: {"2026-11-03 10:30:00", "2024-02-28 07:30:00", "2024-02-29 15:00:00", "2025-12-31 07:00:00", "2026-03-08 01:59:59", "2026-03-08 03:00:00", "2026-11-01 01:30:00", "2026-11-01 01:30:00", "2026-11-01 23:59:00"},
+		time.UTC:   {"2026-11-03 18:30:00", "2024-02-28 15:30:00", "2024-02-29 23:00:00", "2025-12-31 15:00:00", "2026-03-08 09:59:59", "2026-03-08 10:00:00", "2026-11-01 08:30:00", "2026-11-01 09:30:00", "2026-11-02 07:59:00"},
+		london:     {"2026-11-03 18:30:00", "2024-02-28 15:30:00", "2024-02-29 23:00:00", "2025-12-31 15:00:00", "2026-03-08 09:59:59", "2026-03-08 10:00:00", "2026-11-01 08:30:00", "2026-11-01 09:30:00", "2026-11-02 07:59:00"},
+	}
+	wantOffsets := map[*time.Location][]int{
+		losAngeles: {-8 * 3600, -8 * 3600, -8 * 3600, -8 * 3600, -8 * 3600, -7 * 3600, -7 * 3600, -8 * 3600, -8 * 3600},
+	}
+	for zone, local := range want {
+		listed := zoneDates(t, store, zone)
+		if len(listed) != len(starts) {
+			t.Fatalf("%s lists %d of %d encounters", zone, len(listed), len(starts))
+		}
+		byStart := map[int64]EncounterSummary{}
+		for _, summary := range listed {
+			byStart[summary.StartedAt.UnixNano()] = summary
+		}
+		for i, start := range starts {
+			summary, ok := byStart[start.UnixNano()]
+			if !ok {
+				t.Fatalf("%s does not list the encounter of %s", zone, start)
+			}
+			if got := summary.Start.Date + " " + summary.Start.Clock; got != local[i] {
+				t.Errorf("%s: %s is shown at %s, want %s", zone, start, got, local[i])
+			}
+			if offsets := wantOffsets[zone]; offsets != nil && summary.Start.OffsetSeconds != offsets[i] {
+				t.Errorf("%s: %s has offset %d, want %d", zone, start, summary.Start.OffsetSeconds, offsets[i])
+			}
+			if summary.Recorded.OffsetSeconds != 9*3600 || summary.End == nil || summary.EndedAt.Sub(summary.StartedAt) != 20*time.Minute {
+				t.Errorf("%s: %s recorded %+v, end %+v", zone, start, summary.Recorded, summary.End)
+			}
+		}
+	}
+	// The repeated hour of the autumn change keeps both encounters on 2026-11-01 in Los Angeles, 25 hours long.
+	if day, err := store.Day(context.Background(), "2026-11-01", 0, MaxDayPage, losAngeles); err != nil || day.Total != 3 {
+		t.Fatalf("the 25-hour day lists %d (%v)", day.Total, err)
+	}
+	// The year 2025 of Tokyo has nothing: its last encounter starts on 2026-01-01 there.
+	if year, err := store.Year(context.Background(), 2025, tokyo); err != nil || year.Total != 0 {
+		t.Fatalf("Tokyo 2025 = %+v (%v)", year, err)
+	}
+	if year, err := store.Year(context.Background(), 2025, losAngeles); err != nil || year.Total != 1 || year.Days[0].Date != "2025-12-31" {
+		t.Fatalf("Los Angeles 2025 = %+v (%v)", year, err)
+	}
+	if after := stored(); after != before {
+		t.Fatal("reading the history in other zones changed stored instants")
+	}
+}
+
+// TestFarthestZonesStillMeet reads encounters recorded at UTC+14 in UTC-12 and the other way round: the recorded date of
+// each is two calendar days away from where the view lists it, which the query's recorded-date margin must still reach.
+func TestFarthestZonesStillMeet(t *testing.T) {
+	kiritimati, bakerIsland := mustZone(t, "Pacific/Kiritimati"), mustZone(t, "Etc/GMT+12")
+	for _, test := range []struct{ recorded, viewed *time.Location }{{kiritimati, bakerIsland}, {bakerIsland, kiritimati}} {
+		store := openTestStore(t, testPath(t), test.recorded)
+		// 10:30 UTC is 00:30 the next day at UTC+14 and 22:30 the day before at UTC-12.
+		start := time.Date(2026, 1, 1, 10, 30, 0, 0, time.UTC)
+		record(t, store, liveStart, finishedEncounter(1, 1, start, 60, 500, capture.IntegrityIntact), finishedEncounter(1, 2, start.Add(-23*time.Hour), 60, 600, capture.IntegrityIntact))
+		listed := zoneDates(t, store, test.viewed)
+		if len(listed) != 2 {
+			t.Fatalf("recorded in %s, viewed in %s: %d listed", test.recorded, test.viewed, len(listed))
+		}
+		for _, summary := range listed {
+			if want := summary.StartedAt.In(test.viewed).Format(dateLayout); summary.LocalDate != want {
+				t.Fatalf("listed on %s, want %s", summary.LocalDate, want)
+			}
+		}
+	}
+}
+
+// TestZoneDaysFollowTheirOwnLength reads a zone whose clocks skip midnight: on the first day of Chilean summer time 00:00
+// to 01:00 never happens, so the day starts at 01:00 and is 23 hours long, and the day before is complete.
+func TestZoneDaysFollowTheirOwnLength(t *testing.T) {
+	santiago := mustZone(t, "America/Santiago")
+	store := openTestStore(t, testPath(t), nil)
+	// 2026-09-06 00:00 -04 does not exist: clocks move to 01:00 -03 (03:59:59 UTC is still 23:59:59 on 09-05).
+	before, after := time.Date(2026, 9, 6, 3, 59, 59, 0, time.UTC), time.Date(2026, 9, 6, 4, 0, 0, 0, time.UTC)
+	record(t, store, liveStart, finishedEncounter(1, 1, before, 60, 500, capture.IntegrityIntact), finishedEncounter(1, 2, after, 60, 600, capture.IntegrityIntact))
+	ctx := context.Background()
+	first, err := store.Day(ctx, "2026-09-05", 0, MaxDayPage, santiago)
+	if err != nil || first.Total != 1 || first.Encounters[0].Start.Clock != "23:59:59" {
+		t.Fatalf("2026-09-05 = %+v (%v)", first, err)
+	}
+	second, err := store.Day(ctx, "2026-09-06", 0, MaxDayPage, santiago)
+	if err != nil || second.Total != 1 || second.Encounters[0].Start.Clock != "01:00:00" || second.Encounters[0].Start.OffsetSeconds != -3*3600 {
+		t.Fatalf("2026-09-06 = %+v (%v)", second, err)
+	}
+}
+
+func TestViewZonesResolveByIANANameAndFallBackToLocal(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		id       string
+		fallback bool
+	}{
+		{"Asia/Tokyo", "Asia/Tokyo", false}, {"UTC", "UTC", false}, {"America/Los_Angeles", "America/Los_Angeles", false},
+		{"Local", LocalZoneID, false}, {"", LocalZoneID, true}, {"Not/AZone", LocalZoneID, true}, {"../../etc/passwd", LocalZoneID, true},
+		{strings.Repeat("A", maxZoneName+1), LocalZoneID, true},
+	} {
+		zone := ResolveViewZone(test.name)
+		if zone.ID != test.id || zone.Fallback != test.fallback || zone.Location == nil {
+			t.Errorf("%q resolved to %+v", test.name, zone)
+		}
+		if test.fallback && zone.Location != time.Local {
+			t.Errorf("%q fell back to %s, not Local", test.name, zone.Location)
+		}
+	}
+	if ResolveViewZone("Asia/Tokyo").Location != ResolveViewZone("Asia/Tokyo").Location {
+		t.Error("a loaded zone is not reused")
+	}
+}
+
+func TestYearZeroIsTheCurrentYearOfTheZone(t *testing.T) {
+	now := time.Date(2026, 12, 31, 20, 0, 0, 0, time.UTC) // 2027-01-01 05:00 in Tokyo
+	store, err := Open(Options{Path: testPath(t), Location: time.UTC, Now: func() time.Time { return now }, Build: &testBuild})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if view, err := store.Year(context.Background(), 0, mustZone(t, "Asia/Tokyo")); err != nil || view.Year != 2027 || view.Today != "2027-01-01" {
+		t.Fatalf("Tokyo = %d %s (%v)", view.Year, view.Today, err)
+	}
+	if view, err := store.Year(context.Background(), 0, time.UTC); err != nil || view.Year != 2026 || view.Today != "2026-12-31" {
+		t.Fatalf("UTC = %d %s (%v)", view.Year, view.Today, err)
 	}
 }
 
@@ -388,15 +610,15 @@ func TestBusyDayIsPagedInStartOrder(t *testing.T) {
 	}
 	record(t, store, liveStart, entries)
 	ctx := context.Background()
-	year, err := store.Year(ctx, 2026)
+	year, err := store.Year(ctx, 2026, time.UTC)
 	if err != nil || year.Total != count {
 		t.Fatalf("year total = %d (%v)", year.Total, err)
 	}
-	first, err := store.Day(ctx, "2026-06-01", 0, 0)
+	first, err := store.Day(ctx, "2026-06-01", 0, 0, time.UTC)
 	if err != nil || first.Total != count || len(first.Encounters) != MaxDayPage {
 		t.Fatalf("first page = %d of %d (%v)", len(first.Encounters), first.Total, err)
 	}
-	second, err := store.Day(ctx, "2026-06-01", MaxDayPage, 0)
+	second, err := store.Day(ctx, "2026-06-01", MaxDayPage, 0, time.UTC)
 	if err != nil || len(second.Encounters) != count-MaxDayPage {
 		t.Fatalf("second page = %d (%v)", len(second.Encounters), err)
 	}
@@ -406,17 +628,17 @@ func TestBusyDayIsPagedInStartOrder(t *testing.T) {
 			t.Fatalf("row %d starts %s, not after %s", i, all[i].StartedAt, all[i-1].StartedAt)
 		}
 	}
-	if empty, err := store.Day(ctx, "2026-06-02", 0, 0); err != nil || empty.Total != 0 || len(empty.Encounters) != 0 {
+	if empty, err := store.Day(ctx, "2026-06-02", 0, 0, time.UTC); err != nil || empty.Total != 0 || len(empty.Encounters) != 0 {
 		t.Fatalf("an empty date = %+v (%v)", empty, err)
 	}
-	if _, err := store.Day(ctx, "2026-02-30", 0, 0); err == nil {
+	if _, err := store.Day(ctx, "2026-02-30", 0, 0, time.UTC); err == nil {
 		t.Fatal("an impossible date was accepted")
 	}
 }
 
 func TestEmptyHistoryHasNoYears(t *testing.T) {
 	store := openTestStore(t, testPath(t), nil)
-	year, err := store.Year(context.Background(), 2026)
+	year, err := store.Year(context.Background(), 2026, time.UTC)
 	if err != nil || year.Total != 0 || len(year.Days) != 0 || year.FirstYear != 0 || year.LastYear != 0 {
 		t.Fatalf("empty year = %+v (%v)", year, err)
 	}
@@ -472,7 +694,7 @@ func TestSchemaOneIsUpgradedWithoutLosingRows(t *testing.T) {
 		t.Fatalf("pre-migration copies = %v", backups)
 	}
 	ctx := context.Background()
-	day, err := store.Day(ctx, "2023-11-15", 0, 10)
+	day, err := store.Day(ctx, "2023-11-15", 0, 10, mustZone(t, "Asia/Tokyo"))
 	if err != nil || len(day.Encounters) != 1 {
 		t.Fatalf("day = %+v (%v)", day, err)
 	}
@@ -481,7 +703,7 @@ func TestSchemaOneIsUpgradedWithoutLosingRows(t *testing.T) {
 	if old.Scene.Recorded || old.Scene.Known || old.EnemiesRecorded || old.MainEnemy != nil || old.DPS.Value != 50 || *old.DamageDealt != 500 {
 		t.Fatalf("upgraded row = %+v", old)
 	}
-	detail, err := store.Encounter(ctx, old.ID)
+	detail, err := store.Encounter(ctx, old.ID, time.UTC)
 	if err != nil || detail.Snapshot == nil || len(detail.Snapshot.Roles) != 1 || detail.Snapshot.Roles[0].Skills[0].SkillID != 150501 || detail.Timeline != nil {
 		t.Fatalf("upgraded detail = %+v (%v)", detail.Snapshot, err)
 	}
@@ -492,7 +714,7 @@ func TestSchemaOneIsUpgradedWithoutLosingRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	again := openTestStore(t, path, nil)
-	if year, err := again.Year(ctx, 2023); err != nil || year.Total != 1 || year.FirstYear != 2023 || year.LastYear != 2026 {
+	if year, err := again.Year(ctx, 2023, time.UTC); err != nil || year.Total != 1 || year.FirstYear != 2023 || year.LastYear != 2026 {
 		t.Fatalf("after reopening: %+v (%v)", year, err)
 	}
 	backups, _ = filepath.Glob(path + ".schema-*.bak")
@@ -578,7 +800,7 @@ func TestSecondProcessOnlyReads(t *testing.T) {
 	if _, err := second.BeginSession(liveStart); !errors.Is(err, ErrNotRecording) {
 		t.Fatalf("the second process recorded: %v", err)
 	}
-	if year, err := second.Year(context.Background(), 2026); err != nil || year.Total != 1 {
+	if year, err := second.Year(context.Background(), 2026, time.UTC); err != nil || year.Total != 1 {
 		t.Fatalf("the second process cannot read: %+v (%v)", year, err)
 	}
 }
@@ -601,7 +823,7 @@ func TestLostActivityKeepsAPendingEncounterAsUnfinished(t *testing.T) {
 	if err := recorder.Finish(context.Background(), capture.StopReasonRequested); err != nil {
 		t.Fatal(err)
 	}
-	day, err := store.Day(context.Background(), "2026-09-09", 0, 10)
+	day, err := store.Day(context.Background(), "2026-09-09", 0, 10, time.UTC)
 	if err != nil || day.Total != 1 || day.Encounters[0].State != "abandoned" || day.Encounters[0].Complete {
 		t.Fatalf("an encounter whose entries were lost was removed or shown complete: %+v (%v)", day, err)
 	}
@@ -614,7 +836,7 @@ func TestAssignmentOfALostResultMarksTheEncounterIncomplete(t *testing.T) {
 	// The engine accepted result 1 and assigned it to the encounter, but the accepted entry never reached storage.
 	assigned := capture.HistoryEntry{Kind: capture.HistoryEventAssigned, Sequence: 1, Encounter: "1-1"}
 	record(t, store, liveStart, []capture.HistoryEntry{entries[0], assigned, entries[1], entries[2]})
-	day, err := store.Day(context.Background(), "2026-09-10", 0, 10)
+	day, err := store.Day(context.Background(), "2026-09-10", 0, 10, time.UTC)
 	if err != nil || len(day.Encounters) != 1 || day.Encounters[0].Complete {
 		t.Fatalf("day = %+v (%v)", day, err)
 	}

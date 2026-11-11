@@ -35,66 +35,97 @@ var ErrNotFound = errors.New("no such encounter in the combat history")
 // ErrUnavailable reports a history that cannot be read.
 var ErrUnavailable = errors.New("the combat history cannot be read")
 
-// DayCount is one local date's encounter count.
+// DayCount is one calendar date's encounter count in the view's zone.
 type DayCount struct {
 	Date       string `json:"date"`
 	Encounters int    `json:"encounters"`
 }
 
-// YearView is one calendar year of local dates.
+// YearView is one calendar year of dates in the view's zone.
 type YearView struct {
 	Year int `json:"year"`
-	// Days lists the dates with at least one encounter, ascending. Dates are local to where each encounter started.
+	// Days lists the dates with at least one encounter, ascending: the date in the view's zone where each encounter started.
 	Days  []DayCount `json:"days"`
 	Total int        `json:"total"`
-	// FirstYear and LastYear bound the years with any encounter; both are zero for an empty history.
+	// FirstYear and LastYear bound the years with any encounter in the view's zone; both are zero for an empty history.
 	FirstYear int `json:"firstYear"`
 	LastYear  int `json:"lastYear"`
+	// Today is the current date in the view's zone.
+	Today string `json:"today"`
 }
 
-// Year counts the encounters of every local date in year.
-func (s *Store) Year(ctx context.Context, year int) (YearView, error) {
-	view := YearView{Year: year, Days: []DayCount{}}
+// listedStart is one listed encounter's start instant.
+type listedStart struct {
+	id      int64
+	startNs int64
+}
+
+// listedStarts reads the listed encounters starting in the superset dateBounds gives for [from, to), in start order.
+func (s *Store) listedStarts(ctx context.Context, from, to time.Time) ([]listedStart, error) {
+	fromNs, toNs, fromDate, toDate := dateBounds(from, to)
+	rows, err := s.db.QueryContext(ctx, "SELECT id, started_at_ns FROM encounter WHERE state IN "+listedStates+
+		" AND local_date BETWEEN ? AND ? AND started_at_ns >= ? AND started_at_ns < ? ORDER BY started_at_ns, id", fromDate, toDate, fromNs, toNs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []listedStart
+	for rows.Next() {
+		var row listedStart
+		if err := rows.Scan(&row.id, &row.startNs); err != nil {
+			return nil, err
+		}
+		out = append(out, row)
+	}
+	return out, rows.Err()
+}
+
+// Year counts the encounters of every calendar date of year in zone (nil: the zone Go read from Windows). Year 0 is the
+// current year there. Each encounter counts on the date its UTC start falls on in zone, so the counts always add up to the
+// day lists of the same zone.
+func (s *Store) Year(ctx context.Context, year int, zone *time.Location) (YearView, error) {
+	zone = viewLocation(zone)
+	now := s.now().In(zone)
+	if year == 0 {
+		year = now.Year()
+	}
+	view := YearView{Year: year, Days: []DayCount{}, Today: now.Format(dateLayout)}
 	if !s.readable() {
 		return view, ErrUnavailable
 	}
 	if year < firstListedYear || year > lastListedYear {
 		return view, fmt.Errorf("year %d is outside the supported range", year)
 	}
-	from, to := fmt.Sprintf("%04d-01-01", year), fmt.Sprintf("%04d-12-31", year)
-	rows, err := s.db.QueryContext(ctx, "SELECT local_date, count(*) FROM encounter WHERE state IN "+listedStates+" AND local_date BETWEEN ? AND ? GROUP BY local_date ORDER BY local_date", from, to)
+	starts, err := s.listedStarts(ctx, time.Date(year, 1, 1, 0, 0, 0, 0, zone), time.Date(year+1, 1, 1, 0, 0, 0, 0, zone))
 	if err != nil {
 		return view, fmt.Errorf("read history year: %w", err)
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var day DayCount
-		if err := rows.Scan(&day.Date, &day.Encounters); err != nil {
-			return view, fmt.Errorf("read history year: %w", err)
+	// A clock set back across midnight can repeat a date, so dates are counted by key, not by run.
+	counts := map[string]int{}
+	for _, start := range starts {
+		local := time.Unix(0, start.startNs).In(zone)
+		if local.Year() != year {
+			continue
 		}
-		view.Days = append(view.Days, day)
-		view.Total += day.Encounters
+		date := local.Format(dateLayout)
+		if counts[date] == 0 {
+			view.Days = append(view.Days, DayCount{Date: date})
+		}
+		counts[date]++
+		view.Total++
 	}
-	if err := rows.Err(); err != nil {
-		return view, fmt.Errorf("read history year: %w", err)
+	for i := range view.Days {
+		view.Days[i].Encounters = counts[view.Days[i].Date]
 	}
-	var first, last sql.NullString
-	if err := s.db.QueryRowContext(ctx, "SELECT min(local_date), max(local_date) FROM encounter WHERE state IN "+listedStates).Scan(&first, &last); err != nil {
+	sort.Slice(view.Days, func(i, j int) bool { return view.Days[i].Date < view.Days[j].Date })
+	var first, last sql.NullInt64
+	if err := s.db.QueryRowContext(ctx, "SELECT min(started_at_ns), max(started_at_ns) FROM encounter WHERE state IN "+listedStates).Scan(&first, &last); err != nil {
 		return view, fmt.Errorf("read history years: %w", err)
 	}
-	view.FirstYear, view.LastYear = yearOf(first.String), yearOf(last.String)
+	if first.Valid && last.Valid {
+		view.FirstYear, view.LastYear = time.Unix(0, first.Int64).In(zone).Year(), time.Unix(0, last.Int64).In(zone).Year()
+	}
 	return view, nil
-}
-
-func yearOf(date string) int {
-	if len(date) < 4 {
-		return 0
-	}
-	year, err := strconv.Atoi(date[:4])
-	if err != nil {
-		return 0
-	}
-	return year
 }
 
 // SceneRef is where an encounter opened. Recorded is false for rows stored before scenes were recorded (schema 1); Known is
@@ -134,11 +165,15 @@ type EventCoverage struct {
 // EncounterSummary is one row of a day's list.
 type EncounterSummary struct {
 	ID int64 `json:"id"`
-	// StartedAt is UTC; UTCOffsetSeconds is the host's offset where the encounter started, LocalDate the date there.
-	StartedAt        time.Time  `json:"startedAt"`
-	UTCOffsetSeconds int        `json:"utcOffsetSeconds"`
-	LocalDate        string     `json:"localDate"`
-	EndedAt          *time.Time `json:"endedAt,omitempty"`
+	// StartedAt is UTC. Start lays it out in the view's zone and LocalDate is Start's date: the day the view lists the
+	// encounter on. End and Checkpoint are laid out the same way. Recorded is the date and offset where the encounter was
+	// recorded, kept as provenance only.
+	StartedAt time.Time    `json:"startedAt"`
+	Start     LocalTime    `json:"start"`
+	LocalDate string       `json:"localDate"`
+	Recorded  RecordedZone `json:"recorded"`
+	EndedAt   *time.Time   `json:"endedAt,omitempty"`
+	End       *LocalTime   `json:"end,omitempty"`
 	// DurationSeconds is the confirmed elapsed time, shown only where the view would show it (not for UNRELIABLE data).
 	DurationSeconds *float64 `json:"durationSeconds,omitempty"`
 	// State is the history state: open (still running), finished, or abandoned (the application ended first).
@@ -160,6 +195,7 @@ type EncounterSummary struct {
 	IncompleteReason string `json:"incompleteReason,omitempty"`
 	// CheckpointAt is the capture time the stored results of an unfinished encounter describe; nil without a checkpoint.
 	CheckpointAt *time.Time    `json:"checkpointAt,omitempty"`
+	Checkpoint   *LocalTime    `json:"checkpoint,omitempty"`
 	Coverage     EventCoverage `json:"coverage"`
 }
 
@@ -181,7 +217,8 @@ type summaryRow struct {
 	sessionID int64
 }
 
-func scanSummary(scanner interface{ Scan(...any) error }) (summaryRow, error) {
+// scanSummary reads one summary row and lays its instants out in zone.
+func scanSummary(scanner interface{ Scan(...any) error }, zone *time.Location) (summaryRow, error) {
 	var row summaryRow
 	var started int64
 	var ended, dpsDamage, dpsDuration, damage, scene sql.NullInt64
@@ -190,18 +227,22 @@ func scanSummary(scanner interface{ Scan(...any) error }) (summaryRow, error) {
 	var checkpoint sql.NullInt64
 	var complete, sceneRecorded, enemiesRecorded, combatRecorded, effectsRecorded, castsRecorded int
 	s := &row.summary
-	if err := scanner.Scan(&s.ID, &started, &s.UTCOffsetSeconds, &s.LocalDate, &ended, &s.State, &s.Outcome, &complete, &s.Source, &integrity,
+	if err := scanner.Scan(&s.ID, &started, &s.Recorded.OffsetSeconds, &s.Recorded.Date, &ended, &s.State, &s.Outcome, &complete, &s.Source, &integrity,
 		&dpsStatus, &dpsReason, &dpsValue, &dpsDamage, &dpsDuration, &dpsConfidence, &damage, &scene, &sceneRecorded, &enemiesRecorded, &row.sessionID,
 		&incompleteReason, &checkpoint, &combatRecorded, &effectsRecorded, &castsRecorded); err != nil {
 		return row, err
 	}
+	zone = viewLocation(zone)
 	s.IncompleteReason = incompleteReason.String
 	if checkpoint.Valid && s.State != "finished" {
 		at := time.Unix(0, checkpoint.Int64).UTC()
-		s.CheckpointAt = &at
+		local := localTimeOf(at, zone)
+		s.CheckpointAt, s.Checkpoint = &at, &local
 	}
 	s.Coverage = EventCoverage{CombatEvents: combatRecorded == 1, EffectEvents: effectsRecorded == 1, SkillCasts: castsRecorded == 1}
 	s.StartedAt = time.Unix(0, started).UTC()
+	s.Start = localTimeOf(s.StartedAt, zone)
+	s.LocalDate = s.Start.Date
 	s.Complete, s.EnemiesRecorded = complete == 1, enemiesRecorded == 1
 	s.Integrity = integrity.String
 	s.Scene = SceneRef{Recorded: sceneRecorded == 1, Known: scene.Valid}
@@ -210,7 +251,8 @@ func scanSummary(scanner interface{ Scan(...any) error }) (summaryRow, error) {
 	}
 	if ended.Valid {
 		end := time.Unix(0, ended.Int64).UTC()
-		s.EndedAt = &end
+		local := localTimeOf(end, zone)
+		s.EndedAt, s.End = &end, &local
 	}
 	if damage.Valid {
 		value := damage.Int64
@@ -235,15 +277,18 @@ func scanSummary(scanner interface{ Scan(...any) error }) (summaryRow, error) {
 	return row, nil
 }
 
-// Day lists one page of a local date's encounters in start order with each one's main enemy.
-func (s *Store) Day(ctx context.Context, date string, offset, limit int) (DayView, error) {
+// Day lists one page of the encounters that started on date in zone (nil: the zone Go read from Windows), in start order,
+// with each one's main enemy. A date is a calendar day of zone, so it may be 23 or 25 hours long across a DST change.
+func (s *Store) Day(ctx context.Context, date string, offset, limit int, zone *time.Location) (DayView, error) {
 	view := DayView{Date: date, Offset: offset, Encounters: []EncounterSummary{}}
 	if !s.readable() {
 		return view, ErrUnavailable
 	}
-	if _, err := time.Parse("2006-01-02", date); err != nil {
+	day, err := time.Parse(dateLayout, date)
+	if err != nil {
 		return view, fmt.Errorf("date %q is not a calendar date", date)
 	}
+	zone = viewLocation(zone)
 	if offset < 0 {
 		offset = 0
 	}
@@ -251,18 +296,32 @@ func (s *Store) Day(ctx context.Context, date string, offset, limit int) (DayVie
 		limit = MaxDayPage
 	}
 	view.Offset = offset
-	if err := s.db.QueryRowContext(ctx, "SELECT count(*) FROM encounter WHERE local_date = ? AND state IN "+listedStates, date).Scan(&view.Total); err != nil {
+	starts, err := s.listedStarts(ctx, time.Date(day.Year(), day.Month(), day.Day(), 0, 0, 0, 0, zone), time.Date(day.Year(), day.Month(), day.Day()+1, 0, 0, 0, 0, zone))
+	if err != nil {
 		return view, fmt.Errorf("read history day: %w", err)
 	}
-	rows, err := s.db.QueryContext(ctx, "SELECT "+summaryColumns+" FROM encounter e JOIN capture_session s ON s.id = e.capture_session_id WHERE e.local_date = ? AND e.state IN "+listedStates+
-		" ORDER BY e.started_at_ns, e.id LIMIT ? OFFSET ?", date, limit, offset)
+	var ids []string
+	for _, start := range starts {
+		if time.Unix(0, start.startNs).In(zone).Format(dateLayout) != date {
+			continue
+		}
+		if view.Total >= offset && len(ids) < limit {
+			ids = append(ids, strconv.FormatInt(start.id, 10))
+		}
+		view.Total++
+	}
+	if len(ids) == 0 {
+		return view, nil
+	}
+	rows, err := s.db.QueryContext(ctx, "SELECT "+summaryColumns+" FROM encounter e JOIN capture_session s ON s.id = e.capture_session_id WHERE e.id IN ("+strings.Join(ids, ",")+
+		") ORDER BY e.started_at_ns, e.id")
 	if err != nil {
 		return view, fmt.Errorf("read history day: %w", err)
 	}
 	defer rows.Close()
 	index := map[int64]int{}
 	for rows.Next() {
-		row, err := scanSummary(rows)
+		row, err := scanSummary(rows, zone)
 		if err != nil {
 			return view, fmt.Errorf("read history day: %w", err)
 		}
@@ -273,13 +332,6 @@ func (s *Store) Day(ctx context.Context, date string, offset, limit int) (DayVie
 		return view, fmt.Errorf("read history day: %w", err)
 	}
 	rows.Close()
-	if len(view.Encounters) == 0 {
-		return view, nil
-	}
-	ids := make([]string, 0, len(view.Encounters))
-	for _, encounter := range view.Encounters {
-		ids = append(ids, strconv.FormatInt(encounter.ID, 10))
-	}
 	enemies, err := s.enemiesOf(ctx, "encounter_id IN ("+strings.Join(ids, ",")+")")
 	if err != nil {
 		return view, err
@@ -406,13 +458,13 @@ type EncounterDetail struct {
 	Enemies  []capture.EncounterEnemySnapshot `json:"-"`
 }
 
-// Encounter reads one listed encounter.
-func (s *Store) Encounter(ctx context.Context, id int64) (EncounterDetail, error) {
+// Encounter reads one listed encounter, with its instants laid out in zone (nil: the zone Go read from Windows).
+func (s *Store) Encounter(ctx context.Context, id int64, zone *time.Location) (EncounterDetail, error) {
 	var detail EncounterDetail
 	if !s.readable() {
 		return detail, ErrUnavailable
 	}
-	row, err := scanSummary(s.db.QueryRowContext(ctx, "SELECT "+summaryColumns+" FROM encounter e JOIN capture_session s ON s.id = e.capture_session_id WHERE e.id = ? AND e.state IN "+listedStates, id))
+	row, err := scanSummary(s.db.QueryRowContext(ctx, "SELECT "+summaryColumns+" FROM encounter e JOIN capture_session s ON s.id = e.capture_session_id WHERE e.id = ? AND e.state IN "+listedStates, id), zone)
 	if errors.Is(err, sql.ErrNoRows) {
 		return detail, ErrNotFound
 	}

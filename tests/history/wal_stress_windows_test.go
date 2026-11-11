@@ -284,7 +284,7 @@ func TestRecorderStoresEverythingWhileTheHistoryIsQueried(t *testing.T) {
 				started := time.Now()
 				switch pick := random.IntN(10); {
 				case pick < 2:
-					year, err := store.Year(ctx, 2026)
+					year, err := store.Year(ctx, 2026, time.UTC)
 					readLatency["year"].add(time.Since(started))
 					if err != nil {
 						failures.add("year", err)
@@ -296,7 +296,7 @@ func TestRecorderStoresEverythingWhileTheHistoryIsQueried(t *testing.T) {
 				case pick < 6:
 					n := 1 + random.Int64N(max(1, produced.Load()))
 					date := base.Add(time.Duration(n) * 40 * time.Minute).In(time.UTC).Format("2006-01-02")
-					day, err := store.Day(ctx, date, 0, MaxDayPage)
+					day, err := store.Day(ctx, date, 0, MaxDayPage, time.UTC)
 					readLatency["day"].add(time.Since(started))
 					if err != nil {
 						failures.add("day", err)
@@ -325,7 +325,7 @@ func TestRecorderStoresEverythingWhileTheHistoryIsQueried(t *testing.T) {
 					if id == 0 {
 						continue
 					}
-					detail, err := store.Encounter(ctx, id)
+					detail, err := store.Encounter(ctx, id, time.UTC)
 					readLatency["encounter"].add(time.Since(started))
 					if err != nil {
 						failures.add("encounter", err)

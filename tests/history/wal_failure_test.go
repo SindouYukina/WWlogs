@@ -42,7 +42,7 @@ func TestBusyHistoryLosesOnlyThatBatchAndMarksItsEncounter(t *testing.T) {
 	if err := recorder.Finish(ctx, capture.StopReasonRequested); err != nil {
 		t.Fatal(err)
 	}
-	day, err := store.Day(ctx, start.Format("2006-01-02"), 0, 10)
+	day, err := store.Day(ctx, start.Format("2006-01-02"), 0, 10, time.UTC)
 	if err != nil || len(day.Encounters) != 2 {
 		t.Fatalf("day = %+v (%v)", day, err)
 	}
@@ -89,7 +89,7 @@ func TestFailedTransactionStoresNothingOfItsBatch(t *testing.T) {
 	if err := recorder.Finish(ctx, capture.StopReasonRequested); err != nil {
 		t.Fatal(err)
 	}
-	day, err := store.Day(ctx, start.Format("2006-01-02"), 0, 10)
+	day, err := store.Day(ctx, start.Format("2006-01-02"), 0, 10, time.UTC)
 	if err != nil || len(day.Encounters) != 2 {
 		t.Fatalf("day = %+v (%v)", day, err)
 	}
