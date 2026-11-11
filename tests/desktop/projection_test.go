@@ -39,7 +39,7 @@ func TestDisplayProjectionRelocalizesExistingSnapshotWithoutChangingCore(t *test
 	before, _ := json.Marshal(view)
 	source := &service.Snapshot{Sequence: 7, View: &view}
 	projection := &displayProjection{resolver: resolver}
-	first, err := projection.encode(source, store.current(), testLocaleCatalog(), service.ListeningStatus{}, OverlayStates{})
+	first, err := projection.encode(source, store.current(), testLocaleCatalog(), service.ListeningStatus{}, OverlayStates{}, historyIndicator{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +47,7 @@ func TestDisplayProjectionRelocalizesExistingSnapshotWithoutChangingCore(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := projection.encode(source, state, testLocaleCatalog(), service.ListeningStatus{}, OverlayStates{})
+	second, err := projection.encode(source, state, testLocaleCatalog(), service.ListeningStatus{}, OverlayStates{}, historyIndicator{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +80,7 @@ func TestDisplayProjectionRelocalizesExistingSnapshotWithoutChangingCore(t *test
 		t.Fatal("projection mutated the core snapshot")
 	}
 	resolver.Close()
-	if _, err := projection.encode(source, state, testLocaleCatalog(), service.ListeningStatus{}, OverlayStates{}); err != nil {
+	if _, err := projection.encode(source, state, testLocaleCatalog(), service.ListeningStatus{}, OverlayStates{}, historyIndicator{}); err != nil {
 		t.Fatal("unchanged projection missed its serialized cache")
 	}
 }
@@ -109,7 +109,7 @@ func TestDisplayProjectionKeepsTheEnginesRankingContract(t *testing.T) {
 	interval := capture.ViewRole{RoleID: 42, DamageDealt: 400, DamageShare: &share, Rank: 0}
 	view := capture.ViewSnapshot{Roles: []capture.ViewRole{interval}, Encounters: capture.ViewEncounters{Current: &encounter, Recent: []capture.ViewEncounter{encounter}}}
 	projection := &displayProjection{resolver: resolver}
-	raw, err := projection.encode(&service.Snapshot{Sequence: 1, View: &view}, store.current(), testLocaleCatalog(), service.ListeningStatus{}, OverlayStates{})
+	raw, err := projection.encode(&service.Snapshot{Sequence: 1, View: &view}, store.current(), testLocaleCatalog(), service.ListeningStatus{}, OverlayStates{}, historyIndicator{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,11 +162,11 @@ func TestShellChangeReencodesWithoutTouchingCoreSequence(t *testing.T) {
 		}
 		return result
 	}
-	first, err := projection.encode(source, store.current(), testLocaleCatalog(), service.ListeningStatus{}, OverlayStates{})
+	first, err := projection.encode(source, store.current(), testLocaleCatalog(), service.ListeningStatus{}, OverlayStates{}, historyIndicator{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := projection.encode(source, store.current(), testLocaleCatalog(), service.ListeningStatus{}, OverlayStates{Effects: OverlayState{Visible: true, Editing: true}})
+	second, err := projection.encode(source, store.current(), testLocaleCatalog(), service.ListeningStatus{}, OverlayStates{Effects: OverlayState{Visible: true, Editing: true}}, historyIndicator{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,7 +196,7 @@ func TestProjectedShellCarriesUpdateInterval(t *testing.T) {
 		}
 		return shell
 	}
-	first, err := projection.encode(source, store.current(), testLocaleCatalog(), service.ListeningStatus{}, OverlayStates{})
+	first, err := projection.encode(source, store.current(), testLocaleCatalog(), service.ListeningStatus{}, OverlayStates{}, historyIndicator{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,7 +207,7 @@ func TestProjectedShellCarriesUpdateInterval(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The same core snapshot is re-encoded with the new shell, so every window sees the change without new data.
-	second, err := projection.encode(source, store.current(), testLocaleCatalog(), service.ListeningStatus{}, OverlayStates{})
+	second, err := projection.encode(source, store.current(), testLocaleCatalog(), service.ListeningStatus{}, OverlayStates{}, historyIndicator{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -259,7 +259,7 @@ func TestDisplayProjectionRelocalizesSkillNamesWithoutChangingSkillStatistics(t 
 		}
 		return result
 	}
-	first, err := projection.encode(source, store.current(), testLocaleCatalog(), service.ListeningStatus{}, OverlayStates{})
+	first, err := projection.encode(source, store.current(), testLocaleCatalog(), service.ListeningStatus{}, OverlayStates{}, historyIndicator{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -267,7 +267,7 @@ func TestDisplayProjectionRelocalizesSkillNamesWithoutChangingSkillStatistics(t 
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := projection.encode(source, state, testLocaleCatalog(), service.ListeningStatus{}, OverlayStates{})
+	second, err := projection.encode(source, state, testLocaleCatalog(), service.ListeningStatus{}, OverlayStates{}, historyIndicator{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -345,7 +345,7 @@ func TestDisplayProjectionRelocalizesDerivedSkillNamesThroughTheirSource(t *test
 		}
 		return result
 	}
-	first, err := projection.encode(source, store.current(), testLocaleCatalog(), service.ListeningStatus{}, OverlayStates{})
+	first, err := projection.encode(source, store.current(), testLocaleCatalog(), service.ListeningStatus{}, OverlayStates{}, historyIndicator{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -353,7 +353,7 @@ func TestDisplayProjectionRelocalizesDerivedSkillNamesThroughTheirSource(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := projection.encode(source, state, testLocaleCatalog(), service.ListeningStatus{}, OverlayStates{})
+	second, err := projection.encode(source, state, testLocaleCatalog(), service.ListeningStatus{}, OverlayStates{}, historyIndicator{})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -8,11 +8,13 @@ import { statusText } from "@/i18n"
 import type { SettingsController } from "@/lib/settings-controller"
 import { defaultUpdateInterval, normalizeUpdateInterval, updateIntervals, type OverlayKind } from "@/lib/snapshot"
 import { useThemeDescriptions } from "@/lib/useListeningLabels"
+import { indicatorText, type HistoryChange } from "@/lib/history"
+import { HistoryIndicatorChip } from "./HistoryView"
 import { LicensesPage } from "./LicensesPage"
 
-type Page = "general" | "appearance" | "combatOverlay" | "effectsOverlay" | "about" | "licenses"
+type Page = "general" | "history" | "appearance" | "combatOverlay" | "effectsOverlay" | "about" | "licenses"
 
-const pageOrder: Page[] = ["general", "appearance", "combatOverlay", "effectsOverlay", "about", "licenses"]
+const pageOrder: Page[] = ["general", "history", "appearance", "combatOverlay", "effectsOverlay", "about", "licenses"]
 
 function Hint({ text }: { text: string }) {
   return <Tooltip text={text}><Icon name="info" size={15} /></Tooltip>
@@ -67,6 +69,57 @@ function GeneralPage({ controller }: { controller: SettingsController }) {
     </SettingsSection>
     <SettingsSection title={t("sections.window")}>
       <SettingsRow title={t("mainWindow")} description={t("mainWindowNote")}><Button size="sm" disabled={!controller.connected} data-field="reset-main-window" onClick={controller.resetDesktopWindow}>{t("resetMainWindow")}</Button></SettingsRow>
+    </SettingsSection>
+  </>
+}
+
+/**
+ * Combat History: the recording switch, what the history is doing now, how it is stored, and clearing it. The state and
+ * every reason come from the host's indicator.
+ */
+function HistoryPage({ controller }: { controller: SettingsController }) {
+  const { t } = useTranslation(["settings", "history"])
+  const h = (key: string, options?: Record<string, unknown>) => t(key, { ns: "history", ...options })
+  const indicator = controller.history
+  const text = indicatorText(indicator)
+  const [asking, setAsking] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [outcome, setOutcome] = useState<{ key: string; tone?: "critical"; n?: number } | null>(null)
+  const clear = () => {
+    setBusy(true)
+    setOutcome(null)
+    controller.clearHistory().then((change: HistoryChange) => {
+      setOutcome(change.refused ? { key: `delete.refused.${change.refused}`, tone: "critical" } : { key: "clear.done", n: change.encounters })
+    }).catch(() => setOutcome({ key: "delete.failed", tone: "critical" })).finally(() => { setBusy(false); setAsking(false) })
+  }
+  const writable = indicator !== undefined && indicator.state !== "unavailable" && indicator.state !== "read_only"
+  return <>
+    <SettingsSection title={t("historySettings.sections.recording")}>
+      <SettingsRow title={t("historySettings.recording")} description={t("historySettings.recordingHint")}>
+        <span data-field="history-recording"><Toggle label={t("historySettings.recording")} disabled={!controller.connected} checked={controller.historyRecording} onChange={controller.setHistoryRecording} /></span>
+      </SettingsRow>
+      <SettingsRow title={t("historySettings.status")} description={text.detail ? h(text.detail) : undefined}><HistoryIndicatorChip indicator={indicator} /></SettingsRow>
+      {indicator?.lost ? <p className="ww-settings-notice" data-tone="warn" data-field="history-lost">{h("indicator.lost", { n: indicator.lost })}</p> : null}
+      <SettingsRow title={t("historySettings.coverage")} description={t("historySettings.coverageHint")}><span className="ww-history-unknown">{t("historySettings.coverageValue")}</span></SettingsRow>
+    </SettingsSection>
+    <SettingsSection title={t("historySettings.sections.storage")}>
+      <SettingsRow title={t("historySettings.encryption")} description={t(indicator?.encrypted ? "historySettings.encryptedHint" : "historySettings.notEncryptedHint")}>
+        <span data-field="history-encryption" data-encrypted={indicator?.encrypted === true}>{t(indicator?.encrypted ? "historySettings.encrypted" : "historySettings.notEncrypted")}</span>
+      </SettingsRow>
+      {indicator?.plaintextConverted && <p className="ww-settings-notice" role="status" data-field="history-plaintext-converted">{t("historySettings.plaintextConverted")}</p>}
+      {indicator?.plaintextBackups ? <p className="ww-settings-notice" data-tone="warn" data-field="history-plaintext-backups">{t("historySettings.plaintextBackups", { n: indicator.plaintextBackups })}</p> : null}
+    </SettingsSection>
+    <SettingsSection title={t("historySettings.sections.data")}>
+      <SettingsRow title={t("historySettings.clear")} description={t("historySettings.clearHint")}>
+        {!asking
+          ? <Button size="sm" variant="ghost" disabled={!controller.connected || !writable || busy} data-field="history-clear-start" onClick={() => { setOutcome(null); setAsking(true) }}>{t("historySettings.clearAction")}</Button>
+          : <span className="ww-row-pair" role="group" aria-label={t("historySettings.clearConfirm")} data-field="history-clear-confirm-group">
+            <Button size="sm" variant="danger" disabled={busy} data-field="history-clear-confirm" onClick={clear}>{t("historySettings.clearConfirmAction")}</Button>
+            <Button size="sm" disabled={busy} data-field="history-clear-cancel" onClick={() => setAsking(false)}>{h("delete.cancel")}</Button>
+          </span>}
+      </SettingsRow>
+      {asking && <p className="ww-settings-notice" data-tone="critical" role="alert" data-field="history-clear-warning">{t("historySettings.clearConfirm")}</p>}
+      {outcome && <p className="ww-settings-notice" data-tone={outcome.tone} role="status" data-field="history-clear-outcome">{h(outcome.key, { n: outcome.n ?? 0 })}</p>}
     </SettingsSection>
   </>
 }
@@ -181,7 +234,7 @@ export function SettingsView({ controller }: { controller: SettingsController })
   const previous = useRef<Page>("general")
   const direction = pageOrder.indexOf(page) >= pageOrder.indexOf(previous.current) ? "forward" : "back"
   const groups = useMemo<ReadonlyArray<SidebarGroupModel<Page>>>(() => [
-    { label: t("groups.basic"), items: [{ value: "general", label: t("pages.general"), icon: "sliders" }, { value: "appearance", label: t("pages.appearance"), icon: "palette" }] },
+    { label: t("groups.basic"), items: [{ value: "general", label: t("pages.general"), icon: "sliders" }, { value: "history", label: t("pages.history"), icon: "clock" }, { value: "appearance", label: t("pages.appearance"), icon: "palette" }] },
     { label: t("groups.overlays"), items: [{ value: "combatOverlay", label: t("pages.combatOverlay"), icon: "overlay" }, { value: "effectsOverlay", label: t("pages.effectsOverlay"), icon: "spark" }] },
     { label: t("groups.about"), items: [{ value: "about", label: t("pages.about"), icon: "about" }] },
     { label: "", pinned: true, items: [{ value: "licenses", label: t("pages.licenses"), icon: "license" }] },
@@ -201,6 +254,7 @@ export function SettingsView({ controller }: { controller: SettingsController })
         {controller.loadFailed && <p className="ww-settings-notice" data-tone="critical" role="alert" data-field="settings-load-failed">{t("loadFailed")}</p>}
         {controller.failed && <p className="ww-settings-notice" data-tone="critical" role="alert" data-field="settings-save-failed">{t("saveFailed")}</p>}
         {page === "general" && <GeneralPage controller={controller} />}
+        {page === "history" && <HistoryPage controller={controller} />}
         {page === "appearance" && <AppearancePage controller={controller} />}
         {page === "combatOverlay" && <OverlayPage kind="combat" controller={controller} />}
         {page === "effectsOverlay" && <OverlayPage kind="effects" controller={controller} />}

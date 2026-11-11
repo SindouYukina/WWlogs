@@ -133,8 +133,10 @@ func Run(options Options) error {
 	defer historyStore.Close()
 	captureService := service.NewCaptureService(service.SessionOpener(masters))
 	captureService.SetPublishInterval(effectiveUpdateInterval(settings.current().Settings))
-	captureService.SetHistory(historyStarter(historyStore, options.HistoryDatabase != ""))
-	bridge := &Bridge{capture: captureService, defaults: options.Session, settings: settings, history: historyStore, masters: masters}
+	recorders := &recorderTracker{}
+	captureService.SetHistory(historyStarter(historyStore, options.HistoryDatabase != "", recorders))
+	captureService.SetHistoryRecording(!settings.current().Settings.HistoryRecordingDisabled)
+	bridge := &Bridge{capture: captureService, defaults: options.Session, settings: settings, history: historyStore, masters: masters, recorders: recorders}
 	bridge.catalog = catalog
 	bridge.projection = &displayProjection{resolver: resolver}
 	environmentProbe := options.EnvironmentProbe

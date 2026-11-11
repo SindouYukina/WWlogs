@@ -380,15 +380,17 @@ CREATE TABLE effect_instance (
 ) WITHOUT ROWID;
 CREATE INDEX effect_instance_by_effect ON effect_instance (effect_id) WHERE effect_id IS NOT NULL;
 
--- One accepted effect lifecycle change, in the tracker's order (sequence), with the instance's state after it.
+-- One accepted effect lifecycle change, in the tracker's order (sequence, unique in the span), with the instance's state
+-- after it. The primary key leads with the instance, so the changes of one instance, and the foreign key's cascade, are one
+-- key range: without statistics SQLite would otherwise search a span-wide key prefix once per instance.
 -- after_combat_sequence is the combat_event sequence of the last combat result journaled before it, so effect changes and
 -- combat results interleave exactly. observation is observed (a message stated it), derived (an end implied by the holder's
 -- removal or the handle's reuse) or untracked (tracking stopped; nothing is known afterwards). An estimated expiry is never
 -- stored as a change: remaining_s at basis_ns is what the server stated, and any expiry computed from it is an estimate.
 CREATE TABLE effect_event (
 	capture_session_id    INTEGER NOT NULL,
-	sequence              INTEGER NOT NULL,
 	instance              INTEGER NOT NULL,
+	sequence              INTEGER NOT NULL,
 	after_combat_sequence INTEGER NOT NULL,
 	observed_at_ns        INTEGER,
 	change_kind           TEXT    NOT NULL CHECK (change_kind IN ('apply', 'snapshot', 'refresh', 'stack', 'duration', 'remove', 'holder_removed', 'superseded', 'untracked', 'instant')),
@@ -400,10 +402,10 @@ CREATE TABLE effect_event (
 	remaining_s           REAL,
 	basis_ns              INTEGER,
 	time_reason           TEXT    NOT NULL DEFAULT '',
-	PRIMARY KEY (capture_session_id, sequence),
+	PRIMARY KEY (capture_session_id, instance, sequence),
+	UNIQUE (capture_session_id, sequence),
 	FOREIGN KEY (capture_session_id, instance) REFERENCES effect_instance (capture_session_id, instance) ON DELETE CASCADE
 ) WITHOUT ROWID;
--- A timeline reads an encounter's window through effect_event_by_time; one instance's changes are in sequence order within
--- the span's primary key range, so no second index is kept for them.
+-- A timeline reads an encounter's window through effect_event_by_time.
 CREATE INDEX effect_event_by_time ON effect_event (capture_session_id, observed_at_ns);
 `

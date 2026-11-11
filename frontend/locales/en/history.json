@@ -16,7 +16,7 @@
   "emptyDay": "No encounters were recorded on this day.",
   "emptyYear": "No encounters were recorded in {{year}}.",
   "emptyHistory": "No combat history yet. Start a capture and fight: every finished encounter appears here.",
-  "localOnly": "Combat history is stored only on this PC and is not encrypted.",
+  "localOnly": "Combat history is stored only on this PC, and this file is not encrypted.",
   "loadFailed": "The combat history could not be read.",
   "recovered": "{{n}} encounters that an earlier run left unfinished are marked as unfinished.",
   "columns": {
@@ -83,6 +83,70 @@
     "open_failed": "The history could not be opened. Capture works as usual, but no history is recorded.",
     "migration_failed": "The history could not be upgraded. A copy was kept and no history is recorded.",
     "no_history_file": "No history is available.",
-    "storage_stopped": "Saving history stopped after repeated write errors. Capture works as usual."
+    "storage_stopped": "Saving history stopped after repeated write errors. Capture works as usual.",
+    "key_missing": "The history file exists but its key file is missing. The file was left unchanged and no history is recorded. Restore combat-history.key to read it.",
+    "key_unavailable": "Windows could not unlock the history key for this user. The file was left unchanged and no history is recorded.",
+    "key_mismatch": "The history key does not open the history file. The file was left unchanged and no history is recorded.",
+    "encryption_migration_failed": "The existing unencrypted history could not be encrypted. It was left unchanged and no history is recorded; WWlogs tries again at the next start."
+  },
+  "localEncrypted": "Combat history is stored only on this PC, encrypted with a key that Windows protects for your user account.",
+  "indicator": {
+    "unknown": "Checking history",
+    "recording": "Recording this fight",
+    "waitingCombat": "Recording on, waiting for combat",
+    "ready": "Recording on",
+    "starting": "Recording starts after this fight",
+    "disabled": "Recording off",
+    "readOnly": "History is read-only",
+    "writeFailed": "Saving history failed",
+    "unavailable": "History unavailable",
+    "lost": "{{n}} history entries of this capture could not be saved; the encounters they belong to are marked incomplete."
+  },
+  "incompleteReason": {
+    "entries_lost": "Part of this record could not be saved, so the stored values may be lower than what happened.",
+    "application_exit": "WWlogs closed before this encounter finished.",
+    "recording_disabled": "History recording was turned off during this encounter, so it was not recorded to its end.",
+    "not_finished": "The capture ended before this encounter finished."
+  },
+  "checkpointNote": "The values below are the last checkpoint, at {{time}}. The encounter is incomplete; they are not its final result.",
+  "versionCorrected": "Recorded as {{version}} by a build of the v0.7.0 line ({{commit}}); corrected when the history was upgraded.",
+  "coverage": {
+    "title": "What this record contains",
+    "combat": "Damage and healing",
+    "combatStored": "Every confirmed damage and healing result",
+    "combatTotalsOnly": "Encounter totals only",
+    "effects": "Effect lifecycle",
+    "effectsStored": "{{changes}} changes of {{instances}} effects during this encounter",
+    "effectsNotStored": "Not stored: this record was made before WWlogs stored effect events",
+    "skillCasts": "Skill casts",
+    "skillCastsNotStored": "Not stored: no reliable source for skill casts exists; the skill table counts damage hits",
+    "effectsDerived": "Of these, {{derived}} ends follow from another fact (such as the holder leaving) and {{untracked}} are the end of tracking, not an observed removal.",
+    "effectsRejected": "{{n}} effects of this capture could not be tracked and are missing."
+  },
+  "delete": {
+    "action": "Delete encounter",
+    "recording": "An encounter that is still being recorded cannot be deleted.",
+    "confirmTitle": "Confirm deletion",
+    "confirm": "Delete this encounter and everything stored for it? This cannot be undone. The data is removed from the history file; this is not a secure erase of the disk.",
+    "confirmAction": "Delete",
+    "cancel": "Cancel",
+    "done": "The encounter was deleted from the history.",
+    "failed": "The deletion failed. Nothing was changed.",
+    "refused": {
+      "encounter_recording": "This encounter is still being recorded and cannot be deleted yet.",
+      "recording_active": "A capture is recording into the history. Stop the capture before clearing it.",
+      "not_writable": "This window cannot change this history.",
+      "not_found": "The encounter is no longer in the history."
+    }
+  },
+  "clear": {
+    "done": "History cleared: {{n}} encounters deleted."
+  },
+  "migration": {
+    "insufficient_space": "There is not enough free disk space to encrypt the existing history. It was left unchanged; free some space and restart WWlogs.",
+    "file_in_use": "The existing history is in use by another program, so it could not be encrypted. It was left unchanged; close that program and restart WWlogs.",
+    "verification_failed": "The encrypted copy of the existing history did not match it and was discarded. The history was left unchanged.",
+    "copy_failed": "The existing history could not be copied into an encrypted file. It was left unchanged.",
+    "unreadable": "The existing history could not be read, so it was not encrypted. It was left unchanged."
   }
 }

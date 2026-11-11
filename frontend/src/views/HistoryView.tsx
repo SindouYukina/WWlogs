@@ -4,7 +4,7 @@ import { ActivityHeatmap, Button, Card, Chip, ContentSwitch, Icon, LiveChart, Re
 import { usableDps } from "@/lib/combat-data"
 import { combatRows, detailRow, skillBreakdowns } from "@/lib/combat-view"
 import { useFormatters, useRowNames, elementColor } from "@/lib/format"
-import { clockText, defaultDate, heatmapLayout, localDateOf, offsetText, recordedClock, yearBounds, type HistoryDay, type HistoryEncounterDetail, type HistoryEncounterSummary, type HistoryName, type HistoryStatus, type HistoryYear } from "@/lib/history"
+import { clockText, defaultDate, heatmapLayout, indicatorText, localDateOf, offsetText, recordedClock, yearBounds, type HistoryChange, type HistoryDay, type HistoryEncounterDetail, type HistoryEncounterSummary, type HistoryIndicator, type HistoryName, type HistoryStatus, type HistoryYear } from "@/lib/history"
 import { host } from "@/lib/host"
 import { dpsText, usableHealing } from "@/lib/snapshot"
 import { timelineFromSnapshot } from "@/lib/timeline"
@@ -15,6 +15,26 @@ export interface HistoryViewProps {
   theme: ThemeId
   /** Changes whenever the live engine may have finished an encounter, so the history reloads what it shows. */
   refreshKey: string
+  /** The host's Combat History indicator. */
+  indicator?: HistoryIndicator
+}
+
+/** The host's recording indicator as one chip, with the reason behind a problem state. */
+export function HistoryIndicatorChip({ indicator }: { indicator: HistoryIndicator | undefined }) {
+  const { t } = useTranslation("history")
+  const text = indicatorText(indicator)
+  return <span className="ww-history-indicator" data-field="history-indicator" data-state={indicator?.state ?? ""} data-reason={indicator?.reason ?? ""} title={text.detail ? t(text.detail) : undefined}>
+    <Chip tone={text.tone} dot>{t(text.key)}</Chip>
+  </span>
+}
+
+/** The notes an unfinished or incomplete record leads with: why it is so, and what its stored values describe. */
+function recordNotes(summary: HistoryEncounterSummary): Array<{ key: string; tone: "warn" | "critical" }> {
+  const notes: Array<{ key: string; tone: "warn" | "critical" }> = []
+  const reason = summary.incompleteReason
+  if (summary.state === "abandoned") notes.push({ key: reason ? `incompleteReason.${reason}` : "abandonedNote", tone: "critical" })
+  else if (!summary.complete) notes.push({ key: reason ? `incompleteReason.${reason}` : "incompleteNote", tone: "warn" })
+  return notes
 }
 
 type ChipTone = "neutral" | "good" | "warn" | "critical"
@@ -122,7 +142,56 @@ function DayList({ day, dateLabel, onOpen, onMore, loading }: { day: HistoryDay 
   </>
 }
 
-function EncounterDetail({ detail, backLabel, onBack }: { detail: HistoryEncounterDetail; backLabel: string; onBack: () => void }) {
+/** What the record stored besides its totals: effect lifecycle changes, and that skill casts are never stored. */
+function CoverageCard({ detail }: { detail: HistoryEncounterDetail }) {
+  const { t } = useTranslation("history")
+  const format = useFormatters()
+  const coverage = detail.session.coverage
+  const effects = detail.effects
+  return <Card className="ww-history-context"><div data-field="coverage" data-effects={coverage.effectEvents} data-combat={coverage.combatEvents}>
+    <div className="ww-dash-card-head"><h3>{t("coverage.title")}</h3></div>
+    <dl className="ww-history-facts ww-history-facts-wrap">
+      <div><dt>{t("coverage.combat")}</dt><dd>{t(coverage.combatEvents ? "coverage.combatStored" : "coverage.combatTotalsOnly")}</dd></div>
+      <div><dt>{t("coverage.effects")}</dt><dd data-field="coverage-effects" data-changes={effects.changes}>{coverage.effectEvents
+        ? t("coverage.effectsStored", { changes: format.integer(effects.changes), instances: format.integer(effects.instances) })
+        : t("coverage.effectsNotStored")}</dd></div>
+      <div><dt>{t("coverage.skillCasts")}</dt><dd className="ww-history-unknown">{t("coverage.skillCastsNotStored")}</dd></div>
+    </dl>
+    {coverage.effectEvents && effects.derived + effects.untracked > 0 && <p className="ww-history-note">{t("coverage.effectsDerived", { derived: format.integer(effects.derived), untracked: format.integer(effects.untracked) })}</p>}
+    {detail.session.effectsRejected > 0 && <p className="ww-history-note" data-tone="warn">{t("coverage.effectsRejected", { n: format.integer(detail.session.effectsRejected) })}</p>}
+  </div></Card>
+}
+
+/** Deleting one stored encounter: the first press asks, the second deletes. The host refuses one still recording. */
+function DeleteEncounter({ summary, onDeleted }: { summary: HistoryEncounterSummary; onDeleted: (change: HistoryChange) => void }) {
+  const { t } = useTranslation("history")
+  const [asking, setAsking] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [problem, setProblem] = useState("")
+  const recording = summary.state === "open"
+  const remove = () => {
+    setBusy(true)
+    setProblem("")
+    host.deleteHistoryEncounter(summary.id).then(change => {
+      if (change.refused) { setProblem(`delete.refused.${change.refused}`); return }
+      onDeleted(change)
+    }).catch(() => setProblem("delete.failed")).finally(() => { setBusy(false); setAsking(false) })
+  }
+  return <div className="ww-history-delete" data-field="delete-encounter" data-asking={asking}>
+    {!asking
+      ? <Button size="sm" variant="ghost" disabled={recording || busy} title={recording ? t("delete.recording") : undefined} data-field="delete-encounter-start" onClick={() => setAsking(true)}>{t("delete.action")}</Button>
+      : <div className="ww-history-confirm" role="group" aria-label={t("delete.confirmTitle")}>
+        <p>{t("delete.confirm")}</p>
+        <div className="ww-history-confirm-actions">
+          <Button size="sm" variant="danger" disabled={busy} data-field="delete-encounter-confirm" onClick={remove}>{t("delete.confirmAction")}</Button>
+          <Button size="sm" disabled={busy} data-field="delete-encounter-cancel" onClick={() => setAsking(false)}>{t("delete.cancel")}</Button>
+        </div>
+      </div>}
+    {problem && <p className="ww-history-note" data-tone="critical" role="alert">{t(problem)}</p>}
+  </div>
+}
+
+function EncounterDetail({ detail, backLabel, onBack, onDeleted }: { detail: HistoryEncounterDetail; backLabel: string; onBack: () => void; onDeleted: (change: HistoryChange) => void }) {
   const { t, i18n } = useTranslation(["history", "dashboard", "common"])
   const c = (key: string) => t(key, { ns: "common" })
   const d = (key: string, options?: Record<string, unknown>) => t(key, { ns: "dashboard", ...options })
@@ -159,6 +228,7 @@ function EncounterDetail({ detail, backLabel, onBack }: { detail: HistoryEncount
         {summary.source === "replay" && <Chip tone="neutral">{t("source.replay")}</Chip>}
       </div>
     </div>
+    <DeleteEncounter summary={summary} onDeleted={onDeleted} />
     <Card className="ww-history-context">
       <dl className="ww-history-facts">
         <div><dt>{t("columns.mode")}</dt><dd className="ww-history-unknown">{t("unidentified")}</dd></div>
@@ -166,12 +236,14 @@ function EncounterDetail({ detail, backLabel, onBack }: { detail: HistoryEncount
         <div><dt>{t("columns.enemy")}</dt><dd><EnemyCell summary={summary} /></dd></div>
         <div><dt>{t("timeRange")}</dt><dd className="ww-num" title={offsetText(summary.utcOffsetSeconds)}>{start} – {end}</dd></div>
         <div><dt>{t("columns.duration")}</dt><dd className="ww-num">{summary.durationSeconds === undefined ? "—" : format.clock(summary.durationSeconds)}</dd></div>
-        <div><dt>{t("recordedBy")}</dt><dd title={session.appCommit}>{t(`source.${session.source}`)} · {session.appVersion}{session.appBuild > 0 ? ` (${session.appBuild})` : ""}</dd></div>
+        <div><dt>{t("recordedBy")}</dt><dd title={session.recordedAppVersion ? t("versionCorrected", { version: session.recordedAppVersion, commit: session.appCommit }) : session.appCommit}>{t(`source.${session.source}`)} · {session.appVersion}{session.appBuild > 0 ? ` (${session.appBuild})` : ""}</dd></div>
       </dl>
-      {!summary.complete && <p className="ww-history-note" data-tone="warn">{t("incompleteNote")}</p>}
+      {recordNotes(summary).map(note => <p key={note.key} className="ww-history-note" data-tone={note.tone} data-field="record-note">{t(note.key)}</p>)}
+      {summary.checkpointAt && <p className="ww-history-note" data-tone="warn" data-field="checkpoint-note">{t("checkpointNote", { time: clockText(recordedClock(summary.checkpointAt, summary.utcOffsetSeconds)) })}</p>}
       {summary.integrity === "DEGRADED" && <p className="ww-history-note" data-tone="warn">{d("degradedNote")}</p>}
       {summary.integrity === "UNRELIABLE" && <p className="ww-history-note" data-tone="critical">{d("unreliableNote")}</p>}
     </Card>
+    <CoverageCard detail={detail} />
     {!encounter ? <Card className="ww-history-context"><p className="ww-dash-empty-note" data-field="no-statistics">{t(summary.state === "open" ? "openNote" : "abandonedNote")}</p></Card> : <>
       <div className="ww-history-stats">
         <StatCard index={0} hero icon="bolt" label={c("encounterDps")} field="encounter-dps" status={dps?.status ?? "unavailable"} value={usableDps(dps) ? dps?.value : undefined} format={dpsFormat} note={d("peakNote", { value: peakText })} scope={scope} stale={false} numberMode="tween" />
@@ -226,7 +298,7 @@ function statusNote(status: HistoryStatus | undefined): { key: string; tone: "wa
  * The Combat History page: a year of encounters as an Activity Heatmap, the chosen day's encounters, and one encounter's
  * stored result. Everything shown is what the Go history returns; this view only lays it out.
  */
-export function HistoryView({ theme, refreshKey }: HistoryViewProps) {
+export function HistoryView({ theme, refreshKey, indicator }: HistoryViewProps) {
   const { t } = useTranslation(["history", "common"])
   const format = useFormatters()
   const dates = useDateFormats()
@@ -240,6 +312,9 @@ export function HistoryView({ theme, refreshKey }: HistoryViewProps) {
   const [detail, setDetail] = useState<HistoryEncounterDetail | null>(null)
   const [failed, setFailed] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
+  // A deletion changes what every query returns, so it counts as a refresh of its own.
+  const [changes, setChanges] = useState(0)
+  const [deleted, setDeleted] = useState(false)
   // The engine's signal arrives as soon as an encounter finishes; its history is written a moment later by its own writer
   // (200 ms batches), so queries follow the signal once it has been still for historySettleMs.
   const [settledKey, setSettledKey] = useState(refreshKey)
@@ -257,14 +332,14 @@ export function HistoryView({ theme, refreshKey }: HistoryViewProps) {
       setDate(selected => selected !== undefined && selected.startsWith(`${year}-`) ? selected : defaultDate(view, today))
     }).catch(() => { if (current) setFailed(true) })
     return () => { current = false }
-  }, [year, settledKey])
+  }, [year, settledKey, changes])
 
   useEffect(() => {
     if (date === undefined) { setDay(null); return }
     let current = true
     host.historyDay(date, 0).then(view => { if (current) setDay(view) }).catch(() => { if (current) setFailed(true) })
     return () => { current = false }
-  }, [date, settledKey])
+  }, [date, settledKey, changes])
 
   useEffect(() => {
     if (openId === null) { setDetail(null); return }
@@ -288,6 +363,7 @@ export function HistoryView({ theme, refreshKey }: HistoryViewProps) {
   const select = useCallback((value: string) => { setDate(value); setOpenId(null) }, [])
   const dayLabel = useCallback((cell: HeatmapDay) => cell.count > 0 ? t("dayTooltip", { date: dates.long(cell.date), n: format.integer(cell.count) }) : t("noEncounterTooltip", { date: dates.long(cell.date) }), [t, dates, format])
   const changeYear = (next: number) => { setYear(next); setOpenId(null) }
+  const afterDelete = useCallback(() => { setOpenId(null); setDeleted(true); setChanges(count => count + 1) }, [])
   const empty = yearView !== null && yearView.firstYear === 0
   return <div className="ww-history ww-has-backdrop" data-field="history" data-year={year}><ThemeBackdrop theme={theme} intensity="art" /><div className="ww-history-layout">
     <Reveal className="ww-history-top">
@@ -295,6 +371,7 @@ export function HistoryView({ theme, refreshKey }: HistoryViewProps) {
         <div className="ww-caps">{t("subtitle")}</div>
         <h2 className="ww-history-title">{t("title")}</h2>
       </div>
+      <HistoryIndicatorChip indicator={indicator} />
       <div className="ww-history-years" data-field="year-switch">
         <Button size="sm" variant="ghost" aria-label={t("previousYear")} title={t("previousYear")} disabled={year <= bounds.first} onClick={() => changeYear(year - 1)} data-field="year-previous"><span style={{ display: "inline-flex", transform: "rotate(90deg)" }}><Icon name="chevron" size={14} /></span></Button>
         <span className="ww-history-year ww-num" data-field="year">{year}</span>
@@ -312,10 +389,11 @@ export function HistoryView({ theme, refreshKey }: HistoryViewProps) {
       {failed && <p className="ww-history-note" data-tone="critical" role="alert">{t("loadFailed")}</p>}
       {status && status.recoveredEncounters > 0 && <p className="ww-history-note" data-tone="warn">{t("recovered", { n: format.integer(status.recoveredEncounters) })}</p>}
       {empty ? <p className="ww-history-note" data-field="history-empty">{t("emptyHistory")}</p> : layout.total === 0 && yearView !== null && <p className="ww-history-note">{t("emptyYear", { year })}</p>}
-      <p className="ww-history-note">{t("localOnly")}</p>
+      {deleted && <p className="ww-history-note" role="status" data-field="history-deleted">{t("delete.done")}</p>}
+      {status && status.state !== "unavailable" && <p className="ww-history-note" data-field="history-storage" data-encrypted={status.encrypted}>{t(status.encrypted ? "localEncrypted" : "localOnly")}</p>}
     </Card></Reveal>
     <Reveal index={2}><ContentSwitch contentKey={detail ? `detail-${detail.summary.id}` : `day-${date ?? ""}`}>
-      {detail ? <EncounterDetail detail={detail} backLabel={t("back", { date: dates.short(detail.summary.localDate) })} onBack={() => setOpenId(null)} /> :
+      {detail ? <EncounterDetail detail={detail} backLabel={t("back", { date: dates.short(detail.summary.localDate) })} onBack={() => setOpenId(null)} onDeleted={afterDelete} /> :
         <Card className="ww-history-day">
           <div className="ww-dash-card-head"><h3 data-field="day-title">{date ? dates.long(date) : t("noDay")}</h3>{day && day.date === date && <span className="ww-history-total" data-field="day-total">{t("dayCount", { n: format.integer(day.total) })}</span>}</div>
           <DayList day={day && day.date === date ? day : null} dateLabel={date ? dates.long(date) : ""} onOpen={setOpenId} onMore={more} loading={loadingMore} />

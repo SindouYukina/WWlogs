@@ -104,7 +104,7 @@ export function DesktopApp() {
     <main className="ww-app-main">
       <ContentSwitch contentKey={page} direction={direction} className="ww-app-page">
         {page === "dashboard" ? <DashboardView data={data} theme={resolveTheme(snapshot?.theme)} detailPick={detailPick} />
-          : page === "history" ? <HistoryView theme={resolveTheme(snapshot?.theme)} refreshKey={historyKey} />
+          : page === "history" ? <HistoryView theme={resolveTheme(snapshot?.theme)} refreshKey={historyKey} indicator={snapshot?.history} />
           : <SettingsView controller={controller} />}
       </ContentSwitch>
     </main>

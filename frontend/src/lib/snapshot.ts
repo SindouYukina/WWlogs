@@ -2,6 +2,7 @@
 // Every number here was computed by the Go statistics engine; the frontend only formats it.
 
 import type { AppIdentity } from "./build-identity"
+import type { HistoryIndicator } from "./history"
 
 export type ServiceState = "stopped" | "starting" | "running" | "stopping" | "error"
 export type IntegrityStatus = "INTACT" | "DEGRADED" | "UNRELIABLE"
@@ -24,6 +25,8 @@ export interface Snapshot {
   updateIntervalMs?: number
   overlays?: OverlayStates
   settingsWarning?: string
+  /** The Combat History indicator the host decides. */
+  history?: HistoryIndicator
 }
 
 /** The selectable live combat data cadences, in milliseconds. The host only reports one of these. */
@@ -60,18 +63,19 @@ export interface ListeningInfo {
   since: string
 }
 
-type ShellFields = "listening" | "theme" | "reduceMotion" | "updateIntervalMs" | "overlays" | "settingsWarning"
+type ShellFields = "listening" | "theme" | "reduceMotion" | "updateIntervalMs" | "overlays" | "settingsWarning" | "history"
 
 /** True when only host state differs, so the window updates it without treating the snapshot as new core data. */
 export function shellChanged(next: Pick<Snapshot, ShellFields>, previous: Pick<Snapshot, ShellFields>): boolean {
   return next.listening?.state !== previous.listening?.state || next.listening?.reason !== previous.listening?.reason || next.theme !== previous.theme || next.reduceMotion !== previous.reduceMotion || next.settingsWarning !== previous.settingsWarning
     || next.updateIntervalMs !== previous.updateIntervalMs
     || JSON.stringify(next.overlays) !== JSON.stringify(previous.overlays)
+    || JSON.stringify(next.history) !== JSON.stringify(previous.history)
 }
 
 /** Copies host state onto the current core snapshot, for a heartbeat whose sequence did not move. */
 export function withShell(current: Snapshot, next: Pick<Snapshot, ShellFields>): Snapshot {
-  return { ...current, listening: next.listening, theme: next.theme, reduceMotion: next.reduceMotion, updateIntervalMs: next.updateIntervalMs, overlays: next.overlays, settingsWarning: next.settingsWarning }
+  return { ...current, listening: next.listening, theme: next.theme, reduceMotion: next.reduceMotion, updateIntervalMs: next.updateIntervalMs, overlays: next.overlays, settingsWarning: next.settingsWarning, history: next.history }
 }
 
 // Locale changes may reproject the same core sequence; neither dimension may move backwards.

@@ -39,6 +39,9 @@ type Settings struct {
 	// DesktopWindow is where the user last left the Desktop window. Nil until the window has been shown once, and in
 	// older files; the window then opens at its default size.
 	DesktopWindow *DesktopPlacement `json:"desktopWindow,omitempty"`
+	// HistoryRecordingDisabled turns Combat History recording off. Recording is on by default, which is what a file without
+	// the field means; stored history is never deleted by turning it off.
+	HistoryRecordingDisabled bool `json:"historyRecordingDisabled,omitempty"`
 }
 
 // DesktopPlacement is the Desktop window's last normal (not maximized, not minimized) bounds in physical pixels, with
@@ -426,6 +429,15 @@ func (s *settingsStore) setUpdateInterval(ms int) (SettingsState, error) {
 	defer s.mu.Unlock()
 	value := s.state.Settings
 	value.UpdateIntervalMs = ms
+	return s.writeLocked(value)
+}
+
+// setHistoryRecording persists whether Combat History records.
+func (s *settingsStore) setHistoryRecording(enabled bool) (SettingsState, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	value := s.state.Settings
+	value.HistoryRecordingDisabled = !enabled
 	return s.writeLocked(value)
 }
 

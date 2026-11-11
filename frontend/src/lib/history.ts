@@ -13,8 +13,21 @@ export interface HistoryStatus {
   latestSchemaVersion: number
   recoveredSessions: number
   recoveredEncounters: number
-  /** Always false: the file is plain local SQLite. */
+  /** True when the open file is encrypted at rest (encryption names the cipher, keyProtection what seals its key). */
   encrypted: boolean
+  encryption?: string
+  keyProtection?: string
+  /** converted: this run encrypted a plaintext history of an earlier build; failed: that conversion failed. */
+  plaintextMigration?: "converted" | "failed" | "pending"
+  migrationFailure?: string
+  plaintextBackups?: number
+}
+
+/** What the recorder of a record stored, apart from its capture integrity. Skill casts are never stored. */
+export interface HistoryCoverage {
+  combatEvents: boolean
+  effectEvents: boolean
+  skillCasts: boolean
 }
 
 export interface HistoryDayCount {
@@ -62,6 +75,11 @@ export interface HistoryEncounterSummary {
   enemiesRecorded: boolean
   sceneName: HistoryName
   mainEnemyName: HistoryName
+  /** Why the record is incomplete or unfinished: entries_lost, application_exit, recording_disabled or not_finished. */
+  incompleteReason?: string
+  /** UTC time the stored values of an unfinished encounter describe (its last checkpoint). */
+  checkpointAt?: string
+  coverage: HistoryCoverage
 }
 
 export interface HistoryDay {
@@ -99,6 +117,21 @@ export interface HistorySession {
   appCommit: string
   protocolSchema: string
   masterSha256: string
+  startReason: string
+  stopReason?: string
+  /** The version label the record was written with, when an upgrade corrected appVersion. */
+  recordedAppVersion?: string
+  coverage: HistoryCoverage
+  effectsRejected: number
+}
+
+/** The effect lifecycle changes stored during one encounter. */
+export interface HistoryEffects {
+  changes: number
+  instances: number
+  observed: number
+  derived: number
+  untracked: number
 }
 
 export interface HistoryEncounterDetail {
@@ -110,6 +143,53 @@ export interface HistoryEncounterDetail {
   timeline: Timeline | null
   timelineValid: boolean
   enemies: HistoryEnemy[]
+  effects: HistoryEffects
+}
+
+/** The Combat History indicator the host decides (internal/desktop/history_status.go). */
+export type HistoryIndicatorState = "disabled" | "waiting" | "recording" | "starting" | "unavailable" | "read_only" | "write_failed"
+
+export interface HistoryIndicator {
+  state: HistoryIndicatorState
+  reason?: string
+  migrationFailure?: string
+  enabled: boolean
+  capturing: boolean
+  /** Journal entries of the running capture that never reached storage. */
+  lost?: number
+  encrypted: boolean
+  keyProtection?: string
+  plaintextConverted?: boolean
+  plaintextBackups?: number
+}
+
+/** The answer to a deletion: what it removed, or why it was refused. */
+export interface HistoryChange {
+  encounters: number
+  spans: number
+  backups: number
+  compacted: boolean
+  refused?: "encounter_recording" | "recording_active" | "not_writable" | "not_found"
+}
+
+export type IndicatorTone = "neutral" | "good" | "warn" | "critical"
+
+/**
+ * The label and tone of the host's indicator. This only maps the state the host decided to text keys of the history
+ * namespace; it never decides a state itself.
+ */
+export function indicatorText(indicator: HistoryIndicator | undefined): { key: string; tone: IndicatorTone; detail?: string } {
+  if (!indicator) return { key: "indicator.unknown", tone: "neutral" }
+  switch (indicator.state) {
+    case "recording": return { key: "indicator.recording", tone: "good" }
+    case "waiting": return { key: indicator.capturing ? "indicator.waitingCombat" : "indicator.ready", tone: "neutral" }
+    case "starting": return { key: "indicator.starting", tone: "warn" }
+    case "disabled": return { key: "indicator.disabled", tone: "neutral" }
+    case "read_only": return { key: "indicator.readOnly", tone: "warn", detail: `unavailable.${indicator.reason ?? "open_failed"}` }
+    case "write_failed": return { key: "indicator.writeFailed", tone: "critical", detail: "unavailable.storage_stopped" }
+    case "unavailable":
+      return { key: "indicator.unavailable", tone: "critical", detail: indicator.reason === "encryption_migration_failed" && indicator.migrationFailure ? `migration.${indicator.migrationFailure}` : `unavailable.${indicator.reason ?? "open_failed"}` }
+  }
 }
 
 const dayMs = 24 * 60 * 60 * 1000

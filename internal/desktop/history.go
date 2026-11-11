@@ -39,10 +39,13 @@ func openHistory(path string, masters *capture.MasterData) *history.Store {
 }
 
 // historyStarter begins a history session for each capture. Live captures are recorded. A replay is recorded only into an
-// explicitly supplied Development history file, never into the user's own history, and the same file only once.
-func historyStarter(store *history.Store, recordReplays bool) service.HistoryStarter {
+// explicitly supplied Development history file, never into the user's own history, and the same file only once. A capture
+// that starts with recording off still gets a recorder, without any session row, so switching recording on during it can
+// start a span. recorders follows the running capture's recorder.
+func historyStarter(store *history.Store, recordReplays bool, recorders *recorderTracker) service.HistoryStarter {
 	return func(cfg capture.SessionConfig) (service.HistoryRecorder, string, error) {
-		start := history.SessionStart{Source: history.SourceLive, Level: history.Level()}
+		recorders.set(nil)
+		start := history.SessionStart{Source: history.SourceLive, Level: history.Level(), Paused: cfg.HistoryPaused}
 		if cfg.ReplayPath != "" {
 			if !recordReplays {
 				return nil, "", nil
@@ -60,6 +63,7 @@ func historyStarter(store *history.Store, recordReplays bool) service.HistorySta
 		case err != nil:
 			return nil, service.HistoryUnavailable, err
 		}
+		recorders.set(recorder)
 		return recorder, "", nil
 	}
 }

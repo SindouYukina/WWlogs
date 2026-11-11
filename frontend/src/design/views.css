@@ -166,3 +166,11 @@ body[data-view="overlay"][data-editing="true"] { --wails-draggable: drag; }
 .ww-history-main { display: grid; grid-template-columns: minmax(280px, 0.8fr) minmax(0, 1.5fr); gap: var(--ww-space-3); }
 .ww-history-main .ww-dash-board { min-height: 300px; }
 .ww-history-enemies { padding: var(--ww-space-3) var(--ww-space-4); }
+/* The recording indicator sits between the title and the year switch. */
+.ww-history-indicator { display: inline-flex; margin-inline-start: auto; }
+/* Coverage facts are sentences: they wrap instead of being cut. */
+.ww-history-facts-wrap dd { overflow: visible; white-space: normal; }
+.ww-history-delete { display: flex; flex-direction: column; align-items: flex-end; gap: var(--ww-space-1_5); }
+.ww-history-confirm { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--ww-space-2) var(--ww-space-3); max-width: 100%; padding: var(--ww-space-2) var(--ww-space-3); border: 1px solid var(--ww-critical); border-radius: var(--ww-radius-md); background: var(--ww-critical-soft); }
+.ww-history-confirm p { flex: 1 1 280px; min-width: 0; margin: 0; font-size: var(--ww-text-sm); }
+.ww-history-confirm-actions { display: flex; gap: var(--ww-space-2); }

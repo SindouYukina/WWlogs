@@ -16,7 +16,7 @@
   "emptyDay": "這一天沒有記錄到戰鬥。",
   "emptyYear": "{{year}} 年沒有記錄到戰鬥。",
   "emptyHistory": "目前還沒有戰鬥歷史。開始擷取並進行戰鬥後，每一場結束的戰鬥都會出現在這裡。",
-  "localOnly": "戰鬥歷史只保存在這台電腦上，且未加密。",
+  "localOnly": "戰鬥歷史只保存在這台電腦上，且此檔案未加密。",
   "loadFailed": "無法讀取戰鬥歷史。",
   "recovered": "先前執行時未結束的 {{n}} 場戰鬥已標示為未完成。",
   "columns": {
@@ -83,6 +83,70 @@
     "open_failed": "無法開啟戰鬥歷史。擷取照常運作，但不會記錄歷史。",
     "migration_failed": "無法升級戰鬥歷史。已保留備份，不會記錄歷史。",
     "no_history_file": "沒有可用的戰鬥歷史。",
-    "storage_stopped": "多次寫入失敗後已停止保存歷史。擷取照常運作。"
+    "storage_stopped": "多次寫入失敗後已停止保存歷史。擷取照常運作。",
+    "key_missing": "歷史檔案存在，但其金鑰檔案遺失。檔案未被變更，也不會記錄歷史。請還原 combat-history.key 才能讀取。",
+    "key_unavailable": "Windows 無法為這個使用者解開歷史金鑰。檔案未被變更，也不會記錄歷史。",
+    "key_mismatch": "歷史金鑰無法開啟這個歷史檔案。檔案未被變更，也不會記錄歷史。",
+    "encryption_migration_failed": "現有的未加密歷史無法完成加密。檔案保持原樣，也不會記錄歷史；WWlogs 會在下次啟動時重試。"
+  },
+  "localEncrypted": "戰鬥歷史只保存在這台電腦上，並以 Windows 為你的使用者帳戶保護的金鑰加密。",
+  "indicator": {
+    "unknown": "正在確認歷史狀態",
+    "recording": "正在記錄這場戰鬥",
+    "waitingCombat": "記錄已開啟，等待戰鬥",
+    "ready": "記錄已開啟",
+    "starting": "本場戰鬥結束後開始記錄",
+    "disabled": "記錄已關閉",
+    "readOnly": "歷史僅供讀取",
+    "writeFailed": "歷史儲存失敗",
+    "unavailable": "無法使用歷史",
+    "lost": "本次擷取有 {{n}} 筆歷史項目未能儲存，相關的戰鬥已標示為不完整。"
+  },
+  "incompleteReason": {
+    "entries_lost": "這筆紀錄有部分內容未能保存，保存的數值可能低於實際情況。",
+    "application_exit": "WWlogs 在這場戰鬥結束前就關閉了。",
+    "recording_disabled": "這場戰鬥進行中時關閉了歷史記錄，因此沒有記錄到戰鬥結束。",
+    "not_finished": "擷取在這場戰鬥結束前就停止了。"
+  },
+  "checkpointNote": "以下數值是 {{time}} 的最後檢查點。這場戰鬥並不完整，這些數值不是最終結果。",
+  "versionCorrected": "原本記錄為 {{version}}（v0.7.0 開發線的建置，{{commit}}）；歷史升級時已更正。",
+  "coverage": {
+    "title": "這筆紀錄包含的內容",
+    "combat": "傷害與治療",
+    "combatStored": "每一筆已確認的傷害與治療結果",
+    "combatTotalsOnly": "僅有戰鬥總計",
+    "effects": "效果生命週期",
+    "effectsStored": "這場戰鬥期間 {{instances}} 個效果共 {{changes}} 次變化",
+    "effectsNotStored": "未保存：這筆紀錄建立於 WWlogs 開始保存效果事件之前",
+    "skillCasts": "技能施放",
+    "skillCastsNotStored": "未保存：目前沒有可靠的技能施放來源；技能表統計的是傷害命中",
+    "effectsDerived": "其中 {{derived}} 次結束是由其他事實推導（例如持有者離開），{{untracked}} 次是停止追蹤，並非觀測到的移除。",
+    "effectsRejected": "本次擷取有 {{n}} 個效果無法追蹤，因此沒有保存。"
+  },
+  "delete": {
+    "action": "刪除這場戰鬥",
+    "recording": "仍在記錄中的戰鬥無法刪除。",
+    "confirmTitle": "確認刪除",
+    "confirm": "要刪除這場戰鬥及其所有保存的資料嗎？此操作無法復原。資料會從歷史檔案中移除，但這不是磁碟的安全抹除。",
+    "confirmAction": "刪除",
+    "cancel": "取消",
+    "done": "已從歷史中刪除這場戰鬥。",
+    "failed": "刪除失敗，沒有做任何變更。",
+    "refused": {
+      "encounter_recording": "這場戰鬥仍在記錄中，暫時無法刪除。",
+      "recording_active": "目前有擷取正在寫入歷史。請先停止擷取再清除。",
+      "not_writable": "此視窗無法變更這份歷史。",
+      "not_found": "這場戰鬥已不在歷史中。"
+    }
+  },
+  "clear": {
+    "done": "已清除歷史：刪除了 {{n}} 場戰鬥。"
+  },
+  "migration": {
+    "insufficient_space": "可用磁碟空間不足，無法加密現有的歷史。檔案保持原樣；請釋出空間後重新啟動 WWlogs。",
+    "file_in_use": "現有的歷史正被其他程式使用，無法加密。檔案保持原樣；請關閉該程式後重新啟動 WWlogs。",
+    "verification_failed": "現有歷史的加密副本與原檔不一致，已捨棄該副本。歷史保持原樣。",
+    "copy_failed": "無法將現有的歷史複製為加密檔案。檔案保持原樣。",
+    "unreadable": "無法讀取現有的歷史，因此沒有加密。檔案保持原樣。"
   }
 }
