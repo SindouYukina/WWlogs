@@ -40,10 +40,11 @@ import (
 // copies are converted the same way. The plaintext sectors are not overwritten. The file system may keep them in free
 // space until it reuses that space, and an SSD may keep them longer, so the conversion is not a secure erase.
 
-const (
-	encryptionVFS  = "xts"
-	encryptionName = "aes-256-xts"
-)
+const encryptionName = "aes-256-xts"
+
+// encryptionVFS is the SQLite VFS that encrypts the history. Tests replace it to run the store over a VFS that tears
+// writes, as an operating system may when a read overlaps a write of the same bytes.
+var encryptionVFS = "xts"
 
 // sqliteHeader starts every plaintext SQLite database file.
 var sqliteHeader = []byte("SQLite format 3\x00")
