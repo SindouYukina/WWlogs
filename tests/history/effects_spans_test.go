@@ -15,7 +15,7 @@ import (
 func createSchemaTwo(t *testing.T, path string) {
 	t.Helper()
 	createSchemaOne(t, path)
-	db, err := sql.Open("sqlite", sqliteDSN(path, false))
+	db, err := sql.Open("sqlite", plainDSN(path))
 	if err != nil {
 		t.Fatal(err)
 	}

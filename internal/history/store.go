@@ -1,7 +1,7 @@
 // Package history keeps the player's Combat History: a local SQLite file, separate from the read-only Master, that stores
 // capture sessions and the encounters the engine segmented in them. It receives the engine's journal through a Recorder
 // (one per capture session) on its own goroutine, so storage never waits on, slows or changes capture and analysis, and
-// it answers the History view's queries. The file is local and is not encrypted (see Status.Encrypted).
+// it answers the History view's queries. The file is local and encrypted at rest (encryption.go, keys.go).
 package history
 
 import (
@@ -9,14 +9,11 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
 	"sync"
 	"time"
-
-	_ "modernc.org/sqlite"
 
 	"wwlogs/internal/buildinfo"
 	"wwlogs/internal/versioninfo"
@@ -44,6 +41,22 @@ const (
 	ReasonMigrateFailed  = "migration_failed"
 	ReasonNoHistoryFile  = "no_history_file"
 	ReasonStorageStopped = "storage_stopped"
+	// ReasonKeyMissing: an encrypted history file exists but its key file does not; no new key is ever made for it.
+	ReasonKeyMissing = "key_missing"
+	// ReasonKeyUnavailable: the key file cannot be read or unsealed (for example DPAPI refused it for this user).
+	ReasonKeyUnavailable = "key_unavailable"
+	// ReasonKeyMismatch: the unsealed key does not open the history file, or the file is not an encrypted history.
+	ReasonKeyMismatch = "key_mismatch"
+	// ReasonEncryptionMigration: a plaintext file written before encryption could not be converted; it is unchanged and
+	// open read-only (Status.MigrationFailure says why).
+	ReasonEncryptionMigration = "encryption_migration_failed"
+)
+
+// PlaintextMigration values.
+const (
+	PlaintextConverted = "converted"
+	PlaintextFailed    = "failed"
+	PlaintextPending   = "pending"
 )
 
 // Status is the Store's state for the UI.
@@ -56,8 +69,18 @@ type Status struct {
 	// RecoveredSessions and RecoveredEncounters count what an earlier run left open and this open marked abandoned.
 	RecoveredSessions   int `json:"recoveredSessions"`
 	RecoveredEncounters int `json:"recoveredEncounters"`
-	// Encrypted is false: the file is plain SQLite protected only by the user's own file permissions.
-	Encrypted bool `json:"encrypted"`
+	// Encrypted is true when the open file is encrypted at rest with Encryption (aes-256-xts) and a key KeyProtection seals
+	// (dpapi-user). It is false for a plaintext file this build could only read.
+	Encrypted     bool   `json:"encrypted"`
+	Encryption    string `json:"encryption,omitempty"`
+	KeyProtection string `json:"keyProtection,omitempty"`
+	// PlaintextMigration is converted when this open encrypted a plaintext file of an earlier build, failed when that
+	// conversion failed (MigrationFailure gives the reason; the plaintext file is unchanged), and pending when a plaintext
+	// file is open read-only because another process records into it. PlaintextBackups counts plaintext pre-migration copies
+	// that could not be converted and remain on disk.
+	PlaintextMigration string `json:"plaintextMigration,omitempty"`
+	MigrationFailure   string `json:"migrationFailure,omitempty"`
+	PlaintextBackups   int    `json:"plaintextBackups,omitempty"`
 }
 
 // Options configure a Store. Zero values use the running build and the host clock and time zone.
@@ -70,6 +93,8 @@ type Options struct {
 	Build          *buildinfo.Identity
 	ProtocolSchema string
 	MasterSHA256   string
+	// KeyProvider seals the history key; nil uses the platform's (DPAPI for the current user on Windows).
+	KeyProvider KeyProvider
 }
 
 // Store is one Combat History file. All methods are safe for concurrent use.
@@ -82,6 +107,9 @@ type Store struct {
 	build    buildinfo.Identity
 	protocol string
 	master   string
+	provider KeyProvider
+	// key is the unsealed database key, kept for the connections the pool opens; Close clears it.
+	key []byte
 
 	mu       sync.Mutex
 	status   Status
@@ -104,7 +132,10 @@ func DefaultPath() (string, error) {
 // Open opens or creates the history file at options.Path. It always returns a Store: when the file cannot be recorded into,
 // the Store says why in Status and, where it can, still answers queries. The error describes the same problem.
 func Open(options Options) (*Store, error) {
-	store := &Store{path: options.Path, location: options.Location, now: options.Now, protocol: options.ProtocolSchema, master: options.MasterSHA256}
+	store := &Store{path: options.Path, location: options.Location, now: options.Now, protocol: options.ProtocolSchema, master: options.MasterSHA256, provider: options.KeyProvider}
+	if store.provider == nil {
+		store.provider = defaultKeyProvider()
+	}
 	store.status.LatestSchemaVersion = latestVersion()
 	if store.location == nil {
 		store.location = time.Local
@@ -155,19 +186,58 @@ func (s *Store) open() error {
 		return err
 	}
 	s.lock = lock
-	db, err := sql.Open("sqlite", sqliteDSN(s.path, false))
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	kind, err := inspectFile(s.path)
+	if err != nil {
+		s.setStatus(StateUnavailable, ReasonOpenFailed)
+		return fmt.Errorf("inspect history: %w", err)
+	}
+	if kind == filePlain {
+		// A file of a build before encryption: only a WWlogs history is converted; any other SQLite file stays untouched.
+		if foreign, err := plaintextIsForeign(ctx, s.path); err != nil || foreign {
+			s.setStatus(StateUnavailable, ReasonNotHistory)
+			return errors.Join(errors.New("the file is not a WWlogs history file"), err)
+		}
+	}
+	if err := s.unlockKey(kind != fileOpaque); err != nil {
+		return err
+	}
+	if kind == filePlain {
+		if err := encryptPlaintextFile(ctx, s.path, s.key); err != nil {
+			var failed *migrationError
+			if errors.As(err, &failed) {
+				s.status.MigrationFailure = failed.reason
+			}
+			// The plaintext file is unchanged and nothing is recorded into it; the next open tries again. Its rows cannot be
+			// read either: they are at an older schema that only the migration after the conversion brings up to date.
+			s.status.PlaintextMigration = PlaintextFailed
+			s.setStatus(StateUnavailable, ReasonEncryptionMigration)
+			return err
+		}
+		s.status.PlaintextMigration = PlaintextConverted
+	}
+	for _, backup := range plaintextBackups(s.path) {
+		if encryptPlaintextFile(ctx, backup, s.key) != nil {
+			s.status.PlaintextBackups++
+		}
+	}
+	db, err := openEncrypted(s.path, s.key, false)
 	if err != nil {
 		s.setStatus(StateUnavailable, ReasonOpenFailed)
 		return fmt.Errorf("open history: %w", err)
 	}
 	s.db = db
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
 	identity, err := readIdentity(ctx, db)
 	if err != nil {
+		if isNotADatabase(err) {
+			s.setStatus(StateUnavailable, ReasonKeyMismatch)
+			return errors.New("the history key does not open the history file")
+		}
 		s.setStatus(StateUnavailable, ReasonOpenFailed)
 		return err
 	}
+	s.status.Encrypted, s.status.Encryption, s.status.KeyProtection = true, encryptionName, s.provider.ID()
 	switch {
 	case identity.empty():
 		// A new file: nothing to keep, so it is created at the latest schema directly.
@@ -204,53 +274,106 @@ func (s *Store) open() error {
 	return nil
 }
 
-// openReadOnly opens the file for queries only.
+// unlockKey unseals the history key, creating one only when allowed: never for an encrypted file that lost its key file.
+func (s *Store) unlockKey(create bool) error {
+	key, err := loadKey(s.path, s.provider, create)
+	switch {
+	case errors.Is(err, errKeyMissing):
+		s.setStatus(StateUnavailable, ReasonKeyMissing)
+		return err
+	case err != nil:
+		s.setStatus(StateUnavailable, ReasonKeyUnavailable)
+		return err
+	}
+	s.key = key
+	return nil
+}
+
+// plaintextIsForeign reports a plaintext SQLite file that is neither empty nor a WWlogs history.
+func plaintextIsForeign(ctx context.Context, path string) (bool, error) {
+	db, err := openPlain(path, true)
+	if err != nil {
+		return false, err
+	}
+	defer db.Close()
+	identity, err := readIdentity(ctx, db)
+	if err != nil {
+		return false, err
+	}
+	return !identity.empty() && identity.applicationID != applicationID, nil
+}
+
+// openPlaintextReadOnly reads a plaintext file of an earlier build without changing it.
+func (s *Store) openPlaintextReadOnly(ctx context.Context, reason string) error {
+	db, err := openPlain(s.path, true)
+	if err != nil {
+		s.setStatus(StateUnavailable, reason)
+		return fmt.Errorf("open plaintext history read-only: %w", err)
+	}
+	return s.adoptReadOnly(ctx, db, reason)
+}
+
+// openReadOnly opens the file for queries only: encrypted with its existing key, or a plaintext file of an earlier build.
 func (s *Store) openReadOnly(reason string) error {
-	db, err := sql.Open("sqlite", sqliteDSN(s.path, true))
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	kind, err := inspectFile(s.path)
+	if err != nil {
+		s.setStatus(StateUnavailable, reason)
+		return err
+	}
+	if kind == filePlain {
+		s.status.PlaintextMigration = PlaintextPending
+		if err := s.openPlaintextReadOnly(ctx, reason); err != nil {
+			return err
+		}
+		return s.readOnlyResult(reason)
+	}
+	key, err := loadKey(s.path, s.provider, false)
+	if err != nil {
+		s.setStatus(StateUnavailable, reason)
+		return errors.Join(err, errors.New("the history file cannot be read"))
+	}
+	s.key = key
+	db, err := openEncrypted(s.path, key, true)
 	if err != nil {
 		s.setStatus(StateUnavailable, reason)
 		return fmt.Errorf("open history read-only: %w", err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+	if err := s.adoptReadOnly(ctx, db, reason); err != nil {
+		return err
+	}
+	s.status.Encrypted, s.status.Encryption, s.status.KeyProtection = true, encryptionName, s.provider.ID()
+	return s.readOnlyResult(reason)
+}
+
+// adoptReadOnly keeps db for queries when it is a history this build reads.
+func (s *Store) adoptReadOnly(ctx context.Context, db *sql.DB, reason string) error {
 	identity, err := readIdentity(ctx, db)
 	if err != nil || identity.applicationID != applicationID {
 		_ = db.Close()
 		s.setStatus(StateUnavailable, reason)
 		return errors.Join(err, errors.New("the history file cannot be read"))
 	}
-	if identity.version < 1 || identity.version > latestVersion() {
-		// A newer schema may have changed what this build reads; it only lists that the file exists.
+	if identity.version != latestVersion() {
+		// A newer schema may have changed what this build reads, and an older one lacks what its queries read until it is
+		// migrated, which a read-only open never does: the store only lists that the file exists.
 		s.db = db
 		s.status.SchemaVersion = identity.version
 		s.setStatus(StateUnavailable, reason)
-		return fmt.Errorf("history schema %d is not readable by this build (latest %d)", identity.version, latestVersion())
+		return fmt.Errorf("history schema %d is not readable by this build without migrating it (latest %d)", identity.version, latestVersion())
 	}
 	s.db = db
 	s.status.SchemaVersion = identity.version
 	s.setStatus(StateReadOnly, reason)
+	return nil
+}
+
+func (s *Store) readOnlyResult(reason string) error {
 	if reason == ReasonLocked {
 		return errLocked
 	}
-	return fmt.Errorf("history schema %d is read-only for this build", identity.version)
-}
-
-// sqliteDSN opens path with the pragmas every connection needs. Writers take the write lock when a transaction begins, so
-// two writers never deadlock upgrading a read lock.
-func sqliteDSN(path string, readOnly bool) string {
-	absolute, err := filepath.Abs(path)
-	if err != nil {
-		absolute = path
-	}
-	uriPath := filepath.ToSlash(absolute)
-	if len(uriPath) >= 2 && uriPath[1] == ':' {
-		uriPath = "/" + uriPath
-	}
-	dsn := (&url.URL{Scheme: "file", Path: uriPath}).String()
-	if readOnly {
-		return dsn + "?mode=ro&_pragma=busy_timeout(5000)&_pragma=query_only(1)"
-	}
-	return dsn + "?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_pragma=synchronous(NORMAL)&_txlock=immediate"
+	return fmt.Errorf("history schema %d is read-only for this build", s.status.SchemaVersion)
 }
 
 type fileIdentity struct {
@@ -290,8 +413,9 @@ func quickCheck(ctx context.Context, db *sql.DB) error {
 // lose what was stored; each step then runs in its own transaction and records itself.
 func (s *Store) migrate(ctx context.Context, identity fileIdentity) error {
 	if !identity.empty() {
+		// The copy is encrypted with the same key: a pre-migration copy never exists in plaintext.
 		backup := s.path + ".schema-" + strconv.Itoa(identity.version) + "-" + s.now().UTC().Format("20060102T150405Z") + ".bak"
-		if _, err := s.db.ExecContext(ctx, "VACUUM INTO ?", backup); err != nil {
+		if err := backupEncrypted(ctx, s.db, backup, s.key); err != nil {
 			return fmt.Errorf("back up history before migration: %w", err)
 		}
 	}
@@ -422,6 +546,8 @@ func (s *Store) closeHandles() error {
 	}
 	s.lock.release()
 	s.lock = nil
+	clear(s.key)
+	s.key = nil
 	return err
 }
 
