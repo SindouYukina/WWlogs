@@ -87,7 +87,8 @@
     "key_missing": "歷史檔案存在，但其金鑰檔案遺失。檔案未被變更，也不會記錄歷史。請還原 combat-history.key 才能讀取。",
     "key_unavailable": "Windows 無法為這個使用者解開歷史金鑰。檔案未被變更，也不會記錄歷史。",
     "key_mismatch": "歷史金鑰無法開啟這個歷史檔案。檔案未被變更，也不會記錄歷史。",
-    "encryption_migration_failed": "現有的未加密歷史無法完成加密。檔案保持原樣，也不會記錄歷史；WWlogs 會在下次啟動時重試。"
+    "encryption_migration_failed": "現有的未加密歷史無法完成加密。檔案保持原樣，也不會記錄歷史；WWlogs 會在下次啟動時重試。",
+    "duplicate_source": "這個擷取檔案已在歷史中，因此不會再次保存。"
   },
   "localEncrypted": "戰鬥歷史只保存在這台電腦上，並以 Windows 為你的使用者帳戶保護的金鑰加密。",
   "indicator": {
@@ -100,7 +101,8 @@
     "readOnly": "歷史僅供讀取",
     "writeFailed": "歷史儲存失敗",
     "unavailable": "無法使用歷史",
-    "lost": "本次擷取有 {{n}} 筆歷史項目未能儲存，相關的戰鬥已標示為不完整。"
+    "lost": "本次擷取有 {{n}} 筆歷史項目未能儲存，相關的戰鬥已標示為不完整。",
+    "notRecorded": "本次擷取未記錄"
   },
   "incompleteReason": {
     "entries_lost": "這筆紀錄有部分內容未能保存，保存的數值可能低於實際情況。",

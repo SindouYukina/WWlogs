@@ -8,6 +8,7 @@ import (
 
 	"wwlogs/internal/capture"
 	"wwlogs/internal/history"
+	"wwlogs/internal/service"
 )
 
 func TestHistoryIndicatorStates(t *testing.T) {
@@ -17,6 +18,7 @@ func TestHistoryIndicatorStates(t *testing.T) {
 		enabled bool
 		store   history.Status
 		running bool
+		begin   string
 		journal capture.HistoryRecordingState
 		health  history.RecorderHealth
 		want    string
@@ -30,9 +32,12 @@ func TestHistoryIndicatorStates(t *testing.T) {
 		{name: "storage stopped", enabled: true, store: ready, running: true, journal: capture.HistoryRecordingState{Enabled: true, Recording: true}, health: history.RecorderHealth{Stopped: true, Lost: 9}, want: historyWriteFailed, reason: history.ReasonStorageStopped},
 		{name: "key unavailable", enabled: true, store: history.Status{State: history.StateUnavailable, Reason: history.ReasonKeyUnavailable}, want: historyUnavailable, reason: history.ReasonKeyUnavailable},
 		{name: "another process records", enabled: false, store: history.Status{State: history.StateReadOnly, Reason: history.ReasonLocked, Encrypted: true}, want: historyReadOnly, reason: history.ReasonLocked},
+		{name: "the capture could not begin its history", enabled: true, store: ready, running: true, begin: service.HistoryUnavailable, want: historyNotRecorded, reason: history.ReasonOpenFailed},
+		{name: "the replayed file is already stored", enabled: true, store: ready, running: true, begin: service.HistoryDuplicate, want: historyNotRecorded, reason: service.HistoryDuplicate},
+		{name: "a begin failure of a stopped capture is over", enabled: true, store: ready, begin: service.HistoryUnavailable, want: historyWaiting},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			got := historyIndicatorOf(test.enabled, test.store, test.running, test.journal, test.health)
+			got := historyIndicatorOf(test.enabled, test.store, test.running, test.begin, test.journal, test.health)
 			if got.State != test.want || got.Reason != test.reason || got.Enabled != test.enabled || got.Encrypted != test.store.Encrypted {
 				t.Fatalf("indicator = %+v, want %s/%s", got, test.want, test.reason)
 			}
@@ -41,11 +46,11 @@ func TestHistoryIndicatorStates(t *testing.T) {
 			}
 		})
 	}
-	failed := historyIndicatorOf(true, history.Status{State: history.StateUnavailable, Reason: history.ReasonEncryptionMigration, MigrationFailure: history.MigrationInsufficientSpace}, false, capture.HistoryRecordingState{}, history.RecorderHealth{})
+	failed := historyIndicatorOf(true, history.Status{State: history.StateUnavailable, Reason: history.ReasonEncryptionMigration, MigrationFailure: history.MigrationInsufficientSpace}, false, "", capture.HistoryRecordingState{}, history.RecorderHealth{})
 	if failed.MigrationFailure != history.MigrationInsufficientSpace {
 		t.Fatalf("migration failure = %+v", failed)
 	}
-	converted := historyIndicatorOf(true, history.Status{State: history.StateReady, Encrypted: true, PlaintextMigration: history.PlaintextConverted}, false, capture.HistoryRecordingState{}, history.RecorderHealth{})
+	converted := historyIndicatorOf(true, history.Status{State: history.StateReady, Encrypted: true, PlaintextMigration: history.PlaintextConverted}, false, "", capture.HistoryRecordingState{}, history.RecorderHealth{})
 	if !converted.PlaintextConverted {
 		t.Fatalf("conversion notice = %+v", converted)
 	}
