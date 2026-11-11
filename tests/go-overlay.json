@@ -321,6 +321,8 @@
     "internal/history/central_replay_test.go": "tests/history/replay_test.go",
     "tests/history/effects_spans_test.go": "",
     "internal/history/central_effects_spans_test.go": "tests/history/effects_spans_test.go",
+    "tests/history/encryption_test.go": "",
+    "internal/history/central_encryption_test.go": "tests/history/encryption_test.go",
     "tests/service/capture_history_test.go": "",
     "internal/service/central_capture_history_test.go": "tests/service/capture_history_test.go",
     "tests/desktop/history_test.go": "",

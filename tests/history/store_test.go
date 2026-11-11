@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"errors"
+	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -16,6 +17,16 @@ import (
 	"wwlogs/internal/buildinfo"
 	"wwlogs/internal/capture"
 )
+
+// plainDSN opens path as builds before history encryption did: plaintext SQLite through modernc.org/sqlite, in WAL mode.
+func plainDSN(path string) string {
+	absolute, _ := filepath.Abs(path)
+	uriPath := filepath.ToSlash(absolute)
+	if len(uriPath) >= 2 && uriPath[1] == ':' {
+		uriPath = "/" + uriPath
+	}
+	return (&url.URL{Scheme: "file", Path: uriPath}).String() + "?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_txlock=immediate"
+}
 
 var testBuild = buildinfo.Identity{Version: "v0.7.0", BuildNumber: 0, Commit: "0123456789abcdef0123456789abcdef01234567", Dirty: "false", Profile: buildinfo.ProfilePublic}
 
@@ -96,7 +107,7 @@ var liveStart = SessionStart{Source: SourceLive, Level: capture.HistoryEvents}
 func TestOpenCreatesLatestSchema(t *testing.T) {
 	store := openTestStore(t, testPath(t), nil)
 	status := store.Status()
-	if status.State != StateReady || status.SchemaVersion != latestVersion() || status.Encrypted {
+	if status.State != StateReady || status.SchemaVersion != latestVersion() || !status.Encrypted || status.Encryption != "aes-256-xts" || status.KeyProtection != "dpapi-user" {
 		t.Fatalf("status = %+v", status)
 	}
 	var mode string
@@ -417,7 +428,7 @@ func createSchemaOne(t *testing.T, path string) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	db, err := sql.Open("sqlite", sqliteDSN(path, false))
+	db, err := sql.Open("sqlite", plainDSN(path))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -533,7 +544,7 @@ func TestForeignFileIsNotTouched(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	db, err := sql.Open("sqlite", sqliteDSN(path, false))
+	db, err := sql.Open("sqlite", plainDSN(path))
 	if err != nil {
 		t.Fatal(err)
 	}
