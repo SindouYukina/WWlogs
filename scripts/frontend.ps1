@@ -1,14 +1,16 @@
 <#
 .SYNOPSIS
-  Typecheck or build the WWlogs frontend with the pinned Node.js and npm toolchain.
+  Typecheck or build the WWlogs frontend with the system Node.js and npm.
 
 .DESCRIPTION
   Copies the frontend sources to a temporary directory outside the repository, installs the exact dependencies from
   frontend/package-lock.json there with `npm ci`, and runs the typecheck or the production build. Nothing is installed
   or built inside the repository. The build output goes to -OutDir, which must be outside the repository.
 
-  Node.js is taken from $env:WWLOGS_NODE_HOME, the versioned local WWlogs toolchain, or PATH.
-  Node.js and npm must match frontend/package.json.
+  Node.js is the system installation on PATH (or the directory named by $env:WWLOGS_NODE_HOME), and npm is the npm
+  command on PATH, which a global npm upgrade places ahead of the copy bundled with Node.js. Their versions must fall in
+  the ranges of frontend/package.json "engines" (">=X.Y.Z <M"): a patch or minor upgrade of the system tools needs no
+  repository change, and a new major version stops the build until it is verified and the range is widened.
 #>
 param(
     [ValidateSet('Typecheck', 'Build')]
@@ -24,35 +26,52 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).ProviderPath
 $frontend = Join-Path $repoRoot 'frontend'
 $engines = (Get-Content -LiteralPath (Join-Path $frontend 'package.json') -Raw | ConvertFrom-Json).engines
-$pinnedNode = "node-v$($engines.node)-win-x64"
 
-function Resolve-NodeHome {
-    $candidates = @()
-    if ($env:WWLOGS_NODE_HOME) { $candidates += $env:WWLOGS_NODE_HOME }
-    if ($env:LOCALAPPDATA) { $candidates += (Join-Path $env:LOCALAPPDATA "WWlogs\toolchain\$pinnedNode") }
-    foreach ($candidate in $candidates) {
-        if (Test-Path -LiteralPath (Join-Path $candidate 'node.exe') -PathType Leaf) { return $candidate }
+# A tool version must be at least the verified minimum and below the next major version: ">=X.Y.Z <M".
+function Assert-EngineRange([string]$Key, [string]$Name, [string]$Version, [string]$Where) {
+    $range = [string]$engines.$Key
+    if ($range -notmatch '^>=(\d+)\.(\d+)\.(\d+) <(\d+)$') { throw "frontend/package.json engines.$Key must have the form '>=X.Y.Z <M', found '$range'" }
+    $minimum = [version]::new([int]$Matches[1], [int]$Matches[2], [int]$Matches[3])
+    $nextMajor = [int]$Matches[4]
+    if ($Version -notmatch '^v?(\d+)\.(\d+)\.(\d+)') { throw "Cannot read the $Name version '$Version' at $Where" }
+    $found = [version]::new([int]$Matches[1], [int]$Matches[2], [int]$Matches[3])
+    if ($found -lt $minimum -or $found.Major -ge $nextMajor) {
+        throw "$Name $Version at $Where is outside '$range' (frontend/package.json engines.$Key). Upgrade the system $Name, or verify the new version with scripts/verify.ps1 and then change the range."
     }
-    $command = Get-Command node -ErrorAction SilentlyContinue
+}
+
+# Node.js is the system installation on PATH, unless WWLOGS_NODE_HOME names another Node.js directory.
+function Resolve-NodeHome {
+    if ($env:WWLOGS_NODE_HOME) {
+        if (Test-Path -LiteralPath (Join-Path $env:WWLOGS_NODE_HOME 'node.exe') -PathType Leaf) { return $env:WWLOGS_NODE_HOME }
+        throw "WWLOGS_NODE_HOME does not contain node.exe: $env:WWLOGS_NODE_HOME"
+    }
+    $command = Get-Command node -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($command) { return (Split-Path -Parent $command.Source) }
-    throw "Node.js was not found. Install $pinnedNode under %LOCALAPPDATA%\WWlogs\toolchain or set WWLOGS_NODE_HOME"
+    throw "Node.js was not found on PATH. Install Node.js $($engines.node) or set WWLOGS_NODE_HOME"
+}
+
+# npm is the npm command on PATH (with WWLOGS_NODE_HOME, the copy in that directory). It runs through its npm-cli.js, as
+# npm.cmd does, because npm.cmd prints path warnings on UNC checkouts.
+function Resolve-NpmCli([string]$NodeHome) {
+    $directories = @()
+    if (-not $env:WWLOGS_NODE_HOME) { $directories += @(Get-Command npm -All -ErrorAction SilentlyContinue | ForEach-Object { Split-Path -Parent $_.Source }) }
+    $directories += $NodeHome
+    foreach ($directory in $directories) {
+        $cli = Join-Path $directory 'node_modules/npm/bin/npm-cli.js'
+        if (Test-Path -LiteralPath $cli -PathType Leaf) { return $cli }
+    }
+    throw "npm was not found on PATH. Install npm $($engines.npm)"
 }
 
 $nodeHome = Resolve-NodeHome
 $node = Join-Path $nodeHome 'node.exe'
-$npm = Join-Path $nodeHome 'node_modules/npm/bin/npm-cli.js'
 $nodeVersion = (& $node --version).Trim()
-if ($nodeVersion -ne "v$($engines.node)") {
-    throw "Expected Node.js v$($engines.node), found $nodeVersion at $nodeHome"
-}
-if (-not (Test-Path -LiteralPath $npm -PathType Leaf)) {
-    throw "Install npm $($engines.npm) in the selected Node.js directory"
-}
+Assert-EngineRange 'node' 'Node.js' $nodeVersion $nodeHome
+$npm = Resolve-NpmCli $nodeHome
 $env:PATH = "$nodeHome;$env:PATH"
 $npmVersion = (& $node $npm --version).Trim()
-if ($npmVersion -ne $engines.npm) {
-    throw "Expected npm $($engines.npm), found $npmVersion at $nodeHome"
-}
+Assert-EngineRange 'npm' 'npm' $npmVersion $npm
 & $node (Join-Path $repoRoot 'frontend/locales/validate.mjs')
 if ($LASTEXITCODE -ne 0) { throw 'Bundled localization validation failed' }
 
@@ -86,7 +105,7 @@ try {
         if ($Action -eq 'Typecheck') {
             & $node $npm run --silent typecheck
             if ($LASTEXITCODE -ne 0) { throw "typecheck failed ($LASTEXITCODE)" }
-            Write-Host "Frontend typecheck: PASS (Node.js $nodeVersion)"
+            Write-Host "Frontend typecheck: PASS (Node.js $nodeVersion, npm $npmVersion)"
         } else {
             & $node $npm run --silent typecheck
             if ($LASTEXITCODE -ne 0) { throw "typecheck failed ($LASTEXITCODE)" }
@@ -103,7 +122,7 @@ try {
             if ($Profile -eq 'Public' -and (Get-ChildItem -LiteralPath $OutDir -Recurse -File | Where-Object { $_.Name -match '^ShowcaseApp' -or ($_.Extension -in '.js', '.css', '.html' -and (Select-String -LiteralPath $_.FullName -SimpleMatch -Quiet -Pattern $developmentMarkers)) })) {
                 throw 'The Public frontend output contains Development-only Showcase material'
             }
-            Write-Host "Frontend build ($Profile): PASS (Node.js $nodeVersion) -> $OutDir"
+            Write-Host "Frontend build ($Profile): PASS (Node.js $nodeVersion, npm $npmVersion) -> $OutDir"
         }
     } finally {
         Pop-Location
