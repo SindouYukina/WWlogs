@@ -39,7 +39,7 @@ export function RoleBoard({ rows, selected, onSelect, scope, stale, numberMode, 
   const format = useFormatters()
   const nameOf = useRowNames()
   return <StackList items={rows} keyOf={row => row.key} rowHeight={58} gap={6} renderItem={row => <div className="ww-dash-role" data-key={row.key} data-rank={row.rank} data-field={row.kind === "vehicle" ? "vehicle" : undefined} data-selected={row.key === selected} data-element={row.elementId} role="button" tabIndex={0} onClick={() => onSelect(row.key)} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") onSelect(row.key) }}>
-    <CharacterAvatar roleId={row.roleId} elementId={row.elementId} size={42} fallback={row.kind === "vehicle" ? <Icon name="bolt" size={18} /> : "?"} />
+    <CharacterAvatar roleId={row.staticRoleId} elementId={row.elementId} size={42} fallback={row.kind === "vehicle" ? <Icon name="bolt" size={18} /> : "?"} />
     <div className="ww-dash-role-main">
       <div className="ww-dash-role-line"><strong className="ww-truncate">{nameOf(row)}</strong><span className="ww-num ww-dash-role-dps"><AnimatedNumber value={row.dps} format={format.integer} mode={numberMode} scope={scope} stale={stale} /></span></div>
       <DamageBar share={row.share} scope={scope} enter={enter ? row.rank : undefined} />
@@ -203,7 +203,7 @@ export function DashboardView({ data, theme, numberMode = "tween", actions, deta
           </div>
           {completeness?.roleAttributionComplete === false && <p className="ww-dash-warning" data-field="attribution-incomplete">{c("attributionIncomplete")}</p>}
           {completeness !== undefined && completeness.unknownOwnershipEvents > 0 && <p className="ww-dash-warning" data-field="unknown-ownership-note">{t("unknownOwnershipNote", { ns: "common", value: format.integer(completeness.unknownOwnershipDamage) })}</p>}
-          {selected?.roleId !== undefined && <ContentSwitch contentKey={selected.key} className="ww-dash-portrait"><GameAssetImage kind="character-portrait" id={selected.roleId} /></ContentSwitch>}
+          {selected?.staticRoleId !== undefined && <ContentSwitch contentKey={selected.key} className="ww-dash-portrait"><GameAssetImage kind="character-portrait" id={selected.staticRoleId} /></ContentSwitch>}
         </Card>
       </Reveal>
       <Reveal index={5} className="ww-dash-detail-wrap">

@@ -67,9 +67,16 @@ func TestDisplayResolverNamesATrialRoleByItsParent(t *testing.T) {
 		if element := resolver.RoleElement(ctx, id); element != 5 {
 			t.Fatalf("role %d element = %d, want the parent's 5", id, element)
 		}
+		// The character art follows the same relation: a trial character shows its parent's avatar and portrait.
+		if static := resolver.StaticRole(ctx, id); static != 1512 {
+			t.Fatalf("role %d static role = %d, want 1512", id, static)
+		}
 	}
 	if name, _ := resolver.Resolve(ctx, "role", 99999999, "zh-TW"); name.Status != "UNKNOWN" {
 		t.Fatalf("an unknown role was named: %+v", name)
+	}
+	if static := resolver.StaticRole(ctx, 99999999); static != 99999999 {
+		t.Fatalf("a role that is not a trial must keep its own art, got %d", static)
 	}
 	// The trial relation is a role relation only: no other name kind follows it.
 	if name, _ := resolver.Resolve(ctx, "monster", 15127004, "zh-TW"); name.Status != "UNKNOWN" {

@@ -431,7 +431,7 @@ const TimelineCard = memo(function TimelineCard({ detail, analysis, lanes, lines
       const who = wholeRows.find(row => row.key === contributor)
       const label = contributor === unassignedContributor
         ? <span className="ww-itl-who"><span className="ww-itl-who-mark" aria-hidden="true"><Icon name="question" size={12} /></span><span className="ww-truncate">{unassignedHits}</span></span>
-        : <span className="ww-itl-who"><CharacterAvatar roleId={who?.roleId} elementId={who?.elementId} size={22} fallback={who?.kind === "vehicle" ? <Icon name="bolt" size={12} /> : "?"} /><span className="ww-truncate">{who ? nameOf(who) : contributor}</span></span>
+        : <span className="ww-itl-who"><CharacterAvatar roleId={who?.staticRoleId} elementId={who?.elementId} size={22} fallback={who?.kind === "vehicle" ? <Icon name="bolt" size={12} /> : "?"} /><span className="ww-truncate">{who ? nameOf(who) : contributor}</span></span>
       out.push({ rows, track: { kind: "hits", key: `hits:${contributor}`, label, color: who ? elementColor(who.elementId) : undefined,
         series: rows.map(row => ({ key: row.skillRow || `${contributor}:${row.skillId}`, icon: row.skillRow ? faces.get(row.skillRow)?.icon ?? null : null, atMs: row.atMs })) } })
     }

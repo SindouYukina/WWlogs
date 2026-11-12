@@ -130,6 +130,57 @@ func TestDisplayProjectionKeepsTheEnginesRankingContract(t *testing.T) {
 	}
 }
 
+// A trial character is shown like the role it plays: its row carries the parent's RoleId for images, in the live view and in
+// a stored encounter (History reads it through the same encounter projection), while the row's own RoleId and its numbers
+// stay as recorded.
+func TestDisplayProjectionGivesATrialRoleItsParentsArt(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "master.db")
+	db, _ := sql.Open("sqlite", path)
+	for _, statement := range []string{
+		"CREATE TABLE roleinfo_locale (id TEXT,locale TEXT,name TEXT,PRIMARY KEY(id,locale))",
+		"CREATE TABLE roleinfo (id TEXT PRIMARY KEY,element_id TEXT)",
+		"CREATE TABLE trialroleinfo (id TEXT PRIMARY KEY,group_id TEXT,type INTEGER,parent_role_id TEXT)",
+		"INSERT INTO roleinfo VALUES('1312','6')",
+		"INSERT INTO roleinfo_locale VALUES('1312','zh-TW','鎖暝'),('1312','en-US','Fixture role')",
+		"INSERT INTO trialroleinfo VALUES('13127004','13127004',1,'1312')",
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	db.Close()
+	resolver, err := capture.OpenDisplayResolver(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resolver.Close()
+	store := loadSettings(filepath.Join(t.TempDir(), "settings.json"), testLocaleCatalog())
+	view := capture.ViewSnapshot{Roles: []capture.ViewRole{{RoleID: 13127004, DamageDealt: 900}, {RoleID: 1312, DamageDealt: 400}, {RoleID: 77}}}
+	raw, err := (&displayProjection{resolver: resolver}).encode(&service.Snapshot{Sequence: 3, View: &view}, store.current(), testLocaleCatalog(), service.ListeningStatus{}, OverlayStates{}, historyIndicator{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var shown struct{ View capture.ViewSnapshot }
+	if err := json.Unmarshal(raw, &shown); err != nil {
+		t.Fatal(err)
+	}
+	trial, owned, unknown := shown.View.Roles[0], shown.View.Roles[1], shown.View.Roles[2]
+	if trial.RoleID != 13127004 || trial.StaticRoleID != 1312 || trial.Name != "Fixture role" || trial.ElementID != 6 || trial.DamageDealt != 900 {
+		t.Fatalf("trial role row = %+v, want its own RoleId and numbers with the parent's art, name and element", trial)
+	}
+	if owned.StaticRoleID != 1312 || unknown.StaticRoleID != 77 {
+		t.Fatalf("a role that is not a trial keeps its own art: %+v %+v", owned, unknown)
+	}
+	if view.Roles[0].StaticRoleID != 0 {
+		t.Fatal("projection mutated the core snapshot")
+	}
+	encounter := capture.ViewEncounter{Roles: []capture.ViewRole{{RoleID: 13127004}}}
+	(&nameProjection{ctx: t.Context(), resolver: resolver, locale: "zh-TW"}).encounter(&encounter)
+	if encounter.Roles[0].StaticRoleID != 1312 {
+		t.Fatalf("stored encounter role = %+v, want the parent's art", encounter.Roles[0])
+	}
+}
+
 func TestShellChangeReencodesWithoutTouchingCoreSequence(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "master.db")
 	db, _ := sql.Open("sqlite", path)
