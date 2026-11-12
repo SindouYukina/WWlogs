@@ -278,12 +278,15 @@ body[data-view="overlay"][data-editing="true"] { --wails-draggable: drag; }
 .ww-atl-time-track > span { position: absolute; top: 2px; transform: translateX(-50%); white-space: nowrap; }
 
 /* Effect lanes: the label column is the shared gutter; an interval's look says how it is known. */
-.ww-lanes { min-width: 0; }
+.ww-lanes { position: relative; min-width: 0; }
 /* The lanes keep exactly the width of the DPS plot above them: a scrollbar would narrow them and shift every moment, so the
    list scrolls by wheel and focus, and a fade at its edge says that more rows follow. */
 .ww-lanes-scroll { position: relative; overflow-y: auto; scrollbar-width: none; }
 .ww-lanes-scroll::-webkit-scrollbar { display: none; }
-.ww-lanes[data-more="true"] .ww-lanes-scroll { mask-image: linear-gradient(to bottom, black calc(100% - 28px), transparent); }
+/* The fade of a track list that has more rows below is painted over the rows in the card's own color, never cut out of
+   them with a CSS mask: a mask needs its own render surface and GPU programs, and the first frame that shows one in a
+   new WebView2 profile stalls 55-70 ms while they compile (measured on the first scroll to the icon timeline). */
+.ww-lanes[data-more="true"]::after, .ww-itl[data-more="true"]::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; z-index: 3; height: 28px; pointer-events: none; background: linear-gradient(to bottom, transparent, color-mix(in oklab, var(--ww-surface-1) var(--ww-card-opacity), transparent)); }
 .ww-lanes-inner { position: relative; }
 .ww-lanes-overlay { position: absolute; inset: 0 0 0 var(--ww-analysis-gutter); pointer-events: none; z-index: 1; }
 .ww-lane { position: absolute; top: 0; left: 0; right: 0; height: var(--ww-lane-height); display: grid; grid-template-columns: var(--ww-analysis-gutter) minmax(0, 1fr); --ww-lane-color: var(--ww-ink-400); }
@@ -341,7 +344,6 @@ body[data-view="overlay"][data-editing="true"] { --wails-draggable: drag; }
    view are mounted. Group headers span the card; the overlay draws gaps, the range, a drag and the pointer moment. */
 .ww-itl { position: relative; min-width: 0; }
 .ww-itl-scroll { position: relative; overflow-x: hidden; overflow-y: auto; scrollbar-width: thin; }
-.ww-itl[data-more="true"] .ww-itl-scroll { mask-image: linear-gradient(to bottom, black calc(100% - 28px), transparent); }
 .ww-itl-body { position: relative; display: grid; grid-template-columns: var(--ww-analysis-gutter) minmax(0, 1fr); }
 .ww-itl-labels, .ww-itl-tracks { position: relative; min-width: 0; }
 .ww-itl-overlay { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
