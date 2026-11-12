@@ -216,7 +216,9 @@ export function AnalysisWorkspace({ detail, timelineMode: mode, setTimelineMode:
   const enemyOptions = useMemo(() => [{ value: "-1", label: a("allEnemies") }, ...(analysis?.enemies ?? []).filter(enemy => enemy.mapped).map(enemy => ({ value: String(enemy.ordinal), label: enemyLabel(enemy.ordinal) }))], [analysis?.enemies, enemyLabel, i18n.language])
   const setContributor = useCallback((key: string | null) => setQuery(q => ({ ...q, contributor: key && (key.startsWith("role-") || key.startsWith("vehicle-")) ? key : "", skillRow: "" })), [])
   const onRange = useCallback((from: number, to: number) => setQuery(q => rangeQuery(q, from, to, durationMs)), [durationMs])
-  const resetRange = useCallback(() => setQuery(q => ({ ...q, fromMs: 0, toMs: 0 })), [])
+  // The whole encounter again, with every filter kept. A query that already is the whole encounter stays the same object,
+  // so Escape or a click on the DPS lines without a range renders nothing and asks Go nothing.
+  const resetRange = useCallback(() => setQuery(q => q.fromMs === 0 && q.toMs === 0 ? q : { ...q, fromMs: 0, toMs: 0 }), [])
   const rangeLabel = range ? a("rangeValue", { from: formatMs(range.fromMs), to: formatMs(range.toMs) }) : a("fullRange")
   const selectedLabel = selected ? a("rangeValue", { from: formatMs(selected.fromMs), to: formatMs(selected.toMs) }) : a("fullRange")
   const selectedRow = query.contributor ? rowByKey.get(query.contributor) : undefined
@@ -363,8 +365,9 @@ interface TimelineCardProps {
  * The combat timeline card: the DPS lines over the encounter, then either the icon timeline (skill hits and effect bars
  * with their icons) or the precise effect lanes, two presentations of the same Go answers on one shared axis. Zooming and
  * panning (buttons, Ctrl+wheel, Shift+wheel, the overview bar) move every track together; dragging on the DPS lines selects
- * the range every number of the workspace describes. Switching the presentation keeps the range, the filters, the window
- * and the loaded data.
+ * the range every number of the workspace describes, and a click on them away from every line returns it to the whole
+ * encounter, as the reset button does, keeping the filters and the window. Switching the presentation keeps the range, the
+ * filters, the window and the loaded data.
  */
 const TimelineCard = memo(function TimelineCard({ detail, analysis, lanes, lines, query, setQuery, setContributor, selected, onRange, resetRange, focus, setFocus, actorName, enemyLabel, reveal, replay, mode, setMode, hits }: TimelineCardProps) {
   const { t } = useTranslation(["history", "dashboard", "common"])
