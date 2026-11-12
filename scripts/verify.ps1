@@ -152,12 +152,18 @@ try {
                 # embedded into both profiles, and the Public desktop executable is audited like the console one.
                 $frontendDist = Join-Path $buildDirectory 'frontend-dist'
                 $frontendDevelopmentDist = Join-Path $buildDirectory 'frontend-dist-development'
-                $frontendOutput = & (Join-Path $PSScriptRoot 'frontend.ps1') -Action Build -OutDir $frontendDist -Profile Public 2>&1 | Out-String
-                if ($LASTEXITCODE -eq 0) {
+                $frontendOutput = ''
+                $frontendStopped = $false
+                try {
+                    $frontendOutput = & (Join-Path $PSScriptRoot 'frontend.ps1') -Action Build -OutDir $frontendDist -Profile Public 2>&1 | Out-String
                     $frontendOutput += & (Join-Path $PSScriptRoot 'frontend.ps1') -Action Build -OutDir $frontendDevelopmentDist -Profile Development 2>&1 | Out-String
+                } catch {
+                    # frontend.ps1 stops with a terminating error: it is this step's result, not the end of the run.
+                    $frontendOutput += $_.Exception.Message
+                    $frontendStopped = $true
                 }
-                if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath (Join-Path $frontendDist 'index.html')) -or -not (Test-Path -LiteralPath (Join-Path $frontendDevelopmentDist 'index.html'))) {
-                    $state = if ($frontendOutput -match 'Node.js 24 was not found|is not 24\.x') { 'NOT RUN' } else { 'FAIL' }
+                if ($frontendStopped -or -not (Test-Path -LiteralPath (Join-Path $frontendDist 'index.html')) -or -not (Test-Path -LiteralPath (Join-Path $frontendDevelopmentDist 'index.html'))) {
+                    $state = if ($frontendOutput -match 'was not found on PATH') { 'NOT RUN' } else { 'FAIL' }
                     Set-Result 'frontend typecheck + build' $state $frontendOutput.Trim()
                     Set-Result 'desktop build + audit' 'NOT RUN' 'frontend build did not complete'
                 } else {

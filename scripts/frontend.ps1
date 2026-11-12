@@ -69,64 +69,72 @@ $node = Join-Path $nodeHome 'node.exe'
 $nodeVersion = (& $node --version).Trim()
 Assert-EngineRange 'node' 'Node.js' $nodeVersion $nodeHome
 $npm = Resolve-NpmCli $nodeHome
+# Child tools (npm scripts, vite) must find this Node.js first. The caller's PATH is restored on exit: verify.ps1 and
+# build.ps1 run this script once per profile in one process, and a leaked entry put the npm bundled with Node.js ahead
+# of a global npm upgrade on the second run.
+$callerPath = $env:PATH
 $env:PATH = "$nodeHome;$env:PATH"
-$npmVersion = (& $node $npm --version).Trim()
-Assert-EngineRange 'npm' 'npm' $npmVersion $npm
-& $node (Join-Path $repoRoot 'frontend/locales/validate.mjs')
-if ($LASTEXITCODE -ne 0) { throw 'Bundled localization validation failed' }
-
-# Pure formatting and trust-state checks use Node's built-in runner and tracked sources only.
-Push-Location $repoRoot
 try {
-    $testFiles = @(Get-ChildItem -LiteralPath 'tests/frontend' -Filter '*.test.mjs' | ForEach-Object { "tests/frontend/$($_.Name)" })
-    & $node --test @testFiles
-    if ($LASTEXITCODE -ne 0) { throw "frontend behavior tests failed ($LASTEXITCODE)" }
-} finally {
-    Pop-Location
-}
+    $npmVersion = (& $node $npm --version).Trim()
+    Assert-EngineRange 'npm' 'npm' $npmVersion $npm
+    & $node (Join-Path $repoRoot 'frontend/locales/validate.mjs')
+    if ($LASTEXITCODE -ne 0) { throw 'Bundled localization validation failed' }
 
-if ($Action -eq 'Build') {
-    if ($OutDir -eq '') { throw '-OutDir is required for Build' }
-    $OutDir = [IO.Path]::GetFullPath($OutDir)
-    if ($OutDir.StartsWith($repoRoot, [StringComparison]::OrdinalIgnoreCase)) {
-        throw "-OutDir must be outside the repository: $OutDir"
-    }
-}
-
-$work = Join-Path ([IO.Path]::GetTempPath()) ('wwlogs-frontend-' + [Guid]::NewGuid().ToString('N'))
-New-Item -ItemType Directory -Path $work | Out-Null
-try {
-    Get-ChildItem -LiteralPath $frontend -Force | Where-Object { $_.Name -notin @('node_modules', 'dist') } |
-        Copy-Item -Destination $work -Recurse
-    Push-Location $work
+    # Pure formatting and trust-state checks use Node's built-in runner and tracked sources only.
+    Push-Location $repoRoot
     try {
-        & $node $npm ci --strict-peer-deps --no-audit --no-fund --loglevel=error
-        if ($LASTEXITCODE -ne 0) { throw "npm ci failed ($LASTEXITCODE)" }
-        if ($Action -eq 'Typecheck') {
-            & $node $npm run --silent typecheck
-            if ($LASTEXITCODE -ne 0) { throw "typecheck failed ($LASTEXITCODE)" }
-            Write-Host "Frontend typecheck: PASS (Node.js $nodeVersion, npm $npmVersion)"
-        } else {
-            & $node $npm run --silent typecheck
-            if ($LASTEXITCODE -ne 0) { throw "typecheck failed ($LASTEXITCODE)" }
-            $env:WWLOGS_FRONTEND_PROFILE = $Profile.ToLowerInvariant()
-            try {
-                & ./node_modules/.bin/vite.cmd build --outDir $OutDir --emptyOutDir --logLevel warn
-                if ($LASTEXITCODE -ne 0) { throw "vite build failed ($LASTEXITCODE)" }
-            } finally {
-                Remove-Item Env:WWLOGS_FRONTEND_PROFILE -ErrorAction SilentlyContinue
-            }
-            if (-not (Test-Path -LiteralPath (Join-Path $OutDir 'index.html'))) { throw 'vite build produced no index.html' }
-            # Public output must not contain the Showcase, its mock data or its font tooling, whatever chunk they could land in.
-            $developmentMarkers = @('__wwShowcase', '/preview-fonts/', 'Mock adapter', 'mock-', 'font-recheck')
-            if ($Profile -eq 'Public' -and (Get-ChildItem -LiteralPath $OutDir -Recurse -File | Where-Object { $_.Name -match '^ShowcaseApp' -or ($_.Extension -in '.js', '.css', '.html' -and (Select-String -LiteralPath $_.FullName -SimpleMatch -Quiet -Pattern $developmentMarkers)) })) {
-                throw 'The Public frontend output contains Development-only Showcase material'
-            }
-            Write-Host "Frontend build ($Profile): PASS (Node.js $nodeVersion, npm $npmVersion) -> $OutDir"
-        }
+        $testFiles = @(Get-ChildItem -LiteralPath 'tests/frontend' -Filter '*.test.mjs' | ForEach-Object { "tests/frontend/$($_.Name)" })
+        & $node --test @testFiles
+        if ($LASTEXITCODE -ne 0) { throw "frontend behavior tests failed ($LASTEXITCODE)" }
     } finally {
         Pop-Location
     }
+
+    if ($Action -eq 'Build') {
+        if ($OutDir -eq '') { throw '-OutDir is required for Build' }
+        $OutDir = [IO.Path]::GetFullPath($OutDir)
+        if ($OutDir.StartsWith($repoRoot, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "-OutDir must be outside the repository: $OutDir"
+        }
+    }
+
+    $work = Join-Path ([IO.Path]::GetTempPath()) ('wwlogs-frontend-' + [Guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $work | Out-Null
+    try {
+        Get-ChildItem -LiteralPath $frontend -Force | Where-Object { $_.Name -notin @('node_modules', 'dist') } |
+            Copy-Item -Destination $work -Recurse
+        Push-Location $work
+        try {
+            & $node $npm ci --strict-peer-deps --no-audit --no-fund --loglevel=error
+            if ($LASTEXITCODE -ne 0) { throw "npm ci failed ($LASTEXITCODE)" }
+            if ($Action -eq 'Typecheck') {
+                & $node $npm run --silent typecheck
+                if ($LASTEXITCODE -ne 0) { throw "typecheck failed ($LASTEXITCODE)" }
+                Write-Host "Frontend typecheck: PASS (Node.js $nodeVersion, npm $npmVersion)"
+            } else {
+                & $node $npm run --silent typecheck
+                if ($LASTEXITCODE -ne 0) { throw "typecheck failed ($LASTEXITCODE)" }
+                $env:WWLOGS_FRONTEND_PROFILE = $Profile.ToLowerInvariant()
+                try {
+                    & ./node_modules/.bin/vite.cmd build --outDir $OutDir --emptyOutDir --logLevel warn
+                    if ($LASTEXITCODE -ne 0) { throw "vite build failed ($LASTEXITCODE)" }
+                } finally {
+                    Remove-Item Env:WWLOGS_FRONTEND_PROFILE -ErrorAction SilentlyContinue
+                }
+                if (-not (Test-Path -LiteralPath (Join-Path $OutDir 'index.html'))) { throw 'vite build produced no index.html' }
+                # Public output must not contain the Showcase, its mock data or its font tooling, whatever chunk they could land in.
+                $developmentMarkers = @('__wwShowcase', '/preview-fonts/', 'Mock adapter', 'mock-', 'font-recheck')
+                if ($Profile -eq 'Public' -and (Get-ChildItem -LiteralPath $OutDir -Recurse -File | Where-Object { $_.Name -match '^ShowcaseApp' -or ($_.Extension -in '.js', '.css', '.html' -and (Select-String -LiteralPath $_.FullName -SimpleMatch -Quiet -Pattern $developmentMarkers)) })) {
+                    throw 'The Public frontend output contains Development-only Showcase material'
+                }
+                Write-Host "Frontend build ($Profile): PASS (Node.js $nodeVersion, npm $npmVersion) -> $OutDir"
+            }
+        } finally {
+            Pop-Location
+        }
+    } finally {
+        Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
+    }
 } finally {
-    Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
+    $env:PATH = $callerPath
 }
