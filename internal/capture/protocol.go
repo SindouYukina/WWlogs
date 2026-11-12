@@ -131,7 +131,11 @@ type processor struct {
 	sessionGeneration uint64
 	sessionHealth     sessionHealthState
 	// protocol is the wire protocol of the current protocol session: decoded only once it reports the current game version.
-	protocol                  protocolSession
+	protocol protocolSession
+	// protocolSessionStartedAt is the capture time of the latest handshake; retiredKCP holds the conversations of the
+	// connections it superseded (retireSupersededStreams).
+	protocolSessionStartedAt  time.Time
+	retiredKCP                retiredConversations
 	pending                   map[uint64]pendingDamageRequest
 	pendingOrder              []pendingRef
 	pendingHead               int
@@ -440,6 +444,7 @@ func (p *processor) handleFrame(frame gameFrame) {
 			censusEntry.DecodedFrames++
 		}
 		p.sessionNumber++
+		p.protocolSessionStartedAt = frame.timestamp
 		// A new protocol session may come from another client build: its protocol is known only once it reports it.
 		p.protocol.beginSession()
 		p.playerRelevance.reset()

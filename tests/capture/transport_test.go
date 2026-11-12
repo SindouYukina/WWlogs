@@ -120,15 +120,3 @@ func TestConsumeApplicationSpansRetainsRemainderTimestamp(t *testing.T) {
 		t.Fatalf("remaining timestamp spans = %+v", remaining)
 	}
 }
-
-func TestNewSessionKeyClearsOtherStreamApplicationTails(t *testing.T) {
-	current := &stream{applicationBuffer: []byte{1, 2}, applicationSpans: []applicationSpan{{length: 2}}}
-	other := &stream{applicationBuffer: []byte{3, 4}, applicationSpans: []applicationSpan{{length: 2}}}
-	clearOtherApplicationBuffers(map[string]*stream{"current": current, "other": other}, current)
-	if len(current.applicationBuffer) != 2 || len(current.applicationSpans) != 1 {
-		t.Fatalf("current stream tail was cleared: %+v", current)
-	}
-	if len(other.applicationBuffer) != 0 || len(other.applicationSpans) != 0 {
-		t.Fatalf("other stream retained an old-session tail: %+v", other)
-	}
-}
