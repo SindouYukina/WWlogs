@@ -230,9 +230,14 @@ try {
                 if ($PcapDirectory -eq '') {
                     Set-Result 'replay: public output audit + statistics equality' 'NOT RUN' 'no -PcapDirectory'
                 } else {
-                    $pcaps = Get-ChildItem -LiteralPath $PcapDirectory -Filter *.pcap -Recurse
+                    $allPcaps = @(Get-ChildItem -LiteralPath $PcapDirectory -Filter *.pcap -Recurse)
                     $failures = @()
-                    foreach ($pcap in $pcaps) {
+                    # WWlogs decodes the current game version only. Every capture still goes through the output audit, but
+                    # only captures whose protocol session reported the current version form the corpus of steps 5 to 9;
+                    # older versions and captures without a handshake are counted as excluded, never decoded.
+                    $pcaps = @()
+                    $excluded = @{}
+                    foreach ($pcap in $allPcaps) {
                         $isolated = Join-Path $buildDirectory ("run-" + [Guid]::NewGuid().ToString('N'))
                         New-Item -ItemType Directory -Path $isolated | Out-Null
                         $before = @(Get-ChildItem -LiteralPath $isolated -Force -Recurse).Count
@@ -245,13 +250,23 @@ try {
                         $publicLine = ($publicOut | Where-Object { "$_" -like 'statistics_final *' }) -replace '^statistics_final ', ''
                         $developmentLine = ($developmentOut | Where-Object { "$_" -like 'statistics_final *' }) -replace '^statistics_final ', ''
                         if ($created -ne 0 -or -not $publicLine -or $publicLine -ne $developmentLine) { $failures += $pcap.Name }
+                        $protocolLine = "$($developmentOut | Where-Object { "$_" -like 'protocol_normalization *' } | Select-Object -Last 1)"
+                        $protocolStatus = if ($protocolLine -match 'status=(\S+) game_version=(\S+)') { "$($Matches[1]) $($Matches[2])" } else { 'missing' }
+                        if ($protocolStatus -like 'supported *') {
+                            $pcaps += $pcap
+                        } else {
+                            $excluded[$protocolStatus] = 1 + [int]$excluded[$protocolStatus]
+                            if ($protocolStatus -eq 'missing' -or $protocolLine -notmatch 'unknown_fields=0 wire_mismatches=0') { $failures += "$($pcap.Name) (protocol $protocolStatus)" }
+                        }
+                        if ($protocolStatus -like 'supported *' -and $protocolLine -notmatch 'unknown_fields=0 wire_mismatches=0 dropped_new_fields=\d+ translation_errors=0') { $failures += "$($pcap.Name) (protocol mismatch)" }
                     }
-                    Set-Result 'replay: public output audit + statistics equality' $(if ($pcaps.Count -gt 0 -and $failures.Count -eq 0) { 'PASS' } elseif ($pcaps.Count -eq 0) { 'NOT RUN' } else { 'FAIL' }) "$($pcaps.Count) captures$(if ($failures) { "; failed: $($failures -join ', ')" })"
+                    $excludedText = ($excluded.GetEnumerator() | Sort-Object Name | ForEach-Object { "$($_.Value) $($_.Name)" }) -join ', '
+                    Set-Result 'replay: public output audit + statistics equality' $(if ($allPcaps.Count -gt 0 -and $failures.Count -eq 0) { 'PASS' } elseif ($allPcaps.Count -eq 0) { 'NOT RUN' } else { 'FAIL' }) "$($allPcaps.Count) captures; current game version corpus $($pcaps.Count)$(if ($excludedText) { "; not decoded: $excludedText" })$(if ($failures) { "; failed: $($failures -join ', ')" })"
 
                     # 5. Encounter replay: every capture twice through the development test binary; segmentation and
                     # statistics must repeat exactly and the encounter partition must add up to the interval totals.
                     if ($pcaps.Count -eq 0) {
-                        Set-Result 'replay: encounter determinism + partition' 'NOT RUN' 'no captures'
+                        Set-Result 'replay: encounter determinism + partition' 'NOT RUN' 'no capture of the current game version'
                     } else {
                         $testBinary = Join-Path $buildDirectory 'capture-dev.test.exe'
                         $testBuild = Invoke-Go @('run', './scripts/embed-key.go', '-profile', 'development', '-test-binary', './internal/capture', '-o', $testBinary)

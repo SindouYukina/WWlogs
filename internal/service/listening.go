@@ -26,21 +26,24 @@ const (
 type ListeningReason string
 
 const (
-	ReasonCaptureOff           ListeningReason = "capture_off"
-	ReasonCaptureStarting      ListeningReason = "capture_starting"
-	ReasonCaptureFailed        ListeningReason = "capture_failed"
-	ReasonNoGameTraffic        ListeningReason = "no_game_traffic"
-	ReasonGameNotRunning       ListeningReason = "game_not_running"
-	ReasonHandshakeInProgress  ListeningReason = "handshake_in_progress"
-	ReasonTrafficWithoutKey    ListeningReason = "traffic_without_key"
-	ReasonAwaitingLogin        ListeningReason = "awaiting_login"
-	ReasonHandshakeFailed      ListeningReason = "handshake_failed"
-	ReasonDecryptFailing       ListeningReason = "decrypt_failing"
-	ReasonTransportUnrecovered ListeningReason = "transport_unrecoverable"
-	ReasonReceiving            ListeningReason = "receiving"
-	ReasonTransportRecovering  ListeningReason = "transport_recovering"
-	ReasonNoRecentFrames       ListeningReason = "no_recent_frames"
-	ReasonGameProcessEnded     ListeningReason = "game_process_ended"
+	ReasonCaptureOff          ListeningReason = "capture_off"
+	ReasonCaptureStarting     ListeningReason = "capture_starting"
+	ReasonCaptureFailed       ListeningReason = "capture_failed"
+	ReasonNoGameTraffic       ListeningReason = "no_game_traffic"
+	ReasonGameNotRunning      ListeningReason = "game_not_running"
+	ReasonHandshakeInProgress ListeningReason = "handshake_in_progress"
+	ReasonTrafficWithoutKey   ListeningReason = "traffic_without_key"
+	ReasonAwaitingLogin       ListeningReason = "awaiting_login"
+	ReasonHandshakeFailed     ListeningReason = "handshake_failed"
+	// ReasonUnsupportedGameVersion: the game reported a version other than the current one this WWlogs build decodes, or
+	// none it could read, so its combat frames are not decoded (capture.ProtocolStatusUnsupported).
+	ReasonUnsupportedGameVersion ListeningReason = "unsupported_game_version"
+	ReasonDecryptFailing         ListeningReason = "decrypt_failing"
+	ReasonTransportUnrecovered   ListeningReason = "transport_unrecoverable"
+	ReasonReceiving              ListeningReason = "receiving"
+	ReasonTransportRecovering    ListeningReason = "transport_recovering"
+	ReasonNoRecentFrames         ListeningReason = "no_recent_frames"
+	ReasonGameProcessEnded       ListeningReason = "game_process_ended"
 )
 
 // Thresholds come from research/topics/output/listening-status.md, measured over 41 captures (2.36 hours).
@@ -141,6 +144,14 @@ func (m *ListeningMonitor) classify(status Status, view *capture.ViewSnapshot, p
 	}
 	if health.ConsecutiveDecryptFailures >= listeningDecryptFailureLimit {
 		return ListeningError, ReasonDecryptFailing
+	}
+	switch health.Protocol.Status {
+	case capture.ProtocolStatusUnsupported:
+		// Frames arrive and decrypt, but no decoder can read this game version: that must not look like listening.
+		return ListeningError, ReasonUnsupportedGameVersion
+	case capture.ProtocolStatusPending:
+		// The login exchange is still in progress: the version report follows the key immediately.
+		return ListeningEstablishing, ReasonHandshakeInProgress
 	}
 	transport := view.Health.Transport.State
 	if transport == capture.TransportUnrecoverable {

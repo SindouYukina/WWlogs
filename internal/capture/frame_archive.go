@@ -2,7 +2,8 @@ package capture
 
 // frameArchiveSchemaVersion identifies the layout of frameArchiveRecord.
 // Bump it when a field changes meaning; readers must not mix versions.
-const frameArchiveSchemaVersion = 1
+// Version 2: DecodeStatus follows the protocol session (current game version only) and may be not_current_protocol.
+const frameArchiveSchemaVersion = 2
 
 // Decode statuses describe what the archive can say about a frame without
 // the session key or any plaintext. They do not describe semantic meaning.
@@ -11,6 +12,9 @@ const (
 	frameStatusEmptyBody   = "empty_body"
 	frameStatusImplemented = "implemented_command"
 	frameStatusUndecoded   = "undecoded_command"
+	// frameStatusNotCurrentProtocol: the protocol session has not reported the current game version, so no decoder
+	// reads the frame.
+	frameStatusNotCurrentProtocol = "not_current_protocol"
 )
 
 // frameArchiveRecord is one CRC-valid reassembled frame in processing order.

@@ -43,18 +43,10 @@ type semanticSkillFact struct {
 	showID  bool
 }
 
-var semanticEffectFacts = []semanticEffectFact{
-	// Monster Glacio on the local player's entity, with its real stack count.
-	{"LIVE_20261103_122337", 10010000, EffectPolarityDebuff, EffectTargetTeam, 7},
-	{"LIVE_20261109_121001", 10010000, EffectPolarityDebuff, EffectTargetTeam, 1},
-	// Aero Erosion and Havoc Bane the team puts on enemies.
-	{"LIVE_20261109_121001", 10041000, EffectPolarityDebuff, EffectTargetEnemy, 3},
-	{"LIVE_20261109_121001", 10061000, EffectPolarityDebuff, EffectTargetEnemy, 6},
-	// Team buffs the HUD draws with a BUFF arrow.
-	{"LIVE_20261109_121001", 2002203612, EffectPolarityBuff, EffectTargetTeam, 1},
-	{"LIVE_20261109_121001", 2002203902, EffectPolarityBuff, EffectTargetTeam, 1},
-	{"LIVE_20261109_121001", 1508970001, EffectPolarityBuff, EffectTargetTeam, 1},
-}
+// The Global 3.7 captures these facts were written for are no longer decoded (current game version only); their facts
+// are kept in research/runs/2026-11-12/v0.7.0-3.8-compatibility. Facts of the current game version's golden corpus
+// are added with that corpus.
+var semanticEffectFacts = []semanticEffectFact{}
 
 // Effects that must never be listed: logic flags and refresh-period modifiers the game draws no buff-bar item for.
 var semanticNeverListed = map[uint64]string{
@@ -66,16 +58,7 @@ var semanticNeverListed = map[uint64]string{
 	1311400007: "HUD cue without a direction",
 }
 
-var semanticSkillFacts = []semanticSkillFact{
-	{"LIVE_20261109_121001", 1409, 1409002, "VERIFIED", "official", "以劍奉讀此身", false},
-	{"LIVE_20261109_121001", 1209, 1209400, "DERIVED", "skill_type", "歸斂", true},
-	{"LIVE_20261109_121001", 1209, 1209200, "DERIVED", "damage_list", "臨界協議", true},
-	{"LIVE_20261108_230549", 1209, 280034001, "DERIVED", "echo", "爐芯機骸", true},
-	{"LIVE_20261108_230549", 1508, 1508404, "DERIVED", "damage_list", "解弦視界·萬理歸塵", true},
-	{"LIVE_20261109_121001", 1409, 1409991, "DERIVED", "tune_break", "", true},
-	{"LIVE_20261103_122337", 1505, 280013010, "DERIVED", "echo", "異構武裝", true},
-	{"LIVE_20261105_195015", 1102, 1102030, "DERIVED", "skill_type", "焦瞑凍土", true},
-}
+var semanticSkillFacts = []semanticSkillFact{}
 
 // semanticNoSkillFact is what a capture's confirmed damage without a SkillId must show for one role. The damage and event
 // counts stay exactly the no-SkillId damage of the capture: a name never moves a hit out of the bucket.
@@ -88,14 +71,7 @@ type semanticNoSkillFact struct {
 	events  uint64
 }
 
-var semanticNoSkillFacts = []semanticNoSkillFact{
-	{"LIVE_20261107_201525", 1508, "共鳴迴響·鳴式·利維亞坦", "echo", 17837, 12},
-	{"LIVE_20261108_230549", 1508, "共鳴迴響·鳴式·利維亞坦", "echo", 42025, 27},
-	{"LIVE_20261109_121001", 1508, "共鳴迴響·鳴式·利維亞坦", "echo", 10416, 4},
-	{"MATRIX-01_20261027_032147", 1508, "共鳴迴響·鳴式·利維亞坦", "echo", 40827, 7},
-	{"MATRIX-01_20261027_032147", 1311, "身作千燈", "damage_type", 19012, 8},
-	{"wuwa-session-20261025", 1508, "共鳴迴響·鳴式·利維亞坦", "echo", 28955, 8},
-}
+var semanticNoSkillFacts = []semanticNoSkillFact{}
 
 // semanticCompletenessFact is what one encounter must report about its own damage.
 type semanticCompletenessFact struct {
@@ -107,14 +83,7 @@ type semanticCompletenessFact struct {
 	unknownEvents uint64
 }
 
-var semanticCompletenessFacts = []semanticCompletenessFact{
-	// A motorcycle-heavy fight with nothing unknown: the vehicle is a contributor, not a gap.
-	{"LIVE_20261103_122337", 6, 250027, 188920, 0, 0},
-	// Hits on a Monster the enemy summoned count as damage dealt; its summoner chain ends at a verified Monster.
-	{"LIVE_20261109_121001", 10, 628238, 125613, 0, 0},
-	{"LIVE_20261109_121001", 11, 591112, 0, 0, 0},
-	{"LIVE_20261105_195015", 5, 812471, 115146, 0, 0},
-}
+var semanticCompletenessFacts = []semanticCompletenessFact{}
 
 type semanticEffectSeen struct {
 	row      EffectPolarity

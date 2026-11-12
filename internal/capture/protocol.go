@@ -13,11 +13,14 @@ import (
 )
 
 type gameFrame struct {
-	direction        string
-	messageType      byte
-	sequence         uint32
-	token            uint16
+	direction   string
+	messageType byte
+	sequence    uint32
+	token       uint16
+	// commandID is the command number on the wire until handleFrame resolves it to the internal command the decoders
+	// read (protocol_translation.go); wireCommandID then keeps the number observed on the wire.
 	commandID        uint16
+	wireCommandID    uint16
 	compressed       bool
 	compressedLength uint32
 	body             []byte
@@ -123,10 +126,12 @@ type processorStats struct {
 }
 
 type processor struct {
-	rsa                       *staticRSA
-	session                   []byte
-	sessionGeneration         uint64
-	sessionHealth             sessionHealthState
+	rsa               *staticRSA
+	session           []byte
+	sessionGeneration uint64
+	sessionHealth     sessionHealthState
+	// protocol is the wire protocol of the current protocol session: decoded only once it reports the current game version.
+	protocol                  protocolSession
 	pending                   map[uint64]pendingDamageRequest
 	pendingOrder              []pendingRef
 	pendingHead               int
@@ -418,7 +423,7 @@ func (p *processor) handleFrame(frame gameFrame) {
 	if p.census != nil {
 		censusEntry = p.census.observeFrame(frame, p.sessionNumber)
 	}
-	if frame.commandID == 112 && frame.direction == "in" {
+	if frame.commandID == protoKeyResponseCommand && frame.direction == "in" {
 		p.stats.handshakeFrames++
 		if err := p.handleProtoKeyResponse(frame.body); err != nil {
 			p.stats.handshakeErrors++
@@ -435,6 +440,8 @@ func (p *processor) handleFrame(frame gameFrame) {
 			censusEntry.DecodedFrames++
 		}
 		p.sessionNumber++
+		// A new protocol session may come from another client build: its protocol is known only once it reports it.
+		p.protocol.beginSession()
 		p.playerRelevance.reset()
 		p.scenePlayerIDs = nil
 		p.observeContextSessionStart(frame.timestamp)
@@ -444,11 +451,18 @@ func (p *processor) handleFrame(frame gameFrame) {
 		}
 		return
 	}
-	if !isImplementedCommand(frame.commandID) {
+	// From here on the decoders see the internal command; the wire number stays in wireCommandID.
+	frame.wireCommandID = frame.commandID
+	internal, message := p.protocol.command(frame.commandID)
+	frame.commandID = internal
+	if censusEntry != nil && internal != 0 && internal != frame.wireCommandID {
+		censusEntry.observeInternal(internal)
+	}
+	if internal == 0 || !isImplementedCommand(frame.commandID) {
 		if censusEntry != nil {
-			p.inspectUndecodedFrame(frame, censusEntry)
-		} else {
-			p.archiveUndecodedSchema(frame)
+			p.inspectUndecodedFrame(frame, message, censusEntry)
+		} else if message != nil {
+			p.archiveUndecodedSchema(frame, message)
 		}
 		return
 	}
@@ -492,6 +506,17 @@ func (p *processor) handleFrame(frame gameFrame) {
 			p.stats.compressedErrors++
 			if censusEntry != nil {
 				censusEntry.FailureReasons["decompression failed"]++
+			}
+			return
+		}
+	}
+	if message != nil {
+		plain, err = p.protocol.translate(message, plain)
+		if err != nil {
+			p.stats.parseErrors++
+			fmt.Fprintf(p.diagnostic, "protocol_translation_error command=%d reason=%v\n", frame.wireCommandID, err)
+			if censusEntry != nil {
+				censusEntry.FailureReasons[protocolTranslationFailureReason]++
 			}
 			return
 		}
@@ -630,7 +655,19 @@ func (p *processor) handleEntityRemoveNotify(body []byte) error {
 // emptyBodyFailureReason labels frames whose command body is zero-length.
 const emptyBodyFailureReason = "empty body; no payload to decrypt"
 
-func (p *processor) inspectUndecodedFrame(frame gameFrame, entry *commandCensusEntry) {
+// Census reasons for frames the current protocol session cannot hand to a decoder.
+const (
+	protocolNoHandshakeReason        = "no handshake in this capture; protocol unknown"
+	protocolPendingFailureReason     = "client version not reported yet; protocol unknown"
+	protocolUnsupportedFailureReason = "not the current game version; not decoded"
+	protocolUntranslatedReason       = "command outside the protocol translation"
+	protocolTranslationFailureReason = "protocol translation failed"
+)
+
+// inspectUndecodedFrame counts what the census can learn about a frame no decoder reads. frame.commandID is the
+// internal command, or 0 when the protocol session has none for it; message translates the body into the internal
+// numbering.
+func (p *processor) inspectUndecodedFrame(frame gameFrame, message *translatedMessage, entry *commandCensusEntry) {
 	if len(p.session) != 32 {
 		entry.FailureReasons["no implemented schema; session key unavailable"]++
 		return
@@ -652,9 +689,26 @@ func (p *processor) inspectUndecodedFrame(frame gameFrame, entry *commandCensusE
 			return
 		}
 	}
+	if frame.commandID == 0 {
+		if fields, err := parseProtoFields(plain); err == nil {
+			entry.GenericProtoValid++
+			entry.observeTopLevelFields(fields)
+		}
+		entry.FailureReasons[p.protocol.undecodableReason()]++
+		return
+	}
+	if message != nil {
+		if plain, err = p.protocol.translate(message, plain); err != nil {
+			entry.FailureReasons[protocolTranslationFailureReason]++
+			return
+		}
+	}
 	if fields, err := parseProtoFields(plain); err == nil {
 		entry.GenericProtoValid++
-		p.archiveSchemaDecode(frame, plain)
+		if message != nil {
+			// The optional external schema describes the internal numbering.
+			p.archiveSchemaDecode(frame, plain)
+		}
 		entry.observeTopLevelFields(fields)
 		entry.FailureReasons["message schema not implemented"]++
 		if frame.commandID == 24756 {

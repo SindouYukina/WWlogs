@@ -95,6 +95,7 @@
       "traffic_without_key": "通信は見えますが、ログインを取得できませんでした。再度ログインしてください",
       "awaiting_login": "ゲームが再起動しました。ログインを待っています",
       "handshake_failed": "ログインのハンドシェイクを読み取れません",
+      "unsupported_game_version": "このゲームバージョンはまだサポートされていません。WWlogs を更新してください",
       "decrypt_failing": "ゲームデータを復号できません",
       "transport_unrecoverable": "パケットの復旧に失敗しました",
       "receiving": "ゲームデータを受信中",

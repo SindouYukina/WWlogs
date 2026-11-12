@@ -20,11 +20,13 @@ type listeningView struct {
 	firstAge, idle    *float64
 	decryptFailures   int
 	transport         capture.TransportState
+	protocolStatus    string
 }
 
 func (v listeningView) build() *capture.ViewSnapshot {
 	view := &capture.ViewSnapshot{CaptureSessionID: v.capture, ProtocolSession: int(v.protocol)}
 	view.Health.Session = capture.ViewSessionHealth{KeyReady: v.keyReady, LastHandshakeFailed: v.handshakeFailed, FramesObserved: v.frames, FirstFrameAgeSeconds: v.firstAge, FrameIdleSeconds: v.idle, ConsecutiveDecryptFailures: v.decryptFailures}
+	view.Health.Session.Protocol.Status = v.protocolStatus
 	view.Health.Transport.State = v.transport
 	if view.Health.Transport.State == "" {
 		view.Health.Transport.State = capture.TransportHealthy
@@ -69,6 +71,9 @@ func TestListeningClassification(t *testing.T) {
 		{"recovery exhausted", running, listeningView{capture: 1, protocol: 1, keyReady: true, frames: 500, firstAge: seconds(60), idle: seconds(1), transport: capture.TransportUnrecoverable}, gameUp, ListeningError, ReasonTransportUnrecovered},
 		{"a run of decrypt failures", running, listeningView{capture: 1, protocol: 1, keyReady: true, frames: 500, firstAge: seconds(60), idle: seconds(1), decryptFailures: 20}, gameUp, ListeningError, ReasonDecryptFailing},
 		{"isolated decrypt failures do not alarm", running, listeningView{capture: 1, protocol: 1, keyReady: true, frames: 500, firstAge: seconds(60), idle: seconds(1), decryptFailures: 3}, gameUp, ListeningActive, ReasonReceiving},
+		{"a supported game version parses", running, listeningView{capture: 1, protocol: 1, keyReady: true, frames: 500, firstAge: seconds(60), idle: seconds(1), protocolStatus: capture.ProtocolStatusSupported}, gameUp, ListeningActive, ReasonReceiving},
+		{"an unsupported game version is an error, not listening", running, listeningView{capture: 1, protocol: 1, keyReady: true, frames: 500, firstAge: seconds(60), idle: seconds(1), protocolStatus: capture.ProtocolStatusUnsupported}, gameUp, ListeningError, ReasonUnsupportedGameVersion},
+		{"the version report after the key is still establishing", running, listeningView{capture: 1, protocol: 1, keyReady: true, frames: 2, firstAge: seconds(60), idle: seconds(0), protocolStatus: capture.ProtocolStatusPending}, gameUp, ListeningEstablishing, ReasonHandshakeInProgress},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			var monitor ListeningMonitor

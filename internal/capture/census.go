@@ -13,7 +13,9 @@ type censusKey struct {
 }
 
 type commandCensusEntry struct {
-	CommandID             uint16         `json:"commandId"`
+	CommandID uint16 `json:"commandId"`
+	// InternalCommandID is the command the decoders read this wire command as, when it differs from the wire number.
+	InternalCommandID     uint16         `json:"internalCommandId,omitempty"`
 	Name                  string         `json:"candidateName,omitempty"`
 	Direction             string         `json:"direction"`
 	CRCValidFrames        int            `json:"crcValidFrames"`
@@ -494,6 +496,18 @@ func (c *commandCensus) observeFrame(frame gameFrame, session int) *commandCensu
 		entry.LastSeen = frame.timestamp
 	}
 	return entry
+}
+
+// observeInternal records that the protocol session reads this wire command as an internal command. The entry keeps the
+// wire number; its name follows the internal command.
+func (entry *commandCensusEntry) observeInternal(internal uint16) {
+	if entry.InternalCommandID == internal {
+		return
+	}
+	entry.InternalCommandID = internal
+	if name := commandName(internal); name != "" && entry.Name == "" {
+		entry.Name = name
+	}
 }
 
 func (c *commandCensus) observeCombatNotifyField(fieldNumber uint64) {

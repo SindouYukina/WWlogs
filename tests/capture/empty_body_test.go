@@ -12,7 +12,7 @@ func TestEmptyBodyIsCountedSeparatelyFromDecryptFailure(t *testing.T) {
 	entry := census.entry(1651, "in")
 	p := &processor{session: make([]byte, 32), census: census}
 
-	p.inspectUndecodedFrame(gameFrame{commandID: 1651, direction: "in", messageType: 2}, entry)
+	p.inspectUndecodedFrame(gameFrame{commandID: 1651, direction: "in", messageType: 2}, nil, entry)
 
 	if got := entry.FailureReasons[emptyBodyFailureReason]; got != 1 {
 		t.Fatalf("empty body count = %d, want 1", got)
@@ -27,10 +27,12 @@ func TestEmptyBodyIsCountedSeparatelyFromDecryptFailure(t *testing.T) {
 
 func TestEmptyBodyDoesNotInflateDecryptedFrames(t *testing.T) {
 	census := newCommandCensus()
-	entry := census.entry(19470, "out")
+	entry := census.entry(26497, "out") // CombatSendPackRequest in the current wire protocol
 	p := &processor{session: make([]byte, 32), census: census}
+	p.protocol.beginSession()
+	p.protocol.observeVersion(CurrentGameVersion())
 
-	p.handleFrame(gameFrame{commandID: 19470, direction: "out", messageType: 2, body: nil})
+	p.handleFrame(gameFrame{commandID: 26497, direction: "out", messageType: 2, body: nil})
 
 	if entry.DecryptedFrames != 0 {
 		t.Fatalf("DecryptedFrames = %d, want 0", entry.DecryptedFrames)
