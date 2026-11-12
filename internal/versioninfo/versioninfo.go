@@ -10,18 +10,11 @@ import (
 //go:embed versions.json
 var versionsJSON []byte
 
-// Metadata records the active product, observed client, and protocol schema versions.
+// Metadata records the active product and protocol schema versions.
 type Metadata struct {
 	Product struct {
 		DevelopmentLine string `json:"developmentLine"`
 	} `json:"product"`
-	ObservedClient struct {
-		Region                  string   `json:"region"`
-		GameVersion             string   `json:"gameVersion"`
-		ResourceVersion         string   `json:"resourceVersion"`
-		LoginBuild              string   `json:"loginBuild"`
-		CheckClientPushVersions []string `json:"checkClientPushVersions"`
-	} `json:"observedClient"`
 	Schemas struct {
 		WindowsGlobal   SchemaMetadata `json:"windowsGlobal"`
 		ReferenceGlobal SchemaMetadata `json:"referenceGlobal"`

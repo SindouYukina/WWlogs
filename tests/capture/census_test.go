@@ -50,7 +50,9 @@ func TestCommandCensusLinksCRCFailureToNeighborFrames(t *testing.T) {
 }
 
 func TestExtractMovePackageObservationUsesSchemaFieldNumbers(t *testing.T) {
-	message := []byte{0x20, 0x63, 0x62, 0x04, 0x08, 0x07, 0x10, 0x03, 0x62, 0x02, 0x08, 0x2a}
+	message := appendVarintField(nil, fieldMovePackagePushSceneOwnerID, 99)
+	message = appendBytesField(message, fieldMovePackagePushMovingEntities, appendVarintField(appendVarintField(nil, fieldMovingEntityDataEntityID, 7), fieldMovingEntityDataOriginator, 3))
+	message = appendBytesField(message, fieldMovePackagePushMovingEntities, appendVarintField(nil, fieldMovingEntityDataEntityID, 42))
 	observation, err := extractMovePackageObservation(message)
 	if err != nil {
 		t.Fatal(err)
@@ -64,7 +66,8 @@ func TestExtractMovePackageObservationUsesSchemaFieldNumbers(t *testing.T) {
 }
 
 func TestExtractPlayerFollowerObservationUsesSchemaFieldNumbers(t *testing.T) {
-	message := []byte{0x68, 0x63, 0x52, 0x04, 0x08, 0x02, 0x10, 0x07}
+	message := appendVarintField(nil, fieldPlayerFollowerNotifyPlayerID, 99)
+	message = appendBytesField(message, fieldPlayerFollowerNotifyListPlayerFollowerPb, appendVarintField(appendVarintField(nil, fieldPlayerFollowerPbType, 2), fieldPlayerFollowerPbEntityID, 7))
 	observation, err := extractPlayerFollowerObservation(message)
 	if err != nil {
 		t.Fatal(err)

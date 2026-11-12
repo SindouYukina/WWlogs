@@ -196,28 +196,28 @@ func decodeBuffLifecycleMessageForCommand(frame gameFrame, body []byte, schemaCo
 	if innerFieldNumber != nil {
 		fieldNumber := *innerFieldNumber
 		row.InnerMessageFieldNumber = &fieldNumber
-		row.MessagePath = fmt.Sprintf("CombatReceivePackNotify.field5(CombatReceiveData[]).field2(CombatNotifyData).field%d", fieldNumber)
+		row.MessagePath = fmt.Sprintf("CombatReceivePackNotify.field%d(CombatReceiveData[]).field%d(CombatNotifyData).field%d", fieldCombatReceivePackNotifyData, fieldCombatReceiveDataCombatNotifyData, fieldNumber)
 	}
 	switch schemaCommandID {
-	case 25830:
+	case cmdApplyGameplayEffectNotify:
 		row.MessageName, row.EventKind = "ApplyGameplayEffectNotify", "GAMEPLAY_EFFECT_APPLY"
-	case 18345:
+	case cmdRemoveGameplayEffectNotify:
 		row.MessageName, row.EventKind = "RemoveGameplayEffectNotify", "GAMEPLAY_EFFECT_REMOVE"
-	case 20358:
+	case cmdRemoveGameplayEffectPush:
 		row.MessageName, row.EventKind = "RemoveGameplayEffectPush", "GAMEPLAY_EFFECT_REMOVE"
-	case 17893:
+	case cmdSimpleCombatEntityBuffUpdateNotify:
 		row.MessageName, row.EventKind = "SimpleCombatEntityBuffUpdateNotify", "SIMPLE_BUFF_UPDATE"
-	case 22102:
+	case cmdSimpleCombatEntityBuffLayerCountNotify:
 		row.MessageName, row.EventKind = "SimpleCombatEntityBuffLayerCountNotify", "SIMPLE_BUFF_LAYER_COUNT_CHANGE"
-	case 29363:
+	case cmdBuffStackCountNotify:
 		row.MessageName, row.EventKind = "BuffStackCountNotify", "BUFF_STACK_COUNT_CHANGE"
-	case 16974:
+	case cmdBuffDurationNotify:
 		row.MessageName, row.EventKind = "BuffDurationNotify", "BUFF_DURATION_CHANGE"
-	case 18641:
+	case cmdApplyBuffS2cRequestNotify:
 		row.MessageName, row.EventKind = "ApplyBuffS2cRequestNotify", "BUFF_APPLY_REQUEST_NOTIFY"
-	case 20022:
+	case cmdRemoveBuffS2cRequestNotify:
 		row.MessageName, row.EventKind = "RemoveBuffS2cRequestNotify", "BUFF_REMOVE_REQUEST_NOTIFY"
-	case 19482:
+	case cmdRemoveBuffByIDS2cRequestNotify:
 		row.MessageName, row.EventKind = "RemoveBuffByIdS2cRequestNotify", "BUFF_REMOVE_BY_ID_REQUEST_NOTIFY"
 	default:
 		return row, fmt.Errorf("unsupported Buff lifecycle schema command %d", schemaCommandID)
@@ -231,140 +231,140 @@ func decodeBuffLifecycleMessageForCommand(frame gameFrame, body []byte, schemaCo
 		var boolTarget **bool
 		var floatTarget **float32
 		switch schemaCommandID {
-		case 25830:
+		case cmdApplyGameplayEffectNotify:
 			switch field.number {
-			case 2:
+			case fieldApplyGameplayEffectNotifyHandle:
 				uintTarget = &row.HandleID
-			case 11:
+			case fieldApplyGameplayEffectNotifyID:
 				uintTarget = &row.ID
-			case 5:
+			case fieldApplyGameplayEffectNotifyLevel:
 				uintTarget = &row.Level
-			case 7:
+			case fieldApplyGameplayEffectNotifyEntityID:
 				uintTarget = &row.TargetEntityID
-			case 8:
+			case fieldApplyGameplayEffectNotifyInstigatorID:
 				uintTarget = &row.InstigatorID
-			case 9:
+			case fieldApplyGameplayEffectNotifyApplyType:
 				uintTarget = &row.ApplyType
-			case 15:
+			case fieldApplyGameplayEffectNotifyDuration:
 				floatTarget = &row.DurationSeconds
-			case 6:
+			case fieldApplyGameplayEffectNotifyIsActive:
 				boolTarget = &row.IsActive
-			case 10:
+			case fieldApplyGameplayEffectNotifyServerID:
 				uintTarget = &row.ServerID
-			case 1:
+			case fieldApplyGameplayEffectNotifyStackCount:
 				uintTarget = &row.StackCount
-			case 12:
+			case fieldApplyGameplayEffectNotifyLeftDuration:
 				floatTarget = &row.RemainingDuration
-			case 14:
+			case fieldApplyGameplayEffectNotifyConfBuffID:
 				uintTarget = &row.ConfBuffID
 			}
-		case 18345:
+		case cmdRemoveGameplayEffectNotify:
 			switch field.number {
-			case 13:
+			case fieldRemoveGameplayEffectNotifyHandle:
 				uintTarget = &row.HandleID
-			case 5:
+			case fieldRemoveGameplayEffectNotifyEntityID:
 				uintTarget = &row.TargetEntityID
-			case 14:
+			case fieldRemoveGameplayEffectNotifyInstigatorID:
 				uintTarget = &row.InstigatorID
 			}
-		case 20358:
+		case cmdRemoveGameplayEffectPush:
 			switch field.number {
-			case 14:
+			case fieldRemoveGameplayEffectPushHandle:
 				uintTarget = &row.HandleID
-			case 15:
+			case fieldRemoveGameplayEffectPushEntityID:
 				uintTarget = &row.TargetEntityID
-			case 10:
+			case fieldRemoveGameplayEffectPushIsPrematureRemoval:
 				boolTarget = &row.IsPrematureRemoval
-			case 1:
+			case fieldRemoveGameplayEffectPushReason:
 				uintTarget = &row.Reason
-			case 4:
+			case fieldRemoveGameplayEffectPushInstigatorID:
 				uintTarget = &row.InstigatorID
 			}
-		case 17893:
+		case cmdSimpleCombatEntityBuffUpdateNotify:
 			switch field.number {
-			case 12:
+			case fieldSimpleCombatEntityBuffUpdateNotifyEntityID:
 				uintTarget = &row.TargetEntityID
-			case 1:
+			case fieldSimpleCombatEntityBuffUpdateNotifyIsBuffAdd:
 				boolTarget = &row.IsBuffAdd
-			case 3:
+			case fieldSimpleCombatEntityBuffUpdateNotifyBuffID:
 				uintTarget = &row.BuffID
 			}
-		case 22102:
+		case cmdSimpleCombatEntityBuffLayerCountNotify:
 			switch field.number {
-			case 6:
+			case fieldSimpleCombatEntityBuffLayerCountNotifyEntityID:
 				uintTarget = &row.TargetEntityID
-			case 7:
+			case fieldSimpleCombatEntityBuffLayerCountNotifyLayerCount:
 				uintTarget = &row.StackCount
-			case 2:
+			case fieldSimpleCombatEntityBuffLayerCountNotifyBuffID:
 				uintTarget = &row.BuffID
 			}
-		case 29363:
+		case cmdBuffStackCountNotify:
 			switch field.number {
-			case 9:
+			case fieldBuffStackCountNotifyHandleID:
 				uintTarget = &row.HandleID
-			case 4:
+			case fieldBuffStackCountNotifyNewStackCount:
 				uintTarget = &row.StackCount
-			case 7:
+			case fieldBuffStackCountNotifyDuration:
 				floatTarget = &row.DurationSeconds
-			case 11:
+			case fieldBuffStackCountNotifyLeftDuration:
 				floatTarget = &row.RemainingDuration
-			case 13:
+			case fieldBuffStackCountNotifyInstigatorID:
 				uintTarget = &row.InstigatorID
-			case 6:
+			case fieldBuffStackCountNotifyNotRefreshDuration:
 				boolTarget = &row.NotRefreshDuration
-			case 1:
+			case fieldBuffStackCountNotifyNotRefreshPeriod:
 				boolTarget = &row.NotRefreshPeriod
 			}
-		case 16974:
+		case cmdBuffDurationNotify:
 			switch field.number {
-			case 12:
+			case fieldBuffDurationNotifyHandleID:
 				uintTarget = &row.HandleID
-			case 2:
+			case fieldBuffDurationNotifyDuration:
 				floatTarget = &row.DurationSeconds
-			case 5:
+			case fieldBuffDurationNotifyLeftDuration:
 				floatTarget = &row.RemainingDuration
 			}
-		case 18641:
+		case cmdApplyBuffS2cRequestNotify:
 			switch field.number {
-			case 4:
+			case fieldApplyBuffS2cRequestNotifyID:
 				uintTarget = &row.ID
-			case 8:
+			case fieldApplyBuffS2cRequestNotifyLevel:
 				uintTarget = &row.Level
-			case 15:
+			case fieldApplyBuffS2cRequestNotifyInstigatorID:
 				uintTarget = &row.InstigatorID
-			case 5:
+			case fieldApplyBuffS2cRequestNotifyApplyType:
 				uintTarget = &row.ApplyType
-			case 3:
+			case fieldApplyBuffS2cRequestNotifyDuration:
 				floatTarget = &row.DurationSeconds
-			case 10:
+			case fieldApplyBuffS2cRequestNotifyServerID:
 				uintTarget = &row.ServerID
-			case 11:
+			case fieldApplyBuffS2cRequestNotifyStackCount:
 				uintTarget = &row.StackCount
-			case 1:
+			case fieldApplyBuffS2cRequestNotifyIsIterable:
 				boolTarget = &row.IsIterable
-			case 9:
+			case fieldApplyBuffS2cRequestNotifyReason:
 				uintTarget = &row.Reason
 			}
-		case 20022:
+		case cmdRemoveBuffS2cRequestNotify:
 			switch field.number {
-			case 1:
+			case fieldRemoveBuffS2cRequestNotifyHandle:
 				uintTarget = &row.HandleID
-			case 12:
+			case fieldRemoveBuffS2cRequestNotifyStackCount:
 				uintTarget = &row.StackCount
-			case 11:
+			case fieldRemoveBuffS2cRequestNotifyReason:
 				uintTarget = &row.Reason
-			case 2:
+			case fieldRemoveBuffS2cRequestNotifyInstigatorID:
 				uintTarget = &row.InstigatorID
 			}
-		case 19482:
+		case cmdRemoveBuffByIDS2cRequestNotify:
 			switch field.number {
-			case 4:
+			case fieldRemoveBuffByIDS2cRequestNotifyBuffID:
 				uintTarget = &row.BuffID
-			case 13:
+			case fieldRemoveBuffByIDS2cRequestNotifyStackCount:
 				uintTarget = &row.StackCount
-			case 10:
+			case fieldRemoveBuffByIDS2cRequestNotifyReason:
 				uintTarget = &row.Reason
-			case 6:
+			case fieldRemoveBuffByIDS2cRequestNotifyInstigatorID:
 				uintTarget = &row.InstigatorID
 			}
 		}
@@ -422,13 +422,13 @@ func (p *processor) handleBuffLifecycleMessage(frame gameFrame, body []byte) err
 }
 
 var combatNotifyBuffSchemaCommands = map[uint64]uint16{
-	5:  25830, // ApplyGameplayEffectNotify
-	6:  18345, // RemoveGameplayEffectNotify
-	41: 29363, // BuffStackCountNotify
-	73: 16974, // BuffDurationNotify
-	53: 18641, // ApplyBuffS2CRequestNotify
-	54: 20022, // RemoveBuffS2CRequestNotify
-	59: 19482, // RemoveBuffByIdS2CRequestNotify
+	fieldCombatNotifyDataApplyGameplayEffectNotify:      cmdApplyGameplayEffectNotify,      // ApplyGameplayEffectNotify
+	fieldCombatNotifyDataRemoveGameplayEffectNotify:     cmdRemoveGameplayEffectNotify,     // RemoveGameplayEffectNotify
+	fieldCombatNotifyDataBuffStackCountNotify:           cmdBuffStackCountNotify,           // BuffStackCountNotify
+	fieldCombatNotifyDataBuffDurationNotify:             cmdBuffDurationNotify,             // BuffDurationNotify
+	fieldCombatNotifyDataApplyBuffS2CRequestNotify:      cmdApplyBuffS2cRequestNotify,      // ApplyBuffS2CRequestNotify
+	fieldCombatNotifyDataRemoveBuffS2CRequestNotify:     cmdRemoveBuffS2cRequestNotify,     // RemoveBuffS2CRequestNotify
+	fieldCombatNotifyDataRemoveBuffByIDS2CRequestNotify: cmdRemoveBuffByIDS2cRequestNotify, // RemoveBuffByIdS2CRequestNotify
 }
 
 func (p *processor) handleCombatReceivePackNotify(frame gameFrame, body []byte) error {
@@ -437,7 +437,7 @@ func (p *processor) handleCombatReceivePackNotify(frame gameFrame, body []byte) 
 		return fmt.Errorf("parse CombatReceivePackNotify: %w", err)
 	}
 	for _, field := range fields {
-		if field.number != 5 || field.wire != 2 { // CombatReceivePackNotify.Data
+		if field.number != fieldCombatReceivePackNotifyData || field.wire != 2 { // CombatReceivePackNotify.Data
 			continue
 		}
 		entryFields, err := parseProtoFields(field.data)
@@ -445,7 +445,7 @@ func (p *processor) handleCombatReceivePackNotify(frame gameFrame, body []byte) 
 			return fmt.Errorf("parse CombatReceivePackNotify.Data item: %w", err)
 		}
 		for _, entry := range entryFields {
-			if entry.number != 2 || entry.wire != 2 { // CombatReceiveData.CombatNotifyData
+			if entry.number != fieldCombatReceiveDataCombatNotifyData || entry.wire != 2 { // CombatReceiveData.CombatNotifyData
 				continue
 			}
 			notifications, err := parseProtoFields(entry.data)
@@ -454,7 +454,7 @@ func (p *processor) handleCombatReceivePackNotify(frame gameFrame, body []byte) 
 			}
 			var commonEntityID, commonOriginator, commonMessageID *uint64
 			for _, notification := range notifications {
-				if notification.number == 1 && notification.wire == 2 { // CombatNotifyData.CombatCommon
+				if notification.number == fieldCombatNotifyDataCombatCommon && notification.wire == 2 { // CombatNotifyData.CombatCommon
 					commonEntityID, commonOriginator, commonMessageID, err = decodeCombatCommonContext(notification.data)
 					if err != nil {
 						return fmt.Errorf("parse CombatCommon: %w", err)
@@ -465,12 +465,12 @@ func (p *processor) handleCombatReceivePackNotify(frame gameFrame, body []byte) 
 				if p.census != nil {
 					p.census.observeCombatNotifyField(notification.number)
 				}
-				if p.combatNotifyAudit != nil && notification.number != 1 {
+				if p.combatNotifyAudit != nil && notification.number != fieldCombatNotifyDataCombatCommon {
 					if err := writeCombatNotifyAudit(p.combatNotifyAudit, frame, notification, commonEntityID, commonOriginator, commonMessageID, p.sessionNumber); err != nil {
 						return fmt.Errorf("write CombatNotifyData audit field %d: %w", notification.number, err)
 					}
 				}
-				if notification.number == combatNotifyPlayerBattleState && notification.wire == 2 {
+				if notification.number == fieldCombatNotifyDataPlayerBattleStateChangeNotify && notification.wire == 2 {
 					if err := p.handlePlayerBattleState(frame, combatNotifyContainer(frame.commandID), notification.data); err != nil {
 						return err
 					}
@@ -500,11 +500,11 @@ func decodeCombatCommonContext(body []byte) (entityID, originatorID, messageID *
 		}
 		value := field.value
 		switch field.number {
-		case 2:
+		case fieldCombatCommonMessageID:
 			messageID = &value
-		case 3:
+		case fieldCombatCommonOriginator:
 			originatorID = &value
-		case 5:
+		case fieldCombatCommonEntityID:
 			entityID = &value
 		}
 	}
@@ -739,7 +739,7 @@ func (p *processor) handleActiveRequest(token uint16, body []byte) error {
 	}
 	request := pendingActiveRequest{}
 	for _, field := range fields {
-		if field.number == 4 && field.wire == 0 {
+		if field.number == fieldEntityActiveRequestEntityID && field.wire == 0 {
 			request.entityID = field.value
 			request.hasEntityID = field.value != 0
 		}
@@ -756,6 +756,10 @@ func (p *processor) handleActiveRequest(token uint16, body []byte) error {
 
 const maxPendingActiveRequests = 4096
 
+// fightBuffSnapshotPath is the wire path of the buff records an EntityActiveResponse carries.
+var fightBuffSnapshotPath = fmt.Sprintf("EntityActiveResponse.field%d(ComponentPbs[])->EntityComponentPb.field%d(FightBuffComponent)->FightBuffComponentPb.field%d(FightBuffInfos[])->FightBuffInformation",
+	fieldEntityActiveResponseComponentPbs, fieldEntityComponentPbFightBuffComponent, fieldFightBuffComponentPbFightBuffInfos)
+
 func (p *processor) handleActiveResponse(frame gameFrame, body []byte) error {
 	fields, err := parseProtoFields(body)
 	if err != nil {
@@ -765,7 +769,7 @@ func (p *processor) handleActiveResponse(frame gameFrame, body []byte) error {
 	delete(p.activeRequests, frame.token)
 	p.stats.buffSnapshotResponses++
 	for _, field := range fields {
-		if field.number != 11 || field.wire != 2 {
+		if field.number != fieldEntityActiveResponseComponentPbs || field.wire != 2 {
 			continue
 		}
 		components, err := parseProtoFields(field.data)
@@ -782,21 +786,21 @@ func (p *processor) handleActiveResponse(frame gameFrame, body []byte) error {
 			if isRuntimeIdentityComponent(component.number) {
 				identityComponents = append(identityComponents, component)
 			}
-			if component.number == 5 {
+			if component.number == fieldEntityComponentPbPartComponent {
 				partComponents = append(partComponents, component)
 			}
-			if component.number == 28 {
+			if component.number == fieldEntityComponentPbEntityFsmComponentPb {
 				fsmComponents = append(fsmComponents, component)
 			}
 			switch component.number {
-			case 4:
+			case fieldEntityComponentPbSummonerComponent:
 				p.stats.activeResponseSummonerComponents++
-			case 18:
+			case fieldEntityComponentPbMonsterCaptureComponent:
 				p.stats.activeResponseMonsterComponents++
-			case 42:
+			case fieldEntityComponentPbPlayerFollowerSelfComponentPb:
 				p.stats.activeResponseFollowerComponents++
 			}
-			if component.number != 15 {
+			if component.number != fieldEntityComponentPbFightBuffComponent {
 				continue
 			}
 			buffs, err := parseProtoFields(component.data)
@@ -804,7 +808,7 @@ func (p *processor) handleActiveResponse(frame gameFrame, body []byte) error {
 				return fmt.Errorf("parse ComponentPb.vys: %w", err)
 			}
 			for _, buffField := range buffs {
-				if buffField.number != 1 || buffField.wire != 2 {
+				if buffField.number != fieldFightBuffComponentPbFightBuffInfos || buffField.wire != 2 {
 					continue
 				}
 				record, err := parseRawBuffSnapshot(buffField.data)
@@ -817,9 +821,9 @@ func (p *processor) handleActiveResponse(frame gameFrame, body []byte) error {
 					row := buffSnapshotAuditRow{
 						SchemaVersion: buffSnapshotSchemaVersion, EventType: "BUFF_SNAPSHOT", SessionNumber: p.sessionNumber,
 						MessageID: frame.commandID, Timestamp: frame.timestamp, ResponseCommandID: frame.commandID,
-						ResponseDirection: frame.direction, RequestCommandID: 28481,
+						ResponseDirection: frame.direction, RequestCommandID: cmdEntityActiveRequest,
 						FrameToken: frame.token, EntityIDStatus: resolutionUnknown,
-						ComponentPath:             "EntityActiveResponse.field11(ComponentPbs[])->EntityComponentPb.field15(FightBuffComponent)->FightBuffComponentPb.field1(FightBuffInfos[])->FightBuffInformation",
+						ComponentPath:             fightBuffSnapshotPath,
 						BuffIDStatus:              resolutionCorrelated,
 						BuffDefinitionStatus:      resolutionUnknown,
 						BuffDefinitionEvidence:    "No exact normalized buff.id row has been linked; the raw BuffId remains unchanged",
@@ -901,38 +905,38 @@ func parseRawBuffSnapshot(data []byte) (rawBuffSnapshot, error) {
 	for _, field := range fields {
 		if field.wire == 0 {
 			switch field.number {
-			case 1:
+			case fieldFightBuffInformationHandleID:
 				record.HandleID, record.HasHandleID = field.value, true
-			case 2:
+			case fieldFightBuffInformationBuffID:
 				record.ID, record.HasID = field.value, true
-			case 3:
+			case fieldFightBuffInformationLevel:
 				record.Level, record.HasLevel = field.value, true
-			case 4:
+			case fieldFightBuffInformationStackCount:
 				record.Stack, record.HasStack = field.value, true
-			case 5:
+			case fieldFightBuffInformationInstigatorID:
 				record.InstigatorID, record.HasInstigatorID = field.value, true
-			case 6:
+			case fieldFightBuffInformationEntityID:
 				record.EntityID, record.HasEntityID = field.value, true
-			case 7:
+			case fieldFightBuffInformationApplyType:
 				record.ApplyType, record.HasApplyType = field.value, true
-			case 11:
+			case fieldFightBuffInformationIsActive:
 				record.Active, record.HasActive = field.value != 0, true
-			case 12:
+			case fieldFightBuffInformationServerID:
 				record.ServerID, record.HasServerID = field.value, true
-			case 13:
+			case fieldFightBuffInformationMessageID:
 				record.MessageID, record.HasMessageID = field.value, true
-			case 14:
+			case fieldFightBuffInformationConfBuffID:
 				record.ConfBuffID, record.HasConfBuffID = field.value, true
 			default:
 				record.UnknownFieldNums = append(record.UnknownFieldNums, field.number)
 			}
 			continue
 		}
-		if field.number == 8 && field.wire == 5 && len(field.data) == 4 {
+		if field.number == fieldFightBuffInformationDuration && field.wire == 5 && len(field.data) == 4 {
 			record.Duration, record.HasDuration = math.Float32frombits(binary.LittleEndian.Uint32(field.data)), true
-		} else if field.number == 9 && field.wire == 5 && len(field.data) == 4 {
+		} else if field.number == fieldFightBuffInformationLeftDuration && field.wire == 5 && len(field.data) == 4 {
 			record.Remaining, record.HasRemaining = math.Float32frombits(binary.LittleEndian.Uint32(field.data)), true
-		} else if field.number == 10 && field.wire == 2 {
+		} else if field.number == fieldFightBuffInformationContext && field.wire == 2 {
 			record.Context = append(record.Context, append([]byte(nil), field.data...))
 		} else {
 			record.UnknownFieldNums = append(record.UnknownFieldNums, field.number)

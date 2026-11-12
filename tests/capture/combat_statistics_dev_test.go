@@ -164,9 +164,9 @@ func TestDamageResponseDeduplicatesStatisticsThroughParser(t *testing.T) {
 		targetEntityID: 200, hasTargetEntityID: true,
 		damageID: 1, hasDamageID: true,
 	}
-	response := appendVarintField(nil, 4, 0)
-	response = appendVarintField(response, 5, 0)
-	response = appendVarintField(response, 10, 9001)
+	response := appendVarintField(nil, fieldDamageExecuteResponseErrorCode, 0)
+	response = appendVarintField(response, fieldDamageExecuteResponseImmuneType, 0)
+	response = appendVarintField(response, fieldDamageExecuteResponseDamage, 9001)
 	p.handleOneDamageResult(42, response)
 	p.handleOneDamageResult(42, response)
 

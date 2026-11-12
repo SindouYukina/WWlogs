@@ -4,16 +4,16 @@ import "fmt"
 
 func receivePackNotifyBodies(commandID uint16, body []byte) ([][]byte, error) {
 	switch commandID {
-	case 25706:
+	case cmdCombatReceivePackNotify:
 		return [][]byte{body}, nil
-	case 20332:
+	case cmdCombatSendPackResponse:
 		fields, err := parseProtoFields(body)
 		if err != nil {
 			return nil, fmt.Errorf("parse CombatSendPackResponse: %w", err)
 		}
 		var payloads [][]byte
 		for _, field := range fields {
-			if field.number != 14 {
+			if field.number != fieldCombatSendPackResponseReceivePackNotify {
 				continue
 			}
 			if field.wire != 2 {
@@ -28,7 +28,7 @@ func receivePackNotifyBodies(commandID uint16, body []byte) ([][]byte, error) {
 }
 
 func (p *processor) handleEmbeddedCombatReceivePackNotify(frame gameFrame, body []byte) error {
-	if frame.commandID != 20332 {
+	if frame.commandID != cmdCombatSendPackResponse {
 		return nil
 	}
 	payloads, err := receivePackNotifyBodies(frame.commandID, body)

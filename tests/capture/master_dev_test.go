@@ -42,7 +42,7 @@ func TestSceneTemplateResolutionDoesNotConflateTemplateConfigWithMonsterId(t *te
 		123: {
 			entityID: 123, sceneInstanceID: 50, hasSceneInstanceID: true,
 			configID: 244750005, hasConfigID: true, configType: 1, hasConfigType: true,
-			sourceMessageID: 18559,
+			sourceMessageID: cmdJoinSceneNotify,
 		},
 	}}
 	identity := resolveEntityIdentity(resolver, master, 123)

@@ -20,6 +20,10 @@ func loadProtocolSchema(path string) (*protocolSchema, error) {
 	if len(schema.Messages) == 0 {
 		return nil, fmt.Errorf("protocol schema %s has no messages", path)
 	}
+	// A schema of another game version numbers the same names differently; reading frames with it would misdecode them.
+	if schema.GameVersion != currentGameVersion {
+		return nil, fmt.Errorf("protocol schema %s describes game version %q; this build decodes %q", path, schema.GameVersion, currentGameVersion)
+	}
 	return &schema, nil
 }
 

@@ -10,29 +10,27 @@ import (
 
 // frameDecodeStatus classifies a frame for the archive. Handshake and empty
 // bodies take precedence over command support because neither path decrypts
-// a payload. internal is the command the protocol session reads the wire
-// command as, 0 when it cannot (protocolSession.internalCommand); the record
-// itself keeps the wire command.
-func frameDecodeStatus(frame gameFrame, internal uint16, state protocolState) string {
-	if frame.commandID == 112 && frame.direction == "in" {
+// a payload. readable says whether the protocol session reads the frame's
+// numbering (protocolSession.readable).
+func frameDecodeStatus(frame gameFrame, readable bool, state protocolState) string {
+	if frame.commandID == cmdProtoKeyResponse && frame.direction == "in" {
 		return frameStatusHandshake
 	}
 	if len(frame.body) == 0 {
 		return frameStatusEmptyBody
 	}
-	if internal == 0 && (state == protocolPending || state == protocolUnsupported) {
+	if !readable && (state == protocolPending || state == protocolUnsupported) {
 		return frameStatusNotCurrentProtocol
 	}
-	if isImplementedCommand(internal) {
+	if readable && isImplementedCommand(frame.commandID) {
 		return frameStatusImplemented
 	}
 	return frameStatusUndecoded
 }
 
-// archivedFrameStatus classifies frame, still carrying its wire command, in the current protocol session.
+// archivedFrameStatus classifies frame in the current protocol session.
 func (p *processor) archivedFrameStatus(frame gameFrame) string {
-	internal, _ := p.protocol.internalCommand(frame.commandID)
-	return frameDecodeStatus(frame, internal, p.protocol.state)
+	return frameDecodeStatus(frame, p.protocol.readable(frame.commandID), p.protocol.state)
 }
 
 // archiveFrame appends one record for the frame and advances the capture-order

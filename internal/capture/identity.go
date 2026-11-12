@@ -201,10 +201,10 @@ func resolveRoleSkin(masters *gameMaster, entity runtimeEntity, characterID uint
 	switch {
 	case characterID == 0:
 		result.Status = resolutionCorrelated
-		result.Proof = "EntityPb.RoleSkinId(23) -> RoleSkin.Id -> RoleSkin.RoleId; the entity carries no RoleId to cross-check; client build observed, master compatibility unverified"
+		result.Proof = fmt.Sprintf("EntityPb.RoleSkinId(%d) -> RoleSkin.Id -> RoleSkin.RoleId; the entity carries no RoleId to cross-check; client build observed, master compatibility unverified", fieldEntityPbRoleSkinID)
 	case characterID == roleID:
 		result.Status = resolutionCorrelated
-		result.Proof = fmt.Sprintf("EntityPb.RoleSkinId(23) -> RoleSkin.Id -> RoleSkin.RoleId=%d equals the same entity's own RoleId; client build observed, master compatibility unverified", roleID)
+		result.Proof = fmt.Sprintf("EntityPb.RoleSkinId(%d) -> RoleSkin.Id -> RoleSkin.RoleId=%d equals the same entity's own RoleId; client build observed, master compatibility unverified", fieldEntityPbRoleSkinID, roleID)
 	default:
 		result.Proof = fmt.Sprintf("CONFLICT: RoleSkin.RoleId=%d differs from the same entity's own RoleId=%d", roleID, characterID)
 	}
@@ -577,7 +577,7 @@ func resolveEntityIdentity(resolver *entityResolver, masters *gameMaster, entity
 			result.Character = character
 			result.HasCharacter = true
 			result.CharacterStatus = resolutionStatus(character.Status)
-			result.CharacterProof = "EntityPb.RoleSkinId(23) -> RoleInfo.SkinId -> RoleInfo.Id; client build observed, master compatibility unverified"
+			result.CharacterProof = fmt.Sprintf("EntityPb.RoleSkinId(%d) -> RoleInfo.SkinId -> RoleInfo.Id; client build observed, master compatibility unverified", fieldEntityPbRoleSkinID)
 			if result.CharacterStatus == resolutionVerified {
 				// Keep the versioned skin join correlated until compatibility is checked.
 				result.CharacterStatus = resolutionCorrelated
@@ -598,7 +598,7 @@ func resolveEntityIdentity(resolver *entityResolver, masters *gameMaster, entity
 		}
 	}
 	if masters != nil && !entity.hasMonsterID && entity.hasConfigID && entity.hasConfigType && entity.configType == 1 &&
-		entity.sourceMessageID == 18559 && entity.hasSceneInstanceID {
+		entity.sourceMessageID == cmdJoinSceneNotify && entity.hasSceneInstanceID {
 		if monsterID, ok := masters.sceneMonster(entity.sceneInstanceID, entity.configID); ok {
 			if monster, found := masters.monsters[monsterID]; found {
 				result.Monster = monster
@@ -613,12 +613,12 @@ func resolveEntityIdentity(resolver *entityResolver, masters *gameMaster, entity
 	sceneInstanceID, hasSceneInstanceID := entity.sceneInstanceID, entity.hasSceneInstanceID
 	sceneContextSource := "entity-scoped JoinSceneNotify context"
 	if !hasSceneInstanceID && resolver != nil && resolver.hasSceneInstanceID &&
-		(entity.sourceMessageID == 18559 || entity.sourceMessageID == 25185) {
+		(entity.sourceMessageID == cmdJoinSceneNotify || entity.sourceMessageID == cmdEntityAddNotify) {
 		sceneInstanceID, hasSceneInstanceID = resolver.sceneInstanceID, true
 		sceneContextSource = "current session JoinSceneNotify context"
 	}
 	if masters != nil && entity.hasConfigID && entity.hasConfigType && entity.configType == 1 &&
-		(entity.sourceMessageID == 18559 || entity.sourceMessageID == 25185) && hasSceneInstanceID {
+		(entity.sourceMessageID == cmdJoinSceneNotify || entity.sourceMessageID == cmdEntityAddNotify) && hasSceneInstanceID {
 		if candidates, ok := masters.sceneTemplates(sceneInstanceID, entity.configID); ok {
 			result.TemplateCandidates = candidates
 			result.TemplateStatus = resolutionUnknown
@@ -659,7 +659,7 @@ func runtimeCharacterCandidate(entity runtimeEntity) (characterID uint64, proof 
 		}
 		if characterID == 0 {
 			characterID = entity.configID
-			proof = "EntityPb.ConfigId(field 2) + ConfigType(field 3)=Proto_Character(3) -> CreateEntityData.Init.PbDataId -> CreatureDataComponent.SetPbDataByProtocol.SetRoleId"
+			proof = fmt.Sprintf("EntityPb.ConfigId(field %d) + ConfigType(field %d)=Proto_Character(3) -> CreateEntityData.Init.PbDataId -> CreatureDataComponent.SetPbDataByProtocol.SetRoleId", fieldEntityPbConfigID, fieldEntityPbConfigType)
 			fromConfig = true
 		}
 	}
@@ -752,11 +752,11 @@ func entityProof(entity runtimeEntity) string {
 		return entity.sourceFieldPath
 	}
 	switch entity.sourceMessageID {
-	case 25185:
+	case cmdEntityAddNotify:
 		return "EntityAddNotify.EntityPb.Id"
-	case 17286:
+	case cmdUpdateSceneGroupDataNotify:
 		return "UpdateSceneGroupDataNotify.PlayerSceneGroupDataList[].PlayerSceneGroupData[].FightRoleInfos[].EntityId"
-	case 28481:
+	case cmdEntityActiveRequest:
 		return "EntityActiveRequest.EntityId; observed only"
 	default:
 		return ""
@@ -781,14 +781,14 @@ func (r *entityResolver) observeActiveRequest(body []byte) error {
 		return fmt.Errorf("parse EntityActiveRequest: %w", err)
 	}
 	for _, field := range fields {
-		if field.number != 4 || field.wire != 0 || field.value == 0 {
+		if field.number != fieldEntityActiveRequestEntityID || field.wire != 0 || field.value == 0 {
 			continue
 		}
 		r.sequence++
 		entity := r.entities[field.value]
 		entity.entityID = field.value
-		if entity.sourceMessageID != 25185 {
-			entity.sourceMessageID = 28481
+		if entity.sourceMessageID != cmdEntityAddNotify {
+			entity.sourceMessageID = cmdEntityActiveRequest
 		}
 		entity.lastSeenSequence = r.sequence
 		r.entities[field.value] = entity
@@ -804,7 +804,7 @@ func (r *entityResolver) applyEntityAddNotify(body []byte) (int, error) {
 	}
 	added := 0
 	for _, field := range fields {
-		if field.number != 6 || field.wire != 2 {
+		if field.number != fieldEntityAddNotifyEntityPbs || field.wire != 2 {
 			continue
 		}
 		entity, err := parseEntityPb(field.data)
@@ -821,7 +821,7 @@ func (r *entityResolver) applyEntityAddNotify(body []byte) (int, error) {
 		if previous, ok := r.entities[entity.entityID]; ok {
 			entity = mergeRuntimeEntity(previous, entity)
 		}
-		entity.sourceMessageID = 25185
+		entity.sourceMessageID = cmdEntityAddNotify
 		entity.sourceFieldPath = "EntityAddNotify.EntityPb.Id"
 		entity.lastSeenSequence = r.sequence
 		r.entities[entity.entityID] = entity
@@ -841,7 +841,7 @@ func (r *entityResolver) applyJoinSceneNotify(body []byte) (int, error) {
 	}
 	var sceneInfo []byte
 	for _, field := range fields {
-		if field.number == 5 && field.wire == 2 {
+		if field.number == fieldJoinSceneNotifySceneInfo && field.wire == 2 {
 			sceneInfo = field.data
 			break
 		}
@@ -860,7 +860,7 @@ func (r *entityResolver) applyJoinSceneNotify(body []byte) (int, error) {
 	var instanceID uint64
 	var hasInstanceID bool
 	for _, field := range sceneFields {
-		if field.number == 2 && field.wire == 0 {
+		if field.number == fieldSceneInformationInstanceID && field.wire == 0 {
 			instanceID, hasInstanceID = field.value, field.value != 0
 			break
 		}
@@ -881,7 +881,7 @@ func (r *entityResolver) applyJoinSceneNotify(body []byte) (int, error) {
 		}
 		entity.sceneInstanceID, entity.hasSceneInstanceID = instanceID, hasInstanceID
 		r.sequence++
-		entity.sourceMessageID = 18559
+		entity.sourceMessageID = cmdJoinSceneNotify
 		entity.lastSeenSequence = r.sequence
 		r.entities[entity.entityID] = entity
 		snapshotIDs = append(snapshotIDs, entity.entityID)
@@ -902,7 +902,7 @@ func (r *entityResolver) applyUpdateSceneGroupDataNotify(body []byte) (int, erro
 	}
 	updates := make([]runtimeEntity, 0)
 	for _, field := range fields {
-		if field.number != 2 || field.wire != 2 { // UpdateSceneGroupDataNotify.PlayerSceneGroupDataList[]
+		if field.number != fieldUpdateSceneGroupDataNotifyPlayerSceneGroupDataList || field.wire != 2 { // UpdateSceneGroupDataNotify.PlayerSceneGroupDataList[]
 			continue
 		}
 		playerFields, err := parseProtoFields(field.data)
@@ -911,13 +911,13 @@ func (r *entityResolver) applyUpdateSceneGroupDataNotify(body []byte) (int, erro
 		}
 		var playerID uint64
 		for _, playerField := range playerFields {
-			if playerField.number == 1 && playerField.wire == 0 {
+			if playerField.number == fieldPlayerSceneGroupDataListPlayerID && playerField.wire == 0 {
 				playerID = playerField.value
 				break
 			}
 		}
 		for _, playerField := range playerFields {
-			if playerField.number != 2 || playerField.wire != 2 { // PlayerSceneGroupDataList.PlayerSceneGroupData[]
+			if playerField.number != fieldPlayerSceneGroupDataListPlayerSceneGroupData || playerField.wire != 2 { // PlayerSceneGroupDataList.PlayerSceneGroupData[]
 				continue
 			}
 			groupFields, err := parseProtoFields(playerField.data)
@@ -925,7 +925,7 @@ func (r *entityResolver) applyUpdateSceneGroupDataNotify(body []byte) (int, erro
 				return 0, fmt.Errorf("parse PlayerSceneGroupData: %w", err)
 			}
 			for _, groupField := range groupFields {
-				if groupField.number != 2 || groupField.wire != 2 { // PlayerSceneGroupData.FightRoleInfos[]
+				if groupField.number != fieldPlayerSceneGroupDataFightRoleInfos || groupField.wire != 2 { // PlayerSceneGroupData.FightRoleInfos[]
 					continue
 				}
 				roleFields, err := parseProtoFields(groupField.data)
@@ -940,16 +940,16 @@ func (r *entityResolver) applyUpdateSceneGroupDataNotify(body []byte) (int, erro
 						continue
 					}
 					switch roleField.number {
-					case 1: // SceneRoleInformation.RoleId
+					case fieldSceneRoleInformationRoleID: // SceneRoleInformation.RoleId
 						entity.roleID, entity.hasRoleID = roleField.value, roleField.value != 0
-					case 2: // SceneRoleInformation.EntityId
+					case fieldSceneRoleInformationEntityID: // SceneRoleInformation.EntityId
 						entity.entityID = roleField.value
 					}
 				}
 				if entity.entityID == 0 || !entity.hasRoleID {
 					continue
 				}
-				entity.sourceMessageID = 17286
+				entity.sourceMessageID = cmdUpdateSceneGroupDataNotify
 				entity.sourceFieldPath = "UpdateSceneGroupDataNotify.PlayerSceneGroupDataList[].PlayerSceneGroupData[].FightRoleInfos[].EntityId"
 				updates = append(updates, entity)
 			}
@@ -961,7 +961,7 @@ func (r *entityResolver) applyUpdateSceneGroupDataNotify(body []byte) (int, erro
 			entity = mergeRuntimeEntity(previous, entity)
 			// Preserve the stronger entity-lifecycle source while retaining the
 			// role mapping and its separate provenance.
-			if previous.sourceMessageID == 25185 || previous.sourceMessageID == 18559 {
+			if previous.sourceMessageID == cmdEntityAddNotify || previous.sourceMessageID == cmdJoinSceneNotify {
 				entity.sourceMessageID = previous.sourceMessageID
 				entity.sourceFieldPath = previous.sourceFieldPath
 			}
@@ -984,19 +984,19 @@ func parseSceneEntitySnapshot(sceneInfo []byte) ([]runtimeEntity, error) {
 			continue
 		}
 		switch field.number {
-		case 4: // SceneInformation.PlayerInfos[]
+		case fieldSceneInformationPlayerInfos: // SceneInformation.PlayerInfos[]
 			roleEntities, err := parseScenePlayerRoleEntities(field.data)
 			if err != nil {
 				return nil, err
 			}
 			entities = append(entities, roleEntities...)
-		case 5: // SceneInformation.DynamicEntityList[]
+		case fieldSceneInformationDynamicEntityList: // SceneInformation.DynamicEntityList[]
 			entity, err := parseDynamicEntityInformation(field.data, "JoinSceneNotify.SceneInfo.DynamicEntityList.Id")
 			if err != nil {
 				return nil, err
 			}
 			entities = append(entities, entity)
-		case 11: // SceneInformation.AoiData
+		case fieldSceneInformationAoiData: // SceneInformation.AoiData
 			aoiFields, err := parseProtoFields(field.data)
 			if err != nil {
 				return nil, fmt.Errorf("parse PlayerSceneAoiData: %w", err)
@@ -1006,13 +1006,13 @@ func parseSceneEntitySnapshot(sceneInfo []byte) ([]runtimeEntity, error) {
 					continue
 				}
 				switch aoiField.number {
-				case 1: // PlayerSceneAoiData.DynamicEntityList[]
+				case fieldPlayerSceneAoiDataDynamicEntityList: // PlayerSceneAoiData.DynamicEntityList[]
 					entity, err := parseDynamicEntityInformation(aoiField.data, "JoinSceneNotify.SceneInfo.AoiData.DynamicEntityList.Id")
 					if err != nil {
 						return nil, err
 					}
 					entities = append(entities, entity)
-				case 3: // PlayerSceneAoiData.Entities[]: EntityPb
+				case fieldPlayerSceneAoiDataEntities: // PlayerSceneAoiData.Entities[]: EntityPb
 					entity, err := parseEntityPb(aoiField.data)
 					if err != nil {
 						return nil, fmt.Errorf("parse JoinSceneNotify AoiData EntityPb: %w", err)
@@ -1033,14 +1033,14 @@ func parseScenePlayerRoleEntities(data []byte) ([]runtimeEntity, error) {
 	}
 	var playerID uint64
 	for _, field := range fields {
-		if field.number == 1 && field.wire == 0 {
+		if field.number == fieldScenePlayerInformationPlayerID && field.wire == 0 {
 			playerID = field.value
 			break
 		}
 	}
 	entities := make([]runtimeEntity, 0)
 	for _, field := range fields {
-		if field.number != 11 || field.wire != 2 { // ScenePlayerInformation.PlayerSceneGroupData[]
+		if field.number != fieldScenePlayerInformationPlayerSceneGroupData || field.wire != 2 { // ScenePlayerInformation.PlayerSceneGroupData[]
 			continue
 		}
 		groups, err := parseProtoFields(field.data)
@@ -1048,7 +1048,7 @@ func parseScenePlayerRoleEntities(data []byte) ([]runtimeEntity, error) {
 			return nil, fmt.Errorf("parse PlayerSceneGroupData: %w", err)
 		}
 		for _, groupField := range groups {
-			if groupField.number != 2 || groupField.wire != 2 { // PlayerSceneGroupData.FightRoleInfos[]
+			if groupField.number != fieldPlayerSceneGroupDataFightRoleInfos || groupField.wire != 2 { // PlayerSceneGroupData.FightRoleInfos[]
 				continue
 			}
 			roleFields, err := parseProtoFields(groupField.data)
@@ -1063,9 +1063,9 @@ func parseScenePlayerRoleEntities(data []byte) ([]runtimeEntity, error) {
 					continue
 				}
 				switch roleField.number {
-				case 1: // SceneRoleInformation.RoleId
+				case fieldSceneRoleInformationRoleID: // SceneRoleInformation.RoleId
 					entity.roleID, entity.hasRoleID = roleField.value, roleField.value != 0
-				case 2: // SceneRoleInformation.EntityId; same client CreatureDataId namespace
+				case fieldSceneRoleInformationEntityID: // SceneRoleInformation.EntityId; same client CreatureDataId namespace
 					entity.entityID = roleField.value
 				}
 			}
@@ -1088,15 +1088,15 @@ func parseDynamicEntityInformation(data []byte, sourceFieldPath string) (runtime
 	for _, field := range fields {
 		if field.wire == 0 {
 			switch field.number {
-			case 1:
+			case fieldDynamicEntityInformationID:
 				entity.entityID = field.value
-			case 2:
+			case fieldDynamicEntityInformationEntityType:
 				entity.entityTypeCode, entity.hasEntityType = field.value, true
-			case 3:
+			case fieldDynamicEntityInformationConfigID:
 				entity.configID, entity.hasConfigID = field.value, true
-			case 4:
+			case fieldDynamicEntityInformationPlayerID:
 				entity.playerID, entity.hasPlayerID = field.value, true
-			case 5:
+			case fieldDynamicEntityInformationOwnerID:
 				entity.ownerID, entity.hasOwnerID = field.value, true
 			}
 			continue
@@ -1105,11 +1105,11 @@ func parseDynamicEntityInformation(data []byte, sourceFieldPath string) (runtime
 			continue
 		}
 		switch field.number {
-		case 31: // DynamicEntityInformation.SummonInfo
+		case fieldDynamicEntityInformationSummonInfo: // DynamicEntityInformation.SummonInfo
 			if err := applySummonInfo(&entity, field.data); err != nil {
 				return runtimeEntity{}, err
 			}
-		case 32: // DynamicEntityInformation.ComponentPbs[]
+		case fieldDynamicEntityInformationComponentPbs: // DynamicEntityInformation.ComponentPbs[]
 			if err := applyEntityComponent(&entity, field.data); err != nil {
 				return runtimeEntity{}, err
 			}
@@ -1128,11 +1128,11 @@ func applySummonInfo(entity *runtimeEntity, data []byte) error {
 			continue
 		}
 		switch field.number {
-		case 1:
+		case fieldSummonInfoSummonCfgID:
 			entity.sceneSummonConfigID, entity.hasSceneSummonConfigID = field.value, true
-		case 2:
+		case fieldSummonInfoSummonerID:
 			entity.sceneSummonerID, entity.hasSceneSummonerID = field.value, true
-		case 3:
+		case fieldSummonInfoSummonSkillID:
 			entity.sceneSummonSkillID, entity.hasSceneSummonSkillID = field.value, true
 		}
 	}
@@ -1148,7 +1148,7 @@ func entityRemoveNotifyIDs(body []byte) ([]uint64, error) {
 	}
 	remove := false
 	for _, field := range fields {
-		if field.number == 4 && field.wire == 0 {
+		if field.number == fieldEntityRemoveNotifyIsRemove && field.wire == 0 {
 			remove = field.value != 0
 		}
 	}
@@ -1157,7 +1157,7 @@ func entityRemoveNotifyIDs(body []byte) ([]uint64, error) {
 	}
 	ids := make([]uint64, 0)
 	for _, field := range fields {
-		if field.number != 5 || field.wire != 2 {
+		if field.number != fieldEntityRemoveNotifyRemoveInfos || field.wire != 2 {
 			continue
 		}
 		info, err := parseProtoFields(field.data)
@@ -1165,7 +1165,7 @@ func entityRemoveNotifyIDs(body []byte) ([]uint64, error) {
 			return ids, fmt.Errorf("parse EntityRemoveInfo: %w", err)
 		}
 		for _, value := range info {
-			if value.number == 1 && value.wire == 0 && value.value != 0 {
+			if value.number == fieldEntityRemoveInfoEntityID && value.wire == 0 && value.value != 0 {
 				ids = append(ids, value.value)
 			}
 		}
@@ -1186,6 +1186,10 @@ func (r *entityResolver) applyEntityRemoveNotify(body []byte) (int, []uint64, er
 	return removed, removedIDs, err
 }
 
+// activeResponseComponentPath is the provenance of components read from an EntityActiveResponse matched to its request.
+var activeResponseComponentPath = fmt.Sprintf("EntityActiveRequest frame token match + field%d EntityId -> EntityActiveResponse.field%d ComponentPbs",
+	fieldEntityActiveRequestEntityID, fieldEntityActiveResponseComponentPbs)
+
 func (r *entityResolver) applyActiveResponseIdentityComponents(entityID uint64, components []protoField) (int, error) {
 	update := runtimeEntity{entityID: entityID}
 	observed := 0
@@ -1205,8 +1209,8 @@ func (r *entityResolver) applyActiveResponseIdentityComponents(entityID uint64, 
 	if !exists {
 		return observed, nil
 	}
-	update.componentSourceMessageID = 26702
-	update.componentSourceFieldPath = "EntityActiveRequest frame token match + field4 EntityId -> EntityActiveResponse.field11 ComponentPbs"
+	update.componentSourceMessageID = cmdEntityActiveResponse
+	update.componentSourceFieldPath = activeResponseComponentPath
 	update = mergeRuntimeEntity(previous, update)
 	r.sequence++
 	update.lastSeenSequence = r.sequence
@@ -1224,7 +1228,7 @@ func (r *entityResolver) applyActiveResponseFsmComponents(entityID uint64, compo
 	}
 	update := runtimeEntity{entityID: entityID}
 	for _, component := range components {
-		if err := applyEntityComponentPayload(&update, 28, component.data); err != nil {
+		if err := applyEntityComponentPayload(&update, fieldEntityComponentPbEntityFsmComponentPb, component.data); err != nil {
 			return err
 		}
 	}
@@ -1242,7 +1246,7 @@ func (r *entityResolver) applyActiveResponsePartComponents(entityID uint64, comp
 	update := runtimeEntity{entityID: entityID}
 	observed := 0
 	for _, component := range components {
-		if component.number != 5 || component.wire != 2 {
+		if component.number != fieldEntityComponentPbPartComponent || component.wire != 2 {
 			continue
 		}
 		if err := applyEntityComponentPayload(&update, component.number, component.data); err != nil {
@@ -1257,7 +1261,7 @@ func (r *entityResolver) applyActiveResponsePartComponents(entityID uint64, comp
 	if !exists {
 		return observed, nil
 	}
-	update.partComponentSource = "EntityActiveRequest frame token match + field4 EntityId -> EntityActiveResponse.field11 ComponentPbs.PartComponent.PartLifeInfos[]"
+	update.partComponentSource = activeResponseComponentPath + ".PartComponent.PartLifeInfos[]"
 	update = mergeRuntimeEntity(previous, update)
 	r.sequence++
 	update.lastSeenSequence = r.sequence
@@ -1309,7 +1313,7 @@ func (r *entityResolver) resolvePartReference(entityID uint64, partID int32) run
 
 func isRuntimeIdentityComponent(componentNumber uint64) bool {
 	switch componentNumber {
-	case 4, 18, 25, 42, 53, 85:
+	case fieldEntityComponentPbSummonerComponent, fieldEntityComponentPbMonsterCaptureComponent, fieldEntityComponentPbConcomitantsComponentPb, fieldEntityComponentPbPlayerFollowerSelfComponentPb, fieldEntityComponentPbPlayerFollowersComponentPb, fieldEntityComponentPbFollowEntityComponentPb:
 		return true
 	default:
 		return false
@@ -1324,7 +1328,7 @@ func parseEntityPb(data []byte) (runtimeEntity, error) {
 	var entity runtimeEntity
 	for _, field := range fields {
 		if field.wire != 0 {
-			if field.number == 11 && field.wire == 2 {
+			if field.number == fieldEntityPbComponentPbs && field.wire == 2 {
 				if err := applyEntityComponent(&entity, field.data); err != nil {
 					return runtimeEntity{}, err
 				}
@@ -1332,19 +1336,19 @@ func parseEntityPb(data []byte) (runtimeEntity, error) {
 			continue
 		}
 		switch field.number {
-		case 1: // EntityPb.Id
+		case fieldEntityPbID: // EntityPb.Id
 			entity.entityID = field.value
-		case 2: // EntityPb.ConfigId
+		case fieldEntityPbConfigID: // EntityPb.ConfigId
 			entity.configID, entity.hasConfigID = field.value, true
-		case 3: // EntityPb.ConfigType
+		case fieldEntityPbConfigType: // EntityPb.ConfigType
 			entity.configType, entity.hasConfigType = field.value, true
-		case 4: // EntityPb.EntityType
+		case fieldEntityPbEntityType: // EntityPb.EntityType
 			entity.entityTypeCode, entity.hasEntityType = field.value, true
-		case 10: // EntityPb.PlayerId
+		case fieldEntityPbPlayerID: // EntityPb.PlayerId
 			entity.playerID, entity.hasPlayerID = field.value, true
-		case 21: // EntityPb.OwnerIncId is not EntityPb.Id or DynamicEntityInformation.OwnerId.
+		case fieldEntityPbOwnerIncID: // EntityPb.OwnerIncId is not EntityPb.Id or DynamicEntityInformation.OwnerId.
 			entity.ownerIncID, entity.hasOwnerIncID = field.value, true
-		case 23: // EntityPb.RoleSkinId is a skin reference, not CharacterId.
+		case fieldEntityPbRoleSkinID: // EntityPb.RoleSkinId is a skin reference, not CharacterId.
 			entity.roleSkinID, entity.hasRoleSkinID = field.value, true
 		}
 	}
@@ -1369,7 +1373,7 @@ func applyEntityComponent(entity *runtimeEntity, data []byte) error {
 
 func applyEntityComponentPayload(entity *runtimeEntity, componentNumber uint64, data []byte) error {
 	switch componentNumber {
-	case 4: // SummonerComponentPb
+	case fieldEntityComponentPbSummonerComponent: // SummonerComponentPb
 		fields, err := parseProtoFields(data)
 		if err != nil {
 			return fmt.Errorf("parse SummonerComponentPb: %w", err)
@@ -1379,39 +1383,39 @@ func applyEntityComponentPayload(entity *runtimeEntity, componentNumber uint64, 
 				continue
 			}
 			switch field.number {
-			case 1:
+			case fieldSummonerComponentPbSummonerID:
 				entity.summonerID, entity.hasSummonerID = field.value, true
-			case 2:
+			case fieldSummonerComponentPbSummonCfgID:
 				entity.summonConfigID, entity.hasSummonConfigID = field.value, true
-			case 3:
+			case fieldSummonerComponentPbSummonSkillID:
 				entity.summonSkillID, entity.hasSummonSkillID = field.value, true
-			case 4:
+			case fieldSummonerComponentPbPlayerID:
 				entity.summonerPlayerID, entity.hasSummonerPlayerID = field.value, true
-			case 5:
+			case fieldSummonerComponentPbType:
 				entity.summonType, entity.hasSummonType = field.value, true
 			}
 		}
-	case 28: // EntityFsmComponentPb
+	case fieldEntityComponentPbEntityFsmComponentPb: // EntityFsmComponentPb
 		fields, err := parseProtoFields(data)
 		if err != nil {
 			return fmt.Errorf("parse EntityFsmComponentPb: %w", err)
 		}
 		for _, field := range fields {
-			if field.number == 3 && field.wire == 0 { // CommonHashCode (int32)
+			if field.number == fieldEntityFsmComponentPbCommonHashCode && field.wire == 0 { // CommonHashCode (int32)
 				entity.fsmCommonHashCode, entity.hasFsmCommonHashCode = int64(int32(uint32(field.value))), true
 			}
-			if field.number == 2 && field.wire == 0 { // HashCode (int32)
+			if field.number == fieldEntityFsmComponentPbHashCode && field.wire == 0 { // HashCode (int32)
 				entity.fsmHashCode, entity.hasFsmHashCode = int64(int32(uint32(field.value))), true
 			}
 		}
-	case 5: // PartComponentPb
+	case fieldEntityComponentPbPartComponent: // PartComponentPb
 		information, err := parseRuntimePartInformation(data)
 		if err != nil {
 			return err
 		}
 		entity.hasPartComponent = true
 		entity.partInformation = information
-	case 18: // MonsterCaptureComponentPb
+	case fieldEntityComponentPbMonsterCaptureComponent: // MonsterCaptureComponentPb
 		fields, err := parseProtoFields(data)
 		if err != nil {
 			return fmt.Errorf("parse MonsterCaptureComponentPb: %w", err)
@@ -1421,15 +1425,15 @@ func applyEntityComponentPayload(entity *runtimeEntity, componentNumber uint64, 
 				continue
 			}
 			switch field.number {
-			case 1:
+			case fieldMonsterCaptureComponentPbTemplateID:
 				entity.templateID, entity.hasTemplateID = field.value, true
-			case 2:
+			case fieldMonsterCaptureComponentPbEntityID:
 				entity.monsterCaptureEntityID, entity.hasMonsterCaptureEntityID = field.value, true
-			case 3:
+			case fieldMonsterCaptureComponentPbMonsterID:
 				entity.monsterID, entity.hasMonsterID = field.value, true
 			}
 		}
-	case 42: // PlayerFollowerSelfComponentPb
+	case fieldEntityComponentPbPlayerFollowerSelfComponentPb: // PlayerFollowerSelfComponentPb
 		fields, err := parseProtoFields(data)
 		if err != nil {
 			return fmt.Errorf("parse PlayerFollowerSelfComponentPb: %w", err)
@@ -1439,13 +1443,13 @@ func applyEntityComponentPayload(entity *runtimeEntity, componentNumber uint64, 
 				continue
 			}
 			switch field.number {
-			case 1:
+			case fieldPlayerFollowerSelfComponentPbPlayerEntityID:
 				entity.playerEntityID, entity.hasPlayerEntityID = field.value, true
-			case 2:
+			case fieldPlayerFollowerSelfComponentPbSummonConfigID:
 				entity.followerSummonConfigID, entity.hasFollowerSummonConfigID = field.value, true
 			}
 		}
-	case 25: // ConcomitantsComponentPb
+	case fieldEntityComponentPbConcomitantsComponentPb: // ConcomitantsComponentPb
 		fields, err := parseProtoFields(data)
 		if err != nil {
 			return fmt.Errorf("parse ConcomitantsComponentPb: %w", err)
@@ -1455,29 +1459,29 @@ func applyEntityComponentPayload(entity *runtimeEntity, componentNumber uint64, 
 				continue
 			}
 			switch field.number {
-			case 1: // VisionEntityIds[]
+			case fieldConcomitantsComponentPbVisionEntityIDs: // VisionEntityIds[]
 				if len(entity.concomitantVisionIDs) >= maxRuntimeComponentEntityRefs {
 					return fmt.Errorf("ConcomitantsComponentPb.VisionEntityIds exceeds limit %d", maxRuntimeComponentEntityRefs)
 				}
 				entity.concomitantVisionIDs = append(entity.concomitantVisionIDs, field.value)
-			case 2: // CustomEntityIds[]
+			case fieldConcomitantsComponentPbCustomEntityIDs: // CustomEntityIds[]
 				if len(entity.concomitantCustomIDs) >= maxRuntimeComponentEntityRefs {
 					return fmt.Errorf("ConcomitantsComponentPb.CustomEntityIds exceeds limit %d", maxRuntimeComponentEntityRefs)
 				}
 				entity.concomitantCustomIDs = append(entity.concomitantCustomIDs, field.value)
-			case 3: // PhantomRoleEid
+			case fieldConcomitantsComponentPbPhantomRoleEid: // PhantomRoleEid
 				entity.phantomRoleEntityID, entity.hasPhantomRoleEntityID = field.value, true
-			case 4: // WeakVisionEid
+			case fieldConcomitantsComponentPbWeakVisionEid: // WeakVisionEid
 				entity.weakVisionEntityID, entity.hasWeakVisionEntityID = field.value, true
 			}
 		}
-	case 53: // PlayerFollowersComponentPb
+	case fieldEntityComponentPbPlayerFollowersComponentPb: // PlayerFollowersComponentPb
 		fields, err := parseProtoFields(data)
 		if err != nil {
 			return fmt.Errorf("parse PlayerFollowersComponentPb: %w", err)
 		}
 		for _, field := range fields {
-			if field.number != 1 || field.wire != 2 {
+			if field.number != fieldPlayerFollowersComponentPbListPlayerFollowerPb || field.wire != 2 {
 				continue
 			}
 			if len(entity.playerFollowers) >= maxRuntimeComponentEntityRefs {
@@ -1493,21 +1497,21 @@ func applyEntityComponentPayload(entity *runtimeEntity, componentNumber uint64, 
 					continue
 				}
 				switch followerField.number {
-				case 1: // Type
+				case fieldPlayerFollowerPbType: // Type
 					follower.typeID, follower.hasType = followerField.value, true
-				case 2: // EntityId
+				case fieldPlayerFollowerPbEntityID: // EntityId
 					follower.entityID, follower.hasEntity = followerField.value, true
 				}
 			}
 			entity.playerFollowers = append(entity.playerFollowers, follower)
 		}
-	case 85: // FollowEntityComponentPb
+	case fieldEntityComponentPbFollowEntityComponentPb: // FollowEntityComponentPb
 		fields, err := parseProtoFields(data)
 		if err != nil {
 			return fmt.Errorf("parse FollowEntityComponentPb: %w", err)
 		}
 		for _, field := range fields {
-			if field.number == 1 && field.wire == 0 {
+			if field.number == fieldFollowEntityComponentPbEntityID && field.wire == 0 {
 				entity.followEntityID, entity.hasFollowEntityID = field.value, true
 			}
 		}
@@ -1523,7 +1527,7 @@ func parseRuntimePartInformation(data []byte) (map[int32]runtimePartInformation,
 	parts := make(map[int32]runtimePartInformation)
 	rowsSeen := 0
 	for _, field := range fields {
-		if field.number != 1 || field.wire != 2 { // PartComponentPb.PartLifeInfos[]
+		if field.number != fieldPartComponentPbPartLifeInfos || field.wire != 2 { // PartComponentPb.PartLifeInfos[]
 			continue
 		}
 		rowsSeen++
@@ -1537,19 +1541,19 @@ func parseRuntimePartInformation(data []byte) (map[int32]runtimePartInformation,
 		var information runtimePartInformation
 		for _, rowField := range rowFields {
 			switch {
-			case rowField.number == 1 && rowField.wire == 0: // PartInformation.PartId
+			case rowField.number == fieldPartInformationPartID && rowField.wire == 0: // PartInformation.PartId
 				information.partID = int32(uint32(rowField.value))
 				information.hasPartID = true
-			case rowField.number == 3 && rowField.wire == 5: // PartInformation.LifeMax
+			case rowField.number == fieldPartInformationLifeMax && rowField.wire == 5: // PartInformation.LifeMax
 				information.lifeMax = math.Float32frombits(binary.LittleEndian.Uint32(rowField.data))
 				if math.IsNaN(float64(information.lifeMax)) || math.IsInf(float64(information.lifeMax), 0) {
 					return nil, fmt.Errorf("PartInformation.LifeMax is not finite")
 				}
 				information.hasLifeMax = true
-			case rowField.number == 4 && rowField.wire == 0: // PartInformation.Activated
+			case rowField.number == fieldPartInformationActivated && rowField.wire == 0: // PartInformation.Activated
 				information.activated = rowField.value != 0
 				information.hasActivated = true
-			case rowField.number == 5 && rowField.wire == 0: // PartInformation.PartTag
+			case rowField.number == fieldPartInformationPartTag && rowField.wire == 0: // PartInformation.PartTag
 				information.partTag = int32(uint32(rowField.value))
 				information.hasPartTag = true
 			}
@@ -1697,19 +1701,19 @@ func (r *entityResolver) resolve(entityID uint64) (runtimeEntity, resolutionStat
 	if !ok {
 		return runtimeEntity{entityID: entityID}, resolutionUnknown
 	}
-	if entity.sourceMessageID == 25185 {
+	if entity.sourceMessageID == cmdEntityAddNotify {
 		return entity, resolutionVerified
 	}
-	if entity.sourceMessageID == 18559 {
+	if entity.sourceMessageID == cmdJoinSceneNotify {
 		return entity, resolutionVerified
 	}
-	if entity.sourceMessageID == 17286 {
+	if entity.sourceMessageID == cmdUpdateSceneGroupDataNotify {
 		return entity, resolutionVerified
 	}
-	if entity.sourceMessageID == 28481 {
+	if entity.sourceMessageID == cmdEntityActiveRequest {
 		return entity, resolutionCorrelated
 	}
-	if entity.sourceMessageID == 26702 {
+	if entity.sourceMessageID == cmdEntityActiveResponse {
 		return entity, resolutionCorrelated
 	}
 	return entity, resolutionUnknown

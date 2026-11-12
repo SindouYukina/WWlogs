@@ -7,8 +7,8 @@ import (
 
 func TestTemplateConfigTypeNamesDynamicallySpawnedEntities(t *testing.T) {
 	resolver := newEntityResolver()
-	resolver.entities[500] = runtimeEntity{entityID: 500, configID: 650000050, hasConfigID: true, configType: 4, hasConfigType: true, sourceMessageID: 25185}
-	resolver.entities[501] = runtimeEntity{entityID: 501, configID: 650000050, hasConfigID: true, configType: 1, hasConfigType: true, sourceMessageID: 25185}
+	resolver.entities[500] = runtimeEntity{entityID: 500, configID: 650000050, hasConfigID: true, configType: 4, hasConfigType: true, sourceMessageID: cmdEntityAddNotify}
+	resolver.entities[501] = runtimeEntity{entityID: 501, configID: 650000050, hasConfigID: true, configType: 1, hasConfigType: true, sourceMessageID: cmdEntityAddNotify}
 	masters := &gameMaster{locale: "zh-TW", sceneIdentity: &sceneIdentityMaster{
 		templateCatalog: map[uint64]sceneTemplateCandidate{650000050: {TemplateID: 650000050, Name: "Boss", NameStatus: "VERIFIED"}},
 	}}

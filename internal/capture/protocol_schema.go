@@ -2,11 +2,14 @@ package capture
 
 // protocolSchema is optional, versioned field metadata used by schema-aware
 // analysis. Callers provide it with -protocol-schema; it is not embedded in the
-// executable. Schema facts describe one client build and do not prove that the
-// same bytes carry that meaning in a capture build.
+// executable. Its numbers must be those of the current game version, because
+// frames are read with their wire numbers; GameVersion says which version that is.
+// Schema facts describe one client build and do not prove that the same bytes
+// carry that meaning in a capture build.
 type protocolSchema struct {
 	SourceSHA256 string                   `json:"sourceSha256"`
 	ClientLabel  string                   `json:"clientLabel"`
+	GameVersion  string                   `json:"gameVersion"`
 	Messages     map[string]schemaMessage `json:"messages"`
 	Enums        map[string]schemaEnum    `json:"enums"`
 }

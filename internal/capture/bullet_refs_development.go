@@ -64,7 +64,7 @@ func (p *processor) observeBulletReferences(frame gameFrame, data *decodedMessag
 
 // archiveBulletRefReceiveFrame handles standalone and response-embedded inbound combat notifications.
 func (p *processor) archiveBulletRefReceiveFrame(frame gameFrame, plain []byte) {
-	if (p.bulletRefOut == nil && p.skillRefOut == nil && p.shieldRefOut == nil) || p.protocolSchema == nil || (frame.commandID != 25706 && frame.commandID != 20332) {
+	if (p.bulletRefOut == nil && p.skillRefOut == nil && p.shieldRefOut == nil) || p.protocolSchema == nil || (frame.commandID != cmdCombatReceivePackNotify && frame.commandID != cmdCombatSendPackResponse) {
 		return
 	}
 	payloads, err := receivePackNotifyBodies(frame.commandID, plain)

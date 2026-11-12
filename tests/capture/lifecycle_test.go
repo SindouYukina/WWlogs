@@ -7,17 +7,17 @@ import (
 // lifecycleAddNotify builds an EntityAddNotify carrying one EntityPb with the
 // given ID and ConfigId. Field numbers follow the protocol tests in this package.
 func lifecycleAddNotify(entityID, configID uint64) []byte {
-	entity := appendVarintField(nil, 1, entityID)
-	entity = appendVarintField(entity, 2, configID)
-	return appendBytesField(appendVarintField(nil, 1, 1), 6, entity)
+	entity := appendVarintField(nil, fieldEntityPbID, entityID)
+	entity = appendVarintField(entity, fieldEntityPbConfigID, configID)
+	return appendBytesField(appendVarintField(nil, fieldEntityAddNotifyIsAdd, 1), fieldEntityAddNotifyEntityPbs, entity)
 }
 
 // lifecycleRemoveNotify builds an EntityRemoveNotify (remove flag 4, one
 // EntityRemoveInfo in field 5 carrying the entity ID in field 1).
 func lifecycleRemoveNotify(entityIDs ...uint64) []byte {
-	notify := appendVarintField(nil, 4, 1)
+	notify := appendVarintField(nil, fieldEntityRemoveNotifyIsRemove, 1)
 	for _, id := range entityIDs {
-		notify = appendBytesField(notify, 5, appendVarintField(nil, 1, id))
+		notify = appendBytesField(notify, fieldEntityRemoveNotifyRemoveInfos, appendVarintField(nil, fieldEntityRemoveInfoEntityID, id))
 	}
 	return notify
 }

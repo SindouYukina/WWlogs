@@ -414,16 +414,16 @@ func TestEncounterReplayIsDeterministic(t *testing.T) {
 }
 
 func TestDecodePlayerBattleStateChange(t *testing.T) {
-	enter := []byte{0x28, 0x01, 0x78, 0x2a} // InBattle=true (field 5), PlayerId=42 (field 15)
+	enter := appendVarintField(appendVarintField(nil, fieldPlayerBattleStateChangeNotifyInBattle, 1), fieldPlayerBattleStateChangeNotifyPlayerID, 42)
 	signal, err := decodePlayerBattleStateChange(enter)
 	if err != nil || !signal.inBattle || signal.playerID != 42 || !signal.hasPlayerID {
 		t.Fatalf("unexpected enter decode: %+v err=%v", signal, err)
 	}
-	exit := []byte{0x78, 0x2a}
+	exit := appendVarintField(nil, fieldPlayerBattleStateChangeNotifyPlayerID, 42)
 	if signal, err := decodePlayerBattleStateChange(exit); err != nil || signal.inBattle || signal.playerID != 42 {
 		t.Fatalf("an exit carries only the PlayerId: %+v err=%v", signal, err)
 	}
-	if _, err := decodePlayerBattleStateChange([]byte{0x78}); err == nil {
+	if _, err := decodePlayerBattleStateChange(appendTestVarint(nil, fieldPlayerBattleStateChangeNotifyPlayerID<<3)); err == nil {
 		t.Fatal("a truncated message must be reported as a decode failure")
 	}
 }

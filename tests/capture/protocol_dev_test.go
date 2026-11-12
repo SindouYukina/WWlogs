@@ -15,9 +15,9 @@ func TestDamageResponseKeepsUnresolvedEntityVisible(t *testing.T) {
 	p := newProcessor(nil, &stdout, &diagnostic, nil)
 	p.combatEventsJSONL = &jsonl
 	p.pending[42] = pendingDamageRequest{attackerEntityID: 25320, hasAttackerEntityID: true, damageID: 70010001, hasDamageID: true, damageSourceType: 1, hasDamageSourceType: true, bulletID: -1, hasBulletID: true}
-	response := appendVarintField(nil, 4, 0)     // success
-	response = appendVarintField(response, 5, 0) // not immune
-	response = appendVarintField(response, 10, 9001)
+	response := appendVarintField(nil, fieldDamageExecuteResponseErrorCode, 0)      // success
+	response = appendVarintField(response, fieldDamageExecuteResponseImmuneType, 0) // not immune
+	response = appendVarintField(response, fieldDamageExecuteResponseDamage, 9001)
 
 	p.handleOneDamageResult(42, response)
 	p.handleOneDamageResult(42, response)
@@ -43,12 +43,12 @@ func TestDamageResponsePreservesRawResultsAndMarksHealingOnlyAsCandidate(t *test
 		120900505: {ID: 120900505, CalculateType: 1, SourceTable: "damage"},
 	}}
 	p.pending[9] = pendingDamageRequest{damageID: 120900505, hasDamageID: true}
-	response := appendVarintField(nil, 4, 0)
-	response = appendVarintField(response, 5, 0)
+	response := appendVarintField(nil, fieldDamageExecuteResponseErrorCode, 0)
+	response = appendVarintField(response, fieldDamageExecuteResponseImmuneType, 0)
 	changeLife := int32(-700)
 	serverResult := int32(-1311)
-	response = appendVarintField(response, 7, uint64(uint32(changeLife)))    // raw ChangeLife
-	response = appendVarintField(response, 10, uint64(uint32(serverResult))) // raw server result
+	response = appendVarintField(response, fieldDamageExecuteResponseChangeLife, uint64(uint32(changeLife))) // raw ChangeLife
+	response = appendVarintField(response, fieldDamageExecuteResponseDamage, uint64(uint32(serverResult)))   // raw server result
 
 	p.handleOneDamageResult(9, response)
 
@@ -205,18 +205,18 @@ func TestResolvedCharacterIDRemainsVisibleWhenNameIsUnknown(t *testing.T) {
 func TestSummonerEntityChainResolvesCharacterSeparatelyFromDamageCredit(t *testing.T) {
 	resolver := newEntityResolver()
 	add := func(entityID, configID, configType uint64, summonerID uint64, hasSummoner bool) {
-		entity := appendVarintField(nil, 1, entityID)
+		entity := appendVarintField(nil, fieldEntityPbID, entityID)
 		if configID != 0 {
-			entity = appendVarintField(entity, 2, configID)
+			entity = appendVarintField(entity, fieldEntityPbConfigID, configID)
 		}
 		if configType != 0 {
-			entity = appendVarintField(entity, 3, configType)
+			entity = appendVarintField(entity, fieldEntityPbConfigType, configType)
 		}
 		if hasSummoner {
-			summoner := appendVarintField(nil, 1, summonerID)
-			entity = appendBytesField(entity, 11, appendBytesField(nil, 4, summoner))
+			summoner := appendVarintField(nil, fieldSummonerComponentPbSummonerID, summonerID)
+			entity = appendBytesField(entity, fieldEntityPbComponentPbs, appendBytesField(nil, fieldEntityComponentPbSummonerComponent, summoner))
 		}
-		notify := appendBytesField(appendVarintField(nil, 1, 1), 6, entity)
+		notify := appendBytesField(appendVarintField(nil, fieldEntityAddNotifyIsAdd, 1), fieldEntityAddNotifyEntityPbs, entity)
 		if _, err := resolver.applyEntityAddNotify(notify); err != nil {
 			t.Fatal(err)
 		}
@@ -288,7 +288,7 @@ func TestRuntimeIdentityAuditKeepsOwnerAndSummonerNamespacesSeparate(t *testing.
 		playerEntityID: 640, hasPlayerEntityID: true,
 		playerID: 77, hasPlayerID: true, roleID: 1312, hasRoleID: true,
 		roleSourceFieldPath: "JoinSceneNotify.SceneInfo.PlayerInfos[].PlayerSceneGroupData[].FightRoleInfos[].RoleId",
-		sourceMessageID:     18559, sourceFieldPath: "JoinSceneNotify.SceneInfo.AoiData.Entities.EntityPb.Id",
+		sourceMessageID:     cmdJoinSceneNotify, sourceFieldPath: "JoinSceneNotify.SceneInfo.AoiData.Entities.EntityPb.Id",
 	}
 	var got map[string]any
 	if err := json.Unmarshal([]byte(marshalRuntimeIdentity(entity)), &got); err != nil {
@@ -304,7 +304,7 @@ func TestRuntimeIdentityAuditKeepsOwnerAndSummonerNamespacesSeparate(t *testing.
 			t.Fatalf("runtime audit field %s lost its value/presence: %#v", name, got[name])
 		}
 	}
-	if got["sourceMessageId"] != float64(18559) || got["sourceFieldPath"] != entity.sourceFieldPath {
+	if got["sourceMessageId"] != float64(cmdJoinSceneNotify) || got["sourceFieldPath"] != entity.sourceFieldPath {
 		t.Fatalf("runtime audit provenance missing: %#v", got)
 	}
 	if got["roleSourceFieldPath"] != entity.roleSourceFieldPath {

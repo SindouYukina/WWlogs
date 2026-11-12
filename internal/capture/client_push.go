@@ -4,13 +4,6 @@ import (
 	"fmt"
 )
 
-const (
-	combatSendPackDataField                   = 14
-	combatSendPackDataPushField               = 2
-	combatPushClientRoleReportField           = 56
-	clientCurrentRoleReportCurrentEntityField = 12
-)
-
 // clientPushSchemaVersion identifies the layout of clientPushRecord.
 const clientPushSchemaVersion = 2
 
@@ -61,7 +54,7 @@ const maxCombatActionRequests = 8192
 // archiveClientPushFrame tracks the self-reported role entity without an
 // optional schema, then decodes the full client-push output when a schema exists.
 func (p *processor) archiveClientPushFrame(frame gameFrame, plain []byte) {
-	if frame.commandID != 19470 || frame.direction != "out" {
+	if frame.commandID != cmdCombatSendPackRequest || frame.direction != "out" {
 		return
 	}
 	if p.protocolSchema == nil {
@@ -84,7 +77,7 @@ func (p *processor) observeLocalRoleReports(plain []byte) {
 		return
 	}
 	for _, dataField := range outer {
-		if dataField.number != combatSendPackDataField || dataField.wire != 2 {
+		if dataField.number != fieldCombatSendPackRequestData || dataField.wire != 2 {
 			continue
 		}
 		dataFields, err := parseProtoFields(dataField.data)
@@ -94,7 +87,7 @@ func (p *processor) observeLocalRoleReports(plain []byte) {
 			continue
 		}
 		for _, pushField := range dataFields {
-			if pushField.number != combatSendPackDataPushField || pushField.wire != 2 {
+			if pushField.number != fieldCombatSendDataPush || pushField.wire != 2 {
 				continue
 			}
 			pushFields, err := parseProtoFields(pushField.data)
@@ -104,7 +97,7 @@ func (p *processor) observeLocalRoleReports(plain []byte) {
 				continue
 			}
 			for _, roleField := range pushFields {
-				if roleField.number != combatPushClientRoleReportField || roleField.wire != 2 {
+				if roleField.number != fieldCombatPushDataClientCurrentRoleReportPush || roleField.wire != 2 {
 					continue
 				}
 				roleFields, err := parseProtoFields(roleField.data)
@@ -116,7 +109,7 @@ func (p *processor) observeLocalRoleReports(plain []byte) {
 				var entityID uint64
 				var hasEntityID, conflictingEntityID bool
 				for _, roleValue := range roleFields {
-					if roleValue.number != clientCurrentRoleReportCurrentEntityField || roleValue.wire != 0 || roleValue.value == 0 {
+					if roleValue.number != fieldClientCurrentRoleReportPushCurrentEntityID || roleValue.wire != 0 || roleValue.value == 0 {
 						continue
 					}
 					if hasEntityID && entityID != roleValue.value {

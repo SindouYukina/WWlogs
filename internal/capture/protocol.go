@@ -17,10 +17,8 @@ type gameFrame struct {
 	messageType byte
 	sequence    uint32
 	token       uint16
-	// commandID is the command number on the wire until handleFrame resolves it to the internal command the decoders
-	// read (protocol_translation.go); wireCommandID then keeps the number observed on the wire.
+	// commandID is the command number on the wire, which the decoders read as it is (protocol_numbers.go).
 	commandID        uint16
-	wireCommandID    uint16
 	compressed       bool
 	compressedLength uint32
 	body             []byte
@@ -40,20 +38,20 @@ type protoField struct {
 }
 
 type pendingDamageRequest struct {
-	attackerEntityID    uint64 // DamageExecuteRequest.AttackerEntityId, field 13
+	attackerEntityID    uint64 // DamageExecuteRequest.AttackerEntityId
 	hasAttackerEntityID bool
-	targetEntityID      uint64 // DamageExecuteRequest.TargetEntityId, field 10
+	targetEntityID      uint64 // DamageExecuteRequest.TargetEntityId
 	hasTargetEntityID   bool
-	partID              int32 // DamageExecuteRequest.PartId, field 5
+	partID              int32 // DamageExecuteRequest.PartId
 	hasPartID           bool
-	skillLevel          uint64 // DamageExecuteRequest.SkillLevel, field 12
-	skillID             uint64 // DamageContext.SkillId, field 4
-	skillMessageID      uint64 // DamageContext.SkillMessageId, field 5
-	damageID            uint64 // DamageExecuteRequest.DamageId, field 9
+	skillLevel          uint64 // DamageExecuteRequest.SkillLevel
+	skillID             uint64 // DamageContext.SkillId
+	skillMessageID      uint64 // DamageContext.SkillMessageId
+	damageID            uint64 // DamageExecuteRequest.DamageId
 	hasDamageID         bool
-	damageSourceType    uint64 // DamageContext.SourceType, field 1
+	damageSourceType    uint64 // DamageContext.SourceType
 	hasDamageSourceType bool
-	bulletID            int64 // DamageContext.BulletId, field 2
+	bulletID            int64 // DamageContext.BulletId
 	hasBulletID         bool
 	sequence            uint64
 }
@@ -411,7 +409,7 @@ func crc32IEEE(data []byte) uint32 {
 // handleFrame. Other commands are only counted and inspected by the census.
 func isImplementedCommand(commandID uint16) bool {
 	switch commandID {
-	case 103, 116, 15380, 19470, 20332, 25706, 17250, 17286, 18559, 25185, 17769, 28030, 28481, 26702, 25830, 18345, 20358, 17893, 22102, 29363, 16974:
+	case cmdLoginRequest, cmdCheckClientPush, cmdBasicInfoNotify, cmdCombatSendPackRequest, cmdCombatSendPackResponse, cmdCombatReceivePackNotify, cmdTimeCheckResponse, cmdUpdateSceneGroupDataNotify, cmdJoinSceneNotify, cmdEntityAddNotify, cmdEntityRemoveNotify, cmdUpdateTimerInfoNotify, cmdEntityActiveRequest, cmdEntityActiveResponse, cmdApplyGameplayEffectNotify, cmdRemoveGameplayEffectNotify, cmdRemoveGameplayEffectPush, cmdSimpleCombatEntityBuffUpdateNotify, cmdSimpleCombatEntityBuffLayerCountNotify, cmdBuffStackCountNotify, cmdBuffDurationNotify:
 		return true
 	}
 	return false
@@ -427,7 +425,7 @@ func (p *processor) handleFrame(frame gameFrame) {
 	if p.census != nil {
 		censusEntry = p.census.observeFrame(frame, p.sessionNumber)
 	}
-	if frame.commandID == protoKeyResponseCommand && frame.direction == "in" {
+	if frame.commandID == cmdProtoKeyResponse && frame.direction == "in" {
 		p.stats.handshakeFrames++
 		if err := p.handleProtoKeyResponse(frame.body); err != nil {
 			p.stats.handshakeErrors++
@@ -456,22 +454,16 @@ func (p *processor) handleFrame(frame gameFrame) {
 		}
 		return
 	}
-	// From here on the decoders see the internal command; the wire number stays in wireCommandID.
-	frame.wireCommandID = frame.commandID
-	internal, message := p.protocol.command(frame.commandID)
-	frame.commandID = internal
-	if censusEntry != nil && internal != 0 && internal != frame.wireCommandID {
-		censusEntry.observeInternal(internal)
-	}
-	if internal == 0 || !isImplementedCommand(frame.commandID) {
+	decodable := p.protocol.decodes(frame.commandID)
+	if !decodable || !isImplementedCommand(frame.commandID) {
 		if censusEntry != nil {
-			p.inspectUndecodedFrame(frame, message, censusEntry)
-		} else if message != nil {
-			p.archiveUndecodedSchema(frame, message)
+			p.inspectUndecodedFrame(frame, decodable, censusEntry)
+		} else if decodable {
+			p.archiveUndecodedSchema(frame)
 		}
 		return
 	}
-	if ((frame.commandID == 103 || frame.commandID == 116 || frame.commandID == 19470 || frame.commandID == 28481) && frame.direction != "out") || ((frame.commandID == 15380 || frame.commandID == 20332 || frame.commandID == 25706 || frame.commandID == 17250 || frame.commandID == 17286 || frame.commandID == 18559 || frame.commandID == 25185 || frame.commandID == 17769 || frame.commandID == 28030 || frame.commandID == 26702 || frame.commandID == 25830 || frame.commandID == 18345 || frame.commandID == 20358 || frame.commandID == 17893 || frame.commandID == 22102 || frame.commandID == 29363 || frame.commandID == 16974) && frame.direction != "in") {
+	if ((frame.commandID == cmdLoginRequest || frame.commandID == cmdCheckClientPush || frame.commandID == cmdCombatSendPackRequest || frame.commandID == cmdEntityActiveRequest) && frame.direction != "out") || ((frame.commandID == cmdBasicInfoNotify || frame.commandID == cmdCombatSendPackResponse || frame.commandID == cmdCombatReceivePackNotify || frame.commandID == cmdTimeCheckResponse || frame.commandID == cmdUpdateSceneGroupDataNotify || frame.commandID == cmdJoinSceneNotify || frame.commandID == cmdEntityAddNotify || frame.commandID == cmdEntityRemoveNotify || frame.commandID == cmdUpdateTimerInfoNotify || frame.commandID == cmdEntityActiveResponse || frame.commandID == cmdApplyGameplayEffectNotify || frame.commandID == cmdRemoveGameplayEffectNotify || frame.commandID == cmdRemoveGameplayEffectPush || frame.commandID == cmdSimpleCombatEntityBuffUpdateNotify || frame.commandID == cmdSimpleCombatEntityBuffLayerCountNotify || frame.commandID == cmdBuffStackCountNotify || frame.commandID == cmdBuffDurationNotify) && frame.direction != "in") {
 		p.stats.otherFrameDirections++
 		if censusEntry != nil {
 			censusEntry.FailureReasons["direction differs from implemented schema"]++
@@ -515,17 +507,6 @@ func (p *processor) handleFrame(frame gameFrame) {
 			return
 		}
 	}
-	if message != nil {
-		plain, err = p.protocol.translate(message, plain)
-		if err != nil {
-			p.stats.parseErrors++
-			fmt.Fprintf(p.diagnostic, "protocol_translation_error command=%d reason=%v\n", frame.wireCommandID, err)
-			if censusEntry != nil {
-				censusEntry.FailureReasons[protocolTranslationFailureReason]++
-			}
-			return
-		}
-	}
 	if censusEntry != nil {
 		censusEntry.observeKnownBodyWire(plain)
 	}
@@ -539,41 +520,41 @@ func (p *processor) handleFrame(frame gameFrame) {
 	p.archiveSummonOwnerFrame(frame, plain)
 	parseErrorsBefore := p.stats.parseErrors
 	switch frame.commandID {
-	case 15380:
+	case cmdBasicInfoNotify:
 		if err := p.observeLocalPlayerInfo(plain); err != nil {
 			p.stats.parseErrors++
 			fmt.Fprintf(p.diagnostic, "local_player_info_parse_error=%v\n", err)
 			return
 		}
-	case 103, 116:
+	case cmdLoginRequest, cmdCheckClientPush:
 		if err := p.observeClientVersion(frame.commandID, plain); err != nil {
 			p.stats.parseErrors++
 			fmt.Fprintf(p.diagnostic, "client_version_parse_error command=%d reason=%v\n", frame.commandID, err)
 			return
 		}
-	case 19470:
+	case cmdCombatSendPackRequest:
 		p.handleDamageRequests(frame, plain)
 		if err := p.handleClientEffectPushes(frame, plain); err != nil {
 			p.stats.parseErrors++
 			fmt.Fprintf(p.diagnostic, "client_effect_push_parse_error=%v\n", err)
 		}
-	case 20332:
+	case cmdCombatSendPackResponse:
 		p.handleDamageResponses(plain)
 		if err := p.handleEmbeddedCombatReceivePackNotify(frame, plain); err != nil {
 			p.stats.parseErrors++
 			fmt.Fprintf(p.diagnostic, "combat_response_notify_parse_error=%v\n", err)
 			return
 		}
-	case 17250, 28030:
+	case cmdTimeCheckResponse, cmdUpdateTimerInfoNotify:
 		// TimeCheckResponse and UpdateTimerInfoNotify are interpreted by the
 		// schema-directed observer to preserve their observed field provenance.
-	case 25706:
+	case cmdCombatReceivePackNotify:
 		if err := p.handleCombatReceivePackNotify(frame, plain); err != nil {
 			p.stats.parseErrors++
 			fmt.Fprintf(p.diagnostic, "combat_receive_pack_parse_error=%v\n", err)
 			return
 		}
-	case 17286:
+	case cmdUpdateSceneGroupDataNotify:
 		if _, err := p.entities.applyUpdateSceneGroupDataNotify(plain); err != nil {
 			p.stats.parseErrors++
 			fmt.Fprintf(p.diagnostic, "scene_group_update_parse_error=%v\n", err)
@@ -581,13 +562,13 @@ func (p *processor) handleFrame(frame gameFrame) {
 		}
 		p.playerRelevance.reconcileLocalPlayers(p.entities)
 		p.refreshEffectRelations()
-	case 25830, 18345, 20358, 17893, 22102, 29363, 16974:
+	case cmdApplyGameplayEffectNotify, cmdRemoveGameplayEffectNotify, cmdRemoveGameplayEffectPush, cmdSimpleCombatEntityBuffUpdateNotify, cmdSimpleCombatEntityBuffLayerCountNotify, cmdBuffStackCountNotify, cmdBuffDurationNotify:
 		if err := p.handleBuffLifecycleMessage(frame, plain); err != nil {
 			p.stats.parseErrors++
 			fmt.Fprintf(p.diagnostic, "buff_lifecycle_parse_error=%v\n", err)
 			return
 		}
-	case 18559:
+	case cmdJoinSceneNotify:
 		if _, err := p.entities.applyJoinSceneNotify(plain); err != nil {
 			p.stats.parseErrors++
 			fmt.Fprintf(p.diagnostic, "join_scene_parse_error=%v\n", err)
@@ -600,7 +581,7 @@ func (p *processor) handleFrame(frame gameFrame) {
 		p.backfillAvailableSummaryCredits()
 		p.sourceRoles.reset()
 		p.resetPendingSummaryCredits()
-	case 25185:
+	case cmdEntityAddNotify:
 		added, err := p.entities.applyEntityAddNotify(plain)
 		if err != nil {
 			p.stats.parseErrors++
@@ -609,20 +590,20 @@ func (p *processor) handleFrame(frame gameFrame) {
 		}
 		p.stats.entityAdds += added
 		p.refreshEffectRelations()
-	case 17769:
+	case cmdEntityRemoveNotify:
 		if err := p.handleEntityRemoveNotify(plain); err != nil {
 			p.stats.parseErrors++
 			fmt.Fprintf(p.diagnostic, "entity_remove_parse_error=%v\n", err)
 			return
 		}
-	case 28481:
+	case cmdEntityActiveRequest:
 		if err := p.handleActiveRequest(frame.token, plain); err != nil {
 			p.stats.parseErrors++
 			fmt.Fprintf(p.diagnostic, "entity_active_parse_error=%v\n", err)
 			return
 		}
 		p.stats.entityActiveRequests++
-	case 26702:
+	case cmdEntityActiveResponse:
 		if err := p.handleActiveResponse(frame, plain); err != nil {
 			p.stats.parseErrors++
 			fmt.Fprintf(p.diagnostic, "entity_active_response_parse_error=%v\n", err)
@@ -665,14 +646,11 @@ const (
 	protocolNoHandshakeReason        = "no handshake in this capture; protocol unknown"
 	protocolPendingFailureReason     = "client version not reported yet; protocol unknown"
 	protocolUnsupportedFailureReason = "not the current game version; not decoded"
-	protocolUntranslatedReason       = "command outside the protocol translation"
-	protocolTranslationFailureReason = "protocol translation failed"
 )
 
-// inspectUndecodedFrame counts what the census can learn about a frame no decoder reads. frame.commandID is the
-// internal command, or 0 when the protocol session has none for it; message translates the body into the internal
-// numbering.
-func (p *processor) inspectUndecodedFrame(frame gameFrame, message *translatedMessage, entry *commandCensusEntry) {
+// inspectUndecodedFrame counts what the census can learn about a frame no decoder reads. decodable says whether the
+// protocol session reads its numbering (protocolSession.decodes); otherwise only the top-level wire shape is counted.
+func (p *processor) inspectUndecodedFrame(frame gameFrame, decodable bool, entry *commandCensusEntry) {
 	if len(p.session) != 32 {
 		entry.FailureReasons["no implemented schema; session key unavailable"]++
 		return
@@ -694,7 +672,7 @@ func (p *processor) inspectUndecodedFrame(frame gameFrame, message *translatedMe
 			return
 		}
 	}
-	if frame.commandID == 0 {
+	if !decodable {
 		if fields, err := parseProtoFields(plain); err == nil {
 			entry.GenericProtoValid++
 			entry.observeTopLevelFields(fields)
@@ -702,28 +680,20 @@ func (p *processor) inspectUndecodedFrame(frame gameFrame, message *translatedMe
 		entry.FailureReasons[p.protocol.undecodableReason()]++
 		return
 	}
-	if message != nil {
-		if plain, err = p.protocol.translate(message, plain); err != nil {
-			entry.FailureReasons[protocolTranslationFailureReason]++
-			return
-		}
-	}
 	if fields, err := parseProtoFields(plain); err == nil {
 		entry.GenericProtoValid++
-		if message != nil {
-			// The optional external schema describes the internal numbering.
-			p.archiveSchemaDecode(frame, plain)
-		}
+		// The optional external schema describes the current protocol.
+		p.archiveSchemaDecode(frame, plain)
 		entry.observeTopLevelFields(fields)
 		entry.FailureReasons["message schema not implemented"]++
-		if frame.commandID == 24756 {
+		if frame.commandID == cmdMovePackagePush {
 			observation, err := extractMovePackageObservation(plain)
 			if err != nil {
 				entry.FailureReasons["MovePackagePush schema-field extraction failed"]++
 			} else {
 				p.census.observeMovePackage(observation)
 			}
-		} else if frame.commandID == 27918 {
+		} else if frame.commandID == cmdPlayerFollowerNotify {
 			observation, err := extractPlayerFollowerObservation(plain)
 			if err != nil {
 				entry.FailureReasons["PlayerFollowerNotify schema-field extraction failed"]++
@@ -745,12 +715,12 @@ func (p *processor) inspectUndecodedFrame(frame gameFrame, message *translatedMe
 
 func entityNotifyKeyField(commandID uint16) (uint64, bool) {
 	switch commandID {
-	case 19212:
-		return 5, true // EntityRemoveDynamicInteractNotify.EntityId
-	case 19566:
-		return 5, true // EntityCommonTagNotify.Id
-	case 23517:
-		return 1, true // EntityStateReadyNotify.EntityId
+	case cmdEntityRemoveDynamicInteractNotify:
+		return fieldEntityRemoveDynamicInteractNotifyEntityID, true // EntityRemoveDynamicInteractNotify.EntityId
+	case cmdEntityCommonTagNotify:
+		return fieldEntityCommonTagNotifyID, true // EntityCommonTagNotify.Id
+	case cmdEntityStateReadyNotify:
+		return fieldEntityStateReadyNotifyEntityID, true // EntityStateReadyNotify.EntityId
 	default:
 		return 0, false
 	}
@@ -764,10 +734,10 @@ func (p *processor) handleProtoKeyResponse(body []byte) error {
 	var responseType uint64
 	var encrypted []byte
 	for _, field := range fields {
-		if field.number == 2 && field.wire == 0 {
+		if field.number == fieldProtoKeyResponseType && field.wire == 0 {
 			responseType = field.value
 		}
-		if field.number == 3 && field.wire == 2 {
+		if field.number == fieldProtoKeyResponseKey && field.wire == 2 {
 			encrypted = field.data
 		}
 	}
@@ -814,7 +784,7 @@ func (p *processor) handleDamageRequests(frame gameFrame, body []byte) {
 		return
 	}
 	for _, field := range outer {
-		if field.number != 14 || field.wire != 2 { // sZn.VFs
+		if field.number != fieldCombatSendPackRequestData || field.wire != 2 { // sZn.VFs
 			continue
 		}
 		variants, err := parseProtoFields(field.data)
@@ -823,7 +793,7 @@ func (p *processor) handleDamageRequests(frame gameFrame, body []byte) {
 			continue
 		}
 		for _, variant := range variants {
-			if variant.number != 3 || variant.wire != 2 { // VFs.FFs RequestData; field 5 is U3n
+			if variant.number != fieldCombatSendDataRequest || variant.wire != 2 { // VFs.FFs RequestData; field 5 is U3n
 				continue
 			}
 			requestFields, err := parseProtoFields(variant.data)
@@ -835,10 +805,10 @@ func (p *processor) handleDamageRequests(frame gameFrame, body []byte) {
 			var hasRPC bool
 			var u3n []byte
 			for _, requestField := range requestFields {
-				if requestField.number == 2 && requestField.wire == 0 {
+				if requestField.number == fieldCombatRequestDataRequestID && requestField.wire == 0 {
 					rpcID, hasRPC = requestField.value, true
 				}
-				if requestField.number == 5 && requestField.wire == 2 {
+				if requestField.number == fieldCombatRequestDataDamageExecuteRequest && requestField.wire == 2 {
 					u3n = requestField.data
 				}
 			}
@@ -854,22 +824,22 @@ func (p *processor) handleDamageRequests(frame gameFrame, body []byte) {
 			identity := pendingDamageRequest{}
 			for _, damageField := range damageFields {
 				switch {
-				case damageField.number == 9 && damageField.wire == 0: // U3n.Fjn DamageId
+				case damageField.number == fieldDamageExecuteRequestDamageID && damageField.wire == 0: // U3n.Fjn DamageId
 					damageIDPresent = true
 					identity.damageID = damageField.value
 					identity.hasDamageID = true
-				case damageField.number == 10 && damageField.wire == 0: // DamageExecuteRequest.TargetEntityId
+				case damageField.number == fieldDamageExecuteRequestTargetEntityID && damageField.wire == 0: // DamageExecuteRequest.TargetEntityId
 					identity.targetEntityID = damageField.value
 					identity.hasTargetEntityID = true
-				case damageField.number == 5 && damageField.wire == 0: // DamageExecuteRequest.PartId
+				case damageField.number == fieldDamageExecuteRequestPartID && damageField.wire == 0: // DamageExecuteRequest.PartId
 					identity.partID = int32(uint32(damageField.value))
 					identity.hasPartID = true
-				case damageField.number == 12 && damageField.wire == 0: // DamageExecuteRequest.SkillLevel
+				case damageField.number == fieldDamageExecuteRequestSkillLevel && damageField.wire == 0: // DamageExecuteRequest.SkillLevel
 					identity.skillLevel = damageField.value
-				case damageField.number == 13 && damageField.wire == 0: // DamageExecuteRequest.AttackerEntityId
+				case damageField.number == fieldDamageExecuteRequestAttackerEntityID && damageField.wire == 0: // DamageExecuteRequest.AttackerEntityId
 					identity.attackerEntityID = damageField.value
 					identity.hasAttackerEntityID = true
-				case damageField.number == 15 && damageField.wire == 2: // DamageExecuteRequest.DamageContext
+				case damageField.number == fieldDamageExecuteRequestDamageContext && damageField.wire == 2: // DamageExecuteRequest.DamageContext
 					context, err := parseProtoFields(damageField.data)
 					if err != nil {
 						p.stats.parseErrors++
@@ -880,15 +850,15 @@ func (p *processor) handleDamageRequests(frame gameFrame, body []byte) {
 							continue
 						}
 						switch contextField.number {
-						case 1: // DamageContext.SourceType
+						case fieldDamageContextSourceType: // DamageContext.SourceType
 							identity.damageSourceType = contextField.value
 							identity.hasDamageSourceType = true
-						case 2: // DamageContext.BulletId
+						case fieldDamageContextBulletID: // DamageContext.BulletId
 							identity.bulletID = int64(contextField.value)
 							identity.hasBulletID = true
-						case 4: // DamageContext.SkillId
+						case fieldDamageContextSkillID: // DamageContext.SkillId
 							identity.skillID = contextField.value
-						case 5: // DamageContext.SkillMessageId
+						case fieldDamageContextSkillMessageID: // DamageContext.SkillMessageId
 							identity.skillMessageID = contextField.value
 						}
 					}
@@ -898,7 +868,7 @@ func (p *processor) handleDamageRequests(frame gameFrame, body []byte) {
 				continue
 			}
 			if p.census != nil {
-				p.census.innerEntries["22022 Client->Server DamageExecuteRequest"]++
+				p.census.innerEntries["Client->Server DamageExecuteRequest"]++
 			}
 			p.stats.damageRequests++
 			if _, alreadyConsumed := p.consumed[rpcID]; alreadyConsumed {
@@ -973,7 +943,7 @@ func (p *processor) handleDamageResponses(body []byte) {
 		return
 	}
 	for _, field := range outer {
-		if field.number != 14 || field.wire != 2 { // aZn.hZn
+		if field.number != fieldCombatSendPackResponseReceivePackNotify || field.wire != 2 { // aZn.hZn
 			continue
 		}
 		batches, err := parseProtoFields(field.data)
@@ -982,7 +952,7 @@ func (p *processor) handleDamageResponses(body []byte) {
 			continue
 		}
 		for _, batch := range batches {
-			if batch.number != 5 || batch.wire != 2 { // hZn.$Fs batch
+			if batch.number != fieldCombatReceivePackNotifyData || batch.wire != 2 { // hZn.$Fs batch
 				continue
 			}
 			items, err := parseProtoFields(batch.data)
@@ -991,7 +961,7 @@ func (p *processor) handleDamageResponses(body []byte) {
 				continue
 			}
 			for _, item := range items {
-				if item.number != 3 || item.wire != 2 { // $Fs.QLs ResponseData
+				if item.number != fieldCombatReceiveDataCombatResponseData || item.wire != 2 { // $Fs.QLs ResponseData
 					continue
 				}
 				response, err := parseProtoFields(item.data)
@@ -1003,10 +973,10 @@ func (p *processor) handleDamageResponses(body []byte) {
 				var hasRPC bool
 				var lis []byte
 				for _, responseField := range response {
-					if responseField.number == 2 && responseField.wire == 0 {
+					if responseField.number == fieldCombatResponseDataRequestID && responseField.wire == 0 {
 						rpcID, hasRPC = responseField.value, true
 					}
-					if responseField.number == 5 && responseField.wire == 2 {
+					if responseField.number == fieldCombatResponseDataDamageExecuteResponse && responseField.wire == 2 {
 						lis = responseField.data
 					}
 				}
@@ -1015,7 +985,7 @@ func (p *processor) handleDamageResponses(body []byte) {
 				}
 				p.stats.candidateResponses++
 				if p.census != nil {
-					p.census.innerEntries["22022 Server->Client DamageExecuteResponse"]++
+					p.census.innerEntries["Server->Client DamageExecuteResponse"]++
 				}
 				p.handleOneDamageResult(rpcID, lis)
 			}
@@ -1051,14 +1021,14 @@ func (p *processor) handleOneDamageResult(rpcID uint64, payload []byte) {
 			continue
 		}
 		switch field.number {
-		case 4: // lis.Q4n
+		case fieldDamageExecuteResponseErrorCode: // lis.Q4n
 			errorCode = int32(uint32(field.value))
-		case 5: // lis.lAs
+		case fieldDamageExecuteResponseImmuneType: // lis.lAs
 			immuneType = int32(uint32(field.value))
-		case 7: // lis.jQ_, client-mapped ChangeLife
+		case fieldDamageExecuteResponseChangeLife: // lis.jQ_, client-mapped ChangeLife
 			changeLife = int32(uint32(field.value))
 			hasChangeLife = true
-		case 10: // lis.nAs
+		case fieldDamageExecuteResponseDamage: // lis.nAs
 			amount = int32(uint32(field.value))
 			hasAmount = true
 		}

@@ -19,7 +19,7 @@ type ViewSessionHealth struct {
 	// FirstFrameAgeSeconds and FrameIdleSeconds are measured on the capture clock; nil before the first frame.
 	FirstFrameAgeSeconds *float64 `json:"firstFrameAgeSeconds,omitempty"`
 	FrameIdleSeconds     *float64 `json:"frameIdleSeconds,omitempty"`
-	// Protocol says whether the protocol session's numbering can be read (protocol_translation.go).
+	// Protocol says whether the protocol session reported the current game version and is decoded (protocol_session.go).
 	Protocol ViewProtocolHealth `json:"protocol"`
 }
 
