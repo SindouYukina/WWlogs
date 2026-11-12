@@ -118,6 +118,7 @@ func (n *nameProjection) roles(original []capture.ViewRole) []capture.ViewRole {
 	for i := range result {
 		name := n.resolve("role", result[i].RoleID)
 		result[i].Name, result[i].NameStatus = name.Name, name.Status
+		result[i].StaticRoleID = n.resolver.StaticRole(n.ctx, result[i].RoleID)
 		result[i].ElementID = n.resolver.RoleElement(n.ctx, result[i].RoleID)
 		result[i].Skills = n.skills(result[i].Skills)
 		result[i].UnassignedSkill = projectUnassignedSkill(n.ctx, n.resolver, result[i].UnassignedSkill, n.locale, &n.err)

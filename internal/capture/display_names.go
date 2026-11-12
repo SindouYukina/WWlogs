@@ -139,3 +139,12 @@ func (r *DisplayResolver) RoleElement(ctx context.Context, roleID uint64) uint64
 	element, _ := strconv.ParseUint(text.String, 10, 64)
 	return element
 }
+
+// StaticRole returns the RoleId whose static data and character art describe a runtime RoleId: a trial role's parent,
+// else the RoleId itself. Images are addressed by it, so a trial character shows its parent's avatar and portrait the way
+// it shows its parent's name and element. It selects images only and never affects statistics.
+func (r *DisplayResolver) StaticRole(ctx context.Context, roleID uint64) uint64 {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.staticRoleLocked(ctx, roleID)
+}

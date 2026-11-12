@@ -184,6 +184,9 @@ type ViewRole struct {
 	RoleID     uint64 `json:"roleId"`
 	Name       string `json:"name"`
 	NameStatus string `json:"nameStatus"`
+	// StaticRoleID is the RoleId whose static data and character art describe RoleID: a trial role's parent, else RoleID
+	// itself. The display projection fills it (zero before that); images are addressed by it, statistics never.
+	StaticRoleID uint64 `json:"staticRoleId,omitempty"`
 	// ElementID is a Master lookup filled by the display projection; zero means unknown. It never affects statistics.
 	ElementID   uint64   `json:"elementId,omitempty"`
 	DamageDealt int64    `json:"damageDealt"`

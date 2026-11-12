@@ -53,6 +53,7 @@ export const DamageBar = memo(function DamageBar({ share, fill = "track", scope 
 })
 
 export interface CharacterAvatarProps {
+  /** The static role whose art to show: a row's staticRoleId (a trial role's parent), never a guess. */
   roleId?: number
   elementId?: number
   size?: number
@@ -110,7 +111,7 @@ export const CharacterDamageRow = memo(function CharacterDamageRow({ row, elemen
     <DamageBar share={row.share} fill="row" scope={scope} />
     <div className="ww-row-flash" />
     <div className="ww-damage-row-grid">
-      <CharacterAvatar roleId={row.roleId} elementId={elementId} size={36} fallback={row.kind === "vehicle" ? <Icon name="bolt" size={15} /> : "?"} />
+      <CharacterAvatar roleId={row.staticRoleId} elementId={elementId} size={36} fallback={row.kind === "vehicle" ? <Icon name="bolt" size={15} /> : "?"} />
       <span className="ww-damage-row-name"><strong className="ww-truncate" title={name}>{name}</strong>{subtitle && <small className="ww-truncate">{subtitle}</small>}</span>
       <AnimatedNumber value={row.dps} format={formatDps} mode={numberMode} scope={scope} stale={stale} />
       <AnimatedNumber value={row.damage} format={formatDamage} mode={numberMode} scope={scope} stale={stale} />

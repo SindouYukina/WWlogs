@@ -10,6 +10,8 @@ export interface CombatRowModel {
   key: string
   kind: "role" | "vehicle"
   roleId?: number
+  /** The role whose character art shows this row, as Go resolved it: a trial role's parent. Images only. */
+  staticRoleId?: number
   /** Static Master element; undefined means unknown. */
   elementId?: number
   /** Null when the Master lookup is not VERIFIED; the UI must then show UNKNOWN with roleId. */
@@ -32,6 +34,7 @@ function roleRow(role: Role): CombatRowModel {
     key: `role-${role.playerId}-${role.roleId}`,
     kind: "role",
     roleId: role.roleId,
+    staticRoleId: role.staticRoleId ?? role.roleId,
     elementId: role.elementId,
     name: role.nameStatus === "VERIFIED" && role.name !== "" ? role.name : null,
     directDamage: role.directDamage,

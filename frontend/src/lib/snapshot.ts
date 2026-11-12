@@ -128,6 +128,9 @@ export interface DPS {
 export interface Role {
   playerId: number
   roleId: number
+  /** The RoleId whose static data and character art describe roleId: a trial role's parent, else roleId. From the display
+   * projection; images are addressed by it, statistics never. */
+  staticRoleId?: number
   name: string
   nameStatus: string
   /** Static Master element, from the display projection. Absent means unknown. */
