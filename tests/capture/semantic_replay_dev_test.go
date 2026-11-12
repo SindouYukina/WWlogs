@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -43,10 +44,33 @@ type semanticSkillFact struct {
 	showID  bool
 }
 
-// The Global 3.7 captures these facts were written for are no longer decoded (current game version only); their facts
-// are kept in research/runs/2026-11-12/v0.7.0-3.8-compatibility. Facts of the current game version's golden corpus
-// are added with that corpus.
-var semanticEffectFacts = []semanticEffectFact{}
+// The golden corpus of the current game version (Global 3.8.9, 2026-11-12). LIVE_20261112_110155 is a real capture of
+// one fight of role 1409 and one of a trial team: the new role 1512 (TrialRoleInfo 15127004) with trial roles 13117004
+// and 13127004. SYNTH-MISSED-LOGIN-RELOGIN-3.8 is the missed-login traffic of LIVE_20261112_105901 followed by that
+// capture's relogin, so it must show the same facts. The facts are cross-checked outside the product's combat decoders
+// (research/runs/2026-11-12/v0.7.0-3.8-compatibility): every damage value against the generic schema decode and the
+// targets' server Life attribute, attacker and target against the request, stacks against the effect messages, and
+// names against the client's skill tables. The Global 3.7 facts are kept there too; those captures are no longer decoded.
+var currentGoldenCaptures = []string{"LIVE_20261112_110155", "SYNTH-MISSED-LOGIN-RELOGIN-3.8"}
+
+// currentGoldenFacts states the same facts for each capture of the golden corpus.
+func currentGoldenFacts[T any](facts func(capture string) []T) []T {
+	var all []T
+	for _, capture := range currentGoldenCaptures {
+		all = append(all, facts(capture)...)
+	}
+	return all
+}
+
+var semanticEffectFacts = currentGoldenFacts(func(capture string) []semanticEffectFact {
+	return []semanticEffectFact{
+		// Monster Glacio a monster puts on the local player (ApplyGameplayEffectPush, StackCount 1).
+		{capture, 10010000, EffectPolarityDebuff, EffectTargetTeam, 1},
+		// Aero Erosion role 1409 puts on a monster: OrderApplyBuffRequest from bullet 1409004021, then
+		// ApplyGameplayEffectNotify on the monster with StackCount 1.
+		{capture, 10041000, EffectPolarityDebuff, EffectTargetEnemy, 1},
+	}
+})
 
 // Effects that must never be listed: logic flags and refresh-period modifiers the game draws no buff-bar item for.
 var semanticNeverListed = map[uint64]string{
@@ -54,11 +78,30 @@ var semanticNeverListed = map[uint64]string{
 	1409401095: "six-element fan-out modifier",
 	1508952003: "six-element fan-out modifier",
 	3098:       "fall damage immunity",
-	// The game draws this role buff without a direction arrow, so it belongs to neither row.
+	// The game draws these role buffs without a direction arrow (their HUD cues carry no direction parameter), so they
+	// belong to neither row. 1512999015 and 1512800104 are buffs of the new role 1512 applied in the 3.8 corpus.
 	1311400007: "HUD cue without a direction",
+	1512999015: "HUD cue without a direction",
+	1512800104: "HUD cue without a direction",
 }
 
-var semanticSkillFacts = []semanticSkillFact{}
+var semanticSkillFacts = currentGoldenFacts(func(capture string) []semanticSkillFact {
+	return []semanticSkillFact{
+		{capture, 1409, 1409021, "VERIFIED", "official", "此劍，為潮水的過去", false},
+		// Trial roles name their rows through their parent role (TrialRoleInfo.ParentId): every DamageId of these rows
+		// is listed by a UI skill of the parent, and starts with the parent's RoleId.
+		{capture, 13127004, 1312031, "VERIFIED", "official", "攏傘形·閃裂", false},
+		{capture, 13127004, 1312050, "DERIVED", "damage_list", "暝傘形·重鎖獄瘴", true},
+		{capture, 13117004, 13111302, "DERIVED", "damage_list", "乘興一顧", true},
+		{capture, 15127004, 15124104, "DERIVED", "damage_list", "花滿夢土", true},
+		{capture, 15127004, 15124103, "DERIVED", "damage_list", "花滿夢土", true},
+		{capture, 15127004, 15124002, "DERIVED", "damage_list", "夢愈淨瑕", true},
+		{capture, 15127004, 15126001, "DERIVED", "damage_list", "幻夢調和", true},
+		{capture, 15127004, 15129001, "DERIVED", "damage_list", "綺夢綻香", true},
+		{capture, 15127004, 15128001, "DERIVED", "damage_list", "墜於幻夢搖籃", true},
+		{capture, 15127004, 20015301, "DERIVED", "echo", "解形煞", true},
+	}
+})
 
 // semanticNoSkillFact is what a capture's confirmed damage without a SkillId must show for one role. The damage and event
 // counts stay exactly the no-SkillId damage of the capture: a name never moves a hit out of the bucket.
@@ -83,7 +126,14 @@ type semanticCompletenessFact struct {
 	unknownEvents uint64
 }
 
-var semanticCompletenessFacts = []semanticCompletenessFact{}
+// Encounter 1 is role 1409 with a motorcycle; encounter 2 is the trial team. The six monster-on-monster hits of the
+// capture (1,675) belong to neither encounter.
+var semanticCompletenessFacts = currentGoldenFacts(func(capture string) []semanticCompletenessFact {
+	return []semanticCompletenessFact{
+		{capture, 1, 348646, 78716, 0, 0},
+		{capture, 2, 514319, 0, 0, 0},
+	}
+})
 
 type semanticEffectSeen struct {
 	row      EffectPolarity
@@ -352,6 +402,15 @@ func TestSemanticReplayCollector(t *testing.T) {
 			p.finishCapture()
 			if rowsErr != nil {
 				t.Fatal(rowsErr)
+			}
+			// The listed statuses are logged for review of new facts and of failures.
+			listed := make([]uint64, 0, len(seen))
+			for id := range seen {
+				listed = append(listed, id)
+			}
+			sort.Slice(listed, func(i, j int) bool { return listed[i] < listed[j] })
+			for _, id := range listed {
+				t.Logf("listed effect %d: row %s, target %s, max stack %d", id, seen[id].row, seen[id].target, seen[id].maxStack)
 			}
 			for _, fact := range semanticEffectFacts {
 				if !semanticCaptureMatches(capture.name, fact.capture) {
