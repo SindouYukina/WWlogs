@@ -86,11 +86,12 @@ export const barEntrance = { durationMs: 650, staggerMs: 50, maxSteps: 10, easin
 
 /**
  * The entrance of the History analysis timeline when an encounter opens: its DPS lines (and the timeline tracks under them)
- * are revealed from the encounter's start to its end, left to right, as one window that widens over the time axis. It
- * lasts the same short time for a 20-second and a 20-minute encounter, decelerates without overshoot, and moves only
- * transforms. Not themed; reduced motion shows the whole timeline at once.
+ * are revealed from the encounter's start to its end, left to right, as one window that widens over the time axis. An
+ * exponential ease-out: the timeline shoots in as the encounter opens (about 40% of it within 100 ms, 90% within 400 ms)
+ * and then settles slowly, finishing within the 1-2 seconds the owner asked for. It lasts the same time for a 20-second
+ * and a 20-minute encounter, never overshoots and moves only transforms. Not themed; reduced motion shows it at once.
  */
-export const curveEntrance = { durationMs: 900, easing: "cubic-bezier(0.33, 1, 0.68, 1)" } as const
+export const curveEntrance = { durationMs: 1200, easing: "cubic-bezier(0.16, 1, 0.3, 1)" } as const
 
 export type MotionPreference = "full" | "reduced"
 
