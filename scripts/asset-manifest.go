@@ -2,7 +2,7 @@
 
 // asset-manifest regenerates assets/manifest.json from the images under assets/game after a game update:
 //
-//	go run scripts/asset-manifest.go -client "Steam build 25950293" -resource 3.7.17
+//	go run scripts/asset-manifest.go -client "Steam build 26373309" -resource 3.8.9
 //
 // Without flags it keeps the recorded game version. The manifest is the only input of each profile's image pack, so review
 // its diff before committing it.
