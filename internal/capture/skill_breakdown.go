@@ -7,8 +7,8 @@ import "sort"
 // Damage ownership and skill attribution are separate facts:
 //   - Ownership (which contributor) comes only from runtime role/vehicle evidence (role_aggregation.go).
 //   - Skill attribution comes only from the paired DamageExecute request's DamageContext.SkillId, the protocol field
-//     the client sends with that hit (Android Global 3.7.1 Njn.r5n, read as SkillId by ProcessRemoteDamage; Windows
-//     Global DamageContext.SkillId field 4). The server-confirmed response then carries the amount.
+//     the client sends with that hit (minified Njn.r5n, field 4, which the client's ProcessRemoteDamage reads as the
+//     SkillId). The server-confirmed response then carries the amount.
 //
 // Nothing else assigns a skill: not timing, amount, element, the role's usual kit, the Master skill-to-role group, or a
 // BulletId. A hit without a SkillId (wire value 0 or absent) keeps its confirmed owner and enters that owner's

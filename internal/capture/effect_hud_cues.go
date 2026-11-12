@@ -66,8 +66,8 @@ func loadHUDCueParameters(db *sql.DB) (map[string]map[int]string, error) {
 
 // loadBuffHUDCues records, for every buff row, the distinct HUD cue types of its GameplayCueIds whose cue has a Path, and
 // the direction and monster-head visibility of the first such cue in list order. Cues of types 2, 24 and 37 are keyed by
-// buff handle in BuffItemContainer, so the first one is the one the bar keeps; type 14 can add a second item, and every
-// definition with both in 3.7.17 uses the same direction for each. Both tables are optional, so an older Master without
+// buff handle in BuffItemContainer, so the first one is the one the bar keeps; type 14 can add a second item, and in the
+// Master data every definition with both uses the same direction for each. Both tables are optional, so a Master without
 // gameplaycue simply has no HUD evidence.
 func loadBuffHUDCues(db *sql.DB, statics map[uint64]buffStaticParameters) error {
 	for _, table := range []string{"buff_gameplay_cue_ids", "gameplaycue"} {

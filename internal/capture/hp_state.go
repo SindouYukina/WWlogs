@@ -3,7 +3,7 @@ package capture
 // hpStateSchemaVersion identifies the layout of hpStateRecord.
 const hpStateSchemaVersion = 1
 
-// Attribute types that carry HP state in the pinned Windows schema. The values
+// Attribute types that carry HP state in the client protocol. The values
 // come from EAttributeType: LifeMax is 2 and Life is 3.
 const (
 	attributeTypeLifeMax = 2

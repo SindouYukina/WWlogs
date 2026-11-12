@@ -8,21 +8,23 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
-
-	"wwlogs/internal/versioninfo"
 )
 
 func TestCommandCensusSeparatesDecodedFramesFromUnimplementedSchemas(t *testing.T) {
 	census := newCommandCensus()
 	when := time.Date(2026, time.October, 26, 5, 0, 0, 0, time.UTC)
+	// The processor names an entry from the current protocol only for a frame its protocol session decodes.
 	entityAdd := census.observeFrame(gameFrame{commandID: cmdEntityAddNotify, direction: "in", timestamp: when}, 1)
+	entityAdd.describeCurrentProtocol()
 	entityAdd.DecryptedFrames++
 	entityAdd.DecodedFrames++
 	joinScene := census.observeFrame(gameFrame{commandID: cmdJoinSceneNotify, direction: "in", timestamp: when.Add(time.Second)}, 1)
+	joinScene.describeCurrentProtocol()
 	joinScene.DecryptedFrames++
 	joinScene.GenericProtoValid++
 	joinScene.DecodedFrames++
 	phantomRecommend := census.observeFrame(gameFrame{commandID: cmdPhantomAttrRecommendResponse, direction: "in", timestamp: when.Add(time.Second)}, 1)
+	phantomRecommend.describeCurrentProtocol()
 	phantomRecommend.DecryptedFrames++
 	phantomRecommend.GenericProtoValid++
 	phantomRecommend.FailureReasons["message schema not implemented"]++
@@ -131,7 +133,7 @@ func TestCommandCensusSeparatesDecodedFramesFromUnimplementedSchemas(t *testing.
 		found := false
 		for _, entry := range report.Commands {
 			if entry.CommandID == commandID {
-				found = entry.Name == want.name && entry.Direction == want.direction && entry.Status == "NOT OBSERVED" && entry.SchemaBasis == versioninfo.WindowsSchemaLabel()+" Aki.Protocol metadata; client version observed, schema compatibility unverified"
+				found = entry.Name == want.name && entry.Direction == want.direction && entry.Status == "NOT OBSERVED" && entry.SchemaBasis == censusSchemaBasis()
 				break
 			}
 		}
@@ -149,20 +151,20 @@ func TestCommandCensusSeparatesDecodedFramesFromUnimplementedSchemas(t *testing.
 		cmdChangePlayerFightRoleNotify:       "ChangePlayerFightRoleNotify",
 	}
 	for _, entry := range report.Commands {
-		if entry.CommandID == cmdUpdateSceneGroupDataNotify && (entry.Name != "UpdateSceneGroupDataNotify" || entry.Direction != "in" || entry.SchemaBasis != versioninfo.WindowsSchemaLabel()+" Aki.Protocol metadata; client version observed, schema compatibility unverified") {
+		if entry.CommandID == cmdUpdateSceneGroupDataNotify && (entry.Name != "UpdateSceneGroupDataNotify" || entry.Direction != "in" || entry.SchemaBasis != censusSchemaBasis()) {
 			t.Fatalf("scene-group mapping provenance was not retained: %+v", entry)
 		}
-		if entry.CommandID == cmdJoinSceneNotify && (entry.Name != "JoinSceneNotify" || entry.SchemaBasis != versioninfo.WindowsSchemaLabel()+" Aki.Protocol metadata; client version observed, schema compatibility unverified") {
+		if entry.CommandID == cmdJoinSceneNotify && (entry.Name != "JoinSceneNotify" || entry.SchemaBasis != censusSchemaBasis()) {
 			t.Fatalf("JoinSceneNotify provenance was not retained: %+v", entry)
 		}
-		if name, ok := wantRoleNotifies[entry.CommandID]; ok && (entry.Name != name || entry.Direction != "in" || entry.Status != "NOT OBSERVED" || entry.SchemaBasis != versioninfo.WindowsSchemaLabel()+" Aki.Protocol metadata; client version observed, schema compatibility unverified") {
+		if name, ok := wantRoleNotifies[entry.CommandID]; ok && (entry.Name != name || entry.Direction != "in" || entry.Status != "NOT OBSERVED" || entry.SchemaBasis != censusSchemaBasis()) {
 			t.Fatalf("fight-role notification metadata was not retained: %+v", entry)
 		}
 	}
 	var foundPhantom bool
 	for _, entry := range report.Commands {
 		if entry.CommandID == cmdPhantomAttrRecommendResponse {
-			foundPhantom = entry.Name == "PhantomAttrRecommendResponse" && entry.Status == "PRESENT BUT UNDECODED" && entry.SchemaBasis == versioninfo.WindowsSchemaLabel()+" Aki.Protocol metadata; client version observed, schema compatibility unverified"
+			foundPhantom = entry.Name == "PhantomAttrRecommendResponse" && entry.Status == "PRESENT BUT UNDECODED" && entry.SchemaBasis == censusSchemaBasis()
 		}
 	}
 	if !foundPhantom {
