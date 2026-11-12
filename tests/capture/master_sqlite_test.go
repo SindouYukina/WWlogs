@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -576,6 +577,10 @@ func TestResolveBulletFollowsSourceChainToExactlyOneActor(t *testing.T) {
 	character := bulletSource{RoleSkinID: 9001, HasRoleSkin: true}
 	if r := resolveBullet(master, 111, character); r.Status != resolutionCorrelated || r.Namespace != "BulletPreload.ActorBlueprint" || r.ActorBlueprint != "/Game/A.A_C" {
 		t.Fatalf("a character bullet held by its own actor must correlate: %+v", r)
+	}
+	// The chain is read from the combat master; the protocol schema label names where field names come from, not it.
+	if r := resolveBullet(master, 111, character); !strings.Contains(r.Proof, "BulletPreload rows in the combat master") || strings.Contains(r.Proof, "pinned") {
+		t.Fatalf("the preload chain proof must name the combat master it was read from: %q", r.Proof)
 	}
 	if r := resolveBullet(master, 111, bulletSource{SkillID: 501}); r.Status != resolutionCorrelated || r.ActorBlueprint != "/Game/A.A_C" || r.Via == "" {
 		t.Fatalf("a co-referenced SkillId with one actor owner must resolve its listed bullet: %+v", r)

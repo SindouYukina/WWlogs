@@ -429,7 +429,7 @@ func resolveBullet(masters *gameMaster, bulletID uint64, source bulletSource) *b
 			result.ActorBlueprint = masters.assetPath[actor]
 			result.Via = via
 			result.Status = resolutionCorrelated
-			result.Proof = via + "; the actor's BulletPreload rows list this BulletId; static chain from the pinned " + versioninfo.WindowsSchemaLabel() + " client, client build observed, master compatibility unverified"
+			result.Proof = via + "; the actor's BulletPreload rows in the combat master list this BulletId; client build observed, master compatibility unverified"
 		}
 	case inCommon && inPreload:
 		result.Proof = "BulletId is a row key in both CDT_CommonBulletData and BulletPreload and no source-chain actor holds it; the serving table is not determined"
