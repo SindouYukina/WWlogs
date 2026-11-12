@@ -21,6 +21,8 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+# Build with the system Go only: never switch to, or download, another toolchain for a newer go.mod requirement.
+$env:GOTOOLCHAIN = 'local'
 $repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).ProviderPath
 $overlay = Join-Path $repoRoot 'tests/go-overlay.json'
 $results = [ordered]@{}
