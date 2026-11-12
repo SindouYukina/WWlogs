@@ -325,6 +325,8 @@
     "internal/capture/central_history_effects_test.go": "tests/capture/history_effects_test.go",
     "tests/history/store_test.go": "",
     "internal/history/central_store_test.go": "tests/history/store_test.go",
+    "tests/history/master_impact_collector_test.go": "",
+    "internal/history/central_master_impact_collector_test.go": "tests/history/master_impact_collector_test.go",
     "tests/history/replay_test.go": "",
     "internal/history/central_replay_test.go": "tests/history/replay_test.go",
     "tests/history/effects_spans_test.go": "",
