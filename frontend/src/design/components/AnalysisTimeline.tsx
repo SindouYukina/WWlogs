@@ -1,5 +1,6 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react"
 import { useRevealPhase, type RevealClock } from "../motion/useReveal.ts"
+import { draggedRange, plotRelease, pressMovedTo, type PlotPress } from "./timeline-press.ts"
 import { useTimelineSync, type TimelineSync } from "./timeline-sync.ts"
 
 // The time axis of the History analysis workspace. One encounter's DPS lines and its effect tracks are drawn against the
@@ -41,12 +42,13 @@ export interface AnalysisTimelineProps {
   lines: readonly TimelineLine[]
   /** The line drawn in focus (the selected contributor), or null. */
   focused: string | null
-  /** A click near a line selects it; a click away from every line clears it. */
+  /** A click near a line selects it, or releases it when it is the selected one. */
   onSelectLine: (key: string | null) => void
   /** The selected range, or null for the whole encounter. */
   range: TimelineSpan | null
   /** A finished drag commits a range; the workspace decides what it means. */
   onRange: (fromMs: number, toMs: number) => void
+  /** Back to the whole encounter: Escape, or a click away from every line while a range is selected. */
   onReset: () => void
   gaps: readonly TimelineSpan[]
   marks: readonly TimelineMark[]
@@ -67,7 +69,6 @@ export interface AnalysisTimelineProps {
 }
 
 const plotWidth = 1000
-const clickMoveLimit = 5
 const lineReach = 12
 
 function niceMax(value: number): number {
@@ -122,8 +123,9 @@ const viewBoxOf = (view: TimelineSpan, durationMs: number, height: number) => `$
 
 /**
  * The DPS lines of an encounter on its own time axis. Hover reads the values at a moment; a drag selects a range, released
- * once to commit it; a click in place selects the nearest line within reach or clears the selection. Arrow keys move the
- * reading point, Shift+Arrow grows a range from where it started, Enter commits it and Escape returns to the whole fight.
+ * once to commit it; a click in place selects the nearest line within reach, and a click away from every line returns to
+ * the whole fight and keeps the selected line (timeline-press.ts tells the two apart). Arrow keys move the reading point,
+ * Shift+Arrow grows a range from where it started, Enter commits it and Escape returns to the whole fight.
  * The plot is a single SVG layer per line; nothing animates while the values stay the same, and zooming changes only the
  * viewBox of the same paths.
  */
@@ -144,7 +146,7 @@ export const AnalysisTimeline = memo(function AnalysisTimeline({ durationMs, lin
     }
   }, [phase, end])
   const plot = useRef<HTMLDivElement>(null)
-  const pressed = useRef<{ x: number; y: number; ms: number } | null>(null)
+  const pressed = useRef<PlotPress | null>(null)
   const [drag, setDrag] = useState<TimelineSpan | null>(null)
   const [hover, setHover] = useState<number | null>(null)
   const [keyAnchor, setKeyAnchor] = useState<number | null>(null)
@@ -163,36 +165,10 @@ export const AnalysisTimeline = memo(function AnalysisTimeline({ durationMs, lin
     })
     return best
   }
-  const onPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0 || !plot.current) return
-    const ms = msAt(plot.current, event.clientX, view)
-    pressed.current = { x: event.clientX, y: event.clientY, ms }
-    plot.current.setPointerCapture(event.pointerId)
-  }
-  const onPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (!plot.current) return
-    const ms = msAt(plot.current, event.clientX, view)
-    setHover(nearestPoint(ms))
-    const press = pressed.current
-    if (press && Math.abs(event.clientX - press.x) > clickMoveLimit) setDrag({ fromMs: Math.min(press.ms, ms), toMs: Math.max(press.ms, ms) })
-  }
-  const onPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
-    const press = pressed.current
-    pressed.current = null
-    const element = plot.current
-    if (!press || !element) return
-    if (element.hasPointerCapture(event.pointerId)) element.releasePointerCapture(event.pointerId)
-    const moved = Math.hypot(event.clientX - press.x, event.clientY - press.y) > clickMoveLimit
-    setDrag(null)
-    if (moved) {
-      const ms = msAt(element, event.clientX, view)
-      const from = Math.min(press.ms, ms), to = Math.max(press.ms, ms)
-      if (to - from >= minimumRangeMs) onRange(from, to)
-      return
-    }
-    // A click in place: the nearest line within reach of the pointer, measured where the lines are drawn.
+  // The line within reach of a click, measured where the lines are drawn.
+  const lineAt = (element: HTMLElement, clientX: number, clientY: number): string | null => {
     const bounds = element.getBoundingClientRect()
-    const index = nearestPoint(msAt(element, event.clientX, view))
+    const index = nearestPoint(msAt(element, clientX, view))
     let hit: string | null = null
     let distance = lineReach
     if (index >= 0 && hasData) {
@@ -200,12 +176,38 @@ export const AnalysisTimeline = memo(function AnalysisTimeline({ durationMs, lin
         const value = line.points[index]?.value
         if (value === null || value === undefined) continue
         const y = bounds.top + (1 - value / max) * bounds.height
-        const d = Math.abs(event.clientY - y)
+        const d = Math.abs(clientY - y)
         // The team line only wins when no contributor line is as close.
         if (d < distance || (d === distance && !line.aggregate)) { distance = d; hit = line.key }
       }
     }
-    onSelectLine(hit === focused ? null : hit)
+    return hit
+  }
+  const onPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0 || !plot.current) return
+    pressed.current = { x: event.clientX, y: event.clientY, ms: msAt(plot.current, event.clientX, view), wandered: false }
+    plot.current.setPointerCapture(event.pointerId)
+  }
+  const onPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!plot.current) return
+    const ms = msAt(plot.current, event.clientX, view)
+    setHover(nearestPoint(ms))
+    const press = pressed.current
+    if (!press) return
+    pressed.current = pressMovedTo(press, event.clientX, event.clientY)
+    setDrag(draggedRange(press, event.clientX, ms))
+  }
+  const onPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+    const press = pressed.current
+    pressed.current = null
+    const element = plot.current
+    if (!press || !element) return
+    if (element.hasPointerCapture(event.pointerId)) element.releasePointerCapture(event.pointerId)
+    setDrag(null)
+    const release = plotRelease(press, event.clientX, event.clientY, msAt(element, event.clientX, view), () => lineAt(element, event.clientX, event.clientY), { focused, range, minimumRangeMs })
+    if (release?.kind === "range") onRange(release.fromMs, release.toMs)
+    else if (release?.kind === "line") onSelectLine(release.key)
+    else if (release?.kind === "whole") onReset()
   }
   const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (points.length === 0) return
