@@ -15,7 +15,7 @@ func (p *processor) observeLocalPlayerInfo(body []byte) error {
 	var playerID uint64
 	seen := false
 	for _, field := range fields {
-		if field.number != 15 { // BasicInfoNotify.Id, int32
+		if field.number != fieldBasicInfoNotifyID { // BasicInfoNotify.Id, int32
 			continue
 		}
 		if field.wire != 0 || field.value > 0x7fffffff || (seen && playerID != field.value) {

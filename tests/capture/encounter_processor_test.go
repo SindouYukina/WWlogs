@@ -22,18 +22,18 @@ func encounterWireBytes(field uint64, data []byte) []byte {
 func battleStateReceivePack(inBattle bool, playerID uint64) []byte {
 	var notify []byte
 	if inBattle {
-		notify = append(notify, encounterWireVarint(5, 1)...)
+		notify = append(notify, encounterWireVarint(fieldPlayerBattleStateChangeNotifyInBattle, 1)...)
 	}
-	notify = append(notify, encounterWireVarint(15, playerID)...)
-	notifyData := encounterWireBytes(combatNotifyPlayerBattleState, notify)
-	receiveData := encounterWireBytes(2, notifyData)
-	return encounterWireBytes(5, receiveData)
+	notify = append(notify, encounterWireVarint(fieldPlayerBattleStateChangeNotifyPlayerID, playerID)...)
+	notifyData := encounterWireBytes(fieldCombatNotifyDataPlayerBattleStateChangeNotify, notify)
+	receiveData := encounterWireBytes(fieldCombatReceiveDataCombatNotifyData, notifyData)
+	return encounterWireBytes(fieldCombatReceivePackNotifyData, receiveData)
 }
 
 func singlePlayerJoinScene(playerID uint64) []byte {
-	playerInfo := encounterWireVarint(1, playerID)
-	sceneInfo := encounterWireBytes(4, playerInfo)
-	return encounterWireBytes(5, sceneInfo)
+	playerInfo := encounterWireVarint(fieldScenePlayerInformationPlayerID, playerID)
+	sceneInfo := encounterWireBytes(fieldSceneInformationPlayerInfos, playerInfo)
+	return encounterWireBytes(fieldJoinSceneNotifySceneInfo, sceneInfo)
 }
 
 func newEncounterTestProcessor() *processor {
@@ -44,7 +44,7 @@ func TestProcessorBattleStateNotifyDrivesEncounter(t *testing.T) {
 	p := newEncounterTestProcessor()
 	p.sessionNumber = 1
 	p.observeSceneJoin(singlePlayerJoinScene(42), encounterAt(1))
-	enter := gameFrame{commandID: 25706, direction: "in", timestamp: encounterAt(10)}
+	enter := gameFrame{commandID: cmdCombatReceivePackNotify, direction: "in", timestamp: encounterAt(10)}
 	if err := p.handleCombatReceivePackNotify(enter, battleStateReceivePack(true, 42)); err != nil {
 		t.Fatal(err)
 	}
@@ -54,8 +54,8 @@ func TestProcessorBattleStateNotifyDrivesEncounter(t *testing.T) {
 	p.damageStatistics.addCombatEvent(testEncounterRecord(CombatFlowLocalOutgoing, 300, 12))
 
 	// The exit arrives embedded in a CombatSendPackResponse, the container seen for most captured exits.
-	exit := gameFrame{commandID: 20332, direction: "in", timestamp: encounterAt(13)}
-	if err := p.handleEmbeddedCombatReceivePackNotify(exit, encounterWireBytes(14, battleStateReceivePack(false, 42))); err != nil {
+	exit := gameFrame{commandID: cmdCombatSendPackResponse, direction: "in", timestamp: encounterAt(13)}
+	if err := p.handleEmbeddedCombatReceivePackNotify(exit, encounterWireBytes(fieldCombatSendPackResponseReceivePackNotify, battleStateReceivePack(false, 42))); err != nil {
 		t.Fatal(err)
 	}
 	p.observeEncounterClock(encounterAt(15))
@@ -69,7 +69,7 @@ func TestProcessorRejectsOtherPlayersBattleState(t *testing.T) {
 	p := newEncounterTestProcessor()
 	p.sessionNumber = 1
 	p.observeSceneJoin(singlePlayerJoinScene(42), encounterAt(1))
-	frame := gameFrame{commandID: 25706, direction: "in", timestamp: encounterAt(10)}
+	frame := gameFrame{commandID: cmdCombatReceivePackNotify, direction: "in", timestamp: encounterAt(10)}
 	if err := p.handleCombatReceivePackNotify(frame, battleStateReceivePack(true, 77)); err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +83,7 @@ func TestProcessorSceneJoinInterruptsEncounter(t *testing.T) {
 	p := newEncounterTestProcessor()
 	p.sessionNumber = 1
 	p.observeSceneJoin(singlePlayerJoinScene(42), encounterAt(1))
-	if err := p.handleCombatReceivePackNotify(gameFrame{commandID: 25706, timestamp: encounterAt(10)}, battleStateReceivePack(true, 42)); err != nil {
+	if err := p.handleCombatReceivePackNotify(gameFrame{commandID: cmdCombatReceivePackNotify, timestamp: encounterAt(10)}, battleStateReceivePack(true, 42)); err != nil {
 		t.Fatal(err)
 	}
 	p.damageStatistics.addCombatEvent(testEncounterRecord(CombatFlowLocalOutgoing, 100, 11))
@@ -108,7 +108,7 @@ func TestProcessorFinishCaptureClosesOpenEncounter(t *testing.T) {
 func TestEncounterRoleSwitchKeepsOneEncounter(t *testing.T) {
 	statistics := NewDamageStatistics()
 	statistics.observeBattleState(true, encounterAt(10), 1)
-	for i, source := range []uint64{101, 102, 103, 101} {
+	for i, source := range []uint64{101, 102, cmdLoginRequest, 101} {
 		record := testEncounterRecord(CombatFlowLocalOutgoing, 10, 11+float64(i))
 		record.Source.EntityID = source
 		statistics.addCombatEvent(record)
@@ -141,17 +141,17 @@ func TestEffectMessagesDoNotChangeEncounters(t *testing.T) {
 	p.observeSceneJoin(singlePlayerJoinScene(42), encounterAt(1))
 	deliver := func(seconds float64, body []byte) {
 		t.Helper()
-		if err := p.handleCombatReceivePackNotify(gameFrame{commandID: 25706, direction: "in", timestamp: encounterAt(seconds)}, body); err != nil {
+		if err := p.handleCombatReceivePackNotify(gameFrame{commandID: cmdCombatReceivePackNotify, direction: "in", timestamp: encounterAt(seconds)}, body); err != nil {
 			t.Fatal(err)
 		}
 	}
-	deliver(5, effectPackBody(200, 5, effectApplyPayload(1, 42, 200, 100, 1, 60, 60)))
+	deliver(5, effectPackBody(200, fieldCombatNotifyDataApplyGameplayEffectNotify, effectApplyPayload(1, 42, 200, 100, 1, 60, 60)))
 	if snapshot := p.damageStatisticsSnapshot().Encounters; snapshot.State != EncounterIdle {
 		t.Fatalf("an effect application must not open an encounter: %+v", snapshot)
 	}
 	deliver(10, battleStateReceivePack(true, 42))
 	p.damageStatistics.addCombatEvent(testEncounterRecord(CombatFlowLocalOutgoing, 100, 11))
-	deliver(12, effectPackBody(200, 5, effectApplyPayload(2, 43, 200, 100, 1, 3, 3)))
+	deliver(12, effectPackBody(200, fieldCombatNotifyDataApplyGameplayEffectNotify, effectApplyPayload(2, 43, 200, 100, 1, 3, 3)))
 	deliver(14, battleStateReceivePack(false, 42))
 	p.observeEncounterClock(encounterAt(20))
 	encounter := requireOneCompleted(t, p.damageStatisticsSnapshot())
@@ -162,7 +162,7 @@ func TestEffectMessagesDoNotChangeEncounters(t *testing.T) {
 	if len(effects.Effects) == 0 || effects.Counters.Applies != 2 {
 		t.Fatalf("effect tracking must continue across the encounter boundary: %+v", effects)
 	}
-	deliver(25, effectPackBody(200, 6, effectRemovePayload(1, 200, 100)))
+	deliver(25, effectPackBody(200, fieldCombatNotifyDataRemoveGameplayEffectNotify, effectRemovePayload(1, 200, 100)))
 	if snapshot := p.damageStatisticsSnapshot().Encounters; snapshot.State != EncounterIdle || len(snapshot.Completed) != 1 {
 		t.Fatalf("an effect removal must not open or reopen an encounter: %+v", snapshot)
 	}

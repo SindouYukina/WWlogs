@@ -63,7 +63,7 @@ func (p *processor) archiveDamagePushes(frame gameFrame, decoded *decodedMessage
 // archiveDamagePushFrame decodes a combat frame for the push stream when the output
 // is enabled. It shares the plaintext with the other schema observers.
 func (p *processor) archiveDamagePushFrame(frame gameFrame, plain []byte) {
-	if (p.damagePushOut == nil && p.combatEventsJSONL == nil) || p.protocolSchema == nil || (frame.commandID != 25706 && frame.commandID != 20332) {
+	if (p.damagePushOut == nil && p.combatEventsJSONL == nil) || p.protocolSchema == nil || (frame.commandID != cmdCombatReceivePackNotify && frame.commandID != cmdCombatSendPackResponse) {
 		return
 	}
 	payloads, err := receivePackNotifyBodies(frame.commandID, plain)

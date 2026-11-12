@@ -15,21 +15,21 @@ func TestFrameDecodeStatusClassifiesWithoutDecrypting(t *testing.T) {
 	tests := []struct {
 		name     string
 		frame    gameFrame
-		internal uint16
+		readable bool
 		state    protocolState
 		want     string
 	}{
-		{"handshake", gameFrame{commandID: 112, direction: "in", body: []byte{1}}, 0, protocolNone, frameStatusHandshake},
-		{"empty body", gameFrame{commandID: 1651, direction: "in"}, 0, protocolCurrent, frameStatusEmptyBody},
-		{"implemented through the current protocol", gameFrame{commandID: 26497, direction: "out", body: []byte{1}}, 19470, protocolCurrent, frameStatusImplemented},
-		{"undecoded", gameFrame{commandID: 1651, direction: "in", body: []byte{1}}, 0, protocolCurrent, frameStatusUndecoded},
-		{"another game version", gameFrame{commandID: 19470, direction: "out", body: []byte{1}}, 0, protocolUnsupported, frameStatusNotCurrentProtocol},
-		{"before the version report", gameFrame{commandID: 26497, direction: "out", body: []byte{1}}, 0, protocolPending, frameStatusNotCurrentProtocol},
-		{"command 112 outbound is not handshake", gameFrame{commandID: 112, direction: "out", body: []byte{1}}, 0, protocolNone, frameStatusUndecoded},
+		{"handshake", gameFrame{commandID: cmdProtoKeyResponse, direction: "in", body: []byte{1}}, false, protocolNone, frameStatusHandshake},
+		{"empty body", gameFrame{commandID: 1651, direction: "in"}, true, protocolCurrent, frameStatusEmptyBody},
+		{"implemented in the current protocol", gameFrame{commandID: cmdCombatSendPackRequest, direction: "out", body: []byte{1}}, true, protocolCurrent, frameStatusImplemented},
+		{"undecoded", gameFrame{commandID: 1651, direction: "in", body: []byte{1}}, true, protocolCurrent, frameStatusUndecoded},
+		{"another game version", gameFrame{commandID: cmdCombatSendPackRequest, direction: "out", body: []byte{1}}, false, protocolUnsupported, frameStatusNotCurrentProtocol},
+		{"before the version report", gameFrame{commandID: cmdCombatSendPackRequest, direction: "out", body: []byte{1}}, false, protocolPending, frameStatusNotCurrentProtocol},
+		{"command 112 outbound is not handshake", gameFrame{commandID: cmdProtoKeyResponse, direction: "out", body: []byte{1}}, false, protocolNone, frameStatusUndecoded},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := frameDecodeStatus(tt.frame, tt.internal, tt.state); got != tt.want {
+			if got := frameDecodeStatus(tt.frame, tt.readable, tt.state); got != tt.want {
 				t.Fatalf("status = %q, want %q", got, tt.want)
 			}
 		})

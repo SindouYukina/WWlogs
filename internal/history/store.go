@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"wwlogs/internal/buildinfo"
-	"wwlogs/internal/versioninfo"
+	"wwlogs/internal/capture"
 )
 
 // State says what a Store can do.
@@ -153,7 +153,7 @@ func Open(options Options) (*Store, error) {
 		store.build = buildinfo.Current()
 	}
 	if store.protocol == "" {
-		store.protocol = versioninfo.WindowsSchemaLabel()
+		store.protocol = capture.CurrentProtocol()
 	}
 	err := store.open()
 	if err != nil && store.status.State == StateUnavailable {

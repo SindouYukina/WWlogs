@@ -19,14 +19,14 @@ func TestPartReferenceOutputLinksRequestToCurrentTargetPart(t *testing.T) {
 	if _, err := p.entities.applyEntityAddNotify(entityAddWithPartComponent(902, partComponentWire(partInformationWire(2, 28046.3, true, 17)))); err != nil {
 		t.Fatal(err)
 	}
-	frame := gameFrame{direction: "out", commandID: 19470, timestamp: time.Date(2026, 10, 30, 3, 4, 5, 0, time.UTC)}
+	frame := gameFrame{direction: "out", commandID: cmdCombatSendPackRequest, timestamp: time.Date(2026, 10, 30, 3, 4, 5, 0, time.UTC)}
 	p.handleDamageRequests(frame, damageRequestWithPart(91, 902, 2, true))
 
 	var row partReferenceRecord
 	if err := json.Unmarshal(bytes.TrimSpace(output.Bytes()), &row); err != nil {
 		t.Fatal(err)
 	}
-	if row.SchemaVersion != partReferenceSchemaVersion || row.EventType != "DAMAGE_REQUEST_PART_REFERENCE" || row.FrameOrdinal != 44 || row.SessionNumber != 3 || row.Direction != "out" || row.CommandID != 19470 || row.RPCID != 91 || row.FieldNumber != 5 {
+	if row.SchemaVersion != partReferenceSchemaVersion || row.EventType != "DAMAGE_REQUEST_PART_REFERENCE" || row.FrameOrdinal != 44 || row.SessionNumber != 3 || row.Direction != "out" || row.CommandID != cmdCombatSendPackRequest || row.RPCID != 91 || row.FieldNumber != fieldDamageExecuteRequestPartID {
 		t.Fatalf("request envelope = %+v", row)
 	}
 	if row.Status != partReferenceCorrelated || row.PartID == nil || *row.PartID != 2 || !row.HasPartID || row.TargetEntityID == nil || *row.TargetEntityID != 902 {

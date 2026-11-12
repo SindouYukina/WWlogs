@@ -12,18 +12,18 @@ import (
 func TestClientPushRecordsRoleSwitchAndActiveRoleOnSkill(t *testing.T) {
 	var out strings.Builder
 	p := &processor{clientPushOut: &out, frameOrdinal: 1, sessionNumber: 1}
-	frame := gameFrame{commandID: 19470, timestamp: time.Date(2026, 10, 28, 0, 36, 5, 0, time.UTC)}
+	frame := gameFrame{commandID: cmdCombatSendPackRequest, timestamp: time.Date(2026, 10, 28, 0, 36, 5, 0, time.UTC)}
 
-	role := decodedField{Number: 1, Name: "ClientCurrentRoleReportPush", Kind: "class", Message: &decodedMessage{Fields: []decodedField{
-		{Number: 1, Name: "CurrentRoleId", Kind: "int32", Value: int32(1409)},
-		{Number: 2, Name: "CurrentEntityId", Kind: "int64", Value: int64(51522)},
+	role := decodedField{Number: fieldCombatPushDataClientCurrentRoleReportPush, Name: "ClientCurrentRoleReportPush", Kind: "class", Message: &decodedMessage{Fields: []decodedField{
+		{Number: fieldClientCurrentRoleReportPushCurrentRoleID, Name: "CurrentRoleId", Kind: "int32", Value: int32(1409)},
+		{Number: fieldClientCurrentRoleReportPushCurrentEntityID, Name: "CurrentEntityId", Kind: "int64", Value: int64(51522)},
 	}}}
 	p.archiveClientPushes(frame, pushWrapper(role))
 
-	skill := decodedField{Number: 2, Name: "EndSkillPush", Kind: "class", Message: &decodedMessage{Fields: []decodedField{
-		{Number: 1, Name: "UseSkillInfo", Kind: "class", Message: &decodedMessage{Fields: []decodedField{
-			{Number: 1, Name: "SkillId", Kind: "int32", Value: int32(80025056)},
-			{Number: 2, Name: "TimeStamp", Kind: "float", Value: float64(54.5)},
+	skill := decodedField{Number: fieldCombatPushDataEndSkillPush, Name: "EndSkillPush", Kind: "class", Message: &decodedMessage{Fields: []decodedField{
+		{Number: fieldEndSkillPushUseSkillInfo, Name: "UseSkillInfo", Kind: "class", Message: &decodedMessage{Fields: []decodedField{
+			{Number: fieldUseSkillInformationSkillID, Name: "SkillId", Kind: "int32", Value: int32(80025056)},
+			{Number: fieldUseSkillInformationTimeStamp, Name: "TimeStamp", Kind: "float", Value: float64(54.5)},
 		}}},
 	}}}
 	p.archiveClientPushes(frame, pushWrapper(skill))
@@ -53,9 +53,9 @@ func TestClientPushRecordsRoleSwitchAndActiveRoleOnSkill(t *testing.T) {
 func TestClientPushSkillBeforeAnyRoleReportHasNoActiveRole(t *testing.T) {
 	var out strings.Builder
 	p := &processor{clientPushOut: &out, frameOrdinal: 1}
-	skill := decodedField{Number: 2, Name: "EndSkillPush", Kind: "class", Message: &decodedMessage{Fields: []decodedField{
-		{Number: 1, Name: "UseSkillInfo", Kind: "class", Message: &decodedMessage{Fields: []decodedField{
-			{Number: 1, Name: "SkillId", Kind: "int32", Value: int32(100001)},
+	skill := decodedField{Number: fieldCombatPushDataEndSkillPush, Name: "EndSkillPush", Kind: "class", Message: &decodedMessage{Fields: []decodedField{
+		{Number: fieldEndSkillPushUseSkillInfo, Name: "UseSkillInfo", Kind: "class", Message: &decodedMessage{Fields: []decodedField{
+			{Number: fieldUseSkillInformationSkillID, Name: "SkillId", Kind: "int32", Value: int32(100001)},
 		}}},
 	}}}
 	p.archiveClientPushes(gameFrame{}, pushWrapper(skill))
@@ -111,7 +111,7 @@ func TestSkillRequestIsArchivedEvenWhenNoDamageIsObserved(t *testing.T) {
 	}}
 	data := &decodedMessage{Fields: []decodedField{{Name: "Request", Message: request}}}
 	decoded := &decodedMessage{Fields: []decodedField{{Name: "Data", Message: data}}}
-	p.archiveClientPushes(gameFrame{commandID: 19470, timestamp: time.Date(2026, 10, 28, 4, 58, 26, 0, time.UTC)}, decoded)
+	p.archiveClientPushes(gameFrame{commandID: cmdCombatSendPackRequest, timestamp: time.Date(2026, 10, 28, 4, 58, 26, 0, time.UTC)}, decoded)
 
 	var row clientPushRecord
 	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &row); err != nil {
@@ -135,9 +135,9 @@ func TestSkillRequestIsArchivedEvenWhenNoDamageIsObserved(t *testing.T) {
 
 func TestRoleReportTracksLocalEntityWithoutOptionalClientPushOutput(t *testing.T) {
 	p := &processor{}
-	role := decodedField{Number: 1, Name: "ClientCurrentRoleReportPush", Kind: "class", Message: &decodedMessage{Fields: []decodedField{
-		{Number: 1, Name: "CurrentRoleId", Kind: "int32", Value: int32(1409)},
-		{Number: 2, Name: "CurrentEntityId", Kind: "int64", Value: int64(51522)},
+	role := decodedField{Number: fieldCombatPushDataClientCurrentRoleReportPush, Name: "ClientCurrentRoleReportPush", Kind: "class", Message: &decodedMessage{Fields: []decodedField{
+		{Number: fieldClientCurrentRoleReportPushCurrentRoleID, Name: "CurrentRoleId", Kind: "int32", Value: int32(1409)},
+		{Number: fieldClientCurrentRoleReportPushCurrentEntityID, Name: "CurrentEntityId", Kind: "int64", Value: int64(51522)},
 	}}}
 	p.archiveClientPushes(gameFrame{}, pushWrapper(role))
 	if p.playerRelevance == nil || !p.playerRelevance.isRoleEntity(51522) {

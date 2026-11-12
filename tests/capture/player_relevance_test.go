@@ -1,7 +1,7 @@
 package capture
 
 func addTestRuntimeEntity(p *processor, entityID uint64, update func(*runtimeEntity)) {
-	entity := runtimeEntity{entityID: entityID, sourceMessageID: 25185, sourceFieldPath: "EntityAddNotify.EntityPb.Id"}
+	entity := runtimeEntity{entityID: entityID, sourceMessageID: cmdEntityAddNotify, sourceFieldPath: "EntityAddNotify.EntityPb.Id"}
 	if update != nil {
 		update(&entity)
 	}
@@ -11,10 +11,10 @@ func addTestRuntimeEntity(p *processor, entityID uint64, update func(*runtimeEnt
 
 func addTestPlayerRoleGroupEntity(p *processor, entityID, playerID, roleID uint64, update ...bool) {
 	roleSourceFieldPath := "JoinSceneNotify.SceneInfo.PlayerInfos[].PlayerSceneGroupData[].FightRoleInfos[].RoleId"
-	sourceMessageID := uint16(18559)
+	sourceMessageID := uint16(cmdJoinSceneNotify)
 	if len(update) > 0 && update[0] {
 		roleSourceFieldPath = "UpdateSceneGroupDataNotify.PlayerSceneGroupDataList[].PlayerSceneGroupData[].FightRoleInfos[].RoleId"
-		sourceMessageID = 17286
+		sourceMessageID = cmdUpdateSceneGroupDataNotify
 	}
 	entity := runtimeEntity{
 		entityID: entityID, playerID: playerID, hasPlayerID: true,

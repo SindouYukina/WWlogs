@@ -9,21 +9,21 @@ import (
 )
 
 func TestSummonOwnersWriteSummonerAndDependenceFacts(t *testing.T) {
-	summoner := decodedField{Number: 1, Name: "SummonerComponentPb", Kind: "class", Message: &decodedMessage{Type: "SummonerComponentPb", Fields: []decodedField{
-		{Number: 1, Name: "SummonerId", Kind: "int64", Value: int64(51522)},
-		{Number: 2, Name: "SummonCfgId", Kind: "int32", Value: int32(280026)},
-		{Number: 5, Name: "Type", Kind: "enum", Value: int32(1)},
+	summoner := decodedField{Number: fieldEntityComponentPbSummonerComponent, Name: "SummonerComponentPb", Kind: "class", Message: &decodedMessage{Type: "SummonerComponentPb", Fields: []decodedField{
+		{Number: fieldSummonerComponentPbSummonerID, Name: "SummonerId", Kind: "int64", Value: int64(51522)},
+		{Number: fieldSummonerComponentPbSummonCfgID, Name: "SummonCfgId", Kind: "int32", Value: int32(280026)},
+		{Number: fieldSummonerComponentPbType, Name: "Type", Kind: "enum", Value: int32(1)},
 	}}}
-	dependence := decodedField{Number: 2, Name: "DependenceComponentPb", Kind: "class", Message: &decodedMessage{Type: "DependenceComponentPb", Fields: []decodedField{
-		{Number: 1, Name: "DependenceEntityIds", Kind: "repeated", Value: int64(51520)},
-		{Number: 1, Name: "DependenceEntityIds", Kind: "repeated", Value: int64(51518)},
+	dependence := decodedField{Number: fieldEntityComponentPbDependenceComponentPb, Name: "DependenceComponentPb", Kind: "class", Message: &decodedMessage{Type: "DependenceComponentPb", Fields: []decodedField{
+		{Number: fieldDependenceComponentPbDependenceEntityIDs, Name: "DependenceEntityIds", Kind: "repeated", Value: int64(51520)},
+		{Number: fieldDependenceComponentPbDependenceEntityIDs, Name: "DependenceEntityIds", Kind: "repeated", Value: int64(51518)},
 	}}}
-	entity := decodedField{Number: 3, Name: "Entities", Kind: "class", Message: &decodedMessage{Type: "EntityPb", Fields: []decodedField{
-		{Number: 1, Name: "Id", Kind: "int64", Value: int64(51524)},
+	entity := decodedField{Number: fieldPlayerSceneAoiDataEntities, Name: "Entities", Kind: "class", Message: &decodedMessage{Type: "EntityPb", Fields: []decodedField{
+		{Number: fieldEntityPbID, Name: "Id", Kind: "int64", Value: int64(51524)},
 		componentWrapper(summoner),
 	}}}
-	dependent := decodedField{Number: 3, Name: "Entities", Kind: "class", Message: &decodedMessage{Type: "EntityPb", Fields: []decodedField{
-		{Number: 1, Name: "Id", Kind: "int64", Value: int64(51522)},
+	dependent := decodedField{Number: fieldPlayerSceneAoiDataEntities, Name: "Entities", Kind: "class", Message: &decodedMessage{Type: "EntityPb", Fields: []decodedField{
+		{Number: fieldEntityPbID, Name: "Id", Kind: "int64", Value: int64(51522)},
 		componentWrapper(dependence),
 	}}}
 	decoded := &decodedMessage{Type: "JoinSceneNotify", Fields: []decodedField{entity, dependent}}

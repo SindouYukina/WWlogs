@@ -125,7 +125,7 @@ func combatCommonEntityID(notify *decodedMessage) (uint64, bool) {
 // archiveHPStateFrame decodes a combat frame for HP output when that output is
 // enabled. It runs on the same plaintext as the other observers.
 func (p *processor) archiveHPStateFrame(frame gameFrame, plain []byte) {
-	if p.hpStateOut == nil || p.protocolSchema == nil || (frame.commandID != 25706 && frame.commandID != 20332) {
+	if p.hpStateOut == nil || p.protocolSchema == nil || (frame.commandID != cmdCombatReceivePackNotify && frame.commandID != cmdCombatSendPackResponse) {
 		return
 	}
 	payloads, err := receivePackNotifyBodies(frame.commandID, plain)

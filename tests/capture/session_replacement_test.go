@@ -45,7 +45,7 @@ func handshakeBody(t *testing.T, key *rsa.PrivateKey) []byte {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return appendBytesField(appendVarintField(nil, 2, 2), 3, ciphertext)
+	return appendBytesField(appendVarintField(nil, fieldProtoKeyResponseType, 2), fieldProtoKeyResponseKey, ciphertext)
 }
 
 // A capture that began after the login sees one connection without a key. The game returns to the login screen while

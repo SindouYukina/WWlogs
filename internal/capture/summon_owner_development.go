@@ -141,9 +141,9 @@ func (p *processor) archiveSummonOwnerFrame(frame gameFrame, plain []byte) {
 	}
 	var message string
 	switch frame.commandID {
-	case 18559:
+	case cmdJoinSceneNotify:
 		message = "JoinSceneNotify"
-	case 25185:
+	case cmdEntityAddNotify:
 		message = "EntityAddNotify"
 	default:
 		return

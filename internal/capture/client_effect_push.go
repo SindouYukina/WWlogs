@@ -13,16 +13,7 @@ import (
 // refreshes and removes them itself and reports each change to the server inside an
 // outbound CombatSendPackRequest. The server does not echo these reports back as
 // notifies, so they are the only wire evidence for the local team's own effects.
-// Field numbers follow the Windows Global 3.7.1 Aki.Protocol metadata:
-// CombatSendPackRequest.Data(14) -> CombatSendData.Push(2) -> CombatPushData.
-const (
-	combatPushCommonField                    = 1
-	combatPushApplyBuffS2CResponseField      = 4
-	combatPushRemoveBuffByIDS2CResponseField = 6
-	combatPushApplyGameplayEffectField       = 9
-	combatPushRemoveGameplayEffectField      = 10
-	combatPushBuffStackCountField            = 37
-)
+// The reports are CombatSendPackRequest.Data[].Push (CombatPushData) entries; their numbers are in protocol_numbers.go.
 
 // combatCommonContext is the CombatCommon header shared by every combat message.
 type combatCommonContext struct {
@@ -40,7 +31,7 @@ func decodeCombatCommon(body []byte) (combatCommonContext, error) {
 		return common, err
 	}
 	for _, field := range fields {
-		if field.number == 4 && field.wire == 5 && len(field.data) == 4 {
+		if field.number == fieldCombatCommonTimeStamp && field.wire == 5 && len(field.data) == 4 {
 			value := math.Float32frombits(binary.LittleEndian.Uint32(field.data))
 			common.timeStamp = &value
 			continue
@@ -50,13 +41,13 @@ func decodeCombatCommon(body []byte) (combatCommonContext, error) {
 		}
 		value := field.value
 		switch field.number {
-		case 1:
+		case fieldCombatCommonPreMessageID:
 			common.preMessageID = &value
-		case 2:
+		case fieldCombatCommonMessageID:
 			common.messageID = &value
-		case 3:
+		case fieldCombatCommonOriginator:
 			common.originatorID = &value
-		case 5:
+		case fieldCombatCommonEntityID:
 			common.entityID = &value
 		}
 	}
@@ -70,7 +61,7 @@ func (p *processor) handleClientEffectPushes(frame gameFrame, body []byte) error
 		return fmt.Errorf("parse CombatSendPackRequest: %w", err)
 	}
 	for _, dataField := range outer {
-		if dataField.number != combatSendPackDataField || dataField.wire != 2 {
+		if dataField.number != fieldCombatSendPackRequestData || dataField.wire != 2 {
 			continue
 		}
 		dataFields, err := parseProtoFields(dataField.data)
@@ -78,7 +69,7 @@ func (p *processor) handleClientEffectPushes(frame gameFrame, body []byte) error
 			return fmt.Errorf("parse CombatSendPackRequest.Data item: %w", err)
 		}
 		for _, pushField := range dataFields {
-			if pushField.number != combatSendPackDataPushField || pushField.wire != 2 {
+			if pushField.number != fieldCombatSendDataPush || pushField.wire != 2 {
 				continue
 			}
 			pushes, err := parseProtoFields(pushField.data)
@@ -87,7 +78,7 @@ func (p *processor) handleClientEffectPushes(frame gameFrame, body []byte) error
 			}
 			var common combatCommonContext
 			for _, push := range pushes {
-				if push.number == combatPushCommonField && push.wire == 2 {
+				if push.number == fieldCombatPushDataCombatCommon && push.wire == 2 {
 					if common, err = decodeCombatCommon(push.data); err != nil {
 						return fmt.Errorf("parse CombatCommon: %w", err)
 					}
@@ -98,8 +89,8 @@ func (p *processor) handleClientEffectPushes(frame gameFrame, body []byte) error
 					continue
 				}
 				switch push.number {
-				case combatPushApplyGameplayEffectField, combatPushRemoveGameplayEffectField, combatPushBuffStackCountField,
-					combatPushApplyBuffS2CResponseField, combatPushRemoveBuffByIDS2CResponseField:
+				case fieldCombatPushDataApplyGameplayEffectPush, fieldCombatPushDataRemoveGameplayEffectPush, fieldCombatPushDataBuffStackCountPush,
+					fieldCombatPushDataApplyBuffS2CResponsePush, fieldCombatPushDataRemoveBuffByIDS2CResponsePush:
 				default:
 					continue
 				}
@@ -122,7 +113,7 @@ func decodeClientEffectPush(frame gameFrame, fieldNumber uint64, body []byte, co
 		SchemaVersion: buffLifecycleSchemaVersion, EventType: "BUFF_LIFECYCLE", MessageID: frame.commandID,
 		Timestamp: frame.timestamp, CommandID: frame.commandID, Direction: frame.direction,
 		InnerMessageFieldNumber: &number,
-		MessagePath:             fmt.Sprintf("CombatSendPackRequest.field14(CombatSendData[]).field2(CombatPushData).field%d", fieldNumber),
+		MessagePath:             fmt.Sprintf("CombatSendPackRequest.field%d(CombatSendData[]).field%d(CombatPushData).field%d", fieldCombatSendPackRequestData, fieldCombatSendDataPush, fieldNumber),
 		EventTypeStatus:         resolutionCorrelated, TargetStatus: resolutionUnknown, InstigatorStatus: resolutionUnknown,
 		InstigatorCharacterCandidateStatus: resolutionUnknown, InstigatorCharacterCandidateNameStatus: resolutionUnknown,
 		ProviderStatus: resolutionUnknown, ProviderNameStatus: resolutionUnknown,
@@ -132,15 +123,15 @@ func decodeClientEffectPush(frame gameFrame, fieldNumber uint64, body []byte, co
 		CombatCommonPreMessageID: common.preMessageID, ClientTimeStamp: common.timeStamp,
 	}
 	switch fieldNumber {
-	case combatPushApplyGameplayEffectField:
+	case fieldCombatPushDataApplyGameplayEffectPush:
 		row.MessageName, row.EventKind = "ApplyGameplayEffectPush", "CLIENT_EFFECT_APPLY_REPORT"
-	case combatPushRemoveGameplayEffectField:
+	case fieldCombatPushDataRemoveGameplayEffectPush:
 		row.MessageName, row.EventKind = "RemoveGameplayEffectPush", "CLIENT_EFFECT_REMOVE_REPORT"
-	case combatPushBuffStackCountField:
+	case fieldCombatPushDataBuffStackCountPush:
 		row.MessageName, row.EventKind = "BuffStackCountPush", "CLIENT_EFFECT_STACK_REPORT"
-	case combatPushApplyBuffS2CResponseField:
+	case fieldCombatPushDataApplyBuffS2CResponsePush:
 		row.MessageName, row.EventKind = "ApplyBuffS2cResponsePush", "BUFF_APPLY_REQUEST_RESPONSE"
-	case combatPushRemoveBuffByIDS2CResponseField:
+	case fieldCombatPushDataRemoveBuffByIDS2CResponsePush:
 		row.MessageName, row.EventKind = "RemoveBuffByIdS2cResponsePush", "BUFF_REMOVE_BY_ID_REQUEST_RESPONSE"
 	default:
 		return row, fmt.Errorf("unsupported client effect push field %d", fieldNumber)
@@ -155,74 +146,74 @@ func decodeClientEffectPush(frame gameFrame, fieldNumber uint64, body []byte, co
 		var floatTarget **float32
 		var stringTarget *string
 		switch fieldNumber {
-		case combatPushApplyGameplayEffectField:
+		case fieldCombatPushDataApplyGameplayEffectPush:
 			switch field.number {
-			case 2:
+			case fieldApplyGameplayEffectPushReason:
 				stringTarget = &row.ClientReasonRaw
-			case 3:
+			case fieldApplyGameplayEffectPushHandle:
 				uintTarget = &row.HandleID
-			case 4:
+			case fieldApplyGameplayEffectPushStackCount:
 				uintTarget = &row.StackCount
-			case 5:
+			case fieldApplyGameplayEffectPushID:
 				uintTarget = &row.ID
-			case 6:
+			case fieldApplyGameplayEffectPushIsActive:
 				boolTarget = &row.IsActive
-			case 7:
+			case fieldApplyGameplayEffectPushLevel:
 				uintTarget = &row.Level
-			case 8:
+			case fieldApplyGameplayEffectPushDuration:
 				floatTarget = &row.DurationSeconds
-			case 10:
+			case fieldApplyGameplayEffectPushInstigatorID:
 				uintTarget = &row.InstigatorID
-			case 12:
+			case fieldApplyGameplayEffectPushConfBuffID:
 				uintTarget = &row.ConfBuffID
-			case 13:
+			case fieldApplyGameplayEffectPushApplyType:
 				uintTarget = &row.ApplyType
-			case 14:
+			case fieldApplyGameplayEffectPushServerID:
 				uintTarget = &row.ServerID
 			}
-		case combatPushRemoveGameplayEffectField:
+		case fieldCombatPushDataRemoveGameplayEffectPush:
 			switch field.number {
-			case 1:
+			case fieldRemoveGameplayEffectPushReason:
 				stringTarget = &row.ClientReasonRaw
-			case 4:
+			case fieldRemoveGameplayEffectPushInstigatorID:
 				uintTarget = &row.InstigatorID
-			case 10:
+			case fieldRemoveGameplayEffectPushIsPrematureRemoval:
 				boolTarget = &row.IsPrematureRemoval
-			case 14:
+			case fieldRemoveGameplayEffectPushHandle:
 				uintTarget = &row.HandleID
-			case 15:
+			case fieldRemoveGameplayEffectPushEntityID:
 				uintTarget = &row.TargetEntityID
 			}
-		case combatPushBuffStackCountField:
+		case fieldCombatPushDataBuffStackCountPush:
 			switch field.number {
-			case 2:
+			case fieldBuffStackCountPushHandleID:
 				uintTarget = &row.HandleID
-			case 3:
+			case fieldBuffStackCountPushReason:
 				stringTarget = &row.ClientReasonRaw
-			case 4:
+			case fieldBuffStackCountPushNotRefreshDuration:
 				boolTarget = &row.NotRefreshDuration
-			case 5:
+			case fieldBuffStackCountPushNotRefreshPeriod:
 				boolTarget = &row.NotRefreshPeriod
-			case 8:
+			case fieldBuffStackCountPushIsPrematureRemoval:
 				boolTarget = &row.IsPrematureRemoval
-			case 12:
+			case fieldBuffStackCountPushInstigatorID:
 				uintTarget = &row.InstigatorID
-			case 13:
+			case fieldBuffStackCountPushDuration:
 				floatTarget = &row.DurationSeconds
-			case 14:
+			case fieldBuffStackCountPushNewStackCount:
 				uintTarget = &row.StackCount
 			}
-		case combatPushApplyBuffS2CResponseField:
+		case fieldCombatPushDataApplyBuffS2CResponsePush:
 			switch field.number {
-			case 4:
+			case fieldApplyBuffS2cResponsePushErrorCode:
 				uintTarget = &row.ErrorCode
-			case 5:
+			case fieldApplyBuffS2cResponsePushIsActive:
 				boolTarget = &row.IsActive
-			case 11:
+			case fieldApplyBuffS2cResponsePushHandle:
 				uintTarget = &row.HandleID
 			}
-		case combatPushRemoveBuffByIDS2CResponseField:
-			if field.number == 15 {
+		case fieldCombatPushDataRemoveBuffByIDS2CResponsePush:
+			if field.number == fieldRemoveBuffByIDS2cResponsePushErrorCode {
 				uintTarget = &row.ErrorCode
 			}
 		}

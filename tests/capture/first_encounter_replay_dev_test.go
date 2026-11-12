@@ -104,7 +104,7 @@ func (w firstEncounterSchemaSink) Write(data []byte) (int, error) {
 		} `json:"decoded"`
 	}
 	// Only retain the scalar identity in memory for an equality check. Never persist the decoded body or ID.
-	if json.Unmarshal(data, &row) == nil && row.CommandID == 15380 && row.Direction == "in" {
+	if json.Unmarshal(data, &row) == nil && row.CommandID == cmdBasicInfoNotify && row.Direction == "in" {
 		for _, f := range row.Decoded.Fields {
 			if f.Number == 15 {
 				var id uint64

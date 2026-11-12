@@ -77,12 +77,12 @@ func TestEffectSnapshotCarriesCombatClassification(t *testing.T) {
 	p := newClientEffectTestProcessor()
 	p.masters = classifiedTestMaster()
 	common := testCombatCommon{entityID: 100}
-	deliverClientPush(t, p, 0, clientPushBody(common, 9, clientApplyPayload(268436801, 12, 100, 1, 12)))
-	deliverClientPush(t, p, 0, clientPushBody(common, 9, clientApplyPayload(268436802, 13, 100, 1, 10)))
-	deliverClientPush(t, p, 0, clientPushBody(common, 9, clientApplyPayload(268436803, 14, 100, 1, 5)))
-	deliverClientPush(t, p, 0, clientPushBody(common, 9, clientApplyPayload(268436804, 99, 100, 1, 5)))
+	deliverClientPush(t, p, 0, clientPushBody(common, fieldCombatPushDataApplyGameplayEffectPush, clientApplyPayload(268436801, 12, 100, 1, 12)))
+	deliverClientPush(t, p, 0, clientPushBody(common, fieldCombatPushDataApplyGameplayEffectPush, clientApplyPayload(268436802, 13, 100, 1, 10)))
+	deliverClientPush(t, p, 0, clientPushBody(common, fieldCombatPushDataApplyGameplayEffectPush, clientApplyPayload(268436803, 14, 100, 1, 5)))
+	deliverClientPush(t, p, 0, clientPushBody(common, fieldCombatPushDataApplyGameplayEffectPush, clientApplyPayload(268436804, 99, 100, 1, 5)))
 	// A monster's own effect, applied by the local team, has no definition and becomes combat at runtime.
-	deliverClientPush(t, p, 0, clientPushBody(testCombatCommon{entityID: 200}, 9, clientApplyPayload(268436805, 14, 100, 1, 5)))
+	deliverClientPush(t, p, 0, clientPushBody(testCombatCommon{entityID: 200}, fieldCombatPushDataApplyGameplayEffectPush, clientApplyPayload(268436805, 14, 100, 1, 5)))
 	want := map[uint64]struct {
 		class EffectCombatClass
 		basis string

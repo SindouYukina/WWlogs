@@ -9,16 +9,15 @@ import (
 var combatNotifyAuditSchemaBasis = versioninfo.WindowsSchemaLabel() + " static schema; capture-build compatibility unverified"
 
 var combatNotifyAuditNames = map[uint64]string{
-	4:  "DamageExecuteNotify",
-	5:  "ApplyGameplayEffectNotify",
-	6:  "RemoveGameplayEffectNotify",
-	22: "AttributeChangedNotify",
-	29: "ActivateBuffNotify",
-	38: "ChangeStateNotify",
-	53: "ApplyBuffS2CRequestNotify",
-	58: "RecoverPropChangedNotify",
-	59: "RemoveBuffByIdS2CRequestNotify",
-	87: "SquadPropChangedNotify",
+	fieldCombatNotifyDataDamageExecuteNotify:            "DamageExecuteNotify",
+	fieldCombatNotifyDataApplyGameplayEffectNotify:      "ApplyGameplayEffectNotify",
+	fieldCombatNotifyDataRemoveGameplayEffectNotify:     "RemoveGameplayEffectNotify",
+	fieldCombatNotifyDataAttributeChangedNotify:         "AttributeChangedNotify",
+	fieldCombatNotifyDataActivateBuffNotify:             "ActivateBuffNotify",
+	fieldCombatNotifyDataChangeStateNotify:              "ChangeStateNotify",
+	fieldCombatNotifyDataApplyBuffS2CRequestNotify:      "ApplyBuffS2CRequestNotify",
+	fieldCombatNotifyDataRecoverPropChangedNotify:       "RecoverPropChangedNotify",
+	fieldCombatNotifyDataRemoveBuffByIDS2CRequestNotify: "RemoveBuffByIdS2CRequestNotify",
 }
 
 type combatNotifyFieldShape struct {

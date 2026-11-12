@@ -283,7 +283,7 @@ func TestConcurrentQueriesSeeConsistentRoleTotals(t *testing.T) {
 func TestRoleAggregationCreditsRoleEntityTouchedByActiveRequest(t *testing.T) {
 	p := newPairingTestProcessor()
 	// An EntityActiveRequest update marks the record CORRELATED but keeps its PlayerSceneGroup mapping.
-	if err := p.entities.observeActiveRequest(appendVarintField(nil, 4, 100)); err != nil {
+	if err := p.entities.observeActiveRequest(appendVarintField(nil, fieldEntityActiveRequestEntityID, 100)); err != nil {
 		t.Fatal(err)
 	}
 	if _, status := p.entities.resolve(100); status != resolutionCorrelated {

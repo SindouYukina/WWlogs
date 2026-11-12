@@ -5,9 +5,6 @@ import (
 	"time"
 )
 
-// combatNotifyPlayerBattleState is CombatNotifyData.PlayerBattleStateChangeNotify in the pinned Windows schema.
-const combatNotifyPlayerBattleState = 62
-
 // Battle-state anchors: why a PlayerBattleStateChangeNotify was accepted as the local player's own state.
 const (
 	battleStateAnchorLocalPlayer  = "local_player_anchor"
@@ -33,9 +30,9 @@ func decodePlayerBattleStateChange(body []byte) (playerBattleStateSignal, error)
 			continue
 		}
 		switch field.number {
-		case 5: // PlayerBattleStateChangeNotify.InBattle
+		case fieldPlayerBattleStateChangeNotifyInBattle: // PlayerBattleStateChangeNotify.InBattle
 			signal.inBattle = field.value != 0
-		case 15: // PlayerBattleStateChangeNotify.PlayerId
+		case fieldPlayerBattleStateChangeNotifyPlayerID: // PlayerBattleStateChangeNotify.PlayerId
 			signal.playerID, signal.hasPlayerID = field.value, field.value != 0
 		}
 	}
@@ -86,7 +83,7 @@ func scenePlayerIDs(body []byte) ([]uint64, error) {
 	}
 	var ids []uint64
 	for _, field := range fields {
-		if field.number != 5 || field.wire != 2 { // JoinSceneNotify.SceneInfo
+		if field.number != fieldJoinSceneNotifySceneInfo || field.wire != 2 { // JoinSceneNotify.SceneInfo
 			continue
 		}
 		sceneFields, err := parseProtoFields(field.data)
@@ -94,7 +91,7 @@ func scenePlayerIDs(body []byte) ([]uint64, error) {
 			return nil, err
 		}
 		for _, sceneField := range sceneFields {
-			if sceneField.number != 4 || sceneField.wire != 2 { // SceneInformation.PlayerInfos
+			if sceneField.number != fieldSceneInformationPlayerInfos || sceneField.wire != 2 { // SceneInformation.PlayerInfos
 				continue
 			}
 			playerFields, err := parseProtoFields(sceneField.data)
@@ -102,7 +99,7 @@ func scenePlayerIDs(body []byte) ([]uint64, error) {
 				return nil, err
 			}
 			for _, playerField := range playerFields {
-				if playerField.number == 1 && playerField.wire == 0 && playerField.value != 0 { // ScenePlayerInformation.PlayerId
+				if playerField.number == fieldScenePlayerInformationPlayerID && playerField.wire == 0 && playerField.value != 0 { // ScenePlayerInformation.PlayerId
 					ids = append(ids, playerField.value)
 				}
 			}
@@ -152,9 +149,9 @@ func (p *processor) finishCapture() {
 // combatNotifyContainer names the outer message that carried a CombatNotifyData entry.
 func combatNotifyContainer(commandID uint16) string {
 	switch commandID {
-	case 25706:
+	case cmdCombatReceivePackNotify:
 		return "CombatReceivePackNotify"
-	case 20332:
+	case cmdCombatSendPackResponse:
 		return "CombatSendPackResponse"
 	}
 	return fmt.Sprintf("command_%d", commandID)

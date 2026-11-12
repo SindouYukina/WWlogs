@@ -17,15 +17,15 @@ func TestResponseWithoutAmountBecomesItsOwnEventAndNeverCountsAsDamage(t *testin
 	p.pending[6] = pendingDamageRequest{damageID: 70010001, hasDamageID: true}
 	p.pending[7] = pendingDamageRequest{damageID: 70010001, hasDamageID: true}
 
-	omitted := appendVarintField(nil, 4, 0) // success, no Damage field
+	omitted := appendVarintField(nil, fieldDamageExecuteResponseErrorCode, 0) // success, no Damage field
 	p.handleOneDamageResult(5, omitted)
 	p.handleOneDamageResult(5, omitted) // a retransmission must not emit a second event
-	failed := appendVarintField(nil, 4, 1500140)
-	failed = appendVarintField(failed, 10, 500)
+	failed := appendVarintField(nil, fieldDamageExecuteResponseErrorCode, 1500140)
+	failed = appendVarintField(failed, fieldDamageExecuteResponseDamage, 500)
 	p.handleOneDamageResult(6, failed)
-	immune := appendVarintField(nil, 4, 0)
-	immune = appendVarintField(immune, 5, 2)
-	immune = appendVarintField(immune, 10, 500)
+	immune := appendVarintField(nil, fieldDamageExecuteResponseErrorCode, 0)
+	immune = appendVarintField(immune, fieldDamageExecuteResponseImmuneType, 2)
+	immune = appendVarintField(immune, fieldDamageExecuteResponseDamage, 500)
 	p.handleOneDamageResult(7, immune)
 
 	rows := decodeJSONLLines(t, jsonl.Bytes())

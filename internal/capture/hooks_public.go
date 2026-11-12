@@ -80,7 +80,7 @@ func loadSQLiteAbnormalDamageIDs(db *sql.DB, master *gameMaster) error {
 func (p *processor) archiveFrame(frame gameFrame) {
 }
 
-func (p *processor) archiveUndecodedSchema(frame gameFrame, message *translatedMessage) {
+func (p *processor) archiveUndecodedSchema(frame gameFrame) {
 }
 
 func (p *processor) archiveSchemaDecode(frame gameFrame, plain []byte) {

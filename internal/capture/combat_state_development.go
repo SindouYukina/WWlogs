@@ -171,7 +171,7 @@ func (p *processor) archiveCombatState(frame gameFrame, decoded *decodedMessage)
 
 // archiveCombatStateFrame decodes a combat frame for the combat-state output when that output is enabled.
 func (p *processor) archiveCombatStateFrame(frame gameFrame, plain []byte) {
-	if p.combatStateOut == nil || p.protocolSchema == nil || (frame.commandID != 25706 && frame.commandID != 20332) {
+	if p.combatStateOut == nil || p.protocolSchema == nil || (frame.commandID != cmdCombatReceivePackNotify && frame.commandID != cmdCombatSendPackResponse) {
 		return
 	}
 	payloads, err := receivePackNotifyBodies(frame.commandID, plain)
