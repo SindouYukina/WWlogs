@@ -33,8 +33,11 @@ const (
 	ReasonGameNotRunning      ListeningReason = "game_not_running"
 	ReasonHandshakeInProgress ListeningReason = "handshake_in_progress"
 	ReasonTrafficWithoutKey   ListeningReason = "traffic_without_key"
-	ReasonAwaitingLogin       ListeningReason = "awaiting_login"
-	ReasonHandshakeFailed     ListeningReason = "handshake_failed"
+	// ReasonAwaitingRelogin: the connection whose login the capture missed has gone quiet, so the game is back at its
+	// login screen; the running capture takes the next login's handshake on its own.
+	ReasonAwaitingRelogin ListeningReason = "awaiting_relogin"
+	ReasonAwaitingLogin   ListeningReason = "awaiting_login"
+	ReasonHandshakeFailed ListeningReason = "handshake_failed"
 	// ReasonUnsupportedGameVersion: the game reported a version other than the current one this WWlogs build decodes, or
 	// none it could read, so its combat frames are not decoded (capture.ProtocolStatusUnsupported).
 	ReasonUnsupportedGameVersion ListeningReason = "unsupported_game_version"
@@ -127,6 +130,10 @@ func (m *ListeningMonitor) classify(status Status, view *capture.ViewSnapshot, p
 			return ListeningWaiting, ReasonNoGameTraffic
 		case *health.FirstFrameAgeSeconds < listeningEstablishWindowSeconds:
 			return ListeningEstablishing, ReasonHandshakeInProgress
+		case health.FrameIdleSeconds != nil && *health.FrameIdleSeconds >= listeningStaleAfter.Seconds():
+			// The connection without a key went quiet: a logged-in game never pauses this long, so the player has left
+			// it for the login screen. Nothing needs restarting; the next login brings a new handshake.
+			return ListeningWaiting, ReasonAwaitingRelogin
 		default:
 			// Frames are visible but the login handshake was missed: capture began after this session logged in.
 			return ListeningWaiting, ReasonTrafficWithoutKey

@@ -45,6 +45,11 @@ type captureStats struct {
 	kcpFragmentsDiscarded     int
 	kcpStreamsEvicted         int
 	kcpEvictedPendingSegments int
+	// Session replacement (retireSupersededStreams): streams of superseded connections, the segments they still held,
+	// and later segments of their conversations that were ignored.
+	kcpStreamsRetired         int
+	kcpRetiredPendingSegments int
+	kcpRetiredStragglers      int
 	frameDesyncs              int
 	resyncAttempts            int
 	resyncSuccesses           int
