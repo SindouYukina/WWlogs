@@ -69,7 +69,7 @@ test("only History opts into the entrance; the live Dashboard and Overlay bars a
   // The Overlay meter rows draw their bar inside CharacterDamageRow, which never plays the entrance.
   assert.match(bar, /<DamageBar share=\{row\.share\} fill="row" scope=\{scope\} \/>/)
   const analysis = source("frontend/src/views/HistoryAnalysis.tsx")
-  assert.match(analysis, /numberMode="tween" enter=\{entering\} \/>/)
+  assert.match(analysis, /numberMode="ease" enter=\{entering\} \/>/)
   assert.match(analysis, /enter=\{entering \? index : undefined\}/)
   // The entrance plays once per opened encounter, not on every tab switch, hover or filter change.
   assert.match(analysis, /const entering = useEntrance\(id, analysis\?\.state === "ready"\)/)

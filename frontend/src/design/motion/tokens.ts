@@ -64,6 +64,13 @@ export const flavors: Readonly<Record<MotionFlavor, { time: number; springs: Par
 /** Natural frequency for counters that follow engine values. About 700 ms to settle after an update. */
 export const numberOmega = 11
 
+/**
+ * How long a number that describes a selection takes to reach the answer for a new one (AnimatedNumber "ease"). A History
+ * range, contributor or enemy change is read at once, so the number arrives at its exact value within this time instead
+ * of following it like a live counter. Like data springs it is not themed; reduced motion shows the value at once.
+ */
+export const selectionNumberMs = durations.base
+
 /** How long a removed effect keeps its slot while it plays its exit. */
 export const presenceExitMs = durations.moderate
 

@@ -236,6 +236,17 @@ export function rangeQuery(query: AnalysisQuery, fromMs: number, toMs: number, d
   return { ...query, fromMs: Math.round(from), toMs: Math.round(to) }
 }
 
+/**
+ * The range a query commits, in milliseconds from the encounter start, or null for the whole encounter (toMs 0 is the
+ * end). The timeline draws this at once, before Go answers for it, so releasing a drag never shows the previous range
+ * again for a frame; the numbers of the range still come only from that answer.
+ */
+export function querySpan(query: AnalysisQuery, durationMs: number): { fromMs: number; toMs: number } | null {
+  const to = query.toMs > 0 ? Math.min(query.toMs, durationMs) : durationMs
+  if (query.fromMs <= 0 && to >= durationMs) return null
+  return { fromMs: Math.max(0, query.fromMs), toMs: to }
+}
+
 /** The smallest range a drag selects, so a click never selects a sliver. */
 export const minimumRangeMs = 200
 

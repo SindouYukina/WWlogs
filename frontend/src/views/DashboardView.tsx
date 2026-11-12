@@ -1,6 +1,6 @@
 import { memo, useMemo, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
-import { AnimatedNumber, Card, CharacterAvatar, Chip, ContentSwitch, DamageBar, GameAssetImage, Icon, LiveChart, Reveal, Segmented, StackList, ThemeBackdrop, type ChartSeries, type IconName, type ThemeId } from "@/design"
+import { AnimatedNumber, Card, CharacterAvatar, Chip, ContentSwitch, DamageBar, GameAssetImage, Icon, LiveChart, Reveal, Segmented, StackList, ThemeBackdrop, type ChartSeries, type IconName, type NumberMode, type ThemeId } from "@/design"
 import { dataChip, displayedEncounter, isFrozen, usableDps, type CombatData, type CombatTimeline, type SkillBreakdown } from "@/lib/combat-data"
 import { teamSeriesKey, unassignedSeriesKey } from "@/lib/timeline"
 import { combatRows, detailRow, selectionScope, type CombatRowModel } from "@/lib/combat-view"
@@ -18,7 +18,7 @@ interface StatProps {
   scope: string
   stale: boolean
   hero?: boolean
-  numberMode: "tween" | "roll"
+  numberMode: NumberMode
   index: number
   field: string
   status?: string
@@ -35,7 +35,7 @@ export const StatCard = memo(function StatCard({ icon, label, value, format, not
 })
 
 /** The ranking. With enter, each bar grows in once when its row mounts, in rank order (History opens an encounter this way). */
-export function RoleBoard({ rows, selected, onSelect, scope, stale, numberMode, enter = false }: { rows: readonly CombatRowModel[]; selected: string; onSelect: (key: string) => void; scope: string; stale: boolean; numberMode: "tween" | "roll"; enter?: boolean }) {
+export function RoleBoard({ rows, selected, onSelect, scope, stale, numberMode, enter = false }: { rows: readonly CombatRowModel[]; selected: string; onSelect: (key: string) => void; scope: string; stale: boolean; numberMode: NumberMode; enter?: boolean }) {
   const format = useFormatters()
   const nameOf = useRowNames()
   return <StackList items={rows} keyOf={row => row.key} rowHeight={58} gap={6} renderItem={row => <div className="ww-dash-role" data-key={row.key} data-rank={row.rank} data-field={row.kind === "vehicle" ? "vehicle" : undefined} data-selected={row.key === selected} data-element={row.elementId} role="button" tabIndex={0} onClick={() => onSelect(row.key)} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") onSelect(row.key) }}>
@@ -43,7 +43,7 @@ export function RoleBoard({ rows, selected, onSelect, scope, stale, numberMode, 
     <div className="ww-dash-role-main">
       <div className="ww-dash-role-line"><strong className="ww-truncate">{nameOf(row)}</strong><span className="ww-num ww-dash-role-dps"><AnimatedNumber value={row.dps} format={format.integer} mode={numberMode} scope={scope} stale={stale} /></span></div>
       <DamageBar share={row.share} scope={scope} enter={enter ? row.rank : undefined} />
-      <div className="ww-dash-role-line ww-dash-role-sub"><span className="ww-num"><AnimatedNumber value={row.damage} format={format.integer} mode="tween" scope={scope} stale={stale} /></span><span className="ww-num">{row.share === undefined ? "—" : format.percent(row.share)}</span></div>
+      <div className="ww-dash-role-line ww-dash-role-sub"><span className="ww-num"><AnimatedNumber value={row.damage} format={format.integer} mode={numberMode === "ease" ? "ease" : "tween"} scope={scope} stale={stale} /></span><span className="ww-num">{row.share === undefined ? "—" : format.percent(row.share)}</span></div>
     </div>
   </div>} />
 }

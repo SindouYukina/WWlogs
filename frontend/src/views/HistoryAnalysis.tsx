@@ -5,7 +5,7 @@ import { usableDps } from "@/lib/combat-data"
 import { combatRows, skillBreakdown, type CombatRowModel } from "@/lib/combat-view"
 import { elementColor, useFormatters, useRowNames } from "@/lib/format"
 import type { HistoryEncounterDetail, HistoryName } from "@/lib/history"
-import { eventPageSize, formatMs, fullQuery, minimumRangeMs, parseSkillRow, rangeQuery, skillRowKey, type ActorRef, type AnalysisQuery, type EffectCoverage, type EffectLanes as EffectLanesData, type EffectRow, type EffectScope, type EncounterAnalysis, type EnemyRange, type EventKind, type EventPage, type EventRow, type SkillStats } from "@/lib/history-analysis"
+import { eventPageSize, formatMs, fullQuery, minimumRangeMs, parseSkillRow, querySpan, rangeQuery, skillRowKey, type ActorRef, type AnalysisQuery, type EffectCoverage, type EffectLanes as EffectLanesData, type EffectRow, type EffectScope, type EncounterAnalysis, type EnemyRange, type EventKind, type EventPage, type EventRow, type SkillStats } from "@/lib/history-analysis"
 import { host } from "@/lib/host"
 import { usableHealing, type Encounter, type Timeline } from "@/lib/snapshot"
 import { contributorKey, teamSeriesKey, unassignedSeriesKey } from "@/lib/timeline"
@@ -182,7 +182,10 @@ export function AnalysisWorkspace({ detail }: AnalysisWorkspaceProps) {
   const rows = useMemo(() => encounter ? combatRows(encounter) : [], [encounter])
   const rowByKey = useMemo(() => new Map(rows.map(row => [row.key, row])), [rows])
   const durationMs = analysis?.range.durationMs ?? 0
-  const range = analysis && !analysis.range.full ? { fromMs: analysis.range.fromMs, toMs: analysis.range.toMs } : null
+  // The range the numbers describe: the one Go answered for.
+  const range = useMemo(() => analysis && !analysis.range.full ? { fromMs: analysis.range.fromMs, toMs: analysis.range.toMs } : null, [analysis?.range.full, analysis?.range.fromMs, analysis?.range.toMs])
+  // The range the user selected, drawn at once: a release never shows the previous range for a frame while Go answers.
+  const selected = useMemo(() => querySpan(query, durationMs), [query.fromMs, query.toMs, durationMs])
   const lines = useMemo(() => timelineLines(analysis?.timeline, rows, { team: t("teamDps", { ns: "dashboard" }), unassigned: t("unassigned", { ns: "common" }) }, nameOf), [analysis?.timeline, rows, nameOf, t])
   const enemyLabel = useCallback((ordinal: number) => {
     const enemy = detail.enemies.find(candidate => candidate.ordinal === ordinal)
@@ -195,6 +198,7 @@ export function AnalysisWorkspace({ detail }: AnalysisWorkspaceProps) {
   const onRange = useCallback((from: number, to: number) => setQuery(q => rangeQuery(q, from, to, durationMs)), [durationMs])
   const resetRange = useCallback(() => setQuery(q => ({ ...q, fromMs: 0, toMs: 0 })), [])
   const rangeLabel = range ? a("rangeValue", { from: formatMs(range.fromMs), to: formatMs(range.toMs) }) : a("fullRange")
+  const selectedLabel = selected ? a("rangeValue", { from: formatMs(selected.fromMs), to: formatMs(selected.toMs) }) : a("fullRange")
   const selectedRow = query.contributor ? rowByKey.get(query.contributor) : undefined
   const whoLabel = selectedRow ? nameOf(selectedRow) : a("team")
 
@@ -219,8 +223,8 @@ export function AnalysisWorkspace({ detail }: AnalysisWorkspaceProps) {
       <div className="ww-analysis-toolbar-row" role="toolbar" aria-label={a("toolbar")}>
         <label className="ww-analysis-filter"><span>{a("contributor")}</span><span data-field="filter-contributor"><Select value={query.contributor} options={contributorOptions} onChange={setContributor} label={a("contributor")} /></span></label>
         <label className="ww-analysis-filter"><span>{a("enemy")}</span><span data-field="filter-enemy"><Select value={String(query.enemy)} options={enemyOptions} onChange={value => setQuery(q => ({ ...q, enemy: Number(value), skillRow: "" }))} label={a("enemy")} /></span></label>
-        <div className="ww-analysis-filter ww-analysis-range"><span>{a("range")}</span><strong className="ww-num" data-field="range-label">{rangeLabel}</strong>
-          <Button size="sm" variant="ghost" disabled={!range} onClick={resetRange} data-field="range-reset">{a("resetRange")}</Button></div>
+        <div className="ww-analysis-filter ww-analysis-range"><span>{a("range")}</span><strong className="ww-num" data-field="range-label">{selectedLabel}</strong>
+          <Button size="sm" variant="ghost" disabled={!selected} onClick={resetRange} data-field="range-reset">{a("resetRange")}</Button></div>
         <div className="ww-analysis-filter"><span>{a("effectScope")}</span><Segmented value={query.effects} onChange={(value: EffectScope) => setQuery(q => ({ ...q, effects: value }))} label={a("effectScope")}
           options={[{ value: "hud", label: a("scope.hud") }, { value: "all", label: a("scope.all") }]} /></div>
       </div>
@@ -228,23 +232,23 @@ export function AnalysisWorkspace({ detail }: AnalysisWorkspaceProps) {
       {failed && <p className="ww-history-note" data-tone="critical" role="alert">{t("loadFailed")}</p>}
     </Card>
     <div className="ww-history-stats" data-field="analysis-cards">
-      <StatCard index={0} hero icon="bolt" label={t("encounterDps", { ns: "common" })} field="analysis-dps" status={dps.status} value={usableDps(dps) ? dps.value : undefined} format={dpsFormat} note={cardNote} scope={cardScope} stale={false} numberMode="tween" />
-      <StatCard index={1} icon="spark" label={t("confirmedDamage", { ns: "dashboard" })} field="analysis-damage" value={selection.damage} format={format.integer} note={a("hitsNote", { n: format.integer(selection.hits) })} scope={cardScope} stale={false} numberMode="tween" />
-      <StatCard index={2} icon="shield" label={t("damageTaken", { ns: "dashboard" })} field="analysis-taken" value={selection.taken} format={format.integer} note={a("takenHitsNote", { n: format.integer(selection.takenHits) })} scope={cardScope} stale={false} numberMode="tween" />
+      <StatCard index={0} hero icon="bolt" label={t("encounterDps", { ns: "common" })} field="analysis-dps" status={dps.status} value={usableDps(dps) ? dps.value : undefined} format={dpsFormat} note={cardNote} scope={cardScope} stale={false} numberMode="ease" />
+      <StatCard index={1} icon="spark" label={t("confirmedDamage", { ns: "dashboard" })} field="analysis-damage" value={selection.damage} format={format.integer} note={a("hitsNote", { n: format.integer(selection.hits) })} scope={cardScope} stale={false} numberMode="ease" />
+      <StatCard index={2} icon="shield" label={t("damageTaken", { ns: "dashboard" })} field="analysis-taken" value={selection.taken} format={format.integer} note={a("takenHitsNote", { n: format.integer(selection.takenHits) })} scope={cardScope} stale={false} numberMode="ease" />
       <StatCard index={3} icon="heal" label={t("healing", { ns: "dashboard" })} field="analysis-healing" status={healing.status} value={healingShown ? healing.reported : undefined} format={healingFormat}
-        note={healingShown ? t("healingNote", { ns: "dashboard", value: healingFormat(healing.effective) }) : healingReason === "enemy_filter" ? a("healingNoEnemy") : t("healingUnavailable", { ns: "dashboard" })} scope={cardScope} stale={false} numberMode="tween" />
+        note={healingShown ? t("healingNote", { ns: "dashboard", value: healingFormat(healing.effective) }) : healingReason === "enemy_filter" ? a("healingNoEnemy") : t("healingUnavailable", { ns: "dashboard" })} scope={cardScope} stale={false} numberMode="ease" />
     </div>
     <Card className="ww-analysis-timeline">
       <div className="ww-dash-card-head"><h3>{a("timelineTitle")}</h3>
         <span className="ww-history-total">{hitsRow ? a("hitsShown", { n: format.integer(analysis.hits.length) }) : a("dragHint")}</span></div>
       <div data-field="analysis-timeline" data-series={lines.length} data-valid={analysis.timelineValid}>
-        <AnalysisTimeline durationMs={durationMs} lines={lines} focused={query.contributor || null} onSelectLine={setContributor} range={range} onRange={onRange} onReset={resetRange}
+        <AnalysisTimeline durationMs={durationMs} lines={lines} focused={query.contributor || null} onSelectLine={setContributor} range={selected} onRange={onRange} onReset={resetRange}
           gaps={analysis.gaps} marks={analysis.hits} formatValue={format.compact} formatTime={formatMs} minimumRangeMs={minimumRangeMs} height={200}
           labels={{ aria: a("timelineTitle"), empty: t("timelineMissing"), gap: a("gap"), mark: a("hitsShown", { n: analysis.hits.length }), legend: a("timelineTitle"), drag: a("dragHint") }} />
       </div>
       {analysis.gaps.length > 0 && <p className="ww-history-note" data-tone="warn">{a("gapNote", { n: analysis.gaps.length })}</p>}
       <div className="ww-analysis-lanes-head"><h4>{a("lanesTitle")}</h4></div>
-      <TimelineLanes lanes={lanes} analysis={analysis} range={range} focus={focus} setFocus={setFocus} actorName={actorName} enemyLabel={enemyLabel} />
+      <TimelineLanes lanes={lanes} analysis={analysis} range={selected} focus={focus} setFocus={setFocus} actorName={actorName} enemyLabel={enemyLabel} />
     </Card>
     <Card className="ww-analysis-tabs">
       <div className="ww-analysis-tabs-head">
@@ -437,7 +441,7 @@ const SkillsTab = memo(function SkillsTab({ analysis, encounter, rows, query, se
   return <div className="ww-analysis-skills">
     <div className="ww-analysis-board" data-field="analysis-ranking">
       <div className="ww-dash-card-head"><h3>{d("ranking")}</h3></div>
-      {rows.length === 0 ? <p className="ww-dash-empty-note">{d("noRoles")}</p> : <RoleBoard rows={rows} selected={current?.key ?? ""} onSelect={key => setContributor(key === query.contributor ? null : key)} scope={scope} stale={false} numberMode="tween" enter={entering} />}
+      {rows.length === 0 ? <p className="ww-dash-empty-note">{d("noRoles")}</p> : <RoleBoard rows={rows} selected={current?.key ?? ""} onSelect={key => setContributor(key === query.contributor ? null : key)} scope={scope} stale={false} numberMode="ease" enter={entering} />}
       {encounter?.completeness.roleAttributionComplete === false && <p className="ww-dash-warning">{t("attributionIncomplete", { ns: "common" })}</p>}
     </div>
     <div className="ww-analysis-stack">

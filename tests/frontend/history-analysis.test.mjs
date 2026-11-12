@@ -1,7 +1,7 @@
 import test from "node:test"
 import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
-import { formatMs, fullQuery, minimumRangeMs, parseSkillRow, rangeQuery, skillRowKey, timeTicks, visibleRows } from "../../frontend/src/lib/history-analysis.ts"
+import { formatMs, fullQuery, minimumRangeMs, parseSkillRow, querySpan, rangeQuery, skillRowKey, timeTicks, visibleRows } from "../../frontend/src/lib/history-analysis.ts"
 
 const source = path => readFileSync(new URL(`../../${path}`, import.meta.url), "utf8")
 
@@ -23,6 +23,28 @@ test("a dragged range becomes the query's range, and one covering the encounter 
   assert.equal(fullQuery.enemy, -1)
   assert.equal(fullQuery.effects, "hud")
   assert.ok(minimumRangeMs > 0)
+})
+
+test("a committed query is drawn as its range at once; the whole encounter has none", () => {
+  assert.equal(querySpan(fullQuery, 60000), null)
+  assert.deepEqual(querySpan({ ...fullQuery, fromMs: 15000, toMs: 25000 }, 60000), { fromMs: 15000, toMs: 25000 })
+  // toMs 0 is the end of the encounter, and a range never reaches past it.
+  assert.deepEqual(querySpan({ ...fullQuery, fromMs: 15000, toMs: 0 }, 60000), { fromMs: 15000, toMs: 60000 })
+  assert.deepEqual(querySpan({ ...fullQuery, fromMs: 15000, toMs: 90000 }, 60000), { fromMs: 15000, toMs: 60000 })
+  assert.equal(querySpan({ ...fullQuery, fromMs: 0, toMs: 60000 }, 60000), null)
+  // The range the drag commits is the one drawn: rangeQuery and querySpan agree.
+  const committed = rangeQuery(fullQuery, 40000.4, 12000.6, 60000)
+  assert.deepEqual(querySpan(committed, 60000), { fromMs: 12001, toMs: 40000 })
+})
+
+test("releasing a drag draws the committed range, not the previous answer's", () => {
+  const view = source("frontend/src/views/HistoryAnalysis.tsx")
+  assert.match(view, /const selected = useMemo\(\(\) => querySpan\(query, durationMs\)/)
+  // The timeline, the lanes and the range label follow the selection; the numbers and sparklines follow Go's answer.
+  assert.match(view, /<AnalysisTimeline [^>]*range=\{selected\}/)
+  assert.match(view, /<TimelineLanes [^>]*range=\{selected\}/)
+  assert.match(view, /data-field="range-label">\{selectedLabel\}/)
+  assert.match(view, /<Sparkline bins=\{row\.stat\.bins\} range=\{range\}/)
 })
 
 test("time ticks stay at round steps and never crowd the axis", () => {

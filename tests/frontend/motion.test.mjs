@@ -1,7 +1,8 @@
 import test from "node:test"
 import assert from "node:assert/strict"
-import { planNumberUpdate, reconcilePresence, springCurve, springPosition, stepCritical } from "../../frontend/src/design/motion/spring.ts"
-import { durations, motionVariables, springs } from "../../frontend/src/design/motion/tokens.ts"
+import { readFileSync } from "node:fs"
+import { easeNumber, planNumberUpdate, planSelectionUpdate, reconcilePresence, springCurve, springPosition, stepCritical } from "../../frontend/src/design/motion/spring.ts"
+import { durations, motionVariables, selectionNumberMs, springs } from "../../frontend/src/design/motion/tokens.ts"
 import { combatRows, countdownFraction, countdownState, effectRow } from "../../frontend/src/lib/combat-view.ts"
 
 test("spring curves start at 0, end at 1 and stay within a compact CSS value", () => {
@@ -61,6 +62,48 @@ test("number updates: resets, regressions, stale data and missing data are shown
   assert.equal(planNumberUpdate(undefined, 200, true, false), "snap")
   assert.equal(planNumberUpdate(100, undefined, true, false), "hide")
   assert.equal(planNumberUpdate(100, Number.NaN, true, false), "hide")
+})
+
+test("a selection number moves to a lower answer as it does to a higher one; scope, stale and missing data snap or hide", () => {
+  assert.equal(planSelectionUpdate(100, 200, true, false), "animate")
+  assert.equal(planSelectionUpdate(100, 50, true, false), "animate", "a smaller range is another selection, not a reset")
+  assert.equal(planSelectionUpdate(100, 200, false, false), "snap", "a new encounter does not animate across scopes")
+  assert.equal(planSelectionUpdate(100, 200, true, true), "snap")
+  assert.equal(planSelectionUpdate(undefined, 200, true, false), "snap")
+  assert.equal(planSelectionUpdate(100, undefined, true, false), "hide")
+  assert.equal(planSelectionUpdate(100, Number.NaN, true, false), "hide")
+})
+
+test("a selection number reaches the exact answer within its short duration and never leaves [from, to]", () => {
+  // Short enough that the final value is read about one fifth of a second after an answer arrives.
+  assert.ok(selectionNumberMs >= 120 && selectionNumberMs <= 240, `${selectionNumberMs} ms`)
+  for (const [from, to] of [[0, 1234567], [987654, 12], [500, 500], [-3, 7]]) {
+    let previous = from
+    for (let elapsed = 0; elapsed <= selectionNumberMs + 40; elapsed += 1000 / 60) {
+      const value = easeNumber(from, to, elapsed, selectionNumberMs)
+      assert.ok(value >= Math.min(from, to) - 1e-9 && value <= Math.max(from, to) + 1e-9, `${value} outside ${from}..${to}`)
+      assert.ok(to >= from ? value >= previous - 1e-9 : value <= previous + 1e-9, "monotonic")
+      previous = value
+    }
+    assert.equal(easeNumber(from, to, selectionNumberMs, selectionNumberMs), to, "the last frame is the answer itself")
+  }
+  // An ease-out: most of the way there by the middle of the move.
+  assert.ok(easeNumber(0, 100, selectionNumberMs / 2, selectionNumberMs) > 80)
+  assert.equal(easeNumber(0, 100, 50, 0), 100)
+})
+
+test("History selection numbers ease; the live Dashboard keeps its counters", () => {
+  const read = path => readFileSync(new URL(`../../${path}`, import.meta.url), "utf8")
+  const number = read("frontend/src/design/components/AnimatedNumber.tsx")
+  assert.match(number, /if \(mode === "ease"\) return <EaseNumber/)
+  assert.match(number, /planSelectionUpdate\(previous\.current\.value, value, previous\.current\.scope === scope, stale\)/)
+  assert.match(number, /planned === "animate" && motionReduced\(\) \? "snap" : planned/)
+  const analysis = read("frontend/src/views/HistoryAnalysis.tsx")
+  assert.equal(analysis.match(/numberMode="tween"/g), null)
+  assert.equal(analysis.match(/numberMode="ease"/g)?.length, 5)
+  const dashboard = read("frontend/src/views/DashboardView.tsx")
+  // The ranking's damage line follows the board's own mode only when that mode is ease.
+  assert.match(dashboard, /mode=\{numberMode === "ease" \? "ease" : "tween"\}/)
 })
 
 const keyOf = item => item.key

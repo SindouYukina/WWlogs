@@ -112,6 +112,27 @@ export function planNumberUpdate(previous: number | undefined, next: number | un
   return "animate"
 }
 
+/**
+ * Decides how a number that describes a selection (a History range, contributor or enemy) reaches the answer for a new
+ * selection. Unlike a live counter, a lower value is not a reset: it is the answer for another selection, so it moves the
+ * same way a higher one does. A new scope (another encounter), stale data and the first value are shown at once.
+ */
+export function planSelectionUpdate(previous: number | undefined, next: number | undefined, sameScope: boolean, stale: boolean): NumberPlan {
+  if (next === undefined || !Number.isFinite(next)) return "hide"
+  if (previous === undefined || !sameScope || stale) return "snap"
+  return "animate"
+}
+
+/**
+ * A fixed-duration ease-out cubic from one value to another. It moves monotonically, so it never shows a value outside
+ * [from, to], and at durationMs it is exactly `to`.
+ */
+export function easeNumber(from: number, to: number, elapsedMs: number, durationMs: number): number {
+  if (!(durationMs > 0) || elapsedMs >= durationMs) return to
+  const progress = Math.max(0, elapsedMs) / durationMs
+  return from + (to - from) * (1 - (1 - progress) ** 3)
+}
+
 export type PresencePhase = "enter" | "idle" | "exit"
 
 export interface PresenceEntry<T> {
