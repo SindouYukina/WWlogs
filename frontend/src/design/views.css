@@ -254,7 +254,7 @@ body[data-view="overlay"][data-editing="true"] { --wails-draggable: drag; }
 .ww-atl-reveal-inner { position: absolute; inset: 6px 0; }
 @keyframes ww-reveal-window { from { transform: translateX(-100%); } }
 @keyframes ww-reveal-content { from { transform: translateX(100%); } }
-@keyframes ww-reveal-edge { from { opacity: 0.85; } 78% { opacity: 0.85; } to { opacity: 0; } }
+@keyframes ww-reveal-edge { from { opacity: 0.85; } 40% { opacity: 0.85; } to { opacity: 0; } }
 .ww-atl-reveal[data-enter="true"] { animation: ww-reveal-window var(--ww-curve-enter-dur) var(--ww-ease-curve-enter) var(--ww-reveal-at, 0ms) backwards; }
 .ww-atl-reveal[data-enter="true"] > .ww-atl-reveal-inner { animation: ww-reveal-content var(--ww-curve-enter-dur) var(--ww-ease-curve-enter) var(--ww-reveal-at, 0ms) backwards; }
 .ww-atl-reveal-edge { position: absolute; top: 6px; bottom: 6px; right: 0; width: 2px; border-radius: 1px; background: var(--ww-accent-bright); box-shadow: 0 0 10px 1px color-mix(in oklch, var(--ww-accent) 55%, transparent); opacity: 0; }

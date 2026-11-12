@@ -1,17 +1,38 @@
 import test from "node:test"
 import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
-import { barEntrance, curveEntrance, motionVariables } from "../../frontend/src/design/motion/tokens.ts"
+import { curveEntrance, motionVariables } from "../../frontend/src/design/motion/tokens.ts"
 import { revealPhaseAt } from "../../frontend/src/design/motion/useReveal.ts"
 
 const source = path => readFileSync(new URL(`../../${path}`, import.meta.url), "utf8")
 
-test("the DPS curve entrance is one short, decelerating sweep, the same in every theme and for every encounter length", () => {
-  // Well under the 1.2 s ceiling, so a 20-minute encounter is drawn as quickly as a 20-second one.
-  assert.ok(curveEntrance.durationMs >= 700 && curveEntrance.durationMs <= 1100, `${curveEntrance.durationMs} ms`)
-  // An ease-out cubic without a control point that could overshoot the end of the encounter, like the bar entrance.
-  assert.equal(curveEntrance.easing, "cubic-bezier(0.33, 1, 0.68, 1)")
-  assert.equal(curveEntrance.easing, barEntrance.easing)
+// The progress of a CSS cubic-bezier easing at a time fraction, solved by bisection on x(u).
+const bezier = text => {
+  const [x1, y1, x2, y2] = text.match(/cubic-bezier\(([^)]+)\)/)[1].split(",").map(Number)
+  return t => {
+    let lo = 0, hi = 1, u = t
+    for (let i = 0; i < 60; i++) { u = (lo + hi) / 2; const x = 3 * (1 - u) * (1 - u) * u * x1 + 3 * (1 - u) * u * u * x2 + u * u * u; if (x < t) lo = u; else hi = u }
+    return { y: 3 * (1 - u) * (1 - u) * u * y1 + 3 * (1 - u) * u * u * y2 + u * u * u, y1, y2 }
+  }
+}
+
+test("the DPS curve entrance shoots in and settles slowly within the 1-2 seconds asked for, for every encounter length", () => {
+  // The owner asked for 1-2 seconds: the same time for a 20-second and a 20-minute encounter.
+  assert.ok(curveEntrance.durationMs >= 1000 && curveEntrance.durationMs <= 2000, `${curveEntrance.durationMs} ms`)
+  assert.equal(curveEntrance.easing, "cubic-bezier(0.16, 1, 0.3, 1)")
+  const at = bezier(curveEntrance.easing)
+  // Very fast at first: the curve is mostly drawn as the encounter opens.
+  assert.ok(at(100 / curveEntrance.durationMs).y >= 0.35, `${at(100 / curveEntrance.durationMs).y} at 100 ms`)
+  assert.ok(at(400 / curveEntrance.durationMs).y >= 0.85, `${at(400 / curveEntrance.durationMs).y} at 400 ms`)
+  // Then a long, slow deceleration: every later step is smaller than the one before, and it never passes the end.
+  let previous = 0, step = Infinity
+  for (let t = 0.05; t <= 1.0001; t += 0.05) {
+    const { y, y1, y2 } = at(Math.min(1, t))
+    assert.ok(y1 <= 1 && y2 <= 1 && y <= 1 + 1e-9, "no overshoot")
+    assert.ok(y - previous <= step + 1e-9, `decelerating at ${t.toFixed(2)}`)
+    step = y - previous
+    previous = y
+  }
   const full = motionVariables()
   assert.equal(full["--ww-curve-enter-dur"], `${curveEntrance.durationMs}ms`)
   assert.equal(full["--ww-ease-curve-enter"], curveEntrance.easing)
