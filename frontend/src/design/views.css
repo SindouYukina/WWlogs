@@ -192,6 +192,8 @@ body[data-view="overlay"][data-editing="true"] { --wails-draggable: drag; }
 .ww-analysis-range strong { font-size: var(--ww-text-sm); font-weight: var(--ww-weight-semibold); color: var(--ww-text); white-space: nowrap; }
 .ww-analysis-timeline, .ww-analysis-tabs { padding: var(--ww-space-3) var(--ww-space-4); min-width: 0; }
 .ww-analysis-tabs-head { margin-bottom: var(--ww-space-3); }
+.ww-analysis-timeline-tools { display: inline-flex; align-items: center; gap: var(--ww-space-2); min-width: 0; }
+:root[data-ww-motion="reduced"] .ww-analysis-replay { display: none; }
 .ww-analysis-lanes-head { display: flex; align-items: baseline; justify-content: space-between; margin: var(--ww-space-3) 0 var(--ww-space-1); padding-top: var(--ww-space-3); border-top: 1px solid var(--ww-line-soft); }
 .ww-analysis-lanes-head h4 { margin: 0; font-size: var(--ww-text-sm); font-weight: var(--ww-weight-semibold); }
 .ww-analysis-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 300px); gap: var(--ww-space-4); align-items: start; min-width: 0; }
@@ -244,7 +246,20 @@ body[data-view="overlay"][data-editing="true"] { --wails-draggable: drag; }
 .ww-atl-axis > span { position: absolute; right: var(--ww-space-2); transform: translateY(-50%); }
 .ww-atl-plot { position: relative; min-width: 0; cursor: crosshair; touch-action: none; }
 .ww-atl-plot:focus-visible { outline: none; box-shadow: var(--ww-focus-ring); border-radius: var(--ww-radius-xs); }
-.ww-atl-plot > svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.ww-atl-plot > svg, .ww-atl-reveal-inner > svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+/* The opening reveal: a window over the lines widens from the encounter's start to its end while its content moves back by
+   the same amount, so the lines never move and only how much of them shows changes. It reaches 6px past the plot so a
+   line's stroke at the top or bottom is never cut. backwards fill holds nothing afterwards. */
+.ww-atl-reveal { position: absolute; inset: -6px 0; overflow: hidden; pointer-events: none; }
+.ww-atl-reveal-inner { position: absolute; inset: 6px 0; }
+@keyframes ww-reveal-window { from { transform: translateX(-100%); } }
+@keyframes ww-reveal-content { from { transform: translateX(100%); } }
+@keyframes ww-reveal-edge { from { opacity: 0.85; } 78% { opacity: 0.85; } to { opacity: 0; } }
+.ww-atl-reveal[data-enter="true"] { animation: ww-reveal-window var(--ww-curve-enter-dur) var(--ww-ease-curve-enter) var(--ww-reveal-at, 0ms) backwards; }
+.ww-atl-reveal[data-enter="true"] > .ww-atl-reveal-inner { animation: ww-reveal-content var(--ww-curve-enter-dur) var(--ww-ease-curve-enter) var(--ww-reveal-at, 0ms) backwards; }
+.ww-atl-reveal-edge { position: absolute; top: 6px; bottom: 6px; right: 0; width: 2px; border-radius: 1px; background: var(--ww-accent-bright); box-shadow: 0 0 10px 1px color-mix(in oklch, var(--ww-accent) 55%, transparent); opacity: 0; }
+.ww-atl-reveal[data-enter="true"] > .ww-atl-reveal-edge { animation: ww-reveal-edge var(--ww-curve-enter-dur) linear var(--ww-reveal-at, 0ms) backwards; }
+:root[data-ww-motion="reduced"] .ww-atl-reveal[data-enter="true"], :root[data-ww-motion="reduced"] .ww-atl-reveal[data-enter="true"] > * { animation: none; }
 .ww-atl-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
 .ww-atl-line[data-focused="true"] { stroke-width: 3; }
 .ww-atl[data-focusing="true"] .ww-chart-layer[data-focused="false"] { opacity: 0.2; }

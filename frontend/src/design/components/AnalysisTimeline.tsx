@@ -1,4 +1,5 @@
-import { memo, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react"
+import { memo, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react"
+import { useRevealPhase, type RevealClock } from "../motion/useReveal.ts"
 
 // The time axis of the History analysis workspace. One encounter's DPS lines and its effect lanes are drawn against the same
 // axis, from 0 to the encounter's duration, and share one left gutter (--ww-analysis-gutter) so a moment lines up across
@@ -51,6 +52,11 @@ export interface AnalysisTimelineProps {
   labels: { aria: string; empty: string; gap: string; mark: string; legend: string; drag: string }
   height?: number
   minimumRangeMs: number
+  /**
+   * The opening reveal (useRevealClock): while it plays, the lines are shown from the encounter's start up to a moment
+   * that sweeps to its end. The values, the axis and the capture gaps are drawn in full from the first frame.
+   */
+  reveal?: RevealClock | null
 }
 
 const plotWidth = 1000
@@ -95,7 +101,21 @@ const percent = (ms: number, durationMs: number) => `${(Math.max(0, Math.min(dur
  * reading point, Shift+Arrow grows a range from where it started, Enter commits it and Escape returns to the whole fight.
  * The plot is a single SVG layer per line; nothing animates while the values stay the same.
  */
-export const AnalysisTimeline = memo(function AnalysisTimeline({ durationMs, lines, focused, onSelectLine, range, onRange, onReset, gaps, marks, formatValue, formatTime, labels, height = 200, minimumRangeMs }: AnalysisTimelineProps) {
+export const AnalysisTimeline = memo(function AnalysisTimeline({ durationMs, lines, focused, onSelectLine, range, onRange, onReset, gaps, marks, formatValue, formatTime, labels, height = 200, minimumRangeMs, reveal = null }: AnalysisTimelineProps) {
+  const { phase, end } = useRevealPhase(reveal)
+  const revealWindow = useRef<HTMLDivElement>(null)
+  // The reveal ends with its own animation (or its cancellation by reduced motion), never on a timer.
+  useEffect(() => {
+    const element = revealWindow.current
+    if (!phase || !element) return
+    const ended = (event: AnimationEvent) => { if (event.target === element && event.animationName === "ww-reveal-window") end() }
+    element.addEventListener("animationend", ended)
+    element.addEventListener("animationcancel", ended)
+    return () => {
+      element.removeEventListener("animationend", ended)
+      element.removeEventListener("animationcancel", ended)
+    }
+  }, [phase, end])
   const plot = useRef<HTMLDivElement>(null)
   const pressed = useRef<{ x: number; y: number; ms: number } | null>(null)
   const [drag, setDrag] = useState<TimelineSpan | null>(null)
@@ -209,9 +229,18 @@ export const AnalysisTimeline = memo(function AnalysisTimeline({ durationMs, lin
           <div className="ww-atl-range" data-field="analysis-range" data-from={Math.round(shown.fromMs)} data-to={Math.round(shown.toMs)} data-pending={drag !== null} style={{ left: percent(shown.fromMs, duration), width: percent(shown.toMs - shown.fromMs, duration) }} />
         </>}
         {hasData
-          ? lines.map(line => <svg key={line.key} className="ww-chart-layer" data-key={line.key} data-focused={line.key === focused} data-aggregate={line.aggregate === true} viewBox={`0 0 ${plotWidth} ${height}`} preserveAspectRatio="none" aria-hidden="true">
-            <path className="ww-atl-line" stroke={line.color} d={paths.get(line.key)} data-focused={line.key === focused} />
-          </svg>)
+          // The reveal window widens over the time axis while its content moves back by the same amount, so the lines stay
+          // where they are and only how much of them shows changes; both are transforms. Keyed by the playing, so a replay
+          // starts afresh and the end of one never re-mounts the lines.
+          ? <div ref={revealWindow} className="ww-atl-reveal" key={reveal?.key ?? 0} data-field="analysis-reveal" data-enter={phase ? "true" : undefined}
+            style={phase ? { "--ww-reveal-at": `${-Math.round(phase.elapsedMs)}ms` } as CSSProperties : undefined}>
+            <div className="ww-atl-reveal-inner">
+              {lines.map(line => <svg key={line.key} className="ww-chart-layer" data-key={line.key} data-focused={line.key === focused} data-aggregate={line.aggregate === true} viewBox={`0 0 ${plotWidth} ${height}`} preserveAspectRatio="none" aria-hidden="true">
+                <path className="ww-atl-line" stroke={line.color} d={paths.get(line.key)} data-focused={line.key === focused} />
+              </svg>)}
+            </div>
+            {phase && <i className="ww-atl-reveal-edge" aria-hidden="true" />}
+          </div>
           : <div className="ww-chart-empty">{labels.empty}</div>}
         {marks.length > 0 && <svg className="ww-atl-marks" viewBox={`0 0 ${plotWidth} 10`} preserveAspectRatio="none" aria-label={labels.mark} data-field="analysis-hits" data-count={marks.length}>
           {marks.map((mark, index) => { const x = (mark.atMs / duration) * plotWidth; return <line key={index} x1={x} x2={x} y1={0} y2={10} /> })}

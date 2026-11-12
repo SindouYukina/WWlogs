@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
-import { AnalysisTimeline, Button, Card, Chip, ContentSwitch, DamageBar, EffectLanes, GameAssetImage, Segmented, Select, useEntrance, type LaneRowModel, type TimelineLine } from "@/design"
+import { AnalysisTimeline, Button, Card, Chip, ContentSwitch, DamageBar, EffectLanes, GameAssetImage, Icon, Segmented, Select, useEntrance, useRevealClock, type LaneRowModel, type TimelineLine } from "@/design"
 import { usableDps } from "@/lib/combat-data"
 import { combatRows, skillBreakdown, type CombatRowModel } from "@/lib/combat-view"
 import { elementColor, useFormatters, useRowNames } from "@/lib/format"
@@ -179,6 +179,9 @@ export function AnalysisWorkspace({ detail }: AnalysisWorkspaceProps) {
   // The damage bars of an encounter grow in once, when its analysis first arrives; later tab switches and filter changes
   // move them from where they are.
   const entering = useEntrance(id, analysis?.state === "ready")
+  // The timeline's own entrance: its lines are revealed from the encounter's start to its end once, when the encounter's
+  // analysis first arrives (never on hover, a range, a filter or a tab), and again only from the replay button.
+  const { clock: reveal, replay } = useRevealClock(id, scope === id && analysis?.state === "ready")
   const rows = useMemo(() => encounter ? combatRows(encounter) : [], [encounter])
   const rowByKey = useMemo(() => new Map(rows.map(row => [row.key, row])), [rows])
   const durationMs = analysis?.range.durationMs ?? 0
@@ -240,10 +243,11 @@ export function AnalysisWorkspace({ detail }: AnalysisWorkspaceProps) {
     </div>
     <Card className="ww-analysis-timeline">
       <div className="ww-dash-card-head"><h3>{a("timelineTitle")}</h3>
-        <span className="ww-history-total">{hitsRow ? a("hitsShown", { n: format.integer(analysis.hits.length) }) : a("dragHint")}</span></div>
+        <span className="ww-analysis-timeline-tools"><span className="ww-history-total">{hitsRow ? a("hitsShown", { n: format.integer(analysis.hits.length) }) : a("dragHint")}</span>
+          <Button size="sm" variant="ghost" className="ww-analysis-replay" onClick={replay} title={a("replayEntrance")} aria-label={a("replayEntrance")} data-field="replay-entrance"><Icon name="reset" size={13} /></Button></span></div>
       <div data-field="analysis-timeline" data-series={lines.length} data-valid={analysis.timelineValid}>
         <AnalysisTimeline durationMs={durationMs} lines={lines} focused={query.contributor || null} onSelectLine={setContributor} range={selected} onRange={onRange} onReset={resetRange}
-          gaps={analysis.gaps} marks={analysis.hits} formatValue={format.compact} formatTime={formatMs} minimumRangeMs={minimumRangeMs} height={200}
+          gaps={analysis.gaps} marks={analysis.hits} formatValue={format.compact} formatTime={formatMs} minimumRangeMs={minimumRangeMs} height={200} reveal={reveal}
           labels={{ aria: a("timelineTitle"), empty: t("timelineMissing"), gap: a("gap"), mark: a("hitsShown", { n: analysis.hits.length }), legend: a("timelineTitle"), drag: a("dragHint") }} />
       </div>
       {analysis.gaps.length > 0 && <p className="ww-history-note" data-tone="warn">{a("gapNote", { n: analysis.gaps.length })}</p>}

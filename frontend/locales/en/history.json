@@ -179,6 +179,7 @@
     "healingNoEnemy": "Healing belongs to no enemy, so it is not shown while an enemy is selected.",
     "timelineTitle": "Combat timeline",
     "dragHint": "Drag on the timeline to select a range; click a line to select a character",
+    "replayEntrance": "Replay the timeline entrance",
     "hitsShown": "Hits marked on the timeline: {{n}}",
     "gap": "Capture gap: packets may have been lost here",
     "gapNote": "This encounter has {{n}} capture gaps; effects and events during them may be incomplete.",

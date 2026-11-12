@@ -84,6 +84,14 @@ export const staggerMs = 45
  */
 export const barEntrance = { durationMs: 650, staggerMs: 50, maxSteps: 10, easing: "cubic-bezier(0.33, 1, 0.68, 1)" } as const
 
+/**
+ * The entrance of the History analysis timeline when an encounter opens: its DPS lines (and the timeline tracks under them)
+ * are revealed from the encounter's start to its end, left to right, as one window that widens over the time axis. It
+ * lasts the same short time for a 20-second and a 20-minute encounter, decelerates without overshoot, and moves only
+ * transforms. Not themed; reduced motion shows the whole timeline at once.
+ */
+export const curveEntrance = { durationMs: 900, easing: "cubic-bezier(0.33, 1, 0.68, 1)" } as const
+
 export type MotionPreference = "full" | "reduced"
 
 export interface InstallOptions {
@@ -111,6 +119,8 @@ export function motionVariables({ scale = 1, preference = "full", flavor = "elec
   variables["--ww-bar-enter-dur"] = time(barEntrance.durationMs)
   variables["--ww-bar-enter-stagger"] = time(barEntrance.staggerMs)
   variables["--ww-ease-bar-enter"] = barEntrance.easing
+  variables["--ww-curve-enter-dur"] = time(curveEntrance.durationMs)
+  variables["--ww-ease-curve-enter"] = curveEntrance.easing
   return variables
 }
 
