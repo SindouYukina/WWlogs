@@ -140,6 +140,8 @@ func collectSkillCoverage(statistics DamageStatisticsSnapshot, masters *gameMast
 		if role.UnassignedSkill.OverflowEvents == 0 {
 			coverage.MissingSkillDamage += role.UnassignedSkill.DamageDealt
 		}
+		// A trial role reads its skills through its parent role, as the view's skill projection does.
+		staticRole := masters.staticRoleID(role.RoleID)
 		for _, skill := range role.Skills {
 			distinct[skill.SkillID] = true
 			coverage.SkillEvents += skill.OutgoingEvents
@@ -150,7 +152,7 @@ func collectSkillCoverage(statistics DamageStatisticsSnapshot, masters *gameMast
 				coverage.NamedSkillDamage += skill.DamageDealt
 			} else {
 				unnamed[skill.SkillID] = true
-				if _, status, source, sourceID := masters.skillRowName(role.RoleID, skill); status == skillNameStatusDerived {
+				if _, status, source, sourceID := masters.skillRowName(staticRole, skill); status == skillNameStatusDerived {
 					coverage.DerivedSkillEvents += skill.OutgoingEvents
 					coverage.DerivedSkillDamage += skill.DamageDealt
 					derived[fmt.Sprintf("role %d skill %d %s %d", role.RoleID, skill.SkillID, source, sourceID)] = true
@@ -158,7 +160,7 @@ func collectSkillCoverage(statistics DamageStatisticsSnapshot, masters *gameMast
 					stillUnnamed[skill.SkillID] = true
 				}
 			}
-			if ok && record.RoleID != 0 && record.RoleID != role.RoleID {
+			if ok && record.RoleID != 0 && record.RoleID != staticRole {
 				coverage.MasterRoleConflicts = append(coverage.MasterRoleConflicts, fmt.Sprintf("role %d skill %d master role %d", role.RoleID, skill.SkillID, record.RoleID))
 			}
 		}
