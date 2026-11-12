@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
-
-	"wwlogs/internal/versioninfo"
 )
 
 // The local client owns the gameplay effects of the entities it controls: it applies,
@@ -117,7 +115,7 @@ func decodeClientEffectPush(frame gameFrame, fieldNumber uint64, body []byte, co
 		EventTypeStatus:         resolutionCorrelated, TargetStatus: resolutionUnknown, InstigatorStatus: resolutionUnknown,
 		InstigatorCharacterCandidateStatus: resolutionUnknown, InstigatorCharacterCandidateNameStatus: resolutionUnknown,
 		ProviderStatus: resolutionUnknown, ProviderNameStatus: resolutionUnknown,
-		SchemaBasis:          versioninfo.WindowsSchemaLabel() + " Aki.Protocol metadata; client version observed, schema compatibility unverified",
+		SchemaBasis:          protocolSchemaBasis(),
 		EvidenceSource:       EffectEvidenceClientReport,
 		CombatCommonEntityID: common.entityID, CombatCommonOriginator: common.originatorID, CombatCommonMessageID: common.messageID,
 		CombatCommonPreMessageID: common.preMessageID, ClientTimeStamp: common.timeStamp,
@@ -246,7 +244,7 @@ func decodeClientEffectPush(frame gameFrame, fieldNumber uint64, body []byte, co
 		}
 	}
 	if row.InstigatorID != nil {
-		row.InstigatorEvidence = "Raw InstigatorId field decoded from " + versioninfo.WindowsSchemaLabel() + " Aki.Protocol metadata; provider semantics and compatibility with the observed client build are UNKNOWN"
+		row.InstigatorEvidence = "Raw InstigatorId field of the " + CurrentProtocol() + "; provider semantics are UNKNOWN"
 		row.ProviderEvidence = "Provider status UNKNOWN: InstigatorId semantics and time-scoped active actor linkage are unverified"
 	}
 	if row.TargetEntityID != nil {

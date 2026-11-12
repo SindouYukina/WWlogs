@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-
-	"wwlogs/internal/versioninfo"
 )
 
 type combatEventJSONL struct {
@@ -379,10 +377,10 @@ func (event *combatEvent) resolveEventType(masters *gameMaster) {
 	switch record.CalculateType {
 	case 0:
 		event.EventTypeCandidate = "DAMAGE_CANDIDATE"
-		event.EventTypeProof = source + "; " + versioninfo.ReferenceSchemaLabel() + " DamageUiController CalculateType 0 uses ordinary damage text"
+		event.EventTypeProof = source + "; client code (static research): DamageUiController shows CalculateType 0 as ordinary damage text"
 	case 1:
 		event.EventTypeCandidate = "HEALING_CANDIDATE"
-		event.EventTypeProof = source + "; " + versioninfo.ReferenceSchemaLabel() + " DamageUiController CalculateType 1 uses cure/heal display"
+		event.EventTypeProof = source + "; client code (static research): DamageUiController shows CalculateType 1 as a cure/heal number"
 	default:
 		event.EventTypeCandidate = "OTHER_COMBAT_RESULT_CANDIDATE"
 		event.EventTypeProof = source + "; nonzero type other than 1 has no verified event semantics"

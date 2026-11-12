@@ -5,13 +5,11 @@ import (
 	"fmt"
 	"math"
 	"sort"
-
-	"wwlogs/internal/versioninfo"
 )
 
 type resolutionStatus string
 
-// entityTypeMonster follows the EntityPb.EntityType enum in the pinned Windows schema.
+// entityTypeMonster follows the EntityPb.EntityType enum of the client protocol.
 const entityTypeMonster uint64 = 2
 
 // entityTypePlayerEntity is EntityPb.EntityType Proto_PlayerEntity: the one entity per player that the client registers
@@ -589,12 +587,12 @@ func resolveEntityIdentity(resolver *entityResolver, masters *gameMaster, entity
 			result.Monster = monster
 			result.HasMonster = true
 			result.MonsterStatus = resolutionStatus(monster.Status)
-			// The field path is verified against the pinned Windows schema, but the
-			// observed client build has not been matched to this versioned master.
+			// The field path is the current client protocol's, but the observed client
+			// build has not been matched to this versioned master.
 			if result.MonsterStatus == resolutionVerified {
 				result.MonsterStatus = resolutionCorrelated
 			}
-			result.MonsterProof = "MonsterCaptureComponentPb.MonsterId -> MonsterInfo.Id; " + versioninfo.WindowsSchemaLabel() + " schema, client build observed, master compatibility unverified"
+			result.MonsterProof = "MonsterCaptureComponentPb.MonsterId (" + CurrentProtocol() + ") -> MonsterInfo.Id in the combat master; client build observed, master compatibility unverified"
 		}
 	}
 	if masters != nil && !entity.hasMonsterID && entity.hasConfigID && entity.hasConfigType && entity.configType == 1 &&
@@ -651,7 +649,7 @@ func runtimeCharacterCandidate(entity runtimeEntity) (characterID uint64, proof 
 			proof = "scene role mapping -> runtime EntityId"
 		}
 	}
-	// The pinned reference protocol schema defines Proto_Character as enum value 3.
+	// The client protocol's EntityConfigType defines Proto_Character as enum value 3.
 	// SetPbDataByProtocol assigns EntityData.PbDataId to RoleId only in this branch.
 	if entity.hasConfigType && entity.configType == 3 && entity.hasConfigID {
 		if characterID != 0 && characterID != entity.configID {
@@ -892,7 +890,7 @@ func (r *entityResolver) applyJoinSceneNotify(body []byte) (int, error) {
 }
 
 // applyUpdateSceneGroupDataNotify adds the direct role-to-entity mapping carried
-// by the pinned Windows UpdateSceneGroupDataNotify schema. Other entity metadata
+// by the client protocol's UpdateSceneGroupDataNotify. Other entity metadata
 // already observed for the same ID is retained, and conflicting RoleIds remain
 // unresolved through mergeRuntimeEntity.
 func (r *entityResolver) applyUpdateSceneGroupDataNotify(body []byte) (int, error) {

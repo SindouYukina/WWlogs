@@ -1,17 +1,5 @@
 {
   "product": {
     "developmentLine": "v0.7.0"
-  },
-  "schemas": {
-    "windowsGlobal": {
-      "label": "Windows Global UHD",
-      "version": "3.7.1",
-      "compatibility": "unverified"
-    },
-    "referenceGlobal": {
-      "label": "Reference Protocol",
-      "version": "3.7.1",
-      "compatibility": "unverified"
-    }
   }
 }

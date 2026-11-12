@@ -1,6 +1,7 @@
 package capture
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -103,6 +104,7 @@ func TestProtocolSessionDecodesOnlyTheCurrentVersion(t *testing.T) {
 // A fight sent in the current protocol is decoded end to end: pairing, attribution and the encounter.
 func TestCurrentProtocolSessionDecodesTheFight(t *testing.T) {
 	p, _ := initialProcessor(t)
+	p.census = newCommandCensus()
 	initialEncryptedFrame(t, p, cmdBasicInfoNotify, "in", appendVarintField(nil, fieldBasicInfoNotifyID, 77), 0.1)
 	initialEncryptedFrame(t, p, cmdJoinSceneNotify, "in", initialJoinBody(), 0.2)
 	addTestRuntimeEntity(p, 200, func(e *runtimeEntity) { e.entityTypeCode, e.hasEntityType = entityTypeMonster, true })
@@ -117,6 +119,21 @@ func TestCurrentProtocolSessionDecodesTheFight(t *testing.T) {
 	}
 	if report := p.protocol.report(); report.Status != ProtocolStatusSupported || report.GameVersion != "3.8" || report.PendingFrames != 0 || report.UnsupportedFrames != 0 {
 		t.Fatalf("protocol report %+v", report)
+	}
+	if entry := p.census.entries[censusKey{CommandID: cmdJoinSceneNotify, Direction: "in"}]; entry == nil || entry.Name != "JoinSceneNotify" || entry.SchemaBasis != censusSchemaBasis() {
+		t.Fatalf("a current-protocol frame was not named from the current protocol: %+v", entry)
+	}
+}
+
+// Evidence names the protocol a message was read with, the current client's, and the version gate that admitted it.
+func TestEvidenceNamesTheCurrentProtocol(t *testing.T) {
+	for name, text := range map[string]string{"message schema basis": protocolSchemaBasis(), "census schema basis": censusSchemaBasis(), "combat notify audit": combatNotifyAuditSchemaBasis} {
+		if !strings.Contains(text, CurrentProtocol()) {
+			t.Fatalf("%s %q does not name the current client protocol", name, text)
+		}
+	}
+	if !strings.HasSuffix(protocolSchemaBasis(), "game version "+CurrentGameVersion()) {
+		t.Fatalf("message schema basis %q does not name the version gate", protocolSchemaBasis())
 	}
 }
 
@@ -147,6 +164,12 @@ func TestOtherGameVersionsAreNeverDecoded(t *testing.T) {
 		}
 		if got := p.census.entry(cmdCombatSendPackRequest, "out").FailureReasons[protocolUnsupportedFailureReason]; got != 1 {
 			t.Fatalf("%s: census reason = %d, want 1", build, got)
+		}
+		// The same number means another message in another version: the census must not name it from the current one.
+		for _, key := range []censusKey{{CommandID: cmdJoinSceneNotify, Direction: "in"}, {CommandID: cmdCombatSendPackRequest, Direction: "out"}, {CommandID: cmdCombatSendPackResponse, Direction: "in"}} {
+			if entry := p.census.entries[key]; entry == nil || entry.Name != "" || entry.SchemaBasis != "" {
+				t.Fatalf("%s: a frame of another game version took a current-protocol name: %+v", build, entry)
+			}
 		}
 	}
 }

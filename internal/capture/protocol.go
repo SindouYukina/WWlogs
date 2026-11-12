@@ -455,6 +455,9 @@ func (p *processor) handleFrame(frame gameFrame) {
 		return
 	}
 	decodable := p.protocol.decodes(frame.commandID)
+	if decodable && censusEntry != nil {
+		censusEntry.describeCurrentProtocol()
+	}
 	if !decodable || !isImplementedCommand(frame.commandID) {
 		if censusEntry != nil {
 			p.inspectUndecodedFrame(frame, decodable, censusEntry)

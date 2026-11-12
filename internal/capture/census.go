@@ -3,8 +3,6 @@ package capture
 import (
 	"fmt"
 	"time"
-
-	"wwlogs/internal/versioninfo"
 )
 
 type censusKey struct {
@@ -309,16 +307,24 @@ func commandName(id uint16) string {
 	}
 }
 
-func hasWindowsProtocolSchema(id uint16) bool {
+// hasCurrentProtocolSchema reports the commands whose census entries record the current client protocol as their
+// schema basis.
+func hasCurrentProtocolSchema(id uint16) bool {
 	switch id {
 	case cmdUpdateSceneGroupDataNotify, cmdPlayerLivingStatesNotify, cmdAddSysBuffNotify, cmdApplyGameplayEffectNotify, cmdApplyGameplayEffectPush, cmdRemoveGameplayEffectNotify, cmdRemoveGameplayEffectPush, cmdSimpleCombatEntityBuffUpdateNotify, cmdSimpleCombatEntityBuffLayerCountNotify, cmdBuffStackCountNotify, cmdBuffDurationNotify, cmdOrderApplyBuffNotify, cmdOrderRemoveBuffNotify, cmdRefreshBuffDurationPush, cmdRemoveSysBuffNotify, cmdSimpleCombatEntityAttributeUpdateNotify, cmdSimpleCombatEntitySyncAttributePush, cmdUpdateSysBuffNotify,
 		cmdApplyGameplayEffectRequest, cmdApplyGameplayEffectResponse, cmdRemoveGameplayEffectRequest, cmdRemoveGameplayEffectResponse, cmdOrderApplyBuffRequest, cmdOrderApplyBuffResponse, cmdOrderRemoveBuffRequest, cmdOrderRemoveBuffResponse, cmdApplyBuffS2cRequestNotify, cmdApplyBuffS2cResponsePush, cmdRemoveBuffS2cRequestNotify, cmdRemoveBuffS2cResponsePush, cmdRemoveBuffByIDS2cRequestNotify, cmdRemoveBuffByIDS2cResponsePush, cmdActivateBuffRequest, cmdActivateBuffResponse, cmdActivateBuffNotify, cmdActivateBuffPush,
 		cmdBuffStackCountRequest, cmdBuffStackCountResponse, cmdBuffStackCountPush, cmdBuffEffectRequest, cmdBuffEffectResponse, cmdBuffEffectPush, cmdBuffEffectExecuteRequest, cmdBuffEffectExecuteResponse, cmdBuffEffectExecutePush, cmdEntityBuffProducerRequest, cmdEntityBuffProducerResponse, cmdEntityBuffProducerOperateRequest, cmdEntityBuffProducerOperateResponse, cmdOrderRemoveBuffByTagsRequest, cmdOrderRemoveBuffByTagsResponse, cmdOrderRemoveBuffByTagsNotify, cmdRemoveBuffByServerIDS2cRequestNotify,
-		cmdAtomicProcessAddBuffRequest, cmdAtomicProcessAddBuffResponse, cmdAtomicProcessRemoveBuffRequest, cmdAtomicProcessRemoveBuffResponse, cmdTransformBuffStackNotify, cmdJoinSceneNotify, cmdEntityAddNotify, cmdEntityRemoveNotify, cmdEntityActiveRequest, cmdUpdatePlayerAllFightRoleNotify, cmdUpdatePlayersFightRolesInfoNotify, cmdUpdatePlayerSingleFightRoleNotify, cmdChangePlayerFightRoleNotify, cmdCombatReceivePackNotify:
+		cmdAtomicProcessAddBuffRequest, cmdAtomicProcessAddBuffResponse, cmdAtomicProcessRemoveBuffRequest, cmdAtomicProcessRemoveBuffResponse, cmdTransformBuffStackNotify, cmdJoinSceneNotify, cmdEntityAddNotify, cmdEntityRemoveNotify, cmdEntityActiveRequest, cmdUpdatePlayerAllFightRoleNotify, cmdUpdatePlayersFightRolesInfoNotify, cmdUpdatePlayerSingleFightRoleNotify, cmdChangePlayerFightRoleNotify, cmdCombatReceivePackNotify,
+		cmdEntityActiveResponse, cmdPhantomAttrRecommendResponse, cmdMovePackagePush, cmdPlayerFollowerNotify, cmdEntityRemoveDynamicInteractNotify, cmdEntityCommonTagNotify, cmdEntityStateReadyNotify:
 		return true
 	default:
 		return false
 	}
+}
+
+// censusSchemaBasis is the schema basis of a census entry named from the current client protocol.
+func censusSchemaBasis() string {
+	return "command defined by the " + CurrentProtocol()
 }
 
 func (c *commandCensus) entry(id uint16, direction string) *commandCensusEntry {
@@ -327,24 +333,34 @@ func (c *commandCensus) entry(id uint16, direction string) *commandCensusEntry {
 	if entry == nil {
 		entry = &commandCensusEntry{
 			CommandID:      id,
-			Name:           commandName(id),
 			Direction:      direction,
 			Status:         "PRESENT BUT UNDECODED",
 			Sessions:       make(map[int]int),
 			FailureReasons: make(map[string]int),
 		}
-		if id == cmdLoginRequest || id == cmdCheckClientPush {
+		switch id {
+		case cmdLoginRequest, cmdCheckClientPush:
+			entry.Name = commandName(id)
 			entry.SchemaBasis = "Only extracted version fields are retained; command 103/116 sibling fields contain device/account identifiers and are excluded from logs and audit"
-		} else if hasWindowsProtocolSchema(id) {
-			entry.SchemaBasis = versioninfo.WindowsSchemaLabel() + " Aki.Protocol metadata; client version observed, schema compatibility unverified"
-		} else if id == cmdEntityActiveResponse {
-			entry.SchemaBasis = versioninfo.ReferenceSchemaLabel() + " static schema; client version observed, cross-platform schema compatibility unverified"
-		} else if id == cmdPhantomAttrRecommendResponse || id == cmdMovePackagePush || id == cmdPlayerFollowerNotify || id == cmdEntityRemoveDynamicInteractNotify || id == cmdEntityCommonTagNotify || id == cmdEntityStateReadyNotify {
-			entry.SchemaBasis = versioninfo.WindowsSchemaLabel() + " Aki.Protocol metadata; client version observed, schema compatibility unverified"
+		case cmdProtoKeyResponse:
+			entry.Name = commandName(id)
 		}
 		c.entries[key] = entry
 	}
 	return entry
+}
+
+// describeCurrentProtocol names an entry, and records its schema basis, from the current client protocol. The
+// processor calls it only for a frame the current protocol session decodes, so a frame of another game version, or one
+// sent before its session reported a version, never takes a current-protocol name. The handshake and the two version
+// reports are read in every protocol session, so their entries are named when they are created.
+func (e *commandCensusEntry) describeCurrentProtocol() {
+	if e.Name == "" {
+		e.Name = commandName(e.CommandID)
+	}
+	if e.SchemaBasis == "" && hasCurrentProtocolSchema(e.CommandID) {
+		e.SchemaBasis = censusSchemaBasis()
+	}
 }
 
 func extractMovePackageObservation(data []byte) (movePackageObservation, error) {

@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"math"
 	"time"
-
-	"wwlogs/internal/versioninfo"
 )
 
 type rawBuffSnapshot struct {
@@ -191,7 +189,7 @@ func decodeBuffLifecycleMessageForCommand(frame gameFrame, body []byte, schemaCo
 		EventTypeStatus: resolutionCorrelated, TargetStatus: resolutionUnknown, InstigatorStatus: resolutionUnknown,
 		InstigatorCharacterCandidateStatus: resolutionUnknown, InstigatorCharacterCandidateNameStatus: resolutionUnknown,
 		ProviderStatus: resolutionUnknown, ProviderNameStatus: resolutionUnknown,
-		SchemaBasis: versioninfo.WindowsSchemaLabel() + " Aki.Protocol metadata; client version observed, schema compatibility unverified",
+		SchemaBasis: protocolSchemaBasis(),
 	}
 	if innerFieldNumber != nil {
 		fieldNumber := *innerFieldNumber
@@ -391,12 +389,12 @@ func decodeBuffLifecycleMessageForCommand(frame gameFrame, body []byte, schemaCo
 		}
 	}
 	if row.InstigatorID != nil {
-		row.InstigatorEvidence = "Raw InstigatorId field decoded from " + versioninfo.WindowsSchemaLabel() + " Aki.Protocol metadata; provider semantics and compatibility with the observed client build are UNKNOWN"
+		row.InstigatorEvidence = "Raw InstigatorId field of the " + CurrentProtocol() + "; provider semantics are UNKNOWN"
 		row.ProviderEvidence = "Provider status UNKNOWN: InstigatorId semantics and time-scoped active actor linkage are unverified"
 	}
 	if row.TargetEntityID != nil {
 		row.TargetStatus = resolutionUnknown
-		row.TargetEvidence = "Raw target candidate field decoded from " + versioninfo.WindowsSchemaLabel() + " Aki.Protocol metadata; target semantics and compatibility with the observed client build are UNKNOWN"
+		row.TargetEvidence = "Raw target candidate field of the " + CurrentProtocol() + "; target semantics are UNKNOWN"
 	}
 	return row, nil
 }
@@ -829,8 +827,8 @@ func (p *processor) handleActiveResponse(frame gameFrame, body []byte) error {
 						BuffDefinitionEvidence:    "No exact normalized buff.id row has been linked; the raw BuffId remains unchanged",
 						BuffSemanticStatus:        resolutionUnknown,
 						BuffSemanticEvidence:      "This status covers runtime application and effect semantics; static row lookup is reported separately, and snapshot presence does not establish application or uptime",
-						ReferenceSchema:           versioninfo.ReferenceSchemaLabel(),
-						WindowsSchemaVerification: versioninfo.WindowsSchemaLabel() + " Aki.Protocol metadata; client/master compatibility UNKNOWN",
+						ReferenceSchema:           CurrentProtocol(),
+						WindowsSchemaVerification: protocolSchemaBasis() + "; client/master compatibility UNKNOWN",
 						Buff:                      record,
 					}
 					if record.HasID && p.masters != nil && p.masters.hasBuffDefinition(record.ID) {
@@ -846,7 +844,7 @@ func (p *processor) handleActiveResponse(frame gameFrame, body []byte) error {
 					}
 					if record.HasInstigatorID {
 						row.InstigatorSemantics = resolutionCorrelated
-						row.InstigatorEvidence = versioninfo.ReferenceSchemaLabel() + " CharacterBuffComponent compares InstigatorId with CreatureDataId and resolves it through CreatureModel.GetEntity; client/master compatibility UNKNOWN"
+						row.InstigatorEvidence = "Client code (static research: CharacterBuffComponent, ActiveBuff) compares InstigatorId with CreatureDataId and resolves it through CreatureModel.GetEntity; client/master compatibility UNKNOWN"
 					}
 					if matched && request.hasEntityID {
 						entityID := request.entityID

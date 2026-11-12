@@ -8,8 +8,6 @@ import (
 	"os"
 	"sort"
 	"time"
-
-	"wwlogs/internal/versioninfo"
 )
 
 func (c *commandCensus) write(path string, stats captureStats, clientVersion *clientVersionReport, protocol protocolReport) error {
@@ -41,8 +39,8 @@ func (c *commandCensus) write(path string, stats captureStats, clientVersion *cl
 			entry := commandCensusEntry{CommandID: candidate.id, Name: commandName(candidate.id), Direction: candidate.direction, Status: "NOT OBSERVED"}
 			if candidate.id == cmdLoginRequest || candidate.id == cmdCheckClientPush {
 				entry.SchemaBasis = "Only extracted version fields are retained; command 103/116 sibling fields contain device/account identifiers and are excluded from logs and audit"
-			} else if hasWindowsProtocolSchema(candidate.id) {
-				entry.SchemaBasis = versioninfo.WindowsSchemaLabel() + " Aki.Protocol metadata; client version observed, schema compatibility unverified"
+			} else if hasCurrentProtocolSchema(candidate.id) {
+				entry.SchemaBasis = censusSchemaBasis()
 			}
 			entries = append(entries, entry)
 		}

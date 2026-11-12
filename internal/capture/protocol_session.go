@@ -87,6 +87,12 @@ func CurrentProtocol() string {
 	return currentProtocolClient + " client protocol"
 }
 
+// protocolSchemaBasis is the evidence text for a message the decoders read: the current client protocol's numbers,
+// applied only after the protocol session reported the current game version.
+func protocolSchemaBasis() string {
+	return CurrentProtocol() + "; decoded only in a session that reported game version " + currentGameVersion
+}
+
 // beginSession starts the protocol of a new protocol session: unknown until the session reports its client version.
 func (s *protocolSession) beginSession() {
 	s.state, s.gameVersion, s.sessionPendingFrames = protocolPending, "", 0

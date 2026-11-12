@@ -2,11 +2,9 @@ package capture
 
 import (
 	"time"
-
-	"wwlogs/internal/versioninfo"
 )
 
-var combatNotifyAuditSchemaBasis = versioninfo.WindowsSchemaLabel() + " static schema; capture-build compatibility unverified"
+var combatNotifyAuditSchemaBasis = protocolSchemaBasis()
 
 var combatNotifyAuditNames = map[uint64]string{
 	fieldCombatNotifyDataDamageExecuteNotify:            "DamageExecuteNotify",
