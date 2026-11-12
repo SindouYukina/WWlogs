@@ -16,14 +16,16 @@ const bezier = text => {
   }
 }
 
-test("the DPS curve entrance shoots in and settles slowly within the 1-2 seconds asked for, for every encounter length", () => {
-  // The owner asked for 1-2 seconds: the same time for a 20-second and a 20-minute encounter.
-  assert.ok(curveEntrance.durationMs >= 1000 && curveEntrance.durationMs <= 2000, `${curveEntrance.durationMs} ms`)
+test("the DPS curve entrance shoots in almost at once and glides to a stop, for every encounter length", () => {
+  // The owner asked for a quick, clearly decelerating sweep: under a second, the same for a 20-second and a 20-minute encounter.
+  assert.ok(curveEntrance.durationMs >= 500 && curveEntrance.durationMs <= 1000, `${curveEntrance.durationMs} ms`)
   assert.equal(curveEntrance.easing, "cubic-bezier(0.16, 1, 0.3, 1)")
   const at = bezier(curveEntrance.easing)
-  // Very fast at first: the curve is mostly drawn as the encounter opens.
-  assert.ok(at(100 / curveEntrance.durationMs).y >= 0.35, `${at(100 / curveEntrance.durationMs).y} at 100 ms`)
-  assert.ok(at(400 / curveEntrance.durationMs).y >= 0.85, `${at(400 / curveEntrance.durationMs).y} at 400 ms`)
+  // Very fast at first: most of the curve is drawn as the encounter opens.
+  assert.ok(at(100 / curveEntrance.durationMs).y >= 0.55, `${at(100 / curveEntrance.durationMs).y} at 100 ms`)
+  assert.ok(at(200 / curveEntrance.durationMs).y >= 0.8, `${at(200 / curveEntrance.durationMs).y} at 200 ms`)
+  // Yet not a jump: the first 60 Hz frame shows less than a fifth of it.
+  assert.ok(at(16.7 / curveEntrance.durationMs).y < 0.2, `${at(16.7 / curveEntrance.durationMs).y} in the first frame`)
   // Then a long, slow deceleration: every later step is smaller than the one before, and it never passes the end.
   let previous = 0, step = Infinity
   for (let t = 0.05; t <= 1.0001; t += 0.05) {
