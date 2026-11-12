@@ -180,6 +180,7 @@
     "timelineTitle": "전투 타임라인",
     "dragHint": "타임라인을 드래그해 범위를 선택하고, 선을 클릭해 캐릭터를 선택합니다",
     "replayEntrance": "타임라인 등장 효과 다시 보기",
+    "timelineHint": "드래그해 범위 선택 · Ctrl+휠로 확대/축소 · Shift+휠로 이동 · 선을 클릭해 캐릭터 선택",
     "hitsShown": "타임라인에 적중 {{n}}회 표시",
     "gap": "캡처 누락: 이 구간에 패킷이 손실되었을 수 있습니다",
     "gapNote": "이 전투에는 캡처 누락 구간이 {{n}}개 있으며, 해당 구간의 효과와 이벤트는 불완전할 수 있습니다.",
@@ -305,6 +306,73 @@
       "excluded": "제외",
       "unresolved": "미해결",
       "unknown": "미확인"
+    },
+    "view": {
+      "label": "타임라인 보기",
+      "icon": "아이콘 타임라인",
+      "precise": "정밀 분석"
+    },
+    "zoom": {
+      "label": "타임라인 확대/축소",
+      "in": "확대",
+      "out": "축소",
+      "range": "선택 범위로 확대",
+      "reset": "전투 전체 보기",
+      "navigator": "전투 전체: 드래그해 이동"
+    },
+    "icon": {
+      "aria": "아이콘 타임라인: 스킬 적중과 효과 구간",
+      "skillsGroup": "스킬 적중",
+      "skillsNote": "적중 시점이며 시전이 아닙니다",
+      "teamGroup": "팀 효과",
+      "roleGroup": "{{name}}의 효과",
+      "enemyGroup": "적 효과",
+      "unknownGroup": "보유자가 확인되지 않은 효과",
+      "groupCount": "{{n}}개",
+      "expand": "펼치기",
+      "collapse": "접기",
+      "empty": "타임라인에 표시할 항목이 없습니다.",
+      "loadingHits": "스킬 적중을 불러오는 중…",
+      "hitsFailed": "스킬 적중을 불러올 수 없습니다.",
+      "hitsTruncated": "스킬 적중이 {{total}}개이며 타임라인에는 처음 {{listed}}개만 표시합니다.",
+      "untimed": "시간이 없는 적중 {{n}}개는 타임라인에 놓을 수 없습니다.",
+      "unassignedTrack": "할당되지 않은 피해",
+      "summon": "소환물",
+      "hitTip": "{{skill}} · {{at}}",
+      "clusterTip": "{{skill}} · 적중 {{n}}회 · {{from}} – {{to}}",
+      "mixedTip": "적중 {{n}}회(스킬 {{skills}}개) · {{from}} – {{to}}",
+      "segmentTip": "{{effect}} · {{evidence}} · {{from}} – {{to}}",
+      "filter": "효과 필터",
+      "hits": {
+        "title": "선택한 적중",
+        "count": "적중 횟수",
+        "skill": "스킬",
+        "close": "닫기",
+        "note": "시간이 가까운 적중은 함께 그렸을 뿐입니다. 적중은 피해 결과이며 스킬 시전이 아니고, 묶음도 한 번의 시전을 뜻하지 않습니다.",
+        "mark": "DPS 그래프에 이 스킬의 적중 표시",
+        "unmark": "표시 지우기",
+        "more": "{{n}}개가 더 있으며 「이벤트」 탭에서 모두 볼 수 있습니다."
+      },
+      "segment": {
+        "title": "선택한 구간",
+        "from": "시작",
+        "to": "종료",
+        "length": "구간 길이",
+        "evidence": "근거",
+        "stack": "중첩",
+        "gap": "캡처 누락",
+        "noGap": "없음",
+        "nextFact": "이후에도 이 효과의 메시지가 있습니다",
+        "openEnd": "종료가 관측되지 않았습니다"
+      },
+      "identity": {
+        "id": "효과 ID",
+        "noId": "메시지에 없음",
+        "icon": "아이콘",
+        "iconExact": "게임 아이콘(같은 Buff.Id)",
+        "noIcon": "게임 아이콘 없음",
+        "name": "이름 신뢰도"
+      }
     }
   }
 }

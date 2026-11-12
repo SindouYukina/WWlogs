@@ -55,6 +55,22 @@ func (r Resolver) Open(key Key) (fs.File, error) {
 	return r.source.Open(path)
 }
 
+// Has reports whether the image of key exists, through the same path Open uses. An invalid key or a missing image is
+// false with no error; a source that cannot answer (a damaged pack) is false with that error.
+func (r Resolver) Has(key Key) (bool, error) {
+	path, err := key.imagePath()
+	if err != nil || r.source == nil {
+		return false, nil
+	}
+	if _, err := fs.Stat(r.source, path); err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
 func (key Key) imagePath() (string, error) {
 	skin := key.Kind == SkinAvatar || key.Kind == SkinPortrait
 	if key.ID == 0 || skin != (key.SkinID != 0) {

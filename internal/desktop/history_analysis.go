@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"wwlogs/internal/assets"
 	"wwlogs/internal/capture"
 	"wwlogs/internal/history"
 )
@@ -81,6 +82,19 @@ type historyEffectRowJSON struct {
 	Name    historyName        `json:"name"`
 	Holder  historyActorJSON   `json:"holder"`
 	Sources []historyActorJSON `json:"sources"`
+	// Icon is set when the game image pack holds the image of exactly this effect's Buff.Id (assets/manifest.json,
+	// game/buffs/<Buff.Id>/icon.webp), the image the /game-assets/buff/ route serves. No other ID's image ever stands in.
+	Icon bool `json:"icon"`
+}
+
+// hasBuffIcon reports whether the image pack holds the icon of exactly this Buff.Id. A pack that cannot answer counts as
+// no icon; the image route reports that failure itself.
+func (b *Bridge) hasBuffIcon(effectID *int64) bool {
+	if effectID == nil || *effectID <= 0 {
+		return false
+	}
+	found, err := b.images.Has(assets.Key{Kind: assets.BuffIcon, ID: uint64(*effectID)})
+	return err == nil && found
 }
 
 // HistoryEffects lists the effect rows of a finished stored encounter for the scope and filters of the query, each with its
@@ -94,7 +108,7 @@ func (b *Bridge) HistoryEffects(id int64, query history.AnalysisQuery) (json.Raw
 	}
 	rows := make([]historyEffectRowJSON, 0, len(lanes.Rows))
 	for _, row := range lanes.Rows {
-		named := historyEffectRowJSON{EffectRow: row, Name: historyName{Status: "UNKNOWN"}, Holder: names.actor(row.Holder), Sources: names.actors(row.Sources)}
+		named := historyEffectRowJSON{EffectRow: row, Name: historyName{Status: "UNKNOWN"}, Holder: names.actor(row.Holder), Sources: names.actors(row.Sources), Icon: b.hasBuffIcon(row.EffectID)}
 		if row.TermID != 0 && (row.TermStatus == "VERIFIED" || row.TermStatus == "CORRELATED") {
 			if term := names.resolve("term", row.TermID); term.Name != "" {
 				named.Name = historyName{Name: term.Name, Status: "CORRELATED"}
@@ -109,6 +123,19 @@ func (b *Bridge) HistoryEffects(id int64, query history.AnalysisQuery) (json.Raw
 		history.EffectLanes
 		Rows []historyEffectRowJSON `json:"rows"`
 	}{lanes, rows})
+}
+
+// HistoryHits lists the skill hits of a finished stored encounter over the whole encounter for the icon timeline, with the
+// contributor and enemy filters of the query. They are damage hits, never casts. The view names and draws each skill row
+// with the encounter's own projection (its skill table), so this adds no names.
+func (b *Bridge) HistoryHits(id int64, query history.AnalysisQuery) (json.RawMessage, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), historyAnalysisLimit)
+	defer cancel()
+	hits, err := b.history.Hits(ctx, id, query, b.masters)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(hits)
 }
 
 type historyEventRowJSON struct {

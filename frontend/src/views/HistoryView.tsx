@@ -11,7 +11,7 @@ import { timelineFromSnapshot } from "@/lib/timeline"
 import { useDetailPick } from "@/lib/useDetailPick"
 import { useHostTimeZone } from "@/lib/useHostTimeZone"
 import { chartSeries, RoleBoard, SkillTable, StatCard } from "./DashboardView"
-import { AnalysisWorkspace, EnemiesCard, LinkedName } from "./HistoryAnalysis"
+import { AnalysisWorkspace, EnemiesCard, LinkedName, type TimelineMode } from "./HistoryAnalysis"
 
 export interface HistoryViewProps {
   theme: ThemeId
@@ -204,7 +204,7 @@ function DeleteEncounter({ summary, onDeleted }: { summary: HistoryEncounterSumm
   </div>
 }
 
-function EncounterDetail({ detail, backLabel, onBack, onDeleted }: { detail: HistoryEncounterDetail; backLabel: string; onBack: () => void; onDeleted: (change: HistoryChange) => void }) {
+function EncounterDetail({ detail, backLabel, onBack, onDeleted, timelineMode, setTimelineMode }: { detail: HistoryEncounterDetail; backLabel: string; onBack: () => void; onDeleted: (change: HistoryChange) => void; timelineMode: TimelineMode; setTimelineMode: (mode: TimelineMode) => void }) {
   const { t, i18n } = useTranslation(["history", "dashboard", "common"])
   const c = (key: string) => t(key, { ns: "common" })
   const d = (key: string, options?: Record<string, unknown>) => t(key, { ns: "dashboard", ...options })
@@ -266,7 +266,7 @@ function EncounterDetail({ detail, backLabel, onBack, onDeleted }: { detail: His
       {summary.integrity === "UNRELIABLE" && <p className="ww-history-note" data-tone="critical">{d("unreliableNote")}</p>}
       <CoverageFacts detail={detail} />
     </Card>
-    {analysed ? <AnalysisWorkspace detail={detail} /> : !encounter ? <Card className="ww-history-context"><p className="ww-dash-empty-note" data-field="no-statistics">{t(summary.state === "open" ? "openNote" : "abandonedNote")}</p></Card> : <>
+    {analysed ? <AnalysisWorkspace detail={detail} timelineMode={timelineMode} setTimelineMode={setTimelineMode} /> : !encounter ? <Card className="ww-history-context"><p className="ww-dash-empty-note" data-field="no-statistics">{t(summary.state === "open" ? "openNote" : "abandonedNote")}</p></Card> : <>
       <div className="ww-history-stats">
         <StatCard index={0} hero icon="bolt" label={c("encounterDps")} field="encounter-dps" status={dps?.status ?? "unavailable"} value={usableDps(dps) ? dps?.value : undefined} format={dpsFormat} note={d("peakNote", { value: peakText })} scope={scope} stale={false} numberMode="tween" />
         <StatCard index={1} icon="spark" label={d("confirmedDamage")} field="damage-dealt" value={encounter.totals.damageDealt} format={format.integer} note={d("damageNote")} scope={scope} stale={false} numberMode="tween" />
@@ -319,6 +319,8 @@ export function HistoryView({ theme, refreshKey, indicator }: HistoryViewProps) 
   const [date, setDate] = useState<string | undefined>(undefined)
   const [day, setDay] = useState<HistoryDay | null>(null)
   const [openId, setOpenId] = useState<number | null>(null)
+  // The timeline presentation the user chose last stays chosen for the next encounter they open.
+  const [timelineMode, setTimelineMode] = useState<TimelineMode>("icon")
   const [detail, setDetail] = useState<HistoryEncounterDetail | null>(null)
   const [failed, setFailed] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -408,7 +410,7 @@ export function HistoryView({ theme, refreshKey, indicator }: HistoryViewProps) 
       {status && status.state !== "unavailable" && <p className="ww-history-note" data-field="history-storage" data-encrypted={status.encrypted}>{t(status.encrypted ? "localEncrypted" : "localOnly")}</p>}
     </Card></Reveal>
     <Reveal index={2}><ContentSwitch contentKey={detail ? `detail-${detail.summary.id}` : `day-${date ?? ""}`}>
-      {detail ? <EncounterDetail detail={detail} backLabel={t("back", { date: dates.short(detail.summary.localDate) })} onBack={() => setOpenId(null)} onDeleted={afterDelete} /> :
+      {detail ? <EncounterDetail detail={detail} backLabel={t("back", { date: dates.short(detail.summary.localDate) })} onBack={() => setOpenId(null)} onDeleted={afterDelete} timelineMode={timelineMode} setTimelineMode={setTimelineMode} /> :
         <Card className="ww-history-day">
           <div className="ww-dash-card-head"><h3 data-field="day-title">{date ? dates.long(date) : t("noDay")}</h3>{day && day.date === date && <span className="ww-history-total" data-field="day-total">{t("dayCount", { n: format.integer(day.total) })}</span>}</div>
           <DayList day={day && day.date === date ? day : null} dateLabel={date ? dates.long(date) : ""} onOpen={setOpenId} onMore={more} loading={loadingMore} />

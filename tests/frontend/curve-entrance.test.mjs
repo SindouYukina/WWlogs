@@ -45,10 +45,13 @@ test("a surface joins the reveal where it is, never after it ended and never und
   const clock = { key: 3, at: 1000 }
   assert.equal(revealPhaseAt(null, 1000, false), null)
   assert.equal(revealPhaseAt(clock, 1000, true), null, "reduced motion shows the whole curve at once")
-  assert.deepEqual(revealPhaseAt(clock, 1000, false), { key: 3, elapsedMs: 0 })
-  assert.deepEqual(revealPhaseAt(clock, 1450, false), { key: 3, elapsedMs: 450 }, "a surface that arrives later joins mid-way")
+  assert.deepEqual(revealPhaseAt(clock, 1000, false), { key: 3, elapsedMs: 0, waiting: false })
+  assert.deepEqual(revealPhaseAt(clock, 1450, false), { key: 3, elapsedMs: 450, waiting: false }, "a surface that arrives later joins mid-way")
   assert.equal(revealPhaseAt(clock, 1000 + curveEntrance.durationMs, false), null, "a mode switch after the entrance does not replay it")
-  assert.deepEqual(revealPhaseAt(clock, 990, false), { key: 3, elapsedMs: 0 })
+  assert.deepEqual(revealPhaseAt(clock, 990, false), { key: 3, elapsedMs: 0, waiting: false })
+  // A playing waits at the start until the frame that mounted the page has been drawn; reduced motion never waits.
+  assert.deepEqual(revealPhaseAt({ key: 4, at: null }, 5000, false), { key: 4, elapsedMs: 0, waiting: true })
+  assert.equal(revealPhaseAt({ key: 4, at: null }, 5000, true), null)
 })
 
 test("the reveal widens a window over the lines with transforms only and holds nothing afterwards", () => {
@@ -66,6 +69,9 @@ test("the reveal widens a window over the lines with transforms only and holds n
     assert.doesNotMatch(rule, /\bboth\b|\bforwards\b|infinite/)
   }
   assert.ok(css.includes(':root[data-ww-motion="reduced"] .ww-atl-reveal[data-enter="true"], :root[data-ww-motion="reduced"] .ww-atl-reveal[data-enter="true"] > * { animation: none; }'))
+  // While it waits, the window holds the start: nothing of the lines shows yet, and nothing animates.
+  assert.ok(css.includes('.ww-atl-reveal[data-enter="waiting"] { transform: translateX(-100%); }'))
+  assert.ok(css.includes('.ww-atl-reveal[data-enter="waiting"] > .ww-atl-reveal-inner { transform: translateX(100%); }'))
 })
 
 test("only the lines are revealed: capture gaps, the axis and the values are drawn in full from the first frame", () => {
@@ -84,9 +90,9 @@ test("only the lines are revealed: capture gaps, the axis and the values are dra
 
 test("the curve reveal plays when an encounter opens or on replay, and nothing else restarts or cuts it", () => {
   const timeline = source("frontend/src/design/components/AnalysisTimeline.tsx")
-  assert.match(timeline, /const \{ phase, end \} = useRevealPhase\(reveal\)/)
+  assert.match(timeline, /const \{ phase, end \} = useRevealPhase\(reveal, hasData\)/)
   assert.match(timeline, /key=\{reveal\?\.key \?\? 0\}/)
-  assert.match(timeline, /data-enter=\{phase \? "true" : undefined\}/)
+  assert.match(timeline, /data-enter=\{phase \? \(phase\.waiting \? "waiting" : "true"\) : undefined\}/)
   // Ends from its own animation, never from a timer.
   assert.match(timeline, /event\.target === element && event\.animationName === "ww-reveal-window"/)
   assert.match(timeline, /addEventListener\("animationend", ended\)/)
@@ -95,6 +101,10 @@ test("the curve reveal plays when an encounter opens or on replay, and nothing e
   const hook = source("frontend/src/design/motion/useReveal.ts")
   assert.doesNotMatch(hook, /setTimeout|setInterval/)
   assert.match(hook, /if \(ready && opened !== key\) \{/)
+  // It begins after the page that shows it was drawn, at the first idle moment of the main thread (bounded), never on a fixed timer.
+  assert.match(hook, /setClock\(current => \(\{ key: \(current\?\.key \?\? 0\) \+ 1, at: null \}\)\)/)
+  assert.match(hook, /requestIdleCallback\(begin, \{ timeout: startWaitLimitMs \}\)/)
+  assert.match(hook, /const startWaitLimitMs = 150/)
   const view = source("frontend/src/views/HistoryAnalysis.tsx")
   // Only a new encounter whose own analysis is ready starts the clock; ranges, filters, tabs and hover are not inputs.
   assert.match(view, /useRevealClock\(id, scope === id && analysis\?\.state === "ready"\)/)

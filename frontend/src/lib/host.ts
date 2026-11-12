@@ -1,7 +1,7 @@
 import { Call } from "@wailsio/runtime"
 import type { CaptureEnvironment, NpcapDownload } from "./capture-environment"
 import type { HistoryChange, HistoryDay, HistoryEncounterDetail, HistoryYear } from "./history"
-import type { AnalysisQuery, EffectLanes, EncounterAnalysis, EventPage, EventQuery } from "./history-analysis"
+import type { AnalysisQuery, EffectLanes, EncounterAnalysis, EventPage, EventQuery, HitTimeline } from "./history-analysis"
 import type { OverlayKind, OverlayState, OverlayStates, Snapshot } from "./snapshot"
 
 // Calls into the Go Bridge (internal/desktop.Bridge) by fully qualified name; no generated bindings are needed.
@@ -63,6 +63,8 @@ export const host = {
   historyAnalysis: (id: number, query: AnalysisQuery) => call<EncounterAnalysis>("HistoryAnalysis", id, query),
   historyEffects: (id: number, query: AnalysisQuery) => call<EffectLanes>("HistoryEffects", id, query),
   historyEvents: (id: number, query: EventQuery) => call<EventPage>("HistoryEvents", id, query),
+  /** Every skill hit of the whole encounter for the icon timeline, with the contributor and enemy filters; hits, never casts. */
+  historyHits: (id: number, query: AnalysisQuery) => call<HitTimeline>("HistoryHits", id, query),
   /** Saves whether Combat History records and applies it to a running capture. */
   setHistoryRecording: (enabled: boolean) => call<SettingsState>("SetHistoryRecording", enabled),
   /** Deletes one stored encounter, or every one; the UI asks the user to confirm first. */

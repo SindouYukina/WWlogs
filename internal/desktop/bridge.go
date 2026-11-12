@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"wwlogs/internal/assets"
 	"wwlogs/internal/capture"
 	"wwlogs/internal/history"
 	"wwlogs/internal/service"
@@ -39,6 +40,9 @@ type Bridge struct {
 	history   *history.Store
 	masters   *capture.MasterData
 	recorders *recorderTracker
+	// images is the resolver the /game-assets/ route serves from; the History analysis asks it whether an effect's Buff.Id
+	// has an image, so the view decides nothing about icons itself.
+	images assets.Resolver
 }
 
 // snapshotWaitLimit is the heartbeat base: one NextSnapshot call waits at most this plus one update interval, and an

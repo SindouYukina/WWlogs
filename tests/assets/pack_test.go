@@ -136,6 +136,51 @@ func TestADamagedPackIsNotReportedAsAMissingImage(t *testing.T) {
 	}
 }
 
+func TestHasAnswersFromTheSamePathAsOpenWithoutReadingContent(t *testing.T) {
+	tree := sampleTree()
+	var pack bytes.Buffer
+	if _, err := assets.WritePack(&pack, tree, manifestFor(t, tree)); err != nil {
+		t.Fatal(err)
+	}
+	packFS := assets.NewPackFS(pack.String())
+	if _, ok := any(packFS).(fs.StatFS); !ok {
+		t.Fatal("the pack does not answer Stat itself")
+	}
+	for name, resolver := range map[string]assets.Resolver{"pack": assets.NewResolver(packFS), "directory": assets.NewResolver(tree)} {
+		for _, test := range []struct {
+			key  assets.Key
+			want bool
+		}{
+			{assets.Key{Kind: assets.BuffIcon, ID: 10010000}, true},
+			{assets.Key{Kind: assets.SkillIcon, ID: 701}, true},
+			// Another ID's image never stands in, even one a neighbour or another namespace has.
+			{assets.Key{Kind: assets.BuffIcon, ID: 10010001}, false},
+			{assets.Key{Kind: assets.BuffIcon, ID: 700}, false},
+			{assets.Key{Kind: assets.BuffIcon}, false},
+			{assets.Key{Kind: assets.SkinAvatar, ID: 1205}, false},
+		} {
+			found, err := resolver.Has(test.key)
+			if err != nil || found != test.want {
+				t.Fatalf("%s %+v: got %v (%v), want %v", name, test.key, found, err, test.want)
+			}
+			file, openErr := resolver.Open(test.key)
+			if file != nil {
+				file.Close()
+			}
+			if (openErr == nil) != test.want {
+				t.Fatalf("%s %+v: Has and Open disagree (%v)", name, test.key, openErr)
+			}
+		}
+	}
+	if found, err := assets.NewResolver(nil).Has(assets.Key{Kind: assets.BuffIcon, ID: 10010000}); found || err != nil {
+		t.Fatalf("no source: %v %v", found, err)
+	}
+	// A damaged pack cannot say an image is missing.
+	if found, err := assets.NewResolver(assets.NewPackFS("damaged")).Has(assets.Key{Kind: assets.BuffIcon, ID: 1}); found || err == nil || errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("damaged pack: %v %v", found, err)
+	}
+}
+
 func TestManifestRoundTripAndValidation(t *testing.T) {
 	manifest := manifestFor(t, sampleTree())
 	parsed, err := assets.ParseManifest(manifest.Encode())

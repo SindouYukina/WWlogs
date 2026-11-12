@@ -180,6 +180,7 @@
     "timelineTitle": "战斗时间轴",
     "dragHint": "在时间轴上拖动可选取区间；点击曲线可选取角色",
     "replayEntrance": "重播时间轴进场",
+    "timelineHint": "拖动选取区间 · Ctrl＋滚轮缩放 · Shift＋滚轮平移 · 点击曲线选取角色",
     "hitsShown": "时间轴上标示了 {{n}} 次命中",
     "gap": "采集缺口：这段期间可能有数据包丢失",
     "gapNote": "这场战斗有 {{n}} 段采集缺口，期间的效果与事件可能不完整。",
@@ -305,6 +306,73 @@
       "excluded": "排除",
       "unresolved": "未解析",
       "unknown": "未确认"
+    },
+    "view": {
+      "label": "时间轴呈现",
+      "icon": "图标时间轴",
+      "precise": "精确分析"
+    },
+    "zoom": {
+      "label": "时间轴缩放",
+      "in": "放大",
+      "out": "缩小",
+      "range": "缩放至选取范围",
+      "reset": "显示整场",
+      "navigator": "整场概览：拖动可平移"
+    },
+    "icon": {
+      "aria": "图标时间轴：技能命中与效果区间",
+      "skillsGroup": "技能命中",
+      "skillsNote": "命中时间点，不是施放",
+      "teamGroup": "队伍效果",
+      "roleGroup": "{{name}} 的效果",
+      "enemyGroup": "敌方效果",
+      "unknownGroup": "持有者未确认的效果",
+      "groupCount": "{{n}} 项",
+      "expand": "展开",
+      "collapse": "收起",
+      "empty": "没有可显示的时间轴项目。",
+      "loadingHits": "正在读取技能命中…",
+      "hitsFailed": "无法读取技能命中。",
+      "hitsTruncated": "技能命中共 {{total}} 条，时间轴只画出前 {{listed}} 条。",
+      "untimed": "另有 {{n}} 条命中没有时间，无法放上时间轴。",
+      "unassignedTrack": "未分配的伤害",
+      "summon": "召唤物",
+      "hitTip": "{{skill}} · {{at}}",
+      "clusterTip": "{{skill}} · {{n}} 次命中 · {{from}} – {{to}}",
+      "mixedTip": "{{n}} 次命中（{{skills}} 个技能）· {{from}} – {{to}}",
+      "segmentTip": "{{effect}} · {{evidence}} · {{from}} – {{to}}",
+      "filter": "效果筛选",
+      "hits": {
+        "title": "选取的命中",
+        "count": "命中次数",
+        "skill": "技能",
+        "close": "关闭",
+        "note": "时间相近的命中只是画在一起；命中是伤害结果，不是技能施放，也不代表一次施放。",
+        "mark": "在 DPS 图标示这个技能的命中",
+        "unmark": "清除标示",
+        "more": "另有 {{n}} 条未列出，可在“事件”分页查看。"
+      },
+      "segment": {
+        "title": "选取的区间",
+        "from": "开始",
+        "to": "结束",
+        "length": "区间长度",
+        "evidence": "证据",
+        "stack": "层数",
+        "gap": "采集缺口",
+        "noGap": "无",
+        "nextFact": "之后仍有这个效果的消息",
+        "openEnd": "未观测到结束"
+      },
+      "identity": {
+        "id": "效果 ID",
+        "noId": "消息未提供",
+        "icon": "图标",
+        "iconExact": "游戏图标（同一个 Buff.Id）",
+        "noIcon": "没有游戏图标",
+        "name": "名称可信度"
+      }
     }
   }
 }
