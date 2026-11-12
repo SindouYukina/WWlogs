@@ -148,7 +148,7 @@ try {
                 $stringLeak = @('combat-events.jsonl', 'dps-effects.jsonl', 'buff-events.jsonl', 'status.json', 'capture-spool', 'LIVE_DIAGNOSTIC_SNAPSHOT', 'event-jsonl-out', 'pcapgo', 'encounter-events.jsonl', 'BATTLE_STATE_SIGNAL', 'COMBAT_EVENT_RECORD', 'ENCOUNTER_TRANSITION') | Where-Object { $latin.Contains($_) }
                 Set-Result 'public binary strings' $(if (-not $stringLeak) { 'PASS' } else { 'FAIL' }) $(if ($stringLeak) { "contains: $($stringLeak -join ', ')" })
 
-                # Desktop host: the frontend is typechecked and built outside the repository with the pinned Node.js 24,
+                # Desktop host: the frontend is typechecked and built outside the repository with the system Node.js and npm,
                 # embedded into both profiles, and the Public desktop executable is audited like the console one.
                 $frontendDist = Join-Path $buildDirectory 'frontend-dist'
                 $frontendDevelopmentDist = Join-Path $buildDirectory 'frontend-dist-development'
