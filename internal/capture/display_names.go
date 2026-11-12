@@ -71,10 +71,14 @@ func (r *DisplayResolver) Resolve(ctx context.Context, kind string, id uint64, l
 	if name, ok := r.names[key]; ok {
 		return name, nil
 	}
+	lookup := id
+	if kind == "role" {
+		lookup = r.staticRoleLocked(ctx, id)
+	}
 	result := DisplayName{Status: "UNKNOWN"}
 	for _, candidate := range []string{locale, "en-US"} {
 		var name string
-		err := r.db.QueryRowContext(ctx, query, strconv.FormatUint(id, 10), candidate).Scan(&name)
+		err := r.db.QueryRowContext(ctx, query, strconv.FormatUint(lookup, 10), candidate).Scan(&name)
 		if err != nil && err != sql.ErrNoRows {
 			return result, errors.New("Master display names could not be read")
 		}
@@ -85,6 +89,26 @@ func (r *DisplayResolver) Resolve(ctx context.Context, kind string, id uint64, l
 	}
 	r.remember(key, result)
 	return result, nil
+}
+
+// staticRoleLocked is the RoleInfo a runtime RoleId reads its name and element from: a trial role's parent
+// (trialroleinfo.parent_role_id, see gameMaster.staticRoleID), else the RoleId itself. A Master without the table
+// has no trial roles. The caller holds mu.
+func (r *DisplayResolver) staticRoleLocked(ctx context.Context, roleID uint64) uint64 {
+	key := "static-role:" + strconv.FormatUint(roleID, 10)
+	if cached, ok := r.names[key]; ok {
+		parent, _ := strconv.ParseUint(cached.Name, 10, 64)
+		return parent
+	}
+	parent := roleID
+	var text string
+	if err := r.db.QueryRowContext(ctx, "SELECT parent_role_id FROM trialroleinfo WHERE id=?", strconv.FormatUint(roleID, 10)).Scan(&text); err == nil {
+		if value, err := strconv.ParseUint(text, 10, 64); err == nil && value != 0 {
+			parent = value
+		}
+	}
+	r.remember(key, DisplayName{Name: strconv.FormatUint(parent, 10)})
+	return parent
 }
 
 // remember caches a lookup within the bound. The caller holds mu.
@@ -108,7 +132,7 @@ func (r *DisplayResolver) RoleElement(ctx context.Context, roleID uint64) uint64
 		return element
 	}
 	var text sql.NullString
-	if err := r.db.QueryRowContext(ctx, "SELECT element_id FROM roleinfo WHERE id=?", strconv.FormatUint(roleID, 10)).Scan(&text); err != nil {
+	if err := r.db.QueryRowContext(ctx, "SELECT element_id FROM roleinfo WHERE id=?", strconv.FormatUint(r.staticRoleLocked(ctx, roleID), 10)).Scan(&text); err != nil {
 		text = sql.NullString{}
 	}
 	r.remember(key, DisplayName{Name: text.String})

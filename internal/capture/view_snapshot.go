@@ -539,8 +539,10 @@ func projectSkills(masters *gameMaster, roleID uint64, skills []SkillDamageSnaps
 		return &value
 	}
 	view := make([]ViewSkill, 0, len(skills))
+	// A trial role names its rows through its parent role's skills (staticRoleID).
+	staticRole := masters.staticRoleID(roleID)
 	for _, skill := range skills {
-		name, status, source, sourceID := masters.skillRowName(roleID, skill)
+		name, status, source, sourceID := masters.skillRowName(staticRole, skill)
 		iconKind, iconID := masters.skillRowIcon(skill, source, sourceID)
 		view = append(view, ViewSkill{
 			SkillID: skill.SkillID, Name: name, NameStatus: status, NameSource: source, SourceID: sourceID, IconKind: iconKind, IconID: iconID,
@@ -549,7 +551,7 @@ func projectSkills(masters *gameMaster, roleID uint64, skills []SkillDamageSnaps
 		})
 	}
 	row := ViewUnassignedSkill{UnassignedSkillTotals: unassigned, DamageShare: share(unassigned.DamageDealt)}
-	source, reason := masters.unassignedSkillName(roleID, unassigned)
+	source, reason := masters.unassignedSkillName(staticRole, unassigned)
 	if source.name != "" {
 		row.Name, row.NameStatus, row.NameSource, row.SourceID, row.IconKind, row.IconID = source.name, skillNameStatusDerived, source.source, source.sourceID, source.iconKind, source.iconID
 	}
@@ -567,7 +569,7 @@ func roleDisplayName(masters *gameMaster, roleID uint64) (string, string) {
 	if masters == nil {
 		return "", string(resolutionUnknown)
 	}
-	character, ok := masters.characters[roleID]
+	character, ok := masters.characters[masters.staticRoleID(roleID)]
 	if !ok || character.Name == "" || character.NameStatus != string(resolutionVerified) {
 		return "", string(resolutionUnknown)
 	}

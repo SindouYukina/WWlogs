@@ -309,6 +309,19 @@ func (m *gameMaster) hasConcomitantVisionSummonSkill(id uint64) bool {
 	return ok
 }
 
+// staticRoleID is the RoleInfo whose static data describes the runtime RoleId roleID. A trial character
+// (TrialRoleInfo.Id, such as 15127004) plays its parent role (TrialRoleInfo.ParentId, 1512): its skills, Outro,
+// element and name are the parent's, and every DamageId the 2026-11-12 Global 3.8 capture credited to its three trial
+// roles is listed by a UI skill of the parent role. Statistics keep the runtime RoleId; only Master lookups use this.
+func (m *gameMaster) staticRoleID(roleID uint64) uint64 {
+	if m != nil {
+		if parent, ok := m.trialRoleParents[roleID]; ok {
+			return parent
+		}
+	}
+	return roleID
+}
+
 // roleSkinRole returns RoleSkin.RoleId for a RoleSkin.Id and reports whether the row exists.
 func (m *gameMaster) roleSkinRole(skinID uint64) (uint64, bool) {
 	value, ok := m.roleSkins[skinID]
