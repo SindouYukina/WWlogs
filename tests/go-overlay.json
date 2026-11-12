@@ -167,6 +167,8 @@
     "internal/capture/central_protocol_dev_test.go": "tests/capture/protocol_dev_test.go",
     "tests/capture/protocol_test.go": "",
     "internal/capture/central_protocol_test.go": "tests/capture/protocol_test.go",
+    "tests/capture/protocol_translation_test.go": "",
+    "internal/capture/central_protocol_translation_test.go": "tests/capture/protocol_translation_test.go",
     "tests/capture/readable_labels_test.go": "",
     "internal/capture/central_readable_labels_test.go": "tests/capture/readable_labels_test.go",
     "tests/capture/role_config_test.go": "",

@@ -95,6 +95,7 @@
       "traffic_without_key": "Game traffic is visible, but its login was missed. Log in to the game again",
       "awaiting_login": "The game restarted. Waiting for login",
       "handshake_failed": "The login handshake could not be read",
+      "unsupported_game_version": "This game version is not supported yet. Update WWlogs",
       "decrypt_failing": "Game data cannot be decrypted",
       "transport_unrecoverable": "Packet recovery failed",
       "receiving": "Receiving game data",

@@ -102,6 +102,12 @@ func (p *processor) observeClientVersion(commandID uint16, data []byte) error {
 	default:
 		return fmt.Errorf("unsupported version command %d", commandID)
 	}
+	// The session's own report selects its protocol (protocol_translation.go); the census report below keeps the first.
+	if build != "" {
+		p.protocol.observeVersion(gameVersionOf(build))
+	} else {
+		p.protocol.observeVersion(gameVersionOf(versions[0]))
+	}
 	if p.clientVersion == nil {
 		p.clientVersion = &clientVersionReport{SessionNumber: p.sessionNumber, FirstObservedAt: p.currentFrameTime}
 	}

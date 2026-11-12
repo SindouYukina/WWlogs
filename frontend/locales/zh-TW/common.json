@@ -95,6 +95,7 @@
       "traffic_without_key": "已看到遊戲流量，但錯過了登入。請重新登入遊戲",
       "awaiting_login": "遊戲已重新啟動，等待登入",
       "handshake_failed": "無法讀取登入握手",
+      "unsupported_game_version": "此遊戲版本尚未支援，請更新 WWlogs",
       "decrypt_failing": "無法解密遊戲資料",
       "transport_unrecoverable": "封包復原失敗",
       "receiving": "正在接收遊戲資料",

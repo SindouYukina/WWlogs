@@ -13,19 +13,23 @@ import (
 
 func TestFrameDecodeStatusClassifiesWithoutDecrypting(t *testing.T) {
 	tests := []struct {
-		name  string
-		frame gameFrame
-		want  string
+		name     string
+		frame    gameFrame
+		internal uint16
+		state    protocolState
+		want     string
 	}{
-		{"handshake", gameFrame{commandID: 112, direction: "in", body: []byte{1}}, frameStatusHandshake},
-		{"empty body", gameFrame{commandID: 1651, direction: "in"}, frameStatusEmptyBody},
-		{"implemented", gameFrame{commandID: 19470, direction: "out", body: []byte{1}}, frameStatusImplemented},
-		{"undecoded", gameFrame{commandID: 1651, direction: "in", body: []byte{1}}, frameStatusUndecoded},
-		{"command 112 outbound is not handshake", gameFrame{commandID: 112, direction: "out", body: []byte{1}}, frameStatusUndecoded},
+		{"handshake", gameFrame{commandID: 112, direction: "in", body: []byte{1}}, 0, protocolNone, frameStatusHandshake},
+		{"empty body", gameFrame{commandID: 1651, direction: "in"}, 0, protocolCurrent, frameStatusEmptyBody},
+		{"implemented through the current protocol", gameFrame{commandID: 26497, direction: "out", body: []byte{1}}, 19470, protocolCurrent, frameStatusImplemented},
+		{"undecoded", gameFrame{commandID: 1651, direction: "in", body: []byte{1}}, 0, protocolCurrent, frameStatusUndecoded},
+		{"another game version", gameFrame{commandID: 19470, direction: "out", body: []byte{1}}, 0, protocolUnsupported, frameStatusNotCurrentProtocol},
+		{"before the version report", gameFrame{commandID: 26497, direction: "out", body: []byte{1}}, 0, protocolPending, frameStatusNotCurrentProtocol},
+		{"command 112 outbound is not handshake", gameFrame{commandID: 112, direction: "out", body: []byte{1}}, 0, protocolNone, frameStatusUndecoded},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := frameDecodeStatus(tt.frame); got != tt.want {
+			if got := frameDecodeStatus(tt.frame, tt.internal, tt.state); got != tt.want {
 				t.Fatalf("status = %q, want %q", got, tt.want)
 			}
 		})

@@ -31,7 +31,7 @@ func TestCommandCensusSeparatesDecodedFramesFromUnimplementedSchemas(t *testing.
 	census.sessions = 1
 
 	path := filepath.Join(t.TempDir(), "census.json")
-	if err := census.write(path, captureStats{udpPackets: 3, frames: 2, badCRC: 1}, nil); err != nil {
+	if err := census.write(path, captureStats{udpPackets: 3, frames: 2, badCRC: 1}, nil, protocolReport{}); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(path)

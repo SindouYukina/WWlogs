@@ -12,15 +12,40 @@ import (
 
 func initialHandshake(t *testing.T, p *processor, key *rsa.PrivateKey, at time.Time) {
 	t.Helper()
+	initialHandshakeWithBuild(t, p, key, at, currentTestBuild)
+}
+
+// initialHandshakeWithBuild exchanges a session key and, like a real client right after it, reports build in a
+// LoginRequest; the report selects the protocol session's numbering.
+func initialHandshakeWithBuild(t *testing.T, p *processor, key *rsa.PrivateKey, at time.Time, build string) {
+	t.Helper()
 	ciphertext, err := rsa.EncryptPKCS1v15(rand.Reader, &key.PublicKey, bytes.Repeat([]byte{0x42}, 32))
 	if err != nil {
 		t.Fatal(err)
 	}
 	body := appendBytesField(appendVarintField(nil, 2, 2), 3, ciphertext)
 	p.handleFrame(gameFrame{commandID: 112, direction: "in", timestamp: at, body: body})
+	initialRawEncryptedFrame(t, p, 103, "out", loginRequestBody(build), 0)
 }
 
+// loginRequestBody encodes LoginRequest.ClientBasicInfo (field 8) with only its build string (field 19).
+func loginRequestBody(build string) []byte {
+	return appendBytesField(nil, 8, appendBytesField(nil, 19, []byte(build)))
+}
+
+// initialEncryptedFrame sends an internal command with a body written in the internal numbering the way the current
+// client sends it: under its wire command number and with wire field numbers.
 func initialEncryptedFrame(t *testing.T, p *processor, command uint16, direction string, body []byte, seconds float64) {
+	t.Helper()
+	if command != loginRequestCommand && command != checkClientPushCommand {
+		wire, message := wireCommandFor(t, command)
+		command, body = wire, reverseTranslate(t, message, body)
+	}
+	initialRawEncryptedFrame(t, p, command, direction, body, seconds)
+}
+
+// initialRawEncryptedFrame encrypts body under the session key and sends it with the given command number, untranslated.
+func initialRawEncryptedFrame(t *testing.T, p *processor, command uint16, direction string, body []byte, seconds float64) {
 	t.Helper()
 	const sequence = 1
 	plain := append([]byte{}, body...)
@@ -50,6 +75,11 @@ func initialJoinBody() []byte {
 
 func initialProcessor(t *testing.T) (*processor, *rsa.PrivateKey) {
 	t.Helper()
+	return initialProcessorWithBuild(t, currentTestBuild)
+}
+
+func initialProcessorWithBuild(t *testing.T, build string) (*processor, *rsa.PrivateKey) {
+	t.Helper()
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		t.Fatal(err)
@@ -58,7 +88,7 @@ func initialProcessor(t *testing.T) (*processor, *rsa.PrivateKey) {
 	p.stdout, p.diagnostic = io.Discard, io.Discard
 	p.rsa = &staticRSA{e: key.E, n: key.N, d: key.D}
 	p.intervalPerProtocolSession = true
-	initialHandshake(t, p, key, pairingAt(0))
+	initialHandshakeWithBuild(t, p, key, pairingAt(0), build)
 	return p, key
 }
 

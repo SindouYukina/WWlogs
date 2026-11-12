@@ -12,8 +12,15 @@ import (
 	"wwlogs/internal/versioninfo"
 )
 
-func (c *commandCensus) write(path string, stats captureStats, clientVersion *clientVersionReport) error {
+func (c *commandCensus) write(path string, stats captureStats, clientVersion *clientVersionReport, protocol protocolReport) error {
 	entries := make([]commandCensusEntry, 0, len(c.entries))
+	// The current protocol carries an internal command under its own wire number; that internal command is present.
+	observedInternal := make(map[censusKey]bool)
+	for key, entry := range c.entries {
+		if entry.InternalCommandID != 0 {
+			observedInternal[censusKey{CommandID: entry.InternalCommandID, Direction: key.Direction}] = true
+		}
+	}
 	for _, entry := range c.entries {
 		copy := *entry
 		if copy.CRCValidFrames == 0 && copy.CRCFailedHeaders > 0 {
@@ -37,7 +44,7 @@ func (c *commandCensus) write(path string, stats captureStats, clientVersion *cl
 		{103, "out"}, {116, "out"},
 	} {
 		key := censusKey{CommandID: candidate.id, Direction: candidate.direction}
-		if _, exists := c.entries[key]; !exists {
+		if _, exists := c.entries[key]; !exists && !observedInternal[key] {
 			entry := commandCensusEntry{CommandID: candidate.id, Name: commandName(candidate.id), Direction: candidate.direction, Status: "NOT OBSERVED"}
 			if candidate.id == 103 || candidate.id == 116 {
 				entry.SchemaBasis = "Only extracted version fields are retained; command 103/116 sibling fields contain device/account identifiers and are excluded from logs and audit"
@@ -61,6 +68,7 @@ func (c *commandCensus) write(path string, stats captureStats, clientVersion *cl
 		GeneratedAt        time.Time               `json:"generatedAt"`
 		SessionCount       int                     `json:"sessionCount"`
 		ClientVersion      *clientVersionReport    `json:"clientVersion,omitempty"`
+		Protocol           protocolReport          `json:"protocol"`
 		Transport          map[string]int          `json:"transport"`
 		InnerRPCs          map[string]int          `json:"innerRpcCounts"`
 		CombatNotifyFields map[uint64]int          `json:"combatNotifyOneofFieldCounts,omitempty"`
@@ -83,7 +91,7 @@ func (c *commandCensus) write(path string, stats captureStats, clientVersion *cl
 		MoveOwnerOmitted      int                         `json:"movePackageSceneOwnerIdsOmitted,omitempty"`
 		PlayerFollowerOmitted int                         `json:"playerFollowerObservationsOmitted,omitempty"`
 		EntityKeys            []entityKeyObservation      `json:"entityNotifyRawIds,omitempty"`
-	}{GeneratedAt: time.Now().UTC(), SessionCount: c.sessions, ClientVersion: clientVersion, Transport: c.transport, InnerRPCs: inner, CombatNotifyFields: c.combatNotifyFields, Commands: entries,
+	}{GeneratedAt: time.Now().UTC(), SessionCount: c.sessions, ClientVersion: clientVersion, Protocol: protocol, Transport: c.transport, InnerRPCs: inner, CombatNotifyFields: c.combatNotifyFields, Commands: entries,
 		CRCFailures: c.crcFailures, CRCOmitted: c.crcOmitted, Malformed: c.malformedRecords, MalformedOmitted: c.malformedOmitted}
 	report.PlayerFollowers = c.playerFollowers
 	report.MoveEntityOmitted = c.moveEntityOmitted

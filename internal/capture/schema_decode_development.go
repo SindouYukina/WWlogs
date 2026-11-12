@@ -310,9 +310,10 @@ func (p *processor) schemaMessageFor(commandID uint16) (string, bool) {
 
 // archiveUndecodedSchema writes schema decodes for commands outside the typed
 // decoder when no census is running. It decrypts and decompresses the frame the
-// same way the census path does, and writes only frames that parse as top-level
+// same way the census path does, translates it into the internal numbering the
+// external schema describes, and writes only frames that parse as top-level
 // Protobuf.
-func (p *processor) archiveUndecodedSchema(frame gameFrame) {
+func (p *processor) archiveUndecodedSchema(frame gameFrame, message *translatedMessage) {
 	if p.protocolSchema == nil || (p.schemaDecodeOut == nil && p.roleConfigOut == nil) || len(p.session) != 32 || len(frame.body) == 0 {
 		return
 	}
@@ -325,6 +326,9 @@ func (p *processor) archiveUndecodedSchema(frame gameFrame) {
 		if err != nil {
 			return
 		}
+	}
+	if plain, err = p.protocol.translate(message, plain); err != nil {
+		return
 	}
 	if _, err := parseProtoFields(plain); err != nil {
 		return
