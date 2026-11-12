@@ -301,6 +301,107 @@ func TestSkillHitsAreHitsWithTheirLargestAndAverage(t *testing.T) {
 	}
 }
 
+func TestHitTimelineListsEveryConfirmedHitInItsSkillRow(t *testing.T) {
+	f := newAnalysisFixture(t)
+	hits, err := f.store.Hits(context.Background(), f.id, AnalysisQuery{FromMs: 2000, ToMs: 4000, Enemy: -1, SkillRow: "role-7-1505:150501"}, nil)
+	if err != nil || hits.State != AnalysisReady || hits.DurationMs != 10000 {
+		t.Fatalf("hits = %+v (%v)", hits, err)
+	}
+	// The whole encounter whatever the range, and a skill row only marks hits: neither narrows the timeline.
+	if hits.Query.FromMs != 0 || hits.Query.ToMs != 0 || hits.Query.SkillRow != "" {
+		t.Fatalf("query = %+v", hits.Query)
+	}
+	type row struct {
+		contributor, skillRow string
+		skill                 uint64
+		at                    []float64
+		amount                []int64
+	}
+	got := []row{}
+	for _, r := range hits.Rows {
+		if len(r.AtMs) != len(r.Amount) || len(r.AtMs) != len(r.Sequence) {
+			t.Fatalf("row %+v: lists of different lengths", r)
+		}
+		got = append(got, row{r.Contributor, r.SkillRow, r.SkillID, r.AtMs, r.Amount})
+	}
+	// Contributors in the encounter's order (role 1206 first, as stored), SkillIds in order with the row without a skill
+	// last, a summon's hit in its owner's row, and damage credited to no contributor apart; unattributed damage is no hit.
+	want := []row{
+		{"role-7-1206", "role-7-1206:120601", 120601, []float64{3000}, []int64{700}},
+		{"role-7-1206", "role-7-1206:120602", 120602, []float64{7000}, []int64{300}},
+		{"role-7-1505", "role-7-1505:150501", 150501, []float64{1000, 2500}, []int64{1000, 500}},
+		{"role-7-1505", "role-7-1505:unassigned", 0, []float64{6000}, []int64{200}},
+		{UnassignedContributor, "", 0, []float64{8000}, []int64{50}},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("rows = %+v", got)
+	}
+	for i := range want {
+		if got[i].contributor != want[i].contributor || got[i].skillRow != want[i].skillRow || got[i].skill != want[i].skill || len(got[i].at) != len(want[i].at) {
+			t.Fatalf("row %d = %+v, want %+v", i, got[i], want[i])
+		}
+		for j := range want[i].at {
+			if got[i].at[j] != want[i].at[j] || got[i].amount[j] != want[i].amount[j] {
+				t.Fatalf("row %d = %+v, want %+v", i, got[i], want[i])
+			}
+		}
+	}
+	// Every listed contributor hit is one of the stored results the skill table counts: the same count, the same damage.
+	analysis := f.analyse(t, AnalysisQuery{Enemy: -1})
+	statHits, statDamage := uint64(0), int64(0)
+	for _, stat := range analysis.Skills {
+		statHits += stat.Hits
+		statDamage += stat.Damage
+	}
+	listedHits, listedDamage := uint64(0), int64(0)
+	for _, r := range hits.Rows {
+		if r.Contributor == UnassignedContributor {
+			continue
+		}
+		for _, amount := range r.Amount {
+			listedHits++
+			listedDamage += amount
+		}
+	}
+	if hits.Total != 6 || hits.Listed != 6 || hits.Untimed != 0 || hits.Truncated || listedHits != statHits || listedDamage != statDamage {
+		t.Fatalf("total %d listed %d untimed %d; skill table %d hits %d damage, listed %d hits %d damage", hits.Total, hits.Listed, hits.Untimed, statHits, statDamage, listedHits, listedDamage)
+	}
+	// The event browser lists the same results under the same sequences.
+	page, err := f.store.Events(context.Background(), f.id, EventQuery{AnalysisQuery: AnalysisQuery{Enemy: -1, SkillRow: "role-7-1505:150501"}, Kinds: []string{EventDamage}}, nil)
+	if err != nil || len(page.Rows) != 2 || page.Rows[0].Key != "c"+strconv.FormatInt(hits.Rows[2].Sequence[0], 10) || page.Rows[1].Key != "c"+strconv.FormatInt(hits.Rows[2].Sequence[1], 10) {
+		t.Fatalf("event browser = %+v (%v), hits %+v", page.Rows, err, hits.Rows[2])
+	}
+}
+
+func TestHitTimelineFollowsTheContributorAndEnemyFilters(t *testing.T) {
+	f := newAnalysisFixture(t)
+	byContributor, err := f.store.Hits(context.Background(), f.id, AnalysisQuery{Contributor: "role-7-1505", Enemy: -1}, nil)
+	if err != nil || len(byContributor.Rows) != 2 || byContributor.Total != 3 || byContributor.Query.Contributor != "role-7-1505" {
+		t.Fatalf("contributor = %+v (%v)", byContributor, err)
+	}
+	for _, row := range byContributor.Rows {
+		if row.Contributor != "role-7-1505" {
+			t.Fatalf("another contributor's row under the filter: %+v", row)
+		}
+	}
+	analysis := f.analyse(t, AnalysisQuery{Enemy: -1})
+	enemyB := -1
+	for _, enemy := range analysis.Enemies {
+		if enemy.Mapped && enemy.DamageTaken == 1000 {
+			enemyB = enemy.Ordinal
+		}
+	}
+	byEnemy, err := f.store.Hits(context.Background(), f.id, AnalysisQuery{Enemy: enemyB}, nil)
+	if err != nil || enemyB < 0 || byEnemy.Total != 2 || len(byEnemy.Rows) != 2 || byEnemy.Rows[0].SkillID != 120601 || byEnemy.Rows[1].SkillID != 120602 {
+		t.Fatalf("enemy %d = %+v (%v)", enemyB, byEnemy, err)
+	}
+	// An unknown contributor is dropped, not guessed.
+	unknown, err := f.store.Hits(context.Background(), f.id, AnalysisQuery{Contributor: "role-7-9999", Enemy: -1}, nil)
+	if err != nil || unknown.Query.Contributor != "" || unknown.Total != 6 {
+		t.Fatalf("unknown contributor = %+v (%v)", unknown, err)
+	}
+}
+
 func TestEffectIntervalsSayHowEachPartIsKnown(t *testing.T) {
 	f := newAnalysisFixture(t)
 	lanes, err := f.store.Effects(context.Background(), f.id, AnalysisQuery{Enemy: -1, Effects: "all"}, nil)

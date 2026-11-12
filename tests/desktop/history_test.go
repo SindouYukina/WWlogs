@@ -6,11 +6,30 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"testing/fstest"
 
+	"wwlogs/internal/assets"
 	"wwlogs/internal/capture"
 	"wwlogs/internal/history"
 	"wwlogs/internal/service"
 )
+
+func TestEffectRowsCarryAnIconOnlyForTheirOwnBuffID(t *testing.T) {
+	bridge := &Bridge{images: assets.NewResolver(fstest.MapFS{"game/buffs/1311400208/icon.webp": {Data: []byte("icon")}})}
+	id := func(value int64) *int64 { return &value }
+	for _, test := range []struct {
+		effect *int64
+		want   bool
+	}{{id(1311400208), true}, {id(1311400209), false}, {id(0), false}, {id(-5), false}, {nil, false}} {
+		if got := bridge.hasBuffIcon(test.effect); got != test.want {
+			t.Fatalf("effect %v: icon %v, want %v", test.effect, got, test.want)
+		}
+	}
+	// Without an image source, or with a pack that cannot answer, no effect has an icon.
+	if (&Bridge{}).hasBuffIcon(id(1311400208)) || (&Bridge{images: assets.NewResolver(assets.NewPackFS("damaged"))}).hasBuffIcon(id(1311400208)) {
+		t.Fatal("an icon was reported without an image")
+	}
+}
 
 func TestReplayNeverEntersTheOwnHistory(t *testing.T) {
 	store, err := history.Open(history.Options{Path: filepath.Join(t.TempDir(), "combat-history.db")})

@@ -180,6 +180,7 @@
     "timelineTitle": "Combat timeline",
     "dragHint": "Drag on the timeline to select a range; click a line to select a character",
     "replayEntrance": "Replay the timeline entrance",
+    "timelineHint": "Drag to select a range · Ctrl+wheel to zoom · Shift+wheel to pan · Click a line to select a character",
     "hitsShown": "Hits marked on the timeline: {{n}}",
     "gap": "Capture gap: packets may have been lost here",
     "gapNote": "This encounter has {{n}} capture gaps; effects and events during them may be incomplete.",
@@ -305,6 +306,73 @@
       "excluded": "Excluded",
       "unresolved": "Unresolved",
       "unknown": "Not confirmed"
+    },
+    "view": {
+      "label": "Timeline view",
+      "icon": "Icon timeline",
+      "precise": "Precise analysis"
+    },
+    "zoom": {
+      "label": "Timeline zoom",
+      "in": "Zoom in",
+      "out": "Zoom out",
+      "range": "Zoom to range",
+      "reset": "Whole encounter",
+      "navigator": "Whole encounter: drag to pan"
+    },
+    "icon": {
+      "aria": "Icon timeline: skill hits and effect intervals",
+      "skillsGroup": "Skill hits",
+      "skillsNote": "when hits landed, not casts",
+      "teamGroup": "Team effects",
+      "roleGroup": "Effects on {{name}}",
+      "enemyGroup": "Enemy effects",
+      "unknownGroup": "Effects on an unconfirmed holder",
+      "groupCount": "{{n}}",
+      "expand": "Expand",
+      "collapse": "Collapse",
+      "empty": "Nothing to show on the timeline.",
+      "loadingHits": "Loading skill hits…",
+      "hitsFailed": "The skill hits could not be read.",
+      "hitsTruncated": "{{total}} skill hits; the timeline draws the first {{listed}}.",
+      "untimed": "{{n}} more hits have no time and cannot be placed on the timeline.",
+      "unassignedTrack": "Unassigned damage",
+      "summon": "Summon",
+      "hitTip": "{{skill}} · {{at}}",
+      "clusterTip": "{{skill}} · {{n}} hits · {{from}} – {{to}}",
+      "mixedTip": "{{n}} hits ({{skills}} skills) · {{from}} – {{to}}",
+      "segmentTip": "{{effect}} · {{evidence}} · {{from}} – {{to}}",
+      "filter": "Effects",
+      "hits": {
+        "title": "Selected hits",
+        "count": "Hits",
+        "skill": "Skill",
+        "close": "Close",
+        "note": "Hits close in time are only drawn together: a hit is a damage result, not a skill cast, and a group of hits is not one cast.",
+        "mark": "Mark this skill's hits on the DPS lines",
+        "unmark": "Clear the marks",
+        "more": "{{n}} more are not listed; the Events tab lists them all."
+      },
+      "segment": {
+        "title": "Selected interval",
+        "from": "Start",
+        "to": "End",
+        "length": "Length",
+        "evidence": "Evidence",
+        "stack": "Stacks",
+        "gap": "Capture gaps",
+        "noGap": "None",
+        "nextFact": "The effect is heard of again afterwards",
+        "openEnd": "No end observed"
+      },
+      "identity": {
+        "id": "Effect ID",
+        "noId": "Not in the message",
+        "icon": "Icon",
+        "iconExact": "Game icon (the same Buff.Id)",
+        "noIcon": "No game icon",
+        "name": "Name evidence"
+      }
     }
   }
 }

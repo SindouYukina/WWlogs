@@ -1,11 +1,11 @@
-import { memo, useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
-import { AnalysisTimeline, Button, Card, Chip, ContentSwitch, DamageBar, EffectLanes, GameAssetImage, Icon, Segmented, Select, useEntrance, useRevealClock, type LaneRowModel, type TimelineLine } from "@/design"
+import { AnalysisTimeline, Button, Card, CharacterAvatar, Chip, ContentSwitch, createTimelineSync, DamageBar, EffectLanes, GameAssetImage, Icon, IconTimeline, Segmented, Select, TimelineNavigator, useEntrance, useRevealClock, type EffectTrack, type HitTrack, type IconImage, type IconTimelinePick, type IconTrackGroup, type LaneRowModel, type RevealClock, type TimelineLine, type TimelineSpan, type TimelineSync } from "@/design"
 import { usableDps } from "@/lib/combat-data"
 import { combatRows, skillBreakdown, type CombatRowModel } from "@/lib/combat-view"
 import { elementColor, useFormatters, useRowNames } from "@/lib/format"
 import type { HistoryEncounterDetail, HistoryName } from "@/lib/history"
-import { eventPageSize, formatMs, fullQuery, minimumRangeMs, parseSkillRow, querySpan, rangeQuery, skillRowKey, type ActorRef, type AnalysisQuery, type EffectCoverage, type EffectLanes as EffectLanesData, type EffectRow, type EffectScope, type EncounterAnalysis, type EnemyRange, type EventKind, type EventPage, type EventRow, type SkillStats } from "@/lib/history-analysis"
+import { clampView, effectFace, effectGroupOf, eventPageSize, formatMs, fullQuery, fullView, isFullView, minimumRangeMs, minimumViewMs, panView, parseSkillRow, querySpan, rangeQuery, skillRowKey, unassignedContributor, viewAround, zoomView, type GapRef, type HitCluster, type HitRow, type HitTimeline, type TimeView, type ActorRef, type AnalysisQuery, type EffectCoverage, type EffectLanes as EffectLanesData, type EffectRow, type EffectScope, type EncounterAnalysis, type EnemyRange, type EventKind, type EventPage, type EventRow, type SkillStats } from "@/lib/history-analysis"
 import { host } from "@/lib/host"
 import { usableHealing, type Encounter, type Timeline } from "@/lib/snapshot"
 import { contributorKey, teamSeriesKey, unassignedSeriesKey } from "@/lib/timeline"
@@ -113,8 +113,9 @@ function coverageText(coverage: EffectCoverage | undefined, percent: (value: num
 /** The effect's identity as Go named it: a glossary term with its derivation mark, or the plain unknown word with its ID. */
 function EffectName({ row }: { row: EffectRow }) {
   const { t } = useTranslation("history")
-  const icon = row.hudIcon && row.effectId !== undefined
-  return <span className="ww-analysis-effect" data-polarity={row.polarity}>
+  // Go decided whether the image pack holds this Buff.Id's own image; no other image stands in.
+  const icon = row.icon && row.effectId !== undefined
+  return <span className="ww-analysis-effect" data-polarity={row.polarity} data-icon={icon}>
     {icon && <GameAssetImage kind="buff" id={row.effectId!} />}
     {row.name.name
       ? <span className="ww-truncate">{row.name.name}<span className="ww-history-mark" title={t("correlatedNote")}>≈</span></span>
@@ -135,13 +136,16 @@ function Sparkline({ bins, range, durationMs }: { bins: number[]; range: { fromM
 
 export interface AnalysisWorkspaceProps {
   detail: HistoryEncounterDetail
+  /** How the timeline is presented; the History page keeps it from one opened encounter to the next. */
+  timelineMode: TimelineMode
+  setTimelineMode: (mode: TimelineMode) => void
 }
 
 /**
  * The History analysis workspace: a toolbar of shared filters, the selection's numbers, the DPS timeline on which a range is
  * dragged, and the Timeline, Skills, Effects and Events tabs, each with a detail panel for what is selected in it.
  */
-export function AnalysisWorkspace({ detail }: AnalysisWorkspaceProps) {
+export function AnalysisWorkspace({ detail, timelineMode: mode, setTimelineMode: setMode }: AnalysisWorkspaceProps) {
   const { t, i18n } = useTranslation(["history", "dashboard", "common"])
   const a = (key: string, options?: Record<string, unknown>) => t(`analysis.${key}`, { ns: "history", ...options })
   const format = useFormatters()
@@ -174,6 +178,19 @@ export function AnalysisWorkspace({ detail }: AnalysisWorkspaceProps) {
     host.historyEffects(id, lanesQuery).then(answer => { if (current) setLanes(answer) }).catch(() => { if (current) setFailed(true) })
     return () => { current = false }
   }, [id, lanesQuery])
+  // The skill hits of the icon timeline, read beside the analysis and the lanes, once per encounter and filters: a range
+  // never changes them, and switching to the precise lanes and back reads nothing again.
+  const hitsKey = `${id}:${query.contributor}:${query.enemy}`
+  const [hits, setHits] = useState<HitsState | null>(null)
+  const hitsReady = hits?.key === hitsKey
+  useEffect(() => {
+    if (mode !== "icon" || hitsReady) return
+    let current = true
+    host.historyHits(id, { ...fullQuery, contributor: query.contributor, enemy: query.enemy })
+      .then(answer => { if (current) setHits({ key: hitsKey, answer }) })
+      .catch(() => { if (current) setHits({ key: hitsKey, failed: true }) })
+    return () => { current = false }
+  }, [id, hitsKey, mode, hitsReady, query.contributor, query.enemy])
 
   const encounter: Encounter | null = analysis?.encounter ?? null
   // The damage bars of an encounter grow in once, when its analysis first arrives; later tab switches and filter changes
@@ -219,7 +236,6 @@ export function AnalysisWorkspace({ detail }: AnalysisWorkspaceProps) {
   const healingFormat = (value: number) => healing.status === "lower_bound" ? `≥ ${format.integer(value)}` : format.integer(value)
   const cardScope = `analysis:${id}`
   const cardNote = `${rangeLabel} · ${whoLabel}`
-  const hitsRow = query.skillRow ? parseSkillRow(query.skillRow) : null
   return <div className="ww-analysis" data-field="analysis" data-encounter-id={id} data-range-from={analysis.range.fromMs} data-range-to={analysis.range.toMs} data-full={analysis.range.full}
     data-contributor={analysis.query.contributor} data-enemy={analysis.query.enemy} data-scope={analysis.query.effects}>
     <Card className="ww-analysis-toolbar">
@@ -241,19 +257,8 @@ export function AnalysisWorkspace({ detail }: AnalysisWorkspaceProps) {
       <StatCard index={3} icon="heal" label={t("healing", { ns: "dashboard" })} field="analysis-healing" status={healing.status} value={healingShown ? healing.reported : undefined} format={healingFormat}
         note={healingShown ? t("healingNote", { ns: "dashboard", value: healingFormat(healing.effective) }) : healingReason === "enemy_filter" ? a("healingNoEnemy") : t("healingUnavailable", { ns: "dashboard" })} scope={cardScope} stale={false} numberMode="ease" />
     </div>
-    <Card className="ww-analysis-timeline">
-      <div className="ww-dash-card-head"><h3>{a("timelineTitle")}</h3>
-        <span className="ww-analysis-timeline-tools"><span className="ww-history-total">{hitsRow ? a("hitsShown", { n: format.integer(analysis.hits.length) }) : a("dragHint")}</span>
-          <Button size="sm" variant="ghost" className="ww-analysis-replay" onClick={replay} title={a("replayEntrance")} aria-label={a("replayEntrance")} data-field="replay-entrance"><Icon name="reset" size={13} /></Button></span></div>
-      <div data-field="analysis-timeline" data-series={lines.length} data-valid={analysis.timelineValid}>
-        <AnalysisTimeline durationMs={durationMs} lines={lines} focused={query.contributor || null} onSelectLine={setContributor} range={selected} onRange={onRange} onReset={resetRange}
-          gaps={analysis.gaps} marks={analysis.hits} formatValue={format.compact} formatTime={formatMs} minimumRangeMs={minimumRangeMs} height={200} reveal={reveal}
-          labels={{ aria: a("timelineTitle"), empty: t("timelineMissing"), gap: a("gap"), mark: a("hitsShown", { n: analysis.hits.length }), legend: a("timelineTitle"), drag: a("dragHint") }} />
-      </div>
-      {analysis.gaps.length > 0 && <p className="ww-history-note" data-tone="warn">{a("gapNote", { n: analysis.gaps.length })}</p>}
-      <div className="ww-analysis-lanes-head"><h4>{a("lanesTitle")}</h4></div>
-      <TimelineLanes lanes={lanes} analysis={analysis} range={selected} focus={focus} setFocus={setFocus} actorName={actorName} enemyLabel={enemyLabel} />
-    </Card>
+    <TimelineCard detail={detail} analysis={analysis} lanes={lanes} lines={lines} query={query} setQuery={setQuery} setContributor={setContributor} selected={selected} onRange={onRange} resetRange={resetRange}
+      focus={focus} setFocus={setFocus} actorName={actorName} enemyLabel={enemyLabel} reveal={reveal} replay={replay} mode={mode} setMode={setMode} hits={hitsReady ? hits : null} />
     <Card className="ww-analysis-tabs">
       <div className="ww-analysis-tabs-head">
         <Segmented variant="underline" value={tab} onChange={(value: Tab) => setTab(value)} label={a("tabsLabel")}
@@ -267,6 +272,310 @@ export function AnalysisWorkspace({ detail }: AnalysisWorkspaceProps) {
     </Card>
     <EnemiesCard detail={detail} ranges={analysis.enemies} selected={query.enemy} onSelect={ordinal => setQuery(q => ({ ...q, enemy: q.enemy === ordinal ? -1 : ordinal, skillRow: "" }))} />
   </div>
+}
+
+/** The two presentations of the combat timeline: icons and bars, or the precise effect lanes. */
+export type TimelineMode = "icon" | "precise"
+/** The hit timeline answer of one encounter and filters, or its failure. */
+interface HitsState {
+  key: string
+  answer?: HitTimeline
+  failed?: boolean
+}
+type Polarity = "buff" | "debuff" | "unclassified"
+const polarities: readonly Polarity[] = ["buff", "debuff", "unclassified"]
+
+/** A zoom button's factor, the wheel's zoom per pixel of scroll, and the group size above which a group starts collapsed. */
+const zoomStep = 1.6
+const wheelZoomRate = 0.0015
+const collapseAbove = 16
+/** Hits listed in the hit details before the rest is only counted. */
+const listedHits = 60
+
+/** The skill rows of the whole encounter by row key, drawn and named exactly as its Skills table draws and names them. */
+function useSkillFaces(encounter: Encounter | null) {
+  const { t } = useTranslation("dashboard")
+  return useMemo(() => {
+    const faces = new Map<string, { icon: IconImage | null; name: string }>()
+    if (!encounter) return faces
+    const add = (contributor: string, source: Parameters<typeof skillBreakdown>[0]) => {
+      const breakdown = skillBreakdown(source)
+      breakdown?.rows.forEach(row => faces.set(skillRowKey(contributor, row.skillId), { icon: { kind: row.iconKind ?? "skill", id: row.iconId ?? row.skillId }, name: row.name ? `${row.name}${row.derived ? " ≈" : ""}` : `${t("unnamedSkill")} ${row.skillId}` }))
+      const unassigned = breakdown?.unassigned
+      if (unassigned) faces.set(skillRowKey(contributor, 0), { icon: unassigned.iconKind !== undefined && unassigned.iconId !== undefined ? { kind: unassigned.iconKind, id: unassigned.iconId } : null, name: unassigned.name ? `${unassigned.name}${unassigned.derived ? " ≈" : ""}` : t("unassignedSkill") })
+    }
+    encounter.roles.forEach(role => add(`role-${role.playerId}-${role.roleId}`, role))
+    if (encounter.vehicle) add(`vehicle-${encounter.vehicle.kind}`, encounter.vehicle)
+    return faces
+  }, [encounter, t])
+}
+
+/**
+ * An effect as the icon timeline shows it: its own game image when Go found one for its Buff.Id; otherwise the neutral
+ * mark with its Master term, or the unknown mark with the plain word and its ID. An image without a name needs no long
+ * "unidentified" text on the row; its ID stays in the hover text and the details.
+ */
+function EffectFaceLabel({ row }: { row: EffectRow }) {
+  const { t } = useTranslation("history")
+  const face = effectFace(row)
+  const unknown = t("analysis.effects.unknownEffect")
+  return <span className="ww-itl-effect-name" data-face={face} title={row.effectId !== undefined ? `#${row.effectId}` : undefined}>
+    {face === "icon" ? <GameAssetImage kind="buff" id={row.effectId!} /> : <i className="ww-itl-face-mark" data-face={face} aria-hidden="true" />}
+    {row.name.name
+      ? <span className="ww-truncate">{row.name.name}<span className="ww-history-mark" title={t("correlatedNote")}>≈</span></span>
+      : face === "unknown"
+        ? <span className="ww-truncate ww-history-unknown">{unknown}{row.effectId !== undefined && <span className="ww-history-mark ww-num" data-field="effect-id">#{row.effectId}</span>}</span>
+        : <span className="ww-sr-only">{unknown} #{row.effectId}</span>}
+  </span>
+}
+
+/** How a row names its effect in plain text (hover text and details): its term, else the unknown word with its ID. */
+function effectText(row: EffectRow, unknown: string): string {
+  if (row.name.name) return `${row.name.name} ≈`
+  return row.effectId !== undefined ? `${unknown} #${row.effectId}` : unknown
+}
+
+interface TimelineCardProps {
+  detail: HistoryEncounterDetail
+  analysis: EncounterAnalysis
+  lanes: EffectLanesData | null
+  lines: TimelineLine[]
+  query: AnalysisQuery
+  setQuery: (update: (query: AnalysisQuery) => AnalysisQuery) => void
+  setContributor: (key: string | null) => void
+  /** The selected range as committed, drawn at once. */
+  selected: TimelineSpan | null
+  onRange: (fromMs: number, toMs: number) => void
+  resetRange: () => void
+  focus: Focus
+  setFocus: (focus: Focus) => void
+  actorName: (actor: ActorRef | undefined, enemyLabel: (ordinal: number) => string) => string
+  enemyLabel: (ordinal: number) => string
+  reveal: RevealClock | null
+  replay: () => void
+  mode: TimelineMode
+  setMode: (mode: TimelineMode) => void
+  /** The hits of the current encounter and filters; null while they are read. */
+  hits: HitsState | null
+}
+
+/**
+ * The combat timeline card: the DPS lines over the encounter, then either the icon timeline (skill hits and effect bars
+ * with their icons) or the precise effect lanes, two presentations of the same Go answers on one shared axis. Zooming and
+ * panning (buttons, Ctrl+wheel, Shift+wheel, the overview bar) move every track together; dragging on the DPS lines selects
+ * the range every number of the workspace describes. Switching the presentation keeps the range, the filters, the window
+ * and the loaded data.
+ */
+const TimelineCard = memo(function TimelineCard({ detail, analysis, lanes, lines, query, setQuery, setContributor, selected, onRange, resetRange, focus, setFocus, actorName, enemyLabel, reveal, replay, mode, setMode, hits }: TimelineCardProps) {
+  const { t } = useTranslation(["history", "dashboard", "common"])
+  const a = (key: string, options?: Record<string, unknown>) => t(`analysis.${key}`, { ns: "history", ...options })
+  const format = useFormatters()
+  const nameOf = useRowNames()
+  const durationMs = analysis.range.durationMs
+  const [view, setRawView] = useState<TimeView>(() => fullView(durationMs))
+  const setView = useCallback((next: TimeView) => setRawView(clampView(next, durationMs)), [durationMs])
+  const viewRef = useRef(view)
+  viewRef.current = view
+  const sync = useMemo(() => createTimelineSync(), [])
+  const area = useRef<HTMLDivElement>(null)
+  const full = isFullView(view, durationMs)
+  const narrowest = view.toMs - view.fromMs <= Math.min(minimumViewMs, durationMs) + 0.5
+  const center = (view.fromMs + view.toMs) / 2
+  // Ctrl+wheel zooms around the moment under the pointer and Shift+wheel (or a sideways wheel) pans; a plain wheel still
+  // scrolls the page. The browser already delivers wheel input once per frame, so each event applies at once and the new
+  // window is drawn in the next frame; viewRef carries the window between events of the same frame.
+  useEffect(() => {
+    const element = area.current
+    if (!element) return
+    const onWheel = (event: WheelEvent) => {
+      const zoom = event.ctrlKey || event.metaKey
+      const sideways = Math.abs(event.deltaX) > Math.abs(event.deltaY)
+      if (!zoom && !event.shiftKey && !sideways) return
+      const plot = element.querySelector<HTMLElement>("[data-field=analysis-plot]")
+      const bounds = plot?.getBoundingClientRect()
+      if (!bounds || bounds.width <= 0 || event.clientX < bounds.left || event.clientX > bounds.right) return
+      event.preventDefault()
+      const current = viewRef.current
+      const span = current.toMs - current.fromMs
+      const next = zoom
+        ? zoomView(current, Math.exp(event.deltaY * wheelZoomRate), current.fromMs + ((event.clientX - bounds.left) / bounds.width) * span, durationMs)
+        : panView(current, ((sideways ? event.deltaX : event.deltaY || event.deltaX) / bounds.width) * span, durationMs)
+      viewRef.current = next
+      setView(next)
+    }
+    element.addEventListener("wheel", onWheel, { passive: false })
+    return () => element.removeEventListener("wheel", onWheel)
+  }, [durationMs, setView])
+
+  const hitsReady = hits !== null
+  const hitAnswer = hits?.answer
+
+  const wholeRows = useMemo(() => detail.encounter ? combatRows(detail.encounter) : [], [detail.encounter])
+  const faces = useSkillFaces(detail.encounter)
+  const [shown, setShown] = useState<ReadonlySet<Polarity>>(() => new Set(polarities))
+  const [pick, setPick] = useState<IconTimelinePick | null>(null)
+  const unknownWord = a("effects.unknownEffect")
+  const unassignedHits = a("icon.unassignedTrack")
+
+  // The hit tracks: one per contributor in Go's order, then damage credited to no contributor, each skill row drawn with
+  // the image and name its Skills table row uses.
+  const hitTracks = useMemo(() => {
+    const out: Array<{ track: HitTrack; rows: HitRow[] }> = []
+    if (!hitAnswer) return out
+    const byContributor = new Map<string, HitRow[]>()
+    for (const row of hitAnswer.rows) byContributor.set(row.contributor, [...(byContributor.get(row.contributor) ?? []), row])
+    for (const [contributor, rows] of byContributor) {
+      const who = wholeRows.find(row => row.key === contributor)
+      const label = contributor === unassignedContributor
+        ? <span className="ww-itl-who"><span className="ww-itl-who-mark" aria-hidden="true"><Icon name="question" size={12} /></span><span className="ww-truncate">{unassignedHits}</span></span>
+        : <span className="ww-itl-who"><CharacterAvatar roleId={who?.roleId} elementId={who?.elementId} size={22} fallback={who?.kind === "vehicle" ? <Icon name="bolt" size={12} /> : "?"} /><span className="ww-truncate">{who ? nameOf(who) : contributor}</span></span>
+      out.push({ rows, track: { kind: "hits", key: `hits:${contributor}`, label, color: who ? elementColor(who.elementId) : undefined,
+        series: rows.map(row => ({ key: row.skillRow || `${contributor}:${row.skillId}`, icon: row.skillRow ? faces.get(row.skillRow)?.icon ?? null : null, atMs: row.atMs })) } })
+    }
+    return out
+  }, [hitAnswer, wholeRows, faces, nameOf, unassignedHits])
+
+  // The effect tracks of the scope, grouped by who holds them as Go resolved it; an unknown holder stays apart.
+  const effectGroups = useMemo(() => {
+    const groups = new Map<string, { kind: string; label: string; tracks: EffectTrack[] }>()
+    if (!lanes?.available) return groups
+    for (const row of lanes.rows) {
+      if (!shown.has(row.polarity)) continue
+      const group = effectGroupOf(row.holder)
+      let entry = groups.get(group.key)
+      if (!entry) {
+        const label = group.kind === "team" ? a("icon.teamGroup") : group.kind === "enemy" ? a("icon.enemyGroup") : group.kind === "unknown" ? a("icon.unknownGroup")
+          : a("icon.roleGroup", { name: actorName({ ...row.holder, kind: "role" }, enemyLabel) })
+        entry = { kind: group.kind, label, tracks: [] }
+        groups.set(group.key, entry)
+      }
+      const sub = row.holder.kind === "summon" ? a("icon.summon") : group.kind === "role" || row.holder.kind === "team" ? undefined : actorName(row.holder, enemyLabel)
+      entry.tracks.push({ kind: "effect", key: row.key, label: <EffectFaceLabel row={row} />, sub, polarity: row.polarity, icon: row.icon && row.effectId !== undefined ? { kind: "buff", id: row.effectId } : null, segments: row.segments, markers: row.markers })
+    }
+    return groups
+  }, [lanes, shown, actorName, enemyLabel, t])
+
+  const groups = useMemo((): IconTrackGroup[] => {
+    const out: IconTrackGroup[] = []
+    if (hitTracks.length > 0) out.push({ key: "hits", label: a("icon.skillsGroup"), note: a("icon.skillsNote"), tracks: hitTracks.map(entry => entry.track) })
+    const order = ["team", "role", "enemy", "unknown"]
+    const effect = [...effectGroups.entries()].sort((x, y) => order.indexOf(x[1].kind) - order.indexOf(y[1].kind))
+    for (const [key, group] of effect) out.push({ key: `effects:${key}`, label: group.label, note: a("icon.groupCount", { n: format.integer(group.tracks.length) }), collapsed: group.tracks.length > collapseAbove, tracks: group.tracks })
+    return out
+  }, [hitTracks, effectGroups, t, format])
+
+  const rowByKey = useMemo(() => new Map((lanes?.rows ?? []).map(row => [row.key, row])), [lanes])
+  const seriesName = useCallback((key: string, skillId: number) => faces.get(key)?.name ?? (skillId ? `SkillId ${skillId}` : t("unassignedSkill", { ns: "dashboard" })), [faces, t])
+  const describeCluster = useCallback((track: HitTrack, cluster: HitCluster) => {
+    const rows = hitTracks.find(entry => entry.track.key === track.key)?.rows ?? []
+    const first = cluster.members[0]!
+    const name = seriesName(track.series[first.series]!.key, rows[first.series]?.skillId ?? 0)
+    if (cluster.members.length > 1) return a("icon.mixedTip", { n: format.integer(cluster.count), skills: cluster.members.length, from: formatMs(cluster.fromMs), to: formatMs(cluster.toMs) })
+    if (cluster.count === 1) return a("icon.hitTip", { skill: name, at: formatMs(cluster.fromMs) })
+    return a("icon.clusterTip", { skill: name, n: format.integer(cluster.count), from: formatMs(cluster.fromMs), to: formatMs(cluster.toMs) })
+  }, [hitTracks, seriesName, t, format])
+  const describeSegment = useCallback((track: EffectTrack, index: number) => {
+    const row = rowByKey.get(track.key)
+    const segment = track.segments[index]
+    if (!row || !segment) return ""
+    return a("icon.segmentTip", { effect: effectText(row, unknownWord), evidence: a(`evidence.${segment.evidence}`), from: formatMs(segment.fromMs), to: formatMs(segment.toMs) }) + (segment.stack !== undefined && segment.stack > 1 ? ` ×${segment.stack}` : "")
+  }, [rowByKey, unknownWord, t])
+
+  const onPick = useCallback((next: IconTimelinePick | null) => {
+    setPick(next)
+    if (next?.kind === "effect") setFocus({ kind: "effect", key: next.track })
+    else if (next === null) setFocus(null)
+  }, [setFocus])
+  // An effect picked in the lanes or the Effects tab is the one shown here too.
+  const focusedEffect = focus?.kind === "effect" ? focus.key : null
+  const iconSelected = pick?.kind === "hits" ? { track: pick.track, cluster: pick.cluster.key } : focusedEffect ? { track: focusedEffect } : null
+  const pickedSegment = pick?.kind === "effect" && pick.track === focusedEffect ? pick.segment : null
+  const hitsRow = query.skillRow ? parseSkillRow(query.skillRow) : null
+  const pickedHits = pick?.kind === "hits" ? hitTracks.find(entry => entry.track.key === pick.track) : undefined
+
+  const zoomTo = (factor: number) => setView(zoomView(view, factor, center, durationMs))
+  const toggle = (polarity: Polarity) => setShown(current => {
+    const next = new Set(current)
+    if (next.has(polarity)) { if (next.size > 1) next.delete(polarity) } else next.add(polarity)
+    return next
+  })
+  return <Card className="ww-analysis-timeline"><div data-field="timeline-card" data-mode={mode}>
+    <div className="ww-dash-card-head ww-analysis-timeline-head"><h3>{a("timelineTitle")}</h3>
+      <div className="ww-analysis-timeline-tools">
+        <span data-field="timeline-mode"><Segmented value={mode} onChange={(value: TimelineMode) => setMode(value)} label={a("view.label")} options={[{ value: "icon", label: a("view.icon") }, { value: "precise", label: a("view.precise") }]} /></span>
+        <div className="ww-analysis-zoom" role="group" aria-label={a("zoom.label")}>
+          <Button size="sm" variant="ghost" onClick={() => zoomTo(zoomStep)} disabled={full} title={a("zoom.out")} aria-label={a("zoom.out")} data-field="zoom-out">−</Button>
+          <Button size="sm" variant="ghost" onClick={() => zoomTo(1 / zoomStep)} disabled={narrowest} title={a("zoom.in")} aria-label={a("zoom.in")} data-field="zoom-in">+</Button>
+          <Button size="sm" variant="ghost" onClick={() => selected && setView(viewAround(selected, durationMs))} disabled={!selected} data-field="zoom-range">{a("zoom.range")}</Button>
+          <Button size="sm" variant="ghost" onClick={() => setView(fullView(durationMs))} disabled={full} data-field="zoom-reset">{a("zoom.reset")}</Button>
+        </div>
+        <Button size="sm" variant="ghost" className="ww-analysis-replay" onClick={replay} title={a("replayEntrance")} aria-label={a("replayEntrance")} data-field="replay-entrance"><Icon name="reset" size={13} /></Button>
+      </div>
+    </div>
+    <p className="ww-analysis-hint">{hitsRow ? a("hitsShown", { n: format.integer(analysis.hits.length) }) : a("timelineHint")}</p>
+    <div ref={area} className="ww-analysis-timeline-area" data-view-from={Math.round(view.fromMs)} data-view-to={Math.round(view.toMs)}>
+      <div data-field="analysis-timeline" data-series={lines.length} data-valid={analysis.timelineValid}>
+        <AnalysisTimeline durationMs={durationMs} lines={lines} focused={query.contributor || null} onSelectLine={setContributor} range={selected} onRange={onRange} onReset={resetRange}
+          gaps={analysis.gaps} marks={analysis.hits} formatValue={format.compact} formatTime={formatMs} minimumRangeMs={minimumRangeMs} height={200} reveal={reveal} view={view} sync={sync}
+          labels={{ aria: a("timelineTitle"), empty: t("timelineMissing"), gap: a("gap"), mark: a("hitsShown", { n: analysis.hits.length }), legend: a("timelineTitle"), drag: a("dragHint") }} />
+        {!full && <TimelineNavigator durationMs={durationMs} view={view} onView={setView} label={a("zoom.navigator")} />}
+      </div>
+      {analysis.gaps.length > 0 && <p className="ww-history-note" data-tone="warn">{a("gapNote", { n: analysis.gaps.length })}</p>}
+      {mode === "icon"
+        ? <div className="ww-analysis-stack" data-field="icon-pane">
+          <div className="ww-analysis-icon-tools">
+            <div className="ww-analysis-kinds" role="group" aria-label={a("icon.filter")}>
+              {polarities.map(polarity => <Button key={polarity} size="sm" variant={shown.has(polarity) ? "secondary" : "ghost"} aria-pressed={shown.has(polarity)} onClick={() => toggle(polarity)} data-field={`icon-polarity-${polarity}`}>{a(`polarity.${polarity}`)}</Button>)}
+            </div>
+            <EvidenceLegend />
+          </div>
+          {!hitsReady && <p className="ww-dash-empty-note" data-field="hits-loading">{a("icon.loadingHits")}</p>}
+          {hitsReady && hits?.failed && <p className="ww-history-note" data-tone="critical" role="alert">{a("icon.hitsFailed")}</p>}
+          {hitAnswer?.truncated && <p className="ww-history-note" data-tone="warn" data-field="hits-truncated">{a("icon.hitsTruncated", { listed: format.integer(hitAnswer.listed), total: format.integer(hitAnswer.total) })}</p>}
+          {(hitAnswer?.untimed ?? 0) > 0 && <p className="ww-history-note" data-field="hits-untimed">{a("icon.untimed", { n: format.integer(hitAnswer!.untimed) })}</p>}
+          {!lanes ? <p className="ww-dash-empty-note">{a("loading")}</p> : !lanes.available && <p className="ww-dash-empty-note" data-field="effects-unavailable">{a("effects.notStored")}</p>}
+          <IconTimeline durationMs={durationMs} view={view} groups={groups} gaps={analysis.gaps} range={selected} sync={sync} selected={iconSelected} onPick={onPick} reveal={reveal}
+            describeCluster={describeCluster} describeSegment={describeSegment} labels={{ aria: a("icon.aria"), expand: a("icon.expand"), collapse: a("icon.collapse"), empty: a("icon.empty") }} loading={!lanes || !hitsReady} />
+          {lanes && <EffectNotes lanes={lanes} />}
+          {pickedHits && pick?.kind === "hits" && <HitDetail cluster={pick.cluster} track={pickedHits.track} rows={pickedHits.rows} seriesName={seriesName} query={query} setQuery={setQuery} onClose={() => onPick(null)} />}
+          {focusedEffect && lanes && <EffectDetail lanes={lanes} analysis={analysis} rowKey={focusedEffect} actorName={actorName} enemyLabel={enemyLabel} segment={pickedSegment} gaps={analysis.gaps} />}
+        </div>
+        : <>
+          <div className="ww-analysis-lanes-head"><h4>{a("lanesTitle")}</h4></div>
+          <TimelineLanes lanes={lanes} analysis={analysis} range={selected} focus={focus} setFocus={setFocus} actorName={actorName} enemyLabel={enemyLabel} view={view} sync={sync} />
+        </>}
+    </div>
+  </div></Card>
+})
+
+/**
+ * The hits of a picked icon: each stored result with its time, skill row and amount as Go answered them. A group of icons
+ * is a drawing aid only, so the details say so; one skill row's hits can be marked on the DPS lines from here.
+ */
+function HitDetail({ cluster, track, rows, seriesName, query, setQuery, onClose }: { cluster: HitCluster; track: HitTrack; rows: readonly HitRow[]; seriesName: (key: string, skillId: number) => string; query: AnalysisQuery; setQuery: TimelineCardProps["setQuery"]; onClose: () => void }) {
+  const { t } = useTranslation("history")
+  const format = useFormatters()
+  const listed = useMemo(() => cluster.members.flatMap(member => member.hits.map(hit => ({ series: member.series, hit, at: rows[member.series]?.atMs[hit] ?? 0 }))).sort((x, y) => x.at - y.at || x.series - y.series), [cluster, rows])
+  const single = cluster.members.length === 1 ? rows[cluster.members[0]!.series] : undefined
+  const markable = single?.skillRow ? single.skillRow : null
+  const marked = markable !== null && query.skillRow === markable
+  return <aside className="ww-analysis-detail" data-field="hit-detail" data-count={cluster.count} data-from={Math.round(cluster.fromMs)} data-to={Math.round(cluster.toMs)}>
+    <div className="ww-analysis-detail-head"><h4>{t("analysis.icon.hits.title")}</h4><Button size="sm" variant="ghost" onClick={onClose} data-field="hit-detail-close">{t("analysis.icon.hits.close")}</Button></div>
+    <dl className="ww-analysis-facts">
+      <div><dt>{t("analysis.icon.hits.count")}</dt><dd className="ww-num" data-field="hit-count">{format.integer(cluster.count)}</dd></div>
+      <div><dt>{t("analysis.range")}</dt><dd className="ww-num">{formatMs(cluster.fromMs)} – {formatMs(cluster.toMs)}</dd></div>
+      <div><dt>{t("analysis.icon.hits.skill")}</dt><dd>{cluster.members.map(member => seriesName(track.series[member.series]!.key, rows[member.series]?.skillId ?? 0)).join("、")}</dd></div>
+    </dl>
+    <p className="ww-history-note">{t("analysis.icon.hits.note")}</p>
+    {markable && <Button size="sm" variant={marked ? "secondary" : "ghost"} aria-pressed={marked} onClick={() => setQuery(q => ({ ...q, skillRow: marked ? "" : markable }))} data-field="hit-mark">{t(marked ? "analysis.icon.hits.unmark" : "analysis.icon.hits.mark")}</Button>}
+    <ol className="ww-analysis-intervals" data-field="hit-list">{listed.slice(0, listedHits).map(entry => {
+      const row = rows[entry.series]!
+      return <li key={`${entry.series}:${entry.hit}`} data-sequence={row.sequence[entry.hit]} data-amount={row.amount[entry.hit]}>
+        <span className="ww-num">{formatMs(entry.at)}</span><span className="ww-truncate">{seriesName(track.series[entry.series]!.key, row.skillId)}</span><span className="ww-num">{format.integer(row.amount[entry.hit] ?? 0)}</span>
+      </li>
+    })}</ol>
+    {listed.length > listedHits && <p className="ww-history-note">{t("analysis.icon.hits.more", { n: format.integer(listed.length - listedHits) })}</p>}
+  </aside>
 }
 
 interface EffectTabProps {
@@ -316,7 +625,7 @@ function laneRows(rows: readonly EffectRow[], actorName: EffectTabProps["actorNa
  * The effect lanes of the unified timeline: the effects of the scope on the same axis as the DPS lines right above them, with
  * the selected one's details below.
  */
-const TimelineLanes = memo(function TimelineLanes({ lanes, analysis, range, focus, setFocus, actorName, enemyLabel }: EffectTabProps) {
+const TimelineLanes = memo(function TimelineLanes({ lanes, analysis, range, focus, setFocus, actorName, enemyLabel, view, sync }: EffectTabProps & { view?: TimeView; sync?: TimelineSync }) {
   const { t } = useTranslation("history")
   const labels = useLaneLabels()
   const rows = useMemo(() => lanes ? laneRows(lanes.rows, actorName, enemyLabel) : [], [lanes, actorName, enemyLabel])
@@ -327,17 +636,18 @@ const TimelineLanes = memo(function TimelineLanes({ lanes, analysis, range, focu
   return <div className="ww-analysis-stack">
     <EvidenceLegend />
     {rows.length === 0 ? <p className="ww-dash-empty-note" data-field="lanes-empty">{t("analysis.effects.none")}</p>
-      : <EffectLanes rows={rows} durationMs={lanes.durationMs} range={range} gaps={lanes.gaps} selected={selected} onSelect={key => setFocus(key ? { kind: "effect", key } : null)} visibleRows={8} labels={{ aria: t("analysis.lanesTitle"), ...labels }} />}
+      : <EffectLanes rows={rows} durationMs={lanes.durationMs} range={range} gaps={lanes.gaps} selected={selected} onSelect={key => setFocus(key ? { kind: "effect", key } : null)} visibleRows={8} labels={{ aria: t("analysis.lanesTitle"), ...labels }} view={view} sync={sync} />}
     <EffectNotes lanes={lanes} />
     {selected && <EffectDetail lanes={lanes} analysis={analysis} rowKey={selected} actorName={actorName} enemyLabel={enemyLabel} />}
   </div>
 })
 
-function EffectDetail({ lanes, analysis, rowKey, actorName, enemyLabel }: { lanes: EffectLanesData; analysis: EncounterAnalysis; rowKey: string | null; actorName: EffectTabProps["actorName"]; enemyLabel: (ordinal: number) => string }) {
+function EffectDetail({ lanes, analysis, rowKey, actorName, enemyLabel, segment = null, gaps = [] }: { lanes: EffectLanesData; analysis: EncounterAnalysis; rowKey: string | null; actorName: EffectTabProps["actorName"]; enemyLabel: (ordinal: number) => string; segment?: number | null; gaps?: readonly GapRef[] }) {
   const { t } = useTranslation("history")
   const format = useFormatters()
   const row = rowKey ? lanes.rows.find(candidate => candidate.key === rowKey) : undefined
   const coverage = rowKey ? analysis.effects.rows.find(candidate => candidate.key === rowKey) : undefined
+  const picked = row && segment !== null ? row.segments[segment] : undefined
   return <aside className="ww-analysis-detail" data-field="effect-detail" data-key={row?.key ?? ""}>
     {!row ? <p className="ww-dash-empty-note">{t("analysis.effects.selectHint")}</p> : <>
       <h4><EffectName row={row} /></h4>
@@ -345,6 +655,9 @@ function EffectDetail({ lanes, analysis, rowKey, actorName, enemyLabel }: { lane
       <dl className="ww-analysis-facts">
         <div><dt>{t("analysis.effects.holder")}</dt><dd>{actorName(row.holder, enemyLabel)}</dd></div>
         <div><dt>{t("analysis.effects.source")}</dt><dd>{row.sources.length === 0 ? t("analysis.actor.unknown") : row.sources.map(source => actorName(source, enemyLabel)).join("、")}</dd></div>
+        <div><dt>{t("analysis.icon.identity.id")}</dt><dd className="ww-num" data-field="detail-effect-id">{row.effectId !== undefined ? `#${row.effectId}` : t("analysis.icon.identity.noId")}</dd></div>
+        <div><dt>{t("analysis.icon.identity.icon")}</dt><dd data-field="detail-icon" data-icon={row.icon}>{row.icon ? t("analysis.icon.identity.iconExact") : t("analysis.icon.identity.noIcon")}</dd></div>
+        <div><dt>{t("analysis.icon.identity.name")}</dt><dd data-field="detail-name-status" data-status={row.name.status}>{row.name.status}</dd></div>
         <div><dt>{t("analysis.effects.coverage")}</dt><dd className="ww-num" data-field="detail-coverage" data-exact={coverage?.exact === true}>{coverageText(coverage, format.percent)}</dd></div>
         {coverage && <>
           <div><dt>{t("analysis.evidenceShort.confirmed")}</dt><dd className="ww-num" title={t("analysis.evidence.confirmed")}>{formatMs(coverage.confirmedMs)}</dd></div>
@@ -355,6 +668,7 @@ function EffectDetail({ lanes, analysis, rowKey, actorName, enemyLabel }: { lane
           <div><dt>{t("analysis.effects.applies")}</dt><dd className="ww-num">{format.integer(coverage.applies)}</dd></div>
         </>}
       </dl>
+      {picked && <SegmentFacts row={row} segment={picked} gaps={gaps} />}
       <p className="ww-history-note">{coverage?.exact ? t("analysis.effects.exactNote") : t("analysis.effects.boundsNote")}</p>
       <ol className="ww-analysis-intervals" data-field="detail-intervals">{row.segments.slice(0, 40).map((segment, index) => <li key={index} data-evidence={segment.evidence}>
         <span className="ww-num">{formatMs(segment.fromMs)} – {formatMs(segment.toMs)}</span><span>{t(`analysis.evidence.${segment.evidence}`)}</span>{segment.stack !== undefined && <span className="ww-num">×{segment.stack}</span>}
@@ -362,6 +676,32 @@ function EffectDetail({ lanes, analysis, rowKey, actorName, enemyLabel }: { lane
       {row.segments.length > 40 && <p className="ww-history-note">{t("analysis.effects.moreIntervals", { n: row.segments.length - 40 })}</p>}
     </>}
   </aside>
+}
+
+const endMarkers = new Set(["removed", "holder_removed", "superseded", "untracked", "continues"])
+
+/**
+ * One picked interval of an effect: where it starts and ends with how each end is known (an observed start or an
+ * unconfirmed one; an observed removal, a derived end, or no observed end at all), how long it is drawn, its evidence and
+ * stack, and the capture gaps it crosses. An estimated expiry never shows as a removal.
+ */
+function SegmentFacts({ row, segment, gaps }: { row: EffectRow; segment: EffectRow["segments"][number]; gaps: readonly GapRef[] }) {
+  const { t } = useTranslation("history")
+  const start = row.markers.find(marker => marker.atMs === segment.fromMs && (marker.kind === "applied" || marker.kind === "start_unconfirmed"))
+  const end = row.markers.find(marker => marker.atMs === segment.toMs && endMarkers.has(marker.kind))
+  const crossed = gaps.filter(gap => gap.toMs > segment.fromMs && gap.fromMs < segment.toMs)
+  const endNote = end ? t(`analysis.marker.${end.kind}`) : segment.evidence === "confirmed" ? t("analysis.icon.segment.nextFact") : t("analysis.icon.segment.openEnd")
+  return <section className="ww-analysis-segment" data-field="segment-detail" data-evidence={segment.evidence} data-from={segment.fromMs} data-to={segment.toMs}>
+    <h5>{t("analysis.icon.segment.title")}</h5>
+    <dl className="ww-analysis-facts">
+      <div><dt>{t("analysis.icon.segment.from")}</dt><dd><span className="ww-num">{formatMs(segment.fromMs)}</span>{start && <span className="ww-history-mark">{t(`analysis.marker.${start.kind}`)}</span>}</dd></div>
+      <div><dt>{t("analysis.icon.segment.to")}</dt><dd><span className="ww-num">{formatMs(segment.toMs)}</span><span className="ww-history-mark" data-field="segment-end">{endNote}</span></dd></div>
+      <div><dt>{t("analysis.icon.segment.length")}</dt><dd className="ww-num">{formatMs(segment.toMs - segment.fromMs)}</dd></div>
+      <div><dt>{t("analysis.icon.segment.evidence")}</dt><dd>{t(`analysis.evidence.${segment.evidence}`)}</dd></div>
+      <div><dt>{t("analysis.icon.segment.stack")}</dt><dd className="ww-num">{segment.stack ?? "—"}</dd></div>
+      <div><dt>{t("analysis.icon.segment.gap")}</dt><dd className="ww-num" data-field="segment-gaps" data-count={crossed.length}>{crossed.length === 0 ? t("analysis.icon.segment.noGap") : crossed.map(gap => `${formatMs(gap.fromMs)} – ${formatMs(gap.toMs)}`).join("、")}</dd></div>
+    </dl>
+  </section>
 }
 
 /** The Effects tab: every effect of the scope with its coverage of the selected range. */

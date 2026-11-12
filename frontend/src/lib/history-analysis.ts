@@ -155,6 +155,11 @@ export interface EffectRow {
   hud: boolean
   /** The glossary term the definition links to (CORRELATED at most); UNKNOWN keeps the effect ID as the only identity. */
   name: HistoryName
+  /**
+   * Go found the game image of exactly this effect's Buff.Id in the image pack (/game-assets/buff/<id>). Only then does
+   * any view draw an image for it; no other ID's image ever stands in.
+   */
+  icon: boolean
   holder: ActorRef
   sources: ActorRef[]
   instances: number
@@ -175,6 +180,37 @@ export interface EffectLanes {
   stale: number
   rejected: number
   gaps: GapRef[]
+}
+
+/** The contributor key Go gives confirmed local outgoing damage the engine credited to no contributor. */
+export const unassignedContributor = "unassigned"
+
+/**
+ * One skill row's hits over the whole encounter (internal/history/analysis_hits.go), as parallel lists in processing order.
+ * They are damage hits, never casts.
+ */
+export interface HitRow {
+  contributor: string
+  /** The skill table's row key; empty for damage credited to no contributor, which joins no skill table. */
+  skillRow: string
+  /** 0 for a contributor's row without a skill; for damage credited to no contributor, the SkillId it carried (0 without). */
+  skillId: number
+  atMs: number[]
+  amount: number[]
+  /** The stored results' sequences: the event browser lists the same results as "c<sequence>". */
+  sequence: number[]
+}
+
+export interface HitTimeline {
+  state: AnalysisState
+  durationMs: number
+  query: AnalysisQuery
+  rows: HitRow[]
+  /** Every hit the filters select; listed ones are in rows; untimed ones have no time to place. */
+  total: number
+  listed: number
+  untimed: number
+  truncated?: boolean
 }
 
 export type EventKind = "damage" | "healing" | "effect"
@@ -245,6 +281,201 @@ export function querySpan(query: AnalysisQuery, durationMs: number): { fromMs: n
   const to = query.toMs > 0 ? Math.min(query.toMs, durationMs) : durationMs
   if (query.fromMs <= 0 && to >= durationMs) return null
   return { fromMs: Math.max(0, query.fromMs), toMs: to }
+}
+
+/** The window of the encounter the timeline shows: zooming and panning change it, never the selected range or a number. */
+export interface TimeView {
+  fromMs: number
+  toMs: number
+}
+
+/** The narrowest window the timeline zooms to: one second, or the whole encounter when it is shorter. */
+export const minimumViewMs = 1000
+
+export function fullView(durationMs: number): TimeView {
+  return { fromMs: 0, toMs: Math.max(1, durationMs) }
+}
+
+export function isFullView(view: TimeView, durationMs: number): boolean {
+  return view.fromMs <= 0 && view.toMs >= durationMs
+}
+
+/** Keeps a window inside the encounter and between the narrowest window and the whole encounter. */
+export function clampView(view: TimeView, durationMs: number): TimeView {
+  const duration = Math.max(1, durationMs)
+  const span = Math.min(duration, Math.max(Math.min(minimumViewMs, duration), view.toMs - view.fromMs))
+  const from = Math.min(Math.max(0, view.fromMs), duration - span)
+  return { fromMs: from, toMs: from + span }
+}
+
+/** Zooms by factor (below 1 zooms in) around anchorMs, which stays where it is on screen. */
+export function zoomView(view: TimeView, factor: number, anchorMs: number, durationMs: number): TimeView {
+  const span = view.toMs - view.fromMs
+  const next = span * factor
+  const ratio = span > 0 ? Math.min(1, Math.max(0, (anchorMs - view.fromMs) / span)) : 0.5
+  const from = anchorMs - ratio * next
+  return clampView({ fromMs: from, toMs: from + next }, durationMs)
+}
+
+export function panView(view: TimeView, deltaMs: number, durationMs: number): TimeView {
+  return clampView({ fromMs: view.fromMs + deltaMs, toMs: view.toMs + deltaMs }, durationMs)
+}
+
+/** A selected range shown with a little context on each side. */
+export function viewAround(span: { fromMs: number; toMs: number }, durationMs: number): TimeView {
+  const margin = (span.toMs - span.fromMs) * 0.08
+  return clampView({ fromMs: span.fromMs - margin, toMs: span.toMs + margin }, durationMs)
+}
+
+/** One track's hits of one skill row (or observed SkillId), for drawing; times in ms from the encounter start. */
+export interface HitSeries {
+  key: string
+  atMs: readonly number[]
+}
+
+/** One drawn group of hits: its members are hit indices of each series it holds. */
+export interface HitCluster {
+  key: string
+  /** Where its first and last hit sit in the window, as fractions of the window. */
+  x: number
+  x2: number
+  lane: number
+  fromMs: number
+  toMs: number
+  count: number
+  members: Array<{ series: number; hits: number[] }>
+}
+
+/**
+ * Groups one track's hits for drawing in a window, so icons never pile up unreadably and none is left out:
+ * consecutive hits of one skill row closer than iconPx to the group's first hit become one icon with a count; a group
+ * that would overlap the previous one goes to the next of `lanes` sub-lanes; one that still overlaps joins the group it
+ * collides with, which then holds several skill rows. Every hit inside the window belongs to exactly one group, and a
+ * group is a drawing aid only: it is never a cast.
+ */
+export function clusterHits(series: readonly HitSeries[], view: TimeView, widthPx: number, iconPx: number, lanes = 2): HitCluster[] {
+  const span = view.toMs - view.fromMs
+  if (!(span > 0) || !(widthPx > 0)) return []
+  const reach = (iconPx / widthPx) * span
+  const flat: Array<{ at: number; series: number; hit: number }> = []
+  series.forEach((one, index) => one.atMs.forEach((at, hit) => { if (at >= view.fromMs && at <= view.toMs) flat.push({ at, series: index, hit }) }))
+  flat.sort((a, b) => a.at - b.at || a.series - b.series || a.hit - b.hit)
+  const open = new Map<number, HitCluster>()
+  const groups: HitCluster[] = []
+  for (const entry of flat) {
+    const current = open.get(entry.series)
+    if (current && entry.at - current.fromMs < reach) {
+      current.members[0]!.hits.push(entry.hit)
+      current.toMs = entry.at
+      current.count++
+      continue
+    }
+    const group: HitCluster = { key: "", x: 0, x2: 0, lane: 0, fromMs: entry.at, toMs: entry.at, count: 1, members: [{ series: entry.series, hits: [entry.hit] }] }
+    open.set(entry.series, group)
+    groups.push(group)
+  }
+  groups.sort((a, b) => a.fromMs - b.fromMs || a.members[0]!.series - b.members[0]!.series)
+  // Each lane remembers where its last icon ends; an icon needs the width of one icon from its start.
+  const laneEnd: Array<{ end: number; group: HitCluster | null }> = Array.from({ length: Math.max(1, lanes) }, () => ({ end: -Infinity, group: null }))
+  const placed: HitCluster[] = []
+  for (const group of groups) {
+    const free = laneEnd.findIndex(lane => group.fromMs >= lane.end)
+    if (free >= 0) {
+      group.lane = free
+      laneEnd[free] = { end: group.fromMs + reach, group }
+      placed.push(group)
+      continue
+    }
+    // Every lane is taken here: the group joins the one that ends first, which now holds more than one skill row.
+    let target = 0
+    for (let lane = 1; lane < laneEnd.length; lane++) if (laneEnd[lane]!.end < laneEnd[target]!.end) target = lane
+    const host = laneEnd[target]!.group!
+    for (const member of group.members) {
+      const same = host.members.find(existing => existing.series === member.series)
+      if (same) same.hits.push(...member.hits)
+      else host.members.push({ series: member.series, hits: [...member.hits] })
+    }
+    host.count += group.count
+    host.fromMs = Math.min(host.fromMs, group.fromMs)
+    host.toMs = Math.max(host.toMs, group.toMs)
+  }
+  for (const group of placed) {
+    group.x = (group.fromMs - view.fromMs) / span
+    group.x2 = (group.toMs - view.fromMs) / span
+    group.key = `${group.lane}:${group.fromMs}:${group.members.map(member => `${member.series}.${member.hits[0]}`).join(",")}`
+  }
+  return placed
+}
+
+/** Touching intervals of one evidence drawn as one bar of the icon timeline; markers still show every start and end. */
+export interface EffectBar {
+  fromMs: number
+  toMs: number
+  evidence: SegmentEvidence
+  /** The intervals the bar draws, by index, in order: a pick finds the exact interval under the pointer. */
+  segments: number[]
+  /** Runs of one stack count above 1 inside the bar, each labelled once. */
+  stacks: Array<{ fromMs: number; toMs: number; stack: number }>
+}
+
+/**
+ * Joins touching intervals of the same evidence into bars, so an effect refreshed many times reads as one bar instead of
+ * a row of pieces, and labels a stack count once per run. Intervals of different evidence never join, so confirmed,
+ * stated and unknown time stay apart; every interval belongs to exactly one bar. Drawing only: no interval changes.
+ */
+export function effectBars(segments: ReadonlyArray<Pick<EffectSegment, "fromMs" | "toMs" | "evidence" | "stack">>): EffectBar[] {
+  const bars: EffectBar[] = []
+  segments.forEach((segment, index) => {
+    let bar = bars[bars.length - 1]
+    if (!bar || bar.evidence !== segment.evidence || Math.abs(bar.toMs - segment.fromMs) > 0.5) {
+      bar = { fromMs: segment.fromMs, toMs: segment.toMs, evidence: segment.evidence, segments: [], stacks: [] }
+      bars.push(bar)
+    }
+    bar.toMs = Math.max(bar.toMs, segment.toMs)
+    bar.segments.push(index)
+    if (segment.stack !== undefined && segment.stack > 1) {
+      const run = bar.stacks[bar.stacks.length - 1]
+      if (run && run.stack === segment.stack && Math.abs(run.toMs - segment.fromMs) <= 0.5) run.toMs = segment.toMs
+      else bar.stacks.push({ fromMs: segment.fromMs, toMs: segment.toMs, stack: segment.stack })
+    }
+  })
+  return bars
+}
+
+/** The interval of a bar under a moment: the one holding it, else the nearest one. */
+export function segmentAt(segments: ReadonlyArray<Pick<EffectSegment, "fromMs" | "toMs">>, indices: readonly number[], ms: number): number {
+  let best = indices[0] ?? -1
+  let distance = Infinity
+  for (const index of indices) {
+    const segment = segments[index]
+    if (!segment) continue
+    if (ms >= segment.fromMs && ms < segment.toMs) return index
+    const away = ms < segment.fromMs ? segment.fromMs - ms : ms - segment.toMs
+    if (away < distance) { distance = away; best = index }
+  }
+  return best
+}
+
+/** How the icon timeline shows an effect: its own game image, the neutral mark with its Master term, or the unknown mark with its ID. */
+export type EffectFace = "icon" | "named" | "unknown"
+
+export function effectFace(row: Pick<EffectRow, "icon" | "name">): EffectFace {
+  if (row.icon) return "icon"
+  return row.name.name ? "named" : "unknown"
+}
+
+/** The icon timeline's effect groups, by who holds the effect as Go resolved it; an unknown holder stays apart. */
+export type EffectGroupKind = "team" | "role" | "enemy" | "unknown"
+
+export function effectGroupOf(holder: Pick<ActorRef, "kind" | "roleId" | "contributor">): { kind: EffectGroupKind; key: string } {
+  switch (holder.kind) {
+    case "team":
+    case "team_unassigned": return { kind: "team", key: "team" }
+    case "role":
+    case "summon": return { kind: "role", key: `role:${holder.contributor || `id-${holder.roleId ?? 0}`}` }
+    case "enemy": return { kind: "enemy", key: "enemy" }
+    default: return { kind: "unknown", key: "unknown" }
+  }
 }
 
 /** The smallest range a drag selects, so a click never selects a sliver. */
