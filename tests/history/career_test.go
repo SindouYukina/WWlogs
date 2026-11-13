@@ -91,6 +91,13 @@ func TestCareerTotalsCountOnlyRecordsThatMayCount(t *testing.T) {
 	if lily.BestDPS == nil || lily.BestDPS.Value != 60 || lily.MaxHit == nil || lily.MaxHit.Value != 480 {
 		t.Fatalf("Lily's records = dps %+v hit %+v", lily.BestDPS, lily.MaxHit)
 	}
+	// Her dates: both encounters on 2026-10-01, her damage there a lower bound, her best DPS from the complete one only.
+	if len(lily.Days) != 1 || lily.Days[0].Encounters != 2 || lily.Days[0].Damage != 9600 || !lily.Days[0].DamageLowerBound || lily.Days[0].BestDPS != 60 {
+		t.Fatalf("Lily's days = %+v", lily.Days)
+	}
+	if days := roles[1409].Days; len(days) != 2 || days[1].Damage != 0 || days[1].BestDPS != 0 || days[1].Encounters != 1 {
+		t.Fatalf("1409's days = %+v", days)
+	}
 	if _, trialListed := roles[15127004]; trialListed {
 		t.Fatal("the trial role is listed apart from its parent")
 	}

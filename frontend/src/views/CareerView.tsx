@@ -116,28 +116,39 @@ function RoleStrip({ days, first, last, color }: { days: CareerRole["days"]; fir
   </svg>
 }
 
-function RoleCard({ role, first, last, onOpen }: { role: CareerRole; first: number; last: number; onOpen: () => void }) {
+/** A record value that opens the encounter it came from; without a record it is a dash. */
+function RecordLink({ record, field, onOpen }: { record: CareerRecord | undefined; field: string; onOpen: (record: CareerRecord) => void }) {
+  const { t } = useTranslation("history")
+  const format = useFormatters()
+  if (!record) return <span className="ww-num" data-field={field}>—</span>
+  return <button type="button" className="ww-career-link ww-num" data-field={field} data-encounter-id={record.encounterId} title={t("career.openRecord")}
+    onClick={event => { event.stopPropagation(); onOpen(record) }} onKeyDown={event => event.stopPropagation()}>{format.integer(record.value)}</button>
+}
+
+function RoleCard({ role, first, last, onList, onRecord }: { role: CareerRole; first: number; last: number; onList: () => void; onRecord: (record: CareerRecord) => void }) {
   const { t } = useTranslation(["history", "common"])
   const format = useFormatters()
   const formats = useCareerFormats()
   const name = role.name.name ?? t("unknownRole", { ns: "common", id: role.roleId })
-  return <button type="button" className="ww-career-role" data-field="career-role" data-role-id={role.roleId} data-element={role.elementId} aria-label={t("career.characterOpen", { name })} onClick={onOpen}>
-    <CharacterAvatar roleId={role.roleId} elementId={role.elementId} size={40} />
-    <span className="ww-career-role-main">
-      <span className="ww-career-role-line"><strong className="ww-truncate">{name}</strong><span className="ww-num ww-career-role-count">{t("career.characterEncounters", { n: format.integer(role.encounters) })}</span></span>
-      <RoleStrip days={role.days} first={first} last={last} color={elementColor(role.elementId)} />
-      <span className="ww-career-role-facts">
-        <span><span className="ww-career-fact-label">{t("career.damage")}</span><span className="ww-num" data-field="role-damage" data-lower-bound={role.damageLowerBound === true}>{formats.damage(role.damage, role.damageLowerBound)}</span></span>
-        <span><span className="ww-career-fact-label">{t("career.characterBestDps")}</span><span className="ww-num" data-field="role-best-dps">{role.bestDps ? format.integer(role.bestDps.value) : "—"}</span></span>
-        <span><span className="ww-career-fact-label">{t("career.characterMaxHit")}</span><span className="ww-num" data-field="role-max-hit">{role.maxHit ? format.integer(role.maxHit.value) : "—"}</span></span>
+  return <div className="ww-career-role" data-field="career-role" data-role-id={role.roleId} data-element={role.elementId}>
+    <button type="button" className="ww-career-role-open" aria-label={t("career.characterOpen", { name })} title={t("career.characterOpen", { name })} onClick={onList}>
+      <CharacterAvatar roleId={role.roleId} elementId={role.elementId} size={40} />
+      <span className="ww-career-role-main">
+        <span className="ww-career-role-line"><strong className="ww-truncate">{name}</strong><span className="ww-num ww-career-role-count">{t("career.characterEncounters", { n: format.integer(role.encounters) })}</span></span>
+        <RoleStrip days={role.days} first={first} last={last} color={elementColor(role.elementId)} />
       </span>
-      <span className="ww-history-note">
-        {t("career.characterCounted", { n: format.integer(role.counted) })}
-        {role.trialEncounters ? ` · ${t("career.characterTrial", { n: format.integer(role.trialEncounters) })}` : ""}
-        {` · ${t("career.rangeDates", { from: role.firstDate, to: role.lastDate })}`}
-      </span>
+    </button>
+    <span className="ww-career-role-facts">
+      <span><span className="ww-career-fact-label">{t("career.damage")}</span><span className="ww-num" data-field="role-damage" data-lower-bound={role.damageLowerBound === true}>{formats.damage(role.damage, role.damageLowerBound)}</span></span>
+      <span><span className="ww-career-fact-label">{t("career.characterBestDps")}</span><RecordLink record={role.bestDps} field="role-best-dps" onOpen={onRecord} /></span>
+      <span><span className="ww-career-fact-label">{t("career.characterMaxHit")}</span><RecordLink record={role.maxHit} field="role-max-hit" onOpen={onRecord} /></span>
     </span>
-  </button>
+    <span className="ww-history-note">
+      {t("career.characterCounted", { n: format.integer(role.counted) })}
+      {role.trialEncounters ? ` · ${t("career.characterTrial", { n: format.integer(role.trialEncounters) })}` : ""}
+      {` · ${t("career.rangeDates", { from: role.firstDate, to: role.lastDate })}`}
+    </span>
+  </div>
 }
 
 /** One measure per date of the range as bars. A date without a value (no counted or no complete record) draws nothing. */
@@ -165,7 +176,7 @@ function TrendBars({ first, last, values, format, label, empty }: { first: numbe
   </div>
 }
 
-function PlaceTable({ places, kind, onOpen }: { places: readonly CareerPlace[]; kind: "mode" | "stage"; onOpen: (place: CareerPlace) => void }) {
+function PlaceTable({ places, kind, onOpen, onRecord }: { places: readonly CareerPlace[]; kind: "mode" | "stage"; onOpen: (place: CareerPlace) => void; onRecord: (record: CareerRecord) => void }) {
   const { t } = useTranslation("history")
   const format = useFormatters()
   const formats = useCareerFormats()
@@ -189,7 +200,7 @@ function PlaceTable({ places, kind, onOpen }: { places: readonly CareerPlace[]; 
         <td className="ww-num">{format.integer(place.encounters)}</td>
         <td className="ww-num">{format.integer(place.counted)}</td>
         <td className="ww-num">{place.counted > 0 ? formats.damage(place.damage, place.damageLowerBound) : "—"}</td>
-        <td className="ww-num">{place.bestDps ? format.integer(place.bestDps.value) : "—"}</td>
+        <td className="ww-num"><RecordLink record={place.bestDps} field="place-best-dps" onOpen={onRecord} /></td>
       </tr>
     })}</tbody>
   </table></div>
@@ -217,6 +228,8 @@ export function CareerView({ theme, refreshKey, indicator, state, onState, onOpe
   const [allRoles, setAllRoles] = useState(false)
   const [allCombos, setAllCombos] = useState(false)
   const [trend, setTrend] = useState<TrendKind>("encounters")
+  // The trend of one role instead of the whole selection; 0 is the whole selection.
+  const [trendRole, setTrendRole] = useState(0)
   const query = useMemo(() => careerStateQuery(state), [state])
 
   useEffect(() => {
@@ -234,18 +247,30 @@ export function CareerView({ theme, refreshKey, indicator, state, onState, onOpe
   const range = career ? shownRange(career) : null
   const fullDays = career && range ? (career.from && career.to ? dayNumber(career.to) - dayNumber(career.from) + 1 : range.last - range.first + 1) : 0
   const layout = useMemo(() => career && range ? rangeHeatmapLayout(dateOfDay(range.first), dateOfDay(range.last), career.days) : null, [career, range?.first, range?.last])
+  const roleTrend = trendRole !== 0 ? career?.roles.find(role => role.roleId === trendRole) : undefined
+  // A role has no combat time of its own, so its trend offers the other measures.
+  const shownTrend: TrendKind = roleTrend && trend === "time" ? "encounters" : trend
   const trendValues = useMemo(() => {
     const values = new Map<string, { value: number; lowerBound?: boolean }>()
+    if (roleTrend) {
+      // Go's per-date values of the role: participations, its damage in counted encounters, its best DPS in complete ones.
+      for (const day of roleTrend.days) {
+        if (shownTrend === "encounters") values.set(day.date, { value: day.encounters })
+        else if (shownTrend === "damage" && day.damage > 0) values.set(day.date, { value: day.damage, lowerBound: day.damageLowerBound })
+        else if (shownTrend === "bestDps" && day.bestDps) values.set(day.date, { value: day.bestDps })
+      }
+      return values
+    }
     for (const day of career?.days ?? []) {
       // Go's per-date values, as stored: damage and time cover counted encounters, the best DPS complete records only.
-      if (trend === "encounters") values.set(day.date, { value: day.encounters })
-      else if (trend === "damage" && day.counted > 0) values.set(day.date, { value: day.damage, lowerBound: day.damageLowerBound })
-      else if (trend === "time" && day.counted > 0) values.set(day.date, { value: day.seconds })
-      else if (trend === "bestDps" && day.bestDps) values.set(day.date, { value: day.bestDps })
+      if (shownTrend === "encounters") values.set(day.date, { value: day.encounters })
+      else if (shownTrend === "damage" && day.counted > 0) values.set(day.date, { value: day.damage, lowerBound: day.damageLowerBound })
+      else if (shownTrend === "time" && day.counted > 0) values.set(day.date, { value: day.seconds })
+      else if (shownTrend === "bestDps" && day.bestDps) values.set(day.date, { value: day.bestDps })
     }
     return values
-  }, [career, trend])
-  const trendFormat = trend === "damage" ? formats.damage : trend === "time" ? formats.hours : format.integer
+  }, [career, roleTrend, shownTrend])
+  const trendFormat = shownTrend === "damage" ? formats.damage : shownTrend === "time" ? formats.hours : format.integer
 
   const library = (focus?: Parameters<typeof careerLibraryQuery>[2]) => career && onOpen({ kind: "library", query: careerLibraryQuery(career, state, focus) })
   const openRecord = useCallback((record: CareerRecord) => onOpen({ kind: "encounter", encounterId: record.encounterId, date: record.start.date }), [onOpen])
@@ -257,7 +282,8 @@ export function CareerView({ theme, refreshKey, indicator, state, onState, onOpe
   const versionOptions = useMemo(() => [any, ...(career?.versions ?? []).map(version => ({ value: version, label: version }))], [career, i18n.language])
   const modeOptions = useMemo(() => [any, ...(career?.filters.modes ?? []).map(mode => ({ value: mode.key, label: `${mode.kind === "open_world" ? t("modeOpenWorld") : mode.name} (${format.integer(mode.count)})` }))], [career, i18n.language])
   const stageOptions = useMemo(() => [any, ...(career?.filters.stages ?? []).filter(stage => stage.name.name).map(stage => ({ value: String(stage.instanceId), label: `${stage.name.name} (${format.integer(stage.count)})` }))], [career, i18n.language])
-  const trendOptions = useMemo(() => trendKinds.map(kind => ({ value: kind, label: t(`career.trend.${kind}`) })), [i18n.language])
+  const trendOptions = useMemo(() => trendKinds.filter(kind => !roleTrend || kind !== "time").map(kind => ({ value: kind, label: t(`career.trend.${kind}`) })), [i18n.language, roleTrend])
+  const trendRoleOptions = useMemo(() => [{ value: "0", label: t("career.trendAll") }, ...(career?.roles ?? []).map(role => ({ value: String(role.roleId), label: role.name.name ?? t("unknownRole", { ns: "common", id: role.roleId }) }))], [career, i18n.language])
 
   const totals = career?.totals
   const filtered = state.preset !== "all" || state.gameVersion !== undefined || state.mode !== undefined || state.stage !== undefined
@@ -345,18 +371,21 @@ export function CareerView({ theme, refreshKey, indicator, state, onState, onOpe
       <Reveal index={9}><Card className="ww-history-context" data-field="career-roles">
         <div className="ww-dash-card-head"><h3>{t("career.characters")}</h3><span className="ww-history-note">{t("career.charactersNote")}</span></div>
         {roles.length === 0 ? <p className="ww-dash-empty-note">{t("career.charactersEmpty")}</p> : <div className="ww-career-role-grid">
-          {range && shownRoles.map(role => <RoleCard key={role.roleId} role={role} first={range.first} last={range.last} onOpen={() => library({ role: role.roleId })} />)}
+          {range && shownRoles.map(role => <RoleCard key={role.roleId} role={role} first={range.first} last={range.last} onList={() => library({ role: role.roleId })} onRecord={openRecord} />)}
         </div>}
         {roles.length > collapsedRoles && <div className="ww-history-more"><span /><Button size="sm" variant="ghost" data-field="career-roles-all" onClick={() => setAllRoles(all => !all)}>{allRoles ? t("career.showLess") : t("career.showAll", { n: format.integer(roles.length) })}</Button></div>}
       </Card></Reveal>
 
       <div className="ww-career-split">
         <Reveal index={10}><Card className="ww-history-context" data-field="career-trends">
-          <div className="ww-dash-card-head"><h3>{t("career.trends")}</h3>
-            <span data-field="career-trend" data-trend={trend}><Segmented label={t("career.trendLabel")} value={trend} options={trendOptions} onChange={(kind: TrendKind) => setTrend(kind)} /></span>
+          <div className="ww-dash-card-head"><h3>{t("career.trends")}</h3></div>
+          <div className="ww-career-trend-controls">
+            <span data-field="career-trend" data-trend={shownTrend}><Segmented label={t("career.trendLabel")} value={shownTrend} options={trendOptions} onChange={(kind: TrendKind) => setTrend(kind)} /></span>
+            <span className="ww-career-trend-role" data-field="career-trend-role" data-role-id={roleTrend?.roleId ?? 0}><Select label={t("career.trendRole")} value={String(roleTrend?.roleId ?? 0)} options={trendRoleOptions} onChange={value => setTrendRole(Number(value))} /></span>
           </div>
-          {range && <TrendBars first={range.first} last={range.last} values={trendValues} format={trendFormat} label={t(`career.trend.${trend}`)} empty={t("career.trendEmpty")} />}
-          <p className="ww-history-note">{t(`career.trendNote.${trend}`)}</p>
+          {range && <TrendBars first={range.first} last={range.last} values={trendValues} format={trendFormat} label={t(`career.trend.${shownTrend}`)} empty={t("career.trendEmpty")} />}
+          <p className="ww-history-note">{t(roleTrend ? `career.trendRoleNote.${shownTrend}` : `career.trendNote.${shownTrend}`)}</p>
+          {shownTrend === "bestDps" && <p className="ww-history-note" data-tone="warn" data-field="career-dps-caution">{t("career.dpsCaution")}</p>}
         </Card></Reveal>
         <Reveal index={11}><Card className="ww-history-context" data-field="career-combos">
           <div className="ww-dash-card-head"><h3>{t("career.combos")}</h3></div>
@@ -368,7 +397,7 @@ export function CareerView({ theme, refreshKey, indicator, state, onState, onOpe
               </Tooltip>)}</span>
               <span className="ww-num">{t("career.characterEncounters", { n: format.integer(combo.encounters) })}</span>
               <span className="ww-num" data-lower-bound={combo.damageLowerBound === true}>{formats.damage(combo.damage, combo.damageLowerBound)}</span>
-              <span className="ww-num">{combo.bestDps ? `${t("career.characterBestDps")} ${format.integer(combo.bestDps.value)}` : "—"}</span>
+              <span className="ww-career-combo-best"><span className="ww-career-fact-label">{t("career.characterBestDps")}</span><RecordLink record={combo.bestDps} field="combo-best-dps" onOpen={openRecord} /></span>
             </li>)}
           </ul>}
           {combos.length > collapsedCombos && <div className="ww-history-more"><span /><Button size="sm" variant="ghost" data-field="career-combos-all" onClick={() => setAllCombos(all => !all)}>{allCombos ? t("career.showLess") : t("career.showAll", { n: format.integer(combos.length) })}</Button></div>}
@@ -379,8 +408,8 @@ export function CareerView({ theme, refreshKey, indicator, state, onState, onOpe
         <div className="ww-dash-card-head"><h3>{t("career.places")}</h3></div>
         <p className="ww-history-note">{t("career.placesNote")}</p>
         <div className="ww-career-split">
-          <PlaceTable places={career.modes} kind="mode" onOpen={place => library({ mode: place.key })} />
-          <PlaceTable places={career.stages} kind="stage" onOpen={place => library({ stage: place.instanceId })} />
+          <PlaceTable places={career.modes} kind="mode" onOpen={place => library({ mode: place.key })} onRecord={openRecord} />
+          <PlaceTable places={career.stages} kind="stage" onOpen={place => library({ stage: place.instanceId })} onRecord={openRecord} />
         </div>
       </Card></Reveal>
 

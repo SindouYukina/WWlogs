@@ -79,7 +79,16 @@ export interface CareerRole {
   maxHit?: CareerRecord
   firstDate: string
   lastDate: string
-  days: Array<{ date: string; encounters: number }>
+  days: CareerRoleDay[]
+}
+
+/** One role on one date: participations, its damage in counted encounters, its best DPS in complete ones. */
+export interface CareerRoleDay {
+  date: string
+  encounters: number
+  damage: number
+  damageLowerBound?: boolean
+  bestDps?: number
 }
 
 export interface CareerCombo {

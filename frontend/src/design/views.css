@@ -222,9 +222,16 @@ button.ww-career-record:focus-visible { outline: none; box-shadow: var(--ww-focu
 .ww-career-record-where { grid-area: where; display: flex; flex-wrap: wrap; gap: 0 var(--ww-space-3); font-size: var(--ww-text-2xs); color: var(--ww-text-3); }
 /* Characters: one card per role, opening the role's encounters in the History Library. */
 .ww-career-role-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--ww-space-2); }
-.ww-career-role { display: flex; align-items: flex-start; gap: var(--ww-space-2); min-width: 0; padding: var(--ww-space-2) var(--ww-space-2); border: 0; border-radius: var(--ww-radius-md); background: var(--ww-surface-2); box-shadow: inset 0 0 0 1px var(--ww-line-soft); color: inherit; font: inherit; text-align: start; cursor: pointer; transition: background-color var(--ww-dur-fast) var(--ww-ease-standard); }
-.ww-career-role:hover { background: var(--ww-surface-hover); }
-.ww-career-role:focus-visible { outline: none; box-shadow: var(--ww-focus-ring); }
+.ww-career-role { display: flex; flex-direction: column; gap: var(--ww-space-1_5); min-width: 0; padding: var(--ww-space-2); border-radius: var(--ww-radius-md); background: var(--ww-surface-2); box-shadow: inset 0 0 0 1px var(--ww-line-soft); }
+.ww-career-role-open { display: flex; align-items: flex-start; gap: var(--ww-space-2); min-width: 0; margin: calc(var(--ww-space-1) * -1); padding: var(--ww-space-1); border: 0; border-radius: var(--ww-radius-sm); background: transparent; color: inherit; font: inherit; text-align: start; cursor: pointer; transition: background-color var(--ww-dur-fast) var(--ww-ease-standard); }
+.ww-career-role-open:hover { background: var(--ww-surface-hover); }
+.ww-career-role-open:focus-visible { outline: none; box-shadow: var(--ww-focus-ring); }
+/* A record value that opens its encounter reads as a number with a quiet underline. */
+.ww-career-link { padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: start; text-decoration: underline; text-decoration-color: var(--ww-line-strong); text-underline-offset: 3px; cursor: pointer; }
+.ww-career-link:hover { color: var(--ww-accent-bright); text-decoration-color: currentColor; }
+.ww-career-link:focus-visible { outline: none; border-radius: 2px; box-shadow: var(--ww-focus-ring); }
+.ww-career-combo-best { display: inline-flex; align-items: baseline; gap: var(--ww-space-1_5); justify-content: flex-end; }
+.ww-career-trend-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ww-space-2) var(--ww-space-3); margin-bottom: var(--ww-space-1); }
 .ww-career-role-main { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
 .ww-career-role-line { display: flex; align-items: baseline; justify-content: space-between; gap: var(--ww-space-2); min-width: 0; }
 .ww-career-role-count { font-size: var(--ww-text-xs); color: var(--ww-text-3); }
