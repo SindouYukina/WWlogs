@@ -53,7 +53,40 @@ type pendingDamageRequest struct {
 	hasDamageSourceType bool
 	bulletID            int64 // DamageContext.BulletId
 	hasBulletID         bool
-	sequence            uint64
+	// requestEpoch is how many times the combat RequestId counter had wrapped in this protocol session when the request
+	// was sent (combatRequestCounter); with the RequestId it names the result (extendedRequestID).
+	requestEpoch uint64
+	sequence     uint64
+}
+
+// combatRequestIDSpace is the number of RequestId values of combat requests. The client numbers every CombatRequestData
+// with CombatNet.GenerateRpcId, which counts 1..32767 and then 0 again (CombatMessage.js, Global 3.8.0 base, unchanged by
+// the 3.8.9 hotfix); a capture of Build 31 shows 1..32767, 0 (absent on the wire, the proto3 default), 1 after 46,399
+// combat requests. A long protocol session therefore uses one RequestId for several requests.
+const combatRequestIDSpace = 32768
+
+// combatRequestCounter follows the client's combat RequestId counter through its wraps. Every CombatRequestData of the
+// outbound stream advances it in arrival order, damage or not; the outbound stream is one ordered KCP stream, and a step
+// down by more than half the space is a wrap (requests sent in one frame may be out of order by a few).
+type combatRequestCounter struct {
+	last  uint64
+	seen  bool
+	epoch uint64
+}
+
+// observe records one RequestId and returns the epoch it belongs to.
+func (c *combatRequestCounter) observe(requestID uint64) uint64 {
+	if c.seen && requestID+combatRequestIDSpace/2 < c.last {
+		c.epoch++
+	}
+	c.last, c.seen = requestID, true
+	return c.epoch
+}
+
+// extendedRequestID names one combat result within its protocol session: the RequestId continued past each wrap of the
+// client's counter. It equals the RequestId until the first wrap, so results of shorter sessions keep their RequestId.
+func extendedRequestID(requestID, epoch uint64) uint64 {
+	return epoch*combatRequestIDSpace + requestID
 }
 
 type pendingRef struct {
@@ -66,12 +99,22 @@ type consumedRef struct {
 	sequence uint64
 }
 
-// consumedResponse remembers a processed response: its place in the bounded FIFO and a digest of its payload, so that a
-// later copy with the same RequestId is told apart as an identical duplicate or as a conflicting one.
+// consumedResponse remembers a processed response: its place in the bounded FIFO, a digest of its payload, so that a
+// later copy with the same RequestId is told apart as an identical duplicate or as a conflicting one, and the capture
+// time it was processed at, so that a later response with that RequestId is known to be a copy only while copies can
+// still arrive (consumedCopyWindow).
 type consumedResponse struct {
 	sequence uint64
 	digest   uint64
+	at       time.Time
 }
+
+// consumedCopyWindow is how long after a response further responses with its RequestId are taken as copies of it. The
+// server sends a response's copies in the same or the next frames; the client reuses a RequestId only after 32,767
+// further combat requests, many minutes later. A response with the RequestId of one processed longer ago belongs to a
+// later request that reused it, whose request may still be on its way, so it is held like any response without its
+// request.
+const consumedCopyWindow = damageResponseHoldWindow
 
 // responseDigest is the 64-bit FNV-1a hash of a DamageExecuteResponse payload. It only compares copies of one response.
 func responseDigest(payload []byte) uint64 {
@@ -100,6 +143,8 @@ type processorStats struct {
 	invalidResponses                 int
 	duplicateResponses               int // a further copy of a response already seen, byte for byte
 	conflictingResponses             int // a further response with the RequestId of one already seen but other content
+	reusedRequestIDs                 int // a completed RequestId taken by a later request after the counter wrapped
+	supersededRequests               int // an unanswered request whose RequestId a later request took (never answered)
 	missingAttackerEntityID          int
 	evictedPending                   int
 	entityAdds                       int
@@ -160,6 +205,7 @@ type processor struct {
 	consumed                  map[uint64]consumedResponse
 	consumedOrder             []consumedRef
 	consumedSequence          uint64
+	requestCounter            combatRequestCounter
 	entities                  *entityResolver
 	sourceRoles               *sourceRoleResolver
 	playerRelevance           *playerRelevanceResolver
@@ -778,6 +824,7 @@ func (p *processor) handleProtoKeyResponse(body []byte) error {
 	p.consumed = make(map[uint64]consumedResponse)
 	p.consumedOrder = nil
 	p.consumedSequence = 0
+	p.requestCounter = combatRequestCounter{}
 	// RPC ids restart with the session: a held response can never pair with a request of the new session.
 	p.discardHeldResponses(&p.pairing.sessionChange)
 	p.entities.reset()
@@ -820,18 +867,19 @@ func (p *processor) handleDamageRequests(frame gameFrame, body []byte) {
 				p.stats.parseErrors++
 				continue
 			}
+			// An absent RequestId is the proto3 default 0, which the client's counter sends once per wrap.
 			var rpcID uint64
-			var hasRPC bool
 			var u3n []byte
 			for _, requestField := range requestFields {
 				if requestField.number == fieldCombatRequestDataRequestID && requestField.wire == 0 {
-					rpcID, hasRPC = requestField.value, true
+					rpcID = requestField.value
 				}
 				if requestField.number == fieldCombatRequestDataDamageExecuteRequest && requestField.wire == 2 {
 					u3n = requestField.data
 				}
 			}
-			if !hasRPC || u3n == nil {
+			epoch := p.requestCounter.observe(rpcID)
+			if u3n == nil {
 				continue
 			}
 			damageFields, err := parseProtoFields(u3n)
@@ -890,11 +938,18 @@ func (p *processor) handleDamageRequests(frame gameFrame, body []byte) {
 				p.census.innerEntries["Client->Server DamageExecuteRequest"]++
 			}
 			p.stats.damageRequests++
+			identity.requestEpoch = epoch
 			if _, alreadyConsumed := p.consumed[rpcID]; alreadyConsumed {
-				fmt.Fprintf(p.diagnostic, "rpc_id_reused_after_completion rpc_id=%d\n", rpcID)
+				// The counter wrapped: the RequestId now names this request. The earlier result keeps its own extended id,
+				// and this request's response is paired with this request instead of being taken for a copy.
+				delete(p.consumed, rpcID)
+				p.stats.reusedRequestIDs++
+				fmt.Fprintf(p.diagnostic, "rpc_id_reused_after_completion rpc_id=%d epoch=%d\n", rpcID, epoch)
 			}
 			if _, exists := p.pending[rpcID]; exists {
-				fmt.Fprintf(p.diagnostic, "duplicate_pending_damage_rpc rpc_id=%d\n", rpcID)
+				// The earlier request with this RequestId was never answered; it stays unanswered, now superseded.
+				p.stats.supersededRequests++
+				fmt.Fprintf(p.diagnostic, "duplicate_pending_damage_rpc rpc_id=%d epoch=%d\n", rpcID, epoch)
 			}
 			if p.masters != nil && identity.hasAttackerEntityID {
 				if skill, ok := p.masters.skills[identity.skillID]; ok {
@@ -943,7 +998,7 @@ func (p *processor) compactPendingOrder() {
 
 func (p *processor) rememberConsumed(rpcID, digest uint64) {
 	p.consumedSequence++
-	p.consumed[rpcID] = consumedResponse{sequence: p.consumedSequence, digest: digest}
+	p.consumed[rpcID] = consumedResponse{sequence: p.consumedSequence, digest: digest, at: p.currentFrameTime}
 	p.consumedOrder = append(p.consumedOrder, consumedRef{rpcID: rpcID, sequence: p.consumedSequence})
 	for len(p.consumed) > maxConsumedRPCIDs && len(p.consumedOrder) > 0 {
 		ref := p.consumedOrder[0]
@@ -952,20 +1007,38 @@ func (p *processor) rememberConsumed(rpcID, digest uint64) {
 			delete(p.consumed, ref.rpcID)
 		}
 	}
+	// A reused RequestId leaves its entry's place behind (the map entry is gone); keep the order bounded as well.
+	if len(p.consumedOrder) > 2*maxConsumedRPCIDs {
+		live := make([]consumedRef, 0, len(p.consumed))
+		for _, ref := range p.consumedOrder {
+			if p.consumed[ref.rpcID].sequence == ref.sequence {
+				live = append(live, ref)
+			}
+		}
+		p.consumedOrder = live
+	}
 }
 
-// handleOneDamageResult takes one server DamageExecuteResponse, from either container (handleCombatReceivePacks). The
-// RequestId of the protocol session is the result's identity: a response is processed once, with the request of that
-// RequestId, and every further copy is counted as a duplicate (same bytes) or a conflicting response (other bytes),
-// never as a second result. Arrival time or equal values never make two responses one.
+// handleOneDamageResult takes one server DamageExecuteResponse, from either container (handleCombatReceivePacks). A result
+// is named by its RequestId within the protocol session and by the wrap of the client's RequestId counter it was sent in
+// (extendedRequestID): a response is processed once, with the request of that RequestId, and every further copy is
+// counted as a duplicate (same bytes) or a conflicting response (other bytes), never as a second result. Copies arrive
+// within consumedCopyWindow of the response they repeat; a response with the RequestId of one processed earlier than that
+// answers a later request that reused the RequestId. Equal values never make two responses one.
 func (p *processor) handleOneDamageResult(rpcID uint64, payload []byte) {
 	if consumed, already := p.consumed[rpcID]; already {
-		if consumed.digest == responseDigest(payload) {
-			p.stats.duplicateResponses++
-		} else {
-			p.stats.conflictingResponses++
+		if p.currentFrameTime.Sub(consumed.at) <= consumedCopyWindow {
+			if consumed.digest == responseDigest(payload) {
+				p.stats.duplicateResponses++
+			} else {
+				p.stats.conflictingResponses++
+			}
+			return
 		}
-		return
+		// The response of a later request with this RequestId, ahead of its request: the earlier result keeps its own
+		// extended id, and this one is held for its request like any response that arrives first.
+		delete(p.consumed, rpcID)
+		p.stats.reusedRequestIDs++
 	}
 	request, matched := p.pending[rpcID]
 	if !matched {

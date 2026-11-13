@@ -73,17 +73,17 @@ func receivePackDamageResponses(body []byte) ([]combatDamageResponse, int) {
 				malformed++
 				continue
 			}
+			// An absent RequestId is the proto3 default 0: the client's counter sends it once per wrap (combatRequestIDSpace).
 			var response combatDamageResponse
-			var hasRPC bool
 			for _, field := range fields {
 				if field.number == fieldCombatResponseDataRequestID && field.wire == 0 {
-					response.rpcID, hasRPC = field.value, true
+					response.rpcID = field.value
 				}
 				if field.number == fieldCombatResponseDataDamageExecuteResponse && field.wire == 2 {
 					response.payload = field.data
 				}
 			}
-			if hasRPC && response.payload != nil {
+			if response.payload != nil {
 				responses = append(responses, response)
 			}
 		}

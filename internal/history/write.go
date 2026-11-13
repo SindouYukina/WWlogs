@@ -372,7 +372,9 @@ func actorIDs(actor *capture.CombatActorType) (int64, int64) {
 }
 
 // insertEvent stores one accepted combat result. A response key already stored for the session is ignored: the engine
-// accepted it once, and replaying a journal never stores it twice.
+// accepted it once, and replaying a journal never stores it twice. rpc_id is the key's RPCID: the RequestId continued
+// past each wrap of the client's RequestId counter, equal to the RequestId until the first wrap, so the results of two
+// requests that shared a RequestId in one long protocol session are two rows.
 func (w *sessionWriter) insertEvent(ctx context.Context, sequence uint64, event *capture.CombatEventRecord) error {
 	if event == nil {
 		return errors.New("accepted entry without its event")

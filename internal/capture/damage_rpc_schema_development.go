@@ -46,18 +46,18 @@ func damageRPCPayloads(commandID uint16, body []byte) ([]damageRPCItem, error) {
 			if err != nil {
 				continue
 			}
+			// An absent RequestId is the proto3 default 0, as in handleDamageRequests.
 			var rpcID uint64
-			var hasRPC bool
 			var payload []byte
 			for _, f := range fields {
 				if f.number == fieldCombatRequestDataRequestID && f.wire == 0 {
-					rpcID, hasRPC = f.value, true
+					rpcID = f.value
 				}
 				if f.number == fieldCombatRequestDataDamageExecuteRequest && f.wire == 2 {
 					payload = f.data
 				}
 			}
-			if hasRPC && payload != nil {
+			if payload != nil {
 				items = append(items, damageRPCItem{RPCID: rpcID, Payload: payload})
 			}
 		}
