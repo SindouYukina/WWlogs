@@ -31,7 +31,7 @@ func plainDSN(path string) string {
 
 var testBuild = buildinfo.Identity{Version: "v0.7.0", BuildNumber: 0, Commit: "0123456789abcdef0123456789abcdef01234567", Dirty: "false", Profile: buildinfo.ProfilePublic}
 
-func openTestStore(t *testing.T, path string, location *time.Location) *Store {
+func openTestStore(t testing.TB, path string, location *time.Location) *Store {
 	t.Helper()
 	if location == nil {
 		location = time.UTC
@@ -93,7 +93,7 @@ func finishedEncounter(interval, sequence uint64, start time.Time, seconds int, 
 var protocolOne = capture.HistoryEntry{Kind: capture.HistoryProtocolConfirmed, Protocol: &capture.HistoryProtocolSession{Number: 1, GameVersion: capture.CurrentGameVersion()}}
 
 // begin starts a recorder whose first span names protocol session 1, as a capture's journal does.
-func begin(t *testing.T, store *Store, start SessionStart) *Recorder {
+func begin(t testing.TB, store *Store, start SessionStart) *Recorder {
 	t.Helper()
 	recorder, err := store.BeginSession(start)
 	if err != nil {
@@ -112,7 +112,7 @@ func begin(t *testing.T, store *Store, start SessionStart) *Recorder {
 	return recorder
 }
 
-func record(t *testing.T, store *Store, start SessionStart, batches ...[]capture.HistoryEntry) *Recorder {
+func record(t testing.TB, store *Store, start SessionStart, batches ...[]capture.HistoryEntry) *Recorder {
 	t.Helper()
 	recorder := begin(t, store, start)
 	for _, batch := range batches {
