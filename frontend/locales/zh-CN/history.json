@@ -21,6 +21,7 @@
   "recovered": "之前运行时未结束的 {{n}} 场战斗已标记为未完成。",
   "columns": {
     "start": "开始时间",
+    "version": "游戏版本",
     "mode": "游戏玩法",
     "scene": "关卡／场景",
     "enemy": "主要敌人",
@@ -61,7 +62,7 @@
   },
   "back": "返回 {{date}}",
   "detailTitle": "{{date}} {{time}}",
-  "gameVersion": "游戏版本 {{version}}",
+  "versionUnknown": "这场战斗没有记录游戏版本",
   "timeRange": "时间",
   "recordedBy": "记录来源",
   "incompleteNote": "这条记录有部分内容未能保存，保存的数值可能低于实际情况。",

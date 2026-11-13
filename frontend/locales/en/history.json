@@ -21,6 +21,7 @@
   "recovered": "{{n}} encounters that an earlier run left unfinished are marked as unfinished.",
   "columns": {
     "start": "Start",
+    "version": "Game version",
     "mode": "Mode",
     "scene": "Stage or scene",
     "enemy": "Main enemy",
@@ -61,7 +62,7 @@
   },
   "back": "Back to {{date}}",
   "detailTitle": "{{date}} {{time}}",
-  "gameVersion": "Game version {{version}}",
+  "versionUnknown": "No game version was recorded for this encounter",
   "timeRange": "Time",
   "recordedBy": "Recorded by",
   "incompleteNote": "Part of this record could not be saved, so the stored values may be lower than what happened.",

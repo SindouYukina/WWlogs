@@ -21,6 +21,7 @@
   "recovered": "前回の実行で終了しなかった{{n}}件の戦闘を未完了として記録しました。",
   "columns": {
     "start": "開始時刻",
+    "version": "ゲームバージョン",
     "mode": "モード",
     "scene": "ステージ／シーン",
     "enemy": "主な敵",
@@ -61,7 +62,7 @@
   },
   "back": "{{date}}に戻る",
   "detailTitle": "{{date}} {{time}}",
-  "gameVersion": "ゲームバージョン {{version}}",
+  "versionUnknown": "この戦闘のゲームバージョンは記録されていません",
   "timeRange": "時刻",
   "recordedBy": "記録元",
   "incompleteNote": "この記録の一部を保存できなかったため、保存された値は実際より少ない可能性があります。",
