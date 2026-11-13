@@ -134,7 +134,7 @@ var semanticNeverListed = map[uint64]string{
 	3098:       "fall damage immunity",
 }
 
-var semanticSkillFacts = currentGoldenFacts(func(capture string) []semanticSkillFact {
+var semanticSkillFacts = append(currentGoldenFacts(func(capture string) []semanticSkillFact {
 	return []semanticSkillFact{
 		{capture, 1409, 1409021, "VERIFIED", "official", "此劍，為潮水的過去", false},
 		// Trial roles name their rows through their parent role (TrialRoleInfo.ParentId): every DamageId of these rows
@@ -150,7 +150,15 @@ var semanticSkillFacts = currentGoldenFacts(func(capture string) []semanticSkill
 		{capture, 15127004, 15128001, "DERIVED", "damage_list", "墜於幻夢搖籃", true},
 		{capture, 15127004, 20015301, "DERIVED", "echo", "解形煞", true},
 	}
-})
+}),
+	// Lily's (role 1512) skill IDs the Build 31 capture adds to the corpus, owned and in her character tutorial (trial
+	// role 100668, TrialRoleInfo.ParentId 1512). Each row's DamageId is listed by exactly one UI skill of role 1512 in the
+	// 3.8.9 client's skill tables (skill_damage_ref): 151280022 only by 1006306, 151250032 only by 1006307, 151260012 only
+	// by 1006301, whose official names these are. No hit of hers in the capture lacks a SkillId except effect healing.
+	semanticSkillFact{build31LiveCapture, 1512, 15129002, "DERIVED", "damage_list", "綺夢綻香", true},
+	semanticSkillFact{build31LiveCapture, 1512, 15124202, "DERIVED", "damage_list", "花滿夢土", true},
+	semanticSkillFact{build31LiveCapture, 100668, 15124201, "DERIVED", "damage_list", "夢愈淨瑕", true},
+)
 
 // semanticNoSkillFact is what a capture's confirmed damage without a SkillId must show for one role. The damage and event
 // counts stay exactly the no-SkillId damage of the capture: a name never moves a hit out of the bucket.
@@ -232,6 +240,35 @@ var semanticCompletenessFacts = append(append(currentGoldenFacts(func(capture st
 	semanticCompletenessFact{build28LiveCapture, 28, 805035, 0, 0, 0},
 	semanticCompletenessFact{build28LiveCapture, 29, 778104, 0, 0, 0},
 	semanticCompletenessFact{build28LiveCapture, 30, 774638, 0, 0, 0},
+	// The 18 encounters the engine finished in the Build 31 capture (it discarded a 19th, sequence 18). Checked outside the
+	// product's combat decoders with work/live-build31/completeness_audit_wrap.py on the generic schema decode: all 9,069
+	// responses of both containers keyed by their RequestId continued past the wrap of the client's counter and paired
+	// with the latest request of that RequestId; every value, attacker and target equal to the decode and the request; the
+	// direction from the server's EntityType; every outgoing attacker a role entity of the server's JoinSceneNotify or
+	// EntityAddNotify, with the role split equal per encounter, except the vehicle (EntityType 10, ConfigId 36000052) in
+	// encounters 17 and 19; 8,395 of the 8,397 results with a ChangeLife equal to a step of their target's Life (encounter
+	// 13, trial roles 100605 and 100668 in Lily's character tutorial, leaves Life unchanged); each encounter one server
+	// battle interval except 15 and 16, which join three consecutive intervals each by the re-entry rule. The counter
+	// wrapped during encounter 11 (frame 54844); until 2026-11-14 the product dropped the 675 results whose RequestId was
+	// used a second time, and encounters 11 to 19 read lower (encounter 12: 34,205,192).
+	semanticCompletenessFact{build31LiveCapture, 1, 5510829, 0, 0, 0},
+	semanticCompletenessFact{build31LiveCapture, 2, 5635117, 0, 0, 0},
+	semanticCompletenessFact{build31LiveCapture, 3, 5976286, 0, 0, 0},
+	semanticCompletenessFact{build31LiveCapture, 4, 10550937, 0, 0, 0},
+	semanticCompletenessFact{build31LiveCapture, 5, 5600389, 0, 0, 0},
+	semanticCompletenessFact{build31LiveCapture, 6, 2420761, 0, 0, 0},
+	semanticCompletenessFact{build31LiveCapture, 7, 9177422, 0, 0, 0},
+	semanticCompletenessFact{build31LiveCapture, 8, 3670891, 0, 0, 0},
+	semanticCompletenessFact{build31LiveCapture, 9, 3271915, 0, 0, 0},
+	semanticCompletenessFact{build31LiveCapture, 10, 16709695, 0, 0, 0},
+	semanticCompletenessFact{build31LiveCapture, 11, 31781841, 0, 0, 0},
+	semanticCompletenessFact{build31LiveCapture, 12, 43449832, 0, 0, 0},
+	semanticCompletenessFact{build31LiveCapture, 13, 32405, 0, 0, 0},
+	semanticCompletenessFact{build31LiveCapture, 14, 7898912, 0, 0, 0},
+	semanticCompletenessFact{build31LiveCapture, 15, 781541, 0, 0, 0},
+	semanticCompletenessFact{build31LiveCapture, 16, 914112, 0, 0, 0},
+	semanticCompletenessFact{build31LiveCapture, 17, 222376, 47230, 0, 0},
+	semanticCompletenessFact{build31LiveCapture, 19, 936031, 47105, 0, 0},
 )
 
 type semanticEffectSeen struct {
@@ -581,6 +618,15 @@ func TestSemanticReplayCollector(t *testing.T) {
 				}
 			}
 			collect(view.Roles)
+			// The capture's skill rows are logged for review of new facts, as the listed statuses are.
+			for _, role := range view.Roles {
+				for _, skill := range role.Skills {
+					t.Logf("skill row %d/%d: %q %s/%s show %v icon %s/%d, %d in %d hits", role.RoleID, skill.SkillID, skill.Name, skill.NameStatus, skill.NameSource, skill.ShowSkillID, skill.IconKind, skill.IconID, skill.DamageDealt, skill.OutgoingEvents)
+				}
+				if unassigned := role.UnassignedSkill; unassigned.OutgoingEvents > 0 {
+					t.Logf("skill row %d/none: %q %s/%s, %d in %d hits", role.RoleID, unassigned.Name, unassigned.NameStatus, unassigned.NameSource, unassigned.DamageDealt, unassigned.OutgoingEvents)
+				}
+			}
 			if view.Encounters.Current != nil {
 				collect(view.Encounters.Current.Roles)
 			}
