@@ -164,6 +164,15 @@ func (c *indexCache) clear() {
 	c.mu.Unlock()
 }
 
+// forget drops the index and one deleted encounter's largest hits. The largest hits are kept only for record-eligible
+// encounters, which are finished and never change, so every other encounter's entry stays valid.
+func (c *indexCache) forget(id int64) {
+	c.mu.Lock()
+	c.fingerprint, c.encounters = "", nil
+	delete(c.maxHits, id)
+	c.mu.Unlock()
+}
+
 // fingerprint changes with every stored change an index reads: an encounter added, removed, finished or checkpointed.
 func (s *Store) fingerprint(ctx context.Context) (string, error) {
 	var count, maxID int64
