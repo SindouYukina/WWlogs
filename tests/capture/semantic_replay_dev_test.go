@@ -53,6 +53,14 @@ type semanticSkillFact struct {
 // names against the client's skill tables. The Global 3.7 facts are kept there too; those captures are no longer decoded.
 var currentGoldenCaptures = []string{"LIVE_20261112_110155", "SYNTH-MISSED-LOGIN-RELOGIN-3.8"}
 
+// build29LiveCapture is the owner's Build 29 LIVE acceptance capture of Global 3.8.9 (2026-11-13): six attempts at one
+// challenge, each opened by its own JoinSceneNotify and CountDownChallenge; the first five with roles 1102, 1312 and the
+// owned role 1512, the sixth with 1209, 1409 and 1508. Its facts are checked outside the product's combat decoders
+// (research/runs/2026-11-13/v0.7.0-live-3.8.9-archival): all 777 damage responses against the generic schema decode and
+// their requests, each encounter re-added from the schema Damage between consecutive JoinSceneNotify frames with the
+// direction taken from the server's EntityType, every target Life step explained, and stacks from the effect messages.
+const build29LiveCapture = "LIVE_20261113_003512"
+
 // currentGoldenFacts states the same facts for each capture of the golden corpus.
 func currentGoldenFacts[T any](facts func(capture string) []T) []T {
 	var all []T
@@ -62,7 +70,7 @@ func currentGoldenFacts[T any](facts func(capture string) []T) []T {
 	return all
 }
 
-var semanticEffectFacts = currentGoldenFacts(func(capture string) []semanticEffectFact {
+var semanticEffectFacts = append(currentGoldenFacts(func(capture string) []semanticEffectFact {
 	return []semanticEffectFact{
 		// Monster Glacio a monster puts on the local player (ApplyGameplayEffectPush, StackCount 1).
 		{capture, 10010000, EffectPolarityDebuff, EffectTargetTeam, 1},
@@ -70,7 +78,14 @@ var semanticEffectFacts = currentGoldenFacts(func(capture string) []semanticEffe
 		// ApplyGameplayEffectNotify on the monster with StackCount 1.
 		{capture, 10041000, EffectPolarityDebuff, EffectTargetEnemy, 1},
 	}
-})
+}),
+	// In encounter 6 role 1409 stacks Aero Erosion on the boss to 8 and role 1508 effect 10061000 to 6, both above the
+	// buff table's StackLimitCount 3: ApplyGameplayEffectNotify opens each handle on the monster (EntityType 2) and
+	// BuffStackCountNotify on that handle raises NewStackCount. Both buffs have a type 2 HUD cue with the same direction
+	// parameter.
+	semanticEffectFact{build29LiveCapture, 10041000, EffectPolarityDebuff, EffectTargetEnemy, 8},
+	semanticEffectFact{build29LiveCapture, 10061000, EffectPolarityDebuff, EffectTargetEnemy, 6},
+)
 
 // Effects that must never be listed: logic flags and refresh-period modifiers the game draws no buff-bar item for.
 var semanticNeverListed = map[uint64]string{
@@ -127,13 +142,24 @@ type semanticCompletenessFact struct {
 }
 
 // Encounter 1 is role 1409 with a motorcycle; encounter 2 is the trial team. The six monster-on-monster hits of the
-// capture (1,675) belong to neither encounter.
-var semanticCompletenessFacts = currentGoldenFacts(func(capture string) []semanticCompletenessFact {
+// capture (1,675) belong to neither encounter. The 11 server responses that arrive in a standalone
+// CombatReceivePackNotify (80,862, all in encounter 2) are not in these totals: the decoder reads damage responses only
+// from CombatSendPackResponse.
+var semanticCompletenessFacts = append(currentGoldenFacts(func(capture string) []semanticCompletenessFact {
 	return []semanticCompletenessFact{
 		{capture, 1, 348646, 78716, 0, 0},
 		{capture, 2, 514319, 0, 0, 0},
 	}
-})
+}),
+	// Encounters 1 to 5 of the Build 29 capture; every hit comes from a role entity, none from a vehicle. Encounter 6 is
+	// left out on purpose: two responses of role 1409 (112,432) arrive in a standalone CombatReceivePackNotify, so its
+	// total stays short of what the server confirmed until the decoder reads them.
+	semanticCompletenessFact{build29LiveCapture, 1, 2239230, 0, 0, 0},
+	semanticCompletenessFact{build29LiveCapture, 2, 2661425, 0, 0, 0},
+	semanticCompletenessFact{build29LiveCapture, 3, 1290079, 0, 0, 0},
+	semanticCompletenessFact{build29LiveCapture, 4, 3558115, 0, 0, 0},
+	semanticCompletenessFact{build29LiveCapture, 5, 3039257, 0, 0, 0},
+)
 
 type semanticEffectSeen struct {
 	row      EffectPolarity
