@@ -187,8 +187,12 @@ body[data-view="overlay"][data-editing="true"] { --wails-draggable: drag; }
 .ww-history-coverage .ww-history-facts { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); font-size: var(--ww-text-xs); }
 .ww-analysis { display: flex; flex-direction: column; gap: var(--ww-space-3); min-width: 0; }
 /* The bars of an opening grow with the timeline's reveal: while the reveal waits at the start for the page's first drawing,
-   they wait at theirs, so a first rasterization never stops a bar halfway. */
-.ww-analysis[data-reveal="waiting"] .ww-bar[data-enter="true"] > * { animation-play-state: paused; }
+   they wait at theirs, so a first rasterization never stops a bar halfway. The selector names the bar's three layers
+   (DamageBar) instead of ending in `*`: a state selector whose last part names nothing makes the browser restyle the whole
+   analysis when data-reveal changes, about 1500 elements in the sweep's first frame. */
+.ww-analysis[data-reveal="waiting"] .ww-bar[data-enter="true"] > .ww-bar-trail,
+.ww-analysis[data-reveal="waiting"] .ww-bar[data-enter="true"] > .ww-bar-fill,
+.ww-analysis[data-reveal="waiting"] .ww-bar[data-enter="true"] > .ww-bar-edge { animation-play-state: paused; }
 .ww-analysis-toolbar { padding: var(--ww-space-2) var(--ww-space-4); }
 .ww-analysis-toolbar-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ww-space-2) var(--ww-space-4); }
 .ww-analysis-filter { display: flex; align-items: center; gap: var(--ww-space-2); min-width: 0; font-size: var(--ww-text-xs); color: var(--ww-text-3); }
@@ -264,15 +268,25 @@ body[data-view="overlay"][data-editing="true"] { --wails-draggable: drag; }
    composited layers the sweep is about to move. The first rasterization of the lines, the tracks and the edge, and any GPU
    program no earlier frame needed, so happens while nothing moves and never in the sweep's first frames. Nothing in it can
    be pointed at while it waits. */
-.ww-atl-reveal[data-enter], .ww-atl-reveal[data-enter] > * { will-change: transform; }
+/* The state selectors of a reveal window name the elements they style (its inner content and its edge, the only children it
+   has) and never end in `*`, which would restyle every icon and track under it each time data-enter changes. Pointer
+   events are inherited, so the waiting window turns them off for everything in it; lane marks are the only elements inside
+   that turn them back on, so they are named. */
+.ww-atl-reveal[data-enter], .ww-atl-reveal[data-enter] > .ww-atl-reveal-inner, .ww-atl-reveal[data-enter] > .ww-atl-reveal-edge { will-change: transform; }
 .ww-atl-reveal[data-enter="waiting"] { opacity: 0.004; }
-.ww-atl-reveal[data-enter="waiting"], .ww-atl-reveal[data-enter="waiting"] * { pointer-events: none; }
+.ww-atl-reveal[data-enter="waiting"], .ww-atl-reveal[data-enter="waiting"] .ww-lane-mark { pointer-events: none; }
 .ww-atl-reveal[data-enter="waiting"] > .ww-atl-reveal-edge { opacity: 0.85; }
+/* --ww-reveal-at (set on the window when the playing starts: how far into it the window joins) is not inherited, and only the
+   window's two children take it from the window. Inherited, setting it would restyle every icon and track in the window in
+   the sweep's first frame. */
+@property --ww-reveal-at { syntax: "<time>"; inherits: false; initial-value: 0ms; }
 .ww-atl-reveal[data-enter="true"] { animation: ww-reveal-window var(--ww-curve-enter-dur) var(--ww-ease-curve-enter) var(--ww-reveal-at, 0ms) backwards; }
-.ww-atl-reveal[data-enter="true"] > .ww-atl-reveal-inner { animation: ww-reveal-content var(--ww-curve-enter-dur) var(--ww-ease-curve-enter) var(--ww-reveal-at, 0ms) backwards; }
+.ww-atl-reveal[data-enter="true"] > .ww-atl-reveal-inner { --ww-reveal-at: inherit; animation: ww-reveal-content var(--ww-curve-enter-dur) var(--ww-ease-curve-enter) var(--ww-reveal-at, 0ms) backwards; }
 .ww-atl-reveal-edge { position: absolute; top: 6px; bottom: 6px; right: 0; width: 2px; border-radius: 1px; background: var(--ww-accent-bright); box-shadow: 0 0 10px 1px color-mix(in oklch, var(--ww-accent) 55%, transparent); opacity: 0; }
-.ww-atl-reveal[data-enter="true"] > .ww-atl-reveal-edge { animation: ww-reveal-edge var(--ww-curve-enter-dur) linear var(--ww-reveal-at, 0ms) backwards; }
-:root[data-ww-motion="reduced"] .ww-atl-reveal[data-enter="true"], :root[data-ww-motion="reduced"] .ww-atl-reveal[data-enter="true"] > * { animation: none; }
+.ww-atl-reveal[data-enter="true"] > .ww-atl-reveal-edge { --ww-reveal-at: inherit; animation: ww-reveal-edge var(--ww-curve-enter-dur) linear var(--ww-reveal-at, 0ms) backwards; }
+:root[data-ww-motion="reduced"] .ww-atl-reveal[data-enter="true"],
+:root[data-ww-motion="reduced"] .ww-atl-reveal[data-enter="true"] > .ww-atl-reveal-inner,
+:root[data-ww-motion="reduced"] .ww-atl-reveal[data-enter="true"] > .ww-atl-reveal-edge { animation: none; }
 .ww-atl-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
 .ww-atl-line[data-focused="true"] { stroke-width: 3; }
 .ww-atl[data-focusing="true"] .ww-chart-layer[data-focused="false"] { opacity: 0.2; }
@@ -280,7 +294,7 @@ body[data-view="overlay"][data-editing="true"] { --wails-draggable: drag; }
 .ww-atl-dim { position: absolute; top: 0; bottom: 0; background: color-mix(in oklch, var(--ww-surface-canvas) 55%, transparent); pointer-events: none; }
 .ww-atl-range { position: absolute; top: 0; bottom: 0; border-inline: 1px solid var(--ww-accent); background: var(--ww-accent-soft); pointer-events: none; }
 .ww-atl-range[data-pending="true"] { border-style: dashed; }
-.ww-atl-gap { position: absolute; top: 0; bottom: 0; border-inline: 1px dashed var(--ww-warn); background: repeating-linear-gradient(135deg, var(--ww-warn-soft) 0 4px, transparent 4px 8px); pointer-events: none; }
+.ww-atl-gap { position: absolute; top: 0; bottom: 0; border-inline: 1px dashed var(--ww-warn); background: repeating-linear-gradient(135deg in srgb, var(--ww-warn-soft) 0 4px, transparent 4px 8px); pointer-events: none; }
 .ww-atl-plot > svg.ww-atl-marks { inset: auto 0 0 0; height: 12px; pointer-events: none; }
 .ww-atl-marks line { stroke: var(--ww-accent-bright); stroke-width: 2; vector-effect: non-scaling-stroke; }
 .ww-atl-time { display: grid; grid-template-columns: var(--ww-analysis-gutter) minmax(0, 1fr); height: 18px; margin-top: var(--ww-space-1); font-size: var(--ww-text-2xs); color: var(--ww-text-4); }
@@ -313,7 +327,7 @@ body[data-view="overlay"][data-editing="true"] { --wails-draggable: drag; }
 .ww-lane-seg > b { padding-inline-end: 3px; font-size: 9px; font-weight: var(--ww-weight-semibold); color: var(--ww-ink-950); }
 .ww-lane-seg[data-evidence="stated"] { background: color-mix(in oklch, var(--ww-lane-color) 32%, transparent); box-shadow: inset 0 0 0 1px var(--ww-lane-color); opacity: 1; }
 .ww-lane-seg[data-evidence="stated"] > b { color: var(--ww-text); }
-.ww-lane-seg[data-evidence="unknown"] { background: repeating-linear-gradient(135deg, color-mix(in oklch, var(--ww-lane-color) 30%, transparent) 0 3px, transparent 3px 6px); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--ww-lane-color) 45%, transparent); opacity: 1; }
+.ww-lane-seg[data-evidence="unknown"] { background: repeating-linear-gradient(135deg in srgb, color-mix(in oklch, var(--ww-lane-color) 30%, transparent) 0 3px, transparent 3px 6px); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--ww-lane-color) 45%, transparent); opacity: 1; }
 .ww-lane-mark { position: absolute; top: 3px; bottom: 3px; width: 2px; margin-inline-start: -1px; background: var(--ww-text-2); pointer-events: auto; z-index: 1; }
 .ww-lane-mark[data-kind="applied"] { background: var(--ww-lane-color); }
 .ww-lane-mark[data-kind="start_unconfirmed"] { width: 0; margin-inline-start: 0; background: none; border-inline-start: 2px dotted var(--ww-warn); }
@@ -324,8 +338,8 @@ body[data-view="overlay"][data-editing="true"] { --wails-draggable: drag; }
 .ww-lane-mark[data-kind="continues"] { width: 0; margin-inline-start: -6px; background: none; border-block: 5px solid transparent; border-inline-start: 6px solid var(--ww-text-3); top: calc(50% - 5px); bottom: auto; }
 .ww-lane-swatch { display: inline-block; width: 18px; height: 8px; border-radius: 2px; --ww-lane-color: var(--ww-good); background: var(--ww-lane-color); }
 .ww-lane-swatch[data-evidence="stated"] { background: color-mix(in oklch, var(--ww-lane-color) 32%, transparent); box-shadow: inset 0 0 0 1px var(--ww-lane-color); }
-.ww-lane-swatch[data-evidence="unknown"] { background: repeating-linear-gradient(135deg, color-mix(in oklch, var(--ww-lane-color) 30%, transparent) 0 3px, transparent 3px 6px); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--ww-lane-color) 45%, transparent); }
-.ww-lane-swatch[data-evidence="gap"] { border: 1px dashed var(--ww-warn); background: repeating-linear-gradient(135deg, var(--ww-warn-soft) 0 3px, transparent 3px 6px); }
+.ww-lane-swatch[data-evidence="unknown"] { background: repeating-linear-gradient(135deg in srgb, color-mix(in oklch, var(--ww-lane-color) 30%, transparent) 0 3px, transparent 3px 6px); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--ww-lane-color) 45%, transparent); }
+.ww-lane-swatch[data-evidence="gap"] { border: 1px dashed var(--ww-warn); background: repeating-linear-gradient(135deg in srgb, var(--ww-warn-soft) 0 3px, transparent 3px 6px); }
 .ww-lane-mark-swatch { display: inline-block; width: 0; height: 10px; border-inline-start: 2px dotted var(--ww-warn); }
 
 /* The timeline card's head: the presentation switch, zoom and replay share one line with the title; the hint sits under it. */

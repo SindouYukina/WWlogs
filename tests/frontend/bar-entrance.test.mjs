@@ -26,7 +26,7 @@ test("reduced motion makes the entrance instant and review speed slows it with e
   assert.equal(reduced["--ww-bar-enter-dur"], "0ms")
   assert.equal(reduced["--ww-bar-enter-stagger"], "0ms")
   assert.equal(motionVariables({ scale: 2 })["--ww-bar-enter-dur"], "1300ms")
-  assert.ok(source("frontend/src/design/components.css").includes(':root[data-ww-motion="reduced"] .ww-bar[data-enter="true"] > * { animation: none; }'))
+  assert.match(source("frontend/src/design/components.css"), /:root\[data-ww-motion="reduced"\] \.ww-bar\[data-enter="true"\] > \.ww-bar-trail,\r?\n:root\[data-ww-motion="reduced"\] \.ww-bar\[data-enter="true"\] > \.ww-bar-fill,\r?\n:root\[data-ww-motion="reduced"\] \.ww-bar\[data-enter="true"\] > \.ww-bar-edge \{ animation: none; \}/)
 })
 
 test("the entrance grows each layer left to right with transforms and holds nothing afterwards", () => {

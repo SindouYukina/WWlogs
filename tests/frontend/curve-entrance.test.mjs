@@ -65,17 +65,21 @@ test("the reveal widens a window over the lines with transforms only and holds n
   assert.ok(css.includes(".ww-atl-reveal-inner { position: absolute; inset: 6px 0; }"))
   const rules = css.split("\n").filter(line => line.startsWith(".ww-atl-reveal[data-enter=\"true\"]") && line.includes("animation:"))
   assert.equal(rules.length, 3)
+  // The delay is set on the window only; it is not inherited, so the icons and tracks in the window are not restyled when it
+  // is set, and the window's content and edge take it from the window.
+  assert.ok(css.includes('@property --ww-reveal-at { syntax: "<time>"; inherits: false; initial-value: 0ms; }'))
+  assert.equal(rules.filter(rule => rule.includes("> .ww-atl-reveal-") && rule.includes("{ --ww-reveal-at: inherit; animation:")).length, 2)
   for (const rule of rules) {
     // Window and content share duration, delay and fill, so the lines never move; the edge fades linearly in time.
     assert.match(rule, /var\(--ww-curve-enter-dur\) (var\(--ww-ease-curve-enter\)|linear) var\(--ww-reveal-at, 0ms\) backwards;/)
     assert.doesNotMatch(rule, /\bboth\b|\bforwards\b|infinite/)
   }
-  assert.ok(css.includes(':root[data-ww-motion="reduced"] .ww-atl-reveal[data-enter="true"], :root[data-ww-motion="reduced"] .ww-atl-reveal[data-enter="true"] > * { animation: none; }'))
+  assert.match(css, /:root\[data-ww-motion="reduced"\] \.ww-atl-reveal\[data-enter="true"\],\r?\n:root\[data-ww-motion="reduced"\] \.ww-atl-reveal\[data-enter="true"\] > \.ww-atl-reveal-inner,\r?\n:root\[data-ww-motion="reduced"\] \.ww-atl-reveal\[data-enter="true"\] > \.ww-atl-reveal-edge \{ animation: none; \}/)
   // While it waits, the content is drawn in place but invisible, in the composited layers the sweep then moves, so its first
   // rasterization (and any GPU program it is the first to need) is done before anything moves; nothing can be pointed at.
-  assert.ok(css.includes('.ww-atl-reveal[data-enter], .ww-atl-reveal[data-enter] > * { will-change: transform; }'))
+  assert.ok(css.includes('.ww-atl-reveal[data-enter], .ww-atl-reveal[data-enter] > .ww-atl-reveal-inner, .ww-atl-reveal[data-enter] > .ww-atl-reveal-edge { will-change: transform; }'))
   assert.ok(css.includes('.ww-atl-reveal[data-enter="waiting"] { opacity: 0.004; }'))
-  assert.ok(css.includes('.ww-atl-reveal[data-enter="waiting"], .ww-atl-reveal[data-enter="waiting"] * { pointer-events: none; }'))
+  assert.ok(css.includes('.ww-atl-reveal[data-enter="waiting"], .ww-atl-reveal[data-enter="waiting"] .ww-lane-mark { pointer-events: none; }'))
   assert.ok(css.includes('.ww-atl-reveal[data-enter="waiting"] > .ww-atl-reveal-edge { opacity: 0.85; }'))
   assert.doesNotMatch(css, /\.ww-atl-reveal\[data-enter="waiting"\][^{]*\{[^}]*transform:/, "waiting no longer moves the content out of view")
   // The edge is there while waiting too, so its glow is drawn once before the sweep.
@@ -147,10 +151,45 @@ test("a surface still loading or rendering holds the reveal at the start, for a 
   assert.match(icons, /const groups = useDeferredValue\(latestGroups, noGroups\)/)
 })
 
+// The selectors of the opening's changing states (data-enter, data-reveal) name the elements they style. One whose last part
+// is "*" makes the browser restyle everything under the element whose state changed (the whole analysis, every icon of the
+// timeline) at the sweep's first frame and again at its end.
+test("the states an opening changes restyle only the elements they name", () => {
+  const states = /\[data-(enter|reveal)\b/
+  for (const file of ["frontend/src/design/views.css", "frontend/src/design/components.css"]) {
+    const css = source(file).replace(/\/\*[\s\S]*?\*\//g, "")
+    for (const rule of css.split("}")) {
+      const at = rule.indexOf("{")
+      if (at < 0) continue
+      for (const selector of rule.slice(0, at).split(",").map(part => part.trim()).filter(Boolean)) {
+        if (states.test(selector)) assert.doesNotMatch(selector, /(^|[\s>+~])\*$/, `${file}: ${selector}`)
+      }
+    }
+  }
+  // A waiting reveal turns pointer events off for everything in it by inheritance; only these turn them back on, and lane
+  // marks (inside the icon timeline's reveal) are named by the waiting rule. A new one inside a reveal must join it.
+  const css = source("frontend/src/design/views.css") + source("frontend/src/design/components.css")
+  const enabling = [...css.matchAll(/(^|\})\s*([^{}]+)\{[^}]*pointer-events: auto/g)].map(match => match[2].trim()).sort()
+  assert.deepEqual(enabling, [".ww-itl-reveal", ".ww-lane-mark", ".ww-overlay-edit .ww-btn"])
+})
+
+test("every stripe pattern is two flat bands interpolated in sRGB", () => {
+  // Two bands with hard stops (a colour from 0 to N, transparent from N to 2N) have nothing between two stops, so the
+  // interpolation space changes no pixel; sRGB spares the GPU a per-pixel conversion from Oklab.
+  const stripes = ["frontend/src/design/components.css", "frontend/src/design/views.css"].flatMap(file => [...source(file).matchAll(/repeating-linear-gradient\(([^;]*)\);/g)].map(match => match[1]))
+  assert.equal(stripes.length, 7)
+  for (const stripe of stripes) {
+    const bands = stripe.match(/^\d+deg in srgb, (.+) 0 (\d+)px, transparent (\d+)px (\d+)px$/)
+    assert.ok(bands, stripe)
+    assert.equal(bands[3], bands[2], stripe)
+    assert.equal(Number(bands[4]), 2 * Number(bands[2]), stripe)
+  }
+})
+
 test("the opening bars wait with the reveal and the hit icons have an opaque border", () => {
   const css = source("frontend/src/design/views.css")
   // While the reveal waits for the page's first drawing, the bars of the opening wait at their start too.
-  assert.ok(css.includes('.ww-analysis[data-reveal="waiting"] .ww-bar[data-enter="true"] > * { animation-play-state: paused; }'))
+  assert.match(css, /\.ww-analysis\[data-reveal="waiting"\] \.ww-bar\[data-enter="true"\] > \.ww-bar-trail,\r?\n\.ww-analysis\[data-reveal="waiting"\] \.ww-bar\[data-enter="true"\] > \.ww-bar-fill,\r?\n\.ww-analysis\[data-reveal="waiting"\] \.ww-bar\[data-enter="true"\] > \.ww-bar-edge \{ animation-play-state: paused; \}/)
   assert.match(source("frontend/src/views/HistoryAnalysis.tsx"), /className="ww-analysis" data-field="analysis" data-encounter-id=\{id\} data-reveal=\{reveal\?\.at === null \? "waiting" : undefined\}/)
   // A translucent rounded border over a background is drawn as a path; the icon border is the same colour, mixed opaque.
   const hit = css.split(/\r?\n/).find(line => line.startsWith(".ww-itl-hit {"))
