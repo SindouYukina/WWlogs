@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -60,6 +61,17 @@ var currentGoldenCaptures = []string{"LIVE_20261112_110155", "SYNTH-MISSED-LOGIN
 // their requests, each encounter re-added from the schema Damage between consecutive JoinSceneNotify frames with the
 // direction taken from the server's EntityType, every target Life step explained, and stacks from the effect messages.
 const build29LiveCapture = "LIVE_20261113_003512"
+
+// build28LiveCapture is the owner's Build 28 LIVE capture of Global 3.8.9 (2026-11-12, 23:07-23:57): 30 encounters in 14
+// scene windows, roles 1102, 1409 and 1508 for most of them, then 1311, 1312 and 1512 and trial teams. About a fifth of its
+// confirmed damage came in standalone CombatReceivePackNotify responses, which made it the decisive sample for reading
+// both containers. Its facts are checked outside the product's combat decoders
+// (research/runs/2026-11-13/v0.7.0-damage-completeness): all 3,715 responses of both containers against the generic
+// schema decode and their requests, the direction of every confirmed result against the server's EntityType, every
+// attacker against the role entities of the server's JoinSceneNotify and EntityAddNotify, every non-zero ChangeLife
+// against an equal step of its target's Life, and each encounter against the local player's battle intervals from the
+// server's own PlayerBattleStateChangeNotify, cut at every JoinSceneNotify.
+const build28LiveCapture = "LIVE_20261112_230754"
 
 // currentGoldenFacts states the same facts for each capture of the golden corpus.
 func currentGoldenFacts[T any](facts func(capture string) []T) []T {
@@ -142,23 +154,62 @@ type semanticCompletenessFact struct {
 }
 
 // Encounter 1 is role 1409 with a motorcycle; encounter 2 is the trial team. The six monster-on-monster hits of the
-// capture (1,675) belong to neither encounter. The 11 server responses that arrive in a standalone
-// CombatReceivePackNotify (80,862, all in encounter 2) are not in these totals: the decoder reads damage responses only
-// from CombatSendPackResponse.
-var semanticCompletenessFacts = append(currentGoldenFacts(func(capture string) []semanticCompletenessFact {
+// capture (1,675) belong to neither encounter. Encounter 2 includes the 11 server responses (80,862) that arrive in a
+// standalone CombatReceivePackNotify; each answers a request with the same attacker and target and equals a step of its
+// target's Life. Until 2026-11-13 the decoder read responses only from CombatSendPackResponse and this fact was the
+// undercounted 514,319. The trial team's encounter spans three consecutive server battle intervals that the product's
+// re-entry rule joins (segment sums 128,702, 202,312 and 264,167).
+var semanticCompletenessFacts = append(append(currentGoldenFacts(func(capture string) []semanticCompletenessFact {
 	return []semanticCompletenessFact{
 		{capture, 1, 348646, 78716, 0, 0},
-		{capture, 2, 514319, 0, 0, 0},
+		{capture, 2, 595181, 0, 0, 0},
 	}
 }),
-	// Encounters 1 to 5 of the Build 29 capture; every hit comes from a role entity, none from a vehicle. Encounter 6 is
-	// left out on purpose: two responses of role 1409 (112,432) arrive in a standalone CombatReceivePackNotify, so its
-	// total stays short of what the server confirmed until the decoder reads them.
+	// The six encounters of the Build 29 capture; every hit comes from a role entity, none from a vehicle, and each
+	// encounter is one scene window and one server battle interval. Encounter 6 includes two responses of role 1409 to
+	// the boss (71,224 and 41,208) that arrive in a standalone CombatReceivePackNotify.
 	semanticCompletenessFact{build29LiveCapture, 1, 2239230, 0, 0, 0},
 	semanticCompletenessFact{build29LiveCapture, 2, 2661425, 0, 0, 0},
 	semanticCompletenessFact{build29LiveCapture, 3, 1290079, 0, 0, 0},
 	semanticCompletenessFact{build29LiveCapture, 4, 3558115, 0, 0, 0},
 	semanticCompletenessFact{build29LiveCapture, 5, 3039257, 0, 0, 0},
+	semanticCompletenessFact{build29LiveCapture, 6, 4027870, 0, 0, 0},
+),
+	// The 30 encounters of the Build 28 capture; every confirmed hit comes from a role entity, none from a vehicle.
+	// Encounters 3, 9, 16 and 17 each join consecutive server battle intervals by the product's re-entry rule (an empty
+	// interval lies inside encounter 9); the others are one interval each. The 69 hits of encounter 24 (trial roles
+	// 100605 and 100668) leave their targets' Life unchanged (ChangeLife 0), so only the generic decode and the requests
+	// check them. Standalone responses contribute to 15 of the encounters, 50,833,133 of them to encounter 15.
+	semanticCompletenessFact{build28LiveCapture, 1, 167421, 0, 0, 0},
+	semanticCompletenessFact{build28LiveCapture, 2, 187957, 0, 0, 0},
+	semanticCompletenessFact{build28LiveCapture, 3, 753629, 0, 0, 0},
+	semanticCompletenessFact{build28LiveCapture, 4, 479815, 0, 0, 0},
+	semanticCompletenessFact{build28LiveCapture, 5, 1564488, 0, 0, 0},
+	semanticCompletenessFact{build28LiveCapture, 6, 545421, 0, 0, 0},
+	semanticCompletenessFact{build28LiveCapture, 7, 589708, 0, 0, 0},
+	semanticCompletenessFact{build28LiveCapture, 8, 826317, 0, 0, 0},
+	semanticCompletenessFact{build28LiveCapture, 9, 4480917, 0, 0, 0},
+	semanticCompletenessFact{build28LiveCapture, 10, 1999022, 0, 0, 0},
+	semanticCompletenessFact{build28LiveCapture, 11, 6199860, 0, 0, 0},
+	semanticCompletenessFact{build28LiveCapture, 12, 2336687, 0, 0, 0},
+	semanticCompletenessFact{build28LiveCapture, 13, 14559464, 0, 0, 0},
+	semanticCompletenessFact{build28LiveCapture, 14, 11862892, 0, 0, 0},
+	semanticCompletenessFact{build28LiveCapture, 15, 300606059, 0, 0, 0},
+	semanticCompletenessFact{build28LiveCapture, 16, 868120, 0, 0, 0},
+	semanticCompletenessFact{build28LiveCapture, 17, 1289458, 0, 0, 0},
+	semanticCompletenessFact{build28LiveCapture, 18, 753129, 0, 0, 0},
+	semanticCompletenessFact{build28LiveCapture, 19, 731544, 0, 0, 0},
+	semanticCompletenessFact{build28LiveCapture, 20, 766861, 0, 0, 0},
+	semanticCompletenessFact{build28LiveCapture, 21, 709974, 0, 0, 0},
+	semanticCompletenessFact{build28LiveCapture, 22, 712330, 0, 0, 0},
+	semanticCompletenessFact{build28LiveCapture, 23, 767144, 0, 0, 0},
+	semanticCompletenessFact{build28LiveCapture, 24, 30594, 0, 0, 0},
+	semanticCompletenessFact{build28LiveCapture, 25, 190406, 0, 0, 0},
+	semanticCompletenessFact{build28LiveCapture, 26, 41320, 0, 0, 0},
+	semanticCompletenessFact{build28LiveCapture, 27, 789843, 0, 0, 0},
+	semanticCompletenessFact{build28LiveCapture, 28, 805035, 0, 0, 0},
+	semanticCompletenessFact{build28LiveCapture, 29, 778104, 0, 0, 0},
+	semanticCompletenessFact{build28LiveCapture, 30, 774638, 0, 0, 0},
 )
 
 type semanticEffectSeen struct {
@@ -568,6 +619,11 @@ func TestSemanticReplayCollector(t *testing.T) {
 	}
 	for _, fact := range semanticNoSkillFacts {
 		if !covered(fact.capture) {
+			absent = append(absent, fact.capture)
+		}
+	}
+	for _, fact := range semanticCompletenessFacts {
+		if !covered(fact.capture) && !slices.Contains(absent, fact.capture) {
 			absent = append(absent, fact.capture)
 		}
 	}

@@ -315,7 +315,7 @@ func TestCombatSendPackResponseProcessesNestedBuffApply(t *testing.T) {
 	body := appendBytesField(nil, fieldCombatSendPackResponseReceivePackNotify, receive)   // CombatSendPackResponse.ReceivePackNotify
 	frame := gameFrame{commandID: cmdCombatSendPackResponse, direction: "in", timestamp: time.Date(2026, 10, 27, 5, 0, 0, 0, time.UTC)}
 
-	if err := p.handleEmbeddedCombatReceivePackNotify(frame, body); err != nil {
+	if err := p.handleCombatReceivePacks(frame, body); err != nil {
 		t.Fatalf("handle embedded CombatReceivePackNotify: %v", err)
 	}
 	var row buffLifecycleAuditRow

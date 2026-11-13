@@ -55,7 +55,7 @@ func TestProcessorBattleStateNotifyDrivesEncounter(t *testing.T) {
 
 	// The exit arrives embedded in a CombatSendPackResponse, the container seen for most captured exits.
 	exit := gameFrame{commandID: cmdCombatSendPackResponse, direction: "in", timestamp: encounterAt(13)}
-	if err := p.handleEmbeddedCombatReceivePackNotify(exit, encounterWireBytes(fieldCombatSendPackResponseReceivePackNotify, battleStateReceivePack(false, 42))); err != nil {
+	if err := p.handleCombatReceivePacks(exit, encounterWireBytes(fieldCombatSendPackResponseReceivePackNotify, battleStateReceivePack(false, 42))); err != nil {
 		t.Fatal(err)
 	}
 	p.observeEncounterClock(encounterAt(15))

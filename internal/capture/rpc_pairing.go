@@ -1,6 +1,7 @@
 package capture
 
 import (
+	"bytes"
 	"fmt"
 	"math"
 	"slices"
@@ -73,6 +74,8 @@ type heldRemoval struct {
 type RPCPairingSnapshot struct {
 	Requests  int `json:"requests"`
 	Responses int `json:"responses"`
+	// StandaloneResponses of Responses came in a standalone CombatReceivePackNotify, the rest in a CombatSendPackResponse.
+	StandaloneResponses int `json:"standaloneResponses"`
 	// Paired counts responses processed with their request; PairedOutOfOrder of them arrived before the request.
 	Paired           uint64 `json:"paired"`
 	PairedOutOfOrder uint64 `json:"pairedOutOfOrder"`
@@ -86,10 +89,12 @@ type RPCPairingSnapshot struct {
 	// RewoundEntities counts entities a held pair saw in their state before a removal that followed its response.
 	RewoundEntities    uint64 `json:"rewoundEntities"`
 	DuplicateResponses int    `json:"duplicateResponses"`
-	InvalidResponses   int    `json:"invalidResponses"`
-	PendingRequests    int    `json:"pendingRequests"`
-	EvictedRequests    int    `json:"evictedRequests"`
-	HeldResponses      int    `json:"heldResponses"`
+	// ConflictingResponses repeat the RequestId of a response already taken with other content; only the first counts.
+	ConflictingResponses int `json:"conflictingResponses"`
+	InvalidResponses     int `json:"invalidResponses"`
+	PendingRequests      int `json:"pendingRequests"`
+	EvictedRequests      int `json:"evictedRequests"`
+	HeldResponses        int `json:"heldResponses"`
 }
 
 type rpcPairingState struct {
@@ -121,8 +126,12 @@ func (p *processor) observePairingClock(at time.Time) {
 // holdDamageResponse keeps a response whose request has not been seen yet.
 func (p *processor) holdDamageResponse(rpcID uint64, payload []byte) {
 	state := &p.pairing
-	if _, exists := state.held[rpcID]; exists {
-		p.stats.duplicateResponses++
+	if held, exists := state.held[rpcID]; exists {
+		if bytes.Equal(held.payload, payload) {
+			p.stats.duplicateResponses++
+		} else {
+			p.stats.conflictingResponses++
+		}
 		return
 	}
 	if state.held == nil {
@@ -360,17 +369,17 @@ func (p *processor) discardHeldResponses(reason *uint64) {
 func (p *processor) rpcPairingSnapshot() RPCPairingSnapshot {
 	state := p.pairing
 	return RPCPairingSnapshot{
-		Requests: p.stats.damageRequests, Responses: p.stats.candidateResponses,
+		Requests: p.stats.damageRequests, Responses: p.stats.candidateResponses, StandaloneResponses: p.stats.standaloneNotifyResponses,
 		Paired: state.paired, PairedOutOfOrder: state.outOfOrder, MaxOutOfOrderWaitMs: float64(state.maxWait) / float64(time.Millisecond),
 		UnpairedExpired: state.expired, UnpairedEvicted: state.evicted, UnpairedSessionChange: state.sessionChange, UnpairedCaptureEnd: state.captureEnd,
-		RewoundEntities: state.rewound, DuplicateResponses: p.stats.duplicateResponses, InvalidResponses: p.stats.invalidResponses,
-		PendingRequests: len(p.pending), EvictedRequests: p.stats.evictedPending, HeldResponses: len(state.held),
+		RewoundEntities: state.rewound, DuplicateResponses: p.stats.duplicateResponses, ConflictingResponses: p.stats.conflictingResponses,
+		InvalidResponses: p.stats.invalidResponses, PendingRequests: len(p.pending), EvictedRequests: p.stats.evictedPending, HeldResponses: len(state.held),
 	}
 }
 
 // rpcPairingLine formats the pairing counters for development diagnostics.
 func rpcPairingLine(s RPCPairingSnapshot) string {
-	return fmt.Sprintf("damage_rpc_pairing requests=%d responses=%d paired=%d paired_out_of_order=%d max_out_of_order_wait_ms=%.1f unpaired_expired=%d unpaired_evicted=%d unpaired_session_change=%d unpaired_capture_end=%d rewound_entities=%d duplicate_responses=%d invalid_responses=%d pending_requests=%d evicted_requests=%d held_responses=%d",
-		s.Requests, s.Responses, s.Paired, s.PairedOutOfOrder, s.MaxOutOfOrderWaitMs, s.UnpairedExpired, s.UnpairedEvicted,
-		s.UnpairedSessionChange, s.UnpairedCaptureEnd, s.RewoundEntities, s.DuplicateResponses, s.InvalidResponses, s.PendingRequests, s.EvictedRequests, s.HeldResponses)
+	return fmt.Sprintf("damage_rpc_pairing requests=%d responses=%d standalone_responses=%d paired=%d paired_out_of_order=%d max_out_of_order_wait_ms=%.1f unpaired_expired=%d unpaired_evicted=%d unpaired_session_change=%d unpaired_capture_end=%d rewound_entities=%d duplicate_responses=%d conflicting_responses=%d invalid_responses=%d pending_requests=%d evicted_requests=%d held_responses=%d",
+		s.Requests, s.Responses, s.StandaloneResponses, s.Paired, s.PairedOutOfOrder, s.MaxOutOfOrderWaitMs, s.UnpairedExpired, s.UnpairedEvicted,
+		s.UnpairedSessionChange, s.UnpairedCaptureEnd, s.RewoundEntities, s.DuplicateResponses, s.ConflictingResponses, s.InvalidResponses, s.PendingRequests, s.EvictedRequests, s.HeldResponses)
 }

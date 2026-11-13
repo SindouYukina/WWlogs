@@ -6,61 +6,43 @@ import (
 	"encoding/json"
 )
 
-// damageRPCPayloads extracts (rpcId, payload) pairs from a damage RPC wrapper: CombatSendPackRequest.Data[].Request
-// (CombatRequestData) for requests, CombatSendPackResponse.ReceivePackNotify.Data[].CombatResponseData for responses.
-// The paths are the ones handleDamageRequests and handleDamageResponses read.
+// damageRPCPayloads extracts (rpcId, payload) pairs from a damage RPC frame: CombatSendPackRequest.Data[].Request
+// (CombatRequestData) for requests, and for responses Data[].CombatResponseData of every CombatReceivePackNotify the frame
+// carries, embedded in a CombatSendPackResponse or standalone. The paths are the ones handleDamageRequests and
+// handleCombatReceivePacks read.
 func damageRPCPayloads(commandID uint16, body []byte) ([]damageRPCItem, error) {
+	if commandID != cmdCombatSendPackRequest {
+		bodies, err := receivePackNotifyBodies(commandID, body)
+		if err != nil {
+			return nil, err
+		}
+		var items []damageRPCItem
+		for _, notify := range bodies {
+			responses, _ := receivePackDamageResponses(notify)
+			for _, response := range responses {
+				items = append(items, damageRPCItem{RPCID: response.rpcID, Payload: response.payload})
+			}
+		}
+		return items, nil
+	}
 	outer, err := parseProtoFields(body)
 	if err != nil {
 		return nil, err
 	}
-	request := commandID == cmdCombatSendPackRequest
-	outerField := uint64(fieldCombatSendPackResponseReceivePackNotify)
-	if request {
-		outerField = fieldCombatSendPackRequestData
-	}
 	var items []damageRPCItem
 	for _, field := range outer {
-		if field.number != outerField || field.wire != 2 {
+		if field.number != fieldCombatSendPackRequestData || field.wire != 2 {
 			continue
 		}
-		var containers [][]byte
-		if request {
-			envelopes, err := parseProtoFields(field.data)
-			if err != nil {
-				return nil, err
-			}
-			for _, envelope := range envelopes {
-				if envelope.number == fieldCombatSendDataRequest && envelope.wire == 2 {
-					containers = append(containers, envelope.data)
-				}
-			}
-		} else {
-			batches, err := parseProtoFields(field.data)
-			if err != nil {
-				return nil, err
-			}
-			for _, batch := range batches {
-				if batch.number != fieldCombatReceivePackNotifyData || batch.wire != 2 {
-					continue
-				}
-				entries, err := parseProtoFields(batch.data)
-				if err != nil {
-					return nil, err
-				}
-				for _, entry := range entries {
-					if entry.number == fieldCombatReceiveDataCombatResponseData && entry.wire == 2 {
-						containers = append(containers, entry.data)
-					}
-				}
-			}
+		envelopes, err := parseProtoFields(field.data)
+		if err != nil {
+			return nil, err
 		}
-		requestIDField, payloadField := uint64(fieldCombatResponseDataRequestID), uint64(fieldCombatResponseDataDamageExecuteResponse)
-		if request {
-			requestIDField, payloadField = fieldCombatRequestDataRequestID, fieldCombatRequestDataDamageExecuteRequest
-		}
-		for _, container := range containers {
-			fields, err := parseProtoFields(container)
+		for _, envelope := range envelopes {
+			if envelope.number != fieldCombatSendDataRequest || envelope.wire != 2 {
+				continue
+			}
+			fields, err := parseProtoFields(envelope.data)
 			if err != nil {
 				continue
 			}
@@ -68,10 +50,10 @@ func damageRPCPayloads(commandID uint16, body []byte) ([]damageRPCItem, error) {
 			var hasRPC bool
 			var payload []byte
 			for _, f := range fields {
-				if f.number == requestIDField && f.wire == 0 {
+				if f.number == fieldCombatRequestDataRequestID && f.wire == 0 {
 					rpcID, hasRPC = f.value, true
 				}
-				if f.number == payloadField && f.wire == 2 {
+				if f.number == fieldCombatRequestDataDamageExecuteRequest && f.wire == 2 {
 					payload = f.data
 				}
 			}
@@ -94,7 +76,7 @@ func (p *processor) archiveDamageRPCSchema(frame gameFrame, plain []byte) {
 	switch frame.commandID {
 	case cmdCombatSendPackRequest:
 		message = "DamageExecuteRequest"
-	case cmdCombatSendPackResponse:
+	case cmdCombatSendPackResponse, cmdCombatReceivePackNotify:
 		message = "DamageExecuteResponse"
 	default:
 		return
