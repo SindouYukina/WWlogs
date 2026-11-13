@@ -29,7 +29,8 @@
     "state": "기록 상태"
   },
   "unidentified": "미확인",
-  "correlatedNote": "Master 대응표로 얻은 이름입니다. 현재 게임 버전과의 호환성은 검증되지 않았습니다",
+  "modeOpenWorld": "오픈월드",
+  "correlatedNote": "Master 연결로 추정한 이름이며 직접 확인되지 않았습니다(간접 연결 또는 다른 게임 버전의 기록 등)",
   "sameType": "×{{n}}",
   "unreliableShort": "신뢰할 수 없음",
   "unreliableDps": "이 전투의 일부 데이터나 경계가 누락되었을 수 있어 DPS를 표시하지 않습니다.",

@@ -21,6 +21,10 @@ type DisplayResolver struct {
 	mu    sync.Mutex
 	names map[string]DisplayName
 	order []string
+	// modes caches InstanceMode answers within the same bound; modeTables says once whether the Master has the tables.
+	modes      map[string]InstanceMode
+	modeOrder  []string
+	modeTables *bool
 }
 
 const maxDisplayNames = 2048
@@ -42,7 +46,7 @@ func newDisplayResolver(db *sql.DB) (*DisplayResolver, error) {
 	if err := db.Ping(); err != nil {
 		return nil, errors.New("the display Master database is unavailable")
 	}
-	return &DisplayResolver{db: db, names: map[string]DisplayName{}}, nil
+	return &DisplayResolver{db: db, names: map[string]DisplayName{}, modes: map[string]InstanceMode{}}, nil
 }
 
 func (r *DisplayResolver) Close() error { return r.db.Close() }

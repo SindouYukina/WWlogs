@@ -56,10 +56,20 @@ export interface HistoryYear {
   today: string
 }
 
-/** A Master name reached through a versioned link from an observed ID: at most CORRELATED, otherwise UNKNOWN. */
+/**
+ * A Master name reached from an observed ID. VERIFIED only for a relation the client itself resolves, in an encounter of the
+ * game version the Master describes; CORRELATED for any other named link; UNKNOWN without a name. Go decides the status.
+ */
 export interface HistoryName {
   name?: string
-  status: "CORRELATED" | "UNKNOWN"
+  status: "VERIFIED" | "CORRELATED" | "UNKNOWN"
+}
+
+/** The kind of play of an encounter: an Adventure Guide category named by the Master, or the open world, which the UI labels. */
+export interface HistoryMode {
+  kind?: "open_world" | "category"
+  name?: string
+  status: "VERIFIED" | "CORRELATED" | "UNKNOWN"
 }
 
 export type HistoryEncounterState = "open" | "finished" | "abandoned"
@@ -88,6 +98,7 @@ export interface HistoryEncounterSummary {
   mainEnemy?: { ordinal: number; monsterId?: number; templateId?: number; identityConflict?: boolean; damageTaken: number; sameType: number }
   enemies: number
   sceneName: HistoryName
+  mode: HistoryMode
   mainEnemyName: HistoryName
   /** Why the record is incomplete or unfinished: entries_lost, application_exit, recording_disabled or not_finished. */
   incompleteReason?: string

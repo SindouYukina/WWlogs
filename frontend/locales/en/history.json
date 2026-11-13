@@ -29,7 +29,8 @@
     "state": "Record"
   },
   "unidentified": "Unidentified",
-  "correlatedNote": "Named through a Master link; compatibility with this game version is not verified",
+  "modeOpenWorld": "Overworld",
+  "correlatedNote": "Named through a Master relation that is not directly confirmed (for example an indirect link, or a record of another game version)",
   "sameType": "×{{n}}",
   "unreliableShort": "Unreliable",
   "unreliableDps": "Part of this encounter's data or a boundary may be missing, so no DPS is shown.",

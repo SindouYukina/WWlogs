@@ -49,7 +49,8 @@ function timelineLines(timeline: Timeline | undefined, rows: readonly CombatRowM
 
 /** A Master name that came through a versioned link carries the derivation mark; a missing one says so plainly. */
 export function LinkedName({ name, fallback, id, title }: { name: HistoryName; fallback: string; id?: number; title: string }) {
-  if (name.name) return <span className="ww-truncate">{name.name}<span className="ww-history-mark" title={title} aria-label={title}>≈</span></span>
+  // Go decides the evidence: only a name it did not verify carries the mark.
+  if (name.name) return <span className="ww-truncate" data-status={name.status}>{name.name}{name.status !== "VERIFIED" && <span className="ww-history-mark" title={title} aria-label={title}>≈</span>}</span>
   // An unnamed identity keeps its raw ID beside the plain word, never a plausible name.
   return <span className="ww-history-unknown">{fallback}{id ? <span className="ww-history-mark ww-num" data-field="raw-id">#{id}</span> : null}</span>
 }
