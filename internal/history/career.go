@@ -24,8 +24,10 @@ import (
 
 // CareerQuery selects the encounters a career covers. Instances is set by the host from mode and stage filters.
 type CareerQuery struct {
-	From         string   `json:"from,omitempty"`
-	To           string   `json:"to,omitempty"`
+	From string `json:"from,omitempty"`
+	To   string `json:"to,omitempty"`
+	// LastDays, when set, selects the last LastDays dates of the view's zone up to today instead of From and To.
+	LastDays     int      `json:"lastDays,omitempty"`
 	GameVersions []string `json:"gameVersions,omitempty"`
 	Instances    []uint64 `json:"-"`
 }
@@ -65,11 +67,13 @@ type CareerTotals struct {
 
 // CareerDay is one date's activity.
 type CareerDay struct {
-	Date       string  `json:"date"`
-	Encounters int     `json:"encounters"`
-	Counted    int     `json:"counted"`
-	Damage     int64   `json:"damage"`
-	Seconds    float64 `json:"seconds"`
+	Date       string `json:"date"`
+	Encounters int    `json:"encounters"`
+	Counted    int    `json:"counted"`
+	Damage     int64  `json:"damage"`
+	// DamageLowerBound is set when a counted encounter's damage in it is a lower bound (degraded or known_affected).
+	DamageLowerBound bool    `json:"damageLowerBound,omitempty"`
+	Seconds          float64 `json:"seconds"`
 	// BestDPS is the date's highest Encounter DPS among record-eligible encounters (0: none).
 	BestDPS float64 `json:"bestDps,omitempty"`
 }
@@ -81,6 +85,8 @@ type CareerRole struct {
 	Counted         int    `json:"counted"`
 	TrialEncounters int    `json:"trialEncounters,omitempty"`
 	Damage          int64  `json:"damage"`
+	// DamageLowerBound is set when a counted encounter's damage in it is a lower bound (degraded or known_affected).
+	DamageLowerBound bool `json:"damageLowerBound,omitempty"`
 	// BestDPS, BestDamage and MaxHit are the role's personal records (complete encounters only).
 	BestDPS    *CareerRecord `json:"bestDps,omitempty"`
 	BestDamage *CareerRecord `json:"bestDamage,omitempty"`
@@ -93,19 +99,23 @@ type CareerRole struct {
 
 // CareerCombo is a set of roles that dealt confirmed damage together: stored contributors, not a team composition.
 type CareerCombo struct {
-	Roles      []uint64      `json:"roles"`
-	Encounters int           `json:"encounters"`
-	Damage     int64         `json:"damage"`
-	BestDPS    *CareerRecord `json:"bestDps,omitempty"`
+	Roles      []uint64 `json:"roles"`
+	Encounters int      `json:"encounters"`
+	Damage     int64    `json:"damage"`
+	// DamageLowerBound is set when a counted encounter's damage in it is a lower bound (degraded or known_affected).
+	DamageLowerBound bool          `json:"damageLowerBound,omitempty"`
+	BestDPS          *CareerRecord `json:"bestDps,omitempty"`
 }
 
 // CareerInstance is one stored scene instance's activity; the host groups instances into modes.
 type CareerInstance struct {
-	Instance   uint64        `json:"instanceId"`
-	Encounters int           `json:"encounters"`
-	Counted    int           `json:"counted"`
-	Damage     int64         `json:"damage"`
-	BestDPS    *CareerRecord `json:"bestDps,omitempty"`
+	Instance   uint64 `json:"instanceId"`
+	Encounters int    `json:"encounters"`
+	Counted    int    `json:"counted"`
+	Damage     int64  `json:"damage"`
+	// DamageLowerBound is set when a counted encounter's damage in it is a lower bound (degraded or known_affected).
+	DamageLowerBound bool          `json:"damageLowerBound,omitempty"`
+	BestDPS          *CareerRecord `json:"bestDps,omitempty"`
 }
 
 // CareerRecords are the selection's personal records over all roles.
@@ -118,7 +128,10 @@ type CareerRecords struct {
 
 // CareerView is the career of a selection.
 type CareerView struct {
-	Today     string           `json:"today"`
+	Today string `json:"today"`
+	// From and To are the dates the answer covers ("" for an open end).
+	From      string           `json:"from"`
+	To        string           `json:"to"`
 	Totals    CareerTotals     `json:"totals"`
 	Days      []CareerDay      `json:"days"`
 	Roles     []CareerRole     `json:"roles"`
@@ -132,12 +145,30 @@ type CareerView struct {
 // maxCombos bounds the role combinations a career lists (by encounters).
 const maxCombos = 24
 
+// CareerDates resolves a LastDays query into the dates of the view's zone it covers, today included, so the host can
+// select the same dates elsewhere (the filters of the view).
+func (s *Store) CareerDates(query CareerQuery, zone *time.Location) CareerQuery {
+	return careerDates(query, s.now().In(viewLocation(zone)))
+}
+
+func careerDates(query CareerQuery, today time.Time) CareerQuery {
+	if query.LastDays <= 0 {
+		return query
+	}
+	query.To = today.Format(dateLayout)
+	query.From = time.Date(today.Year(), today.Month(), today.Day()-(query.LastDays-1), 0, 0, 0, 0, today.Location()).Format(dateLayout)
+	query.LastDays = 0
+	return query
+}
+
 // Career computes the career of the selection. staticRole maps a stored runtime RoleId to the role it shows as (a trial
 // role to its parent); nil keeps the stored RoleId.
 func (s *Store) Career(ctx context.Context, query CareerQuery, zone *time.Location, staticRole func(uint64) uint64) (CareerView, error) {
 	zone = viewLocation(zone)
-	view := CareerView{Today: s.now().In(zone).Format(dateLayout), Totals: CareerTotals{Classes: map[string]int{}}, Days: []CareerDay{}, Roles: []CareerRole{},
-		Combos: []CareerCombo{}, Instances: []CareerInstance{}, Versions: []string{}}
+	today := s.now().In(zone)
+	query = careerDates(query, today)
+	view := CareerView{Today: today.Format(dateLayout), From: query.From, To: query.To, Totals: CareerTotals{Classes: map[string]int{}}, Days: []CareerDay{},
+		Roles: []CareerRole{}, Combos: []CareerCombo{}, Instances: []CareerInstance{}, Versions: []string{}}
 	index, err := s.index(ctx)
 	if err != nil {
 		return view, err
@@ -235,6 +266,7 @@ func (s *Store) Career(ctx context.Context, query CareerQuery, zone *time.Locati
 			view.Totals.DamageLowerBound = view.Totals.DamageLowerBound || e.lowerBound()
 			day.Counted++
 			day.Damage += e.Damage
+			day.DamageLowerBound = day.DamageLowerBound || e.lowerBound()
 			day.Seconds += seconds
 		}
 		if eligibleRecord && hasDPS {
@@ -266,6 +298,7 @@ func (s *Store) Career(ctx context.Context, query CareerQuery, zone *time.Locati
 			if counted {
 				instance.Counted++
 				instance.Damage += e.Damage
+				instance.DamageLowerBound = instance.DamageLowerBound || e.lowerBound()
 			}
 			if eligibleRecord && hasDPS {
 				instance.BestDPS = better(instance.BestDPS, encounterDPS, func() CareerRecord { return CareerRecord{CareerRef: ref(e)} })
@@ -299,6 +332,7 @@ func (s *Store) Career(ctx context.Context, query CareerQuery, zone *time.Locati
 			if counted {
 				stats.Counted++
 				stats.Damage += damage
+				stats.DamageLowerBound = stats.DamageLowerBound || e.lowerBound()
 			}
 			if eligibleRecord && seconds > 0 && damage > 0 {
 				stats.BestDPS = better(stats.BestDPS, float64(damage)/seconds, func() CareerRecord { return CareerRecord{RoleID: role, CareerRef: ref(e)} })
@@ -328,6 +362,7 @@ func (s *Store) Career(ctx context.Context, query CareerQuery, zone *time.Locati
 			}
 			combo.Encounters++
 			combo.Damage += e.Damage
+			combo.DamageLowerBound = combo.DamageLowerBound || e.lowerBound()
 			if eligibleRecord && hasDPS {
 				combo.BestDPS = better(combo.BestDPS, encounterDPS, func() CareerRecord { return CareerRecord{CareerRef: ref(e)} })
 			}

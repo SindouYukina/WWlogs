@@ -13,7 +13,8 @@ import { useHostTimeZone } from "@/lib/useHostTimeZone"
 import { chartSeries, RoleBoard, SkillTable, StatCard } from "./DashboardView"
 import { AnalysisWorkspace, EnemiesCard, LinkedName, type TimelineMode } from "./HistoryAnalysis"
 import { HistoryLibraryView } from "./HistoryLibrary"
-import { defaultLibraryQuery, type HistoryLibraryQuery } from "@/lib/history-library"
+import { defaultLibraryQuery, type HistoryIntent, type HistoryLibraryQuery } from "@/lib/history-library"
+import { useSettledKey } from "@/lib/useSettledKey"
 
 export interface HistoryViewProps {
   theme: ThemeId
@@ -21,6 +22,10 @@ export interface HistoryViewProps {
   refreshKey: string
   /** The host's Combat History indicator. */
   indicator?: HistoryIndicator
+  /** Where another page sent this page; a new seq is a new request. */
+  intent?: { seq: number; target: HistoryIntent }
+  /** Returns to the page that sent the intent (the Career Overview), keeping that page's state. */
+  onReturn?: () => void
 }
 
 /** The host's recording indicator as one chip, with the reason behind a problem state. */
@@ -43,9 +48,6 @@ function recordNotes(summary: HistoryEncounterSummary): Array<{ key: string; ton
 
 type ChipTone = "neutral" | "good" | "warn" | "critical"
 
-/** How long the refresh signal must stay unchanged before the page queries the history again. */
-const historySettleMs = 1500
-
 /** The one status a row or a detail leads with: the most severe of its history state, completeness and integrity. */
 function recordState(summary: HistoryEncounterSummary): { key: string; tone: ChipTone } {
   if (summary.state === "open") return { key: "state.open", tone: "good" }
@@ -56,7 +58,7 @@ function recordState(summary: HistoryEncounterSummary): { key: string; tone: Chi
   return { key: "integrity.INTACT", tone: "neutral" }
 }
 
-function useDateFormats() {
+export function useDateFormats() {
   const { i18n } = useTranslation()
   const locale = i18n.language
   return useMemo(() => {
@@ -85,7 +87,7 @@ function useClockTitle() {
 }
 
 /** Which zone the dates on the page follow, so a date never reads as the zone where a fight was recorded. */
-function ZoneNote({ zone }: { zone: HistoryZone | undefined }) {
+export function ZoneNote({ zone }: { zone: HistoryZone | undefined }) {
   const { t } = useTranslation("history")
   if (!zone) return null
   const name = zone.id === "Local" ? t("zoneLocal") : zone.id
@@ -315,7 +317,7 @@ function EncounterDetail({ detail, backLabel, onBack, onDeleted, timelineMode, s
 }
 
 /** The reason a history cannot record or be read, for the status line. */
-function statusNote(status: HistoryStatus | undefined): { key: string; tone: "warn" | "critical" } | null {
+export function statusNote(status: HistoryStatus | undefined): { key: string; tone: "warn" | "critical" } | null {
   if (!status || status.state === "ready") return null
   const reason = status.reason ?? "open_failed"
   return { key: `unavailable.${reason}`, tone: status.state === "read_only" ? "warn" : "critical" }
@@ -325,36 +327,54 @@ function statusNote(status: HistoryStatus | undefined): { key: string; tone: "wa
  * The Combat History page: a year of encounters as an Activity Heatmap, the chosen day's encounters, and one encounter's
  * stored result. Everything shown is what the Go history returns; this view only lays it out.
  */
-export function HistoryView({ theme, refreshKey, indicator }: HistoryViewProps) {
+export function HistoryView({ theme, refreshKey, indicator, intent, onReturn }: HistoryViewProps) {
   const { t } = useTranslation(["history", "common"])
   const format = useFormatters()
   const dates = useDateFormats()
   const zone = useHostTimeZone()
+  // A page that sends the History page somewhere decides where it opens: a date, an encounter or a filtered list.
+  const target = intent?.target
+  const dated = target && target.kind !== "library" ? target.date : undefined
   // 0 asks Go for the current year of the zone; a year switch names one.
-  const [year, setYear] = useState(0)
+  const [year, setYear] = useState(() => dated ? Number(dated.slice(0, 4)) : 0)
   const [yearView, setYearView] = useState<HistoryYear | null>(null)
-  const [date, setDate] = useState<string | undefined>(undefined)
+  const [date, setDate] = useState<string | undefined>(dated)
   const [day, setDay] = useState<HistoryDay | null>(null)
-  const [openId, setOpenId] = useState<number | null>(null)
+  const [openId, setOpenId] = useState<number | null>(() => target?.kind === "encounter" ? target.encounterId : null)
+  // The encounter the sending page opened goes back to that page.
+  const [returnId, setReturnId] = useState<number | null>(() => target?.kind === "encounter" ? target.encounterId : null)
   // The timeline presentation the user chose last stays chosen for the next encounter they open.
   const [timelineMode, setTimelineMode] = useState<TimelineMode>("icon")
   const [detail, setDetail] = useState<HistoryEncounterDetail | null>(null)
   // The calendar lists one day; the library lists every stored encounter by filters. Each keeps its own state while an
   // encounter is open, so going back returns to the same day or the same filtered list.
-  const [mode, setMode] = useState<"calendar" | "list">("calendar")
-  const [libraryQuery, setLibraryQuery] = useState<HistoryLibraryQuery>(defaultLibraryQuery)
+  const [mode, setMode] = useState<"calendar" | "list">(() => target?.kind === "library" ? "list" : "calendar")
+  const [libraryQuery, setLibraryQuery] = useState<HistoryLibraryQuery>(() => target?.kind === "library" ? target.query : defaultLibraryQuery)
   const [failed, setFailed] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
   // A deletion changes what every query returns, so it counts as a refresh of its own.
   const [changes, setChanges] = useState(0)
   const [deleted, setDeleted] = useState(false)
-  // The engine's signal arrives as soon as an encounter finishes; its history is written a moment later by its own writer
-  // (200 ms batches), so queries follow the signal once it has been still for historySettleMs.
-  const [settledKey, setSettledKey] = useState(refreshKey)
+  const settledKey = useSettledKey(refreshKey)
+  // A later request while the page is open moves it the same way the first one opened it.
+  const [appliedSeq, setAppliedSeq] = useState(intent?.seq)
   useEffect(() => {
-    const timer = setTimeout(() => setSettledKey(refreshKey), historySettleMs)
-    return () => clearTimeout(timer)
-  }, [refreshKey])
+    if (!intent || intent.seq === appliedSeq) return
+    setAppliedSeq(intent.seq)
+    const next = intent.target
+    if (next.kind === "library") {
+      setMode("list")
+      setLibraryQuery(next.query)
+      setOpenId(null)
+      setReturnId(null)
+      return
+    }
+    setMode("calendar")
+    setYear(Number(next.date.slice(0, 4)))
+    setDate(next.date)
+    setOpenId(next.kind === "encounter" ? next.encounterId : null)
+    setReturnId(next.kind === "encounter" ? next.encounterId : null)
+  }, [intent, appliedSeq])
 
   useEffect(() => {
     let current = true
@@ -409,6 +429,7 @@ export function HistoryView({ theme, refreshKey, indicator }: HistoryViewProps) 
         <h2 className="ww-history-title">{t("title")}</h2>
       </div>
       <HistoryIndicatorChip indicator={indicator} />
+      {onReturn && <Button size="sm" variant="ghost" data-field="history-return" onClick={onReturn}><span style={{ display: "inline-flex", transform: "rotate(90deg)" }}><Icon name="chevron" size={13} /></span>{t("career.backToCareer")}</Button>}
       <span data-field="history-mode" data-mode={mode}><Segmented label={t("library.viewLabel")} value={mode} onChange={next => { setMode(next); setOpenId(null) }} options={[{ value: "calendar", label: t("library.calendar") }, { value: "list", label: t("library.list") }]} /></span>
       {mode === "calendar" && <div className="ww-history-years" data-field="year-switch">
         <Button size="sm" variant="ghost" aria-label={t("previousYear")} title={t("previousYear")} disabled={shownYear === 0 || shownYear <= bounds.first} onClick={() => changeYear(shownYear - 1)} data-field="year-previous"><span style={{ display: "inline-flex", transform: "rotate(90deg)" }}><Icon name="chevron" size={14} /></span></Button>
@@ -432,7 +453,8 @@ export function HistoryView({ theme, refreshKey, indicator }: HistoryViewProps) 
       {status && status.state !== "unavailable" && <p className="ww-history-note" data-field="history-storage" data-encrypted={status.encrypted}>{t(status.encrypted ? "localEncrypted" : "localOnly")}</p>}
     </Card></Reveal>}
     <Reveal index={2}><ContentSwitch contentKey={detail ? `detail-${detail.summary.id}` : mode === "list" ? "library" : `day-${date ?? ""}`}>
-      {detail ? <EncounterDetail detail={detail} backLabel={mode === "list" ? t("library.backToList") : t("back", { date: dates.short(detail.summary.localDate) })} onBack={() => setOpenId(null)} onDeleted={afterDelete} timelineMode={timelineMode} setTimelineMode={setTimelineMode} /> :
+      {detail ? <EncounterDetail detail={detail} backLabel={onReturn && returnId === detail.summary.id ? t("career.backToCareer") : mode === "list" ? t("library.backToList") : t("back", { date: dates.short(detail.summary.localDate) })}
+        onBack={onReturn && returnId === detail.summary.id ? onReturn : () => setOpenId(null)} onDeleted={afterDelete} timelineMode={timelineMode} setTimelineMode={setTimelineMode} /> :
         mode === "list" ? <HistoryLibraryView zone={zone} refreshKey={`${settledKey}-${changes}`} query={libraryQuery} onQuery={setLibraryQuery} onOpen={setOpenId} /> :
         <Card className="ww-history-day">
           <div className="ww-dash-card-head"><h3 data-field="day-title">{date ? dates.long(date) : t("noDay")}</h3>{day && day.date === date && <span className="ww-history-total" data-field="day-total">{t("dayCount", { n: format.integer(day.total) })}</span>}</div>

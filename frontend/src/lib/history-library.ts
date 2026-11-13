@@ -72,6 +72,12 @@ export interface HistoryLibrary {
   facets: HistoryLibraryFacets
 }
 
+/** Where another page sends the History page: a date of the calendar, one stored encounter, or the library with a query. */
+export type HistoryIntent =
+  | { kind: "day"; date: string }
+  | { kind: "encounter"; encounterId: number; date: string }
+  | { kind: "library"; query: HistoryLibraryQuery }
+
 /** The query a fresh library starts from: everything, newest first. */
 export const defaultLibraryQuery: HistoryLibraryQuery = { sort: "start_desc" }
 

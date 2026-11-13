@@ -103,6 +103,15 @@ func TestCareerTotalsCountOnlyRecordsThatMayCount(t *testing.T) {
 	if len(view.Days) != 2 || view.Days[0].Encounters != 2 || view.Days[0].Counted != 2 || view.Days[1].Counted != 0 || view.Days[0].BestDPS != 100 {
 		t.Fatalf("days = %+v", view.Days)
 	}
+	// The degraded encounter makes every sum it enters a lower bound, and only those.
+	if !lily.DamageLowerBound || roles[1409].DamageLowerBound || !view.Days[0].DamageLowerBound || view.Days[1].DamageLowerBound {
+		t.Fatalf("lower bounds: Lily %v, 1409 %v, days %v %v", lily.DamageLowerBound, roles[1409].DamageLowerBound, view.Days[0].DamageLowerBound, view.Days[1].DamageLowerBound)
+	}
+	for _, combo := range view.Combos {
+		if combo.DamageLowerBound != (len(combo.Roles) == 1 && combo.Roles[0] == 1512) {
+			t.Fatalf("combo lower bound = %+v", combo)
+		}
+	}
 }
 
 func TestEmptyCareerHasNoNumbersToInvent(t *testing.T) {
@@ -141,6 +150,25 @@ func TestCareerDatesFollowTheViewZoneAndSelection(t *testing.T) {
 	other, err := store.Career(ctx, CareerQuery{GameVersions: []string{"9.9"}}, tokyo, nil)
 	if err != nil || other.Totals.Encounters != 0 || len(other.Versions) != 1 || other.Versions[0] != capture.CurrentGameVersion() {
 		t.Fatalf("other version = %+v versions %v (%v)", other.Totals, other.Versions, err)
+	}
+}
+
+// The last N days are the view zone's dates up to today, decided by Go.
+func TestCareerLastDaysAreDatesOfTheViewZone(t *testing.T) {
+	store := openTestStore(t, testPath(t), nil)
+	now := time.Date(2026, 10, 20, 16, 0, 0, 0, time.UTC) // 2026-10-21 01:00 in Tokyo
+	store.now = func() time.Time { return now }
+	record(t, store, liveStart, finishedEncounter(1, 1, now.Add(-7*24*time.Hour), 10, 1000, capture.IntegrityIntact), finishedEncounter(1, 2, now.Add(-time.Hour), 10, 2000, capture.IntegrityIntact))
+	view, err := store.Career(context.Background(), CareerQuery{LastDays: 7}, mustZone(t, "Asia/Tokyo"), nil)
+	if err != nil || view.From != "2026-10-15" || view.To != "2026-10-21" || view.Today != "2026-10-21" || view.Totals.Encounters != 1 {
+		t.Fatalf("last 7 days = %s..%s today %s, %d encounters (%v)", view.From, view.To, view.Today, view.Totals.Encounters, err)
+	}
+	// The host resolves the same dates for the view's filters; a month boundary and an explicit range stay calendar dates.
+	if dates := store.CareerDates(CareerQuery{LastDays: 30, GameVersions: []string{"3.8"}}, mustZone(t, "Asia/Tokyo")); dates.From != "2026-09-22" || dates.To != "2026-10-21" || dates.LastDays != 0 || len(dates.GameVersions) != 1 {
+		t.Fatalf("last 30 days = %+v", dates)
+	}
+	if dates := store.CareerDates(CareerQuery{From: "2026-01-01"}, time.UTC); dates.From != "2026-01-01" || dates.To != "" {
+		t.Fatalf("explicit range = %+v", dates)
 	}
 }
 
