@@ -168,21 +168,62 @@ type analysisGap struct {
 
 // modelCache keeps the models of recently analysed encounters. Only encounters whose capture session is no longer recording
 // are kept: nothing changes them afterwards except a deletion, which clears the cache.
+//
+// Opening an encounter asks for its analysis, effect lanes and skill hits at once, and each needs the same model, so requests
+// for a model that is not cached share one load (load): the encounter is read and rebuilt once, not once per request.
 type modelCache struct {
-	mu     sync.Mutex
-	models map[int64]*encounterModel
-	order  []int64
+	mu      sync.Mutex
+	models  map[int64]*encounterModel
+	order   []int64
+	loading map[int64]*modelLoad
+	// generation counts clears: a load that began before a clear may have read what the deletion removed, so it is never
+	// kept.
+	generation uint64
 }
 
-func (c *modelCache) get(id int64) *encounterModel {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.models[id]
+// modelLoad is one running load of a model; done closes once model and err are set.
+type modelLoad struct {
+	done  chan struct{}
+	model *encounterModel
+	err   error
 }
 
-func (c *modelCache) put(model *encounterModel) {
+// load returns the cached model of id, joins the load of it already running, or runs read once and keeps a cacheable result.
+// A request that joins a running load stops waiting when its own ctx ends.
+func (c *modelCache) load(ctx context.Context, id int64, read func() (*encounterModel, error)) (*encounterModel, error) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
+	if model := c.models[id]; model != nil {
+		c.mu.Unlock()
+		return model, nil
+	}
+	if running := c.loading[id]; running != nil {
+		c.mu.Unlock()
+		select {
+		case <-running.done:
+			return running.model, running.err
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+	if c.loading == nil {
+		c.loading = map[int64]*modelLoad{}
+	}
+	running := &modelLoad{done: make(chan struct{})}
+	c.loading[id] = running
+	generation := c.generation
+	c.mu.Unlock()
+	running.model, running.err = read()
+	c.mu.Lock()
+	delete(c.loading, id)
+	if running.err == nil && running.model.cacheable && generation == c.generation {
+		c.putLocked(running.model)
+	}
+	c.mu.Unlock()
+	close(running.done)
+	return running.model, running.err
+}
+
+func (c *modelCache) putLocked(model *encounterModel) {
 	if c.models == nil {
 		c.models = map[int64]*encounterModel{}
 	}
@@ -200,6 +241,7 @@ func (c *modelCache) clear() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.models, c.order = nil, nil
+	c.generation++
 }
 
 // errAnalysisState carries a state other than ready.
@@ -220,25 +262,21 @@ func (s *Store) model(ctx context.Context, id int64, masters *capture.MasterData
 	if err != nil {
 		return nil, fmt.Errorf("read history analysis: %w", err)
 	}
-	if cached := s.models.get(id); cached != nil && state == "finished" {
-		return cached, nil
-	}
 	if state != "finished" {
 		return nil, errAnalysisState{AnalysisNotFinished}
 	}
-	model, err := s.loadModel(ctx, id, masters)
-	if err != nil {
-		return nil, err
-	}
-	model.cacheable = sessionStatus != "open"
-	if model.cacheable {
-		s.models.put(model)
-	}
-	return model, nil
+	return s.models.load(ctx, id, func() (*encounterModel, error) {
+		model, err := s.loadModel(ctx, id, masters)
+		if err != nil {
+			return nil, err
+		}
+		model.cacheable = sessionStatus != "open"
+		return model, nil
+	})
 }
 
 func (s *Store) loadModel(ctx context.Context, id int64, masters *capture.MasterData) (*encounterModel, error) {
-	detail, err := s.Encounter(ctx, id, time.UTC)
+	detail, err := s.encounter(ctx, id, time.UTC, false)
 	if err != nil {
 		return nil, err
 	}

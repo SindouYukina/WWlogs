@@ -343,11 +343,19 @@ CREATE TABLE effect_instance (
 	-- 1 when the stored changes begin with the instance's first observation (apply, snapshot or instant); 0 when the
 	-- instance was already tracked before the span started or its first change never reached storage.
 	start_recorded     INTEGER NOT NULL CHECK (start_recorded IN (0, 1)),
+	-- The capture times of the instance's stored changes that bound its life: first_change_ns is its earliest timed change,
+	-- ended_at_ns the time of its latest change when that change ends it (remove, holder_removed, superseded, untracked,
+	-- instant), NULL while its latest change leaves it alive or has no time. They only find the instances alive at a moment
+	-- (effect_instance_by_life); every state is still read from effect_event.
+	first_change_ns    INTEGER,
+	ended_at_ns        INTEGER,
 	PRIMARY KEY (capture_session_id, instance),
 	FOREIGN KEY (capture_session_id, protocol_session) REFERENCES protocol_session (capture_session_id, protocol_session) ON DELETE CASCADE
 ) WITHOUT ROWID;
 CREATE INDEX effect_instance_by_effect ON effect_instance (effect_id) WHERE effect_id IS NOT NULL;
 CREATE INDEX effect_instance_by_protocol_session ON effect_instance (capture_session_id, protocol_session);
+-- An analysis finds the instances alive when an encounter began without reading the span's changes before it.
+CREATE INDEX effect_instance_by_life ON effect_instance (capture_session_id, first_change_ns, ended_at_ns);
 
 -- One accepted effect lifecycle change, in the tracker's order (sequence, unique in the span), with the instance's state
 -- after it. The primary key leads with the instance, so the changes of one instance, and the foreign key's cascade, are one
@@ -375,6 +383,7 @@ CREATE TABLE effect_event (
 	UNIQUE (capture_session_id, sequence),
 	FOREIGN KEY (capture_session_id, instance) REFERENCES effect_instance (capture_session_id, instance) ON DELETE CASCADE
 ) WITHOUT ROWID;
--- A timeline reads an encounter's window through effect_event_by_time.
-CREATE INDEX effect_event_by_time ON effect_event (capture_session_id, observed_at_ns);
+-- A timeline reads an encounter's window through effect_event_by_time; it covers the observation, so counting a window's
+-- changes reads the index only.
+CREATE INDEX effect_event_by_time ON effect_event (capture_session_id, observed_at_ns, observation);
 `

@@ -445,6 +445,12 @@ type EncounterDetail struct {
 
 // Encounter reads one listed encounter, with its instants laid out in zone (nil: the zone Go read from Windows).
 func (s *Store) Encounter(ctx context.Context, id int64, zone *time.Location) (EncounterDetail, error) {
+	return s.encounter(ctx, id, zone, true)
+}
+
+// encounter reads one listed encounter; withEffects also counts the effect changes stored during it (EffectWindow), which an
+// analysis model, reading every change itself, does not need.
+func (s *Store) encounter(ctx context.Context, id int64, zone *time.Location, withEffects bool) (EncounterDetail, error) {
 	var detail EncounterDetail
 	if !s.readable() {
 		return detail, ErrUnavailable
@@ -469,8 +475,10 @@ func (s *Store) Encounter(ctx context.Context, id int64, zone *time.Location) (E
 		detail.Enemies = []capture.EncounterEnemySnapshot{}
 	}
 	detail.Summary.Enemies, detail.Summary.MainEnemy = len(detail.Enemies), mainEnemy(detail.Enemies)
-	if detail.Effects, err = s.effectWindow(ctx, row, detail.Summary); err != nil {
-		return detail, err
+	if withEffects {
+		if detail.Effects, err = s.effectWindow(ctx, row, detail.Summary); err != nil {
+			return detail, err
+		}
 	}
 	if detail.Summary.State != "finished" && detail.Summary.CheckpointAt == nil {
 		return detail, nil
@@ -524,11 +532,24 @@ func (s *Store) effectWindow(ctx context.Context, row summaryRow, summary Encoun
 	default:
 		return window, nil
 	}
-	err := s.db.QueryRowContext(ctx, `SELECT count(*), count(DISTINCT ev.instance),
+	const counts = `SELECT count(*), count(DISTINCT ev.instance),
 		coalesce(sum(ev.observation = 'observed'), 0), coalesce(sum(ev.observation = 'derived'), 0), coalesce(sum(ev.observation = 'untracked'), 0)
-		FROM effect_event ev JOIN effect_instance i ON i.capture_session_id = ev.capture_session_id AND i.instance = ev.instance
-		WHERE ev.capture_session_id = ? AND i.protocol_session = ? AND ev.observed_at_ns BETWEEN ? AND ?`,
-		row.sessionID, row.protocolSession, from, to).Scan(&window.Changes, &window.Instances, &window.Observed, &window.Derived, &window.Untracked)
+		FROM effect_event ev`
+	// A span of one protocol session holds only that session's changes, so its window is counted from the time index alone;
+	// a span with more than one keeps the changes of the encounter's own session.
+	var sessions int
+	if err := s.db.QueryRowContext(ctx, "SELECT count(*) FROM protocol_session WHERE capture_session_id = ?", row.sessionID).Scan(&sessions); err != nil {
+		return window, fmt.Errorf("read history effects: %w", err)
+	}
+	var err error
+	if sessions == 1 {
+		err = s.db.QueryRowContext(ctx, counts+" WHERE ev.capture_session_id = ? AND ev.observed_at_ns BETWEEN ? AND ?", row.sessionID, from, to).
+			Scan(&window.Changes, &window.Instances, &window.Observed, &window.Derived, &window.Untracked)
+	} else {
+		err = s.db.QueryRowContext(ctx, counts+` JOIN effect_instance i ON i.capture_session_id = ev.capture_session_id AND i.instance = ev.instance
+			WHERE ev.capture_session_id = ? AND i.protocol_session = ? AND ev.observed_at_ns BETWEEN ? AND ?`, row.sessionID, row.protocolSession, from, to).
+			Scan(&window.Changes, &window.Instances, &window.Observed, &window.Derived, &window.Untracked)
+	}
 	if err != nil {
 		return window, fmt.Errorf("read history effects: %w", err)
 	}

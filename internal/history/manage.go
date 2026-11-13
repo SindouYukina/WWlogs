@@ -33,6 +33,9 @@ type DeleteResult struct {
 	Compacted bool `json:"compacted"`
 }
 
+// endingKinds lists endingChanges for SQL.
+const endingKinds = "'remove', 'holder_removed', 'superseded', 'untracked', 'instant'"
+
 // compactionShare is the share of free pages from which a deletion compacts the file.
 const (
 	compactionShare    = 4
@@ -87,7 +90,25 @@ func (s *Store) DeleteEncounter(ctx context.Context, id int64) (DeleteResult, er
 			span, span, started, end.Int64, span, protocolSession); err != nil {
 			return result, fmt.Errorf("delete history effects: %w", err)
 		}
+		if _, err := tx.ExecContext(ctx, `CREATE TEMP TABLE IF NOT EXISTS deleted_effect_instance (instance INTEGER PRIMARY KEY); DELETE FROM deleted_effect_instance`); err != nil {
+			return result, fmt.Errorf("delete history effects: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO deleted_effect_instance (instance) SELECT instance FROM effect_event WHERE `+window,
+			span, started, end.Int64, span, protocolSession); err != nil {
+			return result, fmt.Errorf("delete history effects: %w", err)
+		}
 		if _, err := tx.ExecContext(ctx, "DELETE FROM effect_event WHERE "+window, span, started, end.Int64, span, protocolSession); err != nil {
+			return result, fmt.Errorf("delete history effects: %w", err)
+		}
+		// The life of an instance that lost changes follows the changes it keeps.
+		if _, err := tx.ExecContext(ctx, `UPDATE effect_instance SET
+			first_change_ns = (SELECT min(e.observed_at_ns) FROM effect_event e WHERE e.capture_session_id = effect_instance.capture_session_id AND e.instance = effect_instance.instance),
+			ended_at_ns = (SELECT CASE WHEN e.change_kind IN (`+endingKinds+`) THEN e.observed_at_ns END FROM effect_event e
+				WHERE e.capture_session_id = effect_instance.capture_session_id AND e.instance = effect_instance.instance ORDER BY e.sequence DESC LIMIT 1)
+			WHERE capture_session_id = ? AND instance IN (SELECT instance FROM deleted_effect_instance)`, span); err != nil {
+			return result, fmt.Errorf("delete history effects: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, "DELETE FROM deleted_effect_instance"); err != nil {
 			return result, fmt.Errorf("delete history effects: %w", err)
 		}
 		if _, err := tx.ExecContext(ctx, `DELETE FROM effect_instance WHERE capture_session_id = ? AND NOT EXISTS

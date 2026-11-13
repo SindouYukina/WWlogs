@@ -191,8 +191,13 @@ func (s *Store) loadEffects(ctx context.Context, model *encounterModel, masters 
 		return instance, fact, err
 	}
 	const columns = "ev.instance, ev.sequence, ev.after_combat_sequence, ev.observed_at_ns, ev.change_kind, ev.observation, ev.evidence, ev.reason, ev.stack, ev.remaining_s, ev.basis_ns"
-	// The last change of each instance before the encounter: an instance it left alive was active when the encounter began.
-	rows, err := s.db.QueryContext(ctx, "SELECT "+columns+", max(ev.sequence) FROM effect_event ev WHERE ev.capture_session_id = ? AND ev.observed_at_ns < ? GROUP BY ev.instance", model.session, start)
+	// The last change before the encounter of each instance it may have found alive: one whose first change came before it and
+	// that did not end before it (effect_instance_by_life). An instance that change left alive was active when the encounter
+	// began. Only those instances are read, never the span's changes before the encounter: each one's last change is found
+	// through its own key range (the unary + keeps the planner off the span-wide time index there).
+	rows, err := s.db.QueryContext(ctx, "SELECT "+columns+`, ev.sequence FROM effect_instance i JOIN effect_event ev ON ev.capture_session_id = i.capture_session_id AND ev.instance = i.instance
+		AND ev.sequence = (SELECT e.sequence FROM effect_event e WHERE e.capture_session_id = i.capture_session_id AND e.instance = i.instance AND +e.observed_at_ns < ? ORDER BY e.sequence DESC LIMIT 1)
+		WHERE i.capture_session_id = ? AND i.first_change_ns < ? AND (i.ended_at_ns IS NULL OR i.ended_at_ns >= ?)`, start, model.session, start, start)
 	if err != nil {
 		return nil, fmt.Errorf("read history analysis effects: %w", err)
 	}
