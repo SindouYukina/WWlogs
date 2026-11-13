@@ -236,7 +236,16 @@
       "truncated": "This encounter holds more effect events than one analysis reads, so effects are not shown.",
       "exactNote": "Every part of this range is confirmed by observed messages and there is no capture gap, so the coverage is exact.",
       "boundsNote": "Part of this range is not confirmed (stated time only, undetermined, an unconfirmed start or a capture gap), so only a lower bound and a possible upper bound are shown.",
-      "moreIntervals": "{{n}} more intervals are not listed."
+      "moreIntervals": "{{n}} more intervals are not listed.",
+      "refreshes": "Refreshes",
+      "refreshNote": "An active effect applied again or seen again in a snapshot; it is not a new, separate effect.",
+      "stackChanges": "Stack changes",
+      "inactive": "Inactive (confirmed)",
+      "inactiveUpper": "Inactive (at most)",
+      "inactiveNote": "Time in the range with no interval of the effect and outside capture gaps. With a gap, a rejected effect change or a stale instance, it is only an upper bound.",
+      "unobserved": "Before first seen",
+      "unobservedNote": "Time before the effect was first seen (for example in a snapshot), when it may already have been active.",
+      "stackTitle": "Stacks"
     },
     "skills": {
       "hits": "Hits",
@@ -361,6 +370,49 @@
         "noIcon": "No game icon",
         "name": "Name evidence"
       }
+    },
+    "correlation": {
+      "title": "Damage during the effect",
+      "note": "Places the confirmed hits against this effect's intervals by time. It shows what happened at the same time, never how much damage the effect added, and computes no rDPS.",
+      "scopeLabel": "Hits",
+      "scope": {
+        "selection": "Current selection",
+        "holder": "Dealt by the holder",
+        "target": "Taken by the holder"
+      },
+      "class": {
+        "confirmed": "While confirmed active",
+        "stated": "During its stated time",
+        "unknown": "Cannot tell",
+        "outside": "While not active"
+      },
+      "classNote": {
+        "confirmed": "The hit landed inside an interval the recorded changes confirm.",
+        "stated": "The hit landed only within the server's stated duration; the end was not observed.",
+        "unknown": "The effect's state then cannot be told; the reasons are listed below.",
+        "outside": "The recorded changes show the effect was not active then."
+      },
+      "hits": "{{n}} hits",
+      "reasonsLead": "Cannot tell because of:",
+      "reason": {
+        "gap": "a capture gap",
+        "unknown_interval": "an interval of unknown state",
+        "start_unconfirmed": "before the effect was first seen",
+        "simultaneous": "the same instant as a change of the effect",
+        "rejected_changes": "rejected effect changes that cannot be ruled out",
+        "stale_instance": "a stale instance that cannot be ruled out"
+      },
+      "untimed": "{{n}} hits have no time and cannot be placed.",
+      "by": {
+        "skill": "Skill",
+        "contributor": "Character",
+        "enemy": "Target"
+      },
+      "noHits": "No confirmed hits in the selection.",
+      "unavailable": "This encounter holds more effect changes than one analysis reads, or not this effect: nothing can be placed.",
+      "failed": "The correlation could not be read.",
+      "listMore": "The first {{n}} of {{total}}; the Events tab lists them all.",
+      "noEnemy": "No mapped target"
     }
   },
   "library": {

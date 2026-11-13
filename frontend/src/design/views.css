@@ -254,6 +254,32 @@ button.ww-career-record:focus-visible { outline: none; box-shadow: var(--ww-focu
 .ww-career-combo > .ww-num { text-align: end; color: var(--ww-text-2); }
 .ww-career-rules { margin: 0; padding-inline-start: var(--ww-space-4); font-size: var(--ww-text-xs); color: var(--ww-text-3); display: flex; flex-direction: column; gap: 4px; }
 
+/* Effect detail: the stack steps and the damage/effect time correlation. */
+.ww-analysis-stacks { margin: var(--ww-space-2) 0 0; }
+.ww-analysis-stacks svg { display: block; width: 100%; height: 28px; border-bottom: 1px solid var(--ww-line-soft); }
+.ww-analysis-stacks rect { fill: var(--ww-accent); }
+.ww-analysis-stacks rect[data-evidence="stated"] { fill: color-mix(in oklab, var(--ww-accent) 55%, var(--ww-surface-2)); }
+.ww-analysis-stacks rect[data-evidence="unknown"] { fill: var(--ww-surface-4); }
+.ww-analysis-stacks-axis { display: flex; justify-content: space-between; font-size: var(--ww-text-2xs); color: var(--ww-text-4); }
+.ww-analysis-correlation { display: flex; flex-direction: column; gap: var(--ww-space-2); margin-top: var(--ww-space-3); padding-top: var(--ww-space-3); border-top: 1px solid var(--ww-line-soft); }
+.ww-analysis-correlation h5 { margin: 0; font-size: var(--ww-text-sm); font-weight: var(--ww-weight-semibold); }
+.ww-correlation-bar { display: flex; height: 8px; overflow: hidden; border-radius: 999px; background: var(--ww-surface-3); }
+.ww-correlation-bar > span { min-width: 2px; }
+.ww-correlation-bar > span[data-class="confirmed"], .ww-correlation-swatch[data-class="confirmed"] { background: var(--ww-accent); }
+.ww-correlation-bar > span[data-class="stated"], .ww-correlation-swatch[data-class="stated"] { background: color-mix(in oklab, var(--ww-accent) 50%, var(--ww-surface-2)); }
+.ww-correlation-bar > span[data-class="unknown"], .ww-correlation-swatch[data-class="unknown"] { background: var(--ww-surface-4); }
+.ww-correlation-bar > span[data-class="outside"], .ww-correlation-swatch[data-class="outside"] { background: var(--ww-accent-2); }
+.ww-correlation-classes { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
+.ww-correlation-class { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto auto 56px; align-items: center; gap: var(--ww-space-2); width: 100%; padding: 5px var(--ww-space-1); border: 0; border-radius: var(--ww-radius-sm); background: transparent; color: inherit; font: inherit; font-size: var(--ww-text-sm); text-align: start; cursor: pointer; transition: background-color var(--ww-dur-fast) var(--ww-ease-standard); }
+.ww-correlation-class:hover:not(:disabled), .ww-correlation-class[aria-pressed="true"] { background: var(--ww-surface-hover); }
+.ww-correlation-class:disabled { cursor: default; opacity: 0.55; }
+.ww-correlation-class:focus-visible { outline: none; box-shadow: var(--ww-focus-ring); }
+.ww-correlation-class > .ww-num { text-align: end; }
+.ww-correlation-swatch { width: 10px; height: 10px; border-radius: 3px; }
+.ww-correlation-hits ol { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; max-height: 220px; overflow-y: auto; font-size: var(--ww-text-xs); }
+.ww-correlation-hits li { display: grid; grid-template-columns: 52px minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1fr) 64px auto; gap: var(--ww-space-2); padding: 3px 0; border-top: 1px solid var(--ww-line-soft); }
+.ww-correlation-table td.ww-num > .ww-compare-sub { display: block; }
+
 /* ------------------------------ Encounter Comparison ------------------------------ */
 /* The comparison set: chips of the chosen encounters and the actions, above the calendar or the library. */
 .ww-compare-tray { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ww-space-2) var(--ww-space-3); padding: var(--ww-space-2) var(--ww-space-3); border-radius: var(--ww-radius-md); background: var(--ww-surface-1); box-shadow: inset 0 0 0 1px var(--ww-accent-line); }

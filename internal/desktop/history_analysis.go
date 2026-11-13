@@ -138,6 +138,18 @@ func (b *Bridge) HistoryHits(id int64, query history.AnalysisQuery) (json.RawMes
 	return json.Marshal(hits)
 }
 
+// HistoryEffectCorrelation places the selected hits of a finished stored encounter against one effect row's intervals:
+// confirmed, stated, unknown (with why) or outside. It is a time correlation only, never an effect's damage contribution.
+func (b *Bridge) HistoryEffectCorrelation(id int64, query history.AnalysisQuery, effect string) (json.RawMessage, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), historyAnalysisLimit)
+	defer cancel()
+	correlation, err := b.history.EffectCorrelation(ctx, id, query, effect, b.masters)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(correlation)
+}
+
 type historyEventRowJSON struct {
 	history.EventRow
 	Source *historyActorJSON `json:"source,omitempty"`

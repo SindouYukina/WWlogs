@@ -87,6 +87,14 @@ export interface EffectCoverage {
   maxStack?: number
   applies: number
   startUnconfirmed?: boolean
+  /** Observed refreshes (a repeated APPLY or snapshot of an active instance, never a new instance) and stack changes. */
+  refreshes: number
+  stackChanges: number
+  /** Time no interval holds, outside capture gaps and before no unconfirmed start; an upper bound unless inactiveConfirmed. */
+  inactiveMs: number
+  /** Time before an instance's unconfirmed start, when it may have been active. */
+  unobservedMs: number
+  inactiveConfirmed: boolean
 }
 
 export interface SkillHit {
@@ -217,6 +225,9 @@ export type EventKind = "damage" | "healing" | "effect"
 export interface EventQuery extends AnalysisQuery {
   kinds: EventKind[]
   effectRow: string
+  /** Lists only the selected hits of one correlation class against this effect row. */
+  correlateEffect?: string
+  correlation?: CorrelationClass
   offset: number
   limit: number
 }
@@ -241,6 +252,72 @@ export interface EventRow {
   evidence?: string
   reason?: string
   stack?: number
+  /** A correlated list's place of the hit against its effect row, and why it is unknown. */
+  correlation?: CorrelationClass
+  correlationReason?: string
+}
+
+/**
+ * Where a hit falls against an effect row's intervals (internal/history/analysis_correlation.go): inside a confirmed
+ * interval, inside one only the server's stated time covers, unknown, or outside every interval. Time correlation only.
+ */
+export type CorrelationClass = "confirmed" | "stated" | "unknown" | "outside"
+
+export const correlationClasses: readonly CorrelationClass[] = ["confirmed", "stated", "unknown", "outside"]
+
+export interface CorrelationCount {
+  hits: number
+  damage: number
+  /** Of the damage of the split it belongs to. */
+  share: number
+}
+
+export interface CorrelationSplit {
+  confirmed: CorrelationCount
+  stated: CorrelationCount
+  unknown: CorrelationCount
+  outside: CorrelationCount
+  hits: number
+  damage: number
+}
+
+export interface CorrelationRow extends CorrelationSplit {
+  /** A contributor key (or "unassigned"), a skill row key, or an enemy ordinal ("-1": no mapped enemy). */
+  key: string
+}
+
+export interface EffectCorrelation {
+  state: AnalysisState
+  available: boolean
+  effect: string
+  query: AnalysisQuery
+  range: AnalysisRange
+  total: CorrelationSplit
+  untimed: number
+  reasons: Record<string, number>
+  byContributor: CorrelationRow[]
+  bySkill: CorrelationRow[]
+  byEnemy: CorrelationRow[]
+}
+
+/** Whose hits a correlation reads: the workspace's selection, the hits the effect's holder dealt, or the hits it took. */
+export type CorrelationScope = "selection" | "holder" | "target"
+
+/** The scopes an effect offers: a contributor holder's own hits, an enemy holder's hits taken. */
+export function correlationScopes(holder: Pick<ActorRef, "kind" | "contributor" | "enemy">): CorrelationScope[] {
+  const scopes: CorrelationScope[] = ["selection"]
+  if ((holder.kind === "role" || holder.kind === "vehicle") && holder.contributor) scopes.push("holder")
+  if (holder.kind === "enemy" && holder.enemy !== undefined) scopes.push("target")
+  return scopes
+}
+
+/** The analysis query of a scope: the workspace's query, narrowed to the holder's hits or to the hits on it. */
+export function correlationQuery(base: AnalysisQuery, scope: CorrelationScope, holder: Pick<ActorRef, "contributor" | "enemy">): AnalysisQuery {
+  switch (scope) {
+    case "holder": return { ...base, contributor: holder.contributor ?? "", skillRow: "" }
+    case "target": return { ...base, enemy: holder.enemy ?? -1, skillRow: "" }
+    default: return base
+  }
 }
 
 export interface EventPage {
