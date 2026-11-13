@@ -138,9 +138,16 @@ type teeSink struct {
 
 func (s *teeSink) Level() capture.HistoryLevel { return s.recorder.Level() }
 
+// Submit hands each drain to the recorder after the recorder's queue has room for it. The replay runs unpaced, many times
+// faster than the capture was made, and the recorder never waits (a full queue drops the batch and marks its encounters
+// incomplete, which store_test.go checks). The collector checks what history stores, so it waits for the writer instead
+// of overflowing it; the captured traffic itself is never slowed this way.
 func (s *teeSink) Submit(entries []capture.HistoryEntry, dropped uint64) {
 	s.entries = append(s.entries, entries...)
 	s.dropped += dropped
+	for len(s.recorder.queue) >= maxQueuedBatches/2 || s.recorder.queued.Load()+int64(len(entries)) > maxQueuedEntries/2 {
+		time.Sleep(time.Millisecond)
+	}
 	s.recorder.Submit(entries, dropped)
 }
 
@@ -454,6 +461,13 @@ func replayIntoHistory(t *testing.T, store *Store, masters *capture.MasterData, 
 	}
 	if tee.dropped != 0 {
 		t.Fatalf("the engine journal refused %d entries", tee.dropped)
+	}
+	var journalDropped, queueDropped, writeFailed int64
+	if err := store.db.QueryRowContext(context.Background(), "SELECT journal_dropped, queue_dropped, write_failed FROM capture_session WHERE id = ?", recorder.SessionID()).Scan(&journalDropped, &queueDropped, &writeFailed); err != nil {
+		t.Fatal(err)
+	}
+	if journalDropped != 0 || queueDropped != 0 || writeFailed != 0 {
+		t.Fatalf("history lost entries: journal %d, queue %d, failed writes %d", journalDropped, queueDropped, writeFailed)
 	}
 	if !reflect.DeepEqual(comparableView(final), comparableView(plain)) {
 		t.Fatal("keeping history changed the final view")
