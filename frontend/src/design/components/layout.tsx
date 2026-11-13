@@ -32,7 +32,10 @@ export function Collapse({ open, children }: { open: boolean; children: ReactNod
   return <div className="ww-collapse" data-open={open} aria-hidden={!open}><div>{children}</div></div>
 }
 
-export interface CardProps {
+/** data-* attributes a component passes on to its root element (fields that views and acceptance checks read). */
+export type DataAttributes = { [name: `data-${string}`]: string | number | boolean | undefined }
+
+export interface CardProps extends DataAttributes {
   interactive?: boolean
   className?: string
   style?: CSSProperties
@@ -40,13 +43,13 @@ export interface CardProps {
 }
 
 /** Hover lift and pointer spotlight only move and fade dedicated layers. A resting card has no ongoing cost. */
-export function Card({ interactive = false, className, style, children }: CardProps) {
+export function Card({ interactive = false, className, style, children, ...data }: CardProps) {
   const spot = useRef<HTMLDivElement>(null)
   const onPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
     const bounds = event.currentTarget.getBoundingClientRect()
     if (spot.current) spot.current.style.transform = `translate(${event.clientX - bounds.left}px, ${event.clientY - bounds.top}px)`
   }
-  return <div className={className ? `ww-card ${className}` : "ww-card"} style={style} data-interactive={interactive} onPointerMove={interactive ? onPointerMove : undefined}>
+  return <div {...data} className={className ? `ww-card ${className}` : "ww-card"} style={style} data-interactive={interactive} onPointerMove={interactive ? onPointerMove : undefined}>
     {interactive && <><div className="ww-card-lift" /><div className="ww-card-fx"><div ref={spot} className="ww-card-spot" /></div></>}
     <div className="ww-card-body">{children}</div>
   </div>
