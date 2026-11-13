@@ -38,7 +38,7 @@ func TestHistoryHelperProcess(t *testing.T) {
 		encryptionVFS = "wwlogs-torn-xts"
 		sizeOf = func(int64) int64 { return 1 }
 	}
-	store, err := Open(Options{Path: path, Location: time.UTC, Build: &testBuild, ProtocolSchema: "test schema", MasterSHA256: "test-master"})
+	store, err := Open(Options{Path: path, Location: time.UTC, Build: &testBuild, MasterSHA256: "test-master"})
 	if err != nil {
 		fmt.Println("helper: open:", err)
 		os.Exit(3)

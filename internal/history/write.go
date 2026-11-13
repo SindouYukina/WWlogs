@@ -24,9 +24,10 @@ type sessionWriter struct {
 	newSpans   []int64
 }
 
-// applySubmission applies one queue element in journal order: what waited before the drain, then the drain.
+// applySubmission applies one queue element in journal order: what waited before the drain, then the drain. A structural
+// entry that cannot be applied fails as a *refusedEntry naming where it is, so the next transaction does not carry it again.
 func (w *sessionWriter) applySubmission(ctx context.Context, sub submission) error {
-	for _, item := range sub.held {
+	for index, item := range sub.held {
 		if item.note != nil {
 			if err := w.applyLoss(ctx, item.note); err != nil {
 				return fmt.Errorf("loss note: %w", err)
@@ -34,16 +35,32 @@ func (w *sessionWriter) applySubmission(ctx context.Context, sub submission) err
 			continue
 		}
 		if err := w.apply(ctx, item.marker); err != nil {
-			return fmt.Errorf("%s: %w", item.marker.Kind, err)
+			return &refusedEntry{held: true, index: index, err: fmt.Errorf("%s: %w", item.marker.Kind, err)}
 		}
 	}
-	for _, entry := range sub.entries {
+	for index, entry := range sub.entries {
 		if err := w.apply(ctx, entry); err != nil {
-			return fmt.Errorf("%s: %w", entry.Kind, err)
+			err = fmt.Errorf("%s: %w", entry.Kind, err)
+			if structural(entry.Kind) {
+				return &refusedEntry{index: index, err: err}
+			}
+			return err
 		}
 	}
 	return nil
 }
+
+// refusedEntry is a structural entry the writer could not apply. Applying it again cannot succeed, so the next transaction
+// counts it lost (it belonged to no single encounter) instead of carrying it; sub is filled in by the caller.
+type refusedEntry struct {
+	sub   int
+	held  bool
+	index int
+	err   error
+}
+
+func (e *refusedEntry) Error() string { return e.err.Error() }
+func (e *refusedEntry) Unwrap() error { return e.err }
 
 // applyLoss counts lost entries on the span they belonged to (between spans: the span that closed last) and marks the
 // encounters they belonged to incomplete; one that belonged to no single encounter marks the whole span (settleLosses).
@@ -153,6 +170,11 @@ func (w *sessionWriter) apply(ctx context.Context, entry capture.HistoryEntry) e
 			}
 		}
 		return w.closeSpan(ctx, reason, open)
+	case capture.HistoryProtocolConfirmed:
+		if entry.Protocol == nil {
+			return errors.New("protocol entry without its protocol session")
+		}
+		return w.insertProtocol(ctx, *entry.Protocol)
 	case capture.HistoryEffectChanged:
 		return w.insertEffect(ctx, entry.Effect)
 	case capture.HistoryEffectRejected:
@@ -272,13 +294,30 @@ func (w *sessionWriter) encounterRow(ctx context.Context, key string) (int64, bo
 	return id, true, nil
 }
 
+// insertProtocol records a protocol session of the span with the game version it reported. The journal names a session again
+// at every span start, so a span may name it twice; a second, different version for the same session would be a defect.
+func (w *sessionWriter) insertProtocol(ctx context.Context, protocol capture.HistoryProtocolSession) error {
+	if _, err := w.tx.ExecContext(ctx, "INSERT INTO protocol_session (capture_session_id, protocol_session, game_version) VALUES (?, ?, ?) ON CONFLICT DO NOTHING",
+		w.span, protocol.Number, protocol.GameVersion); err != nil {
+		return err
+	}
+	var stored string
+	if err := w.tx.QueryRowContext(ctx, "SELECT game_version FROM protocol_session WHERE capture_session_id = ? AND protocol_session = ?", w.span, protocol.Number).Scan(&stored); err != nil {
+		return err
+	}
+	if stored != protocol.GameVersion {
+		return fmt.Errorf("protocol session %d reported game version %s after %s", protocol.Number, protocol.GameVersion, stored)
+	}
+	return nil
+}
+
 // insertOpening records an encounter as it opened. complete is false when the row is created only because its finished
 // entry arrived without the opening, which means the opening was lost.
 func (w *sessionWriter) insertOpening(ctx context.Context, key string, opening capture.HistoryEncounterOpening, complete bool) (int64, error) {
 	date, offset := w.recorder.store.localDate(opening.StartedAt)
 	result, err := w.tx.ExecContext(ctx, `INSERT INTO encounter (capture_session_id, statistics_interval, sequence, protocol_session, state, outcome, complete,
-		started_at_ns, start_basis, local_date, utc_offset_s, scene_instance_id, scene_recorded)
-		VALUES (?, ?, ?, ?, 'pending', 'OPEN', ?, ?, ?, ?, ?, ?, 1)`,
+		started_at_ns, start_basis, local_date, utc_offset_s, scene_instance_id)
+		VALUES (?, ?, ?, ?, 'pending', 'OPEN', ?, ?, ?, ?, ?, ?)`,
 		w.span, int64(opening.StatisticsInterval), int64(opening.Sequence), opening.ProtocolSession, boolInt(complete),
 		opening.StartedAt.UnixNano(), opening.StartBasis, date, offset, sceneValue(opening.Scene))
 	if err != nil {
@@ -399,7 +438,7 @@ func (w *sessionWriter) writeResults(ctx context.Context, key string, finished *
 		healing_status = ?, healing_reason = ?, healing_effective = ?, healing_reported = ?, healing_overheal = ?, healing_events = ?,
 		healing_unknown_effective = ?, healing_unknown_events = ?,
 		unassigned_damage_dealt = ?, unassigned_outgoing_events = ?, unassigned_damage_taken = ?, unassigned_incoming_events = ?, unassigned_overflow_events = ?,
-		scene_instance_id = ?, scene_recorded = 1, enemies_recorded = 1, enemies_overflow = ?
+		scene_instance_id = ?, enemies_overflow = ?
 		WHERE id = ?`,
 		state, checkpoint, string(snapshot.Outcome), snapshot.StartedAt.UnixNano(), snapshot.StartBasis, boolInt(snapshot.StartConfirmed),
 		unixNanos(snapshot.BattleEntered), unixNanos(snapshot.EndedAt), snapshot.EndBasis, unixNanos(snapshot.EndDecidedAt),

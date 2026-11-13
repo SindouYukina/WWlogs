@@ -5,8 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 )
 
 // Deleting history.
@@ -31,8 +29,6 @@ type DeleteResult struct {
 	Encounters int `json:"encounters"`
 	// Spans counts recorded spans removed because no encounter of theirs remained.
 	Spans int `json:"spans"`
-	// Backups counts the encrypted pre-migration copies a clear removed.
-	Backups int `json:"backups"`
 	// Compacted is true when the file was compacted afterwards.
 	Compacted bool `json:"compacted"`
 }
@@ -120,9 +116,8 @@ func (s *Store) DeleteEncounter(ctx context.Context, id int64) (DeleteResult, er
 	return result, nil
 }
 
-// ClearHistory removes every recorded span and encounter, and the encrypted pre-migration copies of the file, then compacts
-// it. It refuses while a capture records into the history, so a recording is never cut into pieces. The key stays: the
-// emptied file is still encrypted with it.
+// ClearHistory removes every recorded span and encounter, then compacts the file. It refuses while a capture records into the
+// history, so a recording is never cut into pieces. The key stays: the emptied file is still encrypted with it.
 func (s *Store) ClearHistory(ctx context.Context) (DeleteResult, error) {
 	var result DeleteResult
 	defer s.models.clear()
@@ -156,12 +151,6 @@ func (s *Store) ClearHistory(ctx context.Context) (DeleteResult, error) {
 	}
 	if err := tx.Commit(); err != nil {
 		return result, fmt.Errorf("clear history: %w", err)
-	}
-	backups, _ := filepath.Glob(s.path + ".schema-*.bak")
-	for _, backup := range backups {
-		if os.Remove(backup) == nil {
-			result.Backups++
-		}
 	}
 	result.Compacted = s.compactIfWorthIt(ctx, true)
 	return result, nil

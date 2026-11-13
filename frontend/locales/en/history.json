@@ -29,7 +29,6 @@
     "state": "Record"
   },
   "unidentified": "Unidentified",
-  "notRecorded": "Not recorded",
   "correlatedNote": "Named through a Master link; compatibility with this game version is not verified",
   "sameType": "×{{n}}",
   "unreliableShort": "Unreliable",
@@ -61,6 +60,7 @@
   },
   "back": "Back to {{date}}",
   "detailTitle": "{{date}} {{time}}",
+  "gameVersion": "Game version {{version}}",
   "timeRange": "Time",
   "recordedBy": "Recorded by",
   "incompleteNote": "Part of this record could not be saved, so the stored values may be lower than what happened.",
@@ -69,7 +69,6 @@
   "timelineMissing": "No stored timeline",
   "enemies": "Enemies",
   "enemyCount": "Instances: {{n}}",
-  "enemiesNotRecorded": "Enemies were not recorded for this encounter.",
   "noEnemies": "No enemy was confirmed in this encounter.",
   "enemyName": "Enemy",
   "enemyDamageTaken": "Damage received",
@@ -81,13 +80,11 @@
     "not_a_history_file": "The history file is not a WWlogs history and was left unchanged. No history is recorded.",
     "integrity_check_failed": "The history file failed its integrity check and was left unchanged. No history is recorded.",
     "open_failed": "The history could not be opened. Capture works as usual, but no history is recorded.",
-    "migration_failed": "The history could not be upgraded. A copy was kept and no history is recorded.",
     "no_history_file": "No history is available.",
     "storage_stopped": "Saving history stopped after repeated write errors. Capture works as usual.",
     "key_missing": "The history file exists but its key file is missing. The file was left unchanged and no history is recorded. Restore combat-history.key to read it.",
     "key_unavailable": "Windows could not unlock the history key for this user. The file was left unchanged and no history is recorded.",
     "key_mismatch": "The history key does not open the history file. The file was left unchanged and no history is recorded.",
-    "encryption_migration_failed": "The existing unencrypted history could not be encrypted. It was left unchanged and no history is recorded; WWlogs tries again at the next start.",
     "duplicate_source": "This capture file is already in the history, so it is not stored again."
   },
   "localEncrypted": "Combat history is stored only on this PC, encrypted with a key that Windows protects for your user account.",
@@ -115,15 +112,12 @@
     "not_finished": "The capture ended before this encounter finished."
   },
   "checkpointNote": "The values below are the last checkpoint, at {{time}}. The encounter is incomplete; they are not its final result.",
-  "versionCorrected": "Recorded as {{version}} by a build of the v0.7.0 line ({{commit}}); corrected when the history was upgraded.",
   "coverage": {
     "title": "What this record contains",
     "combat": "Damage and healing",
     "combatStored": "Every confirmed damage and healing result",
-    "combatTotalsOnly": "Encounter totals only",
     "effects": "Effect lifecycle",
     "effectsStored": "{{changes}} changes of {{instances}} effects during this encounter",
-    "effectsNotStored": "Not stored: this record was made before WWlogs stored effect events",
     "skillCasts": "Skill casts",
     "skillCastsNotStored": "Not stored: no reliable source for skill casts exists; the skill table counts damage hits",
     "effectsDerived": "Of these, {{derived}} ends follow from another fact (such as the holder leaving) and {{untracked}} are the end of tracking, not an observed removal.",
@@ -147,13 +141,6 @@
   },
   "clear": {
     "done": "History cleared: {{n}} encounters deleted."
-  },
-  "migration": {
-    "insufficient_space": "There is not enough free disk space to encrypt the existing history. It was left unchanged; free some space and restart WWlogs.",
-    "file_in_use": "The existing history is in use by another program, so it could not be encrypted. It was left unchanged; close that program and restart WWlogs.",
-    "verification_failed": "The encrypted copy of the existing history did not match it and was discarded. The history was left unchanged.",
-    "copy_failed": "The existing history could not be copied into an encrypted file. It was left unchanged.",
-    "unreadable": "The existing history could not be read, so it was not encrypted. It was left unchanged."
   },
   "analysis": {
     "loading": "Analysing this encounter…",
@@ -194,7 +181,6 @@
     "state": {
       "ready": "Ready",
       "not_finished": "Only a finished encounter can be analysed by time: an unfinished record has no final result to check against.",
-      "no_events": "This record stored encounter totals only, without individual results, so it cannot be analysed by time.",
       "too_large": "This encounter stored more events than one analysis reads, so it is not analysed."
     },
     "actor": {
@@ -240,7 +226,6 @@
       "applies": "Applies",
       "unknownEffect": "Unidentified effect",
       "none": "No effect matches in this range.",
-      "notStored": "This record did not store effect events.",
       "selectHint": "Select an effect to see its active intervals and their evidence.",
       "hidden": "{{n}} more effects are not shown on the game HUD; switch to All tracked to see them.",
       "stale": "{{n}} effects had passed the time the server stated before the encounter began and were never heard of again, so they are not listed.",

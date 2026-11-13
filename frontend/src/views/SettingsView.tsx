@@ -106,8 +106,6 @@ function HistoryPage({ controller }: { controller: SettingsController }) {
       <SettingsRow title={t("historySettings.encryption")} description={t(indicator?.encrypted ? "historySettings.encryptedHint" : "historySettings.notEncryptedHint")}>
         <span data-field="history-encryption" data-encrypted={indicator?.encrypted === true}>{t(indicator?.encrypted ? "historySettings.encrypted" : "historySettings.notEncrypted")}</span>
       </SettingsRow>
-      {indicator?.plaintextConverted && <p className="ww-settings-notice" role="status" data-field="history-plaintext-converted">{t("historySettings.plaintextConverted")}</p>}
-      {indicator?.plaintextBackups ? <p className="ww-settings-notice" data-tone="warn" data-field="history-plaintext-backups">{t("historySettings.plaintextBackups", { n: indicator.plaintextBackups })}</p> : null}
     </SettingsSection>
     <SettingsSection title={t("historySettings.sections.data")}>
       <SettingsRow title={t("historySettings.clear")} description={t("historySettings.clearHint")}>

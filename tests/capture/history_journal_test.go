@@ -1,6 +1,7 @@
 package capture
 
 import (
+	"bytes"
 	"reflect"
 	"testing"
 	"time"
@@ -225,5 +226,73 @@ func TestStoredTimelineRejectsWhatNoEngineStores(t *testing.T) {
 		if _, ok := stored.Render("x", time.Unix(0, 0), time.Unix(10, 0), 0); ok {
 			t.Fatalf("an invalid timeline rendered: %+v", stored)
 		}
+	}
+}
+
+// TestJournalNamesOnlyAConfirmedProtocolSession reports a client version after a handshake: a session that reported the
+// version this build decodes is named in the journal, with that version, before anything of it; any other version is never
+// decoded and never named.
+func TestJournalNamesOnlyAConfirmedProtocolSession(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		versions []string
+		named    bool
+	}{
+		{"current version", currentTestClientVersions, true},
+		{"another version", []string{"3.7.0", "3.7.1", "3.7.19"}, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
+			p.damageStatistics.EnableHistory(HistoryEvents)
+			p.sessionNumber = 1
+			p.protocol.beginSession()
+			var payload []byte
+			for index, field := range []uint64{fieldCheckClientPushAppVersion, fieldCheckClientPushLauncherVersion, fieldCheckClientPushResourceVersion} {
+				payload = appendBytesField(payload, field, []byte(test.versions[index]))
+			}
+			if err := p.observeClientVersion(cmdCheckClientPush, payload); err != nil {
+				t.Fatal(err)
+			}
+			// A later report of the same session confirms nothing again.
+			if err := p.observeClientVersion(cmdCheckClientPush, payload); err != nil {
+				t.Fatal(err)
+			}
+			entries, _ := takeSpan(t, p.damageStatistics)
+			if !test.named {
+				if len(entries) != 0 {
+					t.Fatalf("an undecoded session was journaled: %v", journalKinds(entries))
+				}
+				return
+			}
+			if len(entries) != 1 || entries[0].Kind != HistoryProtocolConfirmed || *entries[0].Protocol != (HistoryProtocolSession{Number: 1, GameVersion: CurrentGameVersion()}) {
+				t.Fatalf("journal = %v %+v", journalKinds(entries), entries)
+			}
+		})
+	}
+}
+
+// TestEverySpanNamesItsProtocolSession switches recording off and on during a protocol session: the new span names the
+// session again right after its start, so it holds nothing whose protocol session it does not name; after a new handshake
+// the old session is no longer named.
+func TestEverySpanNamesItsProtocolSession(t *testing.T) {
+	statistics := NewDamageStatistics()
+	statistics.EnableHistory(HistoryEvents)
+	statistics.confirmProtocolSession(1, CurrentGameVersion())
+	statistics.SetHistoryRecording(false)
+	statistics.SetHistoryRecording(true)
+	entries, _ := takeSpan(t, statistics)
+	want := []HistoryEntryKind{HistoryProtocolConfirmed, HistoryRecordingStopped, HistoryRecordingStarted, HistoryProtocolConfirmed}
+	if got := journalKinds(entries); !reflect.DeepEqual(got, want) {
+		t.Fatalf("journal = %v\nwant %v", got, want)
+	}
+	if entries[3].Protocol == nil || entries[3].Protocol.Number != 1 || entries[3].Protocol.GameVersion != CurrentGameVersion() {
+		t.Fatalf("the new span names %+v", entries[3].Protocol)
+	}
+	statistics.endProtocolSession()
+	statistics.SetHistoryRecording(false)
+	statistics.SetHistoryRecording(true)
+	entries, _ = statistics.TakeHistory()
+	if got := journalKinds(entries); !reflect.DeepEqual(got, []HistoryEntryKind{HistoryRecordingStopped, HistoryRecordingStarted}) {
+		t.Fatalf("after the handshake the journal = %v", got)
 	}
 }

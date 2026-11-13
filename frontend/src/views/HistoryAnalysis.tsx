@@ -61,11 +61,10 @@ export function LinkedName({ name, fallback, id, title }: { name: HistoryName; f
 export function EnemiesCard({ detail, ranges, selected, onSelect }: { detail: HistoryEncounterDetail; ranges?: readonly EnemyRange[]; selected?: number; onSelect?: (ordinal: number) => void }) {
   const { t } = useTranslation("history")
   const format = useFormatters()
-  const summary = detail.summary
   const byOrdinal = new Map((ranges ?? []).map(range => [range.ordinal, range]))
   return <Card className="ww-history-enemies">
-    <div className="ww-dash-card-head"><h3>{t("enemies")}</h3><span className="ww-history-total">{summary.enemiesRecorded ? t("enemyCount", { n: format.integer(detail.enemies.length) }) : ""}</span></div>
-    {!summary.enemiesRecorded ? <p className="ww-dash-empty-note">{t("enemiesNotRecorded")}</p> : detail.enemies.length === 0 ? <p className="ww-dash-empty-note">{t("noEnemies")}</p> :
+    <div className="ww-dash-card-head"><h3>{t("enemies")}</h3><span className="ww-history-total">{t("enemyCount", { n: format.integer(detail.enemies.length) })}</span></div>
+    {detail.enemies.length === 0 ? <p className="ww-dash-empty-note">{t("noEnemies")}</p> :
       <div className="ww-dash-skills-wrap"><table className="ww-history-table" data-field="enemies">
         <thead><tr><th>{t("enemyName")}</th><th className="ww-num">{t("enemyDamageTaken")}</th><th className="ww-num">{t("enemyHits")}</th><th className="ww-num">{t("enemyDamageDealt")}</th></tr></thead>
         <tbody>{detail.enemies.map(enemy => {
@@ -441,7 +440,7 @@ const TimelineCard = memo(function TimelineCard({ detail, analysis, lanes, lines
   // The effect tracks of the scope, grouped by who holds them as Go resolved it; an unknown holder stays apart.
   const effectGroups = useMemo(() => {
     const groups = new Map<string, { kind: string; label: string; tracks: EffectTrack[] }>()
-    if (!lanes?.available) return groups
+    if (!lanes) return groups
     for (const row of lanes.rows) {
       if (!shown.has(row.polarity)) continue
       const group = effectGroupOf(row.holder)
@@ -536,7 +535,7 @@ const TimelineCard = memo(function TimelineCard({ detail, analysis, lanes, lines
           {hitsReady && hits?.failed && <p className="ww-history-note" data-tone="critical" role="alert">{a("icon.hitsFailed")}</p>}
           {hitAnswer?.truncated && <p className="ww-history-note" data-tone="warn" data-field="hits-truncated">{a("icon.hitsTruncated", { listed: format.integer(hitAnswer.listed), total: format.integer(hitAnswer.total) })}</p>}
           {(hitAnswer?.untimed ?? 0) > 0 && <p className="ww-history-note" data-field="hits-untimed">{a("icon.untimed", { n: format.integer(hitAnswer!.untimed) })}</p>}
-          {!lanes ? <p className="ww-dash-empty-note">{a("loading")}</p> : !lanes.available && <p className="ww-dash-empty-note" data-field="effects-unavailable">{a("effects.notStored")}</p>}
+          {!lanes && <p className="ww-dash-empty-note">{a("loading")}</p>}
           <IconTimeline durationMs={durationMs} view={view} groups={groups} gaps={analysis.gaps} range={selected} sync={sync} selected={iconSelected} onPick={onPick} reveal={reveal}
             describeCluster={describeCluster} describeSegment={describeSegment} labels={{ aria: a("icon.aria"), expand: a("icon.expand"), collapse: a("icon.collapse"), empty: a("icon.empty") }} loading={!lanes || !hitsReady} />
           {lanes && <EffectNotes lanes={lanes} />}
@@ -634,7 +633,6 @@ const TimelineLanes = memo(function TimelineLanes({ lanes, analysis, range, focu
   const rows = useMemo(() => lanes ? laneRows(lanes.rows, actorName, enemyLabel) : [], [lanes, actorName, enemyLabel])
   const selected = focus?.kind === "effect" ? focus.key : null
   if (!lanes) return <p className="ww-dash-empty-note">{t("analysis.loading")}</p>
-  if (!lanes.available) return <p className="ww-dash-empty-note" data-field="effects-unavailable">{t("analysis.effects.notStored")}</p>
   // The lanes span the same width as the DPS timeline above them, so a moment lines up; the details follow below.
   return <div className="ww-analysis-stack">
     <EvidenceLegend />
@@ -714,7 +712,6 @@ const EffectsTab = memo(function EffectsTab({ lanes, analysis, focus, setFocus, 
   const selected = focus?.kind === "effect" ? focus.key : null
   const coverage = useMemo(() => new Map(analysis.effects.rows.map(row => [row.key, row])), [analysis.effects.rows])
   if (!lanes) return <p className="ww-dash-empty-note">{t("analysis.loading")}</p>
-  if (!lanes.available) return <p className="ww-dash-empty-note" data-field="effects-unavailable">{t("analysis.effects.notStored")}</p>
   return <div className="ww-analysis-split">
     <div className="ww-analysis-main-col">
       {lanes.rows.length === 0 ? <p className="ww-dash-empty-note">{t("analysis.effects.none")}</p> :

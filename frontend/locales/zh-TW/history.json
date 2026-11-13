@@ -29,7 +29,6 @@
     "state": "紀錄狀態"
   },
   "unidentified": "未識別",
-  "notRecorded": "未記錄",
   "correlatedNote": "透過 Master 對照取得的名稱；與目前遊戲版本的相容性尚未驗證",
   "sameType": "×{{n}}",
   "unreliableShort": "不可靠",
@@ -61,6 +60,7 @@
   },
   "back": "返回 {{date}}",
   "detailTitle": "{{date}} {{time}}",
+  "gameVersion": "遊戲版本 {{version}}",
   "timeRange": "時間",
   "recordedBy": "記錄來源",
   "incompleteNote": "這筆紀錄有部分內容未能保存，保存的數值可能低於實際情況。",
@@ -69,7 +69,6 @@
   "timelineMissing": "沒有保存的時間軸",
   "enemies": "敵人",
   "enemyCount": "{{n}} 個實體",
-  "enemiesNotRecorded": "這場戰鬥沒有記錄敵人資料。",
   "noEnemies": "這場戰鬥沒有已確認的敵人。",
   "enemyName": "敵人",
   "enemyDamageTaken": "承受傷害",
@@ -81,13 +80,11 @@
     "not_a_history_file": "歷史檔案不是 WWlogs 的歷史紀錄，已保持原樣，不會記錄歷史。",
     "integrity_check_failed": "歷史檔案未通過完整性檢查，已保持原樣，不會記錄歷史。",
     "open_failed": "無法開啟戰鬥歷史。擷取照常運作，但不會記錄歷史。",
-    "migration_failed": "無法升級戰鬥歷史。已保留備份，不會記錄歷史。",
     "no_history_file": "沒有可用的戰鬥歷史。",
     "storage_stopped": "多次寫入失敗後已停止保存歷史。擷取照常運作。",
     "key_missing": "歷史檔案存在，但其金鑰檔案遺失。檔案未被變更，也不會記錄歷史。請還原 combat-history.key 才能讀取。",
     "key_unavailable": "Windows 無法為這個使用者解開歷史金鑰。檔案未被變更，也不會記錄歷史。",
     "key_mismatch": "歷史金鑰無法開啟這個歷史檔案。檔案未被變更，也不會記錄歷史。",
-    "encryption_migration_failed": "現有的未加密歷史無法完成加密。檔案保持原樣，也不會記錄歷史；WWlogs 會在下次啟動時重試。",
     "duplicate_source": "這個擷取檔案已在歷史中，因此不會再次保存。"
   },
   "localEncrypted": "戰鬥歷史只保存在這台電腦上，並以 Windows 為你的使用者帳戶保護的金鑰加密。",
@@ -115,15 +112,12 @@
     "not_finished": "擷取在這場戰鬥結束前就停止了。"
   },
   "checkpointNote": "以下數值是 {{time}} 的最後檢查點。這場戰鬥並不完整，這些數值不是最終結果。",
-  "versionCorrected": "原本記錄為 {{version}}（v0.7.0 開發線的建置，{{commit}}）；歷史升級時已更正。",
   "coverage": {
     "title": "這筆紀錄包含的內容",
     "combat": "傷害與治療",
     "combatStored": "每一筆已確認的傷害與治療結果",
-    "combatTotalsOnly": "僅有戰鬥總計",
     "effects": "效果生命週期",
     "effectsStored": "這場戰鬥期間 {{instances}} 個效果共 {{changes}} 次變化",
-    "effectsNotStored": "未保存：這筆紀錄建立於 WWlogs 開始保存效果事件之前",
     "skillCasts": "技能施放",
     "skillCastsNotStored": "未保存：目前沒有可靠的技能施放來源；技能表統計的是傷害命中",
     "effectsDerived": "其中 {{derived}} 次結束是由其他事實推導（例如持有者離開），{{untracked}} 次是停止追蹤，並非觀測到的移除。",
@@ -147,13 +141,6 @@
   },
   "clear": {
     "done": "已清除歷史：刪除了 {{n}} 場戰鬥。"
-  },
-  "migration": {
-    "insufficient_space": "可用磁碟空間不足，無法加密現有的歷史。檔案保持原樣；請釋出空間後重新啟動 WWlogs。",
-    "file_in_use": "現有的歷史正被其他程式使用，無法加密。檔案保持原樣；請關閉該程式後重新啟動 WWlogs。",
-    "verification_failed": "現有歷史的加密副本與原檔不一致，已捨棄該副本。歷史保持原樣。",
-    "copy_failed": "無法將現有的歷史複製為加密檔案。檔案保持原樣。",
-    "unreadable": "無法讀取現有的歷史，因此沒有加密。檔案保持原樣。"
   },
   "analysis": {
     "loading": "正在分析這場戰鬥…",
@@ -194,7 +181,6 @@
     "state": {
       "ready": "可以分析",
       "not_finished": "只有已結束的戰鬥才能依時間分析：未結束的紀錄沒有可核對的最終結果。",
-      "no_events": "這筆紀錄只保存了戰鬥總計，沒有逐筆結果，因此無法依時間分析。",
       "too_large": "這場戰鬥保存的事件數超過單次分析的上限，因此不分析。"
     },
     "actor": {
@@ -240,7 +226,6 @@
       "applies": "施加次數",
       "unknownEffect": "未識別效果",
       "none": "這個範圍沒有符合條件的效果。",
-      "notStored": "這筆紀錄沒有保存效果事件。",
       "selectHint": "點選一個效果，可查看它的生效區間與證據。",
       "hidden": "另有 {{n}} 個效果不是遊戲 HUD 顯示的效果；切換為「全部追蹤」可查看。",
       "stale": "{{n}} 個效果在戰鬥開始前已超過伺服器陳述的時間，之後也沒有任何訊息，因此未列出。",

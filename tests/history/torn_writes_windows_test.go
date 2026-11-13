@@ -90,10 +90,7 @@ func tornHistoryRun(t *testing.T, checkpoint bool) {
 	const commits, readers = 200, 4
 	path := testPath(t)
 	store := openTestStore(t, path, nil)
-	recorder, err := store.BeginSession(liveStart)
-	if err != nil {
-		t.Fatal(err)
-	}
+	recorder := begin(t, store, liveStart)
 	span := recorder.SessionID()
 	ctx := context.Background()
 	var last, reads atomic.Int64

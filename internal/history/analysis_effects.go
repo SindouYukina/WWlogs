@@ -685,7 +685,6 @@ type EffectRow struct {
 // EffectLanes lists the effect rows of an encounter for a scope and the contributor and enemy filters.
 type EffectLanes struct {
 	State      string      `json:"state"`
-	Available  bool        `json:"available"`
 	Truncated  bool        `json:"truncated,omitempty"`
 	Scope      string      `json:"scope"`
 	DurationMs float64     `json:"durationMs"`
@@ -720,10 +719,7 @@ func (s *Store) Effects(ctx context.Context, id int64, query AnalysisQuery, mast
 	}
 	q := model.resolve(query)
 	lanes := EffectLanes{State: AnalysisReady, Scope: q.Effects, DurationMs: nsToMs(int64(model.duration)), Rows: []EffectRow{}, Rejected: model.rejected, Gaps: model.gapRefs()}
-	if model.effects == nil {
-		return lanes, nil
-	}
-	lanes.Available, lanes.Truncated, lanes.Stale = true, model.effects.truncated, model.effects.stale
+	lanes.Truncated, lanes.Stale = model.effects.truncated, model.effects.stale
 	start := model.start.UnixNano()
 	for _, row := range model.effects.rows {
 		if !q.rowMatches(row) {

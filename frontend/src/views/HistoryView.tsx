@@ -94,7 +94,6 @@ function ZoneNote({ zone }: { zone: HistoryZone | undefined }) {
 
 function SceneCell({ summary }: { summary: HistoryEncounterSummary }) {
   const { t } = useTranslation("history")
-  if (!summary.scene.recorded) return <span className="ww-history-unknown">{t("notRecorded")}</span>
   if (!summary.scene.known) return <span className="ww-history-unknown">{t("unidentified")}</span>
   return <LinkedName name={summary.sceneName} fallback={t("unidentified")} id={summary.scene.instanceId} title={t("correlatedNote")} />
 }
@@ -102,7 +101,6 @@ function SceneCell({ summary }: { summary: HistoryEncounterSummary }) {
 function EnemyCell({ summary }: { summary: HistoryEncounterSummary }) {
   const { t } = useTranslation("history")
   const enemy = summary.mainEnemy
-  if (!summary.enemiesRecorded) return <span className="ww-history-unknown">{t("notRecorded")}</span>
   if (!enemy) return <span className="ww-history-unknown">—</span>
   return <span className="ww-history-enemy">
     <LinkedName name={summary.mainEnemyName} fallback={t("unidentified")} id={enemy.monsterId ?? enemy.templateId} title={t("correlatedNote")} />
@@ -156,21 +154,18 @@ function DayList({ day, dateLabel, onOpen, onMore, loading }: { day: HistoryDay 
   </>
 }
 
-/** What the record stored besides its totals: effect lifecycle changes, and that skill casts are never stored. */
+/** What the record stored besides its totals: every combat result and effect lifecycle change, and never a skill cast. */
 function CoverageFacts({ detail }: { detail: HistoryEncounterDetail }) {
   const { t } = useTranslation("history")
   const format = useFormatters()
-  const coverage = detail.session.coverage
   const effects = detail.effects
-  return <div className="ww-history-coverage" data-field="coverage" data-effects={coverage.effectEvents} data-combat={coverage.combatEvents}>
+  return <div className="ww-history-coverage" data-field="coverage">
     <dl className="ww-history-facts ww-history-facts-wrap">
-      <div><dt>{t("coverage.combat")}</dt><dd>{t(coverage.combatEvents ? "coverage.combatStored" : "coverage.combatTotalsOnly")}</dd></div>
-      <div><dt>{t("coverage.effects")}</dt><dd data-field="coverage-effects" data-changes={effects.changes}>{coverage.effectEvents
-        ? t("coverage.effectsStored", { changes: format.integer(effects.changes), instances: format.integer(effects.instances) })
-        : t("coverage.effectsNotStored")}</dd></div>
+      <div><dt>{t("coverage.combat")}</dt><dd>{t("coverage.combatStored")}</dd></div>
+      <div><dt>{t("coverage.effects")}</dt><dd data-field="coverage-effects" data-changes={effects.changes}>{t("coverage.effectsStored", { changes: format.integer(effects.changes), instances: format.integer(effects.instances) })}</dd></div>
       <div><dt>{t("coverage.skillCasts")}</dt><dd className="ww-history-unknown">{t("coverage.skillCastsNotStored")}</dd></div>
     </dl>
-    {coverage.effectEvents && effects.derived + effects.untracked > 0 && <p className="ww-history-note">{t("coverage.effectsDerived", { derived: format.integer(effects.derived), untracked: format.integer(effects.untracked) })}</p>}
+    {effects.derived + effects.untracked > 0 && <p className="ww-history-note">{t("coverage.effectsDerived", { derived: format.integer(effects.derived), untracked: format.integer(effects.untracked) })}</p>}
     {detail.session.effectsRejected > 0 && <p className="ww-history-note" data-tone="warn">{t("coverage.effectsRejected", { n: format.integer(detail.session.effectsRejected) })}</p>}
   </div>
 }
@@ -235,12 +230,12 @@ function EncounterDetail({ detail, backLabel, onBack, onDeleted, timelineMode, s
   const skills = selected ? breakdowns.get(selected.key) : undefined
   // A finished encounter whose results were stored one by one is explored in the analysis workspace; an unfinished one
   // shows the checkpoint it left, which is not a final result and is never split by time.
-  const analysed = summary.state === "finished" && encounter !== null && session.coverage.combatEvents
+  const analysed = summary.state === "finished" && encounter !== null
   return <div className="ww-history-detail" data-field="encounter-detail" data-encounter-id={summary.id} data-state={summary.state}>
     <div className="ww-history-detail-head">
       <div className="ww-history-years">
         <Button size="sm" variant="ghost" onClick={onBack} data-field="detail-back"><span style={{ display: "inline-flex", transform: "rotate(90deg)" }}><Icon name="chevron" size={13} /></span>{backLabel}</Button>
-        <h3>{t("detailTitle", { time: start, date: dates.long(summary.localDate) })}</h3>
+        <h3>{t("detailTitle", { time: start, date: dates.long(summary.localDate) })}{summary.gameVersion && <span className="ww-history-version" data-field="game-version" title={t("gameVersion", { version: summary.gameVersion })}> · {summary.gameVersion}</span>}</h3>
       </div>
       <div className="ww-history-chips">
         <StatusChip summary={summary} />
@@ -256,7 +251,7 @@ function EncounterDetail({ detail, backLabel, onBack, onDeleted, timelineMode, s
           <div><dt>{t("columns.enemy")}</dt><dd><EnemyCell summary={summary} /></dd></div>
           <div><dt>{t("timeRange")}</dt><dd className="ww-num" data-field="time-range" title={clockTitle(summary.start, summary.recorded)}>{start} – {end}</dd></div>
           <div><dt>{t("columns.duration")}</dt><dd className="ww-num">{summary.durationSeconds === undefined ? "—" : format.clock(summary.durationSeconds)}</dd></div>
-          <div><dt>{t("recordedBy")}</dt><dd title={session.recordedAppVersion ? t("versionCorrected", { version: session.recordedAppVersion, commit: session.appCommit }) : session.appCommit}>{t(`source.${session.source}`)} · {session.appVersion}{session.appBuild > 0 ? ` (${session.appBuild})` : ""}</dd></div>
+          <div><dt>{t("recordedBy")}</dt><dd>{t(`source.${session.source}`)}</dd></div>
         </dl>
         <DeleteEncounter summary={summary} onDeleted={onDeleted} />
       </div>

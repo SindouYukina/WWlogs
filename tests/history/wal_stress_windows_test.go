@@ -30,10 +30,7 @@ func TestEncryptedWALReadersSeeOnlyCommittedRows(t *testing.T) {
 	readers := stressReaders(6)
 	path := testPath(t)
 	store := openTestStore(t, path, nil)
-	recorder, err := store.BeginSession(liveStart)
-	if err != nil {
-		t.Fatal(err)
-	}
+	recorder := begin(t, store, liveStart)
 	span := recorder.SessionID()
 	ctx := context.Background()
 	ledger := &stressLedger{}
@@ -219,10 +216,7 @@ func TestRecorderStoresEverythingWhileTheHistoryIsQueried(t *testing.T) {
 	readers := stressReaders(4)
 	path := testPath(t)
 	store := openTestStore(t, path, nil)
-	recorder, err := store.BeginSession(liveStart)
-	if err != nil {
-		t.Fatal(err)
-	}
+	recorder := begin(t, store, liveStart)
 	ctx := context.Background()
 	base := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC).Local()
 	var expectedMu sync.Mutex
@@ -307,7 +301,7 @@ func TestRecorderStoresEverythingWhileTheHistoryIsQueried(t *testing.T) {
 							continue
 						}
 						want, ok := lookup(summary.StartedAt)
-						if !ok || summary.DamageDealt == nil || *summary.DamageDealt != want.damage || !summary.Complete || !summary.Coverage.EffectEvents {
+						if !ok || summary.DamageDealt == nil || *summary.DamageDealt != want.damage || !summary.Complete {
 							failures.add("day", errStressMismatch)
 							continue
 						}
@@ -450,10 +444,7 @@ func TestEncryptedWALNewestRowsUnderFastCommits(t *testing.T) {
 	readers := stressReaders(8)
 	path := testPath(t)
 	store := openTestStore(t, path, nil)
-	recorder, err := store.BeginSession(liveStart)
-	if err != nil {
-		t.Fatal(err)
-	}
+	recorder := begin(t, store, liveStart)
 	span := recorder.SessionID()
 	ctx := context.Background()
 	var committed, commits atomic.Int64

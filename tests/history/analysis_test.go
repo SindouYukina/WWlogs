@@ -405,7 +405,7 @@ func TestHitTimelineFollowsTheContributorAndEnemyFilters(t *testing.T) {
 func TestEffectIntervalsSayHowEachPartIsKnown(t *testing.T) {
 	f := newAnalysisFixture(t)
 	lanes, err := f.store.Effects(context.Background(), f.id, AnalysisQuery{Enemy: -1, Effects: "all"}, nil)
-	if err != nil || !lanes.Available || lanes.Stale != 1 {
+	if err != nil || lanes.Stale != 1 {
 		t.Fatalf("lanes = %+v (%v)", lanes, err)
 	}
 	rows := map[string]EffectRow{}
@@ -559,10 +559,7 @@ func TestOnlyFinishedEncountersWithEventsAreAnalysed(t *testing.T) {
 	start := time.Date(2026, 11, 11, 4, 0, 0, 0, time.UTC)
 	entries := finishedEncounter(1, 1, start, 30, 500, capture.IntegrityIntact)
 	// The engine stopped before the encounter finished.
-	recorder, err := store.BeginSession(liveStart)
-	if err != nil {
-		t.Fatal(err)
-	}
+	recorder := begin(t, store, liveStart)
 	recorder.Submit(entries[:2], 0)
 	if err := recorder.Finish(context.Background(), capture.StopReasonReplayEnd); err != nil {
 		t.Fatal(err)

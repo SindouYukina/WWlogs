@@ -12,11 +12,3 @@ import "wwlogs/internal/capture"
 func Level() capture.HistoryLevel {
 	return capture.HistoryEvents
 }
-
-// levelName is the stored name of a level.
-func levelName(level capture.HistoryLevel) string {
-	if level >= capture.HistoryEvents {
-		return "events"
-	}
-	return "encounters"
-}

@@ -154,8 +154,6 @@
     "encryptedHint": "金鑰由 Windows（DPAPI）為你的使用者帳戶保護，並非 TPM 硬體保護。以你的身分執行的程式仍可讀取。",
     "notEncrypted": "未加密",
     "notEncryptedHint": "歷史檔案未開啟，或是較早版本的未加密檔案。",
-    "plaintextConverted": "較早版本的未加密歷史已轉換為加密儲存。舊檔案已被取代，但這不是安全抹除：在磁碟空間被重新使用前，舊資料可能仍殘留。",
-    "plaintextBackups": "有 {{n}} 份較早版本的未加密備份無法轉換，仍留在磁碟上。",
     "clear": "清除全部歷史",
     "clearHint": "刪除所有保存的戰鬥及其備份副本。擷取正在記錄時無法使用。",
     "clearAction": "清除歷史",

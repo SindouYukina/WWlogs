@@ -78,7 +78,7 @@ func TestHistoryReplayPacingCollector(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				recorder, err := store.BeginSession(SessionStart{Source: SourceReplay, SourceSHA256: digest, Level: Level()})
+				recorder, err := store.BeginSession(SessionStart{Source: SourceReplay, SourceSHA256: digest})
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -129,19 +129,19 @@ func historyContent(t *testing.T, store *Store) string {
 	t.Helper()
 	encounterKey := "(SELECT e.statistics_interval || '-' || e.sequence FROM encounter e WHERE e.id = %s)"
 	queries := []string{
-		`SELECT source, source_sha256, status, stop_reason, history_level, journal_dropped, queue_dropped, write_failed, app_version, app_build, app_commit,
-			app_dirty, app_profile, protocol_schema, master_sha256, combat_events_recorded, effect_events_recorded, skill_casts_recorded, effects_rejected, start_reason
-			FROM capture_session ORDER BY id`,
+		`SELECT source, source_sha256, status, start_reason, stop_reason, journal_dropped, queue_dropped, write_failed, effects_rejected, app_version,
+			app_build, app_commit, app_dirty, app_profile, master_sha256 FROM capture_session ORDER BY id`,
+		`SELECT protocol_session, game_version FROM protocol_session ORDER BY capture_session_id, protocol_session`,
 		`SELECT loss_id, direction, from_ns, to_ns, failed FROM capture_gap ORDER BY capture_session_id, loss_id`,
-		`SELECT statistics_interval, sequence, protocol_session, state, outcome, complete, started_at_ns, start_basis, start_confirmed, battle_entered_at_ns,
+		`SELECT statistics_interval, sequence, protocol_session, state, outcome, complete, incomplete_reason, checkpoint_at_ns, started_at_ns, start_basis,
+			start_confirmed, battle_entered_at_ns,
 			ended_at_ns, end_basis, end_decided_at_ns, first_activity_at_ns, last_activity_at_ns, reentries, local_date, utc_offset_s, damage_dealt, damage_taken,
 			outgoing_events, incoming_events, unattributed_outgoing_damage, unattributed_incoming_damage, unattributed_outgoing_events, unattributed_incoming_events,
 			integrity_status, transport_losses, unrecovered_losses, context_downgraded_events, first_loss_at_ns, dps_status, dps_reason, dps_value, dps_damage,
 			dps_duration_ns, dps_start_ns, dps_end_ns, dps_confidence, peak_status, peak_reason, peak_value, peak_damage, peak_duration_ns, peak_start_ns, peak_end_ns,
 			peak_confidence, healing_status, healing_reason, healing_effective, healing_reported, healing_overheal, healing_events, healing_unknown_effective,
 			healing_unknown_events, unassigned_damage_dealt, unassigned_outgoing_events, unassigned_damage_taken, unassigned_incoming_events, unassigned_overflow_events,
-			scene_instance_id, scene_recorded, enemies_recorded, enemies_overflow, checkpoint_at_ns, incomplete_reason
-			FROM encounter ORDER BY statistics_interval, sequence`,
+			scene_instance_id, enemies_overflow FROM encounter ORDER BY statistics_interval, sequence`,
 		`SELECT ` + fmt.Sprintf(encounterKey, "encounter_id") + `, risk FROM encounter_risk ORDER BY 1, 2`,
 		`SELECT ` + fmt.Sprintf(encounterKey, "encounter_id") + `, ordinal, kind, player_id, role_id, vehicle_kind, vehicle_evidence, damage_dealt, outgoing_events,
 			direct_damage, summon_damage, damage_taken, incoming_events, unassigned_damage, unassigned_events, unassigned_missing_skill_events,
