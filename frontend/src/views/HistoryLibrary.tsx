@@ -23,7 +23,7 @@ export interface HistoryLibraryProps {
   /** Encounters chosen for comparison, and how many may be chosen. */
   compare?: readonly number[]
   compareLimit?: number
-  onCompare?: (id: number) => void
+  onCompare?: (entry: HistoryLibraryEntry) => void
 }
 
 function ModeName({ entry }: { entry: HistoryLibraryEntry }) {
@@ -133,7 +133,7 @@ export function HistoryLibraryView({ zone, refreshKey, query, onQuery, onOpen, c
             return <tr key={entry.id} className="ww-history-row" tabIndex={0} role="button" data-encounter-id={entry.id} data-class={entry.class} aria-label={t("openEncounter", { time: entry.start.clock, date: entry.localDate })}
               onClick={() => onOpen(entry.id)} onKeyDown={open(entry.id)}>
               {compareLimit > 0 && <td className="ww-history-compare-column" onClick={event => event.stopPropagation()}>
-                <input type="checkbox" className="ww-check" checked={chosen} disabled={!chosen && compare.length >= compareLimit} aria-label={t("compare.select")} data-field="compare-select" onChange={() => onCompare?.(entry.id)} />
+                <input type="checkbox" className="ww-check" checked={chosen} disabled={!chosen && compare.length >= compareLimit} aria-label={t("compare.select")} data-field="compare-select" onChange={() => onCompare?.(entry)} />
               </td>}
               <td className="ww-num ww-history-time" data-field="start">{entry.localDate} {entry.start.clock}</td>
               <td className="ww-history-version-column">{entry.gameVersion ? <span className="ww-history-version">{entry.gameVersion}</span> : <span className="ww-history-unknown" title={t("versionUnknown")}>—</span>}</td>

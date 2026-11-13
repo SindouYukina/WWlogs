@@ -13,6 +13,8 @@ import { useHostTimeZone } from "@/lib/useHostTimeZone"
 import { chartSeries, RoleBoard, SkillTable, StatCard } from "./DashboardView"
 import { AnalysisWorkspace, EnemiesCard, LinkedName, type TimelineMode } from "./HistoryAnalysis"
 import { HistoryLibraryView } from "./HistoryLibrary"
+import { HistoryCompare } from "./HistoryCompare"
+import { compareLimit, toggleCompared, type ComparedEntry } from "@/lib/history-compare"
 import { defaultLibraryQuery, type HistoryIntent, type HistoryLibraryQuery } from "@/lib/history-library"
 import { useSettledKey } from "@/lib/useSettledKey"
 
@@ -222,7 +224,7 @@ function DeleteEncounter({ summary, onDeleted }: { summary: HistoryEncounterSumm
   </div>
 }
 
-function EncounterDetail({ detail, backLabel, onBack, onDeleted, timelineMode, setTimelineMode }: { detail: HistoryEncounterDetail; backLabel: string; onBack: () => void; onDeleted: (change: HistoryChange) => void; timelineMode: TimelineMode; setTimelineMode: (mode: TimelineMode) => void }) {
+function EncounterDetail({ detail, backLabel, onBack, onDeleted, timelineMode, setTimelineMode, compared, compareFull, onCompare }: { detail: HistoryEncounterDetail; backLabel: string; onBack: () => void; onDeleted: (change: HistoryChange) => void; timelineMode: TimelineMode; setTimelineMode: (mode: TimelineMode) => void; compared: boolean; compareFull: boolean; onCompare: () => void }) {
   const { t, i18n } = useTranslation(["history", "dashboard", "common"])
   const c = (key: string) => t(key, { ns: "common" })
   const d = (key: string, options?: Record<string, unknown>) => t(key, { ns: "dashboard", ...options })
@@ -264,6 +266,8 @@ function EncounterDetail({ detail, backLabel, onBack, onDeleted, timelineMode, s
         <StatusChip summary={summary} />
         <Chip>{t(`outcome.${summary.outcome}`)}</Chip>
         {summary.source === "replay" && <Chip tone="neutral">{t("source.replay")}</Chip>}
+        <Button size="sm" variant={compared ? "secondary" : "ghost"} aria-pressed={compared} disabled={!compared && compareFull} title={!compared && compareFull ? t("compare.full", { n: compareLimit }) : undefined}
+          data-field="compare-toggle" onClick={onCompare}>{t(compared ? "compare.leave" : "compare.select")}</Button>
       </div>
     </div>
     <Card className="ww-history-context ww-history-summary">
@@ -349,6 +353,12 @@ export function HistoryView({ theme, refreshKey, indicator, intent, onReturn }: 
   // The calendar lists one day; the library lists every stored encounter by filters. Each keeps its own state while an
   // encounter is open, so going back returns to the same day or the same filtered list.
   const [mode, setMode] = useState<"calendar" | "list">(() => target?.kind === "library" ? "list" : "calendar")
+  // The encounters chosen for comparison stay chosen across the calendar, the library and every opened encounter. While
+  // comparing, an encounter opened from the comparison goes back to it.
+  const [compared, setCompared] = useState<ComparedEntry[]>([])
+  const [comparing, setComparing] = useState(false)
+  const toggleCompare = useCallback((entry: ComparedEntry) => setCompared(entries => toggleCompared(entries, entry)), [])
+  const dropCompared = useCallback((ids: number[]) => setCompared(entries => entries.filter(entry => !ids.includes(entry.id))), [])
   const [libraryQuery, setLibraryQuery] = useState<HistoryLibraryQuery>(() => target?.kind === "library" ? target.query : defaultLibraryQuery)
   const [failed, setFailed] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -420,7 +430,10 @@ export function HistoryView({ theme, refreshKey, indicator, intent, onReturn }: 
   const select = useCallback((value: string) => { setDate(value); setOpenId(null) }, [])
   const dayLabel = useCallback((cell: HeatmapDay) => cell.count > 0 ? t("dayTooltip", { date: dates.long(cell.date), n: format.integer(cell.count) }) : t("noEncounterTooltip", { date: dates.long(cell.date) }), [t, dates, format])
   const changeYear = (next: number) => { setYear(next); setOpenId(null) }
-  const afterDelete = useCallback(() => { setOpenId(null); setDeleted(true); setChanges(count => count + 1) }, [])
+  const afterDelete = useCallback(() => {
+    if (openId !== null) dropCompared([openId])
+    setOpenId(null); setDeleted(true); setChanges(count => count + 1)
+  }, [openId, dropCompared])
   const empty = yearView !== null && yearView.firstYear === 0
   return <div className="ww-history ww-has-backdrop" data-field="history" data-year={shownYear}><ThemeBackdrop theme={theme} intensity="art" /><div className="ww-history-layout">
     <Reveal className="ww-history-top">
@@ -430,14 +443,26 @@ export function HistoryView({ theme, refreshKey, indicator, intent, onReturn }: 
       </div>
       <HistoryIndicatorChip indicator={indicator} />
       {onReturn && <Button size="sm" variant="ghost" data-field="history-return" onClick={onReturn}><span style={{ display: "inline-flex", transform: "rotate(90deg)" }}><Icon name="chevron" size={13} /></span>{t("career.backToCareer")}</Button>}
-      <span data-field="history-mode" data-mode={mode}><Segmented label={t("library.viewLabel")} value={mode} onChange={next => { setMode(next); setOpenId(null) }} options={[{ value: "calendar", label: t("library.calendar") }, { value: "list", label: t("library.list") }]} /></span>
-      {mode === "calendar" && <div className="ww-history-years" data-field="year-switch">
+      <span data-field="history-mode" data-mode={mode}><Segmented label={t("library.viewLabel")} value={mode} onChange={next => { setMode(next); setOpenId(null); setComparing(false) }} options={[{ value: "calendar", label: t("library.calendar") }, { value: "list", label: t("library.list") }]} /></span>
+      {mode === "calendar" && !comparing && <div className="ww-history-years" data-field="year-switch">
         <Button size="sm" variant="ghost" aria-label={t("previousYear")} title={t("previousYear")} disabled={shownYear === 0 || shownYear <= bounds.first} onClick={() => changeYear(shownYear - 1)} data-field="year-previous"><span style={{ display: "inline-flex", transform: "rotate(90deg)" }}><Icon name="chevron" size={14} /></span></Button>
         <span className="ww-history-year ww-num" data-field="year">{shownYear === 0 ? "—" : shownYear}</span>
         <Button size="sm" variant="ghost" aria-label={t("nextYear")} title={t("nextYear")} disabled={shownYear === 0 || shownYear >= bounds.last} onClick={() => changeYear(shownYear + 1)} data-field="year-next"><span style={{ display: "inline-flex", transform: "rotate(-90deg)" }}><Icon name="chevron" size={14} /></span></Button>
       </div>}
     </Reveal>
-    {mode === "calendar" && <Reveal index={1}><Card className="ww-history-heat">
+    {compared.length > 0 && !comparing && <div className="ww-compare-tray" role="region" aria-label={t("compare.tray")} data-field="compare-tray" data-count={compared.length}>
+      <span className="ww-career-fact-label">{t("compare.tray")}</span>
+      {compared.map(entry => <span key={entry.id} className="ww-compare-chip" data-encounter-id={entry.id}>
+        <span className="ww-num">{entry.date} {entry.clock}</span>
+        <button type="button" className="ww-compare-chip-remove" aria-label={t("compare.remove")} title={t("compare.remove")} onClick={() => toggleCompare(entry)}>×</button>
+      </span>)}
+      <span className="ww-history-note">{t("compare.limit", { n: compareLimit })}</span>
+      <span className="ww-compare-tray-actions">
+        <Button size="sm" variant="ghost" data-field="compare-clear" onClick={() => setCompared([])}>{t("compare.clear")}</Button>
+        <Button size="sm" variant="primary" disabled={compared.length < 2} title={compared.length < 2 ? t("compare.needTwo") : undefined} data-field="compare-start" onClick={() => { setOpenId(null); setComparing(true) }}>{t("compare.start", { n: compared.length })}</Button>
+      </span>
+    </div>}
+    {mode === "calendar" && !comparing && <Reveal index={1}><Card className="ww-history-heat">
       <div className="ww-history-heat-head">
         <h3>{t("heatmapTitle")}</h3>
         <span className="ww-history-total" data-field="year-total" data-total={layout.total}>{shownYear === 0 ? "" : t("yearTotal", { year: shownYear, n: format.integer(layout.total) })}</span>
@@ -452,10 +477,16 @@ export function HistoryView({ theme, refreshKey, indicator, intent, onReturn }: 
       <ZoneNote zone={yearView?.zone} />
       {status && status.state !== "unavailable" && <p className="ww-history-note" data-field="history-storage" data-encrypted={status.encrypted}>{t(status.encrypted ? "localEncrypted" : "localOnly")}</p>}
     </Card></Reveal>}
-    <Reveal index={2}><ContentSwitch contentKey={detail ? `detail-${detail.summary.id}` : mode === "list" ? "library" : `day-${date ?? ""}`}>
-      {detail ? <EncounterDetail detail={detail} backLabel={onReturn && returnId === detail.summary.id ? t("career.backToCareer") : mode === "list" ? t("library.backToList") : t("back", { date: dates.short(detail.summary.localDate) })}
-        onBack={onReturn && returnId === detail.summary.id ? onReturn : () => setOpenId(null)} onDeleted={afterDelete} timelineMode={timelineMode} setTimelineMode={setTimelineMode} /> :
-        mode === "list" ? <HistoryLibraryView zone={zone} refreshKey={`${settledKey}-${changes}`} query={libraryQuery} onQuery={setLibraryQuery} onOpen={setOpenId} /> :
+    <Reveal index={2}><ContentSwitch contentKey={detail ? `detail-${detail.summary.id}` : comparing ? "compare" : mode === "list" ? "library" : `day-${date ?? ""}`}>
+      {detail ? <EncounterDetail detail={detail}
+        backLabel={onReturn && returnId === detail.summary.id ? t("career.backToCareer") : comparing ? t("compare.back") : mode === "list" ? t("library.backToList") : t("back", { date: dates.short(detail.summary.localDate) })}
+        onBack={onReturn && returnId === detail.summary.id ? onReturn : () => setOpenId(null)} onDeleted={afterDelete} timelineMode={timelineMode} setTimelineMode={setTimelineMode}
+        compared={compared.some(entry => entry.id === detail.summary.id)} compareFull={compared.length >= compareLimit}
+        onCompare={() => toggleCompare({ id: detail.summary.id, date: detail.summary.localDate, clock: detail.summary.start.clock })} /> :
+        comparing ? <HistoryCompare ids={compared.map(entry => entry.id)} zone={zone} refreshKey={`${settledKey}-${changes}`} onOpen={setOpenId}
+          onRemove={id => dropCompared([id])} onMissing={dropCompared} onBack={() => setComparing(false)} /> :
+        mode === "list" ? <HistoryLibraryView zone={zone} refreshKey={`${settledKey}-${changes}`} query={libraryQuery} onQuery={setLibraryQuery} onOpen={setOpenId}
+          compare={compared.map(entry => entry.id)} compareLimit={compareLimit} onCompare={entry => toggleCompare({ id: entry.id, date: entry.localDate, clock: entry.start.clock })} /> :
         <Card className="ww-history-day">
           <div className="ww-dash-card-head"><h3 data-field="day-title">{date ? dates.long(date) : t("noDay")}</h3>{day && day.date === date && <span className="ww-history-total" data-field="day-total">{t("dayCount", { n: format.integer(day.total) })}</span>}</div>
           <DayList day={day && day.date === date ? day : null} dateLabel={date ? dates.long(date) : ""} onOpen={setOpenId} onMore={more} loading={loadingMore} />

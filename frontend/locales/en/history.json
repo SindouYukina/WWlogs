@@ -412,7 +412,57 @@
     "backToList": "Back to the list"
   },
   "compare": {
-    "select": "Add to comparison"
+    "select": "Add to comparison",
+    "leave": "Remove from comparison",
+    "full": "The comparison is full (up to {{n}} encounters)",
+    "tray": "Comparison",
+    "limit": "Up to {{n}}",
+    "clear": "Clear",
+    "start": "Compare ({{n}})",
+    "needTwo": "Choose at least two encounters to compare.",
+    "remove": "Remove",
+    "open": "Open",
+    "back": "Back to the comparison",
+    "exit": "Back to History",
+    "title": "Comparing {{n}} encounters",
+    "base": "Base",
+    "conditions": "Conditions",
+    "state": {
+      "same": "Same",
+      "different": "Different",
+      "unknown": "Unknown"
+    },
+    "durationRatio": "The longest encounter is {{ratio}} times the shortest; DPS depends on encounter length.",
+    "openWorldNote": "Includes open-world encounters: enemies and conditions are not fixed, so the values are for reference only.",
+    "hpNote": "Enemy HP, level and states are not recorded; the same stage can still differ.",
+    "noScore": "The comparison lists stored facts and changes only; it computes no fairness score.",
+    "unreliable": "Not every encounter is a complete record: changes are given between complete records only, and other values are marked by their record class.",
+    "metrics": "Main measures",
+    "deltaNote": "Changes are measured from the first encounter.",
+    "metric": {
+      "duration": "Duration",
+      "damage": "Confirmed damage",
+      "dps": "Encounter DPS",
+      "peak_dps": "Peak DPS"
+    },
+    "status": {
+      "available": "Complete result",
+      "lower_bound": "Lower bound: the true value may be higher",
+      "partial": "Part of a result from an incomplete record",
+      "unreliable": "Unreliable: no value is shown",
+      "unavailable": "No value"
+    },
+    "noResults": "An encounter without stored results shows its time and state only.",
+    "contributors": "Character damage",
+    "contributorsNote": "Lined up by character, a trial character counting as its own; a dash means no confirmed damage in that encounter. Shares are of that encounter's confirmed damage.",
+    "notDealt": "No confirmed damage in this encounter",
+    "dps": "DPS",
+    "trial": "trial",
+    "dpsDeltaNote": "Change of the character's DPS from the first encounter (complete records only)",
+    "skills": "Skill damage",
+    "skillsOf": "Character",
+    "skillsNote": "Shares are of the character's confirmed damage in that encounter.",
+    "skill": "Skill"
   },
   "career": {
     "title": "Career overview",
