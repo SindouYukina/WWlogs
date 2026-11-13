@@ -221,3 +221,35 @@ func BenchmarkCareerOverManyEncounters(b *testing.B) {
 		}
 	}
 }
+
+// A deletion drops the deleted encounter's largest hits and keeps the others', which never change once finished.
+func TestCareerKeepsTheOtherLargestHitsAfterADeletion(t *testing.T) {
+	store := openTestStore(t, testPath(t), nil)
+	ctx := context.Background()
+	base := time.Date(2026, 10, 12, 9, 0, 0, 0, time.UTC)
+	first := finishedEncounter(1, 1, base, 10, 1000, capture.IntegrityIntact)
+	second := finishedEncounter(1, 2, base.Add(time.Hour), 10, 2000, capture.IntegrityIntact)
+	withHits := func(entries []capture.HistoryEntry, sequence uint64, key string, at time.Time, amounts ...int64) []capture.HistoryEntry {
+		batch := append([]capture.HistoryEntry{entries[0], entries[1]}, hitEntries(sequence, key, at.Add(time.Second), 1512, 15124104, amounts...)...)
+		return append(batch, entries[2])
+	}
+	record(t, store, liveStart, withHits(first, 1, "1-1", base, 100, 500), withHits(second, 10, "1-2", base.Add(time.Hour), 300))
+	before, err := store.Career(ctx, CareerQuery{}, time.UTC, nil)
+	if err != nil || before.Records.MaxHit == nil || before.Records.MaxHit.Value != 500 {
+		t.Fatalf("before = %+v (%v)", before.Records.MaxHit, err)
+	}
+	gone, kept := listedID(t, store, base), listedID(t, store, base.Add(time.Hour))
+	if _, err := store.DeleteEncounter(ctx, gone); err != nil {
+		t.Fatal(err)
+	}
+	if _, cached := store.library.maxHits[gone]; cached {
+		t.Fatal("the deleted encounter's largest hits are still cached")
+	}
+	if _, cached := store.library.maxHits[kept]; !cached {
+		t.Fatal("the remaining encounter's largest hits were dropped")
+	}
+	after, err := store.Career(ctx, CareerQuery{}, time.UTC, nil)
+	if err != nil || after.Records.MaxHit == nil || after.Records.MaxHit.Value != 300 || after.Records.MaxHit.EncounterID != kept {
+		t.Fatalf("after = %+v (%v)", after.Records.MaxHit, err)
+	}
+}

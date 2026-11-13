@@ -380,6 +380,8 @@
     "tests/desktop/history_compare_test.go": "",
     "internal/desktop/central_history_compare_test.go": "tests/desktop/history_compare_test.go",
     "tests/history/analysis_correlation_test.go": "",
-    "internal/history/central_analysis_correlation_test.go": "tests/history/analysis_correlation_test.go"
+    "internal/history/central_analysis_correlation_test.go": "tests/history/analysis_correlation_test.go",
+    "tests/history/pages_benchmark_test.go": "",
+    "internal/history/central_pages_benchmark_test.go": "tests/history/pages_benchmark_test.go"
   }
 }
