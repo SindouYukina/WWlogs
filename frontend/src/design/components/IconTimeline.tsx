@@ -1,6 +1,6 @@
 import { memo, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react"
 import type { GameAssetKind } from "../assets"
-import { useRevealPhase, type RevealClock } from "../motion/useReveal.ts"
+import { useRevealHold, useRevealPhase, type RevealClock } from "../motion/useReveal.ts"
 import { overlaps, placeIn, TrackOverlay, viewFraction, widthIn, type TimelineSpan } from "./AnalysisTimeline"
 import { GameAssetImage } from "./combat"
 import { Icon } from "./Icon"
@@ -220,8 +220,11 @@ export const IconTimeline = memo(function IconTimeline({ durationMs, view, group
   const [tip, setTip] = useState<TipState | null>(null)
   const root = useRef<HTMLDivElement>(null)
   const tracks = useRef<HTMLDivElement>(null)
-  // The tracks join the opening reveal once they have something to show, where the DPS lines are in it by then.
+  // The tracks join the opening reveal once they have something to show, where the DPS lines are in it by then. While the
+  // reveal waits at the start, a timeline whose tracks are still on their way, or not rendered yet, holds it: the tracks
+  // are then drawn while nothing moves instead of in the middle of the sweep.
   const ready = groups.length > 0
+  useRevealHold(reveal, loading || (latestGroups.length > 0 && groups !== latestGroups))
   const { phase, end } = useRevealPhase(reveal, ready)
   const revealWindow = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -288,7 +291,7 @@ export const IconTimeline = memo(function IconTimeline({ durationMs, view, group
                   : <EffectRow key={row.key} track={track} view={view} width={width} top={row.top} height={row.height} selected={selected?.track === track.key} onPick={onPick} describe={describeSegment} showTip={showTip} />
               })}
             </div>
-            {phase && !phase.waiting && <i className="ww-atl-reveal-edge" aria-hidden="true" />}
+            {phase && <i className="ww-atl-reveal-edge" aria-hidden="true" />}
           </div>
         </div>
         {shownRows.map(row => row.kind === "group" && <button key={row.key} type="button" className="ww-itl-group" data-group={row.group.key} aria-expanded={!row.collapsed}

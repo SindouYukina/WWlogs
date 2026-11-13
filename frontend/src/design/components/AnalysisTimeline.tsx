@@ -274,7 +274,7 @@ export const AnalysisTimeline = memo(function AnalysisTimeline({ durationMs, lin
                 <path className="ww-atl-line" stroke={line.color} d={paths.get(line.key)} data-focused={line.key === focused} />
               </svg>)}
             </div>
-            {phase && !phase.waiting && <i className="ww-atl-reveal-edge" aria-hidden="true" />}
+            {phase && <i className="ww-atl-reveal-edge" aria-hidden="true" />}
           </div>
           : <div className="ww-chart-empty">{labels.empty}</div>}
         {marks.length > 0 && <svg className="ww-atl-marks" viewBox={viewBoxOf(view, duration, 10)} preserveAspectRatio="none" aria-label={labels.mark} data-field="analysis-hits" data-count={marks.length}>

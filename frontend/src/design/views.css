@@ -184,6 +184,9 @@ body[data-view="overlay"][data-editing="true"] { --wails-draggable: drag; }
 .ww-history-coverage { margin-top: var(--ww-space-2); padding-top: var(--ww-space-2); border-top: 1px solid var(--ww-line-soft); }
 .ww-history-coverage .ww-history-facts { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); font-size: var(--ww-text-xs); }
 .ww-analysis { display: flex; flex-direction: column; gap: var(--ww-space-3); min-width: 0; }
+/* The bars of an opening grow with the timeline's reveal: while the reveal waits at the start for the page's first drawing,
+   they wait at theirs, so a first rasterization never stops a bar halfway. */
+.ww-analysis[data-reveal="waiting"] .ww-bar[data-enter="true"] > * { animation-play-state: paused; }
 .ww-analysis-toolbar { padding: var(--ww-space-2) var(--ww-space-4); }
 .ww-analysis-toolbar-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ww-space-2) var(--ww-space-4); }
 .ww-analysis-filter { display: flex; align-items: center; gap: var(--ww-space-2); min-width: 0; font-size: var(--ww-text-xs); color: var(--ww-text-3); }
@@ -255,9 +258,14 @@ body[data-view="overlay"][data-editing="true"] { --wails-draggable: drag; }
 @keyframes ww-reveal-window { from { transform: translateX(-100%); } }
 @keyframes ww-reveal-content { from { transform: translateX(100%); } }
 @keyframes ww-reveal-edge { from { opacity: 0.85; } 40% { opacity: 0.85; } to { opacity: 0; } }
-/* A playing waits at the encounter's start until the frame that mounted the page has been drawn. */
-.ww-atl-reveal[data-enter="waiting"] { transform: translateX(-100%); }
-.ww-atl-reveal[data-enter="waiting"] > .ww-atl-reveal-inner { transform: translateX(100%); }
+/* A playing waits at the encounter's start (useRevealClock) with its content drawn in place but invisible, already in the
+   composited layers the sweep is about to move. The first rasterization of the lines, the tracks and the edge, and any GPU
+   program no earlier frame needed, so happens while nothing moves and never in the sweep's first frames. Nothing in it can
+   be pointed at while it waits. */
+.ww-atl-reveal[data-enter], .ww-atl-reveal[data-enter] > * { will-change: transform; }
+.ww-atl-reveal[data-enter="waiting"] { opacity: 0.004; }
+.ww-atl-reveal[data-enter="waiting"], .ww-atl-reveal[data-enter="waiting"] * { pointer-events: none; }
+.ww-atl-reveal[data-enter="waiting"] > .ww-atl-reveal-edge { opacity: 0.85; }
 .ww-atl-reveal[data-enter="true"] { animation: ww-reveal-window var(--ww-curve-enter-dur) var(--ww-ease-curve-enter) var(--ww-reveal-at, 0ms) backwards; }
 .ww-atl-reveal[data-enter="true"] > .ww-atl-reveal-inner { animation: ww-reveal-content var(--ww-curve-enter-dur) var(--ww-ease-curve-enter) var(--ww-reveal-at, 0ms) backwards; }
 .ww-atl-reveal-edge { position: absolute; top: 6px; bottom: 6px; right: 0; width: 2px; border-radius: 1px; background: var(--ww-accent-bright); box-shadow: 0 0 10px 1px color-mix(in oklch, var(--ww-accent) 55%, transparent); opacity: 0; }
@@ -372,7 +380,10 @@ body[data-view="overlay"][data-editing="true"] { --wails-draggable: drag; }
 /* Hit icons: centred on the first hit they draw; a tail runs to the last one when a group spans time; a count when they are several. */
 .ww-itl-hit-wrap { position: absolute; width: 0; height: 22px; }
 .ww-itl-hit-tail { position: absolute; left: 0; top: 10px; height: 2px; border-radius: 1px; background: color-mix(in oklch, var(--ww-series, var(--ww-ink-400)) 55%, transparent); }
-.ww-itl-hit { position: absolute; left: -11px; top: 0; width: 22px; height: 22px; padding: 0; border: 1px solid color-mix(in oklch, var(--ww-series, var(--ww-ink-400)) 75%, transparent); border-radius: var(--ww-radius-xs); background: color-mix(in oklch, var(--ww-series, var(--ww-ink-400)) 30%, var(--ww-surface-3)); cursor: pointer; transition: transform var(--ww-dur-fast) var(--ww-ease-out); }
+/* The icon's border is the colour a 75% border showed over the icon's own background, mixed opaque: a translucent rounded
+   border over a background is painted through a clip Chromium draws as a path, which made every icon a path draw and the
+   first one compile the path programs. */
+.ww-itl-hit { position: absolute; left: -11px; top: 0; width: 22px; height: 22px; padding: 0; border: 1px solid color-mix(in srgb, var(--ww-series, var(--ww-ink-400)) 75%, color-mix(in oklch, var(--ww-series, var(--ww-ink-400)) 30%, var(--ww-surface-3))); border-radius: var(--ww-radius-xs); background: color-mix(in oklch, var(--ww-series, var(--ww-ink-400)) 30%, var(--ww-surface-3)); cursor: pointer; transition: transform var(--ww-dur-fast) var(--ww-ease-out); }
 .ww-itl-hit:hover { transform: scale(1.12); z-index: 2; }
 .ww-itl-hit:focus-visible { outline: none; box-shadow: var(--ww-focus-ring); z-index: 2; }
 .ww-itl-hit[data-selected="true"] { box-shadow: 0 0 0 2px var(--ww-accent); z-index: 2; }
