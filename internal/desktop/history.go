@@ -81,8 +81,10 @@ func fileSHA256(path string) (string, error) {
 	return hex.EncodeToString(hash.Sum(nil)), nil
 }
 
-// historyName is a Master name with its evidence for the History view. A monster or scene name comes through a versioned
-// Master link from an observed ID, so it is at most CORRELATED; an ID without a name stays UNKNOWN.
+// historyName is a Master name with its evidence for the History view. A monster name comes through a Master link from an
+// observed ID, so it is at most CORRELATED. A scene or mode name is VERIFIED when the encounter was fought in the game
+// version the embedded Master describes and the relation is one the client itself resolves (capture.InstanceMode,
+// capture.InstanceStage); fought in another version it is at most CORRELATED. An ID without a name stays UNKNOWN.
 type historyName struct {
 	Name   string `json:"name,omitempty"`
 	Status string `json:"status"`
@@ -99,16 +101,58 @@ func (n *nameProjection) linked(kind string, id uint64) historyName {
 	return historyName{Name: name.Name, Status: "CORRELATED"}
 }
 
+// historyMode is the kind of play of an encounter's instance: an Adventure Guide category named by the Master, or the open
+// world, which the UI labels; UNKNOWN without a relation.
+type historyMode struct {
+	Kind   capture.InstanceModeKind `json:"kind,omitempty"`
+	Name   string                   `json:"name,omitempty"`
+	Status string                   `json:"status"`
+}
+
 type historySummaryJSON struct {
 	history.EncounterSummary
 	SceneName     historyName `json:"sceneName"`
+	Mode          historyMode `json:"mode"`
 	MainEnemyName historyName `json:"mainEnemyName"`
 }
 
+// versioned caps a status at CORRELATED unless the encounter was fought in the game version of the embedded Master.
+func versioned(status string, current bool) string {
+	if status == "VERIFIED" && !current {
+		return "CORRELATED"
+	}
+	return status
+}
+
+func (n *nameProjection) stage(instanceID uint64, current bool) historyName {
+	name, err := n.resolver.InstanceStage(n.ctx, instanceID, n.locale)
+	if err != nil {
+		n.err = err
+	}
+	if name.Name == "" {
+		return historyName{Status: "UNKNOWN"}
+	}
+	return historyName{Name: name.Name, Status: versioned(name.Status, current)}
+}
+
+func (n *nameProjection) mode(instanceID uint64, current bool) historyMode {
+	mode, err := n.resolver.InstanceMode(n.ctx, instanceID, n.locale)
+	if err != nil {
+		n.err = err
+	}
+	if mode.Kind == "" {
+		return historyMode{Status: "UNKNOWN"}
+	}
+	return historyMode{Kind: mode.Kind, Name: mode.Name, Status: versioned(mode.Status, current)}
+}
+
 func (n *nameProjection) summary(summary history.EncounterSummary) historySummaryJSON {
-	out := historySummaryJSON{EncounterSummary: summary, SceneName: historyName{Status: "UNKNOWN"}, MainEnemyName: historyName{Status: "UNKNOWN"}}
+	out := historySummaryJSON{EncounterSummary: summary, SceneName: historyName{Status: "UNKNOWN"}, Mode: historyMode{Status: "UNKNOWN"}, MainEnemyName: historyName{Status: "UNKNOWN"}}
 	if summary.Scene.Known {
-		out.SceneName = n.linked("instance", summary.Scene.InstanceID)
+		// The stored game version is the encounter's own; an encounter without one is never taken for the current version.
+		current := summary.GameVersion != "" && summary.GameVersion == capture.CurrentGameVersion()
+		out.SceneName = n.stage(summary.Scene.InstanceID, current)
+		out.Mode = n.mode(summary.Scene.InstanceID, current)
 	}
 	if enemy := summary.MainEnemy; enemy != nil && !enemy.IdentityConflict {
 		out.MainEnemyName = n.enemy(enemy.MonsterID, enemy.TemplateID)

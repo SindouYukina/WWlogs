@@ -160,6 +160,8 @@ type replaySummary struct {
 	Name string `json:"name"`
 	// hudEffects is the polarity of every effect the analysis lists as a HUD row in one of the capture's encounters.
 	hudEffects map[int64]capture.EffectPolarity
+	// scenes is the stored scene InstanceId of each finished encounter, by encounter sequence.
+	scenes map[uint64]uint64
 	// VersionedEncounters counts stored encounters whose game version equals the one their protocol session reported.
 	VersionedEncounters int `json:"versionedEncounters"`
 	// DuplicateOf marks a byte-identical copy of a capture already stored; it was not stored again.
@@ -257,6 +259,18 @@ var historyHUDFacts = map[string]map[int64]capture.EffectPolarity{
 	},
 }
 
+// historySceneFacts are the scene InstanceIds a stored capture's finished encounters must keep, by encounter sequence. In the
+// Build 31 LIVE capture each is the InstanceId of the last server JoinSceneNotify before the encounter started, read from the
+// generic schema decode (work/live-build31/encounter_scenes.py): Tower of Adversity stages 20016..20024, the ShipTower's
+// Endless Torrents halves 40286 and 40287, Lily's tutorial 5067, a Tactical Hologram 3925, a Tacet field 210404021 and the
+// open world 8. The game mode and stage names are resolved from these ids when the history is read (instance_display.go).
+var historySceneFacts = map[string]map[uint64]uint64{
+	"LIVE_20261113_224240": {
+		1: 20019, 2: 20019, 3: 20020, 4: 20017, 5: 20018, 6: 20018, 7: 20018, 8: 20016, 9: 20024,
+		10: 40286, 11: 40286, 12: 40287, 13: 5067, 14: 3925, 15: 210404021, 16: 210404021, 17: 8, 19: 8,
+	},
+}
+
 func checkHistoryHUDFacts(t *testing.T, name string, summary replaySummary) {
 	t.Helper()
 	for capture, facts := range historyHUDFacts {
@@ -266,6 +280,19 @@ func checkHistoryHUDFacts(t *testing.T, name string, summary replaySummary) {
 		for effect, polarity := range facts {
 			if got, ok := summary.hudEffects[effect]; !ok || got != polarity {
 				t.Errorf("effect %d: HUD row %v with polarity %q, want polarity %q", effect, ok, got, polarity)
+			}
+		}
+	}
+	for capture, facts := range historySceneFacts {
+		if !strings.Contains(name, capture) {
+			continue
+		}
+		if len(summary.scenes) != len(facts) {
+			t.Errorf("%d encounters with a stored scene, want %d", len(summary.scenes), len(facts))
+		}
+		for sequence, instance := range facts {
+			if got := summary.scenes[sequence]; got != instance {
+				t.Errorf("encounter %d: stored scene %d, want %d", sequence, got, instance)
 			}
 		}
 	}
@@ -631,6 +658,10 @@ func replayIntoHistory(t *testing.T, store *Store, masters *capture.MasterData, 
 		summary.DamageDealt += want.Totals.DamageDealt
 		if detail.Summary.Scene.Known {
 			summary.ScenesKnown++
+			if summary.scenes == nil {
+				summary.scenes = map[uint64]uint64{}
+			}
+			summary.scenes[engine.Snapshot.Sequence] = detail.Summary.Scene.InstanceID
 		}
 		summary.EnemyInstances += len(detail.Enemies)
 		for _, enemy := range detail.Enemies {

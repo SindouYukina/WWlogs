@@ -29,7 +29,8 @@
     "state": "紀錄狀態"
   },
   "unidentified": "未識別",
-  "correlatedNote": "透過 Master 對照取得的名稱；與目前遊戲版本的相容性尚未驗證",
+  "modeOpenWorld": "大世界",
+  "correlatedNote": "透過 Master 關聯推定的名稱，未經直接確認（例如間接關聯，或此紀錄屬於其他遊戲版本）",
   "sameType": "×{{n}}",
   "unreliableShort": "不可靠",
   "unreliableDps": "這場戰鬥的部分資料或邊界可能遺失，因此不顯示 DPS。",

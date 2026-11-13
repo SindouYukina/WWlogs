@@ -98,6 +98,15 @@ function SceneCell({ summary }: { summary: HistoryEncounterSummary }) {
   return <LinkedName name={summary.sceneName} fallback={t("unidentified")} id={summary.scene.instanceId} title={t("correlatedNote")} />
 }
 
+/** The kind of play Go resolved for the encounter's instance; the open world is labelled here, a category named by Go. */
+function ModeCell({ summary }: { summary: HistoryEncounterSummary }) {
+  const { t } = useTranslation("history")
+  const mode = summary.mode
+  if (!summary.scene.known || !mode?.kind) return <span className="ww-history-unknown">{t("unidentified")}</span>
+  const name = mode.kind === "open_world" ? t("modeOpenWorld") : mode.name
+  return <span data-mode-kind={mode.kind}><LinkedName name={{ name, status: mode.status }} fallback={t("unidentified")} title={t("correlatedNote")} /></span>
+}
+
 function EnemyCell({ summary }: { summary: HistoryEncounterSummary }) {
   const { t } = useTranslation("history")
   const enemy = summary.mainEnemy
@@ -138,8 +147,7 @@ function DayList({ day, dateLabel, onOpen, onMore, loading }: { day: HistoryDay 
       <tbody>{day.encounters.map(summary => <tr key={summary.id} className="ww-history-row" tabIndex={0} role="button" aria-label={t("openEncounter", { time: summary.start.clock, date: dateLabel })}
         data-encounter-id={summary.id} data-source={summary.source} data-local-date={summary.localDate} data-started-at={summary.startedAt} onClick={() => onOpen(summary.id)} onKeyDown={open(summary.id)}>
         <td className="ww-num ww-history-time" data-field="start-clock" title={clockTitle(summary.start, summary.recorded)}>{summary.start.clock}</td>
-        {/* No game mode is identified from protocol evidence yet; the column says so instead of guessing from enemies. */}
-        <td><span className="ww-history-unknown" data-field="mode">{t("unidentified")}</span></td>
+        <td data-field="mode"><ModeCell summary={summary} /></td>
         <td data-field="scene"><SceneCell summary={summary} /></td>
         <td data-field="enemy"><EnemyCell summary={summary} /></td>
         <td className="ww-num" data-field="duration">{summary.durationSeconds === undefined ? "—" : format.clock(summary.durationSeconds)}</td>
@@ -246,7 +254,7 @@ function EncounterDetail({ detail, backLabel, onBack, onDeleted, timelineMode, s
     <Card className="ww-history-context ww-history-summary">
       <div className="ww-history-summary-row">
         <dl className="ww-history-facts">
-          <div><dt>{t("columns.mode")}</dt><dd className="ww-history-unknown">{t("unidentified")}</dd></div>
+          <div><dt>{t("columns.mode")}</dt><dd data-field="mode"><ModeCell summary={summary} /></dd></div>
           <div><dt>{t("columns.scene")}</dt><dd><SceneCell summary={summary} /></dd></div>
           <div><dt>{t("columns.enemy")}</dt><dd><EnemyCell summary={summary} /></dd></div>
           <div><dt>{t("timeRange")}</dt><dd className="ww-num" data-field="time-range" title={clockTitle(summary.start, summary.recorded)}>{start} – {end}</dd></div>

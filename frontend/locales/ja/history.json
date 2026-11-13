@@ -29,7 +29,8 @@
     "state": "記録状態"
   },
   "unidentified": "未識別",
-  "correlatedNote": "Masterの対応表から得た名前です。現在のゲームバージョンとの互換性は未検証です",
+  "modeOpenWorld": "世界",
+  "correlatedNote": "Master の関連付けから推定した名前で、直接確認されていません（間接的な関連付け、または別のゲームバージョンの記録など）",
   "sameType": "×{{n}}",
   "unreliableShort": "信頼不可",
   "unreliableDps": "この戦闘のデータの一部または境界が失われた可能性があるため、DPSは表示しません。",
