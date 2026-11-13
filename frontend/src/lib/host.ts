@@ -1,6 +1,7 @@
 import { Call } from "@wailsio/runtime"
 import type { CaptureEnvironment, NpcapDownload } from "./capture-environment"
 import type { HistoryChange, HistoryDay, HistoryEncounterDetail, HistoryYear } from "./history"
+import type { HistoryLibrary, HistoryLibraryQuery } from "./history-library"
 import type { AnalysisQuery, EffectLanes, EncounterAnalysis, EventPage, EventQuery, HitTimeline } from "./history-analysis"
 import type { OverlayKind, OverlayState, OverlayStates, Snapshot } from "./snapshot"
 
@@ -59,6 +60,8 @@ export const host = {
   historyYear: (year: number, zone: string) => call<HistoryYear>("HistoryYear", year, zone),
   historyDay: (date: string, offset: number, zone: string) => call<HistoryDay>("HistoryDay", date, offset, zone),
   historyEncounter: (id: number, zone: string) => call<HistoryEncounterDetail>("HistoryEncounter", id, zone),
+  /** One page of the History Library: stored encounters across dates, selected, sorted and classified by Go. */
+  historyLibrary: (query: HistoryLibraryQuery, zone: string) => call<HistoryLibrary>("HistoryLibrary", query, zone),
   /** The analysis workspace of a finished stored encounter: a range, contributor and enemy rebuilt by Go, its effect lanes and its events. */
   historyAnalysis: (id: number, query: AnalysisQuery) => call<EncounterAnalysis>("HistoryAnalysis", id, query),
   historyEffects: (id: number, query: AnalysisQuery) => call<EffectLanes>("HistoryEffects", id, query),

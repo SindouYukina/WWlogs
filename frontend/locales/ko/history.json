@@ -362,5 +362,56 @@
         "name": "이름 신뢰도"
       }
     }
+  },
+  "library": {
+    "calendar": "달력",
+    "list": "목록",
+    "viewLabel": "전투 기록 보기 방식",
+    "from": "시작일",
+    "to": "종료일",
+    "any": "전체",
+    "versionUnknown": "기록 없음",
+    "character": "캐릭터",
+    "classLabel": "기록 상태",
+    "source": "출처",
+    "minMinutes": "최소(분)",
+    "maxMinutes": "최대(분)",
+    "search": "검색",
+    "searchHint": "모드, 스테이지, 캐릭터 이름",
+    "sortLabel": "정렬",
+    "total": "일치 {{n}}건",
+    "reset": "필터 지우기",
+    "date": "날짜와 시간",
+    "characters": "피해를 준 캐릭터",
+    "damage": "확정 피해",
+    "rolesNote": "캐릭터 열에는 확정 피해를 준 캐릭터만 표시되며 전체 파티가 아닙니다. 체험 캐릭터는 본 캐릭터로 표시합니다.",
+    "emptyFiltered": "조건에 맞는 전투가 없습니다.",
+    "sort": {
+      "start_desc": "최신순",
+      "start_asc": "오래된순",
+      "dps_desc": "Encounter DPS 높은순",
+      "damage_desc": "확정 피해 많은순",
+      "duration_desc": "시간 긴순"
+    },
+    "class": {
+      "complete": "완전",
+      "degraded": "전송 손실",
+      "known_affected": "알려진 과소 집계",
+      "incomplete": "불완전",
+      "unreliable": "신뢰 불가",
+      "unfinished": "미완료"
+    },
+    "classNote": {
+      "complete": "완전한 기록: 모든 결과가 저장되었고 데이터 무결성이 INTACT이며 알려진 결함이 없습니다. 개인 기록 대상입니다.",
+      "degraded": "전송 손실 있음: 합계와 DPS는 하한값입니다. 개인 기록 대상이 아닙니다.",
+      "known_affected": "이 기록을 분석한 버전은 RequestId가 순환한 뒤 재사용된 결과를 놓쳤습니다(v0.7.0 Build 32에서 수정). 값이 낮을 수 있어 개인 기록 대상이 아니며, 저장된 값은 다시 쓰지 않습니다.",
+      "incomplete": "일부 결과가 저장되지 않음: 전체 결과가 아니므로 합계와 개인 기록 대상이 아닙니다.",
+      "unreliable": "전투 경계 또는 손실 범위를 알 수 없음: DPS를 표시하지 않으며 합계와 개인 기록 대상이 아닙니다.",
+      "unfinished": "기록 중이거나 앱 종료 시 미완료: 값은 마지막 체크포인트이며 합계와 개인 기록 대상이 아닙니다."
+    },
+    "backToList": "목록으로"
+  },
+  "compare": {
+    "select": "비교에 추가"
   }
 }

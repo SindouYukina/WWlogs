@@ -362,5 +362,56 @@
         "name": "名称可信度"
       }
     }
+  },
+  "library": {
+    "calendar": "日历",
+    "list": "列表",
+    "viewLabel": "战斗历史查看方式",
+    "from": "开始日期",
+    "to": "结束日期",
+    "any": "全部",
+    "versionUnknown": "未记录",
+    "character": "参与角色",
+    "classLabel": "记录状态",
+    "source": "来源",
+    "minMinutes": "最短（分钟）",
+    "maxMinutes": "最长（分钟）",
+    "search": "搜索",
+    "searchHint": "玩法、关卡或角色名称",
+    "sortLabel": "排序",
+    "total": "符合 {{n}} 场",
+    "reset": "清除筛选",
+    "date": "日期与时间",
+    "characters": "造成伤害的角色",
+    "damage": "确认伤害",
+    "rolesNote": "角色栏只列出造成确认伤害的角色，不是完整队伍；试用角色显示为本体。",
+    "emptyFiltered": "没有符合这些条件的战斗。",
+    "sort": {
+      "start_desc": "最新的在前",
+      "start_asc": "最早的在前",
+      "dps_desc": "Encounter DPS 从高到低",
+      "damage_desc": "确认伤害从高到低",
+      "duration_desc": "时间从长到短"
+    },
+    "class": {
+      "complete": "完整",
+      "degraded": "传输缺损",
+      "known_affected": "已知少算",
+      "incomplete": "不完整",
+      "unreliable": "不可靠",
+      "unfinished": "未完成"
+    },
+    "classNote": {
+      "complete": "完整记录：所有结果都已保存，数据完整性 INTACT，没有已知缺陷。可计入个人纪录。",
+      "degraded": "有传输丢失：总计与 DPS 是下限，不计入个人纪录。",
+      "known_affected": "此记录的分析版本在 RequestId 回绕后漏算了重复使用的结果（v0.7.0 Build 32 已修正），数值可能偏低，不计入个人纪录；已保存的值不会被改写。",
+      "incomplete": "部分结果没有写入：数值不是完整结果，不计入总计与个人纪录。",
+      "unreliable": "战斗边界或丢失范围不明：不显示 DPS，不计入总计与个人纪录。",
+      "unfinished": "仍在记录中或程序结束时未完成：数值来自最后的检查点，不计入总计与个人纪录。"
+    },
+    "backToList": "返回列表"
+  },
+  "compare": {
+    "select": "加入比较"
   }
 }

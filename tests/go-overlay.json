@@ -370,6 +370,10 @@
     "tests/capture/effect_clock_test.go": "",
     "internal/capture/central_effect_clock_test.go": "tests/capture/effect_clock_test.go",
     "tests/capture/effect_clock_replay_dev_test.go": "",
-    "internal/capture/central_effect_clock_replay_dev_test.go": "tests/capture/effect_clock_replay_dev_test.go"
+    "internal/capture/central_effect_clock_replay_dev_test.go": "tests/capture/effect_clock_replay_dev_test.go",
+    "tests/history/library_test.go": "",
+    "internal/history/central_library_test.go": "tests/history/library_test.go",
+    "tests/desktop/history_library_test.go": "",
+    "internal/desktop/central_history_library_test.go": "tests/desktop/history_library_test.go"
   }
 }

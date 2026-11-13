@@ -362,5 +362,56 @@
         "name": "名前の確度"
       }
     }
+  },
+  "library": {
+    "calendar": "カレンダー",
+    "list": "リスト",
+    "viewLabel": "戦闘履歴の表示方法",
+    "from": "開始日",
+    "to": "終了日",
+    "any": "すべて",
+    "versionUnknown": "記録なし",
+    "character": "キャラクター",
+    "classLabel": "記録の状態",
+    "source": "記録元",
+    "minMinutes": "最短（分）",
+    "maxMinutes": "最長（分）",
+    "search": "検索",
+    "searchHint": "モード、ステージ、キャラクター名",
+    "sortLabel": "並べ替え",
+    "total": "該当 {{n}} 件",
+    "reset": "絞り込みを解除",
+    "date": "日時",
+    "characters": "ダメージを与えたキャラクター",
+    "damage": "確定ダメージ",
+    "rolesNote": "キャラクター欄は確定ダメージを与えたキャラクターだけで、編成全体ではありません。体験キャラクターは本体として表示します。",
+    "emptyFiltered": "条件に合う戦闘はありません。",
+    "sort": {
+      "start_desc": "新しい順",
+      "start_asc": "古い順",
+      "dps_desc": "Encounter DPS が高い順",
+      "damage_desc": "確定ダメージが多い順",
+      "duration_desc": "時間が長い順"
+    },
+    "class": {
+      "complete": "完全",
+      "degraded": "通信欠損",
+      "known_affected": "既知の過少",
+      "incomplete": "不完全",
+      "unreliable": "信頼不可",
+      "unfinished": "未完了"
+    },
+    "classNote": {
+      "complete": "完全な記録：すべての結果が保存され、データ整合性は INTACT、既知の欠陥はありません。自己ベストの対象です。",
+      "degraded": "通信の欠損あり：合計と DPS は下限値です。自己ベストの対象外です。",
+      "known_affected": "この記録を解析したバージョンは RequestId の巡回後に再利用された結果を数えていません（v0.7.0 Build 32 で修正）。値は低い可能性があり、自己ベストの対象外です。保存済みの値は書き換えません。",
+      "incomplete": "一部の結果が保存されていません：完全な結果ではないため、合計と自己ベストの対象外です。",
+      "unreliable": "戦闘の境界または欠損の範囲が不明：DPS を表示せず、合計と自己ベストの対象外です。",
+      "unfinished": "記録中、またはアプリ終了時に未完了：値は最後のチェックポイントで、合計と自己ベストの対象外です。"
+    },
+    "backToList": "リストに戻る"
+  },
+  "compare": {
+    "select": "比較に追加"
   }
 }
