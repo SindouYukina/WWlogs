@@ -180,3 +180,139 @@ func TestReusedRequestIDResultsKeepDistinctKeys(t *testing.T) {
 		t.Fatalf("reuse: ok=%v key=%+v", ok, reused.Key)
 	}
 }
+
+// journaledKeys starts the event journal of a pairing test processor and returns the keys of the results the statistics
+// accept while run runs, in acceptance order.
+func journaledKeys(t *testing.T, p *processor, run func()) []uint64 {
+	t.Helper()
+	p.damageStatistics.EnableHistory(HistoryEvents)
+	takeSpan(t, p.damageStatistics)
+	run()
+	entries, dropped := p.damageStatistics.TakeHistory()
+	if dropped != 0 {
+		t.Fatalf("the journal refused %d entries", dropped)
+	}
+	var keys []uint64
+	for _, entry := range entries {
+		if entry.Kind == HistoryEventAccepted && entry.Event != nil {
+			keys = append(keys, entry.Event.Key.RPCID)
+		}
+	}
+	return keys
+}
+
+// One RequestId used in three epochs names three requests: three results, three keys, each reuse counted.
+func TestRequestIDReusedAcrossTwoWrapsKeepsEveryResult(t *testing.T) {
+	p := newPairingTestProcessor()
+	keys := journaledKeys(t, p, func() {
+		sendDamageRequest(p, 1, 7)
+		sendDamageResponse(p, 1.1, 7, 100)
+		wrapCounter(p, 600)
+		sendDamageRequest(p, 600.5, 7)
+		sendDamageResponse(p, 600.6, 7, 200)
+		wrapCounter(p, 1200)
+		sendDamageRequest(p, 1200.5, 7)
+		sendDamageResponse(p, 1200.6, 7, 400)
+	})
+	if got := p.damageStatistics.Snapshot(); got.DamageDealt != 700 || got.OutgoingEvents != 3 || got.DuplicateEvents != 0 {
+		t.Fatalf("statistics = %+v", got)
+	}
+	if want := []uint64{7, combatRequestIDSpace + 7, 2*combatRequestIDSpace + 7}; !slicesEqual(keys, want) {
+		t.Fatalf("keys = %v, want %v", keys, want)
+	}
+	if pairing := p.rpcPairingSnapshot(); pairing.Paired != 3 || pairing.ReusedRequestIDs != 2 || pairing.ConflictingResponses != 0 || pairing.PendingRequests != 0 {
+		t.Fatalf("pairing = %+v", pairing)
+	}
+}
+
+// A response that arrives after the counter wrapped belongs to the request that was pending under its RequestId: the
+// last request before the wrap keeps the key of its own epoch.
+func TestResponseDelayedAcrossTheWrapKeepsItsRequestEpoch(t *testing.T) {
+	p := newPairingTestProcessor()
+	keys := journaledKeys(t, p, func() {
+		sendCombatRequest(p, 1, 32766)
+		sendDamageRequest(p, 1.01, 32767)
+		sendCombatRequest(p, 1.02, 0)
+		sendCombatRequest(p, 1.03, 1)
+		sendDamageRequest(p, 1.04, 2)
+		sendDamageResponse(p, 1.2, 32767, 300)
+		sendDamageResponse(p, 1.3, 2, 50)
+	})
+	if want := []uint64{32767, combatRequestIDSpace + 2}; !slicesEqual(keys, want) {
+		t.Fatalf("keys = %v, want %v", keys, want)
+	}
+	if got := p.damageStatistics.Snapshot(); got.DamageDealt != 350 || got.OutgoingEvents != 2 {
+		t.Fatalf("statistics = %+v", got)
+	}
+}
+
+// Responses around the wrap may arrive in the other order than their requests; each still pairs with its own request.
+func TestResponsesAroundTheWrapPairOutOfOrder(t *testing.T) {
+	p := newPairingTestProcessor()
+	keys := journaledKeys(t, p, func() {
+		sendDamageRequest(p, 1, 32767)
+		sendDamageRequest(p, 1.01, 0)
+		sendDamageRequest(p, 1.02, 1)
+		sendDamageResponse(p, 1.1, 1, 11)
+		sendDamageResponse(p, 1.2, 32767, 22)
+		sendDamageResponse(p, 1.3, 0, 33)
+	})
+	if want := []uint64{combatRequestIDSpace + 1, 32767, combatRequestIDSpace}; !slicesEqual(keys, want) {
+		t.Fatalf("keys = %v, want %v", keys, want)
+	}
+	if got := p.damageStatistics.Snapshot(); got.DamageDealt != 66 || got.OutgoingEvents != 3 {
+		t.Fatalf("statistics = %+v", got)
+	}
+}
+
+// A copy of a reused RequestId's response is a copy of the new result, not a third result and not the old one.
+func TestCopyOfAReusedResultAfterTheWrapStaysOne(t *testing.T) {
+	p := newPairingTestProcessor()
+	sendDamageRequest(p, 1, 8)
+	sendDamageResponse(p, 1.1, 8, 100)
+	wrapCounter(p, 600)
+	sendDamageRequest(p, 600.5, 8)
+	sendDamageResponse(p, 600.6, 8, 250)
+	sendDamageResponse(p, 600.7, 8, 250)
+	sendDamageResponse(p, 600.8, 8, 251)
+	if got := p.damageStatistics.Snapshot(); got.DamageDealt != 350 || got.OutgoingEvents != 2 {
+		t.Fatalf("statistics = %+v", got)
+	}
+	if pairing := p.rpcPairingSnapshot(); pairing.DuplicateResponses != 1 || pairing.ConflictingResponses != 1 || pairing.ReusedRequestIDs != 1 {
+		t.Fatalf("pairing = %+v", pairing)
+	}
+}
+
+// Requests lost in a capture gap around the wrap leave the counter's next RequestId far below its last one: the wrap is
+// still recognised as long as fewer than half the counter's space went missing.
+func TestWrapIsRecognisedAcrossLostRequests(t *testing.T) {
+	var counter combatRequestCounter
+	for _, step := range []struct{ id, epoch uint64 }{{32000, 0}, {15000, 1}, {16000, 1}, {32767, 1}, {9000, 2}} {
+		if got := counter.observe(step.id); got != step.epoch {
+			t.Fatalf("RequestId %d: epoch %d, want %d", step.id, got, step.epoch)
+		}
+	}
+	p := newPairingTestProcessor()
+	keys := journaledKeys(t, p, func() {
+		sendDamageRequest(p, 1, 32700)
+		sendDamageResponse(p, 1.1, 32700, 10)
+		// The requests 32701..32767 and 0..19 were lost with the gap.
+		sendDamageRequest(p, 40, 20)
+		sendDamageResponse(p, 40.1, 20, 20)
+	})
+	if want := []uint64{32700, combatRequestIDSpace + 20}; !slicesEqual(keys, want) {
+		t.Fatalf("keys = %v, want %v", keys, want)
+	}
+}
+
+func slicesEqual(a, b []uint64) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}

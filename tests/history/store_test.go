@@ -863,6 +863,32 @@ func TestAssignmentOfALostResultMarksTheEncounterIncomplete(t *testing.T) {
 	}
 }
 
+// Two distinct results the engine accepted under one key (a RequestId wrap the counter could not see, for example) cannot
+// both be stored under the history's unique key. The second is not stored, and its assignment marks the encounter
+// incomplete, so a record with a missing result never reads as complete.
+func TestResultsSharingOneKeyLeaveTheEncounterIncomplete(t *testing.T) {
+	store := openTestStore(t, testPath(t), nil)
+	start := time.Date(2026, 9, 11, 9, 0, 0, 0, time.UTC)
+	entries := finishedEncounter(1, 1, start, 10, 300, capture.IntegrityIntact)
+	result := func(sequence uint64, amount int64) []capture.HistoryEntry {
+		event := &capture.CombatEventRecord{Kind: capture.CombatEventDamage, Key: capture.CombatEventKey{ProtocolSession: 1, RPCID: 32700}, ObservedAt: start.Add(time.Second),
+			Evidence: "damage_rpc_response", Flow: capture.CombatFlowLocalOutgoing, Confidence: capture.AttributionConfirmed, Amount: amount,
+			Source: capture.CombatEndpoint{EntityID: 1, Relation: "LOCAL"}, Target: capture.CombatEndpoint{EntityID: 2, Relation: "UNRELATED"}}
+		return []capture.HistoryEntry{{Kind: capture.HistoryEventAccepted, Sequence: sequence, Event: event}, {Kind: capture.HistoryEventAssigned, Sequence: sequence, Encounter: "1-1"}}
+	}
+	batch := append([]capture.HistoryEntry{entries[0], entries[1]}, result(1, 140)...)
+	batch = append(batch, result(2, 160)...)
+	recorder := record(t, store, liveStart, append(batch, entries[2]))
+	var stored int
+	if err := store.db.QueryRowContext(context.Background(), "SELECT count(*) FROM combat_event WHERE capture_session_id = ?", recorder.SessionID()).Scan(&stored); err != nil || stored != 1 {
+		t.Fatalf("stored %d results under one key (%v)", stored, err)
+	}
+	day, err := store.Day(context.Background(), "2026-09-11", 0, 10, time.UTC)
+	if err != nil || len(day.Encounters) != 1 || day.Encounters[0].Complete || day.Encounters[0].IncompleteReason != incompleteEntriesLost {
+		t.Fatalf("day = %+v (%v)", day, err)
+	}
+}
+
 // inSession moves a test encounter into protocol session number.
 func inSession(entries []capture.HistoryEntry, number int) []capture.HistoryEntry {
 	entries[0].Opened.ProtocolSession = number
