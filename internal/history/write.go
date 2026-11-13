@@ -10,19 +10,105 @@ import (
 )
 
 // sessionWriter applies journal entries of one session inside one transaction. staged collects encounter row ids created
-// (or removed, as 0) in the transaction; span, sourceUsed and newSpans are the recorded span as the transaction leaves it.
-// The recorder keeps all of them only once the transaction committed.
+// (or removed, as 0) in the transaction; span, lastSpan, sourceUsed, spanLost, lostKeys and newSpans are the writer state as
+// the transaction leaves it. The recorder keeps all of them only once the transaction committed (Recorder.adopt).
 type sessionWriter struct {
 	tx         *sql.Tx
 	recorder   *Recorder
 	staged     map[string]int64
 	span       int64
+	lastSpan   int64
 	sourceUsed bool
+	spanLost   bool
+	lostKeys   map[string]struct{}
 	newSpans   []int64
 }
 
+// applySubmission applies one queue element in journal order: what waited before the drain, then the drain.
+func (w *sessionWriter) applySubmission(ctx context.Context, sub submission) error {
+	for _, item := range sub.held {
+		if item.note != nil {
+			if err := w.applyLoss(ctx, item.note); err != nil {
+				return fmt.Errorf("loss note: %w", err)
+			}
+			continue
+		}
+		if err := w.apply(ctx, item.marker); err != nil {
+			return fmt.Errorf("%s: %w", item.marker.Kind, err)
+		}
+	}
+	for _, entry := range sub.entries {
+		if err := w.apply(ctx, entry); err != nil {
+			return fmt.Errorf("%s: %w", entry.Kind, err)
+		}
+	}
+	return nil
+}
+
+// applyLoss counts lost entries on the span they belonged to (between spans: the span that closed last) and marks the
+// encounters they belonged to incomplete; one that belonged to no single encounter marks the whole span (settleLosses).
+func (w *sessionWriter) applyLoss(ctx context.Context, note *lossNote) error {
+	span := w.span
+	if span == 0 {
+		span = w.lastSpan
+	}
+	if span != 0 && note.entries() > 0 {
+		if _, err := w.tx.ExecContext(ctx, "UPDATE capture_session SET journal_dropped = journal_dropped + ?, queue_dropped = queue_dropped + ?, write_failed = write_failed + ? WHERE id = ?",
+			int64(note.journal), int64(note.queue), int64(note.write), span); err != nil {
+			return err
+		}
+	}
+	if note.unattributed && w.span != 0 {
+		w.spanLost = true
+	}
+	for key := range note.keys {
+		w.lostKeys[key] = struct{}{}
+	}
+	if err := w.settleKeys(ctx); err != nil {
+		return err
+	}
+	if len(w.lostKeys) > maxTaintedEncounters {
+		// Too many encounters to follow one by one: none of the span's can be complete.
+		w.spanLost = w.span != 0
+		w.lostKeys = map[string]struct{}{}
+	}
+	return nil
+}
+
+// settleKeys marks the encounters that lost an entry once their rows exist.
+func (w *sessionWriter) settleKeys(ctx context.Context) error {
+	for key := range w.lostKeys {
+		id, found, err := w.encounterRow(ctx, key)
+		if err != nil {
+			return err
+		}
+		if !found {
+			continue
+		}
+		if err := w.markIncomplete(ctx, id, incompleteEntriesLost); err != nil {
+			return err
+		}
+		delete(w.lostKeys, key)
+	}
+	return nil
+}
+
+// settleLosses marks what a transaction's losses imply: the encounters named by lost entries, and every encounter of a span
+// that lost an entry belonging to no single encounter, those stored later in the span included.
+func (w *sessionWriter) settleLosses(ctx context.Context) error {
+	if err := w.settleKeys(ctx); err != nil {
+		return err
+	}
+	if w.span == 0 || !w.spanLost {
+		return nil
+	}
+	_, err := w.tx.ExecContext(ctx, "UPDATE encounter SET complete = 0, incomplete_reason = COALESCE(incomplete_reason, ?) WHERE capture_session_id = ?", incompleteEntriesLost, w.span)
+	return err
+}
+
 // spanEntry reports the entries that belong to a recorded span. Between spans only a recorded encounter's later integrity
-// change arrives (historyJournal.addRecorded); anything else there has no span to belong to and is not stored.
+// change arrives (historyJournal.addRecorded). Span markers are never lost while the writer runs (losses.go), so a span entry
+// between spans would be a defect; it is counted as lost, never stored in another span.
 func spanEntry(kind capture.HistoryEntryKind) bool {
 	switch kind {
 	case capture.HistoryRecordingStarted, capture.HistoryRecordingStopped, capture.HistoryEncounterIntegrity:
@@ -33,7 +119,9 @@ func spanEntry(kind capture.HistoryEntryKind) bool {
 
 func (w *sessionWriter) apply(ctx context.Context, entry capture.HistoryEntry) error {
 	if w.span == 0 && spanEntry(entry.Kind) {
-		return nil
+		note := &lossNote{}
+		note.add(lostInTransaction, entry)
+		return w.applyLoss(ctx, note)
 	}
 	switch entry.Kind {
 	case capture.HistoryRecordingStarted:
@@ -119,6 +207,8 @@ func (w *sessionWriter) apply(ctx context.Context, entry capture.HistoryEntry) e
 			return err
 		}
 		w.staged[entry.Encounter] = 0
+		// The engine counts a discarded encounter's results outside every encounter, so nothing of it remains to mark.
+		delete(w.lostKeys, entry.Encounter)
 		return nil
 	case capture.HistoryEncounterIntegrity:
 		if entry.Integrity == nil {
@@ -456,39 +546,12 @@ func (w *sessionWriter) writeIntegrity(ctx context.Context, id int64, integrity 
 	return w.insertRisks(ctx, id, integrity.Risks)
 }
 
-// applyTaint marks the encounters whose entries were lost as incomplete and returns the keys that have no row yet.
-func (w *sessionWriter) applyTaint(ctx context.Context, t taint) ([]string, error) {
-	if w.span == 0 && (t.all || len(t.keys) > 0) {
-		// No span is open: the keys wait for the next one.
-		return t.keys, nil
-	}
-	if t.all {
-		_, err := w.tx.ExecContext(ctx, "UPDATE encounter SET complete = 0, incomplete_reason = COALESCE(incomplete_reason, ?) WHERE capture_session_id = ?", incompleteEntriesLost, w.span)
-		return nil, err
-	}
-	var unresolved []string
-	for _, key := range t.keys {
-		id, found, err := w.encounterRow(ctx, key)
-		if err != nil {
-			return nil, err
-		}
-		if !found {
-			unresolved = append(unresolved, key)
-			continue
-		}
-		if err := w.markIncomplete(ctx, id, incompleteEntriesLost); err != nil {
-			return nil, err
-		}
-	}
-	return unresolved, nil
-}
-
-// closeSpan writes the end of the recorded span: what is still queued as lost was marked, a pending encounter with all of its
-// entries stored never had confirmed activity and would have been discarded, and every encounter still open is abandoned,
-// never finished. open names the encounters a recording stop left in progress (reason recording_disabled for them).
+// closeSpan writes the end of the recorded span: its losses are marked, a pending encounter with all of its entries stored
+// never had confirmed activity and would have been discarded, and every encounter still open is abandoned, never finished.
+// open names the encounters a recording stop left in progress (reason recording_disabled for them).
 func (w *sessionWriter) closeSpan(ctx context.Context, stopReason string, open []string) error {
 	r := w.recorder
-	if _, err := w.applyTaint(ctx, r.takeTaint()); err != nil {
+	if err := w.settleLosses(ctx); err != nil {
 		return err
 	}
 	for _, key := range open {
@@ -509,15 +572,12 @@ func (w *sessionWriter) closeSpan(ctx context.Context, stopReason string, open [
 		incompleteNotFinished, w.span); err != nil {
 		return err
 	}
-	journalDropped, queueDropped := r.takeDropCounts()
-	if _, err := w.tx.ExecContext(ctx, `UPDATE capture_session SET status = 'closed', closed_at_ns = ?, stop_reason = ?, journal_dropped = journal_dropped + ?,
-		queue_dropped = queue_dropped + ?, write_failed = write_failed + ? WHERE id = ?`,
-		r.store.now().UnixNano(), stopReason, int64(journalDropped), int64(queueDropped), int64(r.writeFailed), w.span); err != nil {
+	if _, err := w.tx.ExecContext(ctx, "UPDATE capture_session SET status = 'closed', closed_at_ns = ?, stop_reason = ? WHERE id = ?",
+		r.store.now().UnixNano(), stopReason, w.span); err != nil {
 		return err
 	}
-	r.writeFailed = 0
-	r.endSpanTaint()
-	w.span = 0
+	// An encounter key without a row at the end of its span never gets one: spans hold whole encounters.
+	w.lastSpan, w.span, w.spanLost, w.lostKeys = w.span, 0, false, map[string]struct{}{}
 	return nil
 }
 

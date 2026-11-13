@@ -16,15 +16,23 @@ type fakeRecorder struct {
 	finished []string
 	aborted  int
 	finish   error
+	// deadline and cancelled describe the context Finish received.
+	deadline  bool
+	cancelled bool
 }
 
 func (r *fakeRecorder) Level() capture.HistoryLevel           { return capture.HistoryEvents }
 func (r *fakeRecorder) Submit([]capture.HistoryEntry, uint64) {}
-func (r *fakeRecorder) Abort()                                { r.mu.Lock(); r.aborted++; r.mu.Unlock() }
-func (r *fakeRecorder) Finish(_ context.Context, reason string) error {
+func (r *fakeRecorder) SubmitWait(context.Context, []capture.HistoryEntry, uint64) error {
+	return nil
+}
+func (r *fakeRecorder) Abort() { r.mu.Lock(); r.aborted++; r.mu.Unlock() }
+func (r *fakeRecorder) Finish(ctx context.Context, reason string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.finished = append(r.finished, reason)
+	_, r.deadline = ctx.Deadline()
+	r.cancelled = ctx.Err() != nil
 	return r.finish
 }
 
@@ -54,6 +62,35 @@ func TestHistoryIsFinishedAfterTheSessionStops(t *testing.T) {
 	defer recorder.mu.Unlock()
 	if len(recorder.finished) != 1 || recorder.aborted != 0 {
 		t.Fatalf("finished %v, aborted %d", recorder.finished, recorder.aborted)
+	}
+}
+
+// A live session's last history is stored within historyFinishLimit, so a stalled disk never holds up the capture lifecycle.
+// A replay's is complete only once all of it was committed, so it waits without a deadline; Stop cancels that wait, and the
+// recorder then removes the replay.
+func TestHistoryFinishWaitsByTheSessionSource(t *testing.T) {
+	for _, source := range []string{capture.SourceLive, capture.SourceReplay} {
+		t.Run(source, func(t *testing.T) {
+			recorder := &fakeRecorder{}
+			service := NewCaptureService(func(capture.SessionConfig) (Session, error) { return &fakeSession{source: source}, nil })
+			service.SetHistory(func(capture.SessionConfig) (HistoryRecorder, string, error) { return recorder, "", nil })
+			if err := service.Start(capture.SessionConfig{LocalIPv4: "192.0.2.1"}); err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := service.Stop(ctx); err != nil {
+				t.Fatal(err)
+			}
+			recorder.mu.Lock()
+			defer recorder.mu.Unlock()
+			if len(recorder.finished) != 1 {
+				t.Fatalf("finished %v", recorder.finished)
+			}
+			if live := source == capture.SourceLive; recorder.deadline != live || recorder.cancelled == live {
+				t.Fatalf("%s finished with deadline %t, cancelled %t", source, recorder.deadline, recorder.cancelled)
+			}
+		})
 	}
 }
 

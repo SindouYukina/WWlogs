@@ -131,24 +131,28 @@ func readCaptureList(t *testing.T, path string) []captureItem {
 
 // teeSink stores the journal through the recorder and keeps a copy for comparison.
 type teeSink struct {
-	recorder *Recorder
-	entries  []capture.HistoryEntry
-	dropped  uint64
+	recorder  *Recorder
+	entries   []capture.HistoryEntry
+	dropped   uint64
+	liveCalls int
 }
 
 func (s *teeSink) Level() capture.HistoryLevel { return s.recorder.Level() }
 
-// Submit hands each drain to the recorder after the recorder's queue has room for it. The replay runs unpaced, many times
-// faster than the capture was made, and the recorder never waits (a full queue drops the batch and marks its encounters
-// incomplete, which store_test.go checks). The collector checks what history stores, so it waits for the writer instead
-// of overflowing it; the captured traffic itself is never slowed this way.
+// Submit is the live hand-off; the collector only replays, so a call here is a host defect.
 func (s *teeSink) Submit(entries []capture.HistoryEntry, dropped uint64) {
+	s.liveCalls++
 	s.entries = append(s.entries, entries...)
 	s.dropped += dropped
-	for len(s.recorder.queue) >= maxQueuedBatches/2 || s.recorder.queued.Load()+int64(len(entries)) > maxQueuedEntries/2 {
-		time.Sleep(time.Millisecond)
-	}
 	s.recorder.Submit(entries, dropped)
+}
+
+// SubmitWait is the replay hand-off: the recorder's backpressure paces the unpaced replay, so nothing is dropped for lack of
+// room however much faster than real time it runs.
+func (s *teeSink) SubmitWait(ctx context.Context, entries []capture.HistoryEntry, dropped uint64) error {
+	s.entries = append(s.entries, entries...)
+	s.dropped += dropped
+	return s.recorder.SubmitWait(ctx, entries, dropped)
 }
 
 type replaySummary struct {
@@ -461,6 +465,9 @@ func replayIntoHistory(t *testing.T, store *Store, masters *capture.MasterData, 
 	}
 	if tee.dropped != 0 {
 		t.Fatalf("the engine journal refused %d entries", tee.dropped)
+	}
+	if tee.liveCalls != 0 {
+		t.Fatalf("a replay handed %d drains to the live hand-off, which never waits for storage", tee.liveCalls)
 	}
 	var journalDropped, queueDropped, writeFailed int64
 	if err := store.db.QueryRowContext(context.Background(), "SELECT journal_dropped, queue_dropped, write_failed FROM capture_session WHERE id = ?", recorder.SessionID()).Scan(&journalDropped, &queueDropped, &writeFailed); err != nil {

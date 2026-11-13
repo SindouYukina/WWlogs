@@ -13,7 +13,9 @@ import (
 
 // fakeSession publishes a view per tick until its context ends.
 type fakeSession struct {
-	id        uint64
+	id uint64
+	// source is the session's source; empty is a replay.
+	source    string
 	damage    int64
 	runs      atomic.Int32
 	closes    atomic.Int32
@@ -57,7 +59,11 @@ func (f *fakeSession) publishIntervals() []time.Duration {
 }
 
 func (f *fakeSession) Info() capture.SessionInfo {
-	return capture.SessionInfo{CaptureSessionID: f.id, Source: "replay"}
+	source := f.source
+	if source == "" {
+		source = capture.SourceReplay
+	}
+	return capture.SessionInfo{CaptureSessionID: f.id, Source: source}
 }
 
 func (f *fakeSession) Close() {

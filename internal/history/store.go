@@ -66,9 +66,11 @@ type Status struct {
 	// SchemaVersion is the file's schema; LatestSchemaVersion is the one this build writes.
 	SchemaVersion       int `json:"schemaVersion"`
 	LatestSchemaVersion int `json:"latestSchemaVersion"`
-	// RecoveredSessions and RecoveredEncounters count what an earlier run left open and this open marked abandoned.
+	// RecoveredSessions and RecoveredEncounters count what an earlier run left open and this open marked abandoned;
+	// RemovedReplays counts replays an earlier run left unfinished, which this open removed.
 	RecoveredSessions   int `json:"recoveredSessions"`
 	RecoveredEncounters int `json:"recoveredEncounters"`
+	RemovedReplays      int `json:"removedReplays,omitempty"`
 	// Encrypted is true when the open file is encrypted at rest with Encryption (aes-256-xts) and a key KeyProtection seals
 	// (dpapi-user). It is false for a plaintext file this build could only read.
 	Encrypted     bool   `json:"encrypted"`
@@ -468,15 +470,21 @@ func (s *Store) applyMigration(ctx context.Context, step migration) error {
 	return tx.Commit()
 }
 
-// recover closes what an earlier run of this file left open. An application that ended without finishing a session never
-// wrote its end, so the session and its unfinished encounters are abandoned: they stay listed, never as finished fights. An
-// encounter that never had confirmed activity, with nothing of it lost, would have been discarded and is removed.
+// recover closes what an earlier run of this file left open. A replay that never finished storing was never stored: it is
+// removed, so the same file can be replayed again (Recorder.Finish). A live session never wrote its end, so the session and
+// its unfinished encounters are abandoned: they stay listed, never as finished fights. An encounter that never had confirmed
+// activity, with nothing of it lost, would have been discarded and is removed.
 func (s *Store) recover(ctx context.Context) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
+	replays, err := tx.ExecContext(ctx, "DELETE FROM capture_session WHERE status = 'open' AND source = ?", SourceReplay)
+	if err != nil {
+		return fmt.Errorf("recover history: %w", err)
+	}
+	removed, _ := replays.RowsAffected()
 	if _, err := tx.ExecContext(ctx, "DELETE FROM encounter WHERE state = 'pending' AND complete = 1 AND capture_session_id IN (SELECT id FROM capture_session WHERE status = 'open')"); err != nil {
 		return fmt.Errorf("recover history: %w", err)
 	}
@@ -494,7 +502,7 @@ func (s *Store) recover(ctx context.Context) error {
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("recover history: %w", err)
 	}
-	s.status.RecoveredSessions, s.status.RecoveredEncounters = int(sessions), int(encounters)
+	s.status.RecoveredSessions, s.status.RecoveredEncounters, s.status.RemovedReplays = int(sessions), int(encounters), int(removed)
 	return nil
 }
 
@@ -517,7 +525,8 @@ func (s *Store) readable() bool {
 const closeWaitLimit = 5 * time.Second
 
 // Close waits, at most closeWaitLimit, for recording sessions to finish, then releases the file and its lock. A session
-// still storing after that loses the rest and stays open in the file, so the next open marks it abandoned.
+// still storing after that loses the rest and stays open in the file, so the next open marks a live one abandoned and
+// removes a replay.
 func (s *Store) Close() error {
 	if s == nil {
 		return nil

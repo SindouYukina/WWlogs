@@ -16,10 +16,10 @@ import (
 	"wwlogs/internal/capture"
 )
 
-// Capture session sources.
+// Capture session sources, as the capture names them.
 const (
-	SourceLive   = "live"
-	SourceReplay = "replay"
+	SourceLive   = capture.SourceLive
+	SourceReplay = capture.SourceReplay
 )
 
 var (
@@ -27,9 +27,12 @@ var (
 	ErrNotRecording = errors.New("the combat history is not recording")
 	// ErrDuplicateSource reports a replayed file whose capture is already in the history.
 	ErrDuplicateSource = errors.New("this capture file is already in the combat history")
-	// ErrFinishTimeout reports a session whose queued history was still being stored when the deadline passed. Nothing is
-	// marked complete: the session stays open and the next open of the file marks it abandoned if it never finishes.
+	// ErrFinishTimeout reports a live session whose queued history was still being stored when the deadline passed. Nothing
+	// is marked complete: the session stays open and the next open of the file marks it abandoned if it never finishes.
 	ErrFinishTimeout = errors.New("the combat history was still being stored at the deadline")
+	// ErrReplayNotStored reports a replay whose history was removed instead of being kept: the replay was stopped before its
+	// end, or part of its journal could not be stored. A replay is kept only when all of it was stored.
+	ErrReplayNotStored = errors.New("the replay was not stored in the combat history")
 )
 
 // SessionStart describes a capture session about to run.
@@ -42,13 +45,17 @@ type SessionStart struct {
 	Paused bool
 }
 
-// Recorder bounds. The capture goroutine never waits: what does not fit is counted and its encounters marked incomplete.
+// Recorder bounds. A live capture never waits: what does not fit is counted and its encounters marked incomplete. A replay
+// waits while maxPacedEntries are queued, which keeps a full transaction gathering while the previous one is written and
+// bounds what remains to store when the file ends.
 const (
 	maxQueuedEntries            = 1 << 17
 	maxQueuedBatches            = 1 << 12
+	maxPacedEntries             = 4 * maxTransactionEntries
 	maxTransactionEntries       = 1 << 13
 	writeLinger                 = 200 * time.Millisecond
 	maxTaintedEncounters        = 1024
+	maxRetainedEntries          = 1024
 	maxConsecutiveWriteFailures = 3
 	writeTimeout                = 30 * time.Second
 )
@@ -61,40 +68,58 @@ const (
 	incompleteNotFinished       = "not_finished"
 )
 
-// Recorder stores one capture session's journal. It is the session's capture.HistorySink: Submit only queues, and one
-// goroutine of its own writes the queue in transactions.
+// Recorder stores one capture session's journal. It is the session's capture.HistorySink: Submit (live) and SubmitWait
+// (replay) only queue, and one goroutine of its own writes the queue in transactions.
 //
 // One capture can hold several recorded spans (capture.HistoryRecordingStarted ... Stopped); each span is one capture_session
 // row. A Recorder that begins unpaused creates the row of its first span at once, as before spans existed; every later span
 // gets its row when its start entry is stored.
+//
+// Losses are never silent and always land in the span they belong to (losses.go): what could not be stored is counted there
+// and marks the encounters it belonged to incomplete.
+//
+// A replay is kept only when all of it was stored: a replay stopped before its end, or one that lost any entry, is removed
+// when it finishes (Finish), and one an earlier run left unfinished is removed when the file opens (Store.recover). A live
+// capture keeps what it stored, its losses marked.
 type Recorder struct {
 	store  *Store
 	start  SessionStart
 	level  capture.HistoryLevel
-	queue  chan []capture.HistoryEntry
+	queue  chan submission
 	queued atomic.Int64
 	done   chan struct{}
+	// room wakes a replay waiting in SubmitWait: the writer signals it whenever it takes entries off the queue.
+	room chan struct{}
 	// firstSpan is the row id of the first span, once it exists.
 	firstSpan atomic.Int64
 	// lost and halted are Health's view of the losses and of a writer that stopped trying.
 	lost   atomic.Uint64
 	halted atomic.Bool
+	// discard tells the writer to drop what is still queued without storing it: the replay is being removed.
+	discard atomic.Bool
 
-	mu             sync.Mutex
-	closed         bool
-	journalDropped uint64
-	queueDropped   uint64
-	// tainted holds encounter keys whose entries never reached storage; taintedAll is set when there were too many to keep.
-	tainted    map[string]struct{}
-	taintedAll bool
+	mu     sync.Mutex
+	closed bool
+	// waiting holds, in journal order, the span markers and loss notes of drains the queue could not take; they go first
+	// into the next submission it takes.
+	waiting held
 
-	// The fields below belong to the writer goroutine.
-	// span is the row of the span being recorded; 0 between spans. sourceUsed is set once a span carried the replay digest.
-	span        int64
-	sourceUsed  bool
-	writeFailed uint64
-	failures    int
-	stopped     bool
+	// The fields below belong to the writer goroutine; Finish reads them after it has ended.
+	// span is the row of the span being recorded; 0 between spans. lastSpan is the span that closed last, which losses
+	// between spans are counted on. sourceUsed is set once a span carried the replay digest.
+	span       int64
+	lastSpan   int64
+	sourceUsed bool
+	// spanLost is set once the span lost an entry that belonged to no single encounter: every encounter of the span is
+	// then incomplete. lostKeys are encounters that lost an entry before their row existed.
+	spanLost bool
+	lostKeys map[string]struct{}
+	failures int
+	stopped  bool
+	// carry holds, in journal order, the span markers and loss notes of transactions that failed, for the next one.
+	carry held
+	// spans lists the rows of every span this recorder created.
+	spans []int64
 	// encounters maps the engine's encounter keys to their rows across every span of the capture.
 	encounters map[string]int64
 	finishOnce sync.Once
@@ -131,8 +156,8 @@ func (s *Store) BeginSession(start SessionStart) (*Recorder, error) {
 		}
 	}
 	recorder := &Recorder{
-		store: s, start: start, level: start.Level, queue: make(chan []capture.HistoryEntry, maxQueuedBatches), done: make(chan struct{}),
-		tainted: map[string]struct{}{}, encounters: map[string]int64{},
+		store: s, start: start, level: start.Level, queue: make(chan submission, maxQueuedBatches), done: make(chan struct{}),
+		room: make(chan struct{}, 1), lostKeys: map[string]struct{}{}, encounters: map[string]int64{},
 	}
 	if !start.Paused {
 		id, used, err := recorder.insertSpan(ctx, s.db, capture.HistoryStartCapture, false)
@@ -140,6 +165,7 @@ func (s *Store) BeginSession(start SessionStart) (*Recorder, error) {
 			return nil, err
 		}
 		recorder.span, recorder.sourceUsed = id, used
+		recorder.spans = append(recorder.spans, id)
 		recorder.firstSpan.Store(id)
 	}
 	s.sessions.Add(1)
@@ -198,31 +224,106 @@ func (r *Recorder) SessionID() int64 { return r.firstSpan.Load() }
 // Level is the history level this session records at.
 func (r *Recorder) Level() capture.HistoryLevel { return r.level }
 
-// Submit queues one drain of the journal. It never waits: a full queue, or a queue after Finish, drops the batch, counts
-// it and marks the encounters it named incomplete.
+// Submit queues one drain of a live capture's journal. It never waits: when the queue has no room, or after Finish, the
+// drain's entries become a loss note in their place (losses.go) and its span markers wait in order for the next submission.
 func (r *Recorder) Submit(entries []capture.HistoryEntry, dropped uint64) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if dropped > 0 {
-		r.lost.Add(dropped)
-		r.journalDropped += dropped
-		// The journal cannot say which encounters lost an entry, so none of this span's encounters can be complete.
-		r.taintedAll = true
-	}
-	if len(entries) == 0 {
+	pending := r.journalLossLocked(r.waiting, dropped)
+	if len(entries) == 0 && len(pending) == len(r.waiting) {
 		return
 	}
-	if !r.closed && r.queued.Load()+int64(len(entries)) <= maxQueuedEntries {
+	if r.offerLocked(submission{held: pending, entries: entries}, maxQueuedEntries) {
+		r.waiting = nil
+		return
+	}
+	waiting, lost := pending.appendLost(lostInQueue, entries)
+	r.lost.Add(lost)
+	if waiting.markers() > maxRetainedEntries {
+		// Far more span changes than a capture makes while its storage is stalled: the spans cannot be told apart any more,
+		// so nothing more of this capture is stored.
+		r.halted.Store(true)
+	}
+	r.waiting = waiting
+}
+
+// SubmitWait queues one drain of a replay's journal, waiting while the queue holds maxPacedEntries (backpressure), so a
+// replay never loses an entry for lack of room: the replay reads its file only as fast as the writer stores it. It returns
+// ctx's error when ctx ends before the entries were accepted; they then become a loss note. A writer that stopped after
+// repeated failures still takes entries at once and counts them as not stored.
+func (r *Recorder) SubmitWait(ctx context.Context, entries []capture.HistoryEntry, dropped uint64) error {
+	r.mu.Lock()
+	r.waiting = r.journalLossLocked(r.waiting, dropped)
+	r.mu.Unlock()
+	if len(entries) == 0 {
+		return nil
+	}
+	for {
+		r.mu.Lock()
+		if r.closed {
+			var lost uint64
+			r.waiting, lost = r.waiting.appendLost(lostInQueue, entries)
+			r.lost.Add(lost)
+			r.mu.Unlock()
+			return nil
+		}
+		sub := submission{held: r.waiting, entries: entries}
+		// A drain larger than the bound fits an empty queue, so a replay never waits for room that cannot come.
+		if r.offerLocked(sub, max(maxPacedEntries, int64(sub.size()))) {
+			r.waiting = nil
+			r.mu.Unlock()
+			return nil
+		}
+		r.mu.Unlock()
 		select {
-		case r.queue <- entries:
-			r.queued.Add(int64(len(entries)))
-			return
-		default:
+		case <-r.room:
+		case <-ctx.Done():
+			r.mu.Lock()
+			var lost uint64
+			r.waiting, lost = r.waiting.appendLost(lostInQueue, entries)
+			r.lost.Add(lost)
+			r.mu.Unlock()
+			return ctx.Err()
 		}
 	}
-	r.queueDropped += uint64(len(entries))
-	r.lost.Add(uint64(len(entries)))
-	r.taintLocked(entries)
+}
+
+// offerLocked queues sub when the queue then holds at most bound entries and has a free place; it never waits.
+func (r *Recorder) offerLocked(sub submission, bound int64) bool {
+	if r.closed {
+		return false
+	}
+	size := int64(sub.size())
+	if r.queued.Load()+size > bound {
+		return false
+	}
+	select {
+	case r.queue <- sub:
+		r.queued.Add(size)
+		return true
+	default:
+		return false
+	}
+}
+
+// journalLossLocked adds a note for entries the engine journal refused at its own bound. The journal cannot say which
+// encounters lost an entry, so none of the span's encounters can be complete.
+func (r *Recorder) journalLossLocked(h held, dropped uint64) held {
+	if dropped == 0 {
+		return h
+	}
+	r.lost.Add(dropped)
+	note := &lossNote{unattributed: true}
+	note.count(lostInJournal, dropped)
+	return h.appendNote(note)
+}
+
+// signalRoom wakes a replay waiting in SubmitWait. One pending signal is enough: the single producer checks again.
+func (r *Recorder) signalRoom() {
+	select {
+	case r.room <- struct{}{}:
+	default:
+	}
 }
 
 // RecorderHealth is how a recorder's storage is doing. Stopped is set once repeated transaction failures stopped the writer;
@@ -240,87 +341,101 @@ func (r *Recorder) Health() RecorderHealth {
 	return RecorderHealth{Stopped: r.halted.Load(), Lost: r.lost.Load()}
 }
 
-func (r *Recorder) taintLocked(entries []capture.HistoryEntry) {
-	for _, entry := range entries {
-		if entry.Encounter == "" {
-			continue
-		}
-		if len(r.tainted) >= maxTaintedEncounters {
-			r.taintedAll = true
-			return
-		}
-		r.tainted[entry.Encounter] = struct{}{}
-	}
-}
-
-// run is the writer goroutine. It gathers what arrives within writeLinger into one transaction.
+// run is the writer goroutine. It gathers what arrives within writeLinger into one transaction, and signals room to a
+// waiting replay whenever it takes entries off the queue.
 func (r *Recorder) run() {
 	defer close(r.done)
 	for {
-		batch, ok := <-r.queue
+		first, ok := <-r.queue
 		if !ok {
 			return
 		}
-		// Capacity is capped so gathering never appends into the backing array of a submitted batch.
-		entries := batch[:len(batch):len(batch)]
+		r.signalRoom()
+		subs, size := []submission{first}, first.size()
 		linger := time.NewTimer(writeLinger)
 	gather:
-		for len(entries) < maxTransactionEntries {
+		for size < maxTransactionEntries {
 			select {
 			case next, open := <-r.queue:
 				if !open {
 					break gather
 				}
-				entries = append(entries, next...)
+				r.signalRoom()
+				subs, size = append(subs, next), size+next.size()
 			case <-linger.C:
 				break gather
 			}
 		}
 		linger.Stop()
-		r.write(entries)
-		r.queued.Add(-int64(len(entries)))
+		if !r.discard.Load() {
+			r.write(subs)
+		}
+		r.queued.Add(-int64(size))
+		r.signalRoom()
 	}
 }
 
-// write stores entries in one transaction. A failed transaction loses all of them: they are counted and their encounters
-// marked incomplete, and after maxConsecutiveWriteFailures the session stops trying.
-func (r *Recorder) write(entries []capture.HistoryEntry) {
-	if r.stopped {
-		r.lose(entries)
+// write stores subs in one transaction, after what earlier failed transactions carried. A failed transaction stores
+// nothing: its entries become loss notes held in journal order with its span markers for the next transaction, and after
+// maxConsecutiveWriteFailures the writer stops trying and only counts.
+func (r *Recorder) write(subs []submission) {
+	if len(r.carry) > 0 {
+		subs = append([]submission{{held: r.carry}}, subs...)
+		r.carry = nil
+	}
+	if r.stopped || r.halted.Load() {
+		r.stopped = true
+		r.loseAll(subs)
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), writeTimeout)
 	defer cancel()
-	w := sessionWriter{recorder: r, staged: map[string]int64{}, span: r.span, sourceUsed: r.sourceUsed}
-	pending := r.takeTaint()
-	var unresolved []string
+	w := r.writer()
 	err := r.inTransaction(ctx, func(tx *sql.Tx) error {
 		w.tx = tx
-		for _, entry := range entries {
-			if err := w.apply(ctx, entry); err != nil {
-				return fmt.Errorf("%s: %w", entry.Kind, err)
+		for _, sub := range subs {
+			if err := w.applySubmission(ctx, sub); err != nil {
+				return err
 			}
 		}
-		var err error
-		unresolved, err = w.applyTaint(ctx, pending)
-		return err
+		return w.settleLosses(ctx)
 	})
 	if err != nil {
-		r.retaint(pending.keys)
-		r.lose(entries)
 		r.failures++
 		if r.failures >= maxConsecutiveWriteFailures {
 			r.stopped = true
 			r.halted.Store(true)
 		}
+		r.loseAll(subs)
 		return
 	}
 	r.failures = 0
-	r.span, r.sourceUsed = w.span, w.sourceUsed
+	r.adopt(w)
+}
+
+// loseAll turns everything of a transaction that did not store into held items for the next one.
+func (r *Recorder) loseAll(subs []submission) {
+	carry, lost := lostSubmissions(lostInTransaction, subs)
+	r.lost.Add(lost)
+	r.carry = carry
+}
+
+// writer starts a transaction's view of the writer state; adopt keeps it once the transaction committed.
+func (r *Recorder) writer() *sessionWriter {
+	lostKeys := make(map[string]struct{}, len(r.lostKeys))
+	for key := range r.lostKeys {
+		lostKeys[key] = struct{}{}
+	}
+	return &sessionWriter{recorder: r, staged: map[string]int64{}, span: r.span, lastSpan: r.lastSpan, sourceUsed: r.sourceUsed,
+		spanLost: r.spanLost, lostKeys: lostKeys}
+}
+
+func (r *Recorder) adopt(w *sessionWriter) {
+	r.span, r.lastSpan, r.sourceUsed, r.spanLost, r.lostKeys = w.span, w.lastSpan, w.sourceUsed, w.spanLost, w.lostKeys
+	r.spans = append(r.spans, w.newSpans...)
 	for _, id := range w.newSpans {
 		r.firstSpan.CompareAndSwap(0, id)
 	}
-	r.retaint(unresolved)
 	for key, id := range w.staged {
 		if id == 0 {
 			delete(r.encounters, key)
@@ -328,65 +443,6 @@ func (r *Recorder) write(entries []capture.HistoryEntry) {
 		}
 		r.encounters[key] = id
 	}
-}
-
-// lose accounts for entries that could not be stored.
-func (r *Recorder) lose(entries []capture.HistoryEntry) {
-	r.writeFailed += uint64(len(entries))
-	r.lost.Add(uint64(len(entries)))
-	r.mu.Lock()
-	r.taintLocked(entries)
-	r.mu.Unlock()
-}
-
-// retaint puts back keys a transaction could not mark yet.
-func (r *Recorder) retaint(keys []string) {
-	if len(keys) == 0 {
-		return
-	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	for _, key := range keys {
-		if len(r.tainted) >= maxTaintedEncounters {
-			r.taintedAll = true
-			return
-		}
-		r.tainted[key] = struct{}{}
-	}
-}
-
-// takeTaint returns the tainted keys collected so far and whether every encounter is tainted. A caller that cannot mark a key
-// yet puts it back with retaint.
-func (r *Recorder) takeTaint() taint {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	t := taint{all: r.taintedAll}
-	for key := range r.tainted {
-		t.keys = append(t.keys, key)
-	}
-	r.tainted = map[string]struct{}{}
-	return t
-}
-
-// endSpanTaint forgets the taint of a span that closed: its encounters were marked, and the next span starts clean.
-func (r *Recorder) endSpanTaint() {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.tainted, r.taintedAll = map[string]struct{}{}, false
-}
-
-type taint struct {
-	keys []string
-	all  bool
-}
-
-// takeDropCounts returns the journal and queue losses counted since the last span closed.
-func (r *Recorder) takeDropCounts() (journalDropped, queueDropped uint64) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	journalDropped, queueDropped = r.journalDropped, r.queueDropped
-	r.journalDropped, r.queueDropped = 0, 0
-	return journalDropped, queueDropped
 }
 
 func (r *Recorder) inTransaction(ctx context.Context, apply func(*sql.Tx) error) error {
@@ -401,15 +457,21 @@ func (r *Recorder) inTransaction(ctx context.Context, apply func(*sql.Tx) error)
 	return tx.Commit()
 }
 
-// Finish ends the session: it stores everything still queued, waiting at most until ctx ends, then records how the open
-// span ended. Encounters that never finished are abandoned, never shown as finished fights. Finish must be called once,
-// after the session stopped submitting; later calls return the first result.
+// Finish ends the session once it stopped submitting; later calls return the first result.
+//
+// A live session stores everything still queued, waiting at most until ctx ends, then records how its open span ended:
+// encounters that never finished are abandoned, never shown as finished fights. A replay is kept only when it reached its
+// end and every entry of it was stored: Finish waits until the writer committed all of it (ctx can end the wait), and
+// otherwise removes every span of the replay and returns ErrReplayNotStored. A nil result for a replay therefore means the
+// whole replay is in the file.
 func (r *Recorder) Finish(ctx context.Context, stopReason string) error {
 	r.finishOnce.Do(func() {
-		r.mu.Lock()
-		r.closed = true
-		close(r.queue)
-		r.mu.Unlock()
+		r.closeQueue()
+		if r.start.Source == SourceReplay {
+			r.finishErr = r.finishReplay(ctx, stopReason)
+			r.store.sessions.Done()
+			return
+		}
 		select {
 		case <-r.done:
 			r.finishErr = r.close(stopReason)
@@ -427,37 +489,108 @@ func (r *Recorder) Finish(ctx context.Context, stopReason string) error {
 	return r.finishErr
 }
 
-// close writes the end of the span still open, if any.
+// close stores what failed transactions still carry, then writes the end of the span still open, if any.
 func (r *Recorder) close(stopReason string) error {
-	if r.span == 0 {
+	if r.span == 0 && len(r.carry) == 0 {
 		return nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), writeTimeout)
 	defer cancel()
-	w := sessionWriter{recorder: r, staged: map[string]int64{}, span: r.span, sourceUsed: r.sourceUsed}
+	w := r.writer()
 	err := r.inTransaction(ctx, func(tx *sql.Tx) error {
 		w.tx = tx
+		if err := w.applySubmission(ctx, submission{held: r.carry}); err != nil {
+			return err
+		}
+		if w.span == 0 {
+			return w.settleLosses(ctx)
+		}
 		return w.closeSpan(ctx, stopReason, nil)
 	})
-	if err == nil {
-		r.span = 0
+	if err != nil {
+		return err
 	}
-	return err
+	r.carry = nil
+	r.adopt(w)
+	return nil
+}
+
+// closeQueue stops taking entries. What waited for room (span markers and loss notes) goes to the writer last; the writer
+// keeps draining, so the send waits for one place at most.
+func (r *Recorder) closeQueue() {
+	r.mu.Lock()
+	r.closed = true
+	waiting := r.waiting
+	r.waiting = nil
+	r.mu.Unlock()
+	if len(waiting) > 0 {
+		sub := submission{held: waiting}
+		r.queued.Add(int64(sub.size()))
+		r.queue <- sub
+	}
+	close(r.queue)
+}
+
+// finishReplay keeps a replay only when it reached its end and every entry of it was stored; otherwise it drops what is still
+// queued and removes the replay.
+func (r *Recorder) finishReplay(ctx context.Context, stopReason string) error {
+	var reason error
+	if stopReason != capture.StopReasonReplayEnd {
+		reason = fmt.Errorf("the replay stopped before its end (%s)", stopReason)
+		r.discard.Store(true)
+	}
+	select {
+	case <-r.done:
+	case <-ctx.Done():
+		r.discard.Store(true)
+		<-r.done
+		if reason == nil {
+			reason = fmt.Errorf("storing it did not finish: %w", ctx.Err())
+		}
+	}
+	if reason == nil {
+		if lost := r.lost.Load(); lost > 0 {
+			reason = fmt.Errorf("%d journal entries of it could not be stored", lost)
+		} else if err := r.close(stopReason); err != nil {
+			reason = err
+		} else {
+			return nil
+		}
+	}
+	return errors.Join(fmt.Errorf("%w: %w", ErrReplayNotStored, reason), r.removeSpans())
+}
+
+// removeSpans deletes every span this recorder created, with everything stored in them. A span that cannot be removed now
+// stays open, so the next open of the file removes it (Store.recover).
+func (r *Recorder) removeSpans() error {
+	if len(r.spans) == 0 {
+		return nil
+	}
+	defer r.store.models.clear()
+	ctx, cancel := context.WithTimeout(context.Background(), writeTimeout)
+	defer cancel()
+	err := r.inTransaction(ctx, func(tx *sql.Tx) error {
+		for _, id := range r.spans {
+			if _, err := tx.ExecContext(ctx, "DELETE FROM capture_session WHERE id = ?", id); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("remove the unfinished replay: %w", err)
+	}
+	r.spans, r.span = nil, 0
+	return nil
 }
 
 // Abort removes the history of a session that never ran, for a capture that failed to open after BeginSession.
 func (r *Recorder) Abort() {
 	r.finishOnce.Do(func() {
-		r.mu.Lock()
-		r.closed = true
-		close(r.queue)
-		r.mu.Unlock()
+		r.discard.Store(true)
+		r.closeQueue()
 		<-r.done
-		if id := r.firstSpan.Load(); id != 0 {
-			ctx, cancel := context.WithTimeout(context.Background(), writeTimeout)
-			defer cancel()
-			_, r.finishErr = r.store.db.ExecContext(ctx, "DELETE FROM capture_session WHERE id = ?", id)
-		}
+		r.finishErr = r.removeSpans()
 		r.store.sessions.Done()
 	})
 }

@@ -358,6 +358,10 @@
     "tests/service/capture_history_test.go": "",
     "internal/service/central_capture_history_test.go": "tests/service/capture_history_test.go",
     "tests/desktop/history_test.go": "",
-    "internal/desktop/central_history_test.go": "tests/desktop/history_test.go"
+    "internal/desktop/central_history_test.go": "tests/desktop/history_test.go",
+    "tests/history/flow_control_test.go": "",
+    "internal/history/central_flow_control_test.go": "tests/history/flow_control_test.go",
+    "tests/history/replay_pacing_test.go": "",
+    "internal/history/central_replay_pacing_test.go": "tests/history/replay_pacing_test.go"
   }
 }

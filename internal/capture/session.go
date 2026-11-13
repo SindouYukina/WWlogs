@@ -24,7 +24,8 @@ type SessionConfig struct {
 	LocalIPv4 string
 	// ReplayPath replays an offline PCAP instead of capturing live.
 	ReplayPath string
-	// ReplayPacing replays at capture speed times this factor; 0 replays as fast as possible.
+	// ReplayPacing replays at capture speed times this factor; 0 replays as fast as possible. It is a viewing speed only:
+	// a replay that keeps history is never faster than its history is stored, at any pacing.
 	ReplayPacing float64
 	// MinPort and MaxPort bound the game server UDP ports; zero selects the defaults.
 	MinPort, MaxPort int
@@ -34,7 +35,8 @@ type SessionConfig struct {
 	// Diagnostics writes the Development diagnostic PCAP for a live session. Public builds reject it.
 	Diagnostics bool
 	// History receives the session's Combat History journal (history_journal.go); nil keeps no history. It never affects
-	// packet handling, statistics or snapshots.
+	// statistics or snapshots, and never holds up a live capture; a replay reads its file only as fast as the sink accepts
+	// the journal (HistorySink).
 	History HistorySink
 	// HistoryPaused opens the session with history recording switched off: the journal records nothing until
 	// SetHistoryRecording(true) starts a span at a clean encounter boundary.
@@ -54,6 +56,12 @@ const (
 	MinPublishInterval = 100 * time.Millisecond
 	// sessionReadFailureLimit ends a live session whose adapter keeps failing instead of retrying forever.
 	sessionReadFailureLimit = 5 * time.Second
+)
+
+// Session sources (SessionInfo.Source).
+const (
+	SourceLive   = "live"
+	SourceReplay = "replay"
 )
 
 // Session stop reasons.
@@ -196,13 +204,13 @@ func OpenSession(cfg SessionConfig, masters *MasterData) (*Session, error) {
 		if err != nil {
 			return nil, fmt.Errorf("open Npcap adapter: %w", err)
 		}
-		session.handle, session.info.Source, session.info.Handle = handle, "live", applied.String()
+		session.handle, session.info.Source, session.info.Handle = handle, SourceLive, applied.String()
 	} else {
 		handle, err := pcap.OpenOffline(cfg.ReplayPath)
 		if err != nil {
 			return nil, fmt.Errorf("open replay PCAP: %w", err)
 		}
-		session.handle, session.info.Source = handle, "replay"
+		session.handle, session.info.Source = handle, SourceReplay
 	}
 	if err := session.handle.SetBPFFilter(fmt.Sprintf("udp and portrange %d-%d", cfg.MinPort, cfg.MaxPort)); err != nil {
 		session.handle.Close()
@@ -282,7 +290,7 @@ func (s *Session) Run(ctx context.Context, publish func(ViewSnapshot)) (result S
 	}
 	s.used = true
 	p, handle := s.processor, s.handle
-	live := s.info.Source == "live"
+	live := s.info.Source == SourceLive
 	streams := make(map[string]*stream)
 	stats := captureStats{}
 	result.StopReason = StopReasonReplayEnd
@@ -296,20 +304,28 @@ func (s *Session) Run(ctx context.Context, publish func(ViewSnapshot)) (result S
 		handle.Close()
 	}()
 
-	// handOffHistory passes what the engine journaled to the history sink. The sink only queues, so this never waits. At a
-	// low wall-clock rate it first checkpoints the encounter in progress.
+	// handOffHistory passes what the engine journaled to the history sink (HistorySink): a live capture never waits for it,
+	// a replay waits until the sink has room, so the file is read only as fast as its history is stored. It reports false
+	// when ctx ended before a replay's entries were accepted. At a low wall-clock rate it first checkpoints the encounter in
+	// progress.
 	lastCheckpoint := time.Now()
-	handOffHistory := func() {
+	handOffHistory := func() bool {
 		if s.cfg.History == nil {
-			return
+			return true
 		}
 		if now := time.Now(); now.Sub(lastCheckpoint) >= historyCheckpointInterval {
 			lastCheckpoint = now
 			p.damageStatistics.CheckpointHistory()
 		}
-		if entries, dropped := p.damageStatistics.TakeHistory(); len(entries) > 0 || dropped > 0 {
-			s.cfg.History.Submit(entries, dropped)
+		entries, dropped := p.damageStatistics.TakeHistory()
+		if len(entries) == 0 && dropped == 0 {
+			return true
 		}
+		if live {
+			s.cfg.History.Submit(entries, dropped)
+			return true
+		}
+		return s.cfg.History.SubmitWait(ctx, entries, dropped) == nil
 	}
 	lastPublish := time.Time{}
 	var viewClock liveViewClock
@@ -387,7 +403,10 @@ loop:
 		stats.udpPackets++
 		direction := packetDirection(packet, s.cfg.LocalIPv4, udp, s.cfg.MinPort, s.cfg.MaxPort)
 		consumeDatagram(udp.Payload, direction, capturedAt, streams, p, &stats)
-		handOffHistory()
+		if !handOffHistory() {
+			result.StopReason = StopReasonRequested
+			break loop
+		}
 		if live {
 			viewClock.observeFrame(p.currentFrameTime, receivedAt)
 			p.observePacketTiming(capturedAt, receivedAt, time.Now())

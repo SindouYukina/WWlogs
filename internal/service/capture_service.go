@@ -58,8 +58,10 @@ type HistoryRecorder interface {
 // capture that keeps no history, and a state code (HistoryUnavailable, HistoryDuplicate) with an error when it cannot.
 type HistoryStarter func(cfg capture.SessionConfig) (HistoryRecorder, string, error)
 
-// historyFinishLimit bounds storing a session's last history after it stopped; beyond it the session is left for the
-// next start's recovery, which marks it abandoned, and the capture lifecycle is not held up.
+// historyFinishLimit bounds storing a live session's last history after it stopped; beyond it the session is left for the
+// next start's recovery, which marks it abandoned, and the capture lifecycle is not held up. A replay has no such limit: its
+// history is complete only once the writer committed all of it, and the queue it may still hold is bounded by backpressure,
+// so it waits until then unless Stop cancels it, which removes the replay from the history.
 const historyFinishLimit = 4 * time.Second
 
 // AppIdentity is the build identity shown in the UI, taken from buildinfo. It carries no paths or hashes.
@@ -284,8 +286,11 @@ func (s *CaptureService) run(ctx context.Context, generation uint64, session Ses
 		s.publishLocked()
 	})
 	if recorder != nil {
-		// The session no longer submits; store what it queued within the limit. Stop waits for this like for the handle.
-		finishCtx, cancel := context.WithTimeout(context.Background(), historyFinishLimit)
+		// The session no longer submits; store what it queued (historyFinishLimit). Stop waits for this like for the handle.
+		finishCtx, cancel := ctx, context.CancelFunc(func() {})
+		if session.Info().Source != capture.SourceReplay {
+			finishCtx, cancel = context.WithTimeout(context.Background(), historyFinishLimit)
+		}
 		if recorder.Finish(finishCtx, result.StopReason) != nil {
 			result.HistoryIncomplete = true
 		}
