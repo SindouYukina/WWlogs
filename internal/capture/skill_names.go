@@ -1007,8 +1007,11 @@ func linkVisionActors(db *sql.DB, exists func(...string) (bool, error), direct m
 	if ok, err := exists("entityskillpreload", "asset_reference"); err != nil || !ok {
 		return err
 	}
+	// Both ids are TEXT columns and asset_reference.id is its primary key, so the join compares the stored text directly
+	// and SQLite finds each actor through that key. A CAST on either side hides the index and compares every preload row
+	// with every asset reference (about 9 s of a Master load before 2026-11-14).
 	rows, err := db.Query(`SELECT CAST(p.skill_id AS TEXT), CAST(p.actor_asset_id AS TEXT), COALESCE(p.is_common,0), COALESCE(a.path,'')
-		FROM entityskillpreload p LEFT JOIN asset_reference a ON CAST(a.id AS TEXT)=CAST(p.actor_asset_id AS TEXT)`)
+		FROM entityskillpreload p LEFT JOIN asset_reference a ON a.id = p.actor_asset_id`)
 	if err != nil {
 		return fmt.Errorf("query skill preload actors: %w", err)
 	}
