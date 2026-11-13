@@ -98,6 +98,16 @@ function SceneCell({ summary }: { summary: HistoryEncounterSummary }) {
   return <LinkedName name={summary.sceneName} fallback={t("unidentified")} id={summary.scene.instanceId} title={t("correlatedNote")} />
 }
 
+/**
+ * The major.minor game version stored with the encounter's protocol session. An encounter without one shows a dash: the
+ * running build's version is never put in its place, so a list may hold 3.8 and 3.9 encounters side by side.
+ */
+function GameVersion({ summary }: { summary: HistoryEncounterSummary }) {
+  const { t } = useTranslation("history")
+  if (!summary.gameVersion) return <span className="ww-history-unknown" data-field="game-version" data-version="" title={t("versionUnknown")}>—</span>
+  return <span className="ww-history-version" data-field="game-version" data-version={summary.gameVersion}>{summary.gameVersion}</span>
+}
+
 /** The kind of play Go resolved for the encounter's instance; the open world is labelled here, a category named by Go. */
 function ModeCell({ summary }: { summary: HistoryEncounterSummary }) {
   const { t } = useTranslation("history")
@@ -141,12 +151,13 @@ function DayList({ day, dateLabel, onOpen, onMore, loading }: { day: HistoryDay 
   return <>
     <div className="ww-dash-skills-wrap" style={{ maxHeight: "none" }}><table className="ww-history-table" data-field="day-list" data-date={day.date} data-total={day.total}>
       <thead><tr>
-        <th>{t("columns.start")}</th><th>{t("columns.mode")}</th><th>{t("columns.scene")}</th><th>{t("columns.enemy")}</th>
+        <th>{t("columns.start")}</th><th className="ww-history-version-column">{t("columns.version")}</th><th>{t("columns.mode")}</th><th>{t("columns.scene")}</th><th>{t("columns.enemy")}</th>
         <th className="ww-num">{t("columns.duration")}</th><th className="ww-num">{t("columns.dps")}</th><th>{t("columns.state")}</th>
       </tr></thead>
       <tbody>{day.encounters.map(summary => <tr key={summary.id} className="ww-history-row" tabIndex={0} role="button" aria-label={t("openEncounter", { time: summary.start.clock, date: dateLabel })}
         data-encounter-id={summary.id} data-source={summary.source} data-local-date={summary.localDate} data-started-at={summary.startedAt} onClick={() => onOpen(summary.id)} onKeyDown={open(summary.id)}>
         <td className="ww-num ww-history-time" data-field="start-clock" title={clockTitle(summary.start, summary.recorded)}>{summary.start.clock}</td>
+        <td className="ww-history-version-column"><GameVersion summary={summary} /></td>
         <td data-field="mode"><ModeCell summary={summary} /></td>
         <td data-field="scene"><SceneCell summary={summary} /></td>
         <td data-field="enemy"><EnemyCell summary={summary} /></td>
@@ -243,7 +254,7 @@ function EncounterDetail({ detail, backLabel, onBack, onDeleted, timelineMode, s
     <div className="ww-history-detail-head">
       <div className="ww-history-years">
         <Button size="sm" variant="ghost" onClick={onBack} data-field="detail-back"><span style={{ display: "inline-flex", transform: "rotate(90deg)" }}><Icon name="chevron" size={13} /></span>{backLabel}</Button>
-        <h3>{t("detailTitle", { time: start, date: dates.long(summary.localDate) })}{summary.gameVersion && <span className="ww-history-version" data-field="game-version" title={t("gameVersion", { version: summary.gameVersion })}> · {summary.gameVersion}</span>}</h3>
+        <h3>{t("detailTitle", { time: start, date: dates.long(summary.localDate) })}</h3>
       </div>
       <div className="ww-history-chips">
         <StatusChip summary={summary} />
@@ -254,6 +265,7 @@ function EncounterDetail({ detail, backLabel, onBack, onDeleted, timelineMode, s
     <Card className="ww-history-context ww-history-summary">
       <div className="ww-history-summary-row">
         <dl className="ww-history-facts">
+          <div><dt>{t("columns.version")}</dt><dd className="ww-num"><GameVersion summary={summary} /></dd></div>
           <div><dt>{t("columns.mode")}</dt><dd data-field="mode"><ModeCell summary={summary} /></dd></div>
           <div><dt>{t("columns.scene")}</dt><dd><SceneCell summary={summary} /></dd></div>
           <div><dt>{t("columns.enemy")}</dt><dd><EnemyCell summary={summary} /></dd></div>

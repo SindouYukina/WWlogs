@@ -110,7 +110,7 @@ test("every history string exists in every bundled language and the namespace is
   for (const locale of manifest.supportedLocales) assert.deepEqual(flatten(read(locale)).sort(), baseline, locale)
   // The view reads these keys; a missing one would show the raw key.
   for (const key of ["unidentified", "incomplete", "state.abandoned", "state.open", "integrity.UNRELIABLE", "outcome.INCOMPLETE", "unavailable.newer_schema", "localOnly",
-    "localEncrypted", "checkpointNote", "gameVersion", "coverage.combatStored", "coverage.skillCastsNotStored", "delete.confirm", "clear.done"]) {
+    "localEncrypted", "checkpointNote", "columns.version", "versionUnknown", "coverage.combatStored", "coverage.skillCastsNotStored", "delete.confirm", "clear.done"]) {
     assert.ok(baseline.includes(key), key)
   }
   // Every indicator label and reason the mapping can name exists, and every incomplete reason the host stores.
