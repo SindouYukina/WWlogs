@@ -196,6 +196,57 @@ body[data-view="overlay"][data-editing="true"] { --wails-draggable: drag; }
 .ww-history-confirm p { flex: 1 1 280px; min-width: 0; margin: 0; font-size: var(--ww-text-sm); }
 .ww-history-confirm-actions { display: flex; gap: var(--ww-space-2); }
 
+/* ------------------------------ Career Overview ------------------------------ */
+/* The range presets need their full width; the selects keep the filter grid's column. */
+.ww-career-filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--ww-space-2) var(--ww-space-3); }
+.ww-career-filters > .ww-history-filter { flex: 0 1 180px; }
+.ww-career-filters > .ww-history-filter:first-child { flex: 0 0 auto; }
+.ww-career-split { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: var(--ww-space-3); align-items: start; }
+.ww-career-fact-label { font-size: var(--ww-text-2xs); color: var(--ww-text-4); }
+.ww-career-classes { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ww-space-2) var(--ww-space-4); }
+.ww-career-class { display: inline-flex; align-items: center; gap: var(--ww-space-1_5); font-size: var(--ww-text-sm); }
+.ww-career-empty { display: flex; align-items: flex-start; gap: var(--ww-space-3); color: var(--ww-text-3); }
+.ww-career-empty h3 { margin: 0 0 var(--ww-space-1); font-size: var(--ww-text-base); font-weight: var(--ww-weight-semibold); color: var(--ww-text); }
+/* A personal record is a row that opens its encounter. */
+.ww-career-records { display: flex; flex-direction: column; gap: var(--ww-space-1); }
+.ww-career-record { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "label value" "who who" "where where"; gap: 2px var(--ww-space-3); width: 100%; padding: var(--ww-space-2); border: 0; border-top: 1px solid var(--ww-line-soft); border-radius: 0; background: transparent; color: inherit; font: inherit; text-align: start; }
+button.ww-career-record { cursor: pointer; transition: background-color var(--ww-dur-fast) var(--ww-ease-standard); }
+button.ww-career-record:hover { background: var(--ww-surface-hover); }
+button.ww-career-record:focus-visible { outline: none; box-shadow: var(--ww-focus-ring); }
+.ww-career-record[data-empty="true"] { grid-template-areas: "label value"; }
+.ww-career-record-label { grid-area: label; font-size: var(--ww-text-xs); color: var(--ww-text-3); }
+.ww-career-record-value { grid-area: value; font-size: var(--ww-text-lg); font-weight: var(--ww-weight-semibold); color: var(--ww-hero-number); }
+.ww-career-record > .ww-history-unknown { grid-area: value; font-size: var(--ww-text-xs); }
+.ww-career-record-who { grid-area: who; display: flex; align-items: center; gap: var(--ww-space-1_5); min-width: 0; font-size: var(--ww-text-sm); }
+.ww-career-record-skill { min-width: 0; color: var(--ww-text-3); }
+.ww-career-record-where { grid-area: where; display: flex; flex-wrap: wrap; gap: 0 var(--ww-space-3); font-size: var(--ww-text-2xs); color: var(--ww-text-3); }
+/* Characters: one card per role, opening the role's encounters in the History Library. */
+.ww-career-role-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--ww-space-2); }
+.ww-career-role { display: flex; align-items: flex-start; gap: var(--ww-space-2); min-width: 0; padding: var(--ww-space-2) var(--ww-space-2); border: 0; border-radius: var(--ww-radius-md); background: var(--ww-surface-2); box-shadow: inset 0 0 0 1px var(--ww-line-soft); color: inherit; font: inherit; text-align: start; cursor: pointer; transition: background-color var(--ww-dur-fast) var(--ww-ease-standard); }
+.ww-career-role:hover { background: var(--ww-surface-hover); }
+.ww-career-role:focus-visible { outline: none; box-shadow: var(--ww-focus-ring); }
+.ww-career-role-main { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
+.ww-career-role-line { display: flex; align-items: baseline; justify-content: space-between; gap: var(--ww-space-2); min-width: 0; }
+.ww-career-role-count { font-size: var(--ww-text-xs); color: var(--ww-text-3); }
+.ww-career-role-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--ww-space-2); font-size: var(--ww-text-sm); }
+.ww-career-role-facts > span { display: flex; flex-direction: column; min-width: 0; }
+.ww-career-strip { display: block; width: 100%; height: 12px; }
+.ww-career-strip-track { fill: var(--ww-line-soft); }
+.ww-career-strip-bar { fill: var(--ww-strip-color, var(--ww-accent)); }
+/* Trends: one bar per date of the range, scaled to the range's largest value. */
+.ww-career-trend { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: 140px auto; gap: 2px var(--ww-space-2); margin: var(--ww-space-1) 0 var(--ww-space-2); }
+.ww-career-trend-scale { display: flex; flex-direction: column; justify-content: space-between; font-size: var(--ww-text-2xs); color: var(--ww-text-4); text-align: end; }
+.ww-career-trend-plot { width: 100%; height: 100%; border-bottom: 1px solid var(--ww-line); }
+.ww-career-trend-grid { stroke: var(--ww-chart-grid); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.ww-career-trend-bar { fill: var(--ww-accent); }
+.ww-career-trend-bar[data-lower-bound="true"] { fill: color-mix(in oklab, var(--ww-accent) 55%, var(--ww-surface-2)); }
+.ww-career-trend-bar:hover { fill: var(--ww-accent-bright); }
+.ww-career-trend-axis { grid-column: 2; display: flex; justify-content: space-between; font-size: var(--ww-text-2xs); color: var(--ww-text-4); }
+.ww-career-combos { display: flex; flex-direction: column; margin: var(--ww-space-2) 0 0; padding: 0; list-style: none; }
+.ww-career-combo { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; align-items: center; gap: var(--ww-space-3); padding: 6px 0; border-top: 1px solid var(--ww-line-soft); font-size: var(--ww-text-sm); }
+.ww-career-combo > .ww-num { text-align: end; color: var(--ww-text-2); }
+.ww-career-rules { margin: 0; padding-inline-start: var(--ww-space-4); font-size: var(--ww-text-xs); color: var(--ww-text-3); display: flex; flex-direction: column; gap: 4px; }
+
 /* ------------------------------ History analysis ------------------------------ */
 /* One gutter is shared by the DPS timeline's value axis, the time axis and the effect lanes' labels, so a moment of the
    encounter lines up across all of them. */
@@ -448,4 +499,5 @@ body[data-view="overlay"][data-editing="true"] { --wails-draggable: drag; }
   .ww-analysis-detail { position: static; }
   .ww-analysis-skills { grid-template-columns: minmax(0, 1fr); }
   .ww-history-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ww-career-split { grid-template-columns: minmax(0, 1fr); }
 }

@@ -49,6 +49,7 @@ type careerComboJSON struct {
 	Roles      []careerComboRoleJSON `json:"roles"`
 	Encounters int                   `json:"encounters"`
 	Damage     int64                 `json:"damage"`
+	LowerBound bool                  `json:"damageLowerBound,omitempty"`
 	BestDPS    *careerRecordJSON     `json:"bestDps,omitempty"`
 }
 
@@ -60,6 +61,7 @@ type careerPlaceJSON struct {
 	Encounters int               `json:"encounters"`
 	Counted    int               `json:"counted"`
 	Damage     int64             `json:"damage"`
+	LowerBound bool              `json:"damageLowerBound,omitempty"`
 	BestDPS    *careerRecordJSON `json:"bestDps,omitempty"`
 }
 
@@ -119,6 +121,8 @@ func (b *Bridge) HistoryCareer(query HistoryCareerQuery, zoneName string) (json.
 	names, cancel := b.historyQuery()
 	defer cancel()
 	zone := history.ResolveViewZone(zoneName)
+	// The last N days become dates once, so the filters and the answer cover the same dates.
+	query.CareerQuery = b.history.CareerDates(query.CareerQuery, zone.Location)
 	// The instances of the dated selection are the ones a mode or stage filter can name.
 	probe, err := b.history.Library(names.ctx, history.LibraryQuery{From: query.From, To: query.To, GameVersions: query.GameVersions, Limit: 1}, zone.Location)
 	if err != nil && !errors.Is(err, history.ErrUnavailable) {
@@ -156,7 +160,7 @@ func (b *Bridge) HistoryCareer(query HistoryCareerQuery, zoneName string) (json.
 	}
 	combos := make([]careerComboJSON, 0, len(view.Combos))
 	for _, combo := range view.Combos {
-		out := careerComboJSON{Roles: make([]careerComboRoleJSON, 0, len(combo.Roles)), Encounters: combo.Encounters, Damage: combo.Damage, BestDPS: c.record(combo.BestDPS)}
+		out := careerComboJSON{Roles: make([]careerComboRoleJSON, 0, len(combo.Roles)), Encounters: combo.Encounters, Damage: combo.Damage, LowerBound: combo.DamageLowerBound, BestDPS: c.record(combo.BestDPS)}
 		for _, role := range combo.Roles {
 			out.Roles = append(out.Roles, careerComboRoleJSON{RoleID: role, ElementID: c.element(role), Name: names.roleName(role)})
 		}
@@ -167,7 +171,7 @@ func (b *Bridge) HistoryCareer(query HistoryCareerQuery, zoneName string) (json.
 	for _, instance := range view.Instances {
 		mode, stage := c.place(instance.Instance)
 		best := c.record(instance.BestDPS)
-		stages = append(stages, careerPlaceJSON{Key: modeKey(mode), InstanceID: instance.Instance, Mode: mode, Stage: stage, Encounters: instance.Encounters, Counted: instance.Counted, Damage: instance.Damage, BestDPS: best})
+		stages = append(stages, careerPlaceJSON{Key: modeKey(mode), InstanceID: instance.Instance, Mode: mode, Stage: stage, Encounters: instance.Encounters, Counted: instance.Counted, Damage: instance.Damage, LowerBound: instance.DamageLowerBound, BestDPS: best})
 		key := modeKey(mode)
 		if key == "" {
 			key = "unknown"
@@ -180,6 +184,7 @@ func (b *Bridge) HistoryCareer(query HistoryCareerQuery, zoneName string) (json.
 		group.Encounters += instance.Encounters
 		group.Counted += instance.Counted
 		group.Damage += instance.Damage
+		group.LowerBound = group.LowerBound || instance.DamageLowerBound
 		if best != nil && (group.BestDPS == nil || best.Value > group.BestDPS.Value) {
 			group.BestDPS = best
 		}
@@ -224,6 +229,8 @@ func (b *Bridge) HistoryCareer(query HistoryCareerQuery, zoneName string) (json.
 		Status   history.Status       `json:"status"`
 		Zone     historyZoneJSON      `json:"zone"`
 		Today    string               `json:"today"`
+		From     string               `json:"from"`
+		To       string               `json:"to"`
 		Totals   history.CareerTotals `json:"totals"`
 		Days     []history.CareerDay  `json:"days"`
 		Roles    []careerRoleJSON     `json:"roles"`
@@ -234,7 +241,7 @@ func (b *Bridge) HistoryCareer(query HistoryCareerQuery, zoneName string) (json.
 		Versions []string             `json:"versions"`
 		Filters  map[string]any       `json:"filters"`
 	}{
-		Status: b.history.Status(), Zone: zoneJSON(zone), Today: view.Today, Totals: view.Totals, Days: view.Days, Roles: roles, Combos: combos, Modes: modeList, Stages: stages,
+		Status: b.history.Status(), Zone: zoneJSON(zone), Today: view.Today, From: view.From, To: view.To, Totals: view.Totals, Days: view.Days, Roles: roles, Combos: combos, Modes: modeList, Stages: stages,
 		Records:  map[string]any{"maxHit": c.record(view.Records.MaxHit), "bestDps": c.record(view.Records.BestDPS), "bestDamage": c.record(view.Records.BestDamage), "bestPeak": c.record(view.Records.BestPeak)},
 		Versions: view.Versions, Filters: map[string]any{"modes": modeFacets, "stages": filterStages},
 	})
