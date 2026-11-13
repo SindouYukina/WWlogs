@@ -362,5 +362,56 @@
         "name": "Name evidence"
       }
     }
+  },
+  "library": {
+    "calendar": "Calendar",
+    "list": "List",
+    "viewLabel": "Combat history view",
+    "from": "From",
+    "to": "To",
+    "any": "All",
+    "versionUnknown": "Not recorded",
+    "character": "Character",
+    "classLabel": "Record",
+    "source": "Source",
+    "minMinutes": "At least (min)",
+    "maxMinutes": "At most (min)",
+    "search": "Search",
+    "searchHint": "Mode, stage or character name",
+    "sortLabel": "Sort",
+    "total": "{{n}} matching encounters",
+    "reset": "Clear filters",
+    "date": "Date and time",
+    "characters": "Characters with damage",
+    "damage": "Confirmed damage",
+    "rolesNote": "Characters lists the characters that dealt confirmed damage, not a full team; a trial character shows as its own character.",
+    "emptyFiltered": "No encounter matches these filters.",
+    "sort": {
+      "start_desc": "Newest first",
+      "start_asc": "Oldest first",
+      "dps_desc": "Highest Encounter DPS",
+      "damage_desc": "Most confirmed damage",
+      "duration_desc": "Longest first"
+    },
+    "class": {
+      "complete": "Complete",
+      "degraded": "Transport loss",
+      "known_affected": "Known undercount",
+      "incomplete": "Incomplete",
+      "unreliable": "Unreliable",
+      "unfinished": "Unfinished"
+    },
+    "classNote": {
+      "complete": "Complete: every result was stored, data integrity is INTACT and no defect is known. Counts for personal records.",
+      "degraded": "Transport loss: totals and DPS are lower bounds. Not used for personal records.",
+      "known_affected": "The build that analysed this record missed results whose RequestId was reused after the counter wrapped (fixed in v0.7.0 Build 32), so its values may be low. Not used for personal records; stored values are never rewritten.",
+      "incomplete": "Some results were not stored: the values are not the whole result. Not counted in totals or personal records.",
+      "unreliable": "A boundary or the extent of a loss is unknown: no DPS is shown. Not counted in totals or personal records.",
+      "unfinished": "Still recording, or ended with the application: the values are a checkpoint. Not counted in totals or personal records."
+    },
+    "backToList": "Back to the list"
+  },
+  "compare": {
+    "select": "Add to comparison"
   }
 }

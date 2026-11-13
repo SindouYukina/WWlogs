@@ -1,0 +1,100 @@
+import type { HistoryEncounterSummary, HistoryName, HistoryStatus, HistoryZone } from "./history.ts"
+
+// The History Library contracts the Go host returns (internal/desktop/history_library.go). Go selects, sorts, pages and
+// classifies the records; the Master-backed filters (mode, stage, character, text) are resolved by Go too. This file only
+// holds the query the view edits and lays out what Go returned.
+
+/** How a stored record may be used, from its stored fields (internal/history/library.go). */
+export type RecordClass = "complete" | "degraded" | "known_affected" | "incomplete" | "unreliable" | "unfinished"
+
+export const recordClasses: readonly RecordClass[] = ["complete", "degraded", "known_affected", "incomplete", "unreliable", "unfinished"]
+
+export type LibrarySort = "start_desc" | "start_asc" | "dps_desc" | "damage_desc" | "duration_desc"
+
+export const librarySorts: readonly LibrarySort[] = ["start_desc", "start_asc", "dps_desc", "damage_desc", "duration_desc"]
+
+export interface HistoryLibraryQuery {
+  /** Calendar dates of the view's zone, inclusive. */
+  from?: string
+  to?: string
+  gameVersions?: string[]
+  classes?: RecordClass[]
+  source?: "" | "live" | "replay"
+  minSeconds?: number
+  maxSeconds?: number
+  sort?: LibrarySort
+  offset?: number
+  limit?: number
+  /** Mode keys of the facets ("open_world" or "category:<name>"), instance IDs, static RoleIds and free text. */
+  modes?: string[]
+  stages?: number[]
+  roles?: number[]
+  text?: string
+}
+
+export interface HistoryLibraryRole {
+  /** The stored runtime RoleId; staticRoleId is the role a trial role belongs to (the art and name shown). */
+  roleId: number
+  staticRoleId: number
+  elementId?: number
+  name: HistoryName
+  damage: number
+}
+
+export interface HistoryLibraryEntry extends HistoryEncounterSummary {
+  class: RecordClass
+  roles: HistoryLibraryRole[]
+  vehicle?: boolean
+}
+
+export interface LibraryCount {
+  value: string
+  count: number
+}
+
+export interface HistoryLibraryFacets {
+  gameVersions: LibraryCount[]
+  classes: LibraryCount[]
+  sources: LibraryCount[]
+  modes: Array<{ key: string; kind: "open_world" | "category"; name?: string; status: HistoryName["status"]; count: number }>
+  stages: Array<{ instanceId: number; name: HistoryName; count: number }>
+  roles: Array<{ roleId: number; elementId?: number; name: HistoryName; count: number }>
+  firstDate?: string
+  lastDate?: string
+}
+
+export interface HistoryLibrary {
+  status: HistoryStatus
+  zone: HistoryZone
+  total: number
+  offset: number
+  encounters: HistoryLibraryEntry[]
+  facets: HistoryLibraryFacets
+}
+
+/** The query a fresh library starts from: everything, newest first. */
+export const defaultLibraryQuery: HistoryLibraryQuery = { sort: "start_desc" }
+
+/** The query with paging removed: two queries that differ only in their page select the same records. */
+export function libraryFilters(query: HistoryLibraryQuery): HistoryLibraryQuery {
+  const { offset: _offset, limit: _limit, ...filters } = query
+  return filters
+}
+
+/** Whether a query narrows the library at all (sorting does not). */
+export function libraryFiltered(query: HistoryLibraryQuery): boolean {
+  return Boolean(query.from || query.to || query.gameVersions?.length || query.classes?.length || query.source || query.minSeconds || query.maxSeconds ||
+    query.modes?.length || query.stages?.length || query.roles?.length || query.text?.trim())
+}
+
+export type ClassTone = "neutral" | "good" | "warn" | "critical"
+
+/** The tone a record class shows with: only a complete record is plain. */
+export function classTone(value: RecordClass): ClassTone {
+  switch (value) {
+    case "complete": return "neutral"
+    case "degraded": case "known_affected": case "incomplete": return "warn"
+    case "unreliable": return "critical"
+    case "unfinished": return "good"
+  }
+}

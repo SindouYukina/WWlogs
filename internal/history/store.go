@@ -95,6 +95,8 @@ type Store struct {
 
 	// models caches the analysis models of recently analysed encounters (analysis.go).
 	models modelCache
+	// library caches the encounter index of the library and the career (library.go).
+	library indexCache
 
 	mu       sync.Mutex
 	status   Status

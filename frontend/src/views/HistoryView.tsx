@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from "react"
 import { useTranslation } from "react-i18next"
-import { ActivityHeatmap, Button, Card, Chip, ContentSwitch, Icon, LiveChart, Reveal, ThemeBackdrop, useEntrance, type HeatmapDay, type ThemeId } from "@/design"
+import { ActivityHeatmap, Button, Card, Chip, ContentSwitch, Icon, LiveChart, Reveal, Segmented, ThemeBackdrop, useEntrance, type HeatmapDay, type ThemeId } from "@/design"
 import { usableDps } from "@/lib/combat-data"
 import { combatRows, detailRow, skillBreakdowns } from "@/lib/combat-view"
 import { useFormatters, useRowNames, elementColor } from "@/lib/format"
@@ -12,6 +12,8 @@ import { useDetailPick } from "@/lib/useDetailPick"
 import { useHostTimeZone } from "@/lib/useHostTimeZone"
 import { chartSeries, RoleBoard, SkillTable, StatCard } from "./DashboardView"
 import { AnalysisWorkspace, EnemiesCard, LinkedName, type TimelineMode } from "./HistoryAnalysis"
+import { HistoryLibraryView } from "./HistoryLibrary"
+import { defaultLibraryQuery, type HistoryLibraryQuery } from "@/lib/history-library"
 
 export interface HistoryViewProps {
   theme: ThemeId
@@ -337,6 +339,10 @@ export function HistoryView({ theme, refreshKey, indicator }: HistoryViewProps) 
   // The timeline presentation the user chose last stays chosen for the next encounter they open.
   const [timelineMode, setTimelineMode] = useState<TimelineMode>("icon")
   const [detail, setDetail] = useState<HistoryEncounterDetail | null>(null)
+  // The calendar lists one day; the library lists every stored encounter by filters. Each keeps its own state while an
+  // encounter is open, so going back returns to the same day or the same filtered list.
+  const [mode, setMode] = useState<"calendar" | "list">("calendar")
+  const [libraryQuery, setLibraryQuery] = useState<HistoryLibraryQuery>(defaultLibraryQuery)
   const [failed, setFailed] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
   // A deletion changes what every query returns, so it counts as a refresh of its own.
@@ -403,13 +409,14 @@ export function HistoryView({ theme, refreshKey, indicator }: HistoryViewProps) 
         <h2 className="ww-history-title">{t("title")}</h2>
       </div>
       <HistoryIndicatorChip indicator={indicator} />
-      <div className="ww-history-years" data-field="year-switch">
+      <span data-field="history-mode" data-mode={mode}><Segmented label={t("library.viewLabel")} value={mode} onChange={next => { setMode(next); setOpenId(null) }} options={[{ value: "calendar", label: t("library.calendar") }, { value: "list", label: t("library.list") }]} /></span>
+      {mode === "calendar" && <div className="ww-history-years" data-field="year-switch">
         <Button size="sm" variant="ghost" aria-label={t("previousYear")} title={t("previousYear")} disabled={shownYear === 0 || shownYear <= bounds.first} onClick={() => changeYear(shownYear - 1)} data-field="year-previous"><span style={{ display: "inline-flex", transform: "rotate(90deg)" }}><Icon name="chevron" size={14} /></span></Button>
         <span className="ww-history-year ww-num" data-field="year">{shownYear === 0 ? "—" : shownYear}</span>
         <Button size="sm" variant="ghost" aria-label={t("nextYear")} title={t("nextYear")} disabled={shownYear === 0 || shownYear >= bounds.last} onClick={() => changeYear(shownYear + 1)} data-field="year-next"><span style={{ display: "inline-flex", transform: "rotate(-90deg)" }}><Icon name="chevron" size={14} /></span></Button>
-      </div>
+      </div>}
     </Reveal>
-    <Reveal index={1}><Card className="ww-history-heat">
+    {mode === "calendar" && <Reveal index={1}><Card className="ww-history-heat">
       <div className="ww-history-heat-head">
         <h3>{t("heatmapTitle")}</h3>
         <span className="ww-history-total" data-field="year-total" data-total={layout.total}>{shownYear === 0 ? "" : t("yearTotal", { year: shownYear, n: format.integer(layout.total) })}</span>
@@ -423,9 +430,10 @@ export function HistoryView({ theme, refreshKey, indicator }: HistoryViewProps) 
       {deleted && <p className="ww-history-note" role="status" data-field="history-deleted">{t("delete.done")}</p>}
       <ZoneNote zone={yearView?.zone} />
       {status && status.state !== "unavailable" && <p className="ww-history-note" data-field="history-storage" data-encrypted={status.encrypted}>{t(status.encrypted ? "localEncrypted" : "localOnly")}</p>}
-    </Card></Reveal>
-    <Reveal index={2}><ContentSwitch contentKey={detail ? `detail-${detail.summary.id}` : `day-${date ?? ""}`}>
-      {detail ? <EncounterDetail detail={detail} backLabel={t("back", { date: dates.short(detail.summary.localDate) })} onBack={() => setOpenId(null)} onDeleted={afterDelete} timelineMode={timelineMode} setTimelineMode={setTimelineMode} /> :
+    </Card></Reveal>}
+    <Reveal index={2}><ContentSwitch contentKey={detail ? `detail-${detail.summary.id}` : mode === "list" ? "library" : `day-${date ?? ""}`}>
+      {detail ? <EncounterDetail detail={detail} backLabel={mode === "list" ? t("library.backToList") : t("back", { date: dates.short(detail.summary.localDate) })} onBack={() => setOpenId(null)} onDeleted={afterDelete} timelineMode={timelineMode} setTimelineMode={setTimelineMode} /> :
+        mode === "list" ? <HistoryLibraryView zone={zone} refreshKey={`${settledKey}-${changes}`} query={libraryQuery} onQuery={setLibraryQuery} onOpen={setOpenId} /> :
         <Card className="ww-history-day">
           <div className="ww-dash-card-head"><h3 data-field="day-title">{date ? dates.long(date) : t("noDay")}</h3>{day && day.date === date && <span className="ww-history-total" data-field="day-total">{t("dayCount", { n: format.integer(day.total) })}</span>}</div>
           <DayList day={day && day.date === date ? day : null} dateLabel={date ? dates.long(date) : ""} onOpen={setOpenId} onMore={more} loading={loadingMore} />

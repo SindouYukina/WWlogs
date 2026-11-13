@@ -366,6 +366,10 @@
     "tests/history/flow_control_test.go": "",
     "internal/history/central_flow_control_test.go": "tests/history/flow_control_test.go",
     "tests/history/replay_pacing_test.go": "",
-    "internal/history/central_replay_pacing_test.go": "tests/history/replay_pacing_test.go"
+    "internal/history/central_replay_pacing_test.go": "tests/history/replay_pacing_test.go",
+    "tests/history/library_test.go": "",
+    "internal/history/central_library_test.go": "tests/history/library_test.go",
+    "tests/desktop/history_library_test.go": "",
+    "internal/desktop/central_history_library_test.go": "tests/desktop/history_library_test.go"
   }
 }
