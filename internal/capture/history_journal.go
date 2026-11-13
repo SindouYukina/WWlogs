@@ -1,6 +1,7 @@
 package capture
 
 import (
+	"context"
 	"sort"
 	"strconv"
 	"sync"
@@ -14,9 +15,9 @@ import (
 // transport loss began, recovered or failed; and, at the event level, every accepted combat result and the encounter it
 // joined, and every effect lifecycle change the effect tracker accepted (history_effects.go). The statistics journal under
 // the statistics lock and the effect tracker under its own; the journal's lock is a leaf that neither waits on. The capture
-// goroutine drains the journal after every packet and hands it to a HistorySink that must never block (Session.Run). The
-// journal repeats decisions; it never makes one, so statistics, encounter boundaries, effect lifecycles and views are the
-// same whether it is on or off. Off (HistoryOff, the default) it records nothing.
+// goroutine drains the journal after every packet and hands it to a HistorySink (Session.Run): a live capture never waits
+// for it, a replay waits for room. The journal repeats decisions; it never makes one, so statistics, encounter boundaries,
+// effect lifecycles and views are the same whether it is on or off. Off (HistoryOff, the default) it records nothing.
 //
 // Recording can be switched off and on while a capture runs (SetHistoryRecording). Each recorded span starts with
 // HistoryRecordingStarted and ends with HistoryRecordingStopped or the end of the capture. A span never starts inside an
@@ -140,12 +141,22 @@ type HistoryLoss struct {
 	To        time.Time
 }
 
-// HistorySink receives the journal of one capture session. Submit runs on the capture goroutine after every packet that
-// produced entries and must return at once: it never waits for storage. dropped counts entries the journal itself had to
-// refuse since the previous call because it reached its bound (maxHistoryJournalEntries); a sink must treat them as lost.
+// HistorySink receives the journal of one capture session on the capture goroutine, after every packet that produced
+// entries. The producer's source decides the flow control:
+//
+//   - A live capture hands each drain to Submit, which must return at once. The game server never waits for WWlogs, so
+//     storage never holds up packet reception or transport recovery; what a sink cannot keep it counts as lost and marks
+//     the encounters it belonged to incomplete.
+//   - A replay hands each drain to SubmitWait, which waits until the sink has room (backpressure): the file is then read
+//     only as fast as the history stores it, and nothing is dropped for lack of room. It returns ctx's error when ctx ends
+//     before the entries were accepted. Waiting changes no engine decision, since the engine runs on capture time.
+//
+// dropped counts entries the journal itself had to refuse since the previous call because it reached its bound
+// (maxHistoryJournalEntries); a sink must treat them as lost.
 type HistorySink interface {
 	Level() HistoryLevel
 	Submit(entries []HistoryEntry, dropped uint64)
+	SubmitWait(ctx context.Context, entries []HistoryEntry, dropped uint64) error
 }
 
 // SceneContext is the scene an encounter opened in: JoinSceneNotify.SceneInfo.InstanceId of the same protocol session.

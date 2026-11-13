@@ -186,7 +186,7 @@ func (s *shellSignal) fire() {
 func (b *Bridge) listeningStatus(snapshot *service.Snapshot) service.ListeningStatus {
 	var process service.GameProcess
 	// A replay has no game process, so absence must not count as evidence.
-	if b.process != nil && (snapshot.Service.Session == nil || snapshot.Service.Session.Source != "replay") {
+	if b.process != nil && (snapshot.Service.Session == nil || snapshot.Service.Session.Source != capture.SourceReplay) {
 		process = b.process.Latest()
 	}
 	return b.listening.Evaluate(snapshot.Service, snapshot.View, process, time.Now())
