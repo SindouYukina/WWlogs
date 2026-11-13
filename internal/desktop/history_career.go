@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"sort"
+	"time"
 
+	"wwlogs/internal/capture"
 	"wwlogs/internal/history"
 )
 
@@ -72,6 +74,53 @@ type careerNames struct {
 	ctx       context.Context
 	instances map[uint64]instanceNames
 	elements  map[uint64]uint64
+	// skills holds, per encounter a record came from, its skill rows as that encounter's own skill table names them.
+	skills map[int64]map[careerSkillKey]historyName
+}
+
+// careerSkillKey is a skill row of the role it shows as (a trial role's parent).
+type careerSkillKey struct{ role, skill uint64 }
+
+// careerSkillNames are the named skill rows of one projected encounter: a record's skill is named exactly as the encounter's
+// skill table names it, with a derived name kept derived. Rows without a name are left out.
+func careerSkillNames(view *capture.ViewEncounter) map[careerSkillKey]historyName {
+	names := map[careerSkillKey]historyName{}
+	for _, role := range view.Roles {
+		static := role.StaticRoleID
+		if static == 0 {
+			static = role.RoleID
+		}
+		for _, skill := range role.Skills {
+			key := careerSkillKey{static, skill.SkillID}
+			if _, named := names[key]; skill.Name == "" || named && skill.NameStatus != "VERIFIED" {
+				continue
+			}
+			names[key] = historyName{Name: skill.Name, Status: skill.NameStatus}
+		}
+	}
+	return names
+}
+
+// skillName names a record's skill from its encounter's skill table, else by the Master's own name for the SkillId, else
+// UNKNOWN with the raw ID beside it.
+func (c *careerNames) skillName(record *history.CareerRecord) historyName {
+	rows, read := c.skills[record.EncounterID]
+	if !read {
+		rows = map[careerSkillKey]historyName{}
+		if detail, err := c.bridge.history.Encounter(c.ctx, record.EncounterID, time.UTC); err == nil && detail.Snapshot != nil {
+			view := c.bridge.masters.ProjectEncounter(*detail.Snapshot)
+			c.names.encounter(&view)
+			rows = careerSkillNames(&view)
+		}
+		c.skills[record.EncounterID] = rows
+	}
+	if name, ok := rows[careerSkillKey{record.RoleID, record.SkillID}]; ok {
+		return name
+	}
+	if resolved := c.names.resolve("skill", record.SkillID); resolved.Name != "" {
+		return historyName{Name: resolved.Name, Status: resolved.Status}
+	}
+	return historyName{Status: "UNKNOWN"}
 }
 
 func (c *careerNames) element(role uint64) uint64 {
@@ -106,10 +155,7 @@ func (c *careerNames) record(record *history.CareerRecord) *careerRecordJSON {
 		out.RoleName, out.ElementID = &name, c.element(record.RoleID)
 	}
 	if record.SkillID != 0 {
-		name := historyName{Status: "UNKNOWN"}
-		if resolved := c.names.resolve("skill", record.SkillID); resolved.Name != "" {
-			name = historyName{Name: resolved.Name, Status: resolved.Status}
-		}
+		name := c.skillName(record)
 		out.SkillName = &name
 	}
 	out.Mode, out.Stage = c.place(record.Instance)
@@ -152,7 +198,7 @@ func (b *Bridge) HistoryCareer(query HistoryCareerQuery, zoneName string) (json.
 	if err != nil && !errors.Is(err, history.ErrUnavailable) {
 		return nil, err
 	}
-	c := &careerNames{names: names, bridge: b, ctx: names.ctx, instances: instances, elements: map[uint64]uint64{}}
+	c := &careerNames{names: names, bridge: b, ctx: names.ctx, instances: instances, elements: map[uint64]uint64{}, skills: map[int64]map[careerSkillKey]historyName{}}
 	roles := make([]careerRoleJSON, 0, len(view.Roles))
 	for _, role := range view.Roles {
 		roles = append(roles, careerRoleJSON{CareerRole: role, Name: names.roleName(role.RoleID), ElementID: c.element(role.RoleID),
