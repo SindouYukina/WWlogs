@@ -694,13 +694,13 @@ function StackSteps({ row, durationMs }: { row: EffectRow; durationMs: number })
   const top = Math.max(1, ...row.segments.map(part => part.stack ?? 0))
   if (!(durationMs > 0)) return null
   return <figure className="ww-analysis-stacks" data-field="detail-stacks" data-max={top}>
-    <figcaption className="ww-career-fact-label">{t("analysis.effects.stackTitle")}</figcaption>
+    <figcaption className="ww-career-fact-label">{t("analysis.effects.stackTitle")} <span className="ww-num">×{top}</span></figcaption>
     <svg viewBox={`0 0 ${durationMs} 24`} preserveAspectRatio="none" role="img" aria-label={t("analysis.effects.stackTitle")}>
       {row.segments.map((part, index) => part.stack === undefined ? null : <rect key={index} data-evidence={part.evidence} x={part.fromMs} width={Math.max(0, part.toMs - part.fromMs)} y={24 - (part.stack / top) * 22} height={(part.stack / top) * 22}>
         <title>{`${formatMs(part.fromMs)} – ${formatMs(part.toMs)} · ×${part.stack} · ${t(`analysis.evidence.${part.evidence}`)}`}</title>
       </rect>)}
     </svg>
-    <div className="ww-analysis-stacks-axis ww-num" aria-hidden="true"><span>0:00</span><span>×{top}</span><span>{formatMs(durationMs)}</span></div>
+    <div className="ww-analysis-stacks-axis ww-num" aria-hidden="true"><span>{formatMs(0)}</span><span>{formatMs(durationMs)}</span></div>
   </figure>
 }
 
