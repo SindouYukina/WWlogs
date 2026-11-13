@@ -93,8 +93,19 @@ type CareerRole struct {
 	MaxHit     *CareerRecord `json:"maxHit,omitempty"`
 	FirstDate  string        `json:"firstDate"`
 	LastDate   string        `json:"lastDate"`
-	// Days counts the role's participations per date of the selection, ascending.
-	Days []DayCount `json:"days"`
+	// Days are the role's dates of the selection, ascending.
+	Days []CareerRoleDay `json:"days"`
+}
+
+// CareerRoleDay is one role's activity on one date: participations, its damage in counted encounters, and its best DPS
+// in complete ones (the role's damage over the encounter's wall-clock duration).
+type CareerRoleDay struct {
+	Date       string `json:"date"`
+	Encounters int    `json:"encounters"`
+	Damage     int64  `json:"damage"`
+	// DamageLowerBound is set when a counted encounter's damage in it is a lower bound (degraded or known_affected).
+	DamageLowerBound bool    `json:"damageLowerBound,omitempty"`
+	BestDPS          float64 `json:"bestDps,omitempty"`
 }
 
 // CareerCombo is a set of roles that dealt confirmed damage together: stored contributors, not a team composition.
@@ -236,7 +247,7 @@ func (s *Store) Career(ctx context.Context, query CareerQuery, zone *time.Locati
 
 	days := map[string]*CareerDay{}
 	roles := map[uint64]*CareerRole{}
-	roleDays := map[uint64]map[string]int{}
+	roleDays := map[uint64]map[string]*CareerRoleDay{}
 	combos := map[string]*CareerCombo{}
 	byInstance := map[uint64]*CareerInstance{}
 	for _, e := range selected {
@@ -321,11 +332,16 @@ func (s *Store) Career(ctx context.Context, query CareerQuery, zone *time.Locati
 			if stats == nil {
 				stats = &CareerRole{RoleID: role, FirstDate: date}
 				roles[role] = stats
-				roleDays[role] = map[string]int{}
+				roleDays[role] = map[string]*CareerRoleDay{}
 			}
 			stats.Encounters++
 			stats.LastDate = date
-			roleDays[role][date]++
+			roleDay := roleDays[role][date]
+			if roleDay == nil {
+				roleDay = &CareerRoleDay{Date: date}
+				roleDays[role][date] = roleDay
+			}
+			roleDay.Encounters++
 			if trial[role] {
 				stats.TrialEncounters++
 			}
@@ -333,8 +349,11 @@ func (s *Store) Career(ctx context.Context, query CareerQuery, zone *time.Locati
 				stats.Counted++
 				stats.Damage += damage
 				stats.DamageLowerBound = stats.DamageLowerBound || e.lowerBound()
+				roleDay.Damage += damage
+				roleDay.DamageLowerBound = roleDay.DamageLowerBound || e.lowerBound()
 			}
 			if eligibleRecord && seconds > 0 && damage > 0 {
+				roleDay.BestDPS = max(roleDay.BestDPS, float64(damage)/seconds)
 				stats.BestDPS = better(stats.BestDPS, float64(damage)/seconds, func() CareerRecord { return CareerRecord{RoleID: role, CareerRef: ref(e)} })
 				stats.BestDamage = better(stats.BestDamage, float64(damage), func() CareerRecord { return CareerRecord{RoleID: role, CareerRef: ref(e)} })
 			}
@@ -374,8 +393,8 @@ func (s *Store) Career(ctx context.Context, query CareerQuery, zone *time.Locati
 	}
 	sort.Slice(view.Days, func(i, j int) bool { return view.Days[i].Date < view.Days[j].Date })
 	for role, stats := range roles {
-		for date, count := range roleDays[role] {
-			stats.Days = append(stats.Days, DayCount{Date: date, Encounters: count})
+		for _, day := range roleDays[role] {
+			stats.Days = append(stats.Days, *day)
 		}
 		sort.Slice(stats.Days, func(i, j int) bool { return stats.Days[i].Date < stats.Days[j].Date })
 		view.Roles = append(view.Roles, *stats)

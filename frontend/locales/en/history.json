@@ -496,6 +496,14 @@
       "excluded": "Incomplete, unreliable and unfinished records count as encounters only.",
       "stored": "Values come from the stored records; an older record is never recalculated or rewritten."
     },
-    "backToCareer": "Back to Career"
+    "backToCareer": "Back to Career",
+    "trendAll": "Whole selection",
+    "trendRole": "Character",
+    "trendRoleNote": {
+      "encounters": "Encounters per day in which this character dealt confirmed damage.",
+      "damage": "This character's confirmed damage in the counted encounters per day; a day with a lower bound shows ≥.",
+      "bestDps": "This character's best DPS in the complete records per day (its confirmed damage over the encounter's elapsed time); a day without one shows nothing."
+    },
+    "dpsCaution": "DPS depends on the mode, stage, enemies and encounter length: values from different conditions are not directly comparable. Use the mode and stage filters above to keep to the same conditions."
   }
 }
