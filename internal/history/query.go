@@ -128,11 +128,9 @@ func (s *Store) Year(ctx context.Context, year int, zone *time.Location) (YearVi
 	return view, nil
 }
 
-// SceneRef is where an encounter opened. Recorded is false for rows stored before scenes were recorded (schema 1); Known is
-// false when no JoinSceneNotify of the protocol session preceded the encounter. A known InstanceID is a decoded protocol
-// field (VERIFIED); its Master name is a CORRELATED link the view resolves.
+// SceneRef is where an encounter opened. Known is false when no JoinSceneNotify of the protocol session preceded the
+// encounter. A known InstanceID is a decoded protocol field (VERIFIED); its Master name is a CORRELATED link the view resolves.
 type SceneRef struct {
-	Recorded   bool   `json:"recorded"`
 	Known      bool   `json:"known"`
 	InstanceID uint64 `json:"instanceId,omitempty"`
 }
@@ -149,19 +147,6 @@ type EnemyRef struct {
 	SameType         int    `json:"sameType"`
 }
 
-// EventCoverage is what the recorder of an encounter's span stored, kept apart from capture integrity: a span without any
-// transport loss still lacks every event family its build did not store. Rows written before schema 3 never stored effect
-// changes, so their coverage is never raised by a later build.
-type EventCoverage struct {
-	// CombatEvents: every accepted damage and healing result was stored, not only the encounter totals.
-	CombatEvents bool `json:"combatEvents"`
-	// EffectEvents: every effect lifecycle change the effect tracker accepted was stored.
-	EffectEvents bool `json:"effectEvents"`
-	// SkillCasts is always false: no build has an independent, server-confirmed skill cast source. Skill IDs of damage results
-	// are hits, not casts.
-	SkillCasts bool `json:"skillCasts"`
-}
-
 // EncounterSummary is one row of a day's list.
 type EncounterSummary struct {
 	ID int64 `json:"id"`
@@ -176,6 +161,9 @@ type EncounterSummary struct {
 	End       *LocalTime   `json:"end,omitempty"`
 	// DurationSeconds is the confirmed elapsed time, shown only where the view would show it (not for UNRELIABLE data).
 	DurationSeconds *float64 `json:"durationSeconds,omitempty"`
+	// GameVersion is the major.minor game version of the protocol session the encounter was fought in, as that session
+	// reported it and the recording build decoded it.
+	GameVersion string `json:"gameVersion"`
 	// State is the history state: open (still running), finished, or abandoned (the application ended first).
 	State   string `json:"state"`
 	Outcome string `json:"outcome"`
@@ -184,19 +172,17 @@ type EncounterSummary struct {
 	Source    string `json:"source"`
 	Integrity string `json:"integrity,omitempty"`
 	// DPS is the Encounter DPS with the stored integrity applied, as the live view would show it.
-	DPS             capture.ViewDPS `json:"dps"`
-	DamageDealt     *int64          `json:"damageDealt,omitempty"`
-	Scene           SceneRef        `json:"scene"`
-	MainEnemy       *EnemyRef       `json:"mainEnemy,omitempty"`
-	Enemies         int             `json:"enemies"`
-	EnemiesRecorded bool            `json:"enemiesRecorded"`
+	DPS         capture.ViewDPS `json:"dps"`
+	DamageDealt *int64          `json:"damageDealt,omitempty"`
+	Scene       SceneRef        `json:"scene"`
+	MainEnemy   *EnemyRef       `json:"mainEnemy,omitempty"`
+	Enemies     int             `json:"enemies"`
 	// IncompleteReason says why Complete is false or the encounter was abandoned: entries_lost, application_exit,
-	// recording_disabled or not_finished; empty when complete or when an older build did not record the reason.
+	// recording_disabled or not_finished; empty when complete.
 	IncompleteReason string `json:"incompleteReason,omitempty"`
 	// CheckpointAt is the capture time the stored results of an unfinished encounter describe; nil without a checkpoint.
-	CheckpointAt *time.Time    `json:"checkpointAt,omitempty"`
-	Checkpoint   *LocalTime    `json:"checkpoint,omitempty"`
-	Coverage     EventCoverage `json:"coverage"`
+	CheckpointAt *time.Time `json:"checkpointAt,omitempty"`
+	Checkpoint   *LocalTime `json:"checkpoint,omitempty"`
 }
 
 // DayView is one page of a local date's encounters in start order.
@@ -207,14 +193,19 @@ type DayView struct {
 	Encounters []EncounterSummary `json:"encounters"`
 }
 
+// summaryFrom joins an encounter to its span and to the protocol session its game version is recorded on; both are key
+// lookups, so a page of a day's list is one query.
+const summaryFrom = ` FROM encounter e JOIN capture_session s ON s.id = e.capture_session_id
+	JOIN protocol_session p ON p.capture_session_id = e.capture_session_id AND p.protocol_session = e.protocol_session`
+
 const summaryColumns = `e.id, e.started_at_ns, e.utc_offset_s, e.local_date, e.ended_at_ns, e.state, e.outcome, e.complete, s.source, e.integrity_status,
 	e.dps_status, e.dps_reason, e.dps_value, e.dps_damage, e.dps_duration_ns, e.dps_confidence, e.damage_dealt,
-	e.scene_instance_id, e.scene_recorded, e.enemies_recorded, e.capture_session_id,
-	e.incomplete_reason, e.checkpoint_at_ns, s.combat_events_recorded, s.effect_events_recorded, s.skill_casts_recorded`
+	e.scene_instance_id, e.capture_session_id, e.protocol_session, p.game_version, e.incomplete_reason, e.checkpoint_at_ns`
 
 type summaryRow struct {
-	summary   EncounterSummary
-	sessionID int64
+	summary         EncounterSummary
+	sessionID       int64
+	protocolSession int
 }
 
 // scanSummary reads one summary row and lays its instants out in zone.
@@ -225,11 +216,11 @@ func scanSummary(scanner interface{ Scan(...any) error }, zone *time.Location) (
 	var integrity, dpsStatus, dpsReason, dpsConfidence, incompleteReason sql.NullString
 	var dpsValue sql.NullFloat64
 	var checkpoint sql.NullInt64
-	var complete, sceneRecorded, enemiesRecorded, combatRecorded, effectsRecorded, castsRecorded int
+	var complete int
 	s := &row.summary
 	if err := scanner.Scan(&s.ID, &started, &s.Recorded.OffsetSeconds, &s.Recorded.Date, &ended, &s.State, &s.Outcome, &complete, &s.Source, &integrity,
-		&dpsStatus, &dpsReason, &dpsValue, &dpsDamage, &dpsDuration, &dpsConfidence, &damage, &scene, &sceneRecorded, &enemiesRecorded, &row.sessionID,
-		&incompleteReason, &checkpoint, &combatRecorded, &effectsRecorded, &castsRecorded); err != nil {
+		&dpsStatus, &dpsReason, &dpsValue, &dpsDamage, &dpsDuration, &dpsConfidence, &damage, &scene, &row.sessionID, &row.protocolSession, &s.GameVersion,
+		&incompleteReason, &checkpoint); err != nil {
 		return row, err
 	}
 	zone = viewLocation(zone)
@@ -239,13 +230,12 @@ func scanSummary(scanner interface{ Scan(...any) error }, zone *time.Location) (
 		local := localTimeOf(at, zone)
 		s.CheckpointAt, s.Checkpoint = &at, &local
 	}
-	s.Coverage = EventCoverage{CombatEvents: combatRecorded == 1, EffectEvents: effectsRecorded == 1, SkillCasts: castsRecorded == 1}
 	s.StartedAt = time.Unix(0, started).UTC()
 	s.Start = localTimeOf(s.StartedAt, zone)
 	s.LocalDate = s.Start.Date
-	s.Complete, s.EnemiesRecorded = complete == 1, enemiesRecorded == 1
+	s.Complete = complete == 1
 	s.Integrity = integrity.String
-	s.Scene = SceneRef{Recorded: sceneRecorded == 1, Known: scene.Valid}
+	s.Scene = SceneRef{Known: scene.Valid}
 	if scene.Valid {
 		s.Scene.InstanceID = uint64(scene.Int64)
 	}
@@ -313,8 +303,7 @@ func (s *Store) Day(ctx context.Context, date string, offset, limit int, zone *t
 	if len(ids) == 0 {
 		return view, nil
 	}
-	rows, err := s.db.QueryContext(ctx, "SELECT "+summaryColumns+" FROM encounter e JOIN capture_session s ON s.id = e.capture_session_id WHERE e.id IN ("+strings.Join(ids, ",")+
-		") ORDER BY e.started_at_ns, e.id")
+	rows, err := s.db.QueryContext(ctx, "SELECT "+summaryColumns+summaryFrom+" WHERE e.id IN ("+strings.Join(ids, ",")+") ORDER BY e.started_at_ns, e.id")
 	if err != nil {
 		return view, fmt.Errorf("read history day: %w", err)
 	}
@@ -408,35 +397,31 @@ func mainEnemy(enemies []capture.EncounterEnemySnapshot) *EnemyRef {
 	return ref
 }
 
-// SessionInfo is the recorded span an encounter belongs to: what recorded it and whether its history is complete.
+// SessionInfo is the recorded span an encounter belongs to: how it was recorded and whether its history is complete. The
+// analyser identity (AppVersion as MAJOR.MINOR.PATCH, the official AppBuild, AppCommit; each empty or zero when the build
+// did not carry it) says which WWlogs produced the stored results; the History view does not show it.
 type SessionInfo struct {
 	Source         string    `json:"source"`
 	Status         string    `json:"status"`
 	OpenedAt       time.Time `json:"openedAt"`
-	HistoryLevel   string    `json:"historyLevel"`
 	JournalDropped int64     `json:"journalDropped"`
 	QueueDropped   int64     `json:"queueDropped"`
 	WriteFailed    int64     `json:"writeFailed"`
 	TransportGaps  int       `json:"transportGaps"`
-	AppVersion     string    `json:"appVersion"`
-	AppBuild       int64     `json:"appBuild"`
+	AppVersion     string    `json:"appVersion,omitempty"`
+	AppBuild       int64     `json:"appBuild,omitempty"`
+	AppCommit      string    `json:"appCommit,omitempty"`
 	AppProfile     string    `json:"appProfile"`
-	AppCommit      string    `json:"appCommit"`
-	ProtocolSchema string    `json:"protocolSchema"`
 	MasterSHA256   string    `json:"masterSha256"`
 	// StartReason is capture_start or recording_enabled; StopReason how the span ended (empty while it records).
 	StartReason string `json:"startReason"`
 	StopReason  string `json:"stopReason,omitempty"`
-	// RecordedAppVersion is the version label the span was written with, when a migration corrected AppVersion.
-	RecordedAppVersion string        `json:"recordedAppVersion,omitempty"`
-	Coverage           EventCoverage `json:"coverage"`
 	// EffectsRejected counts effect APPLYs the tracker refused at its capacity bound during the span.
 	EffectsRejected int64 `json:"effectsRejected"`
 }
 
 // EffectWindow is what the history holds of effect lifecycles during one encounter: the stored changes observed between its
-// start and its end (or its checkpoint) in its protocol session, and the instances they belong to. It says nothing when the
-// span did not record effects (Coverage.EffectEvents false).
+// start and its end (or its checkpoint) in its protocol session, and the instances they belong to.
 type EffectWindow struct {
 	Changes   int `json:"changes"`
 	Instances int `json:"instances"`
@@ -464,7 +449,7 @@ func (s *Store) Encounter(ctx context.Context, id int64, zone *time.Location) (E
 	if !s.readable() {
 		return detail, ErrUnavailable
 	}
-	row, err := scanSummary(s.db.QueryRowContext(ctx, "SELECT "+summaryColumns+" FROM encounter e JOIN capture_session s ON s.id = e.capture_session_id WHERE e.id = ? AND e.state IN "+listedStates, id), zone)
+	row, err := scanSummary(s.db.QueryRowContext(ctx, "SELECT "+summaryColumns+summaryFrom+" WHERE e.id = ? AND e.state IN "+listedStates, id), zone)
 	if errors.Is(err, sql.ErrNoRows) {
 		return detail, ErrNotFound
 	}
@@ -484,10 +469,8 @@ func (s *Store) Encounter(ctx context.Context, id int64, zone *time.Location) (E
 		detail.Enemies = []capture.EncounterEnemySnapshot{}
 	}
 	detail.Summary.Enemies, detail.Summary.MainEnemy = len(detail.Enemies), mainEnemy(detail.Enemies)
-	if detail.Session.Coverage.EffectEvents {
-		if detail.Effects, err = s.effectWindow(ctx, row, detail.Summary); err != nil {
-			return detail, err
-		}
+	if detail.Effects, err = s.effectWindow(ctx, row, detail.Summary); err != nil {
+		return detail, err
 	}
 	if detail.Summary.State != "finished" && detail.Summary.CheckpointAt == nil {
 		return detail, nil
@@ -510,21 +493,20 @@ func (s *Store) Encounter(ctx context.Context, id int64, zone *time.Location) (E
 func (s *Store) session(ctx context.Context, id int64) (SessionInfo, error) {
 	var info SessionInfo
 	var opened int64
-	var stopReason, recordedVersion sql.NullString
-	var combatRecorded, effectsRecorded, castsRecorded int
-	err := s.db.QueryRowContext(ctx, `SELECT source, status, opened_at_ns, history_level, journal_dropped, queue_dropped, write_failed,
-		app_version, app_build, app_profile, app_commit, protocol_schema, master_sha256,
+	var stopReason, version, commit sql.NullString
+	var build sql.NullInt64
+	err := s.db.QueryRowContext(ctx, `SELECT source, status, opened_at_ns, journal_dropped, queue_dropped, write_failed,
+		app_version, app_build, app_commit, app_profile, master_sha256,
 		(SELECT count(*) FROM capture_gap g WHERE g.capture_session_id = capture_session.id),
-		start_reason, stop_reason, recorded_app_version, combat_events_recorded, effect_events_recorded, skill_casts_recorded, effects_rejected
-		FROM capture_session WHERE id = ?`, id).Scan(&info.Source, &info.Status, &opened, &info.HistoryLevel, &info.JournalDropped, &info.QueueDropped, &info.WriteFailed,
-		&info.AppVersion, &info.AppBuild, &info.AppProfile, &info.AppCommit, &info.ProtocolSchema, &info.MasterSHA256, &info.TransportGaps,
-		&info.StartReason, &stopReason, &recordedVersion, &combatRecorded, &effectsRecorded, &castsRecorded, &info.EffectsRejected)
+		start_reason, stop_reason, effects_rejected
+		FROM capture_session WHERE id = ?`, id).Scan(&info.Source, &info.Status, &opened, &info.JournalDropped, &info.QueueDropped, &info.WriteFailed,
+		&version, &build, &commit, &info.AppProfile, &info.MasterSHA256, &info.TransportGaps,
+		&info.StartReason, &stopReason, &info.EffectsRejected)
 	if err != nil {
 		return info, fmt.Errorf("read history session: %w", err)
 	}
 	info.OpenedAt = time.Unix(0, opened).UTC()
-	info.StopReason, info.RecordedAppVersion = stopReason.String, recordedVersion.String
-	info.Coverage = EventCoverage{CombatEvents: combatRecorded == 1, EffectEvents: effectsRecorded == 1, SkillCasts: castsRecorded == 1}
+	info.StopReason, info.AppVersion, info.AppBuild, info.AppCommit = stopReason.String, version.String, build.Int64, commit.String
 	return info, nil
 }
 
@@ -542,15 +524,11 @@ func (s *Store) effectWindow(ctx context.Context, row summaryRow, summary Encoun
 	default:
 		return window, nil
 	}
-	var protocolSession int
-	if err := s.db.QueryRowContext(ctx, "SELECT protocol_session FROM encounter WHERE id = ?", summary.ID).Scan(&protocolSession); err != nil {
-		return window, fmt.Errorf("read history effects: %w", err)
-	}
 	err := s.db.QueryRowContext(ctx, `SELECT count(*), count(DISTINCT ev.instance),
 		coalesce(sum(ev.observation = 'observed'), 0), coalesce(sum(ev.observation = 'derived'), 0), coalesce(sum(ev.observation = 'untracked'), 0)
 		FROM effect_event ev JOIN effect_instance i ON i.capture_session_id = ev.capture_session_id AND i.instance = ev.instance
 		WHERE ev.capture_session_id = ? AND i.protocol_session = ? AND ev.observed_at_ns BETWEEN ? AND ?`,
-		row.sessionID, protocolSession, from, to).Scan(&window.Changes, &window.Instances, &window.Observed, &window.Derived, &window.Untracked)
+		row.sessionID, row.protocolSession, from, to).Scan(&window.Changes, &window.Instances, &window.Observed, &window.Derived, &window.Untracked)
 	if err != nil {
 		return window, fmt.Errorf("read history effects: %w", err)
 	}

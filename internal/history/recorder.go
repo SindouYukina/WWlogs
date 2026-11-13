@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"wwlogs/internal/buildinfo"
 	"wwlogs/internal/capture"
 )
 
@@ -35,12 +36,11 @@ var (
 	ErrReplayNotStored = errors.New("the replay was not stored in the combat history")
 )
 
-// SessionStart describes a capture session about to run.
+// SessionStart describes a capture session about to run. Every session records at Level.
 type SessionStart struct {
 	Source string
 	// SourceSHA256 identifies a replayed file; empty for live capture.
 	SourceSHA256 string
-	Level        capture.HistoryLevel
 	// Paused is a capture that starts with recording switched off: no session row exists until the engine starts a span.
 	Paused bool
 }
@@ -84,7 +84,6 @@ const (
 type Recorder struct {
 	store  *Store
 	start  SessionStart
-	level  capture.HistoryLevel
 	queue  chan submission
 	queued atomic.Int64
 	done   chan struct{}
@@ -135,9 +134,6 @@ func (s *Store) BeginSession(start SessionStart) (*Recorder, error) {
 	if start.Source != SourceLive && start.Source != SourceReplay {
 		return nil, fmt.Errorf("unknown capture source %q", start.Source)
 	}
-	if start.Level == capture.HistoryOff {
-		return nil, errors.New("a history session needs a history level")
-	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed || s.status.State != StateReady || s.db == nil {
@@ -156,7 +152,7 @@ func (s *Store) BeginSession(start SessionStart) (*Recorder, error) {
 		}
 	}
 	recorder := &Recorder{
-		store: s, start: start, level: start.Level, queue: make(chan submission, maxQueuedBatches), done: make(chan struct{}),
+		store: s, start: start, queue: make(chan submission, maxQueuedBatches), done: make(chan struct{}),
 		room: make(chan struct{}, 1), lostKeys: map[string]struct{}{}, encounters: map[string]int64{},
 	}
 	if !start.Paused {
@@ -190,16 +186,13 @@ func (r *Recorder) insertSpan(ctx context.Context, db execer, reason string, sou
 	if r.start.Source == SourceReplay && r.start.SourceSHA256 != "" && !sourceUsed {
 		digest = r.start.SourceSHA256
 	}
-	events := boolInt(r.level >= capture.HistoryEvents)
 	opened := s.now()
 	zone, offset := opened.In(s.location).Zone()
-	result, err := db.ExecContext(ctx, `INSERT INTO capture_session (session_uid, source, source_sha256, status, opened_at_ns, utc_offset_s, zone_name,
-		history_level, app_version, app_build, app_commit, app_dirty, app_profile, protocol_schema, master_sha256,
-		combat_events_recorded, effect_events_recorded, skill_casts_recorded, start_reason)
-		VALUES (?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
-		uid, r.start.Source, digest, opened.UnixNano(), offset, zone, levelName(r.level),
-		s.build.Version, int64(s.build.BuildNumber), s.build.Commit, s.build.Dirty, string(s.build.Profile), s.protocol, s.master,
-		events, events, reason)
+	version, build, commit := analyserIdentity(s.build)
+	result, err := db.ExecContext(ctx, `INSERT INTO capture_session (session_uid, source, source_sha256, status, start_reason, opened_at_ns, utc_offset_s,
+		zone_name, app_version, app_build, app_commit, app_dirty, app_profile, master_sha256)
+		VALUES (?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		uid, r.start.Source, digest, reason, opened.UnixNano(), offset, zone, version, build, commit, s.build.Dirty, string(s.build.Profile), s.master)
 	if err != nil {
 		return 0, false, fmt.Errorf("record capture session: %w", err)
 	}
@@ -218,11 +211,26 @@ func newSessionUID() (string, error) {
 	return hex.EncodeToString(raw[:]), nil
 }
 
+// analyserIdentity is what a span stores of the executable that analysed it: the product version as MAJOR.MINOR.PATCH, the
+// official Build Number and the commit, each NULL when the build does not carry it, so nothing is ever stored as a guess.
+func analyserIdentity(build buildinfo.Identity) (version, number, commit any) {
+	if v := build.ProductVersion(); v != "" {
+		version = v
+	}
+	if build.Official() {
+		number = int64(build.BuildNumber)
+	}
+	if build.Commit != buildinfo.Unavailable {
+		commit = build.Commit
+	}
+	return version, number, commit
+}
+
 // SessionID is the row id of the first recorded span, or 0 before any span exists.
 func (r *Recorder) SessionID() int64 { return r.firstSpan.Load() }
 
 // Level is the history level this session records at.
-func (r *Recorder) Level() capture.HistoryLevel { return r.level }
+func (r *Recorder) Level() capture.HistoryLevel { return Level() }
 
 // Submit queues one drain of a live capture's journal. It never waits: when the queue has no room, or after Finish, the
 // drain's entries become a loss note in their place (losses.go) and its span markers wait in order for the next submission.
@@ -385,7 +393,7 @@ func (r *Recorder) write(subs []submission) {
 	}
 	if r.stopped || r.halted.Load() {
 		r.stopped = true
-		r.loseAll(subs)
+		r.loseAll(subs, nil)
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), writeTimeout)
@@ -393,8 +401,12 @@ func (r *Recorder) write(subs []submission) {
 	w := r.writer()
 	err := r.inTransaction(ctx, func(tx *sql.Tx) error {
 		w.tx = tx
-		for _, sub := range subs {
+		for i, sub := range subs {
 			if err := w.applySubmission(ctx, sub); err != nil {
+				var refused *refusedEntry
+				if errors.As(err, &refused) {
+					refused.sub = i
+				}
 				return err
 			}
 		}
@@ -406,16 +418,21 @@ func (r *Recorder) write(subs []submission) {
 			r.stopped = true
 			r.halted.Store(true)
 		}
-		r.loseAll(subs)
+		var refused *refusedEntry
+		if !errors.As(err, &refused) {
+			refused = nil
+		}
+		r.loseAll(subs, refused)
 		return
 	}
 	r.failures = 0
 	r.adopt(w)
 }
 
-// loseAll turns everything of a transaction that did not store into held items for the next one.
-func (r *Recorder) loseAll(subs []submission) {
-	carry, lost := lostSubmissions(lostInTransaction, subs)
+// loseAll turns everything of a transaction that did not store into held items for the next one; refused names a structural
+// entry that cannot be applied, which is counted lost instead of carried.
+func (r *Recorder) loseAll(subs []submission, refused *refusedEntry) {
+	carry, lost := lostSubmissions(lostInTransaction, subs, refused)
 	r.lost.Add(lost)
 	r.carry = carry
 }

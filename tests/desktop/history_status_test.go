@@ -46,14 +46,6 @@ func TestHistoryIndicatorStates(t *testing.T) {
 			}
 		})
 	}
-	failed := historyIndicatorOf(true, history.Status{State: history.StateUnavailable, Reason: history.ReasonEncryptionMigration, MigrationFailure: history.MigrationInsufficientSpace}, false, "", capture.HistoryRecordingState{}, history.RecorderHealth{})
-	if failed.MigrationFailure != history.MigrationInsufficientSpace {
-		t.Fatalf("migration failure = %+v", failed)
-	}
-	converted := historyIndicatorOf(true, history.Status{State: history.StateReady, Encrypted: true, PlaintextMigration: history.PlaintextConverted}, false, "", capture.HistoryRecordingState{}, history.RecorderHealth{})
-	if !converted.PlaintextConverted {
-		t.Fatalf("conversion notice = %+v", converted)
-	}
 }
 
 func TestHistoryRecordingSettingPersistsAndDefaultsOn(t *testing.T) {

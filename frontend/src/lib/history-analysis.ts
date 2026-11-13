@@ -23,7 +23,7 @@ export interface AnalysisQuery {
 
 export const fullQuery: AnalysisQuery = { fromMs: 0, toMs: 0, contributor: "", enemy: -1, effects: "hud", skillRow: "" }
 
-export type AnalysisState = "ready" | "not_finished" | "no_events" | "too_large"
+export type AnalysisState = "ready" | "not_finished" | "too_large"
 
 export interface AnalysisRange {
   fromMs: number
@@ -170,7 +170,6 @@ export interface EffectRow {
 
 export interface EffectLanes {
   state: AnalysisState
-  available: boolean
   truncated?: boolean
   scope: EffectScope
   durationMs: number

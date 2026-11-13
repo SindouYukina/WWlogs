@@ -20,6 +20,8 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/windows"
+
+	"wwlogs/internal/capture"
 )
 
 // Support for the encrypted write-ahead log stress tests: deterministic row content that every reader can check on its own,
@@ -118,6 +120,19 @@ type querier interface {
 // recorder writes: BeginTx (BEGIN IMMEDIATE), one insert per row, Commit. After each commit it calls committed with the
 // transaction number, the last sequence and the commit latency.
 func stressWrite(ctx context.Context, db beginner, span int64, sizeOf func(int64) int64, stop func() bool, committed func(tx, last int64, latency time.Duration)) error {
+	// The stress rows belong to protocol session 1 of the span, which the span names before them, as the journal does.
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin protocol session: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, "INSERT INTO protocol_session (capture_session_id, protocol_session, game_version) VALUES (?, 1, ?) ON CONFLICT DO NOTHING",
+		span, capture.CurrentGameVersion()); err != nil {
+		_ = tx.Rollback()
+		return fmt.Errorf("record protocol session: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("record protocol session: %w", err)
+	}
 	var last int64
 	for n := int64(1); !stop(); n++ {
 		size := sizeOf(n)

@@ -95,10 +95,7 @@ func TestDeletingAnEncounterRemovesItsResultsEventsAndEffects(t *testing.T) {
 
 func TestAnEncounterBeingRecordedCannotBeDeleted(t *testing.T) {
 	store := openTestStore(t, testPath(t), nil)
-	recorder, err := store.BeginSession(liveStart)
-	if err != nil {
-		t.Fatal(err)
-	}
+	recorder := begin(t, store, liveStart)
 	start := time.Date(2026, 11, 11, 7, 0, 0, 0, time.UTC).Local()
 	recorder.Submit(finishedEncounter(1, 1, start, 10, 100, capture.IntegrityIntact)[:2], 0)
 	waitQueued(t, recorder)
@@ -117,31 +114,24 @@ func TestAnEncounterBeingRecordedCannotBeDeleted(t *testing.T) {
 	}
 }
 
-func TestClearingTheHistoryRemovesEverythingAndItsCopies(t *testing.T) {
+func TestClearingTheHistoryRemovesEverything(t *testing.T) {
 	path := testPath(t)
-	createSchemaTwo(t, path)
 	store := openTestStore(t, path, nil)
 	twoEncounters(t, store)
-	backups, _ := filepath.Glob(path + ".schema-*.bak")
-	if len(backups) != 1 {
-		t.Fatalf("backups = %v", backups)
-	}
+	record(t, store, liveStart, finishedEncounter(1, 3, time.Date(2026, 11, 12, 6, 0, 0, 0, time.UTC), 10, 300, capture.IntegrityIntact))
 	// Another file of the user beside the history is never touched.
 	other := filepath.Join(filepath.Dir(path), "notes.txt")
 	if err := os.WriteFile(other, []byte("keep"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	result, err := store.ClearHistory(context.Background())
-	if err != nil || result.Encounters != 3 || result.Spans != 3 || result.Backups != 1 || !result.Compacted {
+	if err != nil || result.Encounters != 3 || result.Spans != 2 || !result.Compacted {
 		t.Fatalf("clear = %+v (%v)", result, err)
 	}
 	for _, table := range []string{"capture_session", "encounter", "combat_event", "effect_event", "effect_instance", "capture_gap", "encounter_enemy"} {
 		if got := countRows(t, store, table); got != 0 {
 			t.Fatalf("%s keeps %d rows", table, got)
 		}
-	}
-	if left, _ := filepath.Glob(path + ".schema-*.bak"); len(left) != 0 {
-		t.Fatalf("copies remain: %v", left)
 	}
 	if _, err := os.Stat(other); err != nil {
 		t.Fatal("another file was removed")

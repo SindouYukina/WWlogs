@@ -45,7 +45,7 @@ func openHistory(path string, masters *capture.MasterData) *history.Store {
 func historyStarter(store *history.Store, recordReplays bool, recorders *recorderTracker) service.HistoryStarter {
 	return func(cfg capture.SessionConfig) (service.HistoryRecorder, string, error) {
 		recorders.set(nil)
-		start := history.SessionStart{Source: history.SourceLive, Level: history.Level(), Paused: cfg.HistoryPaused}
+		start := history.SessionStart{Source: history.SourceLive, Paused: cfg.HistoryPaused}
 		if cfg.ReplayPath != "" {
 			if !recordReplays {
 				return nil, "", nil

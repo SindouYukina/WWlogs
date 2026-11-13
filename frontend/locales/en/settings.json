@@ -154,8 +154,6 @@
     "encryptedHint": "The key is protected by Windows (DPAPI) for your user account, not by TPM hardware. Programs that run as you can still read it.",
     "notEncrypted": "Not encrypted",
     "notEncryptedHint": "The history file is not open, or it is an unencrypted file of an earlier version.",
-    "plaintextConverted": "The unencrypted history of an earlier version was converted to encrypted storage. Its old file was replaced, not securely erased: earlier data may remain in free disk space until that space is reused.",
-    "plaintextBackups": "{{n}} unencrypted backup copies of an earlier version could not be converted and remain on disk.",
     "clear": "Clear all history",
     "clearHint": "Deletes every stored encounter and its backup copies. Not available while a capture records.",
     "clearAction": "Clear history",

@@ -19,7 +19,7 @@ import (
 	"wwlogs/internal/capture"
 )
 
-// plainDSN opens path as builds before history encryption did: plaintext SQLite through modernc.org/sqlite, in WAL mode.
+// plainDSN opens path as plaintext SQLite through modernc.org/sqlite, in WAL mode: a file the history must never touch.
 func plainDSN(path string) string {
 	absolute, _ := filepath.Abs(path)
 	uriPath := filepath.ToSlash(absolute)
@@ -36,7 +36,7 @@ func openTestStore(t *testing.T, path string, location *time.Location) *Store {
 	if location == nil {
 		location = time.UTC
 	}
-	store, err := Open(Options{Path: path, Location: location, Build: &testBuild, ProtocolSchema: "test schema", MasterSHA256: "test-master"})
+	store, err := Open(Options{Path: path, Location: location, Build: &testBuild, MasterSHA256: "test-master"})
 	if err != nil {
 		t.Fatalf("open history: %v", err)
 	}
@@ -88,12 +88,33 @@ func finishedEncounter(interval, sequence uint64, start time.Time, seconds int, 
 	}
 }
 
-func record(t *testing.T, store *Store, start SessionStart, batches ...[]capture.HistoryEntry) *Recorder {
+// protocolOne names protocol session 1 with the game version this build decodes, as the journal does before anything of the
+// session and again at every span start.
+var protocolOne = capture.HistoryEntry{Kind: capture.HistoryProtocolConfirmed, Protocol: &capture.HistoryProtocolSession{Number: 1, GameVersion: capture.CurrentGameVersion()}}
+
+// begin starts a recorder whose first span names protocol session 1, as a capture's journal does.
+func begin(t *testing.T, store *Store, start SessionStart) *Recorder {
 	t.Helper()
 	recorder, err := store.BeginSession(start)
 	if err != nil {
 		t.Fatalf("begin session: %v", err)
 	}
+	if start.Paused {
+		return recorder
+	}
+	if start.Source == SourceReplay {
+		if err := recorder.SubmitWait(context.Background(), []capture.HistoryEntry{protocolOne}, 0); err != nil {
+			t.Fatal(err)
+		}
+	} else {
+		recorder.Submit([]capture.HistoryEntry{protocolOne}, 0)
+	}
+	return recorder
+}
+
+func record(t *testing.T, store *Store, start SessionStart, batches ...[]capture.HistoryEntry) *Recorder {
+	t.Helper()
+	recorder := begin(t, store, start)
 	for _, batch := range batches {
 		recorder.Submit(batch, 0)
 	}
@@ -103,12 +124,12 @@ func record(t *testing.T, store *Store, start SessionStart, batches ...[]capture
 	return recorder
 }
 
-var liveStart = SessionStart{Source: SourceLive, Level: capture.HistoryEvents}
+var liveStart = SessionStart{Source: SourceLive}
 
 func TestOpenCreatesLatestSchema(t *testing.T) {
 	store := openTestStore(t, testPath(t), nil)
 	status := store.Status()
-	if status.State != StateReady || status.SchemaVersion != latestVersion() || !status.Encrypted || status.Encryption != "aes-256-xts" || status.KeyProtection != "dpapi-user" {
+	if status.State != StateReady || status.SchemaVersion != schemaVersion || !status.Encrypted || status.Encryption != "aes-256-xts" || status.KeyProtection != "dpapi-user" {
 		t.Fatalf("status = %+v", status)
 	}
 	var mode string
@@ -119,14 +140,39 @@ func TestOpenCreatesLatestSchema(t *testing.T) {
 			t.Fatalf("%s: %v", query, err)
 		}
 	}
-	if mode != "wal" || foreignKeys != 1 || applicationIDValue != applicationID || version != latestVersion() {
+	if mode != "wal" || foreignKeys != 1 || applicationIDValue != applicationID || version != schemaVersion {
 		t.Fatalf("journal_mode=%s foreign_keys=%d application_id=%d user_version=%d", mode, foreignKeys, applicationIDValue, version)
 	}
 	assertIntegrity(t, store)
-	var steps int
-	if err := store.db.QueryRowContext(ctx, "SELECT count(*) FROM schema_migration").Scan(&steps); err != nil || steps != len(migrations) {
-		t.Fatalf("schema_migration rows = %d (%v)", steps, err)
+	// A new file is the schema itself, created in one step: its tables and nothing else.
+	tables, err := tableNames(ctx, store.db)
+	if err != nil {
+		t.Fatal(err)
 	}
+	want := []string{"capture_gap", "capture_session", "combat_event", "effect_event", "effect_instance", "encounter", "encounter_contributor", "encounter_enemy",
+		"encounter_healer", "encounter_risk", "encounter_skill", "encounter_skill_evidence", "encounter_timeline", "encounter_timeline_bucket",
+		"encounter_timeline_contributor", "protocol_session"}
+	if !reflect.DeepEqual(tables, want) {
+		t.Fatalf("tables = %v\nwant %v", tables, want)
+	}
+}
+
+// tableNames lists the tables of a history in name order.
+func tableNames(ctx context.Context, db *sql.DB) ([]string, error) {
+	rows, err := db.QueryContext(ctx, "SELECT name FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var names []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		names = append(names, name)
+	}
+	return names, rows.Err()
 }
 
 func assertIntegrity(t *testing.T, store *Store) {
@@ -166,7 +212,7 @@ func TestFinishedEncounterRoundTripsAndSurvivesReopen(t *testing.T) {
 		}
 		summary := day.Encounters[0]
 		if summary.State != "finished" || !summary.Complete || summary.DPS.Status != capture.DPSStatusAvailable || summary.DPS.Value != 50 ||
-			summary.DurationSeconds == nil || *summary.DurationSeconds != 20 || !summary.Scene.Recorded || !summary.Scene.Known || summary.Scene.InstanceID != 2117 ||
+			summary.DurationSeconds == nil || *summary.DurationSeconds != 20 || !summary.Scene.Known || summary.Scene.InstanceID != 2117 || summary.GameVersion != capture.CurrentGameVersion() ||
 			summary.MainEnemy == nil || summary.MainEnemy.MonsterID != 340000040 || summary.MainEnemy.SameType != 2 || summary.Enemies != 2 || !summary.StartedAt.Equal(start) {
 			t.Fatalf("summary = %+v main=%+v", summary, summary.MainEnemy)
 		}
@@ -183,7 +229,7 @@ func TestFinishedEncounterRoundTripsAndSurvivesReopen(t *testing.T) {
 		if !reflect.DeepEqual(*detail.Timeline, want.Timeline) {
 			t.Fatalf("stored timeline = %+v, want %+v", *detail.Timeline, want.Timeline)
 		}
-		if detail.Session.Source != SourceLive || detail.Session.Status != "closed" || detail.Session.AppVersion != "v0.7.0" || detail.Session.HistoryLevel != "events" {
+		if detail.Session.Source != SourceLive || detail.Session.Status != "closed" || detail.Session.AppVersion != "0.7.0" || detail.Session.AppBuild != 0 || detail.Session.AppCommit != testBuild.Commit {
 			t.Fatalf("session = %+v", detail.Session)
 		}
 	}
@@ -261,10 +307,7 @@ func TestAbnormalExitLeavesNoFinishedLookingEncounter(t *testing.T) {
 	path := testPath(t)
 	store := openTestStore(t, path, nil)
 	start := time.Date(2026, 7, 1, 23, 0, 0, 0, time.UTC)
-	recorder, err := store.BeginSession(liveStart)
-	if err != nil {
-		t.Fatal(err)
-	}
+	recorder := begin(t, store, liveStart)
 	opened := finishedEncounter(1, 1, start, 5, 100, capture.IntegrityIntact)[:2]
 	pending := capture.HistoryEntry{Kind: capture.HistoryEncounterOpened, Encounter: "1-2", Opened: &capture.HistoryEncounterOpening{ProtocolSession: 1, StatisticsInterval: 1, Sequence: 2, StartedAt: start.Add(time.Minute), StartBasis: "battle_state_enter"}}
 	recorder.Submit(append(opened, pending), 0)
@@ -287,7 +330,7 @@ func TestAbnormalExitLeavesNoFinishedLookingEncounter(t *testing.T) {
 		t.Fatalf("day = %+v (%v)", day, err)
 	}
 	got := day.Encounters[0]
-	if got.State != "abandoned" || got.Complete || got.DPS.Status != capture.DPSStatusUnavailable || got.DurationSeconds != nil || got.EnemiesRecorded {
+	if got.State != "abandoned" || got.Complete || got.DPS.Status != capture.DPSStatusUnavailable || got.DurationSeconds != nil || got.Enemies != 0 {
 		t.Fatalf("abandoned encounter = %+v", got)
 	}
 	var sessionStatus string
@@ -300,10 +343,7 @@ func TestFullQueueIsCountedAndMarksTheEncounterIncomplete(t *testing.T) {
 	store := openTestStore(t, testPath(t), nil)
 	start := time.Date(2026, 8, 8, 8, 0, 0, 0, time.UTC)
 	entries := finishedEncounter(1, 1, start, 10, 300, capture.IntegrityIntact)
-	recorder, err := store.BeginSession(liveStart)
-	if err != nil {
-		t.Fatal(err)
-	}
+	recorder := begin(t, store, liveStart)
 	recorder.Submit(entries[:2], 0)
 	// One drain larger than the queue bound cannot be kept: it is counted, never silently dropped.
 	flood := make([]capture.HistoryEntry, maxQueuedEntries+1)
@@ -327,10 +367,7 @@ func TestFullQueueIsCountedAndMarksTheEncounterIncomplete(t *testing.T) {
 
 func TestJournalBoundMarksEverySessionEncounterIncomplete(t *testing.T) {
 	store := openTestStore(t, testPath(t), nil)
-	recorder, err := store.BeginSession(liveStart)
-	if err != nil {
-		t.Fatal(err)
-	}
+	recorder := begin(t, store, liveStart)
 	recorder.Submit(finishedEncounter(1, 1, time.Date(2026, 8, 9, 8, 0, 0, 0, time.UTC), 10, 300, capture.IntegrityIntact), 3)
 	if err := recorder.Finish(context.Background(), capture.StopReasonRequested); err != nil {
 		t.Fatal(err)
@@ -344,7 +381,7 @@ func TestJournalBoundMarksEverySessionEncounterIncomplete(t *testing.T) {
 func TestReplayedFileIsStoredOnce(t *testing.T) {
 	store := openTestStore(t, testPath(t), nil)
 	digest := sha256.Sum256([]byte("capture"))
-	start := SessionStart{Source: SourceReplay, SourceSHA256: hex.EncodeToString(digest[:]), Level: capture.HistoryEvents}
+	start := SessionStart{Source: SourceReplay, SourceSHA256: hex.EncodeToString(digest[:])}
 	record(t, store, start, finishedEncounter(1, 1, time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), 10, 100, capture.IntegrityIntact))
 	if _, err := store.BeginSession(start); !errors.Is(err, ErrDuplicateSource) {
 		t.Fatalf("second replay of the same file: %v", err)
@@ -644,90 +681,11 @@ func TestEmptyHistoryHasNoYears(t *testing.T) {
 	}
 }
 
-// createSchemaOne writes a file exactly as a build with only schema 1 would have.
-func createSchemaOne(t *testing.T, path string) {
-	t.Helper()
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	db, err := sql.Open("sqlite", plainDSN(path))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	store := &Store{path: path, db: db, now: time.Now, build: testBuild, location: time.UTC}
-	if err := store.applyMigration(context.Background(), migrations[0]); err != nil {
-		t.Fatalf("schema 1: %v", err)
-	}
-	statements := []string{
-		`INSERT INTO capture_session (id, session_uid, source, status, opened_at_ns, utc_offset_s, zone_name, history_level, app_version, app_build, app_commit, app_dirty, app_profile, protocol_schema, master_sha256)
-			VALUES (1, 'old', 'live', 'closed', 1700000000000000000, 32400, 'JST', 'events', 'v0.7.0', 0, 'c', 'false', 'public', 'p', 'm')`,
-		`INSERT INTO encounter (id, capture_session_id, statistics_interval, sequence, protocol_session, state, outcome, started_at_ns, start_basis, ended_at_ns, local_date, utc_offset_s,
-			damage_dealt, damage_taken, outgoing_events, incoming_events, unattributed_outgoing_damage, unattributed_incoming_damage, unattributed_outgoing_events, unattributed_incoming_events,
-			integrity_status, transport_losses, unrecovered_losses, context_downgraded_events,
-			dps_status, dps_reason, dps_value, dps_damage, dps_duration_ns, dps_confidence, peak_status, peak_reason, peak_value, peak_damage, peak_duration_ns, peak_confidence,
-			healing_status, healing_reason, healing_effective, healing_reported, healing_overheal, healing_events, healing_unknown_effective, healing_unknown_events,
-			unassigned_damage_dealt, unassigned_outgoing_events, unassigned_damage_taken, unassigned_incoming_events, unassigned_overflow_events)
-			VALUES (1, 1, 1, 1, 1, 'finished', 'CONFIRMED', 1700000000000000000, 'battle_state_enter', 1700000010000000000, '2023-11-15', 32400,
-			500, 0, 5, 0, 0, 0, 0, 0, 'INTACT', 0, 0, 0,
-			'available', '', 50, 500, 10000000000, 'confirmed', 'available', '', 200, 200, 1000000000, 'confirmed',
-			'available', '', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)`,
-		`INSERT INTO encounter_contributor (encounter_id, ordinal, kind, player_id, role_id, damage_dealt, outgoing_events, direct_damage) VALUES (1, 0, 'role', 7, 1505, 500, 5, 500)`,
-		`INSERT INTO encounter_skill (encounter_id, contributor_ordinal, skill_id, damage_dealt, outgoing_events) VALUES (1, 0, 150501, 500, 5)`,
-	}
-	for _, statement := range statements {
-		if _, err := db.Exec(statement); err != nil {
-			t.Fatalf("schema 1 row: %v", err)
-		}
-	}
-}
-
-func TestSchemaOneIsUpgradedWithoutLosingRows(t *testing.T) {
-	path := testPath(t)
-	createSchemaOne(t, path)
-	store := openTestStore(t, path, nil)
-	if status := store.Status(); status.State != StateReady || status.SchemaVersion != latestVersion() {
-		t.Fatalf("status after the upgrade = %+v", status)
-	}
-	backups, _ := filepath.Glob(path + ".schema-1-*.bak")
-	if len(backups) != 1 {
-		t.Fatalf("pre-migration copies = %v", backups)
-	}
-	ctx := context.Background()
-	day, err := store.Day(ctx, "2023-11-15", 0, 10, mustZone(t, "Asia/Tokyo"))
-	if err != nil || len(day.Encounters) != 1 {
-		t.Fatalf("day = %+v (%v)", day, err)
-	}
-	old := day.Encounters[0]
-	// Schema 1 never recorded scenes or enemies: they read as not recorded, never as an invented value.
-	if old.Scene.Recorded || old.Scene.Known || old.EnemiesRecorded || old.MainEnemy != nil || old.DPS.Value != 50 || *old.DamageDealt != 500 {
-		t.Fatalf("upgraded row = %+v", old)
-	}
-	detail, err := store.Encounter(ctx, old.ID, time.UTC)
-	if err != nil || detail.Snapshot == nil || len(detail.Snapshot.Roles) != 1 || detail.Snapshot.Roles[0].Skills[0].SkillID != 150501 || detail.Timeline != nil {
-		t.Fatalf("upgraded detail = %+v (%v)", detail.Snapshot, err)
-	}
-	assertIntegrity(t, store)
-	// The upgraded file records like a new one, and a second open migrates nothing again.
-	record(t, store, liveStart, finishedEncounter(1, 1, time.Date(2026, 11, 11, 1, 0, 0, 0, time.UTC), 10, 100, capture.IntegrityIntact))
-	if err := store.Close(); err != nil {
-		t.Fatal(err)
-	}
-	again := openTestStore(t, path, nil)
-	if year, err := again.Year(ctx, 2023, time.UTC); err != nil || year.Total != 1 || year.FirstYear != 2023 || year.LastYear != 2026 {
-		t.Fatalf("after reopening: %+v (%v)", year, err)
-	}
-	backups, _ = filepath.Glob(path + ".schema-*.bak")
-	if len(backups) != 1 {
-		t.Fatalf("an up-to-date file was copied again: %v", backups)
-	}
-}
-
 func TestNewerSchemaIsNeverWritten(t *testing.T) {
 	path := testPath(t)
 	store := openTestStore(t, path, nil)
 	record(t, store, liveStart, finishedEncounter(1, 1, time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC), 10, 100, capture.IntegrityIntact))
-	if _, err := store.db.Exec("PRAGMA user_version=" + strconv.Itoa(latestVersion()+1)); err != nil {
+	if _, err := store.db.Exec("PRAGMA user_version=" + strconv.Itoa(schemaVersion+1)); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.Close(); err != nil {
@@ -785,6 +743,72 @@ func TestForeignFileIsNotTouched(t *testing.T) {
 	}
 }
 
+// TestUnencryptedHistoryIsNotTouched places a plaintext SQLite file that calls itself a WWlogs history at the history path:
+// the history is never stored unencrypted, so such a file is no history of this build and stays exactly as it was.
+func TestUnencryptedHistoryIsNotTouched(t *testing.T) {
+	path := testPath(t)
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("sqlite", plainDSN(path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range []string{"PRAGMA application_id=" + strconv.Itoa(applicationID), schemaDDL, "PRAGMA user_version=" + strconv.Itoa(schemaVersion)} {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	db.Close()
+	before := fileDigest(t, path)
+	store, err := Open(Options{Path: path, Build: &testBuild})
+	if err == nil || store.Status().State != StateUnavailable || store.Status().Reason != ReasonNotHistory {
+		t.Fatalf("plaintext history: %v %+v", err, store.Status())
+	}
+	if _, err := store.BeginSession(liveStart); !errors.Is(err, ErrNotRecording) {
+		t.Fatalf("a plaintext file accepted a session: %v", err)
+	}
+	store.Close()
+	if fileDigest(t, path) != before {
+		t.Fatal("a plaintext file was modified")
+	}
+	if _, err := os.Stat(path + ".key"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("a key was made for a plaintext file: %v", err)
+	}
+}
+
+// TestOtherLayoutIsNotTouched opens encrypted files with the history's key that are not this build's layout: another
+// application's file, and a WWlogs history of an older layout. Neither is read, migrated or written.
+func TestOtherLayoutIsNotTouched(t *testing.T) {
+	for name, identity := range map[string][2]int{"another application": {0x57574C48, 3}, "an older layout": {applicationID, 0}} {
+		t.Run(name, func(t *testing.T) {
+			path := testPath(t)
+			store := openTestStore(t, path, nil)
+			record(t, store, liveStart, finishedEncounter(1, 1, time.Date(2026, 2, 2, 2, 2, 2, 0, time.UTC), 10, 100, capture.IntegrityIntact))
+			if _, err := store.db.Exec("PRAGMA application_id=" + strconv.Itoa(identity[0]) + "; PRAGMA user_version=" + strconv.Itoa(identity[1])); err != nil {
+				t.Fatal(err)
+			}
+			if err := store.Close(); err != nil {
+				t.Fatal(err)
+			}
+			before := fileDigest(t, path)
+			other, err := Open(Options{Path: path, Location: time.UTC, Build: &testBuild})
+			if err == nil || other.Status().State != StateUnavailable || other.Status().Reason != ReasonNotHistory {
+				t.Fatalf("%s: %v %+v", name, err, other.Status())
+			}
+			if _, err := other.Year(context.Background(), 2026, time.UTC); !errors.Is(err, ErrUnavailable) {
+				t.Fatalf("%s was read: %v", name, err)
+			}
+			if err := other.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if fileDigest(t, path) != before {
+				t.Fatalf("%s was modified", name)
+			}
+		})
+	}
+}
+
 func TestSecondProcessOnlyReads(t *testing.T) {
 	path := testPath(t)
 	first := openTestStore(t, path, nil)
@@ -809,10 +833,7 @@ func TestLostActivityKeepsAPendingEncounterAsUnfinished(t *testing.T) {
 	store := openTestStore(t, testPath(t), nil)
 	start := time.Date(2026, 9, 9, 9, 0, 0, 0, time.UTC)
 	entries := finishedEncounter(1, 1, start, 10, 300, capture.IntegrityIntact)
-	recorder, err := store.BeginSession(liveStart)
-	if err != nil {
-		t.Fatal(err)
-	}
+	recorder := begin(t, store, liveStart)
 	recorder.Submit(entries[:1], 0)
 	// The activity and the end of the fight are lost in one refused drain.
 	lost := append(make([]capture.HistoryEntry, maxQueuedEntries), entries[1:]...)
@@ -839,5 +860,109 @@ func TestAssignmentOfALostResultMarksTheEncounterIncomplete(t *testing.T) {
 	day, err := store.Day(context.Background(), "2026-09-10", 0, 10, time.UTC)
 	if err != nil || len(day.Encounters) != 1 || day.Encounters[0].Complete {
 		t.Fatalf("day = %+v (%v)", day, err)
+	}
+}
+
+// inSession moves a test encounter into protocol session number.
+func inSession(entries []capture.HistoryEntry, number int) []capture.HistoryEntry {
+	entries[0].Opened.ProtocolSession = number
+	entries[2].Finished.Snapshot.ProtocolSession = number
+	return entries
+}
+
+func protocolEntry(number int, version string) capture.HistoryEntry {
+	return capture.HistoryEntry{Kind: capture.HistoryProtocolConfirmed, Protocol: &capture.HistoryProtocolSession{Number: number, GameVersion: version}}
+}
+
+// TestEachEncounterKeepsTheGameVersionOfItsProtocolSession records two protocol sessions of one capture, as a relogin after a
+// game update would: every encounter shows the major.minor its own session reported, never another session's, and the
+// stored version is exactly what the journal named (no patch number, no guess).
+func TestEachEncounterKeepsTheGameVersionOfItsProtocolSession(t *testing.T) {
+	store := openTestStore(t, testPath(t), nil)
+	day := time.Date(2026, 11, 13, 9, 0, 0, 0, time.UTC)
+	record(t, store, liveStart,
+		finishedEncounter(1, 1, day, 10, 100, capture.IntegrityIntact),
+		[]capture.HistoryEntry{protocolEntry(2, "9.1")},
+		inSession(finishedEncounter(2, 1, day.Add(time.Hour), 10, 200, capture.IntegrityIntact), 2))
+	ctx := context.Background()
+	list, err := store.Day(ctx, "2026-11-13", 0, 10, time.UTC)
+	if err != nil || len(list.Encounters) != 2 {
+		t.Fatalf("day = %+v (%v)", list, err)
+	}
+	if first, second := list.Encounters[0], list.Encounters[1]; first.GameVersion != capture.CurrentGameVersion() || second.GameVersion != "9.1" {
+		t.Fatalf("game versions = %q, %q", first.GameVersion, second.GameVersion)
+	}
+	detail, err := store.Encounter(ctx, list.Encounters[1].ID, time.UTC)
+	if err != nil || detail.Summary.GameVersion != "9.1" {
+		t.Fatalf("detail game version = %q (%v)", detail.Summary.GameVersion, err)
+	}
+	var sessions int
+	if err := store.db.QueryRowContext(ctx, "SELECT count(*) FROM protocol_session").Scan(&sessions); err != nil || sessions != 2 {
+		t.Fatalf("%d protocol sessions (%v)", sessions, err)
+	}
+	assertIntegrity(t, store)
+}
+
+// TestNothingIsStoredUnderAnUnnamedOrRenamedProtocolSession hands the writer an encounter of a protocol session the span
+// never named, and a second, different version for a named one. Neither is stored under a guessed version: their
+// transactions fail, what they held is counted lost, and the refused announcement is not carried again, so the writer goes
+// on; the span that lost it shows no encounter as complete.
+func TestNothingIsStoredUnderAnUnnamedOrRenamedProtocolSession(t *testing.T) {
+	store := openTestStore(t, testPath(t), nil)
+	day := time.Date(2026, 11, 13, 10, 0, 0, 0, time.UTC)
+	recorder := begin(t, store, liveStart)
+	recorder.Submit(inSession(finishedEncounter(3, 1, day, 10, 100, capture.IntegrityIntact), 3), 0)
+	waitQueued(t, recorder)
+	recorder.Submit([]capture.HistoryEntry{protocolEntry(1, "9.9")}, 0)
+	waitQueued(t, recorder)
+	if health := recorder.Health(); health.Lost != 4 || health.Stopped {
+		t.Fatalf("health = %+v", health)
+	}
+	recorder.Submit(finishedEncounter(1, 1, day.Add(time.Hour), 10, 200, capture.IntegrityIntact), 0)
+	if err := recorder.Finish(context.Background(), capture.StopReasonRequested); err != nil {
+		t.Fatal(err)
+	}
+	var version string
+	var encounters, complete int
+	if err := store.db.QueryRow("SELECT p.game_version, count(*), sum(e.complete) FROM encounter e JOIN protocol_session p ON p.capture_session_id = e.capture_session_id AND p.protocol_session = e.protocol_session").
+		Scan(&version, &encounters, &complete); err != nil || encounters != 1 || version != capture.CurrentGameVersion() || complete != 0 {
+		t.Fatalf("stored %d encounters at %q, %d complete (%v)", encounters, version, complete, err)
+	}
+	assertIntegrity(t, store)
+}
+
+// TestAnalyserIdentityIsStoredWithoutGuessing records spans with an official, an unofficial and an unidentified build: the
+// product version is MAJOR.MINOR.PATCH, the Build Number only an official one, and what a build did not carry stays NULL.
+func TestAnalyserIdentityIsStoredWithoutGuessing(t *testing.T) {
+	for name, test := range map[string]struct {
+		build           buildinfo.Identity
+		version, commit sql.NullString
+		number          sql.NullInt64
+	}{
+		"official": {buildinfo.Identity{Version: "v0.7.0", BuildNumber: 31, Commit: testBuild.Commit, Dirty: "false", Profile: buildinfo.ProfilePublic},
+			sql.NullString{String: "0.7.0", Valid: true}, sql.NullString{String: testBuild.Commit, Valid: true}, sql.NullInt64{Int64: 31, Valid: true}},
+		"unofficial": {buildinfo.Identity{Version: "v0.7.0", Commit: testBuild.Commit, Dirty: "true", Profile: buildinfo.ProfileDevelopment},
+			sql.NullString{String: "0.7.0", Valid: true}, sql.NullString{String: testBuild.Commit, Valid: true}, sql.NullInt64{}},
+		"unidentified": {buildinfo.Identity{Version: buildinfo.Unavailable, Commit: buildinfo.Unavailable, Dirty: "unknown", Profile: buildinfo.ProfileDevelopment},
+			sql.NullString{}, sql.NullString{}, sql.NullInt64{}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			build := test.build
+			store, err := Open(Options{Path: testPath(t), Location: time.UTC, Build: &build, MasterSHA256: "test-master"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer store.Close()
+			record(t, store, liveStart, finishedEncounter(1, 1, time.Date(2026, 11, 13, 11, 0, 0, 0, time.UTC), 10, 100, capture.IntegrityIntact))
+			var version, commit sql.NullString
+			var number sql.NullInt64
+			var profile string
+			if err := store.db.QueryRow("SELECT app_version, app_build, app_commit, app_profile FROM capture_session").Scan(&version, &number, &commit, &profile); err != nil {
+				t.Fatal(err)
+			}
+			if version != test.version || number != test.number || commit != test.commit || profile != string(build.Profile) {
+				t.Fatalf("stored %v %v %v %s", version, number, commit, profile)
+			}
+		})
 	}
 }

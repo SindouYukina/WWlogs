@@ -19,17 +19,6 @@ export interface HistoryStatus {
   encrypted: boolean
   encryption?: string
   keyProtection?: string
-  /** converted: this run encrypted a plaintext history of an earlier build; failed: that conversion failed. */
-  plaintextMigration?: "converted" | "failed" | "pending"
-  migrationFailure?: string
-  plaintextBackups?: number
-}
-
-/** What the recorder of a record stored, apart from its capture integrity. Skill casts are never stored. */
-export interface HistoryCoverage {
-  combatEvents: boolean
-  effectEvents: boolean
-  skillCasts: boolean
 }
 
 export interface HistoryDayCount {
@@ -86,6 +75,8 @@ export interface HistoryEncounterSummary {
   endedAt?: string
   end?: HistoryLocalTime
   durationSeconds?: number
+  /** The major.minor game version of the protocol session the encounter was fought in, as stored with it. */
+  gameVersion: string
   state: HistoryEncounterState
   outcome: string
   complete: boolean
@@ -93,10 +84,9 @@ export interface HistoryEncounterSummary {
   integrity?: "INTACT" | "DEGRADED" | "UNRELIABLE"
   dps: DPS
   damageDealt?: number
-  scene: { recorded: boolean; known: boolean; instanceId?: number }
+  scene: { known: boolean; instanceId?: number }
   mainEnemy?: { ordinal: number; monsterId?: number; templateId?: number; identityConflict?: boolean; damageTaken: number; sameType: number }
   enemies: number
-  enemiesRecorded: boolean
   sceneName: HistoryName
   mainEnemyName: HistoryName
   /** Why the record is incomplete or unfinished: entries_lost, application_exit, recording_disabled or not_finished. */
@@ -104,7 +94,6 @@ export interface HistoryEncounterSummary {
   /** UTC time the stored values of an unfinished encounter describe (its last checkpoint). */
   checkpointAt?: string
   checkpoint?: HistoryLocalTime
-  coverage: HistoryCoverage
 }
 
 export interface HistoryDay {
@@ -128,26 +117,17 @@ export interface HistoryEnemy {
   hitsDealt: number
 }
 
+/** The recorded span an encounter belongs to. The history also keeps which WWlogs analysed it; the view does not show that. */
 export interface HistorySession {
   source: "live" | "replay"
   status: string
   openedAt: string
-  historyLevel: string
   journalDropped: number
   queueDropped: number
   writeFailed: number
   transportGaps: number
-  appVersion: string
-  appBuild: number
-  appProfile: string
-  appCommit: string
-  protocolSchema: string
-  masterSha256: string
   startReason: string
   stopReason?: string
-  /** The version label the record was written with, when an upgrade corrected appVersion. */
-  recordedAppVersion?: string
-  coverage: HistoryCoverage
   effectsRejected: number
 }
 
@@ -179,22 +159,18 @@ export type HistoryIndicatorState = "disabled" | "waiting" | "recording" | "star
 export interface HistoryIndicator {
   state: HistoryIndicatorState
   reason?: string
-  migrationFailure?: string
   enabled: boolean
   capturing: boolean
   /** Journal entries of the running capture that never reached storage. */
   lost?: number
   encrypted: boolean
   keyProtection?: string
-  plaintextConverted?: boolean
-  plaintextBackups?: number
 }
 
 /** The answer to a deletion: what it removed, or why it was refused. */
 export interface HistoryChange {
   encounters: number
   spans: number
-  backups: number
   compacted: boolean
   refused?: "encounter_recording" | "recording_active" | "not_writable" | "not_found"
 }
@@ -215,8 +191,7 @@ export function indicatorText(indicator: HistoryIndicator | undefined): { key: s
     case "read_only": return { key: "indicator.readOnly", tone: "warn", detail: `unavailable.${indicator.reason ?? "open_failed"}` }
     case "write_failed": return { key: "indicator.writeFailed", tone: "critical", detail: "unavailable.storage_stopped" }
     case "not_recorded": return { key: "indicator.notRecorded", tone: "warn", detail: `unavailable.${indicator.reason ?? "open_failed"}` }
-    case "unavailable":
-      return { key: "indicator.unavailable", tone: "critical", detail: indicator.reason === "encryption_migration_failed" && indicator.migrationFailure ? `migration.${indicator.migrationFailure}` : `unavailable.${indicator.reason ?? "open_failed"}` }
+    case "unavailable": return { key: "indicator.unavailable", tone: "critical", detail: `unavailable.${indicator.reason ?? "open_failed"}` }
   }
 }
 

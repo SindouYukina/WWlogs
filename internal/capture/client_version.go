@@ -103,10 +103,15 @@ func (p *processor) observeClientVersion(commandID uint16, data []byte) error {
 		return fmt.Errorf("unsupported version command %d", commandID)
 	}
 	// The session's own report decides whether it is decoded (protocol_session.go); the census report below keeps the first.
+	before := p.protocol.state
 	if build != "" {
 		p.protocol.observeVersion(gameVersionOf(build))
 	} else {
 		p.protocol.observeVersion(gameVersionOf(versions[0]))
+	}
+	if before == protocolPending && p.protocol.state == protocolCurrent {
+		// From here on the session is decoded; Combat History records which game version everything of it came from.
+		p.damageStatistics.confirmProtocolSession(p.sessionNumber, p.protocol.gameVersion)
 	}
 	if p.clientVersion == nil {
 		p.clientVersion = &clientVersionReport{SessionNumber: p.sessionNumber, FirstObservedAt: p.currentFrameTime}

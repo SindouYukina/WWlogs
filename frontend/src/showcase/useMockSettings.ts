@@ -39,7 +39,7 @@ export function useMockSettings(theme: ThemeId, setTheme: (theme: ThemeId) => vo
     setHistoryRecording,
     // A mock history that is never written: the Showcase has no history file.
     history: { state: historyRecording ? "waiting" : "disabled", enabled: historyRecording, capturing: false, encrypted: true, keyProtection: "dpapi-user" },
-    clearHistory: () => Promise.resolve({ encounters: 0, spans: 0, backups: 0, compacted: false }),
+    clearHistory: () => Promise.resolve({ encounters: 0, spans: 0, compacted: false }),
     captureBusy: false,
     environment: "ready",
     checking: false,

@@ -88,7 +88,7 @@ func TestHistoryReplayCollector(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := reopened.BeginSession(SessionStart{Source: SourceReplay, SourceSHA256: digest, Level: Level()}); !errors.Is(err, ErrDuplicateSource) {
+		if _, err := reopened.BeginSession(SessionStart{Source: SourceReplay, SourceSHA256: digest}); !errors.Is(err, ErrDuplicateSource) {
 			t.Fatalf("%s: a second replay of the same file was accepted: %v", item.name, err)
 		}
 	}
@@ -157,6 +157,8 @@ func (s *teeSink) SubmitWait(ctx context.Context, entries []capture.HistoryEntry
 
 type replaySummary struct {
 	Name string `json:"name"`
+	// VersionedEncounters counts stored encounters whose game version equals the one their protocol session reported.
+	VersionedEncounters int `json:"versionedEncounters"`
 	// DuplicateOf marks a byte-identical copy of a capture already stored; it was not stored again.
 	DuplicateOf          bool           `json:"duplicateOf,omitempty"`
 	Intervals            int            `json:"intervals"`
@@ -314,7 +316,7 @@ func checkAnalysis(t *testing.T, store *Store, masters *capture.MasterData, id i
 	started = time.Now()
 	lanes, err := store.Effects(ctx, id, AnalysisQuery{Enemy: -1, Effects: "all"}, masters)
 	timing.EffectsMs = float64(time.Since(started).Microseconds()) / 1000
-	if err != nil || lanes.State != AnalysisReady || lanes.Available != detail.Session.Coverage.EffectEvents {
+	if err != nil || lanes.State != AnalysisReady {
 		t.Fatalf("encounter %d: effect lanes %+v (%v)", id, lanes.State, err)
 	}
 	if encoded, err := json.Marshal(lanes); err == nil {
@@ -373,6 +375,7 @@ type replayTotals struct {
 	FinishedEncounters   int            `json:"finishedEncounters"`
 	Discarded            int            `json:"discarded"`
 	ListedEncounters     int            `json:"listedEncounters"`
+	VersionedEncounters  int            `json:"versionedEncounters"`
 	StoredEvents         int            `json:"storedEvents"`
 	LiveViewsCompared    int            `json:"liveViewsCompared"`
 	RecomputedEncounters int            `json:"recomputedEncounters"`
@@ -403,6 +406,7 @@ func (t *replayTotals) add(s replaySummary) {
 	t.FinishedEncounters += s.FinishedEncounters
 	t.Discarded += s.Discarded
 	t.ListedEncounters += s.ListedEncounters
+	t.VersionedEncounters += s.VersionedEncounters
 	t.StoredEvents += s.StoredEvents
 	t.LiveViewsCompared += s.LiveViewsCompared
 	t.RecomputedEncounters += s.RecomputedEncounters
@@ -445,7 +449,7 @@ func replayIntoHistory(t *testing.T, store *Store, masters *capture.MasterData, 
 	}
 	// Without history first: the reference the history run must not change.
 	_, plain := runCapture(t, masters, item.path, nil)
-	recorder, err := store.BeginSession(SessionStart{Source: SourceReplay, SourceSHA256: digest, Level: Level()})
+	recorder, err := store.BeginSession(SessionStart{Source: SourceReplay, SourceSHA256: digest})
 	if errors.Is(err, ErrDuplicateSource) {
 		// A byte-identical copy of a capture already replayed: it is not stored again.
 		var sessions int
@@ -485,6 +489,7 @@ func replayIntoHistory(t *testing.T, store *Store, masters *capture.MasterData, 
 	finished := map[string]*capture.HistoryEncounter{}
 	integrity := map[string]capture.DataIntegrity{}
 	accepted := 0
+	versions := map[int]string{}
 	for _, entry := range tee.entries {
 		switch entry.Kind {
 		case capture.HistoryEncounterFinished:
@@ -499,9 +504,36 @@ func replayIntoHistory(t *testing.T, store *Store, masters *capture.MasterData, 
 			summary.Discarded++
 		case capture.HistoryEventAccepted:
 			accepted++
+		case capture.HistoryProtocolConfirmed:
+			if known, ok := versions[entry.Protocol.Number]; ok && known != entry.Protocol.GameVersion {
+				t.Fatalf("protocol session %d was named %s and %s", entry.Protocol.Number, known, entry.Protocol.GameVersion)
+			}
+			versions[entry.Protocol.Number] = entry.Protocol.GameVersion
 		}
 	}
 	summary.FinishedEncounters, summary.AcceptedResults = len(finished), accepted
+	// Every stored encounter carries the game version its own protocol session reported, as the journal named it; a capture
+	// of the current corpus decodes only sessions that reported the version this build decodes.
+	versionRows, err := store.db.QueryContext(context.Background(), `SELECT e.statistics_interval || '-' || e.sequence, e.protocol_session, p.game_version FROM encounter e
+		JOIN protocol_session p ON p.capture_session_id = e.capture_session_id AND p.protocol_session = e.protocol_session WHERE e.capture_session_id = ?`, recorder.SessionID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for versionRows.Next() {
+		var key, version string
+		var number int
+		if err := versionRows.Scan(&key, &number, &version); err != nil {
+			t.Fatal(err)
+		}
+		if named, ok := versions[number]; !ok || version != named || version != capture.CurrentGameVersion() {
+			t.Fatalf("encounter %s of protocol session %d is stored at game version %q; the journal named %q", key, number, version, named)
+		}
+		summary.VersionedEncounters++
+	}
+	if err := versionRows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	versionRows.Close()
 	// The views count finished encounters independently of the journal. The final view is exact; an earlier interval's last
 	// view may predate the encounter its protocol session change finished, so it can only count fewer.
 	perInterval := map[uint64]uint64{}

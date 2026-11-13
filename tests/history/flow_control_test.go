@@ -16,7 +16,7 @@ import (
 
 func replayStart(name string) SessionStart {
 	digest := sha256.Sum256([]byte(name))
-	return SessionStart{Source: SourceReplay, SourceSHA256: hex.EncodeToString(digest[:]), Level: capture.HistoryEvents}
+	return SessionStart{Source: SourceReplay, SourceSHA256: hex.EncodeToString(digest[:])}
 }
 
 func acceptedResult(sequence uint64, at time.Time) capture.HistoryEntry {
@@ -43,10 +43,7 @@ func sessionCounts(t *testing.T, store *Store, id int64) (journal, queue, failed
 func TestReplayWaitsForTheWriterInsteadOfDropping(t *testing.T) {
 	store := openTestStore(t, testPath(t), nil)
 	ctx := context.Background()
-	recorder, err := store.BeginSession(replayStart("paced"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	recorder := begin(t, store, replayStart("paced"))
 	conn, err := store.db.Conn(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -102,10 +99,7 @@ func TestReplayStoppedBeforeItsEndIsRemoved(t *testing.T) {
 	store := openTestStore(t, testPath(t), nil)
 	ctx := context.Background()
 	start := replayStart("stopped")
-	recorder, err := store.BeginSession(start)
-	if err != nil {
-		t.Fatal(err)
-	}
+	recorder := begin(t, store, start)
 	if err := recorder.SubmitWait(ctx, finishedEncounter(1, 1, time.Date(2026, 11, 13, 2, 0, 0, 0, time.UTC), 10, 100, capture.IntegrityIntact), 0); err != nil {
 		t.Fatal(err)
 	}
@@ -133,10 +127,7 @@ func TestReplayThatLostAnEntryIsRemoved(t *testing.T) {
 	store := openTestStore(t, testPath(t), nil)
 	ctx := context.Background()
 	start := replayStart("failed")
-	recorder, err := store.BeginSession(start)
-	if err != nil {
-		t.Fatal(err)
-	}
+	recorder := begin(t, store, start)
 	day := time.Date(2026, 11, 13, 3, 0, 0, 0, time.UTC)
 	first := finishedEncounter(1, 1, day, 10, 100, capture.IntegrityIntact)
 	// The accepted entry without its event cannot be stored, so its whole transaction fails.
@@ -147,8 +138,7 @@ func TestReplayThatLostAnEntryIsRemoved(t *testing.T) {
 	if err := recorder.SubmitWait(ctx, finishedEncounter(1, 2, day.Add(time.Minute), 10, 200, capture.IntegrityIntact), 0); err != nil {
 		t.Fatal(err)
 	}
-	err = recorder.Finish(ctx, capture.StopReasonReplayEnd)
-	if !errors.Is(err, ErrReplayNotStored) {
+	if err := recorder.Finish(ctx, capture.StopReasonReplayEnd); !errors.Is(err, ErrReplayNotStored) {
 		t.Fatalf("finish of a replay that lost entries: %v", err)
 	}
 	if sessions := countRows(t, store, "capture_session"); sessions != 0 {
@@ -169,18 +159,12 @@ func TestUnfinishedReplayIsRemovedWhenTheFileOpens(t *testing.T) {
 	ctx := context.Background()
 	start := replayStart("crashed")
 	day := time.Date(2026, 11, 13, 4, 0, 0, 0, time.UTC)
-	replay, err := store.BeginSession(start)
-	if err != nil {
-		t.Fatal(err)
-	}
+	replay := begin(t, store, start)
 	if err := replay.SubmitWait(ctx, finishedEncounter(1, 1, day, 10, 100, capture.IntegrityIntact), 0); err != nil {
 		t.Fatal(err)
 	}
 	waitQueued(t, replay)
-	live, err := store.BeginSession(liveStart)
-	if err != nil {
-		t.Fatal(err)
-	}
+	live := begin(t, store, liveStart)
 	live.Submit(finishedEncounter(1, 1, day.Add(time.Hour), 10, 100, capture.IntegrityIntact)[:2], 0)
 	waitQueued(t, live)
 	if err := store.closeHandles(); err != nil {
@@ -209,10 +193,7 @@ func TestRefusedLiveDrainKeepsItsSpanMarker(t *testing.T) {
 	store := openTestStore(t, testPath(t), nil)
 	ctx := context.Background()
 	day := time.Date(2026, 11, 13, 5, 0, 0, 0, time.UTC)
-	recorder, err := store.BeginSession(liveStart)
-	if err != nil {
-		t.Fatal(err)
-	}
+	recorder := begin(t, store, liveStart)
 	recorder.Submit(finishedEncounter(1, 1, day, 10, 100, capture.IntegrityIntact)[:2], 0)
 	waitQueued(t, recorder)
 	flood := make([]capture.HistoryEntry, maxQueuedEntries+1, maxQueuedEntries+2)
@@ -221,7 +202,7 @@ func TestRefusedLiveDrainKeepsItsSpanMarker(t *testing.T) {
 	}
 	flood = append(flood, capture.HistoryEntry{Kind: capture.HistoryRecordingStopped, Recording: &capture.HistoryRecordingChange{Reason: capture.HistoryStopDisabled, Open: []string{"1-1"}}})
 	recorder.Submit(flood, 0)
-	next := append([]capture.HistoryEntry{{Kind: capture.HistoryRecordingStarted, Recording: &capture.HistoryRecordingChange{Reason: capture.HistoryStartEnabled}}},
+	next := append([]capture.HistoryEntry{{Kind: capture.HistoryRecordingStarted, Recording: &capture.HistoryRecordingChange{Reason: capture.HistoryStartEnabled}}, protocolOne},
 		finishedEncounter(1, 2, day.Add(time.Hour), 10, 200, capture.IntegrityIntact)...)
 	recorder.Submit(next, 0)
 	if err := recorder.Finish(ctx, capture.StopReasonRequested); err != nil {
@@ -271,10 +252,7 @@ func TestLostEffectChangesMarkTheWholeSpan(t *testing.T) {
 	store := openTestStore(t, testPath(t), nil)
 	ctx := context.Background()
 	day := time.Date(2026, 11, 13, 6, 0, 0, 0, time.UTC)
-	recorder, err := store.BeginSession(liveStart)
-	if err != nil {
-		t.Fatal(err)
-	}
+	recorder := begin(t, store, liveStart)
 	first := finishedEncounter(1, 1, day, 10, 100, capture.IntegrityIntact)
 	recorder.Submit(first[:2], 0)
 	waitQueued(t, recorder)
@@ -303,10 +281,7 @@ func TestFailedTransactionCarriesItsSpanMarker(t *testing.T) {
 	store := openTestStore(t, testPath(t), nil)
 	ctx := context.Background()
 	day := time.Date(2026, 11, 13, 7, 0, 0, 0, time.UTC)
-	recorder, err := store.BeginSession(liveStart)
-	if err != nil {
-		t.Fatal(err)
-	}
+	recorder := begin(t, store, liveStart)
 	first := finishedEncounter(1, 1, day, 10, 100, capture.IntegrityIntact)
 	failing := append(first[:2:2],
 		capture.HistoryEntry{Kind: capture.HistoryEventAccepted, Sequence: 1},
@@ -316,7 +291,7 @@ func TestFailedTransactionCarriesItsSpanMarker(t *testing.T) {
 	if health := recorder.Health(); health.Lost != 3 || health.Stopped {
 		t.Fatalf("health after the failed transaction = %+v", health)
 	}
-	next := append([]capture.HistoryEntry{{Kind: capture.HistoryRecordingStarted, Recording: &capture.HistoryRecordingChange{Reason: capture.HistoryStartEnabled}}},
+	next := append([]capture.HistoryEntry{{Kind: capture.HistoryRecordingStarted, Recording: &capture.HistoryRecordingChange{Reason: capture.HistoryStartEnabled}}, protocolOne},
 		finishedEncounter(1, 2, day.Add(time.Hour), 10, 200, capture.IntegrityIntact)...)
 	recorder.Submit(next, 0)
 	if err := recorder.Finish(ctx, capture.StopReasonRequested); err != nil {

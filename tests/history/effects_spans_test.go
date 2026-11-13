@@ -3,105 +3,12 @@ package history
 import (
 	"context"
 	"database/sql"
-	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
 
 	"wwlogs/internal/capture"
 )
-
-// createSchemaTwo writes a file as a schema 2 build did, labelled with the stale v0.6.0 registry value of that build line.
-func createSchemaTwo(t *testing.T, path string) {
-	t.Helper()
-	createSchemaOne(t, path)
-	db, err := sql.Open("sqlite", plainDSN(path))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	store := &Store{path: path, db: db, now: time.Now, build: testBuild, location: time.UTC}
-	if err := store.applyMigration(context.Background(), migrations[1]); err != nil {
-		t.Fatalf("schema 2: %v", err)
-	}
-	for _, statement := range []string{
-		`UPDATE capture_session SET app_version = 'v0.6.0' WHERE id = 1`,
-		`INSERT INTO capture_session (id, session_uid, source, status, opened_at_ns, utc_offset_s, zone_name, history_level, app_version, app_build, app_commit, app_dirty, app_profile, protocol_schema, master_sha256)
-			VALUES (2, 'test-binary', 'replay', 'closed', 1700000100000000000, 0, 'UTC', 'encounters', 'UNAVAILABLE', 0, 'c', 'unknown', 'development', 'p', 'm')`,
-		`UPDATE encounter SET scene_instance_id = 2117, scene_recorded = 1, enemies_recorded = 1 WHERE id = 1`,
-		`INSERT INTO encounter_enemy (encounter_id, ordinal, template_id, damage_taken, hits_taken, damage_dealt, hits_dealt) VALUES (1, 0, 34000, 500, 5, 0, 0)`,
-		`INSERT INTO combat_event (capture_session_id, sequence, encounter_id, protocol_session, rpc_id, observed_at_ns, kind, flow, confidence, evidence, amount,
-			source_entity_id, source_generation, source_relation, target_entity_id, target_generation, target_relation)
-			VALUES (1, 1, 1, 1, 77, 1700000001000000000, 'damage', 'local_outgoing', 'confirmed', 'rpc', 500, 1, 0, 'LOCAL', 2, 0, 'UNRELATED')`,
-	} {
-		if _, err := db.Exec(statement); err != nil {
-			t.Fatalf("schema 2 row: %v", err)
-		}
-	}
-}
-
-func TestSchemaTwoIsUpgradedWithoutRaisingItsCoverage(t *testing.T) {
-	path := testPath(t)
-	createSchemaTwo(t, path)
-	store := openTestStore(t, path, nil)
-	if status := store.Status(); status.State != StateReady || status.SchemaVersion != 3 {
-		t.Fatalf("status = %+v", status)
-	}
-	if backups, _ := filepath.Glob(path + ".schema-2-*.bak"); len(backups) != 1 {
-		t.Fatalf("pre-migration copies = %v", backups)
-	}
-	ctx := context.Background()
-	day, err := store.Day(ctx, "2023-11-15", 0, 10, mustZone(t, "Asia/Tokyo"))
-	if err != nil || len(day.Encounters) != 1 {
-		t.Fatalf("day = %+v (%v)", day, err)
-	}
-	old := day.Encounters[0]
-	if !old.Coverage.CombatEvents || old.Coverage.EffectEvents || old.Coverage.SkillCasts || old.CheckpointAt != nil || old.IncompleteReason != "" ||
-		!old.Scene.Known || old.Scene.InstanceID != 2117 || old.MainEnemy == nil || old.DPS.Value != 50 {
-		t.Fatalf("upgraded row = %+v", old)
-	}
-	detail, err := store.Encounter(ctx, old.ID, time.UTC)
-	if err != nil || detail.Session.Coverage.EffectEvents || detail.Effects != (EffectWindow{}) {
-		t.Fatalf("an old encounter claims effect data: %+v %+v (%v)", detail.Session.Coverage, detail.Effects, err)
-	}
-	// The v0.6.0 label of a v0.7.0-line build is corrected and kept; a label that is not that stale value is left alone.
-	if detail.Session.AppVersion != "v0.7.0" || detail.Session.RecordedAppVersion != "v0.6.0" || detail.Session.StartReason != "capture_start" {
-		t.Fatalf("session = %+v", detail.Session)
-	}
-	var version string
-	var recorded sql.NullString
-	var events int
-	if err := store.db.QueryRowContext(ctx, "SELECT app_version, recorded_app_version, combat_events_recorded FROM capture_session WHERE id = 2").Scan(&version, &recorded, &events); err != nil ||
-		version != "UNAVAILABLE" || recorded.Valid || events != 0 {
-		t.Fatalf("session 2 = %q %v %d (%v)", version, recorded, events, err)
-	}
-	var stored int
-	if err := store.db.QueryRowContext(ctx, "SELECT count(*) FROM combat_event WHERE encounter_id = 1").Scan(&stored); err != nil || stored != 1 {
-		t.Fatalf("combat events = %d (%v)", stored, err)
-	}
-	assertIntegrity(t, store)
-}
-
-func TestSchemaOneIsUpgradedToTheLatestInOneStep(t *testing.T) {
-	path := testPath(t)
-	createSchemaOne(t, path)
-	store := openTestStore(t, path, nil)
-	var versions []int
-	rows, err := store.db.Query("SELECT version FROM schema_migration ORDER BY version")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for rows.Next() {
-		var version int
-		_ = rows.Scan(&version)
-		versions = append(versions, version)
-	}
-	rows.Close()
-	if !reflect.DeepEqual(versions, []int{1, 2, 3}) {
-		t.Fatalf("migrations = %v", versions)
-	}
-	assertIntegrity(t, store)
-}
 
 // effectChange builds one journaled effect change of instance on holder 10 from source 20.
 func effectChange(sequence, instance, afterCombat uint64, change capture.EffectChange, observation string, at time.Time, mutate func(*capture.HistoryEffect)) capture.HistoryEntry {
@@ -175,7 +82,7 @@ func TestEffectLifecycleIsStoredInOrderWithItsInstance(t *testing.T) {
 		t.Fatalf("instance 2 = %d %v (%v)", startRecorded, effectID, err)
 	}
 	day, err := store.Day(ctx, start.Format("2006-01-02"), 0, 10, time.UTC)
-	if err != nil || len(day.Encounters) != 1 || !day.Encounters[0].Coverage.EffectEvents || day.Encounters[0].Coverage.SkillCasts {
+	if err != nil || len(day.Encounters) != 1 {
 		t.Fatalf("day = %+v (%v)", day.Encounters, err)
 	}
 	detail, err := store.Encounter(ctx, day.Encounters[0].ID, time.UTC)
@@ -188,7 +95,7 @@ func TestEffectLifecycleIsStoredInOrderWithItsInstance(t *testing.T) {
 func TestRecordingSpansCloseAndOpenRows(t *testing.T) {
 	store := openTestStore(t, testPath(t), nil)
 	start := time.Date(2026, 11, 11, 2, 0, 0, 0, time.UTC).Local()
-	recorder, err := store.BeginSession(SessionStart{Source: SourceLive, Level: capture.HistoryEvents, Paused: true})
+	recorder, err := store.BeginSession(SessionStart{Source: SourceLive, Paused: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -199,7 +106,7 @@ func TestRecordingSpansCloseAndOpenRows(t *testing.T) {
 	second := finishedEncounter(1, 2, start.Add(time.Minute), 10, 200, capture.IntegrityIntact)
 	enabled := capture.HistoryEntry{Kind: capture.HistoryRecordingStarted, Recording: &capture.HistoryRecordingChange{Reason: capture.HistoryStartEnabled}}
 	stopped := capture.HistoryEntry{Kind: capture.HistoryRecordingStopped, Recording: &capture.HistoryRecordingChange{Reason: capture.HistoryStopDisabled, Open: []string{"1-2"}}}
-	recorder.Submit([]capture.HistoryEntry{enabled}, 0)
+	recorder.Submit([]capture.HistoryEntry{enabled, protocolOne}, 0)
 	recorder.Submit(first, 0)
 	// The second encounter is in progress when recording stops: it is kept unfinished, never finished.
 	recorder.Submit(second[:2], 0)
@@ -207,7 +114,7 @@ func TestRecordingSpansCloseAndOpenRows(t *testing.T) {
 	// Between spans only a recorded encounter's later integrity change is stored.
 	degraded := capture.DataIntegrity{Status: capture.IntegrityDegraded, Risks: []string{"combat_results_possibly_lost"}, TransportLosses: 1}
 	recorder.Submit([]capture.HistoryEntry{{Kind: capture.HistoryEncounterIntegrity, Encounter: "1-1", Integrity: &degraded}, second[2]}, 0)
-	recorder.Submit([]capture.HistoryEntry{enabled}, 0)
+	recorder.Submit([]capture.HistoryEntry{enabled, protocolOne}, 0)
 	recorder.Submit(finishedEncounter(1, 3, start.Add(2*time.Minute), 10, 300, capture.IntegrityIntact), 0)
 	if err := recorder.Finish(context.Background(), capture.StopReasonRequested); err != nil {
 		t.Fatal(err)
@@ -249,10 +156,7 @@ func TestCheckpointSurvivesAnAbnormalExitAsUnfinished(t *testing.T) {
 	checkpoint := *entries[2].Finished
 	checkpoint.Snapshot.State, checkpoint.Snapshot.Outcome, checkpoint.Snapshot.EndedAt, checkpoint.Snapshot.EndBasis = capture.EncounterActive, capture.EncounterOutcomeOpen, time.Time{}, ""
 	checkpoint.CheckpointAt = start.Add(12 * time.Second)
-	recorder, err := store.BeginSession(liveStart)
-	if err != nil {
-		t.Fatal(err)
-	}
+	recorder := begin(t, store, liveStart)
 	recorder.Submit(append(entries[:2:2], capture.HistoryEntry{Kind: capture.HistoryEncounterCheckpoint, Encounter: "1-1", Finished: &checkpoint}), 0)
 	// The application ends without finishing the session: storage drains, then the file is closed as an exit would leave it.
 	waitQueued(t, recorder)

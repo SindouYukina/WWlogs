@@ -347,8 +347,6 @@
     "internal/history/central_wal_process_windows_test.go": "tests/history/wal_process_windows_test.go",
     "tests/history/wal_failure_test.go": "",
     "internal/history/central_wal_failure_test.go": "tests/history/wal_failure_test.go",
-    "tests/history/compat_collector_windows_test.go": "",
-    "internal/history/central_compat_collector_windows_test.go": "tests/history/compat_collector_windows_test.go",
     "tests/history/torn_writes_windows_test.go": "",
     "internal/history/central_torn_writes_windows_test.go": "tests/history/torn_writes_windows_test.go",
     "tests/service/history_recording_test.go": "",

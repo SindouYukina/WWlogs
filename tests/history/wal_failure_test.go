@@ -15,10 +15,7 @@ func TestBusyHistoryLosesOnlyThatBatchAndMarksItsEncounter(t *testing.T) {
 	store := openTestStore(t, testPath(t), nil)
 	ctx := context.Background()
 	start := time.Date(2026, 11, 11, 7, 0, 0, 0, time.UTC).Local()
-	recorder, err := store.BeginSession(liveStart)
-	if err != nil {
-		t.Fatal(err)
-	}
+	recorder := begin(t, store, liveStart)
 	first := finishedEncounter(1, 1, start, 10, 100, capture.IntegrityIntact)
 	recorder.Submit(first[:2], 0)
 	waitQueued(t, recorder)
@@ -63,10 +60,7 @@ func TestFailedTransactionStoresNothingOfItsBatch(t *testing.T) {
 	store := openTestStore(t, testPath(t), nil)
 	ctx := context.Background()
 	start := time.Date(2026, 11, 11, 8, 0, 0, 0, time.UTC).Local()
-	recorder, err := store.BeginSession(liveStart)
-	if err != nil {
-		t.Fatal(err)
-	}
+	recorder := begin(t, store, liveStart)
 	first := finishedEncounter(1, 1, start, 10, 100, capture.IntegrityIntact)
 	recorder.Submit(first[:2], 0)
 	waitQueued(t, recorder)

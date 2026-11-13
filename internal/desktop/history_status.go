@@ -30,7 +30,7 @@ const (
 	historyStarting = "starting"
 	// historyUnavailable: the store could not be opened for recording or reading (Reason says why).
 	historyUnavailable = "unavailable"
-	// historyReadOnly: stored history can be read but nothing can be recorded (Reason: another process records, newer schema).
+	// historyReadOnly: stored history can be read but nothing can be recorded (Reason: another process records into it).
 	historyReadOnly = "read_only"
 	// historyWriteFailed: storage failed repeatedly during this capture and stopped; the capture itself runs on.
 	historyWriteFailed = "write_failed"
@@ -41,21 +41,16 @@ const (
 
 // historyIndicator is comparable, so the snapshot encoder can tell when it changed.
 type historyIndicator struct {
-	State  string `json:"state"`
-	Reason string `json:"reason,omitempty"`
-	// MigrationFailure is the conversion failure behind Reason encryption_migration_failed.
-	MigrationFailure string `json:"migrationFailure,omitempty"`
-	Enabled          bool   `json:"enabled"`
+	State   string `json:"state"`
+	Reason  string `json:"reason,omitempty"`
+	Enabled bool   `json:"enabled"`
 	// Capturing is true while a capture runs; Lost counts the journal entries of that capture that never reached storage,
 	// so the encounters they belong to are stored as incomplete.
 	Capturing bool   `json:"capturing"`
 	Lost      uint64 `json:"lost,omitempty"`
-	// Encrypted and KeyProtection describe the open file; PlaintextConverted is set when this run encrypted a plaintext
-	// history of an earlier build, and PlaintextBackups counts plaintext copies that could not be converted.
-	Encrypted          bool   `json:"encrypted"`
-	KeyProtection      string `json:"keyProtection,omitempty"`
-	PlaintextConverted bool   `json:"plaintextConverted,omitempty"`
-	PlaintextBackups   int    `json:"plaintextBackups,omitempty"`
+	// Encrypted and KeyProtection describe the open file.
+	Encrypted     bool   `json:"encrypted"`
+	KeyProtection string `json:"keyProtection,omitempty"`
 }
 
 // recorderTracker remembers the recorder of the running capture, so the indicator can read its health.
@@ -86,16 +81,13 @@ func (t *recorderTracker) health() history.RecorderHealth {
 // historyIndicatorOf decides the indicator. A store problem outranks the setting, which outranks the capture's state. begin is
 // how the running capture's history began (service.Status.History).
 func historyIndicatorOf(enabled bool, store history.Status, running bool, begin string, journal capture.HistoryRecordingState, health history.RecorderHealth) historyIndicator {
-	indicator := historyIndicator{
-		Enabled: enabled, Capturing: running, Encrypted: store.Encrypted, KeyProtection: store.KeyProtection,
-		PlaintextConverted: store.PlaintextMigration == history.PlaintextConverted, PlaintextBackups: store.PlaintextBackups,
-	}
+	indicator := historyIndicator{Enabled: enabled, Capturing: running, Encrypted: store.Encrypted, KeyProtection: store.KeyProtection}
 	if running {
 		indicator.Lost = health.Lost
 	}
 	switch {
 	case store.State == history.StateUnavailable:
-		indicator.State, indicator.Reason, indicator.MigrationFailure = historyUnavailable, store.Reason, store.MigrationFailure
+		indicator.State, indicator.Reason = historyUnavailable, store.Reason
 	case store.State == history.StateReadOnly:
 		indicator.State, indicator.Reason = historyReadOnly, store.Reason
 	case !enabled:

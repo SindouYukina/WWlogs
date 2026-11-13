@@ -29,7 +29,6 @@
     "state": "기록 상태"
   },
   "unidentified": "미확인",
-  "notRecorded": "기록 안 됨",
   "correlatedNote": "Master 대응표로 얻은 이름입니다. 현재 게임 버전과의 호환성은 검증되지 않았습니다",
   "sameType": "×{{n}}",
   "unreliableShort": "신뢰할 수 없음",
@@ -61,6 +60,7 @@
   },
   "back": "{{date}}(으)로 돌아가기",
   "detailTitle": "{{date}} {{time}}",
+  "gameVersion": "게임 버전 {{version}}",
   "timeRange": "시각",
   "recordedBy": "기록 출처",
   "incompleteNote": "이 기록의 일부를 저장하지 못해 저장된 값이 실제보다 낮을 수 있습니다.",
@@ -69,7 +69,6 @@
   "timelineMissing": "저장된 타임라인 없음",
   "enemies": "적",
   "enemyCount": "{{n}}개체",
-  "enemiesNotRecorded": "이 전투에는 적 정보가 기록되지 않았습니다.",
   "noEnemies": "이 전투에서 확인된 적이 없습니다.",
   "enemyName": "적",
   "enemyDamageTaken": "받은 피해",
@@ -81,13 +80,11 @@
     "not_a_history_file": "기록 파일이 WWlogs 기록이 아니어서 그대로 두었습니다. 기록이 저장되지 않습니다.",
     "integrity_check_failed": "기록 파일이 무결성 검사를 통과하지 못해 그대로 두었습니다. 기록이 저장되지 않습니다.",
     "open_failed": "전투 기록을 열 수 없습니다. 캡처는 평소대로 동작하지만 기록은 저장되지 않습니다.",
-    "migration_failed": "전투 기록을 업그레이드할 수 없습니다. 백업을 남겼으며 기록은 저장되지 않습니다.",
     "no_history_file": "사용할 수 있는 전투 기록이 없습니다.",
     "storage_stopped": "쓰기 오류가 반복되어 기록 저장을 중단했습니다. 캡처는 평소대로 동작합니다.",
     "key_missing": "기록 파일은 있지만 키 파일이 없습니다. 파일은 변경되지 않았고 기록도 저장되지 않습니다. 읽으려면 combat-history.key를 복원하세요.",
     "key_unavailable": "Windows가 이 사용자의 기록 키를 풀지 못했습니다. 파일은 변경되지 않았고 기록도 저장되지 않습니다.",
     "key_mismatch": "기록 키로 이 기록 파일을 열 수 없습니다. 파일은 변경되지 않았고 기록도 저장되지 않습니다.",
-    "encryption_migration_failed": "암호화되지 않은 기존 기록을 암호화하지 못했습니다. 파일은 그대로이며 기록도 저장되지 않습니다. WWlogs는 다음 실행 때 다시 시도합니다.",
     "duplicate_source": "이 캡처 파일은 이미 기록에 있으므로 다시 저장하지 않습니다."
   },
   "localEncrypted": "전투 기록은 이 PC에만 저장되며, Windows가 사용자 계정별로 보호하는 키로 암호화됩니다.",
@@ -115,15 +112,12 @@
     "not_finished": "이 전투가 끝나기 전에 캡처가 종료되었습니다."
   },
   "checkpointNote": "아래 값은 {{time}}의 마지막 체크포인트입니다. 이 전투는 불완전하며 최종 결과가 아닙니다.",
-  "versionCorrected": "{{version}}(으)로 기록되었습니다(v0.7.0 개발 라인 빌드, {{commit}}). 기록을 업그레이드할 때 수정되었습니다.",
   "coverage": {
     "title": "이 기록에 포함된 내용",
     "combat": "피해와 치유",
     "combatStored": "확인된 모든 피해와 치유 결과",
-    "combatTotalsOnly": "전투 합계만",
     "effects": "효과 수명 주기",
     "effectsStored": "이 전투 동안 효과 {{instances}}개에서 총 {{changes}}회 변화",
-    "effectsNotStored": "저장되지 않음: 이 기록은 WWlogs가 효과 이벤트를 저장하기 전에 만들어졌습니다",
     "skillCasts": "스킬 시전",
     "skillCastsNotStored": "저장되지 않음: 스킬 시전에 대한 신뢰할 수 있는 출처가 없으며, 스킬 표는 피해 적중을 집계합니다",
     "effectsDerived": "이 중 {{derived}}회의 종료는 다른 사실(보유자 퇴장 등)에서 추론한 것이고, {{untracked}}회는 추적 종료로 관측된 해제가 아닙니다.",
@@ -147,13 +141,6 @@
   },
   "clear": {
     "done": "기록을 지웠습니다: 전투 {{n}}개를 삭제했습니다."
-  },
-  "migration": {
-    "insufficient_space": "디스크 여유 공간이 부족해 기존 기록을 암호화할 수 없습니다. 파일은 그대로입니다. 공간을 확보한 뒤 WWlogs를 다시 시작하세요.",
-    "file_in_use": "다른 프로그램이 기존 기록을 사용 중이라 암호화할 수 없습니다. 파일은 그대로입니다. 그 프로그램을 닫은 뒤 WWlogs를 다시 시작하세요.",
-    "verification_failed": "기존 기록의 암호화 사본이 원본과 일치하지 않아 폐기했습니다. 기록은 그대로입니다.",
-    "copy_failed": "기존 기록을 암호화 파일로 복사하지 못했습니다. 파일은 그대로입니다.",
-    "unreadable": "기존 기록을 읽을 수 없어 암호화하지 않았습니다. 파일은 그대로입니다."
   },
   "analysis": {
     "loading": "이 전투를 분석하는 중…",
@@ -194,7 +181,6 @@
     "state": {
       "ready": "분석 가능",
       "not_finished": "시간별 분석은 종료된 전투만 가능합니다. 종료되지 않은 기록에는 대조할 최종 결과가 없습니다.",
-      "no_events": "이 기록에는 전투 합계만 저장되어 개별 결과가 없으므로 시간별로 분석할 수 없습니다.",
       "too_large": "이 전투에 저장된 이벤트 수가 한 번의 분석 한도를 넘어 분석하지 않습니다."
     },
     "actor": {
@@ -240,7 +226,6 @@
       "applies": "부여 횟수",
       "unknownEffect": "미확인 효과",
       "none": "이 범위에 해당하는 효과가 없습니다.",
-      "notStored": "이 기록에는 효과 이벤트가 저장되지 않았습니다.",
       "selectHint": "효과를 선택하면 적용 구간과 그 근거를 볼 수 있습니다.",
       "hidden": "게임 HUD에 표시되지 않는 효과가 {{n}}개 더 있습니다. ‘추적한 전체’로 전환하면 볼 수 있습니다.",
       "stale": "효과 {{n}}개는 전투 시작 전에 서버가 제시한 시간이 지났고 이후 메시지도 없어 표시하지 않습니다.",

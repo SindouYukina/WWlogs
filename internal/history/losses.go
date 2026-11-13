@@ -9,8 +9,9 @@ import "wwlogs/internal/capture"
 // was lost becomes a lossNote that takes the entries' place in the journal: it travels through the queue between the entries
 // before and after them, so the writer applies it in the span the entries belonged to. Applying a note counts the entries on
 // that span and marks the encounters they belonged to incomplete; an entry that belonged to no single encounter, such as an
-// effect change or a transport loss, marks every encounter of the span. Span markers are never turned into notes while the
-// writer runs: they are held in order with the notes, so the entries after them always land in the right span.
+// effect change or a transport loss, marks every encounter of the span. Structural entries, the span markers and protocol
+// sessions (structural), are never turned into notes while the writer runs: they are held in order with the notes, so the
+// entries after them always land in the right span and protocol session. "Markers" below means these entries.
 
 // lossNote stands for journal entries that were not stored.
 type lossNote struct {
@@ -149,29 +150,53 @@ type submission struct {
 // size is the number of queue places the submission takes.
 func (s submission) size() int { return len(s.held) + len(s.entries) }
 
-// lostSubmissions turns everything of a failed or skipped transaction into held items in journal order: span markers and
-// notes stay as they are, and every other entry becomes part of a note for place. It returns how many entries other than span
-// markers it turned into notes.
-func lostSubmissions(place lossPlace, subs []submission) (held, uint64) {
+// lostSubmissions turns everything of a failed or skipped transaction into held items in journal order: markers and notes
+// stay as they are, and every other entry becomes part of a note for place. A marker the transaction refused (refused, when
+// not nil) becomes a note too: it belonged to no single encounter. It returns how many entries it turned into notes.
+func lostSubmissions(place lossPlace, subs []submission, refused *refusedEntry) (held, uint64) {
 	var h held
 	var lost uint64
-	for _, sub := range subs {
-		for _, item := range sub.held {
-			if item.note != nil {
+	isRefused := func(sub int, inHeld bool, index int) bool {
+		return refused != nil && refused.sub == sub && refused.held == inHeld && refused.index == index
+	}
+	refuse := func(entry capture.HistoryEntry) {
+		note := &lossNote{unattributed: true}
+		note.count(place, 1)
+		h = h.appendNote(note)
+		lost++
+	}
+	for i, sub := range subs {
+		for index, item := range sub.held {
+			switch {
+			case item.note != nil:
 				h = h.appendNote(item.note)
-			} else {
+			case isRefused(i, true, index):
+				refuse(item.marker)
+			default:
 				h = append(h, item)
 			}
 		}
+		entries := sub.entries
+		if refused != nil && refused.sub == i && !refused.held {
+			var n uint64
+			h, n = h.appendLost(place, entries[:refused.index])
+			lost += n
+			refuse(entries[refused.index])
+			entries = entries[refused.index+1:]
+		}
 		var n uint64
-		h, n = h.appendLost(place, sub.entries)
+		h, n = h.appendLost(place, entries)
 		lost += n
 	}
 	return h, lost
 }
 
-// structural reports a span marker: an entry that says which span the entries after it belong to. It is never refused for
-// lack of room or lost with a failed transaction while the writer runs.
+// structural reports an entry that says where the entries after it belong: a span marker, or the protocol session (and game
+// version) of what follows. It is never refused for lack of room or lost with a failed transaction while the writer runs.
 func structural(kind capture.HistoryEntryKind) bool {
-	return kind == capture.HistoryRecordingStarted || kind == capture.HistoryRecordingStopped
+	switch kind {
+	case capture.HistoryRecordingStarted, capture.HistoryRecordingStopped, capture.HistoryProtocolConfirmed:
+		return true
+	}
+	return false
 }

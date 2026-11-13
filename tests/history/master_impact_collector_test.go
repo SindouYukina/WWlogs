@@ -27,7 +27,7 @@ func TestHistoryMasterImpactCollector(t *testing.T) {
 	if fixture == "" || oldPath == "" || newPath == "" || out == "" {
 		t.Skip("set WWLOGS_HISTORY_MASTER_FIXTURE, _OLD, _NEW and _OUT to compare stored history under two Masters")
 	}
-	store, err := Open(compatOptions(copyFixture(t, fixture, nil)))
+	store, err := Open(Options{Path: copyFixture(t, fixture), Location: time.UTC, Build: &testBuild, MasterSHA256: "test-master"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -232,4 +232,32 @@ func short(value any) string {
 		text = text[:120] + "..."
 	}
 	return strings.ReplaceAll(text, "\n", " ")
+}
+
+// copyFixture copies every file of a history fixture except its lock file into a new directory, so the fixture itself is never
+// opened; it returns the history path there.
+func copyFixture(t *testing.T, from string) string {
+	t.Helper()
+	to := filepath.Join(t.TempDir(), "history")
+	if err := os.MkdirAll(to, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := os.ReadDir(from)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || strings.HasSuffix(name, ".lock") || strings.HasSuffix(name, ".json") {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(from, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(to, name), data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return filepath.Join(to, "combat-history.db")
 }

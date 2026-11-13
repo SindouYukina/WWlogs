@@ -45,8 +45,6 @@ const (
 	AnalysisReady = "ready"
 	// AnalysisNotFinished: only a finished encounter has a final result its stored results can be checked against.
 	AnalysisNotFinished = "not_finished"
-	// AnalysisNoEvents: the record stored encounter totals only (schema 1), so nothing can be split by time.
-	AnalysisNoEvents = "no_events"
 	// AnalysisTooLarge: the encounter holds more stored results than one analysis reads.
 	AnalysisTooLarge = "too_large"
 )
@@ -157,7 +155,6 @@ type encounterModel struct {
 	mismatch   string
 	effects    *effectModel
 	gaps       []analysisGap
-	coverage   EventCoverage
 	rejected   int64
 	cacheable  bool
 }
@@ -248,12 +245,9 @@ func (s *Store) loadModel(ctx context.Context, id int64, masters *capture.Master
 	if detail.Snapshot == nil || detail.Summary.EndedAt == nil {
 		return nil, errAnalysisState{AnalysisNotFinished}
 	}
-	if !detail.Session.Coverage.CombatEvents {
-		return nil, errAnalysisState{AnalysisNoEvents}
-	}
 	model := &encounterModel{
 		id: id, stored: *detail.Snapshot, timeline: detail.Timeline, integrity: detail.Snapshot.Integrity, enemies: detail.Enemies,
-		coverage: detail.Session.Coverage, rejected: detail.Session.EffectsRejected, byKey: map[string]int{},
+		rejected: detail.Session.EffectsRejected, byKey: map[string]int{},
 		enemyKeys: map[int]entityKey{}, enemyOf: map[entityKey]int{},
 	}
 	model.start, model.end = detail.Snapshot.StartedAt, detail.Snapshot.EndedAt
@@ -282,13 +276,11 @@ func (s *Store) loadModel(ctx context.Context, id int64, masters *capture.Master
 	if err := s.loadGaps(ctx, model); err != nil {
 		return nil, err
 	}
-	if model.coverage.EffectEvents {
-		effects, err := s.loadEffects(ctx, model, masters)
-		if err != nil {
-			return nil, err
-		}
-		model.effects = effects
+	effects, err := s.loadEffects(ctx, model, masters)
+	if err != nil {
+		return nil, err
 	}
+	model.effects = effects
 	return model, nil
 }
 

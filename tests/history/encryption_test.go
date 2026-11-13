@@ -5,12 +5,14 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/ncruces/go-sqlite3/driver"
 
 	"wwlogs/internal/capture"
 )
@@ -74,7 +76,7 @@ func TestHistoryIsEncryptedOnDiskWhileOpenAndAfterClose(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	unkeyed, err := openPlain(path, true)
+	unkeyed, err := driver.Open(fileURI(path, url.Values{"mode": {"ro"}}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,160 +193,6 @@ func TestAnotherKeyDoesNotOpenTheHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	reopenFails(t, path, nil, ReasonKeyMismatch)
-}
-
-func TestSchemaMigrationCopyIsEncrypted(t *testing.T) {
-	path := testPath(t)
-	createSchemaTwo(t, path)
-	store := openTestStore(t, path, nil)
-	if status := store.Status(); status.PlaintextMigration != PlaintextConverted || !status.Encrypted {
-		t.Fatalf("status = %+v", status)
-	}
-	backups, _ := filepath.Glob(path + ".schema-2-*.bak")
-	if len(backups) != 1 {
-		t.Fatalf("backups = %v", backups)
-	}
-	if kind, err := inspectFile(backups[0]); err != nil || kind != fileOpaque {
-		t.Fatalf("the pre-migration copy is %v (%v)", kind, err)
-	}
-	copyDB, err := openEncrypted(backups[0], store.key, true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer copyDB.Close()
-	var version, sessions int
-	if err := copyDB.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 2 {
-		t.Fatalf("copy schema = %d (%v)", version, err)
-	}
-	if err := copyDB.QueryRow("SELECT count(*) FROM capture_session").Scan(&sessions); err != nil || sessions != 2 {
-		t.Fatalf("copy sessions = %d (%v)", sessions, err)
-	}
-	store.Close()
-	requireNoPlaintext(t, filepath.Dir(path))
-}
-
-// copyFile copies a file byte for byte.
-func copyFile(t *testing.T, from, to string) {
-	t.Helper()
-	in, err := os.Open(from)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer in.Close()
-	out, err := os.Create(to)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := io.Copy(out, in); err != nil {
-		t.Fatal(err)
-	}
-	if err := out.Close(); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestPlaintextHistoryIsConvertedWithItsWriteAheadLog(t *testing.T) {
-	source := filepath.Join(t.TempDir(), "source.db")
-	createSchemaTwo(t, source)
-	// An earlier build that ended abnormally leaves committed rows only in its write-ahead log: copy the files while the
-	// writer is still open, so the copy has a log that was never checkpointed.
-	writer, err := sql.Open("sqlite", plainDSN(source))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := writer.Exec("PRAGMA wal_autocheckpoint=0"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := writer.Exec(`INSERT INTO capture_session (id, session_uid, source, status, opened_at_ns, utc_offset_s, zone_name, history_level, app_version, app_build, app_commit, app_dirty, app_profile, protocol_schema, master_sha256)
-		VALUES (3, 'only-in-the-log', 'live', 'open', 1700000200000000000, 0, 'UTC', 'events', 'v0.6.0', 0, 'c', 'false', 'public', 'p', 'test-master')`); err != nil {
-		t.Fatal(err)
-	}
-	path := testPath(t)
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	copyFile(t, source, path)
-	copyFile(t, source+"-wal", path+"-wal")
-	writer.Close()
-	if info, err := os.Stat(path + "-wal"); err != nil || info.Size() == 0 {
-		t.Fatalf("the copied write-ahead log is empty: %v", err)
-	}
-	// A plaintext pre-migration copy of the earlier build and an interrupted earlier conversion lie beside it.
-	copyFile(t, source, path+".schema-1-20261101T000000Z.bak")
-	if err := os.WriteFile(path+".encrypting", []byte("an interrupted conversion"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	store := openTestStore(t, path, nil)
-	status := store.Status()
-	if status.State != StateReady || !status.Encrypted || status.PlaintextMigration != PlaintextConverted || status.PlaintextBackups != 0 || status.RecoveredSessions != 1 {
-		t.Fatalf("status = %+v", status)
-	}
-	var uid, version string
-	if err := store.db.QueryRow("SELECT session_uid, app_version FROM capture_session WHERE id = 3").Scan(&uid, &version); err != nil || uid != "only-in-the-log" || version != "v0.7.0" {
-		t.Fatalf("the row that was only in the write-ahead log = %q %q (%v)", uid, version, err)
-	}
-	store.Close()
-	names := requireNoPlaintext(t, filepath.Dir(path))
-	for _, name := range names {
-		if strings.HasSuffix(name, ".encrypting") || strings.HasSuffix(name, "-wal") || strings.HasSuffix(name, "-shm") {
-			t.Fatalf("a conversion leftover remains: %v", names)
-		}
-	}
-}
-
-func TestFailedConversionLeavesThePlaintextHistoryUntouched(t *testing.T) {
-	path := testPath(t)
-	createSchemaTwo(t, path)
-	before := fileDigest(t, path)
-	// The conversion cannot write its copy: a directory occupies the copy's name.
-	blocker := path + ".encrypting"
-	if err := os.MkdirAll(filepath.Join(blocker, "occupied"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	store, err := Open(Options{Path: path, Location: time.UTC, Build: &testBuild})
-	if err == nil {
-		t.Fatal("a failed conversion opened without an error")
-	}
-	status := store.Status()
-	if status.State != StateUnavailable || status.Reason != ReasonEncryptionMigration || status.PlaintextMigration != PlaintextFailed || status.MigrationFailure != MigrationCopyFailed || status.Encrypted {
-		t.Fatalf("status = %+v", status)
-	}
-	if _, err := store.Day(context.Background(), "2023-11-15", 0, 10, time.UTC); !errors.Is(err, ErrUnavailable) {
-		t.Fatalf("an unconverted history answered a query: %v", err)
-	}
-	if _, err := store.BeginSession(liveStart); !errors.Is(err, ErrNotRecording) {
-		t.Fatalf("a plaintext history accepted a session: %v", err)
-	}
-	store.Close()
-	if fileDigest(t, path) != before {
-		t.Fatal("the plaintext history was modified by a failed conversion")
-	}
-	// Once the obstacle is gone the next open converts it.
-	if err := os.RemoveAll(blocker); err != nil {
-		t.Fatal(err)
-	}
-	if status := openTestStore(t, path, nil).Status(); status.State != StateReady || status.PlaintextMigration != PlaintextConverted {
-		t.Fatalf("retry status = %+v", status)
-	}
-}
-
-func TestConversionNeverFillsTheDisk(t *testing.T) {
-	path := testPath(t)
-	createSchemaTwo(t, path)
-	before := fileDigest(t, path)
-	availableSpace = func(string) (uint64, error) { return 1 << 20, nil }
-	defer func() { availableSpace = freeSpace }()
-	store, err := Open(Options{Path: path, Location: time.UTC, Build: &testBuild})
-	if err == nil || store.Status().MigrationFailure != MigrationInsufficientSpace || store.Status().State != StateUnavailable {
-		t.Fatalf("status = %+v (%v)", store.Status(), err)
-	}
-	store.Close()
-	if fileDigest(t, path) != before {
-		t.Fatal("the plaintext history was modified")
-	}
-	if _, err := os.Stat(path + ".encrypting"); !errors.Is(err, os.ErrNotExist) {
-		t.Fatal("a partial copy was left behind")
-	}
 }
 
 func TestKeyFileFormatIsVersioned(t *testing.T) {

@@ -74,6 +74,10 @@ const (
 	// HistoryEffectRejected is an effect APPLY the tracker could not keep at its capacity bound: its instance and later
 	// changes are missing from the history. HistoryEvents only.
 	HistoryEffectRejected HistoryEntryKind = "effect_rejected"
+	// HistoryProtocolConfirmed is a protocol session that reported the game version this build decodes (Protocol). Nothing
+	// of a protocol session is decoded before it, so everything a span holds of that session follows it: it is journaled
+	// when the session reports its version and again right after the start of every later span while the session lasts.
+	HistoryProtocolConfirmed HistoryEntryKind = "protocol_confirmed"
 )
 
 // Reasons a recorded span starts or stops.
@@ -107,6 +111,14 @@ type HistoryEntry struct {
 	Loss      *HistoryLoss
 	Recording *HistoryRecordingChange
 	Effect    *HistoryEffect
+	Protocol  *HistoryProtocolSession
+}
+
+// HistoryProtocolSession is one protocol session of the capture (its number, as CombatEventKey.ProtocolSession and the
+// encounters name it) with the major.minor game version it reported.
+type HistoryProtocolSession struct {
+	Number      int
+	GameVersion string
 }
 
 // HistoryEncounterOpening is an encounter as it opened. Its start may still move back by the pre-roll window, so the
@@ -334,6 +346,8 @@ type historyJournal struct {
 	sequence        uint64
 	effectSequence  uint64
 	effectInstances uint64
+	// protocol is the protocol session decoded now, once it confirmed its game version; zero before that.
+	protocol HistoryProtocolSession
 }
 
 func (j *historyJournal) onLocked() bool { return j.level != HistoryOff && j.recording }
@@ -423,11 +437,46 @@ func (j *historyJournal) assign(sequence uint64, encounter string) {
 	}
 }
 
-// startLocked opens a recorded span. Span markers are never refused at the bound: without them a sink could not tell which
-// entries belong to which span.
+// startLocked opens a recorded span and names the protocol session it starts in. Span markers and protocol sessions are
+// never refused at the bound: without them a sink could not tell which span, and which protocol session, an entry belongs
+// to.
 func (j *historyJournal) startLocked(reason string) {
 	j.recording = true
 	j.entries = append(j.entries, HistoryEntry{Kind: HistoryRecordingStarted, Recording: &HistoryRecordingChange{Reason: reason}})
+	j.protocolLocked()
+}
+
+// protocolLocked journals the protocol session decoded now, when it confirmed its game version.
+func (j *historyJournal) protocolLocked() {
+	if j.protocol.Number == 0 {
+		return
+	}
+	protocol := j.protocol
+	j.entries = append(j.entries, HistoryEntry{Kind: HistoryProtocolConfirmed, Protocol: &protocol})
+}
+
+// confirmProtocol notes that protocol session number reported gameVersion, the version this build decodes, and journals it
+// while a span records.
+func (j *historyJournal) confirmProtocol(number int, gameVersion string) {
+	if j == nil {
+		return
+	}
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	j.protocol = HistoryProtocolSession{Number: number, GameVersion: gameVersion}
+	if j.onLocked() {
+		j.protocolLocked()
+	}
+}
+
+// endProtocol forgets the protocol session at a new handshake: the next one is decoded only once it confirms its version.
+func (j *historyJournal) endProtocol() {
+	if j == nil {
+		return
+	}
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	j.protocol = HistoryProtocolSession{}
 }
 
 func (j *historyJournal) stopLocked(reason string, open []string) {
@@ -444,6 +493,22 @@ func (j *historyJournal) takeLocked() ([]HistoryEntry, uint64) {
 // historyKey is the encounter key journal entries use: the engine's encounter ID without its process-local capture prefix.
 func historyKey(intervalID, sequence uint64) string {
 	return strconv.FormatUint(intervalID, 10) + "-" + strconv.FormatUint(sequence, 10)
+}
+
+// confirmProtocolSession tells the journal that protocol session number reported gameVersion, the game version this build
+// decodes (protocol_session.go); endProtocolSession that a new handshake ended it.
+func (s *DamageStatistics) confirmProtocolSession(number int, gameVersion string) {
+	if s == nil {
+		return
+	}
+	s.history.confirmProtocol(number, gameVersion)
+}
+
+func (s *DamageStatistics) endProtocolSession() {
+	if s == nil {
+		return
+	}
+	s.history.endProtocol()
 }
 
 // EnableHistory turns the journal on at level and records from now on; HistoryOff turns it off and forgets what waits.

@@ -156,6 +156,8 @@ body[data-view="overlay"][data-editing="true"] { --wails-draggable: drag; }
 .ww-history-detail { display: flex; flex-direction: column; gap: var(--ww-space-3); }
 .ww-history-detail-head { display: flex; align-items: center; justify-content: space-between; gap: var(--ww-space-3); flex-wrap: wrap; }
 .ww-history-detail-head h3 { margin: 0; font-size: var(--ww-text-lg); font-weight: var(--ww-weight-semibold); }
+/* The game version follows the date and time as quiet metadata, not a badge. */
+.ww-history-version { font-weight: var(--ww-weight-regular); color: var(--ww-text-3); }
 .ww-history-chips { display: flex; flex-wrap: wrap; gap: var(--ww-space-1_5); }
 .ww-history-facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: var(--ww-space-2) var(--ww-space-4); margin: 0; font-size: var(--ww-text-sm); }
 .ww-history-facts > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }

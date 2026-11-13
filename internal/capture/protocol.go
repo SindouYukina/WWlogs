@@ -1180,6 +1180,7 @@ func (p *processor) startProtocolSessionStatistics(at time.Time) {
 	}
 	p.damageStatistics.observeSessionChange(at)
 	p.flushEncounterTransitions()
+	p.damageStatistics.endProtocolSession()
 	if p.intervalPerProtocolSession && p.sessionNumber > 1 {
 		p.damageStatistics.Reset()
 	}

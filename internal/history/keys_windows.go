@@ -3,9 +3,7 @@
 package history
 
 import (
-	"errors"
 	"fmt"
-	"path/filepath"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -63,30 +61,4 @@ func (dpapiProvider) Unseal(sealed []byte) ([]byte, error) {
 		return nil, fmt.Errorf("DPAPI unseal: %w", err)
 	}
 	return takeBlob(out), nil
-}
-
-// replaceFile moves from over to in one step and waits until the move is on disk.
-func replaceFile(from, to string) error {
-	source, err := windows.UTF16PtrFromString(from)
-	if err != nil {
-		return err
-	}
-	target, err := windows.UTF16PtrFromString(to)
-	if err != nil {
-		return err
-	}
-	return windows.MoveFileEx(source, target, windows.MOVEFILE_REPLACE_EXISTING|windows.MOVEFILE_WRITE_THROUGH)
-}
-
-// freeSpace is the space the current user may still use on the volume of path.
-func freeSpace(path string) (uint64, error) {
-	directory, err := windows.UTF16PtrFromString(filepath.Dir(path))
-	if err != nil {
-		return 0, err
-	}
-	var available, total, free uint64
-	if err := windows.GetDiskFreeSpaceEx(directory, &available, &total, &free); err != nil {
-		return 0, errors.Join(errors.New("read free disk space"), err)
-	}
-	return available, nil
 }
