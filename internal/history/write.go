@@ -648,6 +648,18 @@ func nullableFloat(value float64, known bool) any {
 	return value
 }
 
+// endingChanges are the changes after which an effect instance is over: nothing more of it is stored.
+var endingChanges = map[capture.EffectChange]bool{capture.EffectChangeRemove: true, capture.EffectChangeHolderRemoved: true,
+	capture.EffectChangeSuperseded: true, capture.EffectChangeUntracked: true, capture.EffectChangeInstant: true}
+
+// endedAt is the instance's ended_at_ns after effect: its time when the change ends the instance, NULL otherwise.
+func endedAt(effect *capture.HistoryEffect) any {
+	if !endingChanges[effect.Change] {
+		return nil
+	}
+	return unixNanos(effect.ObservedAt)
+}
+
 // insertEffect stores one effect lifecycle change. The instance row is created by the first change of the span that names
 // it; a later change only fills what was unknown (a relation, a role, a type, the effect or the source) and never replaces
 // what is known, as the tracker never downgrades a known relation.
@@ -663,9 +675,12 @@ func (w *sessionWriter) insertEffect(ctx context.Context, effect *capture.Histor
 	if _, err := w.tx.ExecContext(ctx, `INSERT INTO effect_instance (capture_session_id, instance, protocol_session, holder_entity_id, holder_generation,
 		effect_id, definition_linked, source_entity_id, holder_relation, source_relation,
 		holder_player_id, holder_role_id, holder_role_basis, holder_monster_id, holder_template_id,
-		source_player_id, source_role_id, source_role_basis, source_monster_id, source_template_id, origin, first_observed_ns, start_recorded)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		source_player_id, source_role_id, source_role_basis, source_monster_id, source_template_id, origin, first_observed_ns, start_recorded,
+		first_change_ns, ended_at_ns)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (capture_session_id, instance) DO UPDATE SET
+			first_change_ns = COALESCE(effect_instance.first_change_ns, excluded.first_change_ns),
+			ended_at_ns = excluded.ended_at_ns,
 			effect_id = COALESCE(effect_instance.effect_id, excluded.effect_id),
 			definition_linked = max(effect_instance.definition_linked, excluded.definition_linked),
 			source_entity_id = COALESCE(effect_instance.source_entity_id, excluded.source_entity_id),
@@ -685,7 +700,7 @@ func (w *sessionWriter) insertEffect(ctx context.Context, effect *capture.Histor
 		nullableUint(effect.EffectID, effect.HasEffectID), boolInt(effect.DefinitionLinked), nullableUint(effect.SourceEntityID, effect.HasSource),
 		string(effect.HolderRelation), string(effect.SourceRelation),
 		holderPlayer, holderRole, holderBasis, holderMonster, holderTemplate, sourcePlayer, sourceRole, sourceBasis, sourceMonster, sourceTemplate,
-		string(effect.Origin), unixNanos(effect.FirstObservedAt), boolInt(startRecorded)); err != nil {
+		string(effect.Origin), unixNanos(effect.FirstObservedAt), boolInt(startRecorded), unixNanos(effect.ObservedAt), endedAt(effect)); err != nil {
 		return err
 	}
 	var basis any

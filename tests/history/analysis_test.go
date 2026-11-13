@@ -4,6 +4,8 @@ import (
 	"context"
 	"math"
 	"strconv"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -574,5 +576,75 @@ func TestOnlyFinishedEncountersWithEventsAreAnalysed(t *testing.T) {
 	}
 	if _, err := store.Analysis(context.Background(), 999, AnalysisQuery{Enemy: -1}, nil); err != ErrNotFound {
 		t.Fatalf("a missing encounter = %v", err)
+	}
+}
+
+// TestConcurrentRequestsShareOneModelLoad asks for a model that is not cached from several requests while its load runs, as
+// opening an encounter asks for its analysis, effect lanes and skill hits together: the encounter is read once and every
+// request gets that model; a later request gets it from the cache.
+func TestConcurrentRequestsShareOneModelLoad(t *testing.T) {
+	var cache modelCache
+	var reads atomic.Int32
+	release := make(chan struct{})
+	read := func() (*encounterModel, error) {
+		reads.Add(1)
+		<-release
+		return &encounterModel{id: 7, cacheable: true}, nil
+	}
+	const requests = 8
+	models := make([]*encounterModel, requests)
+	var wg sync.WaitGroup
+	for i := range models {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			model, err := cache.load(context.Background(), 7, read)
+			if err != nil {
+				t.Error(err)
+			}
+			models[i] = model
+		}(i)
+	}
+	time.Sleep(50 * time.Millisecond)
+	close(release)
+	wg.Wait()
+	if n := reads.Load(); n != 1 {
+		t.Fatalf("%d requests read the encounter %d times", requests, n)
+	}
+	for i := range models {
+		if models[i] == nil || models[i] != models[0] {
+			t.Fatalf("request %d got a model of its own", i)
+		}
+	}
+	if again, _ := cache.load(context.Background(), 7, read); again != models[0] || reads.Load() != 1 {
+		t.Fatal("a later request read the encounter again")
+	}
+}
+
+// TestModelLoadedAcrossAClearIsNotKept clears the cache while a load runs, as a deletion does: that load's model may hold
+// what was deleted, so the requests waiting for it get it, but the next request reads the encounter again.
+func TestModelLoadedAcrossAClearIsNotKept(t *testing.T) {
+	var cache modelCache
+	var reads atomic.Int32
+	started, release := make(chan struct{}), make(chan struct{})
+	read := func() (*encounterModel, error) {
+		if reads.Add(1) == 1 {
+			close(started)
+			<-release
+		}
+		return &encounterModel{id: 7, cacheable: true}, nil
+	}
+	done := make(chan *encounterModel)
+	go func() {
+		model, _ := cache.load(context.Background(), 7, read)
+		done <- model
+	}()
+	<-started
+	cache.clear()
+	close(release)
+	first := <-done
+	second, _ := cache.load(context.Background(), 7, read)
+	if first == nil || second == first || reads.Load() != 2 {
+		t.Fatalf("a load begun before a clear was kept (%d reads)", reads.Load())
 	}
 }

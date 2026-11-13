@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -232,4 +233,61 @@ func childSearchPlan(t *testing.T, store *Store, table string, columns []string)
 		details = append(details, detail)
 	}
 	return strings.Join(details, "; ")
+}
+
+// aliveBefore lists, for every instance of span with a change before at, the sequence of its last change before at, read
+// two ways: by scanning every change of the span before at (what the analysis read before effect_instance_by_life), and
+// through the instances' stored life as the analysis reads it now. Both must name the same changes.
+func aliveBefore(t *testing.T, store *Store, span int64, at int64) (scanned, byLife map[int64]int64) {
+	t.Helper()
+	read := func(query string, args ...any) map[int64]int64 {
+		rows, err := store.db.Query(query, args...)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+		out := map[int64]int64{}
+		for rows.Next() {
+			var instance, sequence int64
+			var change string
+			if err := rows.Scan(&instance, &sequence, &change); err != nil {
+				t.Fatal(err)
+			}
+			if !terminalChanges[change] {
+				out[instance] = sequence
+			}
+		}
+		return out
+	}
+	scanned = read("SELECT ev.instance, max(ev.sequence), ev.change_kind FROM effect_event ev WHERE ev.capture_session_id = ? AND ev.observed_at_ns < ? GROUP BY ev.instance", span, at)
+	byLife = read(`SELECT ev.instance, ev.sequence, ev.change_kind FROM effect_instance i JOIN effect_event ev ON ev.capture_session_id = i.capture_session_id AND ev.instance = i.instance
+		AND ev.sequence = (SELECT e.sequence FROM effect_event e WHERE e.capture_session_id = i.capture_session_id AND e.instance = i.instance AND +e.observed_at_ns < ? ORDER BY e.sequence DESC LIMIT 1)
+		WHERE i.capture_session_id = ? AND i.first_change_ns < ? AND (i.ended_at_ns IS NULL OR i.ended_at_ns >= ?)`, at, span, at, at)
+	return scanned, byLife
+}
+
+// TestInstanceLifeFindsTheInstancesAliveAtAnyMoment checks, at every second of a span and again after a deletion removed the
+// changes of an encounter, that the stored life of each effect instance finds exactly the instances a scan of all earlier
+// changes finds alive.
+func TestInstanceLifeFindsTheInstancesAliveAtAnyMoment(t *testing.T) {
+	store := openTestStore(t, testPath(t), nil)
+	first, _ := twoEncounters(t, store)
+	var span, from int64
+	if err := store.db.QueryRow("SELECT capture_session_id, started_at_ns FROM encounter WHERE id = ?", first).Scan(&span, &from); err != nil {
+		t.Fatal(err)
+	}
+	check := func(stage string) {
+		for second := int64(-1); second <= 80; second++ {
+			at := from + second*int64(time.Second)
+			scanned, byLife := aliveBefore(t, store, span, at)
+			if !reflect.DeepEqual(scanned, byLife) {
+				t.Fatalf("%s, %d s: scanning finds %v alive, the stored life %v", stage, second, scanned, byLife)
+			}
+		}
+	}
+	check("before the deletion")
+	if _, err := store.DeleteEncounter(context.Background(), first); err != nil {
+		t.Fatal(err)
+	}
+	check("after the deletion")
 }
