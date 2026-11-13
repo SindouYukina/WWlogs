@@ -61,7 +61,9 @@ func sendDamageRequest(p *processor, seconds float64, rpcID uint64) {
 
 func sendDamageResponse(p *processor, seconds float64, rpcID uint64, amount int32) {
 	pairingFrame(p, seconds)
-	p.handleDamageResponses(damageResponseBody(rpcID, amount))
+	if err := p.handleCombatReceivePacks(gameFrame{direction: "in", commandID: cmdCombatSendPackResponse, timestamp: pairingAt(seconds)}, damageResponseBody(rpcID, amount)); err != nil {
+		panic(err)
+	}
 }
 
 func TestDamageResponseBeforeRequestPairsAtResponseTime(t *testing.T) {

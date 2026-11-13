@@ -742,7 +742,7 @@ func TestPendingAndConsumedRPCWindowsStayBounded(t *testing.T) {
 		t.Fatalf("pending map not bounded: len=%d evicted=%d", len(p.pending), p.stats.evictedPending)
 	}
 	for rpcID := uint64(1); rpcID <= maxConsumedRPCIDs+10; rpcID++ {
-		p.rememberConsumed(rpcID)
+		p.rememberConsumed(rpcID, 0)
 	}
 	if len(p.consumed) != maxConsumedRPCIDs {
 		t.Fatalf("consumed RPC dedupe map not bounded: len=%d", len(p.consumed))

@@ -66,6 +66,23 @@ type consumedRef struct {
 	sequence uint64
 }
 
+// consumedResponse remembers a processed response: its place in the bounded FIFO and a digest of its payload, so that a
+// later copy with the same RequestId is told apart as an identical duplicate or as a conflicting one.
+type consumedResponse struct {
+	sequence uint64
+	digest   uint64
+}
+
+// responseDigest is the 64-bit FNV-1a hash of a DamageExecuteResponse payload. It only compares copies of one response.
+func responseDigest(payload []byte) uint64 {
+	hash := uint64(14695981039346656037)
+	for _, b := range payload {
+		hash ^= uint64(b)
+		hash *= 1099511628211
+	}
+	return hash
+}
+
 type pendingActiveRequest struct {
 	entityID    uint64
 	hasEntityID bool
@@ -77,10 +94,12 @@ type processorStats struct {
 	handshakeErrors                  int
 	damageRequests                   int
 	candidateResponses               int
+	standaloneNotifyResponses        int // of candidateResponses, those a standalone CombatReceivePackNotify carried
 	printed                          int
 	unpairedResponses                int
 	invalidResponses                 int
-	duplicateResponses               int
+	duplicateResponses               int // a further copy of a response already seen, byte for byte
+	conflictingResponses             int // a further response with the RequestId of one already seen but other content
 	missingAttackerEntityID          int
 	evictedPending                   int
 	entityAdds                       int
@@ -138,7 +157,7 @@ type processor struct {
 	pendingOrder              []pendingRef
 	pendingHead               int
 	pendingSequence           uint64
-	consumed                  map[uint64]uint64
+	consumed                  map[uint64]consumedResponse
 	consumedOrder             []consumedRef
 	consumedSequence          uint64
 	entities                  *entityResolver
@@ -241,7 +260,7 @@ func newProcessor(rsaKey *staticRSA, stdout, diagnostic, audit io.Writer) *proce
 	return &processor{
 		rsa:                  rsaKey,
 		pending:              make(map[uint64]pendingDamageRequest),
-		consumed:             make(map[uint64]uint64),
+		consumed:             make(map[uint64]consumedResponse),
 		activeRequests:       make(map[uint16]pendingActiveRequest),
 		combatActionRequests: make(map[combatActionRequestKey]combatActionRequest),
 		entities:             newEntityResolver(),
@@ -541,22 +560,19 @@ func (p *processor) handleFrame(frame gameFrame) {
 			p.stats.parseErrors++
 			fmt.Fprintf(p.diagnostic, "client_effect_push_parse_error=%v\n", err)
 		}
-	case cmdCombatSendPackResponse:
-		p.handleDamageResponses(plain)
-		if err := p.handleEmbeddedCombatReceivePackNotify(frame, plain); err != nil {
+	case cmdCombatSendPackResponse, cmdCombatReceivePackNotify:
+		if err := p.handleCombatReceivePacks(frame, plain); err != nil {
 			p.stats.parseErrors++
-			fmt.Fprintf(p.diagnostic, "combat_response_notify_parse_error=%v\n", err)
+			label := "combat_receive_pack_parse_error"
+			if frame.commandID == cmdCombatSendPackResponse {
+				label = "combat_response_notify_parse_error"
+			}
+			fmt.Fprintf(p.diagnostic, "%s=%v\n", label, err)
 			return
 		}
 	case cmdTimeCheckResponse, cmdUpdateTimerInfoNotify:
 		// TimeCheckResponse and UpdateTimerInfoNotify are interpreted by the
 		// schema-directed observer to preserve their observed field provenance.
-	case cmdCombatReceivePackNotify:
-		if err := p.handleCombatReceivePackNotify(frame, plain); err != nil {
-			p.stats.parseErrors++
-			fmt.Fprintf(p.diagnostic, "combat_receive_pack_parse_error=%v\n", err)
-			return
-		}
 	case cmdUpdateSceneGroupDataNotify:
 		if _, err := p.entities.applyUpdateSceneGroupDataNotify(plain); err != nil {
 			p.stats.parseErrors++
@@ -759,7 +775,7 @@ func (p *processor) handleProtoKeyResponse(body []byte) error {
 	p.pendingOrder = nil
 	p.pendingHead = 0
 	p.pendingSequence = 0
-	p.consumed = make(map[uint64]uint64)
+	p.consumed = make(map[uint64]consumedResponse)
 	p.consumedOrder = nil
 	p.consumedSequence = 0
 	// RPC ids restart with the session: a held response can never pair with a request of the new session.
@@ -925,80 +941,30 @@ func (p *processor) compactPendingOrder() {
 	p.pendingHead = 0
 }
 
-func (p *processor) rememberConsumed(rpcID uint64) {
+func (p *processor) rememberConsumed(rpcID, digest uint64) {
 	p.consumedSequence++
-	p.consumed[rpcID] = p.consumedSequence
+	p.consumed[rpcID] = consumedResponse{sequence: p.consumedSequence, digest: digest}
 	p.consumedOrder = append(p.consumedOrder, consumedRef{rpcID: rpcID, sequence: p.consumedSequence})
 	for len(p.consumed) > maxConsumedRPCIDs && len(p.consumedOrder) > 0 {
 		ref := p.consumedOrder[0]
 		p.consumedOrder = p.consumedOrder[1:]
-		if p.consumed[ref.rpcID] == ref.sequence {
+		if p.consumed[ref.rpcID].sequence == ref.sequence {
 			delete(p.consumed, ref.rpcID)
 		}
 	}
 }
 
-func (p *processor) handleDamageResponses(body []byte) {
-	p.expireHeldResponses()
-	outer, err := parseProtoFields(body)
-	if err != nil {
-		p.stats.parseErrors++
-		return
-	}
-	for _, field := range outer {
-		if field.number != fieldCombatSendPackResponseReceivePackNotify || field.wire != 2 { // aZn.hZn
-			continue
-		}
-		batches, err := parseProtoFields(field.data)
-		if err != nil {
-			p.stats.parseErrors++
-			continue
-		}
-		for _, batch := range batches {
-			if batch.number != fieldCombatReceivePackNotifyData || batch.wire != 2 { // hZn.$Fs batch
-				continue
-			}
-			items, err := parseProtoFields(batch.data)
-			if err != nil {
-				p.stats.parseErrors++
-				continue
-			}
-			for _, item := range items {
-				if item.number != fieldCombatReceiveDataCombatResponseData || item.wire != 2 { // $Fs.QLs ResponseData
-					continue
-				}
-				response, err := parseProtoFields(item.data)
-				if err != nil {
-					p.stats.parseErrors++
-					continue
-				}
-				var rpcID uint64
-				var hasRPC bool
-				var lis []byte
-				for _, responseField := range response {
-					if responseField.number == fieldCombatResponseDataRequestID && responseField.wire == 0 {
-						rpcID, hasRPC = responseField.value, true
-					}
-					if responseField.number == fieldCombatResponseDataDamageExecuteResponse && responseField.wire == 2 {
-						lis = responseField.data
-					}
-				}
-				if !hasRPC || lis == nil {
-					continue
-				}
-				p.stats.candidateResponses++
-				if p.census != nil {
-					p.census.innerEntries["Server->Client DamageExecuteResponse"]++
-				}
-				p.handleOneDamageResult(rpcID, lis)
-			}
-		}
-	}
-}
-
+// handleOneDamageResult takes one server DamageExecuteResponse, from either container (handleCombatReceivePacks). The
+// RequestId of the protocol session is the result's identity: a response is processed once, with the request of that
+// RequestId, and every further copy is counted as a duplicate (same bytes) or a conflicting response (other bytes),
+// never as a second result. Arrival time or equal values never make two responses one.
 func (p *processor) handleOneDamageResult(rpcID uint64, payload []byte) {
-	if _, already := p.consumed[rpcID]; already {
-		p.stats.duplicateResponses++
+	if consumed, already := p.consumed[rpcID]; already {
+		if consumed.digest == responseDigest(payload) {
+			p.stats.duplicateResponses++
+		} else {
+			p.stats.conflictingResponses++
+		}
 		return
 	}
 	request, matched := p.pending[rpcID]
@@ -1038,13 +1004,13 @@ func (p *processor) handleOneDamageResult(rpcID uint64, payload []byte) {
 	}
 	if !hasAmount || errorCode != 0 || immuneType != 0 {
 		p.stats.invalidResponses++
-		p.rememberConsumed(rpcID)
+		p.rememberConsumed(rpcID, responseDigest(payload))
 		delete(p.pending, rpcID)
 		p.writeNoAmountEvent(rpcID, request, hasAmount, errorCode, immuneType, hasChangeLife, changeLife)
 		return
 	}
 
-	p.rememberConsumed(rpcID)
+	p.rememberConsumed(rpcID, responseDigest(payload))
 	delete(p.pending, rpcID)
 	value := int64(amount)
 	if value < 0 {

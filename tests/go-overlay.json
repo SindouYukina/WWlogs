@@ -51,6 +51,8 @@
     "internal/capture/central_combat_state_dev_test.go": "tests/capture/combat_state_dev_test.go",
     "tests/capture/combat_state_test.go": "",
     "internal/capture/central_combat_state_test.go": "tests/capture/combat_state_test.go",
+    "tests/capture/combat_response_container_test.go": "",
+    "internal/capture/central_combat_response_container_test.go": "tests/capture/combat_response_container_test.go",
     "tests/capture/combat_statistics_dev_test.go": "",
     "internal/capture/central_combat_statistics_dev_test.go": "tests/capture/combat_statistics_dev_test.go",
     "tests/capture/combat_statistics_test.go": "",

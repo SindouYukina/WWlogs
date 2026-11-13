@@ -102,7 +102,7 @@ func TestProcessorSnapshotAndResetReturnsOldIntervalAndPreservesProtocolState(t 
 	p, _, _ := newPlayerRelevanceTestProcessor()
 	p.sessionNumber = 5
 	p.pending[42] = pendingDamageRequest{hasDamageID: true, damageID: 1}
-	p.consumed[99] = 1
+	p.consumed[99] = consumedResponse{sequence: 1}
 	addStatisticsOutgoingDamage(p.damageStatistics, 5, 10, time.Unix(10, 0))
 	addStatisticsOutgoingDamage(p.damageStatistics, 5, 20, time.Unix(20, 0))
 
@@ -115,7 +115,7 @@ func TestProcessorSnapshotAndResetReturnsOldIntervalAndPreservesProtocolState(t 
 		newInterval.DamageSpanDPS.Status != DPSStatusInsufficientData {
 		t.Fatalf("snapshot-and-reset did not switch intervals atomically: old=%+v new=%+v", oldInterval, newInterval)
 	}
-	if p.sessionNumber != 5 || p.pending[42].damageID != 1 || p.consumed[99] != 1 {
+	if p.sessionNumber != 5 || p.pending[42].damageID != 1 || p.consumed[99].sequence != 1 {
 		t.Fatalf("interval switch modified protocol session or RPC pairing state: session=%d pending=%+v consumed=%v", p.sessionNumber, p.pending, p.consumed)
 	}
 	addStatisticsOutgoingDamage(p.damageStatistics, 5, 7, time.Unix(30, 0))
@@ -128,7 +128,7 @@ func TestProcessorStatisticsAccessorsReturnCopiesAndResetSharedState(t *testing.
 	p, _, _ := newPlayerRelevanceTestProcessor()
 	p.sessionNumber = 7
 	p.pending[42] = pendingDamageRequest{hasDamageID: true, damageID: 1}
-	p.consumed[99] = 1
+	p.consumed[99] = consumedResponse{sequence: 1}
 	p.damageStatistics.addDamageEvent(combatEvent{
 		SessionNumber: 1, SourceEntityID: 100, HasSourceEntity: true, TargetEntityID: 200, HasTargetEntity: true,
 		EventTypeCandidate: "DAMAGE_CANDIDATE", Damage: 321,
@@ -147,7 +147,7 @@ func TestProcessorStatisticsAccessorsReturnCopiesAndResetSharedState(t *testing.
 	if got := p.damageStatisticsSnapshot(); got.DamageDealt != 0 || len(got.ByPlayerEntity) != 0 {
 		t.Fatalf("processor reset did not clear the shared statistics: %+v", got)
 	}
-	if p.sessionNumber != 7 || p.pending[42].damageID != 1 || p.consumed[99] != 1 {
+	if p.sessionNumber != 7 || p.pending[42].damageID != 1 || p.consumed[99].sequence != 1 {
 		t.Fatalf("statistics reset modified protocol session or RPC pairing state: session=%d pending=%+v consumed=%v", p.sessionNumber, p.pending, p.consumed)
 	}
 }
