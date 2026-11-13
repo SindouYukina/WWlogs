@@ -238,7 +238,7 @@ export function AnalysisWorkspace({ detail, timelineMode: mode, setTimelineMode:
   const healingFormat = (value: number) => healing.status === "lower_bound" ? `≥ ${format.integer(value)}` : format.integer(value)
   const cardScope = `analysis:${id}`
   const cardNote = `${rangeLabel} · ${whoLabel}`
-  return <div className="ww-analysis" data-field="analysis" data-encounter-id={id} data-range-from={analysis.range.fromMs} data-range-to={analysis.range.toMs} data-full={analysis.range.full}
+  return <div className="ww-analysis" data-field="analysis" data-encounter-id={id} data-reveal={reveal?.at === null ? "waiting" : undefined} data-range-from={analysis.range.fromMs} data-range-to={analysis.range.toMs} data-full={analysis.range.full}
     data-contributor={analysis.query.contributor} data-enemy={analysis.query.enemy} data-scope={analysis.query.effects}>
     <Card className="ww-analysis-toolbar">
       <div className="ww-analysis-toolbar-row" role="toolbar" aria-label={a("toolbar")}>

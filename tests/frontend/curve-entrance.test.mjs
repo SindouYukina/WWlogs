@@ -2,7 +2,7 @@ import test from "node:test"
 import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 import { curveEntrance, motionVariables } from "../../frontend/src/design/motion/tokens.ts"
-import { revealPhaseAt } from "../../frontend/src/design/motion/useReveal.ts"
+import { holdLimitMs, holdWaitMs, revealPhaseAt, settledFrames, settleFrame, settleLimitMs, smoothFrameFactor, unsettled } from "../../frontend/src/design/motion/useReveal.ts"
 
 const source = path => readFileSync(new URL(`../../${path}`, import.meta.url), "utf8")
 
@@ -71,9 +71,17 @@ test("the reveal widens a window over the lines with transforms only and holds n
     assert.doesNotMatch(rule, /\bboth\b|\bforwards\b|infinite/)
   }
   assert.ok(css.includes(':root[data-ww-motion="reduced"] .ww-atl-reveal[data-enter="true"], :root[data-ww-motion="reduced"] .ww-atl-reveal[data-enter="true"] > * { animation: none; }'))
-  // While it waits, the window holds the start: nothing of the lines shows yet, and nothing animates.
-  assert.ok(css.includes('.ww-atl-reveal[data-enter="waiting"] { transform: translateX(-100%); }'))
-  assert.ok(css.includes('.ww-atl-reveal[data-enter="waiting"] > .ww-atl-reveal-inner { transform: translateX(100%); }'))
+  // While it waits, the content is drawn in place but invisible, in the composited layers the sweep then moves, so its first
+  // rasterization (and any GPU program it is the first to need) is done before anything moves; nothing can be pointed at.
+  assert.ok(css.includes('.ww-atl-reveal[data-enter], .ww-atl-reveal[data-enter] > * { will-change: transform; }'))
+  assert.ok(css.includes('.ww-atl-reveal[data-enter="waiting"] { opacity: 0.004; }'))
+  assert.ok(css.includes('.ww-atl-reveal[data-enter="waiting"], .ww-atl-reveal[data-enter="waiting"] * { pointer-events: none; }'))
+  assert.ok(css.includes('.ww-atl-reveal[data-enter="waiting"] > .ww-atl-reveal-edge { opacity: 0.85; }'))
+  assert.doesNotMatch(css, /\.ww-atl-reveal\[data-enter="waiting"\][^{]*\{[^}]*transform:/, "waiting no longer moves the content out of view")
+  // The edge is there while waiting too, so its glow is drawn once before the sweep.
+  for (const file of ["frontend/src/design/components/AnalysisTimeline.tsx", "frontend/src/design/components/IconTimeline.tsx"]) {
+    assert.match(source(file), /\{phase && <i className="ww-atl-reveal-edge" aria-hidden="true" \/>\}/, file)
+  }
 })
 
 test("only the lines are revealed: capture gaps, the axis and the values are drawn in full from the first frame", () => {
@@ -101,11 +109,15 @@ test("the curve reveal plays when an encounter opens or on replay, and nothing e
   assert.match(timeline, /addEventListener\("animationcancel", ended\)/)
   assert.match(timeline, /<div ref=\{revealWindow\} className="ww-atl-reveal"/)
   const hook = source("frontend/src/design/motion/useReveal.ts")
-  assert.doesNotMatch(hook, /setTimeout|setInterval/)
+  assert.doesNotMatch(hook, /setInterval/)
+  // The only timer bounds a hold; it is never a delay of its own.
+  assert.equal(hook.match(/setTimeout/g)?.length, 1)
+  assert.match(hook, /else limit = window\.setTimeout\(waitForFrames, wait\)/)
   assert.match(hook, /if \(ready && opened !== key\) \{/)
-  // It begins after the page that shows it was drawn, at the first idle moment of the main thread (bounded), never on a fixed timer.
-  assert.match(hook, /setClock\(current => \(\{ key: \(current\?\.key \?\? 0\) \+ 1, at: null \}\)\)/)
-  assert.match(hook, /requestIdleCallback\(begin, \{ timeout: startWaitLimitMs \}\)/)
+  // It begins once nothing holds it and the frames since have settled (a first rasterization delays them), at the first idle
+  // moment of the main thread (bounded).
+  assert.match(hook, /setClock\(current => \(\{ key: \(current\?\.key \?\? 0\) \+ 1, at: null, hold \}\)\)/)
+  assert.match(hook, /settle = settleFrame\(settle, now\)\s+if \(settle\.smooth >= settledFrames \|\| now - started >= settleLimitMs\) idle = requestIdleCallback\(begin, \{ timeout: startWaitLimitMs \}\)\s+else frame = requestAnimationFrame\(step\)/)
   assert.match(hook, /const startWaitLimitMs = 150/)
   const view = source("frontend/src/views/HistoryAnalysis.tsx")
   // Only a new encounter whose own analysis is ready starts the clock; ranges, filters, tabs and hover are not inputs.
@@ -113,4 +125,55 @@ test("the curve reveal plays when an encounter opens or on replay, and nothing e
   assert.match(view, /<AnalysisTimeline [^>]*reveal=\{reveal\}/)
   assert.match(view, /onClick=\{replay\}[^>]*data-field="replay-entrance"/)
   assert.ok(source("frontend/src/design/views.css").includes(':root[data-ww-motion="reduced"] .ww-analysis-replay { display: none; }'))
+})
+
+test("a surface still loading or rendering holds the reveal at the start, for a bounded time", () => {
+  // Nothing held: the start frames are awaited at once. Held: until the holds go, at most holdLimitMs after the wait began.
+  assert.equal(holdWaitMs(0, 0), 0)
+  assert.equal(holdWaitMs(0, 5000), 0)
+  assert.equal(holdWaitMs(1, 0), holdLimitMs)
+  assert.equal(holdWaitMs(2, 400), holdLimitMs - 400)
+  assert.equal(holdWaitMs(1, holdLimitMs), 0)
+  assert.equal(holdWaitMs(1, holdLimitMs + 1), 0)
+  assert.ok(holdLimitMs >= 1000 && holdLimitMs <= 2000, `${holdLimitMs} ms`)
+  const hook = source("frontend/src/design/motion/useReveal.ts")
+  // A hold or a release reschedules the start without rendering the page again, and a playing that began is never held.
+  assert.match(hook, /holds\.current\.add\(token\)\s+reschedule\.current\(\)/)
+  assert.match(hook, /if \(holds\.current\.delete\(token\)\) reschedule\.current\(\)/)
+  assert.match(hook, /if \(!hold \|\| !waiting \|\| !pending\) return\s+return hold\(\)/)
+  // The icon timeline holds while its tracks are on their way or not rendered yet (they render in a deferred pass).
+  const icons = source("frontend/src/design/components/IconTimeline.tsx")
+  assert.match(icons, /useRevealHold\(reveal, loading \|\| \(latestGroups\.length > 0 && groups !== latestGroups\)\)/)
+  assert.match(icons, /const groups = useDeferredValue\(latestGroups, noGroups\)/)
+})
+
+test("the opening bars wait with the reveal and the hit icons have an opaque border", () => {
+  const css = source("frontend/src/design/views.css")
+  // While the reveal waits for the page's first drawing, the bars of the opening wait at their start too.
+  assert.ok(css.includes('.ww-analysis[data-reveal="waiting"] .ww-bar[data-enter="true"] > * { animation-play-state: paused; }'))
+  assert.match(source("frontend/src/views/HistoryAnalysis.tsx"), /className="ww-analysis" data-field="analysis" data-encounter-id=\{id\} data-reveal=\{reveal\?\.at === null \? "waiting" : undefined\}/)
+  // A translucent rounded border over a background is drawn as a path; the icon border is the same colour, mixed opaque.
+  const hit = css.split(/\r?\n/).find(line => line.startsWith(".ww-itl-hit {"))
+  assert.match(hit, /border: 1px solid color-mix\(in srgb, var\(--ww-series, var\(--ww-ink-400\)\) 75%, color-mix\(in oklch, var\(--ww-series, var\(--ww-ink-400\)\) 30%, var\(--ww-surface-3\)\)\);/)
+  assert.match(hit, /background: color-mix\(in oklch, var\(--ww-series, var\(--ww-ink-400\)\) 30%, var\(--ww-surface-3\)\);/)
+  assert.doesNotMatch(hit, /transparent/)
+})
+
+test("the reveal starts only once the frames after the page's first drawing run smoothly", () => {
+  const run = times => times.reduce((state, at) => settleFrame(state, at), unsettled)
+  // 120 Hz without a stall: settled after settledFrames smooth intervals.
+  assert.equal(settledFrames, 3)
+  assert.equal(run([0, 8.3, 16.6, 24.9]).smooth, 3)
+  // A stall (a first rasterization, a GPU program build) restarts the count, wherever it falls.
+  assert.equal(run([0, 8.3, 16.6, 50, 58.3]).smooth, 1)
+  assert.equal(run([0, 8.3, 16.6, 50, 58.3, 66.6, 74.9]).smooth, 3)
+  // A first interval that is itself a stall is soon known as one: the period is the shortest interval seen.
+  const late = run([0, 80, 88.3])
+  assert.ok(Math.abs(late.period - 8.3) < 1e-9, `${late.period}`)
+  assert.equal(run([0, 80, 88.3, 96.6, 104.9]).smooth >= settledFrames, true)
+  // 60 Hz settles the same way; a frame of under 1.75 periods is still smooth, a dropped frame is not.
+  assert.equal(run([0, 16.7, 33.4, 50.1]).smooth, 3)
+  assert.equal(run([0, 16.7, 33.4, 50.1, 83.5]).smooth, 0)
+  assert.ok(smoothFrameFactor > 1.5 && smoothFrameFactor < 2)
+  assert.ok(settleLimitMs >= 300 && settleLimitMs <= 1000, `${settleLimitMs} ms`)
 })
