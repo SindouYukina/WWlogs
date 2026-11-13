@@ -86,6 +86,13 @@ func (p *processor) handleClientEffectPushes(frame gameFrame, body []byte) error
 				if push.wire != 2 {
 					continue
 				}
+				if push.number == fieldCombatPushDataRTimeStopPush {
+					// A time stop of the local client: it moves the effect clock, not an effect.
+					if err := p.observeRTimeStopPush(frame, push.data, common); err != nil {
+						return err
+					}
+					continue
+				}
 				switch push.number {
 				case fieldCombatPushDataApplyGameplayEffectPush, fieldCombatPushDataRemoveGameplayEffectPush, fieldCombatPushDataBuffStackCountPush,
 					fieldCombatPushDataApplyBuffS2CResponsePush, fieldCombatPushDataRemoveBuffByIDS2CResponsePush:

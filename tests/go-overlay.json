@@ -366,6 +366,10 @@
     "tests/history/flow_control_test.go": "",
     "internal/history/central_flow_control_test.go": "tests/history/flow_control_test.go",
     "tests/history/replay_pacing_test.go": "",
-    "internal/history/central_replay_pacing_test.go": "tests/history/replay_pacing_test.go"
+    "internal/history/central_replay_pacing_test.go": "tests/history/replay_pacing_test.go",
+    "tests/capture/effect_clock_test.go": "",
+    "internal/capture/central_effect_clock_test.go": "tests/capture/effect_clock_test.go",
+    "tests/capture/effect_clock_replay_dev_test.go": "",
+    "internal/capture/central_effect_clock_replay_dev_test.go": "tests/capture/effect_clock_replay_dev_test.go"
   }
 }

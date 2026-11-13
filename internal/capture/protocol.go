@@ -144,6 +144,7 @@ type processorStats struct {
 	duplicateResponses               int // a further copy of a response already seen, byte for byte
 	conflictingResponses             int // a further response with the RequestId of one already seen but other content
 	reusedRequestIDs                 int // a completed RequestId taken by a later request after the counter wrapped
+	timeStopPushesWithoutState       int // RTimeStopPush that stated neither a duration nor a dilation
 	supersededRequests               int // an unanswered request whose RequestId a later request took (never answered)
 	missingAttackerEntityID          int
 	evictedPending                   int
@@ -474,7 +475,7 @@ func crc32IEEE(data []byte) uint32 {
 // handleFrame. Other commands are only counted and inspected by the census.
 func isImplementedCommand(commandID uint16) bool {
 	switch commandID {
-	case cmdLoginRequest, cmdCheckClientPush, cmdBasicInfoNotify, cmdCombatSendPackRequest, cmdCombatSendPackResponse, cmdCombatReceivePackNotify, cmdTimeCheckResponse, cmdUpdateSceneGroupDataNotify, cmdJoinSceneNotify, cmdEntityAddNotify, cmdEntityRemoveNotify, cmdUpdateTimerInfoNotify, cmdEntityActiveRequest, cmdEntityActiveResponse, cmdApplyGameplayEffectNotify, cmdRemoveGameplayEffectNotify, cmdRemoveGameplayEffectPush, cmdSimpleCombatEntityBuffUpdateNotify, cmdSimpleCombatEntityBuffLayerCountNotify, cmdBuffStackCountNotify, cmdBuffDurationNotify:
+	case cmdLoginRequest, cmdCheckClientPush, cmdBasicInfoNotify, cmdCombatSendPackRequest, cmdCombatSendPackResponse, cmdCombatReceivePackNotify, cmdTimeCheckResponse, cmdTimeStopPush, cmdTimeCheckRequest, cmdUpdateSceneGroupDataNotify, cmdJoinSceneNotify, cmdEntityAddNotify, cmdEntityRemoveNotify, cmdUpdateTimerInfoNotify, cmdEntityActiveRequest, cmdEntityActiveResponse, cmdApplyGameplayEffectNotify, cmdRemoveGameplayEffectNotify, cmdRemoveGameplayEffectPush, cmdSimpleCombatEntityBuffUpdateNotify, cmdSimpleCombatEntityBuffLayerCountNotify, cmdBuffStackCountNotify, cmdBuffDurationNotify:
 		return true
 	}
 	return false
@@ -531,7 +532,7 @@ func (p *processor) handleFrame(frame gameFrame) {
 		}
 		return
 	}
-	if ((frame.commandID == cmdLoginRequest || frame.commandID == cmdCheckClientPush || frame.commandID == cmdCombatSendPackRequest || frame.commandID == cmdEntityActiveRequest) && frame.direction != "out") || ((frame.commandID == cmdBasicInfoNotify || frame.commandID == cmdCombatSendPackResponse || frame.commandID == cmdCombatReceivePackNotify || frame.commandID == cmdTimeCheckResponse || frame.commandID == cmdUpdateSceneGroupDataNotify || frame.commandID == cmdJoinSceneNotify || frame.commandID == cmdEntityAddNotify || frame.commandID == cmdEntityRemoveNotify || frame.commandID == cmdUpdateTimerInfoNotify || frame.commandID == cmdEntityActiveResponse || frame.commandID == cmdApplyGameplayEffectNotify || frame.commandID == cmdRemoveGameplayEffectNotify || frame.commandID == cmdRemoveGameplayEffectPush || frame.commandID == cmdSimpleCombatEntityBuffUpdateNotify || frame.commandID == cmdSimpleCombatEntityBuffLayerCountNotify || frame.commandID == cmdBuffStackCountNotify || frame.commandID == cmdBuffDurationNotify) && frame.direction != "in") {
+	if ((frame.commandID == cmdLoginRequest || frame.commandID == cmdCheckClientPush || frame.commandID == cmdCombatSendPackRequest || frame.commandID == cmdEntityActiveRequest || frame.commandID == cmdTimeStopPush || frame.commandID == cmdTimeCheckRequest) && frame.direction != "out") || ((frame.commandID == cmdBasicInfoNotify || frame.commandID == cmdCombatSendPackResponse || frame.commandID == cmdCombatReceivePackNotify || frame.commandID == cmdTimeCheckResponse || frame.commandID == cmdUpdateSceneGroupDataNotify || frame.commandID == cmdJoinSceneNotify || frame.commandID == cmdEntityAddNotify || frame.commandID == cmdEntityRemoveNotify || frame.commandID == cmdUpdateTimerInfoNotify || frame.commandID == cmdEntityActiveResponse || frame.commandID == cmdApplyGameplayEffectNotify || frame.commandID == cmdRemoveGameplayEffectNotify || frame.commandID == cmdRemoveGameplayEffectPush || frame.commandID == cmdSimpleCombatEntityBuffUpdateNotify || frame.commandID == cmdSimpleCombatEntityBuffLayerCountNotify || frame.commandID == cmdBuffStackCountNotify || frame.commandID == cmdBuffDurationNotify) && frame.direction != "in") {
 		p.stats.otherFrameDirections++
 		if censusEntry != nil {
 			censusEntry.FailureReasons["direction differs from implemented schema"]++
@@ -549,6 +550,12 @@ func (p *processor) handleFrame(frame gameFrame) {
 		// would misreport transport health.
 		if censusEntry != nil {
 			censusEntry.FailureReasons[emptyBodyFailureReason]++
+		}
+		if frame.commandID == cmdTimeStopPush {
+			// proto3 leaves a 0 dilation off the wire: an empty TimeStopPush pauses every effect.
+			if err := p.observeTimeStopPush(frame, nil); err != nil {
+				p.stats.parseErrors++
+			}
 		}
 		return
 	}
@@ -615,6 +622,16 @@ func (p *processor) handleFrame(frame gameFrame) {
 			}
 			fmt.Fprintf(p.diagnostic, "%s=%v\n", label, err)
 			return
+		}
+	case cmdTimeStopPush:
+		if err := p.observeTimeStopPush(frame, plain); err != nil {
+			p.stats.parseErrors++
+			fmt.Fprintf(p.diagnostic, "time_stop_push_parse_error=%v\n", err)
+		}
+	case cmdTimeCheckRequest:
+		if err := p.observeTimeCheckRequest(frame, plain); err != nil {
+			p.stats.parseErrors++
+			fmt.Fprintf(p.diagnostic, "time_check_request_parse_error=%v\n", err)
 		}
 	case cmdTimeCheckResponse, cmdUpdateTimerInfoNotify:
 		// TimeCheckResponse and UpdateTimerInfoNotify are interpreted by the

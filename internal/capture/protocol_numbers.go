@@ -24,6 +24,7 @@ const (
 	cmdRemoveBuffS2cResponsePush               = 16300 // O4n
 	cmdBuffStackCountResponse                  = 16438 // fzn
 	cmdSimpleCombatEntityAttributeUpdateNotify = 16636 // ecC
+	cmdTimeStopPush                            = 16707 // GCs
 	cmdUpdatePlayersFightRolesInfoNotify       = 16745 // Ous
 	cmdApplyBuffS2cResponsePush                = 17435 // G4n
 	cmdApplyGameplayEffectPush                 = 17445 // ie_
@@ -88,6 +89,7 @@ const (
 	cmdBuffEffectExecuteResponse               = 27923 // gzn
 	cmdTimeCheckResponse                       = 28031 // QCs
 	cmdRemoveBuffS2cRequestNotify              = 28392 // C3n
+	cmdTimeCheckRequest                        = 28799 // WCs
 	cmdUpdatePlayerSingleFightRoleNotify       = 28925 // kus
 	cmdSimpleCombatEntityBuffLayerCountNotify  = 29187 // J0d
 	cmdRemoveGameplayEffectPush                = 29542 // re_
@@ -217,6 +219,7 @@ const (
 	fieldCombatPushDataApplyGameplayEffectPush       = 9  // CombatMessage.OFs.ie_
 	fieldCombatPushDataRemoveGameplayEffectPush      = 10 // CombatMessage.OFs.re_
 	fieldCombatPushDataBuffStackCountPush            = 37 // CombatMessage.OFs.Re_
+	fieldCombatPushDataRTimeStopPush                 = 47 // CombatMessage.OFs.Fe_
 	fieldCombatPushDataClientCurrentRoleReportPush   = 56 // CombatMessage.OFs.Xe_
 
 	// CombatReceiveData (CombatMessage.$Fs)
@@ -436,6 +439,10 @@ const (
 	fieldProtoKeyResponseType = 2 // Lss.h5n
 	fieldProtoKeyResponseKey  = 3 // Lss.Z4n
 
+	// RTimeStopPush (Fe_)
+	fieldRTimeStopPushDuration = 1  // Fe_.n5n
+	fieldRTimeStopPushDilation = 12 // Fe_.A6n
+
 	// RecoverAttr (N4s)
 	fieldRecoverAttrAttrID       = 1 // N4s.E6n
 	fieldRecoverAttrRatio        = 2 // N4s.L6n
@@ -507,6 +514,13 @@ const (
 	fieldSummonerComponentPbSummonSkillID = 3 // Summon.p3s.mIs
 	fieldSummonerComponentPbPlayerID      = 4 // Summon.p3s.W5n
 	fieldSummonerComponentPbType          = 5 // Summon.p3s.h5n
+
+	// TimeCheckRequest (WCs)
+	fieldTimeCheckRequestFlowTimeDilation = 7  // WCs.U6n
+	fieldTimeCheckRequestTimeDilation     = 15 // WCs.A6n
+
+	// TimeStopPush (GCs)
+	fieldTimeStopPushTimeDilation = 11 // GCs.dKn
 
 	// UpdateSceneGroupDataNotify (Hgs)
 	fieldUpdateSceneGroupDataNotifyPlayerSceneGroupDataList = 12 // Hgs.yRs

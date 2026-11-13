@@ -220,9 +220,9 @@ func (p *processor) observeClientEffectReport(row buffLifecycleAuditRow) {
 			SessionNumber: row.SessionNumber, HolderEntityID: holder, HolderGeneration: generation,
 			HandleID: *row.HandleID, ObservedAt: row.Timestamp, Evidence: EffectEvidenceClientReport,
 		}
-		// The push carries the full duration it restarts; observed natural expiries follow
-		// the last such push plus its duration on the client clock. NotRefreshDuration
-		// keeps the running estimate.
+		// The push carries the remaining time when it was sent (BroadcastBuffStackChanged sends
+		// GetRemainDuration()); natural expiries follow the last such push plus that time on the
+		// effect clock. NotRefreshDuration keeps the running estimate.
 		if row.NotRefreshDuration == nil || !*row.NotRefreshDuration {
 			event.DurationSeconds = float64Pointer(row.DurationSeconds)
 		}
