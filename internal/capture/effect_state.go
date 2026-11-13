@@ -16,9 +16,10 @@ const (
 	maxEffectExcludedKeys  = 4096
 	maxEffectDurationValue = 1e7 // seconds; larger server values are treated as invalid
 	// effectOverdueRetention is how long an instance may stay past its estimated expiry,
-	// waiting for the server REMOVE, before it is reported as estimated_expired. Observed
-	// REMOVE messages arrived from 0.4 s before to 66.8 s after the estimate, so this is a
-	// memory-safety bound and not a game rule.
+	// waiting for the server REMOVE, before it is reported as estimated_expired. The expiry is
+	// estimated on the effect clock (effect_clock.go), which stands still while the game's
+	// effect timers do; before that clock, REMOVEs arrived up to 66.8 s after a capture-clock
+	// estimate. It is a memory-safety bound, not a game rule.
 	effectOverdueRetention = 120 * time.Second
 )
 
@@ -257,24 +258,26 @@ type EffectRemoveEvent struct {
 // EffectCounters report how input was handled. A non-zero counter next to a
 // small active set is the signal that a capture missed lifecycle messages.
 type EffectCounters struct {
-	Applies                uint64 `json:"applies"`
-	DuplicateApplies       uint64 `json:"duplicateApplies"`
-	SnapshotInstances      uint64 `json:"snapshotInstances"`
-	DuplicateSnapshots     uint64 `json:"duplicateSnapshots"`
-	SnapshotsSkipped       uint64 `json:"snapshotsSkipped"`
-	ConflictingApplies     uint64 `json:"conflictingApplies"`
-	StaleApplies           uint64 `json:"staleApplies"`
-	InstantApplies         uint64 `json:"instantApplies"`
-	Updates                uint64 `json:"updates"`
-	UpdatesWithoutApply    uint64 `json:"updatesWithoutApply"`
-	StaleUpdates           uint64 `json:"staleUpdates"`
-	InvalidTimeValues      uint64 `json:"invalidTimeValues"`
-	Removes                uint64 `json:"removes"`
-	RemovesWithoutInstance uint64 `json:"removesWithoutInstance"`
-	StaleRemoves           uint64 `json:"staleRemoves"`
-	HolderRemovals         uint64 `json:"holderRemovals"`
-	BoundaryDrops          uint64 `json:"boundaryDrops"`
-	ExcludedUnrelated      uint64 `json:"excludedUnrelated"`
+	// Clock is what the effect clock followed (effect_clock.go).
+	Clock                  EffectClockCounters `json:"clock"`
+	Applies                uint64              `json:"applies"`
+	DuplicateApplies       uint64              `json:"duplicateApplies"`
+	SnapshotInstances      uint64              `json:"snapshotInstances"`
+	DuplicateSnapshots     uint64              `json:"duplicateSnapshots"`
+	SnapshotsSkipped       uint64              `json:"snapshotsSkipped"`
+	ConflictingApplies     uint64              `json:"conflictingApplies"`
+	StaleApplies           uint64              `json:"staleApplies"`
+	InstantApplies         uint64              `json:"instantApplies"`
+	Updates                uint64              `json:"updates"`
+	UpdatesWithoutApply    uint64              `json:"updatesWithoutApply"`
+	StaleUpdates           uint64              `json:"staleUpdates"`
+	InvalidTimeValues      uint64              `json:"invalidTimeValues"`
+	Removes                uint64              `json:"removes"`
+	RemovesWithoutInstance uint64              `json:"removesWithoutInstance"`
+	StaleRemoves           uint64              `json:"staleRemoves"`
+	HolderRemovals         uint64              `json:"holderRemovals"`
+	BoundaryDrops          uint64              `json:"boundaryDrops"`
+	ExcludedUnrelated      uint64              `json:"excludedUnrelated"`
 	// LateMessages counts update and remove messages that arrive for an instance already ended by holder removal.
 	LateMessages uint64 `json:"lateMessages"`
 	// ExcludedMessages counts update and remove messages addressed to an instance that was excluded as unrelated.
@@ -388,6 +391,8 @@ type effectInstance struct {
 	timeKnown        bool
 	basisRemaining   float64
 	basisAt          time.Time
+	// basisEffective is the effect clock's time at basisAt: basisRemaining counts down from it in effect time.
+	basisEffective   float64
 	unknownReason    string
 	insertionOrdinal uint64
 	// holderActor, sourceActor and historyNumber are kept for Combat History only (history_effects.go).
@@ -422,6 +427,8 @@ type EffectTracker struct {
 	lossAt time.Time
 	// history is the Combat History journal the processor shares with its statistics; nil journals nothing.
 	history *historyJournal
+	// clock is the game's effect time on the capture clock (effect_clock.go).
+	clock effectClock
 }
 
 // NewEffectTracker creates an empty tracker bound to a capture session ID.
@@ -431,6 +438,7 @@ func NewEffectTracker(captureSessionID uint64) *EffectTracker {
 		statisticsIntervalID: 1,
 		instances:            make(map[effectKey]*effectInstance),
 		tombstones:           make(map[effectKey]time.Time),
+		clock:                newEffectClock(),
 	}
 }
 
@@ -840,6 +848,10 @@ func (t *EffectTracker) EndLiveStateFor(reason string) {
 	t.untrackAllLocked(reason)
 	t.counters.BoundaryDrops += uint64(len(t.instances))
 	t.clearTrackedLocked()
+	if reason == EffectUntrackedSessionChange {
+		// A new connection's client starts without stops or dilation.
+		t.clock.reset()
+	}
 }
 
 // Snapshot returns the tracked set without remaining-time estimates.
@@ -925,6 +937,7 @@ func (t *EffectTracker) acceptSessionLocked(session int) bool {
 		t.clearTrackedLocked()
 		t.highWater = time.Time{}
 		t.session = session
+		t.clock.reset()
 		return true
 	default:
 		t.counters.StaleSessionEvents++
@@ -945,6 +958,7 @@ func (t *EffectTracker) setBasisLocked(instance *effectInstance, at time.Time, b
 		instance.timeKnown, instance.unknownReason = false, effectReasonObservedTimeMissing
 	case basis.finite:
 		instance.timeKnown, instance.basisRemaining, instance.basisAt, instance.unknownReason = true, basis.remaining, at, ""
+		instance.basisEffective = t.clock.at(at)
 	default:
 		instance.timeKnown, instance.unknownReason = false, basis.reason
 		if basis.invalid {
@@ -1033,7 +1047,8 @@ func (t *EffectTracker) endLocked(instance *effectInstance, lifecycle EffectLife
 	record.RemainingStatus, record.RemainingSeconds = EffectRemainingUnavailable, nil
 	record.RemainingReason = "ended"
 	if instance.timeKnown && !at.IsZero() {
-		delta := at.Sub(instance.basisAt).Seconds() - instance.basisRemaining
+		// How far the end lies from the estimated expiry, in effect time.
+		delta := t.overdueLocked(instance, at)
 		if !math.IsNaN(delta) && !math.IsInf(delta, 0) {
 			record.ExpiryDeltaSeconds = &delta
 		}
@@ -1053,8 +1068,7 @@ func (t *EffectTracker) pruneExpiredLocked() {
 		if !instance.timeKnown {
 			continue
 		}
-		expiry := instance.basisAt.Add(secondsToDuration(instance.basisRemaining))
-		if t.highWater.Sub(expiry) > effectOverdueRetention {
+		if t.overdueLocked(instance, t.highWater) > effectOverdueRetention.Seconds() {
 			t.journalLocked(instance, EffectChangeUntracked, EffectUntracked, EffectUntrackedOverdue, "", t.highWater)
 			delete(t.instances, key)
 			t.counters.PrunedExpired++
@@ -1101,7 +1115,7 @@ func (t *EffectTracker) sortedInstancesLocked() []*effectInstance {
 func (t *EffectTracker) snapshotLocked(query CaptureQueryTime, rejection string) EffectSnapshot {
 	snapshot := EffectSnapshot{
 		CaptureSessionID: t.captureSessionID, StatisticsIntervalID: t.statisticsIntervalID,
-		Status: EffectSnapshotComplete, Counters: t.counters,
+		Status: EffectSnapshotComplete, Counters: t.countersLocked(),
 		Effects:     make([]EffectInstanceSnapshot, 0, len(t.instances)),
 		RecentEnded: append([]EffectEndedSnapshot{}, t.ended...),
 	}
@@ -1181,7 +1195,9 @@ func (t *EffectTracker) instanceSnapshotLocked(instance *effectInstance, query C
 	case query.Timestamp.Before(instance.basisAt):
 		snapshot.RemainingStatus, snapshot.RemainingReason = EffectRemainingUnavailable, effectReasonQueryBeforeUpdate
 	default:
-		remaining := instance.basisRemaining - query.Timestamp.Sub(instance.basisAt).Seconds()
+		// The server's remaining time counts down in effect time: it stands still while a time stop or a global pause
+		// holds the game's effect timers (effect_clock.go).
+		remaining := -t.overdueLocked(instance, query.Timestamp)
 		if math.IsNaN(remaining) || math.IsInf(remaining, 0) {
 			snapshot.RemainingStatus, snapshot.RemainingReason = EffectRemainingUnavailable, effectReasonInvalidDuration
 			break
@@ -1198,7 +1214,78 @@ func (t *EffectTracker) instanceSnapshotLocked(instance *effectInstance, query C
 			snapshot.Lifecycle = EffectLifecycleEstimatedExpired
 		}
 	}
-	expiry := instance.basisAt.Add(secondsToDuration(instance.basisRemaining))
+	expiry := t.expectedExpiryLocked(instance, query.Timestamp)
 	snapshot.ExpectedExpiry = &expiry
 	return snapshot
+}
+
+// overdueLocked is how many effect-clock seconds at is past an instance's estimated expiry (negative before it).
+func (t *EffectTracker) overdueLocked(instance *effectInstance, at time.Time) float64 {
+	return t.clock.at(at) - instance.basisEffective - instance.basisRemaining
+}
+
+// expectedExpiryLocked is the capture time an instance's estimated expiry falls on, seen from query: the remaining effect
+// time at the clock's current rate, or, while the clock stands, as if it ran again from query. Before the first stop or
+// dilation of a session it is exactly basisAt plus the server's remaining time.
+func (t *EffectTracker) expectedExpiryLocked(instance *effectInstance, query time.Time) time.Time {
+	if query.IsZero() || query.Before(instance.basisAt) {
+		return instance.basisAt.Add(secondsToDuration(instance.basisRemaining))
+	}
+	remaining := -t.overdueLocked(instance, query)
+	if rate := t.clock.rate(); remaining > 0 && rate > 0 && rate != 1 {
+		return query.Add(secondsToDuration(remaining / rate))
+	}
+	return query.Add(secondsToDuration(remaining))
+}
+
+// countersLocked are the tracker's counters with the effect clock's.
+func (t *EffectTracker) countersLocked() EffectCounters {
+	counters := t.counters
+	counters.Clock = t.clock.counters
+	return counters
+}
+
+// ObserveTimeStop follows a TimeStopRequest the caster began (begin) or ended, as the local client reported it
+// (RTimeStopPush). duration is the declared length of a begin, 0 when it declared none.
+func (t *EffectTracker) ObserveTimeStop(session int, caster uint64, begin bool, duration time.Duration, at time.Time) {
+	if t == nil {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if !t.acceptSessionLocked(session) {
+		return
+	}
+	if begin {
+		t.clock.beginStop(caster, duration, at)
+	} else {
+		t.clock.endStop(caster, at)
+	}
+}
+
+// ObserveTimeDilation follows a new global time dilation the local client reported (TimeStopPush).
+func (t *EffectTracker) ObserveTimeDilation(session int, dilation float64, at time.Time) {
+	if t == nil {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if !t.acceptSessionLocked(session) {
+		return
+	}
+	t.clock.setDilation(dilation, at)
+}
+
+// ObserveTimeCheck reconciles the effect clock with the client's periodic TimeCheckRequest: its FlowTimeDilation and
+// TimeDilation when it was sent.
+func (t *EffectTracker) ObserveTimeCheck(session int, flowDilation, dilation float64, at time.Time) {
+	if t == nil {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if !t.acceptSessionLocked(session) {
+		return
+	}
+	t.clock.sample(flowDilation, dilation, at)
 }

@@ -144,6 +144,7 @@ type processorStats struct {
 	duplicateResponses               int // a further copy of a response already seen, byte for byte
 	conflictingResponses             int // a further response with the RequestId of one already seen but other content
 	reusedRequestIDs                 int // a completed RequestId taken by a later request after the counter wrapped
+	timeStopPushesWithoutState       int // RTimeStopPush that stated neither a duration nor a dilation
 	supersededRequests               int // an unanswered request whose RequestId a later request took (never answered)
 	missingAttackerEntityID          int
 	evictedPending                   int
@@ -615,6 +616,16 @@ func (p *processor) handleFrame(frame gameFrame) {
 			}
 			fmt.Fprintf(p.diagnostic, "%s=%v\n", label, err)
 			return
+		}
+	case cmdTimeStopPush:
+		if err := p.observeTimeStopPush(frame, plain); err != nil {
+			p.stats.parseErrors++
+			fmt.Fprintf(p.diagnostic, "time_stop_push_parse_error=%v\n", err)
+		}
+	case cmdTimeCheckRequest:
+		if err := p.observeTimeCheckRequest(frame, plain); err != nil {
+			p.stats.parseErrors++
+			fmt.Fprintf(p.diagnostic, "time_check_request_parse_error=%v\n", err)
 		}
 	case cmdTimeCheckResponse, cmdUpdateTimerInfoNotify:
 		// TimeCheckResponse and UpdateTimerInfoNotify are interpreted by the
