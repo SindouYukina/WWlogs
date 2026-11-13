@@ -13,7 +13,9 @@ import (
 // an effect no buff bar can draw.
 //
 // The status's direction lives on the cue, not on the Buff row: BuffItem.Activate compares Parameters[0] with "1" (BUFF
-// arrow) and "2" (DEBUFF arrow). Anything else draws no arrow, so the game itself states no direction for it.
+// arrow) and "2" (DEBUFF arrow). Anything else, an empty Parameters included, draws the icon without an arrow: the game
+// shows the status and states no direction for it (EffectPolarityNeutral). Global 3.8.9 draws Lily's four statuses
+// (cues 1512623002..1512623005, T_IconLiliBuff02..05) and Xin's type-24 statuses this way.
 var hudCueTypes = map[int32]bool{2: true, 14: true, 24: true, 37: true}
 
 const (
@@ -26,15 +28,18 @@ const (
 	hudHiddenOnMonsterHead  = "1"
 )
 
-// hudCuePolarity reads a cue's direction parameter. A value the HUD draws no arrow for stays unclassified.
-func hudCuePolarity(direction string) EffectPolarity {
-	switch direction {
-	case hudDirectionBuff:
+// hudCuePolarity reads the direction parameter of a HUD cue with a Path. A value the HUD draws no arrow for, or no value
+// (an empty Parameters vector stores no row), is neutral; without the parameters table there is no direction evidence.
+func hudCuePolarity(direction string, haveParameters bool) EffectPolarity {
+	switch {
+	case !haveParameters:
+		return EffectPolarityUnclassified
+	case direction == hudDirectionBuff:
 		return EffectPolarityBuff
-	case hudDirectionDebuff:
+	case direction == hudDirectionDebuff:
 		return EffectPolarityDebuff
 	}
-	return EffectPolarityUnclassified
+	return EffectPolarityNeutral
 }
 
 // loadHUDCueParameters reads the direction and monster-head parameters of every HUD cue, keyed by the cue's id as stored.
@@ -103,7 +108,7 @@ func loadBuffHUDCues(db *sql.DB, statics map[uint64]buffStaticParameters) error 
 		}
 		entry := statics[id]
 		if len(entry.hudCueTypes) == 0 {
-			entry.hudPolarity = hudCuePolarity(parameters[cue][hudParameterDirection])
+			entry.hudPolarity = hudCuePolarity(parameters[cue][hudParameterDirection], parameters != nil)
 			entry.hudHiddenOnMonsterHead = parameters[cue][hudParameterMonsterHead] == hudHiddenOnMonsterHead
 		}
 		index := sort.Search(len(entry.hudCueTypes), func(i int) bool { return entry.hudCueTypes[i] >= cueType })

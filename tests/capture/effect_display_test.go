@@ -92,7 +92,9 @@ func TestEffectDisplayDecision(t *testing.T) {
 	buff := &EffectStaticInfo{HUDCueTypes: []int32{2}, HUDPolarity: EffectPolarityBuff}
 	debuff := &EffectStaticInfo{HUDCueTypes: []int32{2}, HUDPolarity: EffectPolarityDebuff}
 	unique := &EffectStaticInfo{HUDCueTypes: []int32{24}, HUDPolarity: EffectPolarityBuff}
-	noArrow := &EffectStaticInfo{HUDCueTypes: []int32{24}, HUDPolarity: EffectPolarityUnclassified}
+	noArrow := &EffectStaticInfo{HUDCueTypes: []int32{24}, HUDPolarity: EffectPolarityNeutral}
+	noArrowBar := &EffectStaticInfo{HUDCueTypes: []int32{2}, HUDPolarity: EffectPolarityNeutral}
+	directionUnknown := &EffectStaticInfo{HUDCueTypes: []int32{2}, HUDPolarity: EffectPolarityUnclassified}
 	headHidden := &EffectStaticInfo{HUDCueTypes: []int32{2}, HUDPolarity: EffectPolarityDebuff, HUDHiddenOnMonsterHead: true}
 	noCue := &EffectStaticInfo{}
 	cases := []struct {
@@ -108,7 +110,11 @@ func TestEffectDisplayDecision(t *testing.T) {
 		{"a summon holder is on no HUD surface", active(EffectRelationLocalOwned, EffectRelationLocalRole, buff), EffectDisplay{EffectDisplayNonHUD, EffectTargetTeam, effectDisplayBasisSummonHolder}},
 		{"a definition without a HUD cue", active(EffectRelationLocalRole, EffectRelationLocalRole, noCue), EffectDisplay{EffectDisplayNonHUD, EffectTargetTeam, effectDisplayBasisNoCue}},
 		{"no definition is unresolved", active(EffectRelationLocalRole, EffectRelationLocalRole, nil), EffectDisplay{EffectDisplayHUDUnresolved, EffectTargetTeam, effectDisplayBasisNoDefinition}},
-		{"a HUD cue the game draws no arrow for", active(EffectRelationLocalRole, EffectRelationLocalRole, noArrow), EffectDisplay{EffectDisplayHUDUnresolved, EffectTargetTeam, effectDisplayBasisNoDirection}},
+		// BuffItem.Activate draws the icon of a cue without a direction parameter, only without an arrow (Lily's 3.8 statuses).
+		{"a role-unique cue the game draws no arrow for", active(EffectRelationLocalRole, EffectRelationLocalRole, noArrow), EffectDisplay{EffectDisplayEligible, EffectTargetTeam, ""}},
+		{"a buff-bar cue the game draws no arrow for", active(EffectRelationLocalRole, EffectRelationLocalRole, noArrowBar), EffectDisplay{EffectDisplayEligible, EffectTargetTeam, ""}},
+		{"a no-arrow cue the team put on a monster", active(EffectRelationNonPlayer, EffectRelationLocalRole, noArrowBar), EffectDisplay{EffectDisplayEligible, EffectTargetEnemy, ""}},
+		{"a HUD cue without direction evidence", active(EffectRelationLocalRole, EffectRelationLocalRole, directionUnknown), EffectDisplay{EffectDisplayHUDUnresolved, EffectTargetTeam, effectDisplayBasisDirectionUnknown}},
 		{"a cue hidden on monster heads", active(EffectRelationNonPlayer, EffectRelationLocalRole, headHidden), EffectDisplay{EffectDisplayHUDUnresolved, EffectTargetEnemy, effectDisplayBasisMonsterHead}},
 		{"a monster-head cue on a role is still drawn", active(EffectRelationLocalRole, EffectRelationNonPlayer, headHidden), EffectDisplay{EffectDisplayEligible, EffectTargetTeam, ""}},
 		{"an unresolved holder of a team effect", active(EffectRelationUnknown, EffectRelationLocalRole, debuff), EffectDisplay{EffectDisplayHUDUnresolved, EffectTargetUnresolved, effectDisplayBasisHolderUnresolved}},
@@ -125,20 +131,22 @@ func TestEffectDisplayDecision(t *testing.T) {
 func TestEffectPolarityComesOnlyFromTheHUDCue(t *testing.T) {
 	term := &EffectStaticInfo{Term: &EffectTermInfo{TermID: 850009, Name: "term", Status: string(resolutionCorrelated)}}
 	for want, static := range map[EffectPolarity]*EffectStaticInfo{
-		EffectPolarityBuff:   {HUDCueTypes: []int32{2}, HUDPolarity: EffectPolarityBuff},
-		EffectPolarityDebuff: {HUDCueTypes: []int32{2}, HUDPolarity: EffectPolarityDebuff},
+		EffectPolarityBuff:    {HUDCueTypes: []int32{2}, HUDPolarity: EffectPolarityBuff},
+		EffectPolarityDebuff:  {HUDCueTypes: []int32{2}, HUDPolarity: EffectPolarityDebuff},
+		EffectPolarityNeutral: {HUDCueTypes: []int32{24}, HUDPolarity: EffectPolarityNeutral},
 	} {
 		if got := effectPolarityFor(EffectInstanceSnapshot{Static: static}); got != want {
 			t.Fatalf("polarity = %s, want %s", got, want)
 		}
 	}
-	// A term, an attribute, or a HUD cue that draws no arrow proves nothing about direction.
+	// A term, an attribute, a HUD cue without direction evidence, or a direction without a HUD cue proves nothing.
 	for _, effect := range []EffectInstanceSnapshot{
 		{Kind: EffectKindStatModifier},
 		{Kind: EffectKindElementAilment},
 		{Kind: EffectKindElementAilment, Static: term},
 		{Kind: EffectKindHUDEffect, Static: &EffectStaticInfo{HUDCueTypes: []int32{24}, HUDPolarity: EffectPolarityUnclassified}},
 		{Kind: EffectKindHUDEffect, Static: &EffectStaticInfo{HUDCueTypes: []int32{2}}},
+		{Kind: EffectKindHUDEffect, Static: &EffectStaticInfo{HUDPolarity: EffectPolarityNeutral}},
 	} {
 		if got := effectPolarityFor(effect); got != EffectPolarityUnclassified {
 			t.Fatalf("%s polarity = %s, want unclassified", effect.Kind, got)

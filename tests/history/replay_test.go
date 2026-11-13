@@ -65,6 +65,7 @@ func TestHistoryReplayCollector(t *testing.T) {
 			summary := replayIntoHistory(t, store, masters, item)
 			totals.add(summary)
 			writeJSON(t, filepath.Join(out, item.name+".json"), summary)
+			checkHistoryHUDFacts(t, item.name, summary)
 		})
 	}
 	checkHeatmap(t, store)
@@ -157,6 +158,8 @@ func (s *teeSink) SubmitWait(ctx context.Context, entries []capture.HistoryEntry
 
 type replaySummary struct {
 	Name string `json:"name"`
+	// hudEffects is the polarity of every effect the analysis lists as a HUD row in one of the capture's encounters.
+	hudEffects map[int64]capture.EffectPolarity
 	// VersionedEncounters counts stored encounters whose game version equals the one their protocol session reported.
 	VersionedEncounters int `json:"versionedEncounters"`
 	// DuplicateOf marks a byte-identical copy of a capture already stored; it was not stored again.
@@ -241,6 +244,33 @@ type analysisTiming struct {
 // equals the engine's result and projects to the same view; consecutive ranges add up to it; each tied enemy instance's
 // filter reproduces its stored flows; effect intervals are well formed and their coverage never exceeds the range; and the
 // event browser lists every stored result of the encounter.
+// historyHUDFacts are statuses a stored capture must show as HUD rows in the History effect analysis, with their polarity.
+// They are the History side of the Overlay facts of TestSemanticReplayCollector: in the Build 31 LIVE capture of Global
+// 3.8.9 the HUD draws Lily's (role 1512) statuses and Xin's type-24 statuses with their icon and without an arrow (cue
+// Parameters empty in the 3.8.9 hotfix db_buffeffect.db; BuffItem.Activate), and the local client's own
+// ApplyGameplayEffectPush puts them on team role entities or the local PlayerEntity
+// (work/live-build31/client_status_crosscheck.py).
+var historyHUDFacts = map[string]map[int64]capture.EffectPolarity{
+	"LIVE_20261113_224240": {
+		1512310003: capture.EffectPolarityNeutral, 1512800104: capture.EffectPolarityNeutral, 1512999015: capture.EffectPolarityNeutral,
+		2002205502: capture.EffectPolarityNeutral, 1311400007: capture.EffectPolarityNeutral, 1311400008: capture.EffectPolarityNeutral,
+	},
+}
+
+func checkHistoryHUDFacts(t *testing.T, name string, summary replaySummary) {
+	t.Helper()
+	for capture, facts := range historyHUDFacts {
+		if !strings.Contains(name, capture) {
+			continue
+		}
+		for effect, polarity := range facts {
+			if got, ok := summary.hudEffects[effect]; !ok || got != polarity {
+				t.Errorf("effect %d: HUD row %v with polarity %q, want polarity %q", effect, ok, got, polarity)
+			}
+		}
+	}
+}
+
 func checkAnalysis(t *testing.T, store *Store, masters *capture.MasterData, id int64, detail EncounterDetail, summary *replaySummary) {
 	t.Helper()
 	ctx := context.Background()
@@ -326,6 +356,12 @@ func checkAnalysis(t *testing.T, store *Store, masters *capture.MasterData, id i
 	for _, row := range lanes.Rows {
 		if row.HUD {
 			tally.HUDRows++
+			if row.EffectID != nil {
+				if summary.hudEffects == nil {
+					summary.hudEffects = map[int64]capture.EffectPolarity{}
+				}
+				summary.hudEffects[*row.EffectID] = row.Polarity
+			}
 		}
 		for _, segment := range row.Segments {
 			// Lanes are drawn at whole milliseconds, so an end may round up by half of one.

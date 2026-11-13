@@ -2,7 +2,7 @@
   "drag": "Drag to move · resize from the edges",
   "noEffects": "No relevant combat effects observed.",
   "omitted": "{{count}} more effects not shown",
-  "rowBuffs": "Buffs",
+  "rowBuffs": "Buffs and neutral statuses",
   "rowDebuffs": "Debuffs",
   "tileGameIcon": "Effect with a game icon",
   "tileNoIcon": "Effect without a game icon",

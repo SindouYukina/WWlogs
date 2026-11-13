@@ -2,7 +2,7 @@
   "drag": "拖动移动・从边缘调整大小",
   "noEffects": "尚未观测到相关战斗效果。",
   "omitted": "另有 {{count}} 个效果未显示",
-  "rowBuffs": "增益",
+  "rowBuffs": "增益与中性状态",
   "rowDebuffs": "减益",
   "tileGameIcon": "有游戏图标的效果",
   "tileNoIcon": "没有游戏图标的效果",

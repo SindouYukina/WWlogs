@@ -149,7 +149,7 @@ export interface EffectRow {
   key: string
   effectId?: number
   definitionLinked: boolean
-  polarity: "buff" | "debuff" | "unclassified"
+  polarity: "buff" | "debuff" | "neutral" | "unclassified"
   hudIcon: boolean
   elementId?: number
   hud: boolean

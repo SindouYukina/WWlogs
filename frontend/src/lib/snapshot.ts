@@ -269,7 +269,7 @@ export interface Effect {
   holderName?: string
   holderNameStatus?: string
   sourceRelation: string
-  /** The direction the game's HUD draws: "buff" or "debuff" for every listed effect, "unclassified" otherwise. */
+  /** The direction the game's HUD draws: "buff" or "debuff", "neutral" for a status it draws without an arrow, "unclassified" without HUD evidence. */
   polarity: string
   combatClass: string
   /** What the definition says the effect is for (Go EffectKind). */

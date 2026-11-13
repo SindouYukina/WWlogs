@@ -172,6 +172,7 @@ body[data-view] img { -webkit-user-drag: none; }
 .ww-chip[data-tone="warn"] { background: var(--ww-warn-soft); color: var(--ww-warn); }
 .ww-chip[data-tone="critical"] { background: var(--ww-critical-soft); color: var(--ww-critical); }
 .ww-chip[data-tone="accent"] { background: var(--ww-accent-soft); color: var(--ww-accent-bright); }
+.ww-chip[data-tone="info"] { background: var(--ww-info-soft); color: var(--ww-info); }
 .ww-chip-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 
 /* ------------------------------ Animated number ------------------------------ */

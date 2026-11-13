@@ -25,13 +25,15 @@ import (
 //	WWLOGS_SEMANTIC_REPLAY_PCAPS      text file with one "name|absolute path" per line
 //	WWLOGS_SEMANTIC_REPLAY_MASTER_DB  Master SQLite database
 
-// semanticEffectFact is one status that must be listed at some point of a capture.
+// semanticEffectFact is one status that must be listed at some point of a capture: in the row of the Overlay, with the
+// polarity of its cell (the row's own when empty), the target and the highest stack it showed.
 type semanticEffectFact struct {
 	capture  string
 	effectID uint64
 	row      EffectPolarity
 	target   EffectDisplayTarget
 	maxStack uint64
+	polarity EffectPolarity
 }
 
 // semanticSkillFact is one skill row a capture must show.
@@ -73,6 +75,14 @@ const build29LiveCapture = "LIVE_20261113_003512"
 // server's own PlayerBattleStateChangeNotify, cut at every JoinSceneNotify.
 const build28LiveCapture = "LIVE_20261112_230754"
 
+// build31LiveCapture is the owner's Build 31 LIVE capture of Global 3.8.9 (2026-11-13, 22:42-23:33): 18 encounters in the
+// Tower of Adversity (V1-x-y), the Whimpering Wastes' Endless Torrents halves, a Tactical Hologram, a Tacet field, Lily's
+// character tutorial and the open world, with roles 1102, 1311, 1312, 1505 and 1512 among others. It is the first capture
+// in which the client's combat RequestId counter wraps (after 46,399 combat requests), and the first with Lily's statuses
+// that the HUD draws without an arrow. Its facts are checked outside the product's decoders
+// (research/runs/2026-11-14/v0.7.0-build31-live-findings).
+const build31LiveCapture = "LIVE_20261113_224240"
+
 // currentGoldenFacts states the same facts for each capture of the golden corpus.
 func currentGoldenFacts[T any](facts func(capture string) []T) []T {
 	var all []T
@@ -85,31 +95,43 @@ func currentGoldenFacts[T any](facts func(capture string) []T) []T {
 var semanticEffectFacts = append(currentGoldenFacts(func(capture string) []semanticEffectFact {
 	return []semanticEffectFact{
 		// Monster Glacio a monster puts on the local player (ApplyGameplayEffectPush, StackCount 1).
-		{capture, 10010000, EffectPolarityDebuff, EffectTargetTeam, 1},
+		{capture, 10010000, EffectPolarityDebuff, EffectTargetTeam, 1, ""},
 		// Aero Erosion role 1409 puts on a monster: OrderApplyBuffRequest from bullet 1409004021, then
 		// ApplyGameplayEffectNotify on the monster with StackCount 1.
-		{capture, 10041000, EffectPolarityDebuff, EffectTargetEnemy, 1},
+		{capture, 10041000, EffectPolarityDebuff, EffectTargetEnemy, 1, ""},
 	}
 }),
 	// In encounter 6 role 1409 stacks Aero Erosion on the boss to 8 and role 1508 effect 10061000 to 6, both above the
 	// buff table's StackLimitCount 3: ApplyGameplayEffectNotify opens each handle on the monster (EntityType 2) and
 	// BuffStackCountNotify on that handle raises NewStackCount. Both buffs have a type 2 HUD cue with the same direction
 	// parameter.
-	semanticEffectFact{build29LiveCapture, 10041000, EffectPolarityDebuff, EffectTargetEnemy, 8},
-	semanticEffectFact{build29LiveCapture, 10061000, EffectPolarityDebuff, EffectTargetEnemy, 6},
+	semanticEffectFact{build29LiveCapture, 10041000, EffectPolarityDebuff, EffectTargetEnemy, 8, ""},
+	semanticEffectFact{build29LiveCapture, 10061000, EffectPolarityDebuff, EffectTargetEnemy, 6, ""},
+	// Statuses the HUD draws with their icon and without an arrow, listed in the first row as neutral cells. The game draws
+	// them (Global 3.8.9: type 2 or 24 cues with a Path and an empty Parameters vector in the hotfix db_buffeffect.db;
+	// BuffItem.Activate draws the icon and only an arrow for "1" or "2"). In the capture they come in the local client's
+	// own ApplyGameplayEffectPush, checked outside the product's effect decoder
+	// (work/live-build31/client_status_crosscheck.py): holder by CombatCommon.EntityId against the role entities of the
+	// server's JoinSceneNotify and EntityAddNotify, stacks from the apply and BuffStackCountPush.NewStackCount on the same
+	// HandleId, instigator role 1512. 1512310003 is on teammates 1311 and 1312 (stack 2 at most), 1512999015 on Lily
+	// herself, 2002205502 on every team member, 1512800104 on the local player's PlayerEntity (EntityType 11, which
+	// RoleBuffView reads too; stack 4 at most), and Xin's 1311400007 and 1311400008 on Xin.
+	semanticEffectFact{build31LiveCapture, 1512310003, EffectPolarityBuff, EffectTargetTeam, 2, EffectPolarityNeutral},
+	semanticEffectFact{build31LiveCapture, 1512800104, EffectPolarityBuff, EffectTargetTeam, 4, EffectPolarityNeutral},
+	semanticEffectFact{build31LiveCapture, 1512999015, EffectPolarityBuff, EffectTargetTeam, 1, EffectPolarityNeutral},
+	semanticEffectFact{build31LiveCapture, 2002205502, EffectPolarityBuff, EffectTargetTeam, 1, EffectPolarityNeutral},
+	semanticEffectFact{build31LiveCapture, 1311400007, EffectPolarityBuff, EffectTargetTeam, 1, EffectPolarityNeutral},
+	semanticEffectFact{build31LiveCapture, 1311400008, EffectPolarityBuff, EffectTargetTeam, 1, EffectPolarityNeutral},
 )
 
-// Effects that must never be listed: logic flags and refresh-period modifiers the game draws no buff-bar item for.
+// Effects that must never be listed: logic flags and refresh-period modifiers the game draws no buff-bar item for. Role
+// statuses whose HUD cue carries no direction were listed here until 2026-11-14; the game draws them without an arrow,
+// so they are now facts of the first row above.
 var semanticNeverListed = map[uint64]string{
 	1101003023: "dodge invulnerability flag",
 	1409401095: "six-element fan-out modifier",
 	1508952003: "six-element fan-out modifier",
 	3098:       "fall damage immunity",
-	// The game draws these role buffs without a direction arrow (their HUD cues carry no direction parameter), so they
-	// belong to neither row. 1512999015 and 1512800104 are buffs of the new role 1512 applied in the 3.8 corpus.
-	1311400007: "HUD cue without a direction",
-	1512999015: "HUD cue without a direction",
-	1512800104: "HUD cue without a direction",
 }
 
 var semanticSkillFacts = currentGoldenFacts(func(capture string) []semanticSkillFact {
@@ -214,6 +236,7 @@ var semanticCompletenessFacts = append(append(currentGoldenFacts(func(capture st
 
 type semanticEffectSeen struct {
 	row      EffectPolarity
+	polarity EffectPolarity
 	target   EffectDisplayTarget
 	maxStack uint64
 }
@@ -223,7 +246,9 @@ func semanticCheckRows(view ViewEffects) error {
 		var previous time.Time
 		timedDone := false
 		for _, effect := range row.Effects {
-			if effect.Polarity != polarity || !effect.HUDIcon || effect.Display.Eligibility != EffectDisplayEligible {
+			// The first row also holds the statuses the HUD draws without an arrow; each keeps its own polarity.
+			rowPolarity := effect.Polarity == polarity || polarity == EffectPolarityBuff && effect.Polarity == EffectPolarityNeutral
+			if !rowPolarity || !effect.HUDIcon || effect.Display.Eligibility != EffectDisplayEligible {
 				return fmt.Errorf("listed cell in the %s row: polarity %s, icon %v, eligibility %s", polarity, effect.Polarity, effect.HUDIcon, effect.Display.Eligibility)
 			}
 			if effect.ShowCountdown && effect.ExpectedExpiry != nil && effect.RemainingStatus == EffectRemainingEstimated && !effect.Stale {
@@ -465,7 +490,7 @@ func TestSemanticReplayCollector(t *testing.T) {
 						}
 						entry := seen[id]
 						if entry == nil {
-							entry = &semanticEffectSeen{row: polarity, target: effect.Display.Target}
+							entry = &semanticEffectSeen{row: polarity, polarity: effect.Polarity, target: effect.Display.Target}
 							seen[id] = entry
 						}
 						if effect.StackCount != nil && *effect.StackCount > entry.maxStack {
@@ -487,7 +512,7 @@ func TestSemanticReplayCollector(t *testing.T) {
 			}
 			sort.Slice(listed, func(i, j int) bool { return listed[i] < listed[j] })
 			for _, id := range listed {
-				t.Logf("listed effect %d: row %s, target %s, max stack %d", id, seen[id].row, seen[id].target, seen[id].maxStack)
+				t.Logf("listed effect %d: row %s, polarity %s, target %s, max stack %d", id, seen[id].row, seen[id].polarity, seen[id].target, seen[id].maxStack)
 			}
 			for _, fact := range semanticEffectFacts {
 				if !semanticCaptureMatches(capture.name, fact.capture) {
@@ -498,8 +523,12 @@ func TestSemanticReplayCollector(t *testing.T) {
 					t.Errorf("effect %d was never listed", fact.effectID)
 					continue
 				}
-				if got.row != fact.row || got.target != fact.target || got.maxStack != fact.maxStack {
-					t.Errorf("effect %d = %+v, want row %s target %s max stack %d", fact.effectID, *got, fact.row, fact.target, fact.maxStack)
+				polarity := fact.polarity
+				if polarity == "" {
+					polarity = fact.row
+				}
+				if got.row != fact.row || got.polarity != polarity || got.target != fact.target || got.maxStack != fact.maxStack {
+					t.Errorf("effect %d = %+v, want row %s polarity %s target %s max stack %d", fact.effectID, *got, fact.row, polarity, fact.target, fact.maxStack)
 				}
 			}
 			statistics := p.damageStatisticsSnapshot()

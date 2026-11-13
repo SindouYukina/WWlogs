@@ -57,7 +57,7 @@ interface MockEffect {
   duration?: number
   remaining?: number
   stacks?: number
-  polarity: "buff" | "debuff" | "unclassified"
+  polarity: "buff" | "debuff" | "neutral" | "unclassified"
   holderRoleId?: number
   holderRelation: string
   firstObservedAt: string

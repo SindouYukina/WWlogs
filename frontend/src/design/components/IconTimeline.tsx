@@ -39,7 +39,7 @@ export interface EffectTrack {
   key: string
   label: ReactNode
   sub?: ReactNode
-  polarity: "buff" | "debuff" | "unclassified"
+  polarity: "buff" | "debuff" | "neutral" | "unclassified"
   /** The effect's own game image, drawn where an instance starts when there is room; null draws none. */
   icon: IconImage | null
   segments: ReadonlyArray<{ fromMs: number; toMs: number; evidence: "confirmed" | "stated" | "unknown"; stack?: number }>

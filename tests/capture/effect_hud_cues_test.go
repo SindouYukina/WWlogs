@@ -97,7 +97,8 @@ func TestLoadBuffHUDCuesReadsDirectionAndMonsterHeadFromTheFirstCue(t *testing.T
 		"INSERT INTO gameplaycue VALUES('1',2,'a'),('2',2,'b'),('3',14,'c'),('4',24,'d'),('5',2,'e'),('6',2,'f')",
 		"INSERT INTO gameplaycue_parameters VALUES('1',0,'1'),('2',0,'2'),('3',0,'2'),('4',0,'0'),('5',0,''),('2',4,'1')",
 		// 20: buff arrow; 21: debuff arrow hidden on monster heads; 22: type 14 debuff listed second behind a type 2 buff;
-		// 23: a value without an arrow; 24: an empty value; 25: a cue with no parameter rows.
+		// 23: a value without an arrow; 24: an empty value; 25: a cue with no parameter rows (an empty Parameters vector).
+		// The HUD draws 23 to 25 with their icon and without an arrow.
 		"INSERT INTO buff_gameplay_cue_ids VALUES('20',0,'1'),('21',0,'2'),('22',0,'1'),('22',1,'3'),('23',0,'4'),('24',0,'5'),('25',0,'6')",
 	} {
 		if _, err := db.Exec(statement); err != nil {
@@ -113,10 +114,23 @@ func TestLoadBuffHUDCuesReadsDirectionAndMonsterHeadFromTheFirstCue(t *testing.T
 		hidden   bool
 	}{
 		20: {EffectPolarityBuff, false}, 21: {EffectPolarityDebuff, true}, 22: {EffectPolarityBuff, false},
-		23: {EffectPolarityUnclassified, false}, 24: {EffectPolarityUnclassified, false}, 25: {EffectPolarityUnclassified, false},
+		23: {EffectPolarityNeutral, false}, 24: {EffectPolarityNeutral, false}, 25: {EffectPolarityNeutral, false},
 	} {
 		if got := statics[id]; got.hudPolarity != want.polarity || got.hudHiddenOnMonsterHead != want.hidden {
 			t.Errorf("effect %d = %s hidden=%v, want %+v", id, got.hudPolarity, got.hudHiddenOnMonsterHead, want)
+		}
+	}
+	// Without the parameters table there is no direction evidence at all: an older Master stays unclassified.
+	if _, err := db.Exec("DROP TABLE gameplaycue_parameters"); err != nil {
+		t.Fatal(err)
+	}
+	older := map[uint64]buffStaticParameters{}
+	if err := loadBuffHUDCues(db, older); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []uint64{20, 23, 25} {
+		if got := older[id].hudPolarity; got != EffectPolarityUnclassified {
+			t.Errorf("effect %d without cue parameters = %s, want unclassified", id, got)
 		}
 	}
 }
@@ -151,8 +165,11 @@ func TestTrackedMasterHUDCuesOfKnownEffects(t *testing.T) {
 	for id, polarity := range map[uint64]EffectPolarity{
 		2002202311: EffectPolarityBuff, 2002203902: EffectPolarityBuff, 1311400208: EffectPolarityBuff,
 		10010000: EffectPolarityDebuff, 10041000: EffectPolarityDebuff, 10061000: EffectPolarityDebuff, 9100001202: EffectPolarityDebuff,
-		// A role buff the HUD draws without an arrow.
-		1311400007: EffectPolarityUnclassified,
+		// Role statuses the HUD draws with their icon and without an arrow: Xin's type-24 statuses, and Lily's (role 1512)
+		// four Global 3.8.9 statuses, whose cues 1512623002..1512623005 (T_IconLiliBuff02..05) are type 2 with an empty
+		// Parameters vector in the 3.8.9 hotfix db_buffeffect.db, read with the shipped GameplayCue.js slots.
+		1311400007: EffectPolarityNeutral, 1311400008: EffectPolarityNeutral,
+		1512310003: EffectPolarityNeutral, 1512800104: EffectPolarityNeutral, 2002205502: EffectPolarityNeutral, 1512999015: EffectPolarityNeutral,
 	} {
 		static, ok := master.buffStatic(id)
 		if !ok || static.hudPolarity != polarity {

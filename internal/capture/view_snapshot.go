@@ -251,7 +251,9 @@ type ViewEffects struct {
 	Status EffectSnapshotStatus `json:"status"`
 	Reason string               `json:"reason,omitempty"`
 	// Buffs and Debuffs are the two rows of the Effects Overlay, classified, filtered and ordered here: soonest to end first,
-	// cells without a reliable time last. The frontend only lays them out.
+	// cells without a reliable time last. The frontend only lays them out. Debuffs holds the statuses the game draws with
+	// its DEBUFF arrow; Buffs holds those with its BUFF arrow and those it draws without an arrow (polarity neutral), which
+	// share the team's buff bar in the game. Each cell keeps its own polarity.
 	Buffs   ViewEffectRow `json:"buffs"`
 	Debuffs ViewEffectRow `json:"debuffs"`
 	// Active is every listed cell in display order, the union of the two rows. It stays out of the snapshot to keep each
