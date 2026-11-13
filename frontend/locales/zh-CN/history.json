@@ -236,7 +236,16 @@
       "truncated": "这场战斗的效果事件超过单次分析的上限，因此不显示效果。",
       "exactNote": "这个范围内的每一段都由观测到的消息确认，没有采集缺口，覆盖率是精确值。",
       "boundsNote": "这个范围内有未确认的部分（按陈述的时间、无法判定、起点未确认或采集缺口），因此只显示下限与可能的上限。",
-      "moreIntervals": "另有 {{n}} 段未列出。"
+      "moreIntervals": "另有 {{n}} 段未列出。",
+      "refreshes": "刷新次数",
+      "refreshNote": "已生效的效果再次被施加或出现在快照中；这不是新的独立效果。",
+      "stackChanges": "层数变化",
+      "inactive": "未生效（已确认）",
+      "inactiveUpper": "未生效（上限）",
+      "inactiveNote": "范围内没有任何区间、也不在抓包缺口内的时间。有缺口、被拒收的效果变更或过期未观察的实例时，这只是上限。",
+      "unobserved": "首次观察前",
+      "unobservedNote": "效果首次被观察（例如快照）之前、可能已经生效的时间。",
+      "stackTitle": "层数"
     },
     "skills": {
       "hits": "命中次数",
@@ -361,6 +370,49 @@
         "noIcon": "没有游戏图标",
         "name": "名称可信度"
       }
+    },
+    "correlation": {
+      "title": "伤害时间关联",
+      "note": "按时间比对已确认的伤害命中与此效果的区间。只表示同时发生，不代表效果造成多少伤害，也不计算 rDPS。",
+      "scopeLabel": "伤害范围",
+      "scope": {
+        "selection": "当前的筛选",
+        "holder": "持有者造成的伤害",
+        "target": "持有者受到的伤害"
+      },
+      "class": {
+        "confirmed": "已确认生效期间",
+        "stated": "服务器声明的期间",
+        "unknown": "无法确认",
+        "outside": "未生效期间"
+      },
+      "classNote": {
+        "confirmed": "命中落在记录的变更确认生效的区间内。",
+        "stated": "命中只落在服务器声明的持续时间内，结束时间未被观察。",
+        "unknown": "当时效果的状态无法判断，原因列在下方。",
+        "outside": "记录的变更显示当时没有此效果。"
+      },
+      "hits": "{{n}} 次",
+      "reasonsLead": "无法确认的原因：",
+      "reason": {
+        "gap": "抓包缺口",
+        "unknown_interval": "效果状态不明的区间",
+        "start_unconfirmed": "效果首次观察之前",
+        "simultaneous": "与效果的变化同一时刻",
+        "rejected_changes": "有被拒收的效果变更，无法排除",
+        "stale_instance": "有过期未观察的实例，无法排除"
+      },
+      "untimed": "{{n}} 次命中没有时间，无法比对。",
+      "by": {
+        "skill": "技能",
+        "contributor": "角色",
+        "enemy": "目标"
+      },
+      "noHits": "选取范围内没有已确认的伤害命中。",
+      "unavailable": "这场战斗的效果变更超过分析上限，或此效果不在其中，无法比对。",
+      "failed": "无法读取伤害时间关联。",
+      "listMore": "只列出前 {{n}} 条（共 {{total}} 条），可在「事件」分页查看全部。",
+      "noEnemy": "未对应的目标"
     }
   },
   "library": {

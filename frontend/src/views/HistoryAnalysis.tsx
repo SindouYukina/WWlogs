@@ -5,7 +5,7 @@ import { usableDps } from "@/lib/combat-data"
 import { combatRows, skillBreakdown, type CombatRowModel } from "@/lib/combat-view"
 import { elementColor, useFormatters, useRowNames } from "@/lib/format"
 import type { HistoryEncounterDetail, HistoryName } from "@/lib/history"
-import { clampView, effectFace, effectGroupOf, eventPageSize, formatMs, fullQuery, fullView, isFullView, minimumRangeMs, minimumViewMs, panView, parseSkillRow, querySpan, rangeQuery, skillRowKey, unassignedContributor, viewAround, zoomView, type GapRef, type HitCluster, type HitRow, type HitTimeline, type TimeView, type ActorRef, type AnalysisQuery, type EffectCoverage, type EffectLanes as EffectLanesData, type EffectRow, type EffectScope, type EncounterAnalysis, type EnemyRange, type EventKind, type EventPage, type EventRow, type SkillStats } from "@/lib/history-analysis"
+import { clampView, correlationClasses, correlationQuery, correlationScopes, effectFace, effectGroupOf, eventPageSize, formatMs, fullQuery, fullView, isFullView, minimumRangeMs, minimumViewMs, panView, parseSkillRow, querySpan, rangeQuery, skillRowKey, unassignedContributor, viewAround, zoomView, type GapRef, type HitCluster, type HitRow, type HitTimeline, type TimeView, type ActorRef, type AnalysisQuery, type EffectCoverage, type EffectLanes as EffectLanesData, type EffectRow, type EffectScope, type EncounterAnalysis, type EnemyRange, type EventKind, type EventPage, type EventRow, type SkillStats, type CorrelationClass, type CorrelationRow, type CorrelationScope, type EffectCorrelation } from "@/lib/history-analysis"
 import { host } from "@/lib/host"
 import { usableHealing, type Encounter, type Timeline } from "@/lib/snapshot"
 import { contributorKey, teamSeriesKey, unassignedSeriesKey } from "@/lib/timeline"
@@ -268,7 +268,7 @@ export function AnalysisWorkspace({ detail, timelineMode: mode, setTimelineMode:
       </div>
       <ContentSwitch contentKey={tab}>
         {tab === "skills" && <SkillsTab analysis={analysis} encounter={encounter} rows={rows} query={query} setQuery={setQuery} setContributor={setContributor} range={range} entering={entering} />}
-        {tab === "effects" && <EffectsTab lanes={lanes} analysis={analysis} focus={focus} setFocus={setFocus} actorName={actorName} enemyLabel={enemyLabel} range={range} />}
+        {tab === "effects" && <EffectsTab encounterId={id} lanes={lanes} analysis={analysis} focus={focus} setFocus={setFocus} actorName={actorName} enemyLabel={enemyLabel} range={range} />}
         {tab === "events" && <EventsTab id={id} query={query} analysis={analysis} lanes={lanes} actorName={actorName} enemyLabel={enemyLabel} rowByKey={rowByKey} />}
       </ContentSwitch>
     </Card>
@@ -541,11 +541,11 @@ const TimelineCard = memo(function TimelineCard({ detail, analysis, lanes, lines
             describeCluster={describeCluster} describeSegment={describeSegment} labels={{ aria: a("icon.aria"), expand: a("icon.expand"), collapse: a("icon.collapse"), empty: a("icon.empty") }} loading={!lanes || !hitsReady} />
           {lanes && <EffectNotes lanes={lanes} />}
           {pickedHits && pick?.kind === "hits" && <HitDetail cluster={pick.cluster} track={pickedHits.track} rows={pickedHits.rows} seriesName={seriesName} query={query} setQuery={setQuery} onClose={() => onPick(null)} />}
-          {focusedEffect && lanes && <EffectDetail lanes={lanes} analysis={analysis} rowKey={focusedEffect} actorName={actorName} enemyLabel={enemyLabel} segment={pickedSegment} gaps={analysis.gaps} />}
+          {focusedEffect && lanes && <EffectDetail encounterId={detail.summary.id} lanes={lanes} analysis={analysis} rowKey={focusedEffect} actorName={actorName} enemyLabel={enemyLabel} segment={pickedSegment} gaps={analysis.gaps} />}
         </div>
         : <>
           <div className="ww-analysis-lanes-head"><h4>{a("lanesTitle")}</h4></div>
-          <TimelineLanes lanes={lanes} analysis={analysis} range={selected} focus={focus} setFocus={setFocus} actorName={actorName} enemyLabel={enemyLabel} view={view} sync={sync} />
+          <TimelineLanes encounterId={detail.summary.id} lanes={lanes} analysis={analysis} range={selected} focus={focus} setFocus={setFocus} actorName={actorName} enemyLabel={enemyLabel} view={view} sync={sync} />
         </>}
     </div>
   </div></Card>
@@ -582,6 +582,7 @@ function HitDetail({ cluster, track, rows, seriesName, query, setQuery, onClose 
 }
 
 interface EffectTabProps {
+  encounterId: number
   lanes: EffectLanesData | null
   analysis: EncounterAnalysis
   range: { fromMs: number; toMs: number } | null
@@ -628,7 +629,7 @@ function laneRows(rows: readonly EffectRow[], actorName: EffectTabProps["actorNa
  * The effect lanes of the unified timeline: the effects of the scope on the same axis as the DPS lines right above them, with
  * the selected one's details below.
  */
-const TimelineLanes = memo(function TimelineLanes({ lanes, analysis, range, focus, setFocus, actorName, enemyLabel, view, sync }: EffectTabProps & { view?: TimeView; sync?: TimelineSync }) {
+const TimelineLanes = memo(function TimelineLanes({ encounterId, lanes, analysis, range, focus, setFocus, actorName, enemyLabel, view, sync }: EffectTabProps & { view?: TimeView; sync?: TimelineSync }) {
   const { t } = useTranslation("history")
   const labels = useLaneLabels()
   const rows = useMemo(() => lanes ? laneRows(lanes.rows, actorName, enemyLabel) : [], [lanes, actorName, enemyLabel])
@@ -640,11 +641,11 @@ const TimelineLanes = memo(function TimelineLanes({ lanes, analysis, range, focu
     {rows.length === 0 ? <p className="ww-dash-empty-note" data-field="lanes-empty">{t("analysis.effects.none")}</p>
       : <EffectLanes rows={rows} durationMs={lanes.durationMs} range={range} gaps={lanes.gaps} selected={selected} onSelect={key => setFocus(key ? { kind: "effect", key } : null)} visibleRows={8} labels={{ aria: t("analysis.lanesTitle"), ...labels }} view={view} sync={sync} />}
     <EffectNotes lanes={lanes} />
-    {selected && <EffectDetail lanes={lanes} analysis={analysis} rowKey={selected} actorName={actorName} enemyLabel={enemyLabel} />}
+    {selected && <EffectDetail encounterId={encounterId} lanes={lanes} analysis={analysis} rowKey={selected} actorName={actorName} enemyLabel={enemyLabel} />}
   </div>
 })
 
-function EffectDetail({ lanes, analysis, rowKey, actorName, enemyLabel, segment = null, gaps = [] }: { lanes: EffectLanesData; analysis: EncounterAnalysis; rowKey: string | null; actorName: EffectTabProps["actorName"]; enemyLabel: (ordinal: number) => string; segment?: number | null; gaps?: readonly GapRef[] }) {
+function EffectDetail({ encounterId, lanes, analysis, rowKey, actorName, enemyLabel, segment = null, gaps = [] }: { encounterId: number; lanes: EffectLanesData; analysis: EncounterAnalysis; rowKey: string | null; actorName: EffectTabProps["actorName"]; enemyLabel: (ordinal: number) => string; segment?: number | null; gaps?: readonly GapRef[] }) {
   const { t } = useTranslation("history")
   const format = useFormatters()
   const row = rowKey ? lanes.rows.find(candidate => candidate.key === rowKey) : undefined
@@ -668,16 +669,130 @@ function EffectDetail({ lanes, analysis, rowKey, actorName, enemyLabel, segment 
           {coverage.gapMs > 0 && <div><dt>{t("analysis.gap")}</dt><dd className="ww-num">{formatMs(coverage.gapMs)}</dd></div>}
           <div><dt>{t("analysis.effects.maxStack")}</dt><dd className="ww-num">{coverage.maxStack ?? "—"}</dd></div>
           <div><dt>{t("analysis.effects.applies")}</dt><dd className="ww-num">{format.integer(coverage.applies)}</dd></div>
+          <div><dt>{t("analysis.effects.refreshes")}</dt><dd className="ww-num" data-field="detail-refreshes" title={t("analysis.effects.refreshNote")}>{format.integer(coverage.refreshes)}</dd></div>
+          <div><dt>{t("analysis.effects.stackChanges")}</dt><dd className="ww-num" data-field="detail-stack-changes">{format.integer(coverage.stackChanges)}</dd></div>
+          <div><dt>{t(coverage.inactiveConfirmed ? "analysis.effects.inactive" : "analysis.effects.inactiveUpper")}</dt>
+            <dd className="ww-num" data-field="detail-inactive" data-confirmed={coverage.inactiveConfirmed} title={t("analysis.effects.inactiveNote")}>{coverage.inactiveConfirmed ? "" : "≤ "}{formatMs(coverage.inactiveMs)}</dd></div>
+          {coverage.unobservedMs > 0 && <div><dt>{t("analysis.effects.unobserved")}</dt><dd className="ww-num" data-field="detail-unobserved" title={t("analysis.effects.unobservedNote")}>{formatMs(coverage.unobservedMs)}</dd></div>}
         </>}
       </dl>
+      {row.segments.some(part => part.stack !== undefined) && <StackSteps row={row} durationMs={lanes.durationMs} />}
       {picked && <SegmentFacts row={row} segment={picked} gaps={gaps} />}
       <p className="ww-history-note">{coverage?.exact ? t("analysis.effects.exactNote") : t("analysis.effects.boundsNote")}</p>
       <ol className="ww-analysis-intervals" data-field="detail-intervals">{row.segments.slice(0, 40).map((segment, index) => <li key={index} data-evidence={segment.evidence}>
         <span className="ww-num">{formatMs(segment.fromMs)} – {formatMs(segment.toMs)}</span><span>{t(`analysis.evidence.${segment.evidence}`)}</span>{segment.stack !== undefined && <span className="ww-num">×{segment.stack}</span>}
       </li>)}</ol>
       {row.segments.length > 40 && <p className="ww-history-note">{t("analysis.effects.moreIntervals", { n: row.segments.length - 40 })}</p>}
+      <EffectCorrelationPanel encounterId={encounterId} analysis={analysis} row={row} actorName={actorName} enemyLabel={enemyLabel} />
     </>}
   </aside>
+}
+
+/** The effect's stack count over the encounter as steps, drawn from Go's intervals; each step keeps its evidence. */
+function StackSteps({ row, durationMs }: { row: EffectRow; durationMs: number }) {
+  const { t } = useTranslation("history")
+  const top = Math.max(1, ...row.segments.map(part => part.stack ?? 0))
+  if (!(durationMs > 0)) return null
+  return <figure className="ww-analysis-stacks" data-field="detail-stacks" data-max={top}>
+    <figcaption className="ww-career-fact-label">{t("analysis.effects.stackTitle")}</figcaption>
+    <svg viewBox={`0 0 ${durationMs} 24`} preserveAspectRatio="none" role="img" aria-label={t("analysis.effects.stackTitle")}>
+      {row.segments.map((part, index) => part.stack === undefined ? null : <rect key={index} data-evidence={part.evidence} x={part.fromMs} width={Math.max(0, part.toMs - part.fromMs)} y={24 - (part.stack / top) * 22} height={(part.stack / top) * 22}>
+        <title>{`${formatMs(part.fromMs)} – ${formatMs(part.toMs)} · ×${part.stack} · ${t(`analysis.evidence.${part.evidence}`)}`}</title>
+      </rect>)}
+    </svg>
+    <div className="ww-analysis-stacks-axis ww-num" aria-hidden="true"><span>0:00</span><span>×{top}</span><span>{formatMs(durationMs)}</span></div>
+  </figure>
+}
+
+/** How many correlated hits one class lists before pointing to the Events tab. */
+const correlationListLimit = 30
+
+/**
+ * Where the selected hits fall against the effect's intervals, as Go placed them: a time correlation. It never says how
+ * much damage the effect added and no rDPS is computed from it.
+ */
+function EffectCorrelationPanel({ encounterId, analysis, row, actorName, enemyLabel }: { encounterId: number; analysis: EncounterAnalysis; row: EffectRow; actorName: EffectTabProps["actorName"]; enemyLabel: (ordinal: number) => string }) {
+  const { t } = useTranslation(["history", "common"])
+  const format = useFormatters()
+  const nameOf = useRowNames()
+  const faces = useSkillFaces(analysis.encounter)
+  const scopes = useMemo(() => correlationScopes(row.holder), [row.holder])
+  const [scope, setScope] = useState<CorrelationScope>("selection")
+  const shownScope = scopes.includes(scope) ? scope : "selection"
+  const query = useMemo(() => correlationQuery(analysis.query, shownScope, row.holder), [analysis.query, shownScope, row.holder])
+  const [answer, setAnswer] = useState<EffectCorrelation | null>(null)
+  const [failed, setFailed] = useState(false)
+  const [listed, setListed] = useState<{ cls: CorrelationClass; page: EventPage | null } | null>(null)
+  const queryKey = JSON.stringify(query)
+  useEffect(() => {
+    let current = true
+    setListed(null)
+    host.historyEffectCorrelation(encounterId, query, row.key).then(next => { if (current) { setAnswer(next); setFailed(false) } }).catch(() => { if (current) setFailed(true) })
+    return () => { current = false }
+  }, [encounterId, row.key, queryKey])
+  const list = (cls: CorrelationClass) => {
+    if (listed?.cls === cls) { setListed(null); return }
+    setListed({ cls, page: null })
+    host.historyEvents(encounterId, { ...query, kinds: ["damage"], effectRow: "", correlateEffect: row.key, correlation: cls, offset: 0, limit: correlationListLimit })
+      .then(page => setListed(previous => previous?.cls === cls ? { cls, page } : previous)).catch(() => setFailed(true))
+  }
+  const contributorNames = useMemo(() => new Map((analysis.encounter ? combatRows(analysis.encounter) : []).map(entry => [entry.key, nameOf(entry)])), [analysis.encounter, nameOf])
+  const rowName = (kind: "contributor" | "skill" | "enemy", key: string) => {
+    if (kind === "contributor") return key === unassignedContributor ? t("unassigned", { ns: "common" }) : contributorNames.get(key) ?? key
+    if (kind === "enemy") return key === "-1" ? t("analysis.correlation.noEnemy") : enemyLabel(Number(key))
+    const parsed = parseSkillRow(key)
+    return faces.get(key)?.name ?? (parsed && parsed.skillId ? `SkillId ${parsed.skillId}` : t("unassignedSkill", { ns: "dashboard" }))
+  }
+  const total = answer?.total
+  const splitCells = (split: CorrelationRow) => correlationClasses.map(cls => <td key={cls} className="ww-num" data-class={cls}>{split[cls].hits > 0 ? <>{format.integer(split[cls].damage)}<span className="ww-compare-sub">{format.percent(split[cls].share)}</span></> : "—"}</td>)
+  const breakdown = (kind: "contributor" | "skill" | "enemy", rows: readonly CorrelationRow[]) => rows.length === 0 ? null : <div className="ww-dash-skills-wrap" style={{ maxHeight: 220 }}><table className="ww-history-table ww-correlation-table" data-field={`correlation-by-${kind}`}>
+    <thead><tr><th>{t(`analysis.correlation.by.${kind}`)}</th>{correlationClasses.map(cls => <th key={cls} className="ww-num">{t(`analysis.correlation.class.${cls}`)}</th>)}</tr></thead>
+    <tbody>{rows.slice(0, 12).map(entry => <tr key={entry.key} data-key={entry.key}><td className="ww-truncate">{rowName(kind, entry.key)}</td>{splitCells(entry)}</tr>)}</tbody>
+  </table></div>
+  return <section className="ww-analysis-correlation" data-field="effect-correlation" data-effect={row.key} data-scope={shownScope}>
+    <h5>{t("analysis.correlation.title")}</h5>
+    <p className="ww-history-note">{t("analysis.correlation.note")}</p>
+    {scopes.length > 1 && <div data-field="correlation-scope"><Segmented label={t("analysis.correlation.scopeLabel")} value={shownScope} onChange={(next: CorrelationScope) => setScope(next)}
+      options={scopes.map(value => ({ value, label: t(`analysis.correlation.scope.${value}`) }))} /></div>}
+    {failed && <p className="ww-history-note" data-tone="critical" role="alert">{t("analysis.correlation.failed")}</p>}
+    {!answer ? <p className="ww-dash-empty-note">{t("analysis.loading")}</p>
+      : !answer.available ? <p className="ww-history-note" data-tone="warn" data-field="correlation-unavailable">{t("analysis.correlation.unavailable")}</p>
+      : !total || total.hits === 0 ? <p className="ww-dash-empty-note" data-field="correlation-empty">{t("analysis.correlation.noHits")}</p>
+      : <>
+        <div className="ww-correlation-bar" role="img" aria-label={correlationClasses.map(cls => `${t(`analysis.correlation.class.${cls}`)} ${format.percent(total[cls].share)}`).join(", ")}>
+          {correlationClasses.map(cls => total[cls].damage > 0 && <span key={cls} data-class={cls} style={{ flexGrow: total[cls].damage }} />)}
+        </div>
+        <ul className="ww-correlation-classes">
+          {correlationClasses.map(cls => <li key={cls} data-class={cls}>
+            <button type="button" className="ww-correlation-class" data-field={`correlation-${cls}`} aria-pressed={listed?.cls === cls} disabled={total[cls].hits === 0} title={t(`analysis.correlation.classNote.${cls}`)} onClick={() => list(cls)}>
+              <span className="ww-correlation-swatch" data-class={cls} aria-hidden="true" />
+              <span>{t(`analysis.correlation.class.${cls}`)}</span>
+              <span className="ww-num">{t("analysis.correlation.hits", { n: format.integer(total[cls].hits) })}</span>
+              <span className="ww-num">{format.integer(total[cls].damage)}</span>
+              <span className="ww-num ww-compare-sub">{format.percent(total[cls].share)}</span>
+            </button>
+          </li>)}
+        </ul>
+        {total.unknown.hits > 0 && <p className="ww-history-note" data-field="correlation-reasons">{t("analysis.correlation.reasonsLead")} {Object.entries(answer.reasons).map(([reason, count]) => `${t(`analysis.correlation.reason.${reason}`)} ${format.integer(count)}`).join("、")}</p>}
+        {answer.untimed > 0 && <p className="ww-history-note">{t("analysis.correlation.untimed", { n: format.integer(answer.untimed) })}</p>}
+        {listed && <div className="ww-correlation-hits" data-field="correlation-hits" data-class={listed.cls}>
+          {!listed.page ? <p className="ww-dash-empty-note">{t("analysis.loading")}</p> : <ol>
+            {listed.page.rows.map(hit => <li key={hit.key}>
+              <span className="ww-num">{hit.atMs === undefined ? "—" : formatMs(hit.atMs)}</span>
+              <span className="ww-truncate">{actorName(hit.source, enemyLabel)}</span>
+              <span className="ww-truncate">{hit.skillRow ? rowName("skill", hit.skillRow) : "—"}</span>
+              <span className="ww-truncate">{actorName(hit.target, enemyLabel)}</span>
+              <span className="ww-num">{format.integer(hit.amount ?? 0)}</span>
+              {hit.correlationReason && <span className="ww-history-mark">{t(`analysis.correlation.reason.${hit.correlationReason}`)}</span>}
+            </li>)}
+          </ol>}
+          {listed.page && listed.page.total > listed.page.rows.length && <p className="ww-history-note">{t("analysis.correlation.listMore", { n: format.integer(listed.page.rows.length), total: format.integer(listed.page.total) })}</p>}
+        </div>}
+        {breakdown("skill", answer.bySkill)}
+        {answer.byContributor.length > 1 && breakdown("contributor", answer.byContributor)}
+        {answer.byEnemy.length > 1 && breakdown("enemy", answer.byEnemy)}
+      </>}
+  </section>
 }
 
 const endMarkers = new Set(["removed", "holder_removed", "superseded", "untracked", "continues"])
@@ -707,7 +822,7 @@ function SegmentFacts({ row, segment, gaps }: { row: EffectRow; segment: EffectR
 }
 
 /** The Effects tab: every effect of the scope with its coverage of the selected range. */
-const EffectsTab = memo(function EffectsTab({ lanes, analysis, focus, setFocus, actorName, enemyLabel }: EffectTabProps) {
+const EffectsTab = memo(function EffectsTab({ encounterId, lanes, analysis, focus, setFocus, actorName, enemyLabel }: EffectTabProps) {
   const { t } = useTranslation("history")
   const format = useFormatters()
   const selected = focus?.kind === "effect" ? focus.key : null
@@ -734,7 +849,7 @@ const EffectsTab = memo(function EffectsTab({ lanes, analysis, focus, setFocus, 
         </table></div>}
       <EffectNotes lanes={lanes} />
     </div>
-    <EffectDetail lanes={lanes} analysis={analysis} rowKey={selected} actorName={actorName} enemyLabel={enemyLabel} />
+    <EffectDetail encounterId={encounterId} lanes={lanes} analysis={analysis} rowKey={selected} actorName={actorName} enemyLabel={enemyLabel} />
   </div>
 })
 

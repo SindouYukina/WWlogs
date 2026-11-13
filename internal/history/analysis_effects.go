@@ -156,6 +156,8 @@ type effectRowModel struct {
 	instances        []*effectInstanceModel
 	contributors     map[string]bool
 	enemies          map[int]bool
+	// stale counts the row's instances left out as stale: the encounter holds no evidence about them either way.
+	stale int
 }
 
 type effectModel struct {
@@ -281,6 +283,7 @@ func (s *Store) loadEffects(ctx context.Context, model *encounterModel, masters 
 			// Its own stated time ended before the encounter and nothing about it was observed during the encounter: the
 			// tracker no longer shows it, and the encounter holds no evidence about it either way. It is counted, not drawn.
 			effects.stale++
+			instance.row.stale++
 			instance.row.drop(instance)
 			delete(effects.instances, id)
 			continue
@@ -797,6 +800,17 @@ type EffectCoverage struct {
 	MaxStack         *int64   `json:"maxStack,omitempty"`
 	Applies          int      `json:"applies"`
 	StartUnconfirmed bool     `json:"startUnconfirmed,omitempty"`
+	// Refreshes and StackChanges count the observed refreshes (an APPLY or snapshot repeated for an active instance, which
+	// starts no new instance) and stack-count changes in the range.
+	Refreshes    int `json:"refreshes"`
+	StackChanges int `json:"stackChanges"`
+	// InactiveMs is the range's time with no interval of the effect, outside capture gaps and before no unconfirmed start;
+	// UnobservedMs is the time before an instance's unconfirmed start, when it may have been active. InactiveConfirmed is
+	// set when the recorded changes rule every instance out in InactiveMs: no capture gap in the range, no rejected change
+	// and no stale instance. Otherwise InactiveMs is an upper bound of the effect's downtime.
+	InactiveMs        float64 `json:"inactiveMs"`
+	UnobservedMs      float64 `json:"unobservedMs"`
+	InactiveConfirmed bool    `json:"inactiveConfirmed"`
 }
 
 // EffectCoverageOf is the coverage of every row of the analysis scope in the range.
@@ -914,6 +928,17 @@ func (m *encounterModel) effectCoverage(q resolvedQuery) EffectCoverageOf {
 					}
 				}
 			}
+			for _, fact := range instance.facts {
+				if fact.at < start+q.from || fact.at >= start+q.to {
+					continue
+				}
+				switch capture.EffectChange(fact.change) {
+				case capture.EffectChangeRefresh:
+					coverage.Refreshes++
+				case capture.EffectChangeStack:
+					coverage.StackChanges++
+				}
+			}
 		}
 		c := intersect(union(confirmed), rangeSpan)
 		inGap := intersect(c, gaps)
@@ -921,6 +946,14 @@ func (m *encounterModel) effectCoverage(q resolvedQuery) EffectCoverageOf {
 		p := subtract(union(append(intersect(union(stated), rangeSpan), inGap...)), c)
 		u := subtract(subtract(intersect(union(unknown), rangeSpan), c), p)
 		coverage.ConfirmedMs, coverage.PartialMs, coverage.UnknownMs, coverage.GapMs = wholeMs(length(c)), wholeMs(length(p)), wholeMs(length(u)), wholeMs(length(gaps))
+		// The rest of the range: before an unconfirmed start the effect may have been active; elsewhere no interval holds it.
+		timeline := m.rowTimeline(row)
+		drawn := union(append(append(append([]span{}, timeline.confirmed...), timeline.stated...), timeline.unknown...))
+		rest := subtract(rangeSpan, union(append(drawn, gaps...)))
+		unobserved := intersect(rest, timeline.unobserved)
+		inactive := subtract(rest, unobserved)
+		coverage.InactiveMs, coverage.UnobservedMs = wholeMs(length(inactive)), wholeMs(length(unobserved))
+		coverage.InactiveConfirmed = length(gaps) == 0 && timeline.ruleOut == ""
 		if rangeLength > 0 {
 			coverage.Lower = float64(length(c)) / float64(rangeLength)
 			coverage.Exact = length(p) == 0 && length(u) == 0 && length(gaps) == 0 && !coverage.StartUnconfirmed && m.rejected == 0

@@ -35,8 +35,12 @@ type EventQuery struct {
 	Kinds []string `json:"kinds"`
 	// EffectRow is an effect row key; empty lists every row of the scope.
 	EffectRow string `json:"effectRow"`
-	Offset    int    `json:"offset"`
-	Limit     int    `json:"limit"`
+	// CorrelateEffect and Correlation list only the selected hits of one correlation class (confirmed, stated, unknown or
+	// outside) against that effect row, as EffectCorrelation counts them; effect changes are then not listed.
+	CorrelateEffect string `json:"correlateEffect,omitempty"`
+	Correlation     string `json:"correlation,omitempty"`
+	Offset          int    `json:"offset"`
+	Limit           int    `json:"limit"`
 }
 
 // EventRow is one stored event in product terms.
@@ -54,6 +58,9 @@ type EventRow struct {
 	SkillRow   string    `json:"skillRow,omitempty"`
 	Confidence string    `json:"confidence,omitempty"`
 	Downgraded bool      `json:"downgraded,omitempty"`
+	// Correlation and CorrelationReason place a hit against the effect row of a correlated list.
+	Correlation       string `json:"correlation,omitempty"`
+	CorrelationReason string `json:"correlationReason,omitempty"`
 	// Effect changes.
 	EffectRow   string `json:"effectRow,omitempty"`
 	EffectID    *int64 `json:"effectId,omitempty"`
@@ -238,7 +245,30 @@ func (s *Store) Events(ctx context.Context, id int64, query EventQuery, masters 
 		sequence int64
 	}
 	var entries []entry
-	if query.EffectRow == "" {
+	// A correlated list holds the selected hits of one class against one effect row, and nothing else.
+	correlated := query.CorrelateEffect != ""
+	var timeline rowTimeline
+	if correlated {
+		row := (*effectRowModel)(nil)
+		if model.effects != nil && !model.effects.truncated {
+			row = model.effects.byKey[query.CorrelateEffect]
+		}
+		if row == nil {
+			page.State = AnalysisReady
+			return page, nil
+		}
+		timeline = model.rowTimeline(row)
+		for index, event := range model.events {
+			if !model.selectedHit(q, event) || event.rel < 0 {
+				continue
+			}
+			if class, _ := model.correlationOf(timeline, event); class != query.Correlation {
+				continue
+			}
+			entries = append(entries, entry{combat: index, effect: -1, order: event.sequence, sequence: event.sequence})
+		}
+	}
+	if query.EffectRow == "" && !correlated {
 		for index, event := range model.events {
 			kind := EventDamage
 			if event.healing {
@@ -254,7 +284,7 @@ func (s *Store) Events(ctx context.Context, id int64, query EventQuery, masters 
 			entries = append(entries, entry{combat: index, effect: -1, order: event.sequence, sequence: event.sequence})
 		}
 	}
-	if model.effects != nil && !model.effects.truncated && want(EventEffect) && q.SkillRow == "" {
+	if model.effects != nil && !model.effects.truncated && want(EventEffect) && q.SkillRow == "" && !correlated {
 		page.EffectsAvailable = true
 		from, to := start+q.from, start+q.to
 		for index, fact := range model.effects.window {
@@ -283,7 +313,11 @@ func (s *Store) Events(ctx context.Context, id int64, query EventQuery, masters 
 	page.Total = len(entries)
 	for i := page.Offset; i < len(entries) && len(page.Rows) < page.Limit; i++ {
 		if entries[i].combat >= 0 {
-			page.Rows = append(page.Rows, model.combatRow(model.events[entries[i].combat]))
+			row := model.combatRow(model.events[entries[i].combat])
+			if correlated {
+				row.Correlation, row.CorrelationReason = model.correlationOf(timeline, model.events[entries[i].combat])
+			}
+			page.Rows = append(page.Rows, row)
 		} else {
 			page.Rows = append(page.Rows, effectRow(model.effects.window[entries[i].effect], start))
 		}
