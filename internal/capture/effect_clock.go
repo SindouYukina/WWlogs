@@ -146,21 +146,31 @@ func (c *effectClock) at(t time.Time) float64 {
 	return point.effective + c.dilation*t.Sub(from).Seconds()
 }
 
-// mark records the current rate from at on. It first ends the stops whose limits passed before at.
+// mark brings the clock up to at before a change: the stops whose limits passed before at end at those limits. A change
+// then records its own point; the clock adds no point while its rate stays the same.
 func (c *effectClock) mark(at time.Time) {
 	if at.IsZero() {
 		return
 	}
-	if last := len(c.points) - 1; last >= 0 && at.Before(c.points[last].at) {
-		// Frames arrive in capture order; a change dated earlier than the last one applies at the last one.
-		at = c.points[last].at
-	}
 	c.expireStops(at)
-	c.appendPoint(at)
+	if len(c.points) == 0 {
+		c.appendPoint(at, c.at(at))
+	}
 }
 
-func (c *effectClock) appendPoint(at time.Time) {
-	point := effectClockPoint{at: at, effective: c.at(at), rate: c.rate()}
+// changeAt is when a change takes effect: frames arrive in capture order, so a change dated before the clock's last point
+// applies at that point.
+func (c *effectClock) changeAt(at time.Time) time.Time {
+	if last := len(c.points) - 1; last >= 0 && at.Before(c.points[last].at) {
+		return c.points[last].at
+	}
+	return at
+}
+
+// appendPoint records the clock's current rate from at on; effective is the clock's time at at as it stood before the
+// change that called it.
+func (c *effectClock) appendPoint(at time.Time, effective float64) {
+	point := effectClockPoint{at: at, effective: effective, rate: c.rate()}
 	// Every stretch at rate 0 is counted once, when the point after it closes it.
 	if last := len(c.points) - 1; last >= 0 && c.points[last].rate == 0 && at.After(c.points[last].at) {
 		c.counters.PausedSeconds += at.Sub(c.points[last].at).Seconds()
@@ -176,19 +186,21 @@ func (c *effectClock) appendPoint(at time.Time) {
 	}
 }
 
-// expireStops ends, at their limits, the stops whose limits passed before at.
+// expireStops ends, at their limits, the stops whose limits passed before at. A global pause freezes a stop's animation
+// with everything else, so limits do not run while one holds (resumeStops moves them on).
 func (c *effectClock) expireStops(at time.Time) {
-	for len(c.stops) > 0 {
+	for len(c.stops) > 0 && c.dilation != 0 {
 		end := c.stopsEnd()
 		if end.After(at) {
 			return
 		}
 		// Every stop ends by the last limit; the clock runs again from there.
+		effective := c.at(end)
 		for key := range c.stops {
 			delete(c.stops, key)
 			c.counters.StopsBounded++
 		}
-		c.appendPoint(end)
+		c.appendPoint(end, effective)
 	}
 }
 
@@ -199,17 +211,19 @@ func (c *effectClock) beginStop(caster uint64, duration time.Duration, at time.T
 	}
 	c.ensure()
 	c.mark(at)
+	at = c.changeAt(at)
 	if _, held := c.stops[caster]; !held && len(c.stops) >= maxEffectStops {
 		c.counters.StopsRefused++
 		return
 	}
+	effective := c.at(at)
 	limit := at.Add(effectStopDefaultLimit)
 	if duration > 0 {
 		limit = at.Add(duration + effectStopEndMargin)
 	}
 	c.stops[caster] = effectStop{since: at, limit: limit}
 	c.counters.StopsBegun++
-	c.appendPoint(at)
+	c.appendPoint(at, effective)
 }
 
 // endStop follows the end of the caster's TimeStopRequest.
@@ -219,12 +233,14 @@ func (c *effectClock) endStop(caster uint64, at time.Time) {
 	}
 	c.ensure()
 	c.mark(at)
+	at = c.changeAt(at)
 	if _, held := c.stops[caster]; !held {
 		return
 	}
+	effective := c.at(at)
 	delete(c.stops, caster)
 	c.counters.StopsEnded++
-	c.appendPoint(at)
+	c.appendPoint(at, effective)
 }
 
 // setDilation follows a new global time dilation.
@@ -234,12 +250,31 @@ func (c *effectClock) setDilation(value float64, at time.Time) {
 	}
 	c.ensure()
 	c.mark(at)
+	at = c.changeAt(at)
 	if value == c.dilation {
 		return
 	}
+	effective := c.at(at)
+	if c.dilation == 0 {
+		c.resumeStops(at)
+	}
 	c.dilation, c.dilatedSince = value, at
 	c.counters.DilationChanges++
-	c.appendPoint(at)
+	c.appendPoint(at, effective)
+}
+
+// resumeStops moves the limits of the stops on by the global pause that ends at at, during which they could not run.
+func (c *effectClock) resumeStops(at time.Time) {
+	for caster, stop := range c.stops {
+		from := c.dilatedSince
+		if stop.since.After(from) {
+			from = stop.since
+		}
+		if at.After(from) {
+			stop.limit = stop.limit.Add(at.Sub(from))
+			c.stops[caster] = stop
+		}
+	}
 }
 
 // sample reconciles the clock with a TimeCheckRequest: the client's flow clock running means no TimeStopRequest holds,
@@ -250,22 +285,26 @@ func (c *effectClock) sample(flowDilation, dilation float64, at time.Time) {
 	}
 	c.ensure()
 	c.mark(at)
+	at = c.changeAt(at)
 	if flowDilation > 0 && len(c.stops) > 0 {
 		recent := false
 		for _, stop := range c.stops {
 			recent = recent || at.Sub(stop.since) < effectClockSampleGrace
 		}
 		if !recent {
+			effective := c.at(at)
 			for key := range c.stops {
 				delete(c.stops, key)
 				c.counters.StopsSampled++
 			}
-			c.appendPoint(at)
+			c.appendPoint(at, effective)
 		}
 	}
 	if dilation > 0 && c.dilation == 0 && at.Sub(c.dilatedSince) >= effectClockSampleGrace {
+		effective := c.at(at)
+		c.resumeStops(at)
 		c.dilation, c.dilatedSince = dilation, at
 		c.counters.DilationSampled++
-		c.appendPoint(at)
+		c.appendPoint(at, effective)
 	}
 }

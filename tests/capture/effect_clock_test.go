@@ -176,3 +176,33 @@ func TestEffectClockStartsAgainWithANewProtocolSession(t *testing.T) {
 	effect := onlyEffect(t, tracker.SnapshotAt(effectQuery(5)))
 	requireNear(t, "new session runs", effect.RemainingSeconds, 7)
 }
+
+// A global pause freezes a stop's animation with everything else: its limit does not run while the pause holds.
+func TestEffectClockStopLimitWaitsOutAGlobalPause(t *testing.T) {
+	c := newEffectClock()
+	c.mark(effectAt(0))
+	c.beginStop(77, 3*time.Second, effectAt(10))
+	c.setDilation(0, effectAt(11))
+	c.mark(effectAt(20)) // past the unpaused limit (14 s): the stop still holds
+	if len(c.stops) != 1 {
+		t.Fatalf("a stop ended during a global pause: %+v", c.counters)
+	}
+	c.setDilation(1, effectAt(21))
+	// The limit moved on by the 10 s pause: 14 + 10 = 24 s.
+	requireSeconds(t, "stop after the pause", clockElapsed(&c, 21, 26), 2)
+	c.endStop(77, effectAt(23.5))
+	requireSeconds(t, "ended by its own end", clockElapsed(&c, 21, 26), 2.5)
+}
+
+// proto3 leaves a 0 dilation off the wire: an empty TimeStopPush pauses the effect clock.
+func TestEmptyTimeStopPushPausesTheEffectClock(t *testing.T) {
+	p := newPairingTestProcessor()
+	p.session = make([]byte, 32)
+	p.protocol.beginSession()
+	p.protocol.observeVersion(CurrentGameVersion())
+	p.handleFrame(gameFrame{commandID: cmdTimeStopPush, direction: "out", messageType: 2, body: nil, timestamp: effectAt(5)})
+	if counters := p.effects.SnapshotAt(effectQuery(6)).Counters.Clock; counters.DilationChanges != 1 {
+		t.Fatalf("clock counters = %+v", counters)
+	}
+	requireSeconds(t, "paused", p.effects.clock.at(effectAt(9))-p.effects.clock.at(effectAt(5)), 0)
+}
