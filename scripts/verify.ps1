@@ -12,12 +12,18 @@
   that material is missing. Pass -PcapDirectory to add the replay regression, the public output audit, the
   encounter replay (determinism and partition), the host session equivalence and the transport perturbation replay
   through an embedded-key development test binary.
+
+  -EvidenceOut writes what the run executed for the version readiness gate (scripts/readiness.ps1):
+  verify-results.json (every step's state), golden-coverage.json (the Golden captures the semantic regression ran)
+  and history-summary.json (the Public History replay summary).
 #>
 param(
     # Directory that contains archived *.pcap files. Local and private; never read from the repository.
     [string]$PcapDirectory = '',
     # Local interface address used only to decide packet direction during offline replay.
-    [string]$ReplayIp = '192.168.1.2'
+    [string]$ReplayIp = '192.168.1.2',
+    # Directory for the machine-readable run evidence; outside the repository or in an ignored location.
+    [string]$EvidenceOut = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -26,6 +32,11 @@ $env:GOTOOLCHAIN = 'local'
 $repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).ProviderPath
 $overlay = Join-Path $repoRoot 'tests/go-overlay.json'
 $results = [ordered]@{}
+$testPackages = @('./cmd/capture', './internal/buildinfo', './internal/capture', './internal/history', './internal/service', './internal/desktop', './internal/keyembed', './tests/assets', './tests/buildrun', './tests/readiness', './tests/versioninfo')
+if ($EvidenceOut -ne '') {
+    $EvidenceOut = [IO.Path]::GetFullPath($EvidenceOut)
+    [void][IO.Directory]::CreateDirectory($EvidenceOut)
+}
 
 function Set-Result([string]$Name, [string]$State, [string]$Detail = '') {
     $results[$Name] = "$State$(if ($Detail) { " - $Detail" })"
@@ -78,7 +89,7 @@ try {
     foreach ($profile in @(@{ Name = 'Public'; Tags = @() }, @{ Name = 'Development'; Tags = @('-tags', 'wwdev') })) {
         $vet = Invoke-Go (@('vet', "-overlay=$overlay") + $profile.Tags + $packages)
         Set-Result "go vet ($($profile.Name))" $(if ($vet.Code -eq 0) { 'PASS' } else { 'FAIL' }) $(if ($vet.Code -ne 0) { $vet.Output.Trim() })
-        $test = Invoke-Go (@('test', '-count=1', "-overlay=$overlay") + $profile.Tags + @('./cmd/capture', './internal/buildinfo', './internal/capture', './internal/history', './internal/service', './internal/desktop', './internal/keyembed', './tests/assets', './tests/buildrun', './tests/versioninfo'))
+        $test = Invoke-Go (@('test', '-count=1', "-overlay=$overlay") + $profile.Tags + $testPackages)
         Set-Result "go test ($($profile.Name))" $(if ($test.Code -eq 0) { 'PASS' } else { 'FAIL' }) $(if ($test.Code -ne 0) { $test.Output.Trim() })
     }
 
@@ -326,11 +337,12 @@ try {
                             # right skills. Totals alone cannot catch a status shown in the wrong row or a skill losing its name.
                             $env:WWLOGS_SEMANTIC_REPLAY_PCAPS = $listPath
                             $env:WWLOGS_SEMANTIC_REPLAY_MASTER_DB = Join-Path $repoRoot 'data/master_data.db'
+                            if ($EvidenceOut -ne '') { $env:WWLOGS_SEMANTIC_REPLAY_COVERAGE = Join-Path $EvidenceOut 'golden-coverage.json' }
                             try {
                                 $semanticOut = & $testBinary '-test.run' '^TestSemanticReplayCollector$' '-test.count' '1' 2>&1
                                 $semanticCode = $LASTEXITCODE
                             } finally {
-                                Remove-Item Env:WWLOGS_SEMANTIC_REPLAY_PCAPS, Env:WWLOGS_SEMANTIC_REPLAY_MASTER_DB -ErrorAction SilentlyContinue
+                                Remove-Item Env:WWLOGS_SEMANTIC_REPLAY_PCAPS, Env:WWLOGS_SEMANTIC_REPLAY_MASTER_DB, Env:WWLOGS_SEMANTIC_REPLAY_COVERAGE -ErrorAction SilentlyContinue
                             }
                             Set-Result 'replay: effect and skill semantics' $(if ($semanticCode -eq 0) { 'PASS' } else { 'FAIL' }) "$($pcaps.Count) captures$(if ($semanticCode -ne 0) { '; ' + (($semanticOut | Select-Object -Last 12) -join ' ') })"
 
@@ -356,6 +368,7 @@ try {
                                 }
                                 if ($historyCode -ne 0) { $historyFailures += "$historyProfile`: $(($historyRun | Select-Object -Last 12) -join ' ')"; continue }
                                 $historySummaries[$historyProfile] = Get-Content -LiteralPath (Join-Path $historyOut 'summary.json') -Raw
+                                if ($EvidenceOut -ne '' -and $historyProfile -eq 'public') { Copy-Item -LiteralPath (Join-Path $historyOut 'summary.json') -Destination (Join-Path $EvidenceOut 'history-summary.json') -Force }
                             }
                             if ($historyFailures.Count -eq 0 -and $historySummaries['public'] -ne $historySummaries['development']) { $historyFailures += 'Public and Development stored different histories' }
                             $historyDetail = if ($historySummaries['public']) { $summary = $historySummaries['public'] | ConvertFrom-Json; "$($pcaps.Count) captures, $($summary.listedEncounters) encounters, $($summary.storedEvents) results, $($summary.effectChanges) effect changes of $($summary.effectInstances) instances, both profiles equal" } else { '' }
@@ -370,6 +383,18 @@ try {
     }
 } finally {
     Pop-Location
+}
+
+if ($EvidenceOut -ne '') {
+    # The states exactly as reported above, with the commit and working tree they describe.
+    $commit = "$(& git -C $repoRoot rev-parse HEAD 2>$null)".Trim()
+    $dirty = @(& git -C $repoRoot status --porcelain 2>$null).Count -gt 0
+    $steps = foreach ($entry in $results.GetEnumerator()) {
+        $parts = @($entry.Value -split ' - ', 2)
+        [ordered]@{ name = $entry.Key; state = $parts[0]; detail = $(if ($parts.Count -gt 1) { $parts[1] } else { '' }) }
+    }
+    $evidence = [ordered]@{ commit = $commit; dirty = $dirty; pcapDirectory = ($PcapDirectory -ne ''); packages = $testPackages; results = @($steps) }
+    $evidence | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $EvidenceOut 'verify-results.json') -Encoding utf8
 }
 
 Write-Host ''
