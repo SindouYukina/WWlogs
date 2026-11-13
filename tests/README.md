@@ -20,3 +20,28 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\test.ps1 -run TestCurren
 ```
 
 The test entry point explicitly lists the required `cmd`, `internal`, and `tests` packages. It does not recursively scan `work/` or other unrelated repository directories.
+
+## Golden facts and the regression corpus
+
+Replay regression runs real captures through the product (`scripts/verify.ps1 -PcapDirectory <dir>`). The captures are
+private and never part of the repository; the facts they must show are tracked in the collectors under `tests/capture`
+(`semantic_replay_dev_test.go` and the other `*Collector` tests).
+
+- **A Golden fact needs evidence outside the product's decoders**: the generic schema decode of the client's own
+  `Protocol.js`, the server's request and response pairing, the target's Life attribute steps, the server's
+  `JoinSceneNotify` and `EntityType`, the client's own reports, or the owner's observation in game. Name the check in the
+  test comment and in the private run record. A value only WWlogs produces is a Replay Observation: log it, never pin it.
+- **Never update an expected value to make a change pass.** Decide first which side is wrong: a decoder fix (pin the
+  corrected value with its independent check and keep the old one in the run record), a wrong Golden, a changed
+  corpus, changed game semantics (a new version's facts replace the old ones; retired-version captures are research
+  evidence only), or an obsolete test. Write the decision and its evidence down before changing the fact.
+- **The corpus is the owner's choice.** `tests/capture/golden_registry.json` names the captures of the current game
+  version and which ones are required. A required capture must be executed with every fact checked, from the file with
+  the SHA-256 the registry pins; the version readiness gate (`scripts/readiness`) fails otherwise. Supplementary
+  captures keep their facts for when they are present; their absence is reported, not hidden.
+- `verify.ps1 -EvidenceOut <dir>` records what actually ran: `golden-coverage.json` lists each executed capture, its
+  SHA-256, how many facts of each kind it was checked against and whether they held, and the captures whose facts were
+  skipped because they were absent.
+- Synthetic fixtures (frames built in the test) cover what the corpus cannot show on demand: transport loss and
+  reordering, RequestId wrap boundaries, reconnects, key collisions, time stops. They test the rule, not the game; a
+  game fact still needs a capture and an independent check.
