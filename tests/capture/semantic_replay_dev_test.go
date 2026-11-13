@@ -3,7 +3,11 @@
 package capture
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"slices"
@@ -498,9 +502,11 @@ func TestSemanticReplayCollector(t *testing.T) {
 		return false
 	}
 	inputs := equivalenceInputs{localIP: "192.168.1.2"}
+	coverage := semanticCoverage{GameVersion: CurrentGameVersion(), Captures: []semanticCoverageCapture{}, Absent: []string{}}
 	for _, capture := range pcaps {
 		capture := capture
-		t.Run(capture.name, func(t *testing.T) {
+		ran := semanticCoverageCapture{Name: capture.name, SHA256: semanticFileSHA256(t, capture.path), Facts: semanticFactCounts(capture.name)}
+		ran.Passed = t.Run(capture.name, func(t *testing.T) {
 			seen := map[uint64]*semanticEffectSeen{}
 			last := time.Time{}
 			var rowsErr error
@@ -680,29 +686,92 @@ func TestSemanticReplayCollector(t *testing.T) {
 				}
 			}
 		})
+		coverage.Captures = append(coverage.Captures, ran)
 	}
 	var absent []string
-	for _, fact := range semanticEffectFacts {
-		if !covered(fact.capture) {
-			absent = append(absent, fact.capture)
+	note := func(capture string) {
+		if !covered(capture) && !slices.Contains(absent, capture) {
+			absent = append(absent, capture)
 		}
+	}
+	for _, fact := range semanticEffectFacts {
+		note(fact.capture)
 	}
 	for _, fact := range semanticSkillFacts {
-		if !covered(fact.capture) {
-			absent = append(absent, fact.capture)
-		}
+		note(fact.capture)
 	}
 	for _, fact := range semanticNoSkillFacts {
-		if !covered(fact.capture) {
-			absent = append(absent, fact.capture)
-		}
+		note(fact.capture)
 	}
 	for _, fact := range semanticCompletenessFacts {
-		if !covered(fact.capture) && !slices.Contains(absent, fact.capture) {
-			absent = append(absent, fact.capture)
-		}
+		note(fact.capture)
 	}
 	if len(absent) != 0 {
 		t.Logf("expectations skipped, captures absent: %v", absent)
+		coverage.Absent = absent
 	}
+	// The coverage tells the version readiness gate which Golden captures actually ran (scripts/readiness).
+	if out := os.Getenv("WWLOGS_SEMANTIC_REPLAY_COVERAGE"); out != "" {
+		data, err := json.MarshalIndent(coverage, "", "  ")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(out, append(data, '\n'), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// semanticCoverage records which captures the collector ran, how many Golden facts each was checked against, and whether
+// they held. Captures the facts name but the run did not have are absent.
+type semanticCoverage struct {
+	GameVersion string                    `json:"gameVersion"`
+	Captures    []semanticCoverageCapture `json:"captures"`
+	Absent      []string                  `json:"absent"`
+}
+
+type semanticCoverageCapture struct {
+	Name   string         `json:"name"`
+	SHA256 string         `json:"sha256"`
+	Facts  map[string]int `json:"facts"`
+	Passed bool           `json:"passed"`
+}
+
+// semanticFactCounts counts the Golden facts of each kind that apply to a capture.
+func semanticFactCounts(name string) map[string]int {
+	counts := map[string]int{}
+	for _, fact := range semanticEffectFacts {
+		if semanticCaptureMatches(name, fact.capture) {
+			counts["effects"]++
+		}
+	}
+	for _, fact := range semanticSkillFacts {
+		if semanticCaptureMatches(name, fact.capture) {
+			counts["skills"]++
+		}
+	}
+	for _, fact := range semanticNoSkillFacts {
+		if semanticCaptureMatches(name, fact.capture) {
+			counts["noSkill"]++
+		}
+	}
+	for _, fact := range semanticCompletenessFacts {
+		if semanticCaptureMatches(name, fact.capture) {
+			counts["completeness"]++
+		}
+	}
+	return counts
+}
+
+func semanticFileSHA256(t *testing.T, path string) string {
+	file, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	hash := sha256.New()
+	if _, err := io.Copy(hash, file); err != nil {
+		t.Fatal(err)
+	}
+	return hex.EncodeToString(hash.Sum(nil))
 }
