@@ -254,6 +254,29 @@ button.ww-career-record:focus-visible { outline: none; box-shadow: var(--ww-focu
 .ww-career-combo > .ww-num { text-align: end; color: var(--ww-text-2); }
 .ww-career-rules { margin: 0; padding-inline-start: var(--ww-space-4); font-size: var(--ww-text-xs); color: var(--ww-text-3); display: flex; flex-direction: column; gap: 4px; }
 
+/* ------------------------------ Encounter Comparison ------------------------------ */
+/* The comparison set: chips of the chosen encounters and the actions, above the calendar or the library. */
+.ww-compare-tray { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ww-space-2) var(--ww-space-3); padding: var(--ww-space-2) var(--ww-space-3); border-radius: var(--ww-radius-md); background: var(--ww-surface-1); box-shadow: inset 0 0 0 1px var(--ww-accent-line); }
+.ww-compare-chip { display: inline-flex; align-items: center; gap: var(--ww-space-1); height: 26px; padding-inline: var(--ww-space-2) 2px; border-radius: var(--ww-radius-sm); background: var(--ww-surface-3); font-size: var(--ww-text-xs); }
+.ww-compare-chip-remove { width: 22px; height: 22px; padding: 0; border: 0; border-radius: var(--ww-radius-sm); background: transparent; color: var(--ww-text-3); font: inherit; font-size: var(--ww-text-sm); line-height: 1; cursor: pointer; }
+.ww-compare-chip-remove:hover { background: var(--ww-surface-hover); color: var(--ww-text); }
+.ww-compare-chip-remove:focus-visible { outline: none; box-shadow: var(--ww-focus-ring); }
+.ww-compare-tray-actions { display: inline-flex; gap: var(--ww-space-2); margin-inline-start: auto; }
+.ww-compare-conditions { display: flex; flex-wrap: wrap; gap: var(--ww-space-2) var(--ww-space-4); margin-bottom: var(--ww-space-2); }
+.ww-compare-condition { display: inline-flex; align-items: center; gap: var(--ww-space-1_5); }
+/* The label column stays narrow; each encounter column keeps its values right-aligned with the change below. */
+.ww-compare-table .ww-compare-label { width: 1%; min-width: 132px; white-space: nowrap; font-size: var(--ww-text-xs); font-weight: var(--ww-weight-medium); color: var(--ww-text-3); text-align: start; }
+.ww-compare-table td.ww-num { vertical-align: top; }
+.ww-compare-table td.ww-num > span { display: block; }
+.ww-compare-head { min-width: 170px; vertical-align: top; text-align: start; font-size: var(--ww-text-xs); font-weight: var(--ww-weight-regular); color: var(--ww-text-2); white-space: normal; }
+.ww-compare-head-line { display: flex; flex-wrap: wrap; align-items: center; gap: 2px var(--ww-space-2); min-width: 0; margin-bottom: 2px; }
+.ww-compare-time { font-size: var(--ww-text-sm); font-weight: var(--ww-weight-semibold); color: var(--ww-text); }
+.ww-compare-sub { font-size: var(--ww-text-2xs); color: var(--ww-text-3); }
+/* A change is a fact, not a verdict: one quiet color for both signs. */
+.ww-compare-delta { font-size: var(--ww-text-2xs); color: var(--ww-accent-2); }
+.ww-compare-who { display: inline-flex; align-items: center; gap: var(--ww-space-1_5); min-width: 0; max-width: 200px; color: var(--ww-text); font-size: var(--ww-text-sm); }
+.ww-compare-skill { display: inline-flex; align-items: baseline; gap: var(--ww-space-1); min-width: 0; max-width: 240px; color: var(--ww-text); font-size: var(--ww-text-sm); }
+
 /* ------------------------------ History analysis ------------------------------ */
 /* One gutter is shared by the DPS timeline's value axis, the time axis and the effect lanes' labels, so a moment of the
    encounter lines up across all of them. */

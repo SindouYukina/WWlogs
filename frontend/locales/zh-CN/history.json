@@ -412,7 +412,57 @@
     "backToList": "返回列表"
   },
   "compare": {
-    "select": "加入比较"
+    "select": "加入比较",
+    "leave": "移出比较",
+    "full": "比较清单已满（最多 {{n}} 场）",
+    "tray": "比较清单",
+    "limit": "最多 {{n}} 场",
+    "clear": "清除",
+    "start": "比较（{{n}}）",
+    "needTwo": "至少需要两场战斗才能比较。",
+    "remove": "移除",
+    "open": "打开",
+    "back": "返回比较",
+    "exit": "返回战斗历史",
+    "title": "比较 {{n}} 场战斗",
+    "base": "基准",
+    "conditions": "比较条件",
+    "state": {
+      "same": "相同",
+      "different": "不同",
+      "unknown": "无法确认"
+    },
+    "durationRatio": "最长的战斗是最短的 {{ratio}} 倍；DPS 会受战斗长度影响。",
+    "openWorldNote": "包含大世界战斗：敌人与条件不固定，数值只适合参考。",
+    "hpNote": "敌人的血量、等级与状态没有被记录；同一关卡的条件也可能不同。",
+    "noScore": "比较只列出已保存的事实与变化，不计算公平性分数。",
+    "unreliable": "有战斗不是完整记录：变化只在完整记录之间计算，其余数值按记录分类标示。",
+    "metrics": "主要指标",
+    "deltaNote": "变化以第一场为基准。",
+    "metric": {
+      "duration": "战斗时长",
+      "damage": "确认伤害",
+      "dps": "Encounter DPS",
+      "peak_dps": "峰值 DPS"
+    },
+    "status": {
+      "available": "完整结果",
+      "lower_bound": "下限值：实际可能更高",
+      "partial": "不完整记录的部分数值",
+      "unreliable": "不可靠：不显示数值",
+      "unavailable": "没有数值"
+    },
+    "noResults": "没有保存结果的战斗只列出时间与状态。",
+    "contributors": "角色伤害",
+    "contributorsNote": "按角色本体对齐，试用角色计入本体；「—」表示该场没有造成确认伤害。占比是该场的确认伤害。",
+    "notDealt": "此场没有造成确认伤害",
+    "dps": "DPS",
+    "trial": "试用",
+    "dpsDeltaNote": "角色 DPS 相对第一场的变化（只在完整记录之间）",
+    "skills": "技能伤害分布",
+    "skillsOf": "角色",
+    "skillsNote": "占比是该角色在该场的确认伤害。",
+    "skill": "技能"
   },
   "career": {
     "title": "生涯总览",

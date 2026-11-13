@@ -372,6 +372,25 @@ func (s *Store) maxHits(ctx context.Context, ids []int64) (map[int64]map[uint64]
 	return out, nil
 }
 
+// RecordClasses returns the record class of each listed encounter among ids; an ID that is not listed is absent.
+func (s *Store) RecordClasses(ctx context.Context, ids []int64) (map[int64]string, error) {
+	index, err := s.index(ctx)
+	if err != nil {
+		return nil, err
+	}
+	wanted := make(map[int64]bool, len(ids))
+	for _, id := range ids {
+		wanted[id] = true
+	}
+	classes := make(map[int64]string, len(ids))
+	for i := range index {
+		if wanted[index[i].ID] {
+			classes[index[i].ID] = index[i].Class()
+		}
+	}
+	return classes, nil
+}
+
 // LibraryQuery filters the library. Dates are calendar dates of the view's zone, inclusive. Instances and RoleIDs are set
 // by the host from Master-resolved filters (mode, stage, character, text); nil means any.
 type LibraryQuery struct {

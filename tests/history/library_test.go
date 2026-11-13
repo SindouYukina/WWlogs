@@ -193,3 +193,29 @@ func TestLibraryFollowsADeletion(t *testing.T) {
 		t.Fatalf("after = %d (%v)", view.Total, err)
 	}
 }
+
+// A comparison reads the class of the encounters it names; an ID that is not listed has none.
+func TestRecordClassesOfNamedEncounters(t *testing.T) {
+	store := openTestStore(t, testPath(t), nil)
+	base := time.Date(2026, 9, 2, 9, 0, 0, 0, time.UTC)
+	record(t, store, liveStart, finishedEncounter(1, 1, base, 10, 300, capture.IntegrityIntact), finishedEncounter(1, 2, base.Add(time.Hour), 10, 400, capture.IntegrityDegraded))
+	intact, degraded := listedID(t, store, base), listedID(t, store, base.Add(time.Hour))
+	ctx := context.Background()
+	before, err := store.fingerprint(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	classes, err := store.RecordClasses(ctx, []int64{intact, degraded, 999999})
+	if err != nil || len(classes) != 2 || classes[intact] != ClassComplete || classes[degraded] != ClassDegraded {
+		t.Fatalf("classes = %v (%v)", classes, err)
+	}
+	// What a comparison reads leaves the history as it was.
+	for _, id := range []int64{intact, degraded} {
+		if _, err := store.Encounter(ctx, id, time.UTC); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if after, err := store.fingerprint(ctx); err != nil || after != before {
+		t.Fatalf("the history changed while it was read: %v -> %v (%v)", before, after, err)
+	}
+}
