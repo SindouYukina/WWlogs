@@ -56,6 +56,7 @@ func (event combatEvent) jsonlView(masters *gameMaster) combatEventJSONL {
 		Timestamp:     event.Timestamp,
 		SessionNumber: event.SessionNumber,
 		RPCID:         event.RPCID,
+		RequestEpoch:  event.RequestEpoch,
 		Source:        combatEventEntityJSONL{RuntimeStatus: event.Source.RuntimeStatus, RuntimeEvidence: event.Source.RuntimeProof, RuntimeFields: json.RawMessage(marshalRuntimeIdentity(event.Source.Runtime))},
 		Target:        combatEventEntityJSONL{RuntimeStatus: event.Target.RuntimeStatus, RuntimeEvidence: event.Target.RuntimeProof, RuntimeFields: json.RawMessage(marshalRuntimeIdentity(event.Target.Runtime))},
 		Credit:        combatEventCreditJSONL{Status: event.CharacterStatus, NameStatus: event.CharacterNameStatus, Evidence: event.CharacterProof},

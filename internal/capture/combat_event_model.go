@@ -45,7 +45,9 @@ const (
 const combatEvidenceDamageRPCResponse = "damage_rpc_response"
 
 // CombatEventKey identifies one server response inside a statistics owner. The RPC layer already drops repeated
-// responses; the key lets the statistics layer stay idempotent if the same response is delivered twice.
+// responses; the key lets the statistics layer stay idempotent if the same response is delivered twice. RPCID is the
+// request's RequestId continued past each wrap of the client's RequestId counter (extendedRequestID), so two requests that
+// shared a RequestId in a long session keep two keys; until the first wrap it is the RequestId itself.
 type CombatEventKey struct {
 	ProtocolSession int    `json:"protocolSession"`
 	RPCID           uint64 `json:"rpcId"`
@@ -169,7 +171,7 @@ func normalizeCombatEvent(event combatEvent, source, target playerRelation) (Com
 	flow := classifyCombatFlow(source, target)
 	record := CombatEventRecord{
 		Kind:       kind,
-		Key:        CombatEventKey{ProtocolSession: event.SessionNumber, RPCID: event.RPCID},
+		Key:        CombatEventKey{ProtocolSession: event.SessionNumber, RPCID: extendedRequestID(event.RPCID, event.RequestEpoch)},
 		ObservedAt: event.Timestamp,
 		Evidence:   combatEvidenceDamageRPCResponse,
 		Source: CombatEndpoint{

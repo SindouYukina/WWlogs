@@ -13,6 +13,7 @@ type combatEventJSONL struct {
 	Timestamp                  time.Time                   `json:"timestamp"`
 	SessionNumber              int                         `json:"sessionNumber"`
 	RPCID                      uint64                      `json:"rpcId"`
+	RequestEpoch               uint64                      `json:"requestEpoch,omitempty"` // wraps of the client's RequestId counter before the request
 	Source                     combatEventEntityJSONL      `json:"source"`
 	Target                     combatEventEntityJSONL      `json:"target"`
 	Credit                     combatEventCreditJSONL      `json:"credit"`
@@ -234,9 +235,11 @@ type combatEventMasterJSONL struct {
 }
 
 type combatEvent struct {
-	Timestamp         time.Time
-	SessionNumber     int
+	Timestamp     time.Time
+	SessionNumber int
+	// RPCID is the RequestId on the wire; RequestEpoch the wraps of the client's RequestId counter before the request.
 	RPCID             uint64
+	RequestEpoch      uint64
 	DamageID          uint64
 	SourceEntityID    uint64
 	HasSourceEntity   bool
@@ -286,6 +289,7 @@ func (p *processor) buildDamageEvent(rpcID uint64, request pendingDamageRequest,
 		Timestamp:           p.currentFrameTime,
 		SessionNumber:       p.sessionNumber,
 		RPCID:               rpcID,
+		RequestEpoch:        request.requestEpoch,
 		DamageID:            request.damageID,
 		SourceEntityID:      request.attackerEntityID,
 		HasSourceEntity:     request.hasAttackerEntityID && request.attackerEntityID != 0,
