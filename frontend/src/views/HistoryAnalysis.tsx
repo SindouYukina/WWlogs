@@ -283,8 +283,8 @@ interface HitsState {
   answer?: HitTimeline
   failed?: boolean
 }
-type Polarity = "buff" | "debuff" | "unclassified"
-const polarities: readonly Polarity[] = ["buff", "debuff", "unclassified"]
+type Polarity = "buff" | "debuff" | "neutral" | "unclassified"
+const polarities: readonly Polarity[] = ["buff", "debuff", "neutral", "unclassified"]
 
 /** A zoom button's factor, the wheel's zoom per pixel of scroll, and the group size above which a group starts collapsed. */
 const zoomStep = 1.6
@@ -652,7 +652,7 @@ function EffectDetail({ lanes, analysis, rowKey, actorName, enemyLabel, segment 
   return <aside className="ww-analysis-detail" data-field="effect-detail" data-key={row?.key ?? ""}>
     {!row ? <p className="ww-dash-empty-note">{t("analysis.effects.selectHint")}</p> : <>
       <h4><EffectName row={row} /></h4>
-      <div className="ww-history-chips"><Chip tone={row.polarity === "buff" ? "good" : row.polarity === "debuff" ? "critical" : "neutral"}>{t(`analysis.polarity.${row.polarity}`)}</Chip>{row.startUnconfirmed && <Chip tone="warn">{t("analysis.marker.start_unconfirmed")}</Chip>}</div>
+      <div className="ww-history-chips"><Chip tone={row.polarity === "buff" ? "good" : row.polarity === "debuff" ? "critical" : row.polarity === "neutral" ? "info" : "neutral"}>{t(`analysis.polarity.${row.polarity}`)}</Chip>{row.startUnconfirmed && <Chip tone="warn">{t("analysis.marker.start_unconfirmed")}</Chip>}</div>
       <dl className="ww-analysis-facts">
         <div><dt>{t("analysis.effects.holder")}</dt><dd>{actorName(row.holder, enemyLabel)}</dd></div>
         <div><dt>{t("analysis.effects.source")}</dt><dd>{row.sources.length === 0 ? t("analysis.actor.unknown") : row.sources.map(source => actorName(source, enemyLabel)).join("、")}</dd></div>

@@ -519,8 +519,8 @@ func (e *effectModel) addToRow(model *encounterModel, instance *effectInstanceMo
 }
 
 // hudRow is the History counterpart of the Overlay's display rule without its time parts: an effect whose definition the
-// game draws in a HUD buff bar with a BUFF or DEBUFF arrow, held by the local team, or held by an enemy and applied by the
-// local team. A summon is on no HUD surface.
+// game draws in a HUD buff bar, with a BUFF or DEBUFF arrow or without an arrow (neutral), held by the local team, or held
+// by an enemy and applied by the local team. A summon is on no HUD surface.
 func hudRow(definition capture.EffectDefinition, holder, source ActorRef) bool {
 	if !definition.HUDIcon || definition.Polarity == capture.EffectPolarityUnclassified {
 		return false
@@ -534,7 +534,8 @@ func hudRow(definition capture.EffectDefinition, holder, source ActorRef) bool {
 	return false
 }
 
-// rowClass orders rows: the team's effects, then enemies', then the rest; buffs before debuffs.
+// rowClass orders rows: the team's effects, then enemies', then the rest; buffs, debuffs, statuses the HUD draws without
+// an arrow, then unclassified ones.
 func (r *effectRowModel) rowClass() int {
 	holder := 2
 	switch r.holder.Kind {
@@ -543,14 +544,16 @@ func (r *effectRowModel) rowClass() int {
 	case ActorEnemy:
 		holder = 1
 	}
-	polarity := 2
+	polarity := 3
 	switch r.definition.Polarity {
 	case capture.EffectPolarityBuff:
 		polarity = 0
 	case capture.EffectPolarityDebuff:
 		polarity = 1
+	case capture.EffectPolarityNeutral:
+		polarity = 2
 	}
-	return holder*3 + polarity
+	return holder*4 + polarity
 }
 
 func (r *effectRowModel) less(other *effectRowModel) bool {

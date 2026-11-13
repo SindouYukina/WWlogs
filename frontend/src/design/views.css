@@ -316,6 +316,8 @@ body[data-view="overlay"][data-editing="true"] { --wails-draggable: drag; }
 .ww-lane { position: absolute; top: 0; left: 0; right: 0; height: var(--ww-lane-height); display: grid; grid-template-columns: var(--ww-analysis-gutter) minmax(0, 1fr); --ww-lane-color: var(--ww-ink-400); }
 .ww-lane[data-polarity="buff"] { --ww-lane-color: var(--ww-good); }
 .ww-lane[data-polarity="debuff"] { --ww-lane-color: var(--ww-critical); }
+/* A status the game's HUD draws without a BUFF or DEBUFF arrow: shown, but with no direction claimed. */
+.ww-lane[data-polarity="neutral"] { --ww-lane-color: var(--ww-info); }
 .ww-lane[data-selected="true"] { background: var(--ww-surface-selected); border-radius: var(--ww-radius-xs); }
 .ww-lane-label { display: flex; flex-direction: column; justify-content: center; gap: 2px; min-width: 0; overflow: hidden; padding: 2px var(--ww-space-2) 2px 0; border: 0; background: transparent; color: inherit; font: inherit; font-size: var(--ww-text-xs); line-height: 1.2; text-align: start; cursor: pointer; }
 .ww-lane-label:focus-visible { outline: none; box-shadow: var(--ww-focus-ring); border-radius: var(--ww-radius-xs); }
@@ -413,6 +415,7 @@ body[data-view="overlay"][data-editing="true"] { --wails-draggable: drag; }
 .ww-itl-effect { --ww-lane-color: var(--ww-ink-400); }
 .ww-itl-effect[data-polarity="buff"] { --ww-lane-color: var(--ww-good); }
 .ww-itl-effect[data-polarity="debuff"] { --ww-lane-color: var(--ww-critical); }
+.ww-itl-effect[data-polarity="neutral"] { --ww-lane-color: var(--ww-info); }
 .ww-itl-effect > .ww-lane-seg { cursor: pointer; }
 .ww-itl-stack { position: absolute; top: 5px; height: 18px; padding-inline-end: 3px; transform: translateX(-100%); font-size: 9px; font-weight: var(--ww-weight-semibold); line-height: 18px; color: var(--ww-ink-950); pointer-events: none; z-index: 1; }
 .ww-itl-stack[data-evidence="stated"], .ww-itl-stack[data-evidence="unknown"] { color: var(--ww-text); }

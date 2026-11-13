@@ -99,15 +99,19 @@ const (
 )
 
 // EffectPolarity is the direction the game's HUD gives a status. No protocol field carries it; it comes from the
-// definition's HUD GameplayCue (effect_hud_cues.go), and an instance the game draws no arrow for stays unclassified.
+// definition's HUD GameplayCue (effect_hud_cues.go). An effect without HUD evidence stays unclassified.
 type EffectPolarity string
 
 const (
+	// EffectPolarityUnclassified has no HUD evidence: the definition lists no HUD cue, or the Master has no cue parameters.
 	EffectPolarityUnclassified EffectPolarity = "unclassified"
 	// EffectPolarityBuff is drawn with the game's BUFF arrow.
 	EffectPolarityBuff EffectPolarity = "buff"
 	// EffectPolarityDebuff is drawn with the game's DEBUFF arrow.
 	EffectPolarityDebuff EffectPolarity = "debuff"
+	// EffectPolarityNeutral is drawn by a HUD buff bar with its icon and without any arrow: the cue's Parameters[0] is
+	// neither "1" nor "2" (BuffItem.Activate), so the game itself states no direction. It is neither a BUFF nor a DEBUFF.
+	EffectPolarityNeutral EffectPolarity = "neutral"
 )
 
 // EffectSnapshotStatus tells a consumer whether the tracked set is complete.
@@ -150,7 +154,8 @@ type EffectStaticInfo struct {
 	// HUDCueTypes are the HUD buff-bar cue types (2, 14, 24, 37) with an icon Path among the definition's
 	// GameplayCueIds: the game shows this effect in a HUD buff bar (effect_hud_cues.go).
 	HUDCueTypes []int32 `json:"hudCueTypes,omitempty"`
-	// HUDPolarity is the direction of the definition's first HUD cue; unclassified means the game draws no arrow for it.
+	// HUDPolarity is the direction of the definition's first HUD cue: buff, debuff, or neutral when the game draws it
+	// without an arrow; unclassified only without cue parameters in the Master.
 	HUDPolarity EffectPolarity `json:"hudPolarity,omitempty"`
 	// HUDHiddenOnMonsterHead reports that the cue is hidden on monster head views (GameplayCue.Parameters[4]).
 	HUDHiddenOnMonsterHead bool `json:"hudHiddenOnMonsterHead,omitempty"`

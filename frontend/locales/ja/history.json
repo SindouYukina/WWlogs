@@ -215,6 +215,7 @@
     "polarity": {
       "buff": "BUFF",
       "debuff": "DEBUFF",
+      "neutral": "中立",
       "unclassified": "未分類"
     },
     "effects": {

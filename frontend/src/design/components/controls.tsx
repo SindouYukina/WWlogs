@@ -341,7 +341,7 @@ export function Tooltip({ text, children, trigger = "self", placement = "top" }:
 }
 
 export interface ChipProps {
-  tone?: "neutral" | "good" | "warn" | "critical" | "accent"
+  tone?: "neutral" | "good" | "warn" | "critical" | "accent" | "info"
   dot?: boolean
   children: ReactNode
 }

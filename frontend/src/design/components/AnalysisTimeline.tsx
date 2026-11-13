@@ -364,7 +364,7 @@ export interface LaneRowModel {
   label: ReactNode
   /** A second line under the label, such as the holder. */
   sub?: ReactNode
-  polarity: "buff" | "debuff" | "unclassified"
+  polarity: "buff" | "debuff" | "neutral" | "unclassified"
   segments: ReadonlyArray<{ fromMs: number; toMs: number; evidence: "confirmed" | "stated" | "unknown"; stack?: number }>
   markers: ReadonlyArray<{ atMs: number; kind: string }>
 }
