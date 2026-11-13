@@ -290,10 +290,11 @@ button.ww-career-record:focus-visible { outline: none; box-shadow: var(--ww-focu
 .ww-compare-tray-actions { display: inline-flex; gap: var(--ww-space-2); margin-inline-start: auto; }
 .ww-compare-conditions { display: flex; flex-wrap: wrap; gap: var(--ww-space-2) var(--ww-space-4); margin-bottom: var(--ww-space-2); }
 .ww-compare-condition { display: inline-flex; align-items: center; gap: var(--ww-space-1_5); }
-/* The tables size to their columns, so an encounter's heading stays above its values; the label column stays narrow and
-   each encounter column keeps its values right-aligned with the change below. */
+/* The tables size to their columns, so an encounter's heading stays above its values. No column takes a percentage width:
+   in an auto-width table that would stretch the table to the whole card again. Values stay right-aligned with the change
+   below. */
 .ww-compare-table { width: auto; max-width: 100%; }
-.ww-compare-table .ww-compare-label { width: 1%; min-width: 132px; white-space: nowrap; font-size: var(--ww-text-xs); font-weight: var(--ww-weight-medium); color: var(--ww-text-3); text-align: start; }
+.ww-compare-table .ww-compare-label { min-width: 132px; white-space: nowrap; font-size: var(--ww-text-xs); font-weight: var(--ww-weight-medium); color: var(--ww-text-3); text-align: start; }
 .ww-compare-table td.ww-num, .ww-compare-table th.ww-num { min-width: 150px; padding-inline-start: var(--ww-space-6); }
 .ww-compare-table td.ww-num { vertical-align: top; }
 .ww-compare-table td.ww-num > span { display: block; }
