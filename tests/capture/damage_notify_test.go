@@ -251,3 +251,23 @@ func TestNotifiedResultsWithoutAnAmountAreNotCounted(t *testing.T) {
 		t.Fatalf("notify stats %+v; want two results without an amount", p.notifyStats)
 	}
 }
+
+// A notified hit of the local role's summon is credited to the role through the summoner chain, as a response would be,
+// and a notified hit whose attacker no message named stays of unknown ownership, outside the totals.
+func TestNotifiedSummonAndUnknownAttackersFollowTheResponseRules(t *testing.T) {
+	p := newNotifyTestProcessor()
+	addTestRuntimeEntity(p, 300, func(entity *runtimeEntity) {
+		entity.summonerID, entity.hasSummonerID = 100, true
+		entity.summonConfigID, entity.hasSummonConfigID = 77001, true
+	})
+	deliverNotifyFrame(t, p, 1, 13,
+		notifyData(testNotify{attacker: 300, target: 200, damageID: notifyTestDamage, damage: 640, changeLife: 640}),
+		notifyData(testNotify{attacker: 999, target: 200, damageID: notifyTestDamage, damage: 90, changeLife: 90}))
+	snapshot := p.damageStatistics.Snapshot()
+	if snapshot.DamageDealt != 640 || len(snapshot.Roles) != 1 || snapshot.Roles[0].SummonDamage != 640 || snapshot.Roles[0].RoleID != 1409 {
+		t.Fatalf("dealt %d roles %+v; the summon's hit belongs to role 1409 as summon damage", snapshot.DamageDealt, snapshot.Roles)
+	}
+	if snapshot.UnattributedOutgoingDamage != 90 || snapshot.UnattributedOutgoingEvents != 1 {
+		t.Fatalf("unattributed %d in %d; an attacker no message named is of unknown ownership", snapshot.UnattributedOutgoingDamage, snapshot.UnattributedOutgoingEvents)
+	}
+}
