@@ -135,14 +135,13 @@ body[data-view="overlay"][data-editing="true"] { --wails-draggable: drag; }
 .ww-history-top > .ww-history-indicator, .ww-history-actions { margin-inline-start: auto; }
 /* The History page's control row: the return to the Career Overview when the page was opened from there, the recording
    indicator, the calendar's year switch and the view switcher. Every control is centred on the row's one line whatever its
-   own height. The view switcher is the last item, and the year switch keeps its place while hidden, so a view change moves
-   nothing. */
+   own height. The view switcher is the last item, so the year switch coming and going before it never moves it; without
+   the calendar the indicator sits right beside the view switcher. */
 .ww-history-actions { display: flex; align-items: center; gap: var(--ww-space-4); }
 /* The view switcher's wrapper carries its data fields; as a flex box it is exactly the switcher's box. */
 .ww-history-mode { display: flex; }
 .ww-history-title { margin: var(--ww-space-0_5) 0 0; font-family: var(--ww-font-display); font-size: var(--ww-text-xl); font-weight: var(--ww-weight-display); }
 .ww-history-years { display: flex; align-items: center; gap: var(--ww-space-2); }
-.ww-history-years[data-shown="false"] { visibility: hidden; }
 .ww-history-year { min-width: 4ch; text-align: center; font-size: var(--ww-text-lg); font-weight: var(--ww-weight-semibold); }
 .ww-history-heat { padding: var(--ww-space-3) var(--ww-space-4); }
 .ww-history-heat-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--ww-space-3); margin-bottom: var(--ww-space-2); }

@@ -160,12 +160,13 @@ test("the History header is one control row: indicator, year switch, then the vi
   // switcher, in this order: the view switcher is the last item, so nothing appearing before it can move it.
   assert.ok(at('data-field="history-return"') >= 0 && at('data-field="history-return"') < at("<HistoryIndicatorChip"))
   assert.ok(at("<HistoryIndicatorChip") < at("<YearSwitch") && at("<YearSwitch") < at('data-field="history-mode"'))
-  // The year switch is always laid out and only hidden outside the calendar.
-  assert.doesNotMatch(row, /&&\s*<YearSwitch/)
+  // The year switch exists only with the calendar; outside it nothing holds its place, so the indicator sits beside the
+  // view switcher.
+  assert.match(row, /\{mode === "calendar" && !comparing && <YearSwitch /)
   const css = readFileSync(new URL("../../frontend/src/design/views.css", import.meta.url), "utf8").replace(/\r\n/g, "\n")
   const rule = selector => css.split("\n").find(line => line.startsWith(`${selector} {`)) ?? ""
   assert.match(rule(".ww-history-actions"), /display: flex; align-items: center;/)
-  assert.match(rule('.ww-history-years[data-shown="false"]'), /visibility: hidden;/)
+  assert.doesNotMatch(css, /\.ww-history-years\[[^\]]*\]\s*\{[^}]*visibility: hidden/)
   // The controls share the row's centre line; none is nudged on its own.
   for (const selector of [".ww-history-actions", ".ww-history-mode", ".ww-history-years", ".ww-history-indicator"]) {
     assert.notEqual(rule(selector), "", selector)
