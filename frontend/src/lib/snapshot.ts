@@ -198,6 +198,9 @@ export interface UnassignedRole {
   damageTaken: number
   incomingEvents: number
   overflowEvents: number
+  /** The part of damageDealt that is the team's negative-status damage, which the game credits to no character. */
+  negativeStatusDamage?: number
+  negativeStatusEvents?: number
 }
 
 export interface Encounter {
@@ -229,6 +232,9 @@ export interface DamageCompleteness {
   roleAttributionComplete: boolean
   unassignedDamage: number
   unassignedEvents: number
+  /** The part of the unassigned damage that is negative-status damage; it never makes role attribution incomplete. */
+  negativeStatusDamage?: number
+  negativeStatusEvents?: number
   skillBreakdownComplete: boolean
   noSkillDamage: number
   noSkillEvents: number

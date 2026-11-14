@@ -146,6 +146,10 @@ type entityResolver struct {
 	limit              int
 	sceneInstanceID    uint64
 	hasSceneInstanceID bool
+	// sceneCombatEntityID is SceneInformation.SceneEntityId of the current scene: the entity the server names as attacker
+	// of the negative-status damage it executes (damage_notify.go).
+	sceneCombatEntityID    uint64
+	hasSceneCombatEntityID bool
 	// lifecycles outlives runtime entries: a removed entity keeps its record so
 	// that REMOVED is distinguishable from never observed. See lifecycle.go.
 	lifecycles        map[uint64]entityLifecycle
@@ -769,6 +773,7 @@ func (r *entityResolver) reset() {
 	r.entities = make(map[uint64]runtimeEntity)
 	r.sequence = 0
 	r.sceneInstanceID, r.hasSceneInstanceID = 0, false
+	r.sceneCombatEntityID, r.hasSceneCombatEntityID = 0, false
 	r.lifecycles = make(map[uint64]entityLifecycle)
 	r.lifecycleSequence = 0
 }
@@ -855,17 +860,23 @@ func (r *entityResolver) applyJoinSceneNotify(body []byte) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("parse SceneInformation: %w", err)
 	}
-	var instanceID uint64
-	var hasInstanceID bool
+	var instanceID, sceneEntityID uint64
+	var hasInstanceID, hasSceneEntityID bool
 	for _, field := range sceneFields {
-		if field.number == fieldSceneInformationInstanceID && field.wire == 0 {
+		if field.wire != 0 {
+			continue
+		}
+		switch field.number {
+		case fieldSceneInformationInstanceID:
 			instanceID, hasInstanceID = field.value, field.value != 0
-			break
+		case fieldSceneInformationSceneEntityID:
+			sceneEntityID, hasSceneEntityID = field.value, field.value != 0
 		}
 	}
 
 	r.entities = make(map[uint64]runtimeEntity)
 	r.sceneInstanceID, r.hasSceneInstanceID = instanceID, hasInstanceID
+	r.sceneCombatEntityID, r.hasSceneCombatEntityID = sceneEntityID, hasSceneEntityID
 	snapshotIDs := make([]uint64, 0, len(entities))
 	for _, entity := range entities {
 		if entity.entityID == 0 {

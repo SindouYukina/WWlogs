@@ -3,7 +3,6 @@
 package capture
 
 import (
-	"database/sql"
 	"io"
 	"time"
 )
@@ -12,6 +11,9 @@ import (
 // and is a no-op here so that shared code can call it unconditionally.
 
 func (p *processor) writeStructuredEventJSONL(event any) {
+}
+
+func (p *processor) writeDamageEventJSONL(event combatEvent) {
 }
 
 func (p *processor) writeBattleStateSignal(at time.Time, container string, signal playerBattleStateSignal, anchor string) {
@@ -69,11 +71,6 @@ func marshalRuntimeIdentity(entity runtimeEntity) string {
 
 func optionalDamageSource(value uint64, present bool) string {
 	var r0 string
-	return r0
-}
-
-func loadSQLiteAbnormalDamageIDs(db *sql.DB, master *gameMaster) error {
-	var r0 error
 	return r0
 }
 

@@ -1021,6 +1021,7 @@ finished:
 	fmt.Fprintf(diagnosticTarget, "statistics_final %s\n", processor.currentStatisticsReport())
 	fmt.Fprintln(diagnosticTarget, transportHealthLine(streams, stats))
 	fmt.Fprintln(diagnosticTarget, rpcPairingLine(processor.rpcPairingSnapshot()))
+	fmt.Fprintln(diagnosticTarget, damageNotifyLine(processor.notifyStats))
 	fmt.Fprintln(diagnosticTarget, diagnosticPipelineLine(runID, pipelineStats))
 	fmt.Fprintln(diagnosticTarget, captureLatencyLine(processor.captureLayerHealth()))
 	if pcapIntegrity != nil {

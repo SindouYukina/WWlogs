@@ -195,6 +195,11 @@ func (p *processor) playerRelationForEntity(entityID uint64, identity entityIden
 	if p.playerRelevance.isRoleEntity(entityID) {
 		return playerRelationLocal
 	}
+	// The scene's own combat entity (SceneInformation.SceneEntityId) belongs to no player. Its hit on the local team is
+	// damage taken, like any other non-player source; what it executes on enemies is decided per result (damage_notify.go).
+	if entityID == p.sceneCombatEntity() {
+		return playerRelationUnrelated
+	}
 	if identity.Runtime.entityID != entityID {
 		return playerRelationUnknown
 	}
@@ -332,6 +337,18 @@ func (p *processor) playerRelevantDamageEvent(event combatEvent) (playerRelation
 	source := p.playerRelationForEntity(event.SourceEntityID, event.Source)
 	if source != playerRelationLocal && p.isLocallyOwnedVehicleDamage(event) {
 		source = playerRelationLocal
+	}
+	// The scene combat entity executes negative statuses for whoever applied them. On an enemy the damage is the local
+	// team's only when negativeStatusOwnership established it; otherwise its owner is unknown, not unrelated.
+	if event.Notify != nil && event.Notify.NegativeStatus && event.SourceEntityID == p.sceneCombatEntity() {
+		target := p.playerRelationForEntity(event.TargetEntityID, event.Target)
+		if target == playerRelationUnrelated {
+			source = playerRelationUnknown
+			if event.Notify.NegativeStatusLocal {
+				source = playerRelationLocal
+			}
+		}
+		return source, target, source != playerRelationUnrelated || target != playerRelationUnrelated
 	}
 	target := p.playerRelationForEntity(event.TargetEntityID, event.Target)
 	return source, target, source != playerRelationUnrelated || target != playerRelationUnrelated

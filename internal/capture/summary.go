@@ -64,15 +64,6 @@ type encounterSummary struct {
 	uncreditedEventsOmitted         int
 	// vehicleContributors counts damage attributed to a vehicle (for example the overworld motorcycle) as its own row, never as a party character.
 	vehicleContributors map[uint64]*vehicleContributorSummary
-	// pushDamage lists pushed abnormal-state damage by attacker label; it is kept out of every total above.
-	pushDamage map[string]*pushDamageSummary
-}
-
-type pushDamageSummary struct {
-	label  string
-	status resolutionStatus
-	events int
-	damage int64
 }
 
 type vehicleContributorSummary struct {

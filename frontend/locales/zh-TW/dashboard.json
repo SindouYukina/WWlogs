@@ -46,6 +46,7 @@
   "damageTaken": "承受傷害",
   "noRoles": "尚無傷害貢獻者資料。",
   "unknownOwnership": "歸屬未知",
+  "negativeStatus": "其中異常狀態傷害",
   "unknownTotals": "輸出 {{out}}・承傷 {{in}}",
   "intactNote": "本區間未回報遺失或歸屬上下文降級。",
   "degradedNote": "部分事件可能遺失，可用的 DPS 為下限值。",

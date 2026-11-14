@@ -46,6 +46,7 @@
   "damageTaken": "Damage taken",
   "noRoles": "No contributor damage observed.",
   "unknownOwnership": "Unknown ownership",
+  "negativeStatus": "Of which negative status damage",
   "unknownTotals": "Outgoing {{out}} · Incoming {{in}}",
   "intactNote": "No loss or context downgrade reported in this interval.",
   "degradedNote": "Events may be missing. Eligible DPS values are lower bounds.",

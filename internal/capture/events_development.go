@@ -212,6 +212,24 @@ func (p *processor) writeStructuredEventJSONL(event any) {
 	p.writeEnvelopedEventJSONL(event, "")
 }
 
+// writeDamageEventJSONL writes the development line of one damage result. A server-executed DamageExecuteNotify is a
+// DAMAGE_NOTIFY_RESULT in the auxiliary "p" id namespace, so response event ids stay as they were before notified results
+// were counted.
+func (p *processor) writeDamageEventJSONL(event combatEvent) {
+	view := event.jsonlView(p.masters)
+	if event.Notify == nil {
+		p.writeStructuredEventJSONL(view)
+		return
+	}
+	view.EventType = "DAMAGE_NOTIFY_RESULT"
+	view.Push = &combatEventPushJSONL{
+		Stream: "DAMAGE_EXECUTE_NOTIFY", NotifyKey: event.Notify.Key,
+		NegativeStatus: event.Notify.NegativeStatus, NegativeStatusLocal: event.Notify.NegativeStatusLocal, NegativeStatusBasis: event.Notify.NegativeStatusBasis,
+		DamageRaw: event.ServerResultRaw, ChangeLifeRaw: event.ChangeLifeRaw, HasChangeLife: event.HasChangeLife,
+	}
+	p.writeEnvelopedEventJSONL(view, "p")
+}
+
 // writeEnvelopedEventJSONL writes one event line; a non-empty kind selects an auxiliary id namespace.
 func (p *processor) writeEnvelopedEventJSONL(event any, kind string) {
 	if p.combatEventsJSONL == nil {

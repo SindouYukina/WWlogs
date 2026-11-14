@@ -113,8 +113,11 @@ type gameMaster struct {
 	buffOwners map[uint64][]buffOwnerText
 	// propertyNames maps a PropertyIndex id (the attribute id of the protocol) to its key and localized name.
 	propertyNames map[int64]propertyName
-	// abnormalDamageIDs holds the DamageIds named by the columns Abnormal<id> of AbnormalDamageConfig.
+	// abnormalDamageIDs holds the DamageIds named by the columns Abnormal<id> of AbnormalDamageConfig: negative-status damage.
 	abnormalDamageIDs map[uint64]struct{}
+	// negativeStatusExecutors maps a Buff whose extra effect type is one of abnormalDamageIDs to that type: the negative-status
+	// DamageId the server executes for the status (damage_notify.go).
+	negativeStatusExecutors map[uint64]uint64
 	// fsm holds the AI state-machine node identities used to name ChangeStateNotify ids.
 	fsm *fsmMaster
 	// skillLabelText holds skill_dev_label_locale rows (master locale and zh-CN) by skill id and locale.

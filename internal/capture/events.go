@@ -282,6 +282,8 @@ type combatEvent struct {
 	EventTypeStatus            resolutionStatus
 	EventTypeProof             string
 	DamageContributorCandidate *damageContributorCandidate
+	// Notify is set on a result read from a server-executed DamageExecuteNotify (damage_notify.go); nil for a response.
+	Notify *notifiedResult
 }
 
 func (p *processor) buildDamageEvent(rpcID uint64, request pendingDamageRequest, resultRaw, changeLifeRaw int32, hasChangeLife bool, damage int64) combatEvent {
@@ -420,7 +422,7 @@ func (p *processor) writeDamageEvent(event combatEvent) bool {
 	if visible {
 		p.recordDamageForOverlap(event)
 	}
-	p.writeStructuredEventJSONL(event.jsonlView(p.masters))
+	p.writeDamageEventJSONL(event)
 	if visible {
 		normalOutput := event.formatNormalForSourceRelation(sourceRelation)
 		switch {

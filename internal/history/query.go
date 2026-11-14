@@ -572,6 +572,8 @@ func (s *Store) snapshot(ctx context.Context, id int64) (capture.EncounterSnapsh
 	var dpsDuration, peakDuration int64
 	var dpsStart, dpsEnd, peakStart, peakEnd sql.NullInt64
 	var healingEvents, healingUnknownEvents, unassignedOut, unassignedIn, unassignedOverflow, downgraded int64
+	// The engine counted negative-status damage apart inside its unassigned bucket; the stored events keep it by evidence.
+	var negativeStatusDamage, negativeStatusEvents int64
 	var state string
 	err := s.db.QueryRowContext(ctx, `SELECT statistics_interval, sequence, protocol_session, outcome, started_at_ns, start_basis, start_confirmed, battle_entered_at_ns,
 		ended_at_ns, end_basis, end_decided_at_ns, first_activity_at_ns, last_activity_at_ns, reentries,
@@ -581,7 +583,11 @@ func (s *Store) snapshot(ctx context.Context, id int64) (capture.EncounterSnapsh
 		peak_status, peak_reason, peak_value, peak_damage, peak_duration_ns, peak_start_ns, peak_end_ns, peak_confidence,
 		healing_status, healing_reason, healing_effective, healing_reported, healing_overheal, healing_events, healing_unknown_effective, healing_unknown_events,
 		unassigned_damage_dealt, unassigned_outgoing_events, unassigned_damage_taken, unassigned_incoming_events, unassigned_overflow_events
-		, state FROM encounter WHERE id = ? AND (state = 'finished' OR checkpoint_at_ns IS NOT NULL)`, id).Scan(
+		, state,
+		(SELECT coalesce(sum(amount), 0) FROM combat_event WHERE encounter_id = encounter.id AND kind = 'damage' AND flow = 'local_outgoing' AND evidence = ?),
+		(SELECT count(*) FROM combat_event WHERE encounter_id = encounter.id AND kind = 'damage' AND flow = 'local_outgoing' AND evidence = ?)
+		FROM encounter WHERE id = ? AND (state = 'finished' OR checkpoint_at_ns IS NOT NULL)`,
+		capture.CombatEvidenceNegativeStatusNotify, capture.CombatEvidenceNegativeStatusNotify, id).Scan(
 		&interval, &sequence, &e.ProtocolSession, &e.Outcome, &started, &e.StartBasis, &startConfirmed, &battle,
 		&ended, &endBasis, &decided, &firstActivity, &lastActivity, &reentries,
 		&e.Totals.DamageDealt, &e.Totals.DamageTaken, &outgoing, &incoming, &e.Totals.UnattributedOutgoingDamage, &e.Totals.UnattributedIncomingDamage, &unattributedOut, &unattributedIn,
@@ -589,7 +595,8 @@ func (s *Store) snapshot(ctx context.Context, id int64) (capture.EncounterSnapsh
 		&dpsStatus, &dps.Reason, &dps.Value, &dps.Damage, &dpsDuration, &dpsStart, &dpsEnd, &dps.Confidence,
 		&peakStatus, &peak.Reason, &peak.Value, &peak.Damage, &peakDuration, &peakStart, &peakEnd, &peak.Confidence,
 		&healingStatus, &e.Healing.Reason, &e.Healing.Effective, &e.Healing.Reported, &e.Healing.Overheal, &healingEvents, &e.Healing.UnknownHealerEffective, &healingUnknownEvents,
-		&e.UnassignedRole.DamageDealt, &unassignedOut, &e.UnassignedRole.DamageTaken, &unassignedIn, &unassignedOverflow, &state)
+		&e.UnassignedRole.DamageDealt, &unassignedOut, &e.UnassignedRole.DamageTaken, &unassignedIn, &unassignedOverflow, &state,
+		&negativeStatusDamage, &negativeStatusEvents)
 	if err != nil {
 		return e, fmt.Errorf("read history encounter: %w", err)
 	}
@@ -609,6 +616,7 @@ func (s *Store) snapshot(ctx context.Context, id int64) (capture.EncounterSnapsh
 	e.EncounterDPS, e.PeakDPS = dps, peak
 	e.Healing.Status, e.Healing.Events, e.Healing.UnknownHealerEvents = capture.DPSStatus(healingStatus), uint64(healingEvents), uint64(healingUnknownEvents)
 	e.UnassignedRole.OutgoingEvents, e.UnassignedRole.IncomingEvents, e.UnassignedRole.OverflowEvents = uint64(unassignedOut), uint64(unassignedIn), uint64(unassignedOverflow)
+	e.UnassignedRole.NegativeStatusDamage, e.UnassignedRole.NegativeStatusEvents = negativeStatusDamage, uint64(negativeStatusEvents)
 	if e.Integrity.Risks, err = s.strings(ctx, "SELECT risk FROM encounter_risk WHERE encounter_id = ? ORDER BY risk", id); err != nil {
 		return e, err
 	}

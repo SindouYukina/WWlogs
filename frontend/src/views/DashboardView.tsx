@@ -94,6 +94,7 @@ function IntegrityPanel({ view, diagnostics }: { view: ViewSnapshot | null; diag
         <dt>{t("paired")}</dt><dd className="ww-num">{view ? `${number(view.health.rpcPairing.paired)} / ${number(view.health.rpcPairing.requests)}` : "—"}</dd>
         <dt>{t("finished")}</dt><dd className="ww-num" data-field="encounters-finished">{number(view?.encounters.completedTotal)}</dd>
         <dt>{c("unassigned")}</dt><dd className="ww-num" data-field="unassigned">{number(view?.unassignedRole.damageDealt)}</dd>
+        <dt>{t("negativeStatus")}</dt><dd className="ww-num" data-field="negative-status">{number(view?.unassignedRole.negativeStatusDamage ?? 0)}</dd>
         <dt>{t("unknownOwnership")}</dt><dd className="ww-num" data-field="unknown-ownership">{t("unknownTotals", { out: number(view?.statistics.unattributed.outgoingDamage), in: number(view?.statistics.unattributed.incomingDamage) })}</dd>
       </>}
     </dl>
