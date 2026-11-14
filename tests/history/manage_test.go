@@ -291,3 +291,37 @@ func TestInstanceLifeFindsTheInstancesAliveAtAnyMoment(t *testing.T) {
 	}
 	check("after the deletion")
 }
+
+func TestDeletionReadsAnInstanceLifeByItsKey(t *testing.T) {
+	store := openTestStore(t, testPath(t), nil)
+	ctx := context.Background()
+	// The temporary table lives on one connection, so the plan is read on the same one.
+	conn, err := store.db.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	if _, err := conn.ExecContext(ctx, "CREATE TEMP TABLE IF NOT EXISTS deleted_effect_instance (instance INTEGER PRIMARY KEY)"); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := conn.QueryContext(ctx, "EXPLAIN QUERY PLAN "+instanceLifeUpdate, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var steps []string
+	for rows.Next() {
+		var id, parent, unused int
+		var detail string
+		if err := rows.Scan(&id, &parent, &unused, &detail); err != nil {
+			t.Fatal(err)
+		}
+		steps = append(steps, detail)
+	}
+	rows.Close()
+	plan := strings.Join(steps, " | ")
+	// Answering min() through effect_event_by_time walks the span's changes in time order until it meets the instance, about
+	// 5 s per deleted encounter of a real capture; both correlated reads must use the instance's own key range.
+	if strings.Contains(plan, "effect_event_by_time") || strings.Count(plan, "SEARCH e USING PRIMARY KEY (capture_session_id=? AND instance=?)") != 2 {
+		t.Fatalf("the instance life update reads effect_event by %s", plan)
+	}
+}

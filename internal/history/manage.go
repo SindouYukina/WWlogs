@@ -36,6 +36,16 @@ type DeleteResult struct {
 // endingKinds lists endingChanges for SQL.
 const endingKinds = "'remove', 'holder_removed', 'superseded', 'untracked', 'instant'"
 
+// instanceLifeUpdate sets the life of the instances a deletion took changes from (listed in deleted_effect_instance) from the
+// changes they keep. The unary plus in min() keeps SQLite from answering it through effect_event_by_time, which walks the
+// span's changes in time order until it meets the instance: about 5 s per deleted encounter of a real 3.8.9 capture
+// (21,511 instances, 85,613 changes). Each instance's own primary key range is read instead; + leaves every value unchanged.
+const instanceLifeUpdate = `UPDATE effect_instance SET
+	first_change_ns = (SELECT min(+e.observed_at_ns) FROM effect_event e WHERE e.capture_session_id = effect_instance.capture_session_id AND e.instance = effect_instance.instance),
+	ended_at_ns = (SELECT CASE WHEN e.change_kind IN (` + endingKinds + `) THEN e.observed_at_ns END FROM effect_event e
+		WHERE e.capture_session_id = effect_instance.capture_session_id AND e.instance = effect_instance.instance ORDER BY e.sequence DESC LIMIT 1)
+	WHERE capture_session_id = ? AND instance IN (SELECT instance FROM deleted_effect_instance)`
+
 // compactionShare is the share of free pages from which a deletion compacts the file.
 const (
 	compactionShare    = 4
@@ -102,12 +112,7 @@ func (s *Store) DeleteEncounter(ctx context.Context, id int64) (DeleteResult, er
 		if _, err := tx.ExecContext(ctx, "DELETE FROM effect_event WHERE "+window, span, started, end.Int64, span, protocolSession); err != nil {
 			return result, fmt.Errorf("delete history effects: %w", err)
 		}
-		// The life of an instance that lost changes follows the changes it keeps.
-		if _, err := tx.ExecContext(ctx, `UPDATE effect_instance SET
-			first_change_ns = (SELECT min(e.observed_at_ns) FROM effect_event e WHERE e.capture_session_id = effect_instance.capture_session_id AND e.instance = effect_instance.instance),
-			ended_at_ns = (SELECT CASE WHEN e.change_kind IN (`+endingKinds+`) THEN e.observed_at_ns END FROM effect_event e
-				WHERE e.capture_session_id = effect_instance.capture_session_id AND e.instance = effect_instance.instance ORDER BY e.sequence DESC LIMIT 1)
-			WHERE capture_session_id = ? AND instance IN (SELECT instance FROM deleted_effect_instance)`, span); err != nil {
+		if _, err := tx.ExecContext(ctx, instanceLifeUpdate, span); err != nil {
 			return result, fmt.Errorf("delete history effects: %w", err)
 		}
 		if _, err := tx.ExecContext(ctx, "DELETE FROM deleted_effect_instance"); err != nil {
