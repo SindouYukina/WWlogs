@@ -80,5 +80,7 @@ export const host = {
   setHistoryRecording: (enabled: boolean) => call<SettingsState>("SetHistoryRecording", enabled),
   /** Deletes one stored encounter, or every one; the UI asks the user to confirm first. */
   deleteHistoryEncounter: (id: number) => call<HistoryChange>("DeleteHistoryEncounter", id),
+  /** Deletes all of the chosen encounters in one deletion, or none when one of them is unknown or still being recorded. */
+  deleteHistoryEncounters: (ids: number[]) => call<HistoryChange>("DeleteHistoryEncounters", ids),
   clearHistory: () => call<HistoryChange>("ClearHistory"),
 }

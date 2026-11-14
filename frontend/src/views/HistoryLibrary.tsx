@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState, type KeyboardEvent } from "react"
 import { useTranslation } from "react-i18next"
-import { Button, Card, CharacterAvatar, Chip, Select, Tooltip } from "@/design"
+import { Button, Card, CharacterAvatar, Chip, Icon, Select, Tooltip } from "@/design"
 import { usableDps } from "@/lib/combat-data"
 import { useFormatters } from "@/lib/format"
-import { classTone, defaultLibraryQuery, libraryFiltered, librarySorts, recordClasses, type HistoryLibrary as Library, type HistoryLibraryEntry, type HistoryLibraryQuery, type LibrarySort, type RecordClass } from "@/lib/history-library"
+import { chosenState, classTone, defaultLibraryQuery, deletableIds, libraryFiltered, librarySorts, recordClasses, toggleChosen, type HistoryLibrary as Library, type HistoryLibraryEntry, type HistoryLibraryQuery, type LibrarySort, type RecordClass } from "@/lib/history-library"
 import { host } from "@/lib/host"
 import { dpsText } from "@/lib/snapshot"
 
@@ -24,7 +24,12 @@ export interface HistoryLibraryProps {
   compare?: readonly number[]
   compareLimit?: number
   onCompare?: (entry: HistoryLibraryEntry) => void
+  /** Called with the encounters a confirmed deletion removed, once Go removed them. */
+  onDeleted?: (ids: number[]) => void
 }
+
+/** Deleting several encounters: off, choosing them in the list, or asking to confirm. */
+type DeleteStep = "off" | "choosing" | "confirming"
 
 function ModeName({ entry }: { entry: HistoryLibraryEntry }) {
   const { t } = useTranslation("history")
@@ -52,13 +57,45 @@ function RoleAvatars({ entry }: { entry: HistoryLibraryEntry }) {
   </span>
 }
 
-export function HistoryLibraryView({ zone, refreshKey, query, onQuery, onOpen, compare = [], compareLimit = 0, onCompare }: HistoryLibraryProps) {
+export function HistoryLibraryView({ zone, refreshKey, query, onQuery, onOpen, compare = [], compareLimit = 0, onCompare, onDeleted }: HistoryLibraryProps) {
   const { t, i18n } = useTranslation(["history", "common"])
   const format = useFormatters()
   const [page, setPage] = useState<Library | null>(null)
   const [loading, setLoading] = useState(false)
   const [failed, setFailed] = useState(false)
   const [text, setText] = useState(query.text ?? "")
+  // Deleting several encounters: the ones chosen, the step, and what the last deletion did. Comparison choices are separate.
+  const [step, setStep] = useState<DeleteStep>("off")
+  const [chosen, setChosen] = useState<number[]>([])
+  const [busy, setBusy] = useState(false)
+  const [problem, setProblem] = useState("")
+  const [deleted, setDeleted] = useState(0)
+  // Another query lists other encounters, so nothing stays chosen from the previous list.
+  useEffect(() => {
+    setChosen([])
+    setStep(current => current === "confirming" ? "choosing" : current)
+  }, [query])
+  const deletable = useMemo(() => deletableIds(page?.encounters ?? []), [page])
+  // A list read again keeps only the chosen encounters it still lists as deletable.
+  useEffect(() => { setChosen(current => current.filter(id => deletable.includes(id))) }, [deletable])
+  const selection = chosenState(deletable, chosen)
+  const choosing = step !== "off"
+  const locked = step === "confirming" || busy
+  const toggle = (id: number) => { if (!locked) setChosen(current => toggleChosen(current, id)) }
+  const startChoosing = () => { setStep("choosing"); setChosen([]); setProblem(""); setDeleted(0) }
+  const stopChoosing = () => { setStep("off"); setChosen([]); setProblem("") }
+  const remove = () => {
+    const ids = chosen
+    setBusy(true)
+    setProblem("")
+    host.deleteHistoryEncounters(ids).then(change => {
+      if (change.refused) { setProblem(`library.bulkDelete.refused.${change.refused}`); setStep("choosing"); return }
+      setDeleted(change.encounters)
+      setStep("off")
+      setChosen([])
+      onDeleted?.(ids)
+    }).catch(() => { setProblem("library.bulkDelete.failed"); setStep("choosing") }).finally(() => setBusy(false))
+  }
   // A typed search reaches Go once typing pauses.
   useEffect(() => {
     if ((query.text ?? "") === text) return
@@ -95,7 +132,9 @@ export function HistoryLibraryView({ zone, refreshKey, query, onQuery, onOpen, c
   const sourceOptions = useMemo(() => [any, { value: "live", label: t("source.live") }, { value: "replay", label: t("source.replay") }], [i18n.language])
   const sortOptions = useMemo(() => librarySorts.map(s => ({ value: s, label: t(`library.sort.${s}`) })), [i18n.language])
   const set = (change: Partial<HistoryLibraryQuery>) => onQuery({ ...query, ...change })
-  const open = (id: number) => (event: KeyboardEvent) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onOpen(id) } }
+  // While choosing encounters for deletion a row press marks the row instead of opening its encounter.
+  const press = (entry: HistoryLibraryEntry) => { if (!choosing) onOpen(entry.id); else if (entry.state !== "open") toggle(entry.id) }
+  const pressKey = (entry: HistoryLibraryEntry) => (event: KeyboardEvent) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); press(entry) } }
 
   return <div className="ww-history-library" data-field="history-library">
     <Card className="ww-history-filters">
@@ -121,19 +160,49 @@ export function HistoryLibraryView({ zone, refreshKey, query, onQuery, onOpen, c
     </Card>
     {failed && <p className="ww-history-note" data-tone="critical" role="alert">{t("loadFailed")}</p>}
     <Card className="ww-history-day">
+      {/* Deleting several encounters: choose them in the list, then confirm. The comparison checkboxes return afterwards. */}
+      {page && (page.total > 0 || deleted > 0) && <div className="ww-history-bulk" data-field="bulk-delete" data-step={step}>
+        {step === "off" && deleted > 0 && <span className="ww-history-note" role="status" data-field="bulk-delete-done">{t("library.bulkDelete.done", { n: format.integer(deleted) })}</span>}
+        {step === "choosing" && <span className="ww-history-total" data-field="bulk-delete-count" data-count={chosen.length}>{t("library.bulkDelete.selected", { n: format.integer(chosen.length) })}</span>}
+        {step === "off" && <span className="ww-history-bulk-actions">
+          <Button size="sm" disabled={deletable.length === 0} data-field="bulk-delete-start" onClick={startChoosing}><Icon name="trash" size={14} />{t("library.bulkDelete.start")}</Button>
+        </span>}
+        {step === "choosing" && <span className="ww-history-bulk-actions">
+          <Button size="sm" variant="danger" disabled={chosen.length === 0 || busy} data-field="bulk-delete-ask" onClick={() => setStep("confirming")}><Icon name="trash" size={14} />{t("library.bulkDelete.action", { n: format.integer(chosen.length) })}</Button>
+          <Button size="sm" variant="ghost" disabled={busy} data-field="bulk-delete-stop" onClick={stopChoosing}>{t("library.bulkDelete.cancel")}</Button>
+        </span>}
+        {step === "confirming" && <div className="ww-history-confirm" role="group" aria-label={t("library.bulkDelete.confirmTitle")} data-field="bulk-delete-confirm-box">
+          <p>{t("library.bulkDelete.confirm", { n: format.integer(chosen.length) })}</p>
+          <div className="ww-history-confirm-actions">
+            <Button size="sm" variant="danger" disabled={busy} data-field="bulk-delete-confirm" onClick={remove}>{t("library.bulkDelete.confirmAction", { n: format.integer(chosen.length) })}</Button>
+            <Button size="sm" disabled={busy} data-field="bulk-delete-cancel" onClick={() => setStep("choosing")}>{t("library.bulkDelete.cancel")}</Button>
+          </div>
+        </div>}
+      </div>}
+      {problem && <p className="ww-history-note" data-tone="critical" role="alert" data-field="bulk-delete-problem">{t(problem)}</p>}
       {page && page.total === 0 ? <p className="ww-dash-empty-note" data-field="library-empty">{t(libraryFiltered(query) ? "library.emptyFiltered" : "emptyHistory")}</p> :
-        <div className="ww-dash-skills-wrap" style={{ maxHeight: "none" }}><table className="ww-history-table" data-field="library-list" data-total={page?.total ?? 0}>
+        <div className="ww-dash-skills-wrap" style={{ maxHeight: "none" }}><table className="ww-history-table" data-field="library-list" data-total={page?.total ?? 0} data-choosing={choosing}>
           <thead><tr>
-            {compareLimit > 0 && <th className="ww-history-compare-column" aria-label={t("compare.select")} />}
+            {choosing
+              ? <th className="ww-history-compare-column"><input type="checkbox" className="ww-check" data-purpose="delete" checked={selection === "all"} ref={box => { if (box) box.indeterminate = selection === "some" }}
+                disabled={locked || deletable.length === 0} aria-label={t("library.bulkDelete.selectAll")} data-field="bulk-delete-all" onChange={() => setChosen(selection === "all" ? [] : deletable)} /></th>
+              : compareLimit > 0 && <th className="ww-history-compare-column" aria-label={t("compare.select")} />}
             <th>{t("library.date")}</th><th className="ww-history-version-column">{t("columns.version")}</th><th>{t("columns.mode")}</th><th>{t("columns.scene")}</th>
             <th>{t("library.characters")}</th><th className="ww-num">{t("columns.duration")}</th><th className="ww-num">{t("library.damage")}</th><th className="ww-num">{t("columns.dps")}</th><th>{t("library.classLabel")}</th>
           </tr></thead>
           <tbody>{page?.encounters.map(entry => {
-            const chosen = compare.includes(entry.id)
-            return <tr key={entry.id} className="ww-history-row" tabIndex={0} role="button" data-encounter-id={entry.id} data-class={entry.class} aria-label={t("openEncounter", { time: entry.start.clock, date: entry.localDate })}
-              onClick={() => onOpen(entry.id)} onKeyDown={open(entry.id)}>
-              {compareLimit > 0 && <td className="ww-history-compare-column" onClick={event => event.stopPropagation()}>
-                <input type="checkbox" className="ww-check" checked={chosen} disabled={!chosen && compare.length >= compareLimit} aria-label={t("compare.select")} data-field="compare-select" onChange={() => onCompare?.(entry)} />
+            const compared = compare.includes(entry.id)
+            const marked = choosing && chosen.includes(entry.id)
+            const recording = entry.state === "open"
+            const label = { time: entry.start.clock, date: entry.localDate }
+            return <tr key={entry.id} className="ww-history-row" tabIndex={0} role="button" data-encounter-id={entry.id} data-class={entry.class} data-chosen={choosing ? marked : undefined}
+              aria-label={choosing ? t("library.bulkDelete.rowLabel", label) : t("openEncounter", label)} aria-pressed={choosing ? marked : undefined} aria-disabled={choosing && recording ? true : undefined}
+              onClick={() => press(entry)} onKeyDown={pressKey(entry)}>
+              {(choosing || compareLimit > 0) && <td className="ww-history-compare-column" onClick={event => event.stopPropagation()}>
+                {choosing
+                  ? <input type="checkbox" className="ww-check" data-purpose="delete" checked={marked} disabled={locked || recording} title={recording ? t("delete.recording") : undefined}
+                    aria-label={t("library.bulkDelete.selectRow")} data-field="bulk-delete-select" onChange={() => toggle(entry.id)} />
+                  : <input type="checkbox" className="ww-check" checked={compared} disabled={!compared && compare.length >= compareLimit} aria-label={t("compare.select")} data-field="compare-select" onChange={() => onCompare?.(entry)} />}
               </td>}
               <td className="ww-num ww-history-time" data-field="start">{entry.localDate} {entry.start.clock}</td>
               <td className="ww-history-version-column">{entry.gameVersion ? <span className="ww-history-version">{entry.gameVersion}</span> : <span className="ww-history-unknown" title={t("versionUnknown")}>—</span>}</td>

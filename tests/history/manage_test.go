@@ -291,3 +291,128 @@ func TestInstanceLifeFindsTheInstancesAliveAtAnyMoment(t *testing.T) {
 	}
 	check("after the deletion")
 }
+
+func TestDeletingSeveralEncountersRemovesThemInOneDeletion(t *testing.T) {
+	store := openTestStore(t, testPath(t), nil)
+	first, second := twoEncounters(t, store)
+	// A second span holding one encounter of its own.
+	start := time.Date(2026, 11, 12, 6, 0, 0, 0, time.UTC).Local()
+	record(t, store, liveStart, finishedEncounter(2, 1, start, 10, 300, capture.IntegrityIntact))
+	ctx := context.Background()
+	day, err := store.Day(ctx, start.Format("2006-01-02"), 0, 10, time.UTC)
+	if err != nil || len(day.Encounters) != 1 {
+		t.Fatalf("day = %+v (%v)", day, err)
+	}
+	third := day.Encounters[0].ID
+	// A repeated id counts once.
+	result, err := store.DeleteEncounters(ctx, []int64{first, third, first})
+	if err != nil || result.Encounters != 2 || result.Spans != 1 {
+		t.Fatalf("delete = %+v (%v)", result, err)
+	}
+	for _, id := range []int64{first, third} {
+		if _, err := store.Encounter(ctx, id, time.UTC); !errors.Is(err, ErrNotFound) {
+			t.Fatalf("encounter %d is still listed: %v", id, err)
+		}
+	}
+	if _, err := store.Encounter(ctx, second, time.UTC); err != nil {
+		t.Fatalf("the encounter that was not chosen is gone: %v", err)
+	}
+	// The first span keeps the second encounter and what lies outside the deleted one, as a single deletion leaves it; the span
+	// left without encounters is gone with everything it held.
+	for table, want := range map[string]int{"capture_session": 1, "encounter": 1, "combat_event": 2, "effect_instance": 1, "effect_event": 1} {
+		if got := countRows(t, store, table); got != want {
+			t.Fatalf("%s has %d rows, want %d", table, got, want)
+		}
+	}
+	if year, err := store.Year(ctx, 2026, time.UTC); err != nil || year.Total != 1 {
+		t.Fatalf("the heatmap still counts deleted encounters: %+v (%v)", year, err)
+	}
+	assertIntegrity(t, store)
+	if result, err := store.DeleteEncounters(ctx, nil); err != nil || result != (DeleteResult{}) {
+		t.Fatalf("an empty deletion = %+v (%v)", result, err)
+	}
+}
+
+func TestDeletingSeveralEncountersIsAllOrNothing(t *testing.T) {
+	store := openTestStore(t, testPath(t), nil)
+	first, second := twoEncounters(t, store)
+	ctx := context.Background()
+	tables := []string{"capture_session", "encounter", "combat_event", "effect_instance", "effect_event"}
+	before := map[string]int{}
+	for _, table := range tables {
+		before[table] = countRows(t, store, table)
+	}
+	// An unknown id refuses the deletion of the known one chosen with it, even after that one was removed in the transaction.
+	if _, err := store.DeleteEncounters(ctx, []int64{first, second + 1000}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("a deletion with an unknown encounter = %v", err)
+	}
+	for _, table := range tables {
+		if got := countRows(t, store, table); got != before[table] {
+			t.Fatalf("after the refused deletion %s has %d rows, want %d", table, got, before[table])
+		}
+	}
+	// So does an encounter still being recorded.
+	recorder := begin(t, store, liveStart)
+	start := time.Date(2026, 11, 11, 7, 0, 0, 0, time.UTC).Local()
+	recorder.Submit(finishedEncounter(2, 1, start, 10, 100, capture.IntegrityIntact)[:2], 0)
+	waitQueued(t, recorder)
+	day, err := store.Day(ctx, start.Format("2006-01-02"), 0, 10, time.UTC)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var open int64
+	for _, encounter := range day.Encounters {
+		if encounter.State == "open" {
+			open = encounter.ID
+		}
+	}
+	if open == 0 {
+		t.Fatalf("no encounter in progress: %+v", day.Encounters)
+	}
+	if _, err := store.DeleteEncounters(ctx, []int64{second, open}); !errors.Is(err, ErrEncounterRecording) {
+		t.Fatalf("a deletion with an encounter in progress = %v", err)
+	}
+	for _, id := range []int64{first, second} {
+		if _, err := store.Encounter(ctx, id, time.UTC); err != nil {
+			t.Fatalf("encounter %d was deleted by a refused deletion: %v", id, err)
+		}
+	}
+	if err := recorder.Finish(ctx, capture.StopReasonRequested); err != nil {
+		t.Fatal(err)
+	}
+	assertIntegrity(t, store)
+}
+
+func TestDeletionReadsAnInstanceLifeByItsKey(t *testing.T) {
+	store := openTestStore(t, testPath(t), nil)
+	ctx := context.Background()
+	// The temporary table lives on one connection, so the plan is read on the same one.
+	conn, err := store.db.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	if _, err := conn.ExecContext(ctx, "CREATE TEMP TABLE IF NOT EXISTS deleted_effect_instance (instance INTEGER PRIMARY KEY)"); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := conn.QueryContext(ctx, "EXPLAIN QUERY PLAN "+instanceLifeUpdate, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var steps []string
+	for rows.Next() {
+		var id, parent, unused int
+		var detail string
+		if err := rows.Scan(&id, &parent, &unused, &detail); err != nil {
+			t.Fatal(err)
+		}
+		steps = append(steps, detail)
+	}
+	rows.Close()
+	plan := strings.Join(steps, " | ")
+	// Answering min() through effect_event_by_time walks the span's changes in time order until it meets the instance, about
+	// 5 s per deleted encounter of a real capture; both correlated reads must use the instance's own key range.
+	if strings.Contains(plan, "effect_event_by_time") || strings.Count(plan, "SEARCH e USING PRIMARY KEY (capture_session_id=? AND instance=?)") != 2 {
+		t.Fatalf("the instance life update reads effect_event by %s", plan)
+	}
+}

@@ -464,7 +464,27 @@
       "unreliable": "战斗边界或丢失范围不明：不显示 DPS，不计入总计与个人纪录。",
       "unfinished": "仍在记录中或程序结束时未完成：数值来自最后的检查点，不计入总计与个人纪录。"
     },
-    "backToList": "返回列表"
+    "backToList": "返回列表",
+    "bulkDelete": {
+      "start": "选择删除",
+      "cancel": "取消",
+      "selectAll": "全选可删除的战斗",
+      "selectRow": "选择这场战斗以删除",
+      "rowLabel": "选择 {{date}} {{time}} 的战斗",
+      "selected": "已选择 {{n}} 场",
+      "action": "删除所选（{{n}}）",
+      "confirmTitle": "确认删除",
+      "confirm": "要删除所选的 {{n}} 场战斗及其所有保存的数据吗？此操作无法撤销。",
+      "confirmAction": "删除 {{n}} 场",
+      "done": "已从历史中删除 {{n}} 场战斗。",
+      "failed": "删除失败，没有做任何更改。",
+      "refused": {
+        "encounter_recording": "所选的战斗中有仍在记录的战斗，没有删除任何战斗。",
+        "recording_active": "当前有采集正在写入历史，没有删除任何战斗。",
+        "not_writable": "此窗口无法更改这份历史。",
+        "not_found": "所选的战斗中有已不在历史中的战斗，没有删除任何战斗。"
+      }
+    }
   },
   "compare": {
     "select": "加入比较",

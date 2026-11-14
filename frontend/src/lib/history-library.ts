@@ -104,3 +104,20 @@ export function classTone(value: RecordClass): ClassTone {
     case "unfinished": return "good"
   }
 }
+
+/** The listed encounters that may be chosen for deletion: every one except those still being recorded, which Go refuses. */
+export function deletableIds(entries: readonly Pick<HistoryLibraryEntry, "id" | "state">[]): number[] {
+  return entries.filter(entry => entry.state !== "open").map(entry => entry.id)
+}
+
+/** The chosen encounters with one of them added or taken out. */
+export function toggleChosen(chosen: readonly number[], id: number): number[] {
+  return chosen.includes(id) ? chosen.filter(other => other !== id) : [...chosen, id]
+}
+
+/** Whether none, some or all of the encounters that may be chosen are chosen. */
+export function chosenState(deletable: readonly number[], chosen: readonly number[]): "none" | "some" | "all" {
+  const marked = new Set(chosen)
+  const count = deletable.filter(id => marked.has(id)).length
+  return count === 0 ? "none" : count === deletable.length ? "all" : "some"
+}

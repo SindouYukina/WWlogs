@@ -494,7 +494,8 @@ export function HistoryView({ theme, refreshKey, indicator, intent, onReturn }: 
         comparing ? <HistoryCompare ids={compared.map(entry => entry.id)} zone={zone} refreshKey={`${settledKey}-${changes}`} onOpen={setOpenId}
           onRemove={id => dropCompared([id])} onMissing={dropCompared} onBack={() => setComparing(false)} /> :
         mode === "list" ? <HistoryLibraryView zone={zone} refreshKey={`${settledKey}-${changes}`} query={libraryQuery} onQuery={setLibraryQuery} onOpen={setOpenId}
-          compare={compared.map(entry => entry.id)} compareLimit={compareLimit} onCompare={entry => toggleCompare({ id: entry.id, date: entry.localDate, clock: entry.start.clock })} /> :
+          compare={compared.map(entry => entry.id)} compareLimit={compareLimit} onCompare={entry => toggleCompare({ id: entry.id, date: entry.localDate, clock: entry.start.clock })}
+          onDeleted={ids => { dropCompared(ids); setChanges(count => count + 1) }} /> :
         <Card className="ww-history-day">
           <div className="ww-dash-card-head"><h3 data-field="day-title">{date ? dates.long(date) : t("noDay")}</h3>{day && day.date === date && <span className="ww-history-total" data-field="day-total">{t("dayCount", { n: format.integer(day.total) })}</span>}</div>
           <DayList day={day && day.date === date ? day : null} dateLabel={date ? dates.long(date) : ""} onOpen={setOpenId} onMore={more} loading={loadingMore} />

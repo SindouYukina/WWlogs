@@ -143,6 +143,15 @@ func (b *Bridge) DeleteHistoryEncounter(id int64) (json.RawMessage, error) {
 	return historyChangeResult(result, err)
 }
 
+// DeleteHistoryEncounters deletes the stored encounters the user chose in the History Library and confirmed in the UI: all of
+// them, or none when one of them is unknown or still being recorded.
+func (b *Bridge) DeleteHistoryEncounters(ids []int64) (json.RawMessage, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), historyChangeLimit)
+	defer cancel()
+	result, err := b.history.DeleteEncounters(ctx, ids)
+	return historyChangeResult(result, err)
+}
+
 // ClearHistory deletes every stored encounter after the user confirmed it in the UI.
 func (b *Bridge) ClearHistory() (json.RawMessage, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), historyChangeLimit)
