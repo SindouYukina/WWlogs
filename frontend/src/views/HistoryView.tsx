@@ -39,6 +39,21 @@ export function HistoryIndicatorChip({ indicator }: { indicator: HistoryIndicato
   </span>
 }
 
+/**
+ * The calendar's year switch in the header's control row. Where no calendar shows (the library, a comparison) it keeps its
+ * place without being drawn, reached or read, so the indicator and the view switcher beside it never move.
+ */
+function YearSwitch({ shown, year, first, last, onChange }: { shown: boolean; year: number; first: number; last: number; onChange: (year: number) => void }) {
+  const { t } = useTranslation("history")
+  // The data fields name the switch only while it shows: acceptance checks read them as the calendar's year switch.
+  const field = (name: string) => shown ? name : undefined
+  return <div className="ww-history-years" data-field={field("year-switch")} data-shown={shown} inert={!shown}>
+    <Button size="sm" variant="ghost" aria-label={t("previousYear")} title={t("previousYear")} disabled={year === 0 || year <= first} onClick={() => onChange(year - 1)} data-field={field("year-previous")}><span style={{ display: "inline-flex", transform: "rotate(90deg)" }}><Icon name="chevron" size={14} /></span></Button>
+    <span className="ww-history-year ww-num" data-field={field("year")}>{year === 0 ? "—" : year}</span>
+    <Button size="sm" variant="ghost" aria-label={t("nextYear")} title={t("nextYear")} disabled={year === 0 || year >= last} onClick={() => onChange(year + 1)} data-field={field("year-next")}><span style={{ display: "inline-flex", transform: "rotate(-90deg)" }}><Icon name="chevron" size={14} /></span></Button>
+  </div>
+}
+
 /** The notes an unfinished or incomplete record leads with: why it is so, and what its stored values describe. */
 function recordNotes(summary: HistoryEncounterSummary): Array<{ key: string; tone: "warn" | "critical" }> {
   const notes: Array<{ key: string; tone: "warn" | "critical" }> = []
@@ -442,14 +457,13 @@ export function HistoryView({ theme, refreshKey, indicator, intent, onReturn }: 
         <div className="ww-caps">{t("subtitle")}</div>
         <h2 className="ww-history-title">{t("title")}</h2>
       </div>
-      <HistoryIndicatorChip indicator={indicator} />
-      {onReturn && <Button size="sm" variant="ghost" data-field="history-return" onClick={onReturn}><span style={{ display: "inline-flex", transform: "rotate(90deg)" }}><Icon name="chevron" size={13} /></span>{t("career.backToCareer")}</Button>}
-      <span data-field="history-mode" data-mode={mode}><Segmented label={t("library.viewLabel")} value={mode} onChange={next => { setMode(next); setOpenId(null); setComparing(false) }} options={[{ value: "calendar", label: t("library.calendar") }, { value: "list", label: t("library.list") }]} /></span>
-      {mode === "calendar" && !comparing && <div className="ww-history-years" data-field="year-switch">
-        <Button size="sm" variant="ghost" aria-label={t("previousYear")} title={t("previousYear")} disabled={shownYear === 0 || shownYear <= bounds.first} onClick={() => changeYear(shownYear - 1)} data-field="year-previous"><span style={{ display: "inline-flex", transform: "rotate(90deg)" }}><Icon name="chevron" size={14} /></span></Button>
-        <span className="ww-history-year ww-num" data-field="year">{shownYear === 0 ? "—" : shownYear}</span>
-        <Button size="sm" variant="ghost" aria-label={t("nextYear")} title={t("nextYear")} disabled={shownYear === 0 || shownYear >= bounds.last} onClick={() => changeYear(shownYear + 1)} data-field="year-next"><span style={{ display: "inline-flex", transform: "rotate(-90deg)" }}><Icon name="chevron" size={14} /></span></Button>
-      </div>}
+      {/* One control row, in this order in every view: the view switcher stays the last item at the right edge. */}
+      <div className="ww-history-actions" data-field="history-actions">
+        {onReturn && <Button size="sm" variant="ghost" data-field="history-return" onClick={onReturn}><span style={{ display: "inline-flex", transform: "rotate(90deg)" }}><Icon name="chevron" size={13} /></span>{t("career.backToCareer")}</Button>}
+        <HistoryIndicatorChip indicator={indicator} />
+        <YearSwitch shown={mode === "calendar" && !comparing} year={shownYear} first={bounds.first} last={bounds.last} onChange={changeYear} />
+        <span className="ww-history-mode" data-field="history-mode" data-mode={mode}><Segmented label={t("library.viewLabel")} value={mode} onChange={next => { setMode(next); setOpenId(null); setComparing(false) }} options={[{ value: "calendar", label: t("library.calendar") }, { value: "list", label: t("library.list") }]} /></span>
+      </div>
     </Reveal>
     {compared.length > 0 && !comparing && <div className="ww-compare-tray" role="region" aria-label={t("compare.tray")} data-field="compare-tray" data-count={compared.length}>
       <span className="ww-career-fact-label">{t("compare.tray")}</span>
