@@ -32,3 +32,33 @@ func TestNotifiedResultEventLineUsesTheAuxiliaryNamespace(t *testing.T) {
 		t.Fatalf("notified results must use the p id namespace: %v", row["eventId"])
 	}
 }
+
+// A local negative-status result that an overflow on another enemy can have spread names its settlement and how many such
+// overflows its moment had; an instant status Buff of the moment is marked.
+func TestNotifiedSpreadResultLineNamesItsSettlement(t *testing.T) {
+	var jsonl bytes.Buffer
+	p := newCausalityTestProcessor()
+	p.combatEventsJSONL = &jsonl
+	buildFusionToLimit(t, p, 1.0, 2, 200, 8, 100, 100)
+	deliverNotifyFrame(t, p, 1.5, 3, items(overflow(200, 8, 101), [][]byte{fusionTick(201, 4000)})...)
+	deliverNotifyFrame(t, p, 2.0, 4, triggerData(200, causalInstantBuff, 101), spectroTick(200, 2500))
+	var spread, instant map[string]any
+	for _, row := range decodeJSONLLines(t, jsonl.Bytes()) {
+		if row["eventType"] != "DAMAGE_NOTIFY_RESULT" {
+			continue
+		}
+		push, _ := row["push"].(map[string]any)
+		switch push["settlement"] {
+		case "spread":
+			spread = push
+		case "instant":
+			instant = push
+		}
+	}
+	if spread == nil || spread["spreadCandidates"] != float64(1) || spread["creditBasis"] != "negative_status_trigger" || spread["creditRoleId"] != float64(1505) {
+		t.Fatalf("spread result line = %v", spread)
+	}
+	if instant == nil || instant["instantTrigger"] != true || instant["creditRoleId"] != float64(1505) {
+		t.Fatalf("instant result line = %v", instant)
+	}
+}
