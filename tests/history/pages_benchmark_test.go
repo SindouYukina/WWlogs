@@ -156,16 +156,24 @@ func BenchmarkHistoryPages(b *testing.B) {
 			must(b, err)
 		})
 		// A deletion alone, then a deletion followed by the career (the deleted encounter's index entry and largest hits go).
+		// Each iteration deletes another encounter, so a history can serve only as many deletions as it holds: once every
+		// encounter is gone the benchmark stops instead of deleting one again (the framework's ramp-up runs it more than once).
 		deleted := 0
-		run("delete", func(b *testing.B) {
-			_, err := store.DeleteEncounter(ctx, ids[deleted%len(ids)])
-			must(b, err)
+		nextDeletion := func(b *testing.B) int64 {
+			if deleted >= len(ids) {
+				b.Skipf("every one of the %d encounters is deleted", len(ids))
+			}
+			id := ids[deleted]
 			deleted++
+			return id
+		}
+		run("delete", func(b *testing.B) {
+			_, err := store.DeleteEncounter(ctx, nextDeletion(b))
+			must(b, err)
 		})
 		run("delete-then-career", func(b *testing.B) {
-			_, err := store.DeleteEncounter(ctx, ids[deleted%len(ids)])
+			_, err := store.DeleteEncounter(ctx, nextDeletion(b))
 			must(b, err)
-			deleted++
 			_, err = store.Career(ctx, CareerQuery{}, time.UTC, nil)
 			must(b, err)
 		})
