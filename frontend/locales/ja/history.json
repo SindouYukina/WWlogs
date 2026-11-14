@@ -541,7 +541,6 @@
   },
   "career": {
     "title": "戦績サマリー",
-    "subtitle": "このPCでWWlogsが記録した戦闘の通算",
     "rangeLabel": "期間",
     "range": {
       "7d": "直近 7 日",

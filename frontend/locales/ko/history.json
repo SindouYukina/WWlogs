@@ -541,7 +541,6 @@
   },
   "career": {
     "title": "전적 요약",
-    "subtitle": "이 PC에서 WWlogs가 기록한 전투의 누적 통계",
     "rangeLabel": "기간",
     "range": {
       "7d": "최근 7일",
