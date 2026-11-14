@@ -169,6 +169,8 @@ type Inputs struct {
 	// Research inputs (private, optional).
 	ProtocolSchema   string
 	ClientReferences string
+	// ClientContent is the client content inventory (client_content_inventory.py); master.client-content compares it.
+	ClientContent string
 
 	// Evidence of a verification run (optional).
 	VerifyResults  string

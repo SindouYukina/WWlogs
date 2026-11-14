@@ -36,9 +36,15 @@ Inputs:
 | --- | --- | --- |
 | Source tree, `data/master_data.db`, `assets/manifest.json` and `assets/game/**` | tracked | always read |
 | `tests/capture/golden_registry.json` | tracked | the Golden captures the corpus requires for the current game version |
-| Research inputs file | private | `{"protocolSchema": "<client schema from protojs_schema.py>", "clientReferences": "<client reference inventory>"}`; relative paths resolve from the repository root |
+| Research inputs file | private | `{"protocolSchema": "<client schema from protojs_schema.py>", "clientReferences": "<client reference inventory>", "clientContent": "<client content inventory>"}`; relative paths resolve from the repository root |
 | `-Evidence` directory | run evidence | `verify-results.json`, `golden-coverage.json`, `history-summary.json` from `verify.ps1 -EvidenceOut` |
 | `-LiveAcceptance` | owner record | `{"gameVersion", "clientVersion", "buildNumber", "executableSha256", "date", "operator", "result", "checks"}` |
+
+The client content inventory (`work/version-update/tools/client_content_inventory.py`, owner-local) lists, from the
+client's own ConfigDB files and independently of the Master, every row id of the tables the Master keeps whole, how many
+rows the decoded snapshot holds, the playable roles and the buffs whose GameplayCue the HUD draws: `{"client", "resource",
+"tables": {"<table>": {"sourceRows", "decodedRows", "ids"}}, "playableRoles", "hudBuffs", "exclusions": [{"table", "id",
+"reason"}]}`.
 
 The client reference inventory lists every pack path the current client references and the explicit exclusions (with
 reasons) of references the product never requests: `{"client", "resource", "paths": [...], "exclusions": [{"path",
@@ -55,6 +61,7 @@ reasons) of references the product never requests: `{"client", "resource", "path
 | `master.loads` | master | static | `capture.LoadMasterData` opens the Master in all five bundled Master locales | a Master the product refuses (the loader is fail-closed on broken relations) |
 | `master.relations` | master | static | Trial parents, role skill groups, buff cues, guide categories and entrances resolve | a lookup that no longer resolves |
 | `master.role-names` | master | static | Every playable role is named in every locale | a new role whose text the client has not filled in |
+| `master.client-content` | master | research | Every client row of the tables the Master keeps whole, every playable role and every HUD buff of the client (its own ConfigDB and decoded snapshot) is in the Master, the HUD relation matches both ways, the snapshot decoded every row, and the inventory comes from the decoder's client | a row, role or HUD status the Master build dropped, which the checks over the Master's own rows cannot count |
 | `characters.art` | characters | static | Every playable role has avatar and portrait in the pack | a new role without art (Global 3.8, role 1512, Build 28) |
 | `characters.trial-parent` | characters | static | Every trial of a playable role resolves to it through `DisplayResolver.StaticRole` and finds its art | a trial version without its parent's art |
 | `characters.skill-icons` | characters | static | Every UI skill of a playable role has its icon | a new role's skill icons missing |
@@ -89,8 +96,9 @@ manifest; a product classification that drops a HUD status or every arrowless (n
 an exclusive instance relation and no name, and a trial role with a missing parent, in a temporary copy of the Master; a
 History version literal with the protocol at 3.9 and a replay whose encounters lack the version; a retired translation
 layer and a stray wire number in a source copy, and a client schema with one renumbered command; a required Golden
-capture absent, without facts, failed, or from another file; and client reference drift. Clean controls of the same
-inputs pass. Nothing is written to the tracked Master, manifest or any user data.
+capture absent, without facts, failed, or from another file; and client reference drift; client content the Master lacks (a new role, HUD status and rows), a Master HUD relation the client
+no longer draws, an inventory of another client, a partial extraction and an exclusion without a reason; and a HUD
+status's icon missing from a copy of the manifest. Clean controls of the same inputs pass. Nothing is written to the tracked Master, manifest or any user data.
 
 ## Troubleshooting
 
