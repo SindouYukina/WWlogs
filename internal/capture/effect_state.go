@@ -240,6 +240,9 @@ type EffectUpdateEvent struct {
 	ObservedAt       time.Time
 	// Evidence is client_report for the local client's stack report; empty means a server notify.
 	Evidence EffectEvidence
+	// StackInstigator is the InstigatorId a server stack change (BuffStackCountNotify) names, when it names one.
+	StackInstigator    uint64
+	HasStackInstigator bool
 }
 
 // EffectRemoveEvent is a gameplay-effect REMOVE for one handle.
@@ -395,6 +398,10 @@ type effectInstance struct {
 	basisEffective   float64
 	unknownReason    string
 	insertionOrdinal uint64
+	// stackInstigators holds the distinct InstigatorIds the server named for the instance's stack applications, at most
+	// maxStatusStackInstigators; manyStackInstigators is set once more were seen (negative_status_credit.go).
+	stackInstigators     []uint64
+	manyStackInstigators bool
 	// holderActor, sourceActor and historyNumber are kept for Combat History only (history_effects.go).
 	holderActor   *EffectActorIdentity
 	sourceActor   *EffectActorIdentity
@@ -644,8 +651,14 @@ func (t *EffectTracker) ObserveUpdate(event EffectUpdateEvent) {
 	basis, duration, hasDuration := classifyEffectTime(event.DurationSeconds, event.RemainingSeconds)
 	// A message with no time fields keeps the earlier estimate.
 	timeFields := event.DurationSeconds != nil || event.RemainingSeconds != nil
+	// An application at the stack limit leaves the count unchanged (the overflow that bursts Fusion Burst), so only a
+	// decrease names no applier.
+	applied := event.HasStackCount && (!instance.hasStack || event.StackCount >= instance.stack)
 	if !t.updateLocked(instance, event.ObservedAt, event.StackCount, event.HasStackCount, basis, duration, hasDuration, timeFields) {
 		return
+	}
+	if applied && event.HasStackInstigator && event.StackInstigator != 0 && event.Evidence != EffectEvidenceClientReport {
+		instance.noteStackInstigator(event.StackInstigator)
 	}
 	switch {
 	case event.HasStackCount:

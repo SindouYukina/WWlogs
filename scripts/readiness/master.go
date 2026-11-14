@@ -119,7 +119,8 @@ func (g *gate) masterChecks() {
 	// Advisory: content the client data itself cannot place is reported, never guessed and never a blocker.
 	unresolved := g.check("content.unresolved-categories", DomainContent, "Guide categories the client data names only ambiguously (reported limitation)", KindStatic, false)
 	content := g.check("master.client-content", DomainMaster, "Every row, playable role and HUD buff the current client defines is in the Master, read from the client's own ConfigDB and decoded snapshot", KindResearch, true)
-	dependents := []*Check{loads, relations, names, art, trial, skillIcons, skillNames, hudClass, hudIcons, categories, modes, unresolved, content}
+	settlement := g.check("combat.negative-status-settlement", DomainCharacters, "Every negative-status DamageId (server-only FormulaType 9) is executed by status Buffs whose settlement the product reads, and every InvokePeriod forces only timed statuses", KindStatic, true)
+	dependents := []*Check{loads, relations, names, art, trial, skillIcons, skillNames, hudClass, hudIcons, categories, modes, unresolved, content, settlement}
 
 	hash, err := fileSHA256(g.in.MasterPath)
 	if err != nil {
@@ -229,6 +230,126 @@ func (g *gate) masterChecks() {
 	g.hudChecks(hudClass, hudIcons, m)
 	g.contentChecks(categories, modes, unresolved, m)
 	g.clientContentCheck(content, m)
+	g.negativeStatusCheck(settlement, m)
+}
+
+// negativeStatusCheck holds the inputs of the negative-status role credit (internal/capture/negative_status_credit.go) to
+// the Master: every DamageId of the server-only formula has executing status Buffs, each with the settlement columns the
+// credit reads (period, on-creation execution, overflow clear), all taken by the product as executing it; and every
+// InvokePeriod (extra effect 67) names only statuses with a period, the only ones whose execution it can force
+// (InvokePeriod.OnExecute -> ApplyPeriodExecution). A new negative status, or one that settles in a new way, fails here
+// until the settlement research covers it (work/version-update/PROCEDURE.md).
+func (g *gate) negativeStatusCheck(c *Check, m *masterView) {
+	damageIDs, err := m.ids(`SELECT id FROM damage WHERE CAST(formula_type AS TEXT) = '9' ORDER BY CAST(id AS INTEGER)`)
+	if err != nil || len(damageIDs) == 0 {
+		c.fail("no negative-status damage row (damage.formula_type 9) can be read: %v", err)
+		return
+	}
+	type executor struct {
+		id, damageID                        uint64
+		period, onCreation, clearOnOverflow sql.NullString
+	}
+	var executors []executor
+	byDamage := map[uint64]int{}
+	for _, damageID := range damageIDs {
+		rows, err := m.db.Query(`SELECT id, CAST(period AS TEXT), CAST(b_execute_periodic_effect_on_application AS TEXT), CAST(b_clear_stack_on_overflow AS TEXT)
+			FROM buff WHERE CAST(extra_effect_id AS TEXT) = ? ORDER BY CAST(id AS INTEGER)`, fmt.Sprint(damageID))
+		if err != nil {
+			c.fail("the status Buffs of DamageId %d cannot be read: %v", damageID, err)
+			return
+		}
+		for rows.Next() {
+			var rawID string
+			found := executor{damageID: damageID}
+			if err := rows.Scan(&rawID, &found.period, &found.onCreation, &found.clearOnOverflow); err != nil {
+				rows.Close()
+				c.fail("a status Buff of DamageId %d cannot be read: %v", damageID, err)
+				return
+			}
+			if _, err := fmt.Sscan(rawID, &found.id); err != nil {
+				rows.Close()
+				c.fail("status Buff id %q of DamageId %d is not a number", rawID, damageID)
+				return
+			}
+			executors = append(executors, found)
+			byDamage[damageID]++
+		}
+		rows.Close()
+		if byDamage[damageID] == 0 {
+			c.failSubject(fmt.Sprintf("DamageId %d", damageID), "negative-status DamageId %d has no executing status Buff (buff.extra_effect_id %d)", damageID, damageID)
+		}
+	}
+	timed := map[uint64]bool{}
+	complete, recognized, periodic, applied := 0, 0, 0, 0
+	for _, e := range executors {
+		if !e.period.Valid || !e.onCreation.Valid || !e.clearOnOverflow.Valid {
+			c.failSubject(fmt.Sprintf("status Buff %d", e.id), "status Buff %d of DamageId %d lacks a settlement column (period, on-creation execution or overflow clear)", e.id, e.damageID)
+			continue
+		}
+		complete++
+		var period float64
+		if _, err := fmt.Sscan(e.period.String, &period); err == nil && period > 0 {
+			timed[e.id] = true
+			periodic++
+		} else {
+			applied++
+		}
+		if m.product == nil {
+			continue
+		}
+		reading := m.product.NegativeStatusSettlement(e.id, e.damageID)
+		switch {
+		case !reading.Executes:
+			c.failSubject(fmt.Sprintf("status Buff %d", e.id), "the product does not take status Buff %d as executing negative-status DamageId %d", e.id, e.damageID)
+		case !reading.Known || reading.Periodic != timed[e.id] || reading.ExecutesOnCreation != (e.onCreation.String == "1") || reading.ClearsOnOverflow != (e.clearOnOverflow.String == "1"):
+			c.failSubject(fmt.Sprintf("status Buff %d", e.id), "the product reads the settlement of status Buff %d differently from its Buff row", e.id)
+		default:
+			recognized++
+		}
+	}
+	rows, err := m.db.Query(`SELECT b.id, CAST(p.value AS TEXT) FROM buff b JOIN buff_extra_effect_parameters p ON p.owner_id = b.id AND p.ordinal = 0
+		WHERE CAST(b.extra_effect_id AS TEXT) = '67' ORDER BY CAST(b.id AS INTEGER)`)
+	if err != nil {
+		c.fail("the InvokePeriod Buffs cannot be read: %v", err)
+		return
+	}
+	defer rows.Close()
+	executing := map[uint64]uint64{}
+	for _, e := range executors {
+		executing[e.id] = e.damageID
+	}
+	invokes, named := 0, map[uint64]bool{}
+	for rows.Next() {
+		var rawID, value string
+		if err := rows.Scan(&rawID, &value); err != nil {
+			c.fail("an InvokePeriod Buff cannot be read: %v", err)
+			return
+		}
+		forcesStatus := false
+		for _, part := range strings.Split(value, "#") {
+			var status uint64
+			if _, err := fmt.Sscan(strings.TrimSpace(part), &status); err != nil {
+				continue
+			}
+			if _, ok := executing[status]; !ok {
+				continue
+			}
+			forcesStatus = true
+			named[status] = true
+			if !timed[status] {
+				c.failSubject(fmt.Sprintf("InvokePeriod %s", rawID), "InvokePeriod %s names status Buff %d, which has no period: the credit has no rule for forcing it", rawID, status)
+			}
+		}
+		if forcesStatus {
+			invokes++
+		}
+	}
+	if m.product == nil {
+		c.unverified("the product loader did not load the Master")
+	}
+	c.Coverage = &Coverage{Passed: recognized, Total: len(executors), Denominator: "status Buffs that execute a FormulaType 9 DamageId, read the same by the product and their Buff row"}
+	c.Evidence = append(c.Evidence, fmt.Sprintf("negative-status DamageIds %v; status Buffs %d (timed %d, without a period %d, with every settlement column %d); InvokePeriods forcing a status %d, naming %d status Buffs",
+		damageIDs, len(executors), periodic, applied, complete, invokes, len(named)))
 }
 
 // relationRule is one lookup relation the product needs, stated as a query counting rows that break it.

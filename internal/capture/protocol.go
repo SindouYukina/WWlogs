@@ -194,7 +194,9 @@ type processor struct {
 	frameNotifyOrdinal int
 	// statusTriggers remembers the InvokePeriod Buffs the server applied recently, for the forced negative-status results
 	// that follow them (negative_status_credit.go).
-	statusTriggers    statusTriggerLog
+	statusTriggers statusTriggerLog
+	// serverSequence follows the sequence of the server's frames, so a missing frame is known (negative_status_credit.go).
+	serverSequence    serverSequenceState
 	rsa               *staticRSA
 	session           []byte
 	sessionGeneration uint64
@@ -490,6 +492,7 @@ func isImplementedCommand(commandID uint16) bool {
 func (p *processor) handleFrame(frame gameFrame) {
 	p.archiveFrame(frame)
 	p.currentFrameTime = frame.timestamp
+	p.observeServerSequence(frame)
 	p.observePairingClock(frame.timestamp)
 	p.observeEncounterClock(frame.timestamp)
 	p.sessionHealth.observeFrame(frame.timestamp)

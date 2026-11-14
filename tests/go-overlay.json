@@ -389,6 +389,8 @@
     "internal/desktop/central_history_career_test.go": "tests/desktop/history_career_test.go",
     "tests/capture/damage_notify_test.go": "",
     "internal/capture/central_damage_notify_test.go": "tests/capture/damage_notify_test.go",
+    "tests/capture/negative_status_settlement_test.go": "",
+    "internal/capture/central_negative_status_settlement_test.go": "tests/capture/negative_status_settlement_test.go",
     "tests/history/accounting_basis_test.go": "",
     "internal/history/central_accounting_basis_test.go": "tests/history/accounting_basis_test.go"
   }

@@ -113,11 +113,14 @@ type gameMaster struct {
 	buffOwners map[uint64][]buffOwnerText
 	// propertyNames maps a PropertyIndex id (the attribute id of the protocol) to its key and localized name.
 	propertyNames map[int64]propertyName
-	// abnormalDamageIDs holds the DamageIds named by the columns Abnormal<id> of AbnormalDamageConfig: negative-status damage.
+	// abnormalDamageIDs holds the negative-status DamageIds: those named by the columns Abnormal<id> of AbnormalDamageConfig and
+	// every damage row of the server-only negative-status formula (FormulaType 9), such as 1007 of the Glacio Chafe variant.
 	abnormalDamageIDs map[uint64]struct{}
 	// negativeStatusExecutors maps a Buff whose extra effect type is one of abnormalDamageIDs to that type: the negative-status
 	// DamageId the server executes for the status (damage_notify.go).
 	negativeStatusExecutors map[uint64]uint64
+	// negativeStatusSettlements holds how each executing status Buff settles (negative_status_credit.go).
+	negativeStatusSettlements map[uint64]negativeStatusSettlement
 	// invokePeriodTargets maps an InvokePeriod Buff (extra effect type 67) to the negative-status Buffs whose execution it
 	// forces at once (negative_status_credit.go).
 	invokePeriodTargets map[uint64][]uint64

@@ -216,16 +216,20 @@ const negativeStatusRole = 1409
 // roles 13127004, 15127004 and 13117004, DamageId 1000009900).
 //
 // Role credit of the negative-status results (2026-11-14, research/runs/2026-11-14/v0.7.0-causal-damage-attribution,
-// work/causal-attribution/causal_audit.py on the generic schema decode, independent of the product's decoders): every
-// executing status instance on the target (server ApplyGameplayEffectNotify by handle, the client's StackingType 2 shared
-// instance) was created by role 1409's entity and every one of its stack changes (BuffStackCountNotify.InstigatorId) names
-// that entity; a result is a forced execution when an instant InvokePeriod Buff (client extra effect 67) naming the status
-// reached the same target earlier in its receive pack or within 0.15 s, with the InstigatorId of role 1409's entity; for
-// Aero Erosion the server also named the executing instance's InstigatorId at the execution itself (Buff 10040002, added
-// by the status's related extra effect with the instance as preceding Buff) in 1,026 of its 1,047 results, always role
-// 1409's entity. Of the 1,216 results (12,946,888), 681 were forced (9,020,386), 152 the first execution of a new instance
-// and 383 the instance's own period. The product's per-result credit equals the audit for all 1,216
-// (work/causal-attribution/compare_product.py).
+// corrected by research/runs/2026-11-14/v0.7.0-anomaly-attribution-verification; work/causal-attribution/causal_audit.py
+// on the generic schema decode, independent of the product's decoders): every executing status instance on the target
+// (server ApplyGameplayEffectNotify by handle, the client's StackingType 2 shared instance) was created by role 1409's
+// entity and every one of its stack changes (BuffStackCountNotify.InstigatorId) names that entity; a result is a forced
+// execution when an instant InvokePeriod Buff (client extra effect 67) naming the status reached the same target within
+// 0.15 s before it and found the status instance alive (InvokePeriod.OnExecute forces only statuses present when it runs;
+// the 18 results whose InvokePeriod came before the instance's creation are that instance's on-creation execution, the
+// Build 38 audit and product counted them forced), with the InstigatorId of role 1409's entity; for Aero Erosion the
+// server also named the executing instance's InstigatorId at the execution itself (Buff 10040002, added by the status's
+// related extra effect with the instance as preceding Buff: a new echo, a stack or duration refresh of the alive echo, in
+// the result's frame or the next two) in 1,033 of its 1,047 results, always role 1409's entity; the other 14 results
+// killed their target (EntityLivingStatusNotify in the same frame), which then takes no echo. Of the 1,216 results
+// (12,946,888), 663 were forced (8,899,657), 170 the first execution of a new instance and 383 the instance's own period.
+// The product's per-result credit equals the audit for all 1,216 (work/causal-attribution/compare_product.py).
 var semanticCompletenessFacts = append(append(currentGoldenFacts(func(capture string) []semanticCompletenessFact {
 	return []semanticCompletenessFact{
 		{capture, 1, 355025, 78716, 0, 0, 746, 0},
@@ -242,7 +246,7 @@ var semanticCompletenessFacts = append(append(currentGoldenFacts(func(capture st
 	semanticCompletenessFact{build29LiveCapture, 3, 1290079, 0, 0, 0, 0, 0},
 	semanticCompletenessFact{build29LiveCapture, 4, 3558115, 0, 0, 0, 0, 0},
 	semanticCompletenessFact{build29LiveCapture, 5, 3039257, 0, 0, 0, 0, 0},
-	semanticCompletenessFact{build29LiveCapture, 6, 4181890, 0, 0, 0, 92217, 21272},
+	semanticCompletenessFact{build29LiveCapture, 6, 4181890, 0, 0, 0, 92217, 20622},
 ),
 	// The 30 encounters of the Build 28 capture; every confirmed hit comes from a role entity, none from a vehicle.
 	// Encounters 3, 9, 16 and 17 each join consecutive server battle intervals by the product's re-entry rule (an empty
@@ -300,14 +304,14 @@ var semanticCompletenessFacts = append(append(currentGoldenFacts(func(capture st
 	semanticCompletenessFact{build31LiveCapture, 1, 5510829, 0, 0, 0, 0, 0},
 	semanticCompletenessFact{build31LiveCapture, 2, 5635117, 0, 0, 0, 0, 0},
 	semanticCompletenessFact{build31LiveCapture, 3, 5976286, 0, 0, 0, 0, 0},
-	semanticCompletenessFact{build31LiveCapture, 4, 11612715, 0, 0, 0, 1042266, 518494},
-	semanticCompletenessFact{build31LiveCapture, 5, 6187588, 0, 0, 0, 587199, 258791},
+	semanticCompletenessFact{build31LiveCapture, 4, 11612715, 0, 0, 0, 1042266, 517050},
+	semanticCompletenessFact{build31LiveCapture, 5, 6187588, 0, 0, 0, 587199, 257413},
 	semanticCompletenessFact{build31LiveCapture, 6, 2700158, 0, 0, 0, 279397, 104988},
 	semanticCompletenessFact{build31LiveCapture, 7, 10122800, 0, 0, 0, 945378, 431418},
 	semanticCompletenessFact{build31LiveCapture, 8, 3998523, 0, 0, 0, 0, 0},
 	semanticCompletenessFact{build31LiveCapture, 9, 3493921, 0, 0, 0, 0, 0},
-	semanticCompletenessFact{build31LiveCapture, 10, 18459692, 0, 0, 0, 806830, 437011},
-	semanticCompletenessFact{build31LiveCapture, 11, 34983860, 0, 0, 0, 1500447, 767498},
+	semanticCompletenessFact{build31LiveCapture, 10, 18459692, 0, 0, 0, 806830, 427078},
+	semanticCompletenessFact{build31LiveCapture, 11, 34983860, 0, 0, 0, 1500447, 660174},
 	semanticCompletenessFact{build31LiveCapture, 12, 43889235, 0, 0, 0, 0, 0},
 	semanticCompletenessFact{build31LiveCapture, 13, 47918, 0, 0, 0, 0, 0},
 	semanticCompletenessFact{build31LiveCapture, 14, 7960715, 0, 0, 0, 0, 0},

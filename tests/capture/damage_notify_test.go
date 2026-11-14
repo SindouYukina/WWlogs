@@ -366,7 +366,8 @@ func TestNotifiedNegativeStatusForcedByAnotherRoleIsCreditedToTheTrigger(t *test
 }
 
 // The server may close a receive pack right after the trigger: its forced result then opens the next pack. A trigger older
-// than the carry window explains nothing.
+// than the carry window explains nothing as forced, but until its doubt has passed (negative_status_credit.go) the result it
+// may still have forced late is not the owner's either: B forced, A owns, so the 0.2 s result credits nobody.
 func TestNegativeStatusTriggerCarriesIntoTheNextPackOnly(t *testing.T) {
 	p := newCreditTestProcessor()
 	applyStatus(p, 0.5, 200, 1, notifyTestAeroBuff, 100, EffectRelationLocalRole)
@@ -378,8 +379,11 @@ func TestNegativeStatusTriggerCarriesIntoTheNextPackOnly(t *testing.T) {
 	if _, forced := creditOf(t, snapshot, 1505, notifyTestAero); forced.DamageDealt != 900 || forced.TriggerEvents != 1 {
 		t.Fatalf("role 1505 status %+v; a result in the next pack within the window is the forced one", forced)
 	}
-	if _, own := creditOf(t, snapshot, 1409, notifyTestAero); own.DamageDealt != 300 || own.TriggerEvents != 0 {
-		t.Fatalf("role 1409 status %+v; a trigger 0.2 s before a result is too old to explain it", own)
+	if _, own := creditOf(t, snapshot, 1409, notifyTestAero); own.DamageDealt != 0 {
+		t.Fatalf("role 1409 status %+v; a result 0.2 s after B's trigger may be B's late forced one", own)
+	}
+	if snapshot.UnassignedRole.NegativeStatusDamage != 300 {
+		t.Fatalf("unassigned %+v; the late result stays the team's", snapshot.UnassignedRole)
 	}
 }
 
@@ -458,14 +462,16 @@ func TestNegativeStatusWithoutOneLocalCreditStaysUnassigned(t *testing.T) {
 	}
 }
 
-// A trigger naming the other of two differently owned statuses forces that one: the credit then has its evidence.
+// A trigger naming the other of two differently owned statuses forces that one, but the other instance can have executed
+// this result on its own timer just as well (the two executions could swap), so with different owners nothing is credited
+// (corrected 2026-11-14; Build 38 credited the forcer).
 func TestNegativeStatusTriggerNamesTheInstanceAmongDifferentOwners(t *testing.T) {
 	p := newCreditTestProcessor()
 	applyStatus(p, 0.5, 200, 1, notifyTestAeroBuff, 100, EffectRelationLocalRole)
 	applyStatus(p, 0.6, 200, 2, notifyTestAeroBuff2, 101, EffectRelationLocalRole)
 	deliverNotifyFrame(t, p, 1, 3, triggerData(200, notifyTestInvokeAero, 100), aeroTick(200, 800))
 	snapshot := p.damageStatistics.Snapshot()
-	if _, row := creditOf(t, snapshot, 1409, notifyTestAero); row.DamageDealt != 800 || row.TriggerEvents != 1 || snapshot.UnassignedRole.DamageDealt != 0 {
+	if _, row := creditOf(t, snapshot, 1409, notifyTestAero); row.DamageDealt != 0 || snapshot.UnassignedRole.NegativeStatusDamage != 800 {
 		t.Fatalf("role 1409 status %+v unassigned %+v", row, snapshot.UnassignedRole)
 	}
 }

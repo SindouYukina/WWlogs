@@ -231,6 +231,7 @@ func (p *processor) writeDamageEventJSONL(event combatEvent) {
 		execution := event.Notify.Execution
 		view.Push.CreditEntityID, view.Push.StatusEffectID, view.Push.TriggerEffectID = execution.CreditEntity, execution.StatusEffectID, execution.TriggerEffectID
 		view.Push.StatusOwnerEntityID, view.Push.CreditReason = execution.Owner, execution.Reason
+		view.Push.Settlement, view.Push.CreditCandidates = execution.Settlement, execution.Candidates
 		if credit := event.Notify.Credit; credit != nil {
 			view.Push.CreditBasis, view.Push.CreditRoleID = credit.Basis, credit.RoleID
 		}
