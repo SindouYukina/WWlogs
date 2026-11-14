@@ -24,31 +24,42 @@ import (
 //     the instance's own: the executing context is the instance and its owner.
 //   - A status without a period (Glacio Chafe, Fusion Burst, Havoc Bane) has no timer: per the client's glossary its
 //     damage, when it has any, is caused by an application (Glacio Chafe on every application, Fusion Burst when an
-//     application overflows the stack limit, which also clears the instance: buff.b_clear_stack_on_overflow). The server
-//     does not say which application caused a result, so every applier of the instance is a candidate.
+//     application overflows the stack limit, which also clears the instance: buff.b_clear_stack_on_overflow). The damage
+//     result does not name its application, but the server reports every application with its applier, a cause before
+//     its effect: the applications of the result's moment are its possible causes (negative_status_causes.go).
 //   - An InvokePeriod Buff (extra effect type 67) that a role applies to the holder forces an immediate execution of the
 //     named statuses present at that moment (InvokePeriod.OnExecute -> GetBuffById -> ApplyPeriodExecution) without
 //     touching their timers. The server reports it as an instant ApplyGameplayEffectNotify (no handle) with its own
 //     InstigatorId, before the forced result. A status created after the InvokePeriod was not forced by it: in the captures
 //     its single execution after creation is the on-creation one.
 //
-// Product rule (owner policy): a forced execution is credited to the role whose InvokePeriod forced it, any other execution
-// to the role that caused it by the status's own settlement: the owner of a timed status, the applier of a status without
-// a period. A result is credited only when every actor the evidence leaves possible is the same entity, and that entity
-// resolves to a local role or a summon of one (localRoleForEntity); otherwise it stays the local team's damage but no
-// role's (UnassignedRoleTotals.NegativeStatusDamage), with the reason. Proximity in time alone never credits a role:
-//   - a trigger names the instances it can force when it is applied, and explains at most one execution of each;
+//   - An instant status Buff (no handle: Spectro Frazzle 150721001) executes its negative status once on the holder when
+//     the server applies it; it is reported like an InvokePeriod, with its own InstigatorId.
+//   - A status without a period settles on an application the server reports in the same moment; an overflow of a status
+//     that clears on overflow can spread to the enemies around its holder (negative_status_causes.go).
+//
+// Product rule (owner policy): a result is credited to the role whose action caused it (an InvokePeriod that forced the
+// execution, an instant status Buff, the application or overflowing application that settled a status without a period;
+// basis negative_status_trigger), or to the owner of the timed status that executed on its own (negative_status_owner).
+// A result is credited only when every actor the evidence leaves possible is the same entity, and that entity resolves to
+// a local role or a summon of one (localRoleForEntity); otherwise it stays the local team's damage but no role's
+// (UnassignedRoleTotals.NegativeStatusDamage), with the reason. Proximity in time alone never credits a role:
+//   - a trigger names the instances it can force when it is applied, and explains at most one execution of each; an
+//     instant status Buff explains one result of its own DamageId;
 //   - InvokePeriods of different roles pending for the same instance make its forced executions ambiguous;
 //   - a result is the instance's own only when the server stream before it is complete (no missing sequenced server
 //     frame, which could have carried a forcing InvokePeriod) and no InvokePeriod that could still explain it is open;
-//   - an instance removed by the server just before the result can still be the executing one (an overflow clears it).
+//   - an instance removed by the server just before the result can still be the executing one (an overflow clears it);
+//   - an overflow on another enemy in the moment of a result of its DamageId is one of the result's possible causes.
 // The executing entity, the scene combat entity, stays the record's source.
 
 const (
-	// roleBasisNegativeStatusTrigger credits a forced negative-status execution to the role whose InvokePeriod forced it.
+	// roleBasisNegativeStatusTrigger credits a negative-status execution to the role whose action caused it: the
+	// InvokePeriod that forced it, the instant status Buff that is it, or the application (an overflowing one included)
+	// that settled a status without a period.
 	roleBasisNegativeStatusTrigger = "negative_status_trigger"
-	// roleBasisNegativeStatusOwner credits a negative-status execution to the role that owns, and alone applied, the
-	// executing status instance.
+	// roleBasisNegativeStatusOwner credits the own execution of a timed status instance (its timer or its on-creation
+	// execution) to the role that owns the instance.
 	roleBasisNegativeStatusOwner = "negative_status_owner"
 	// RoleBasisNegativeStatusTrigger and RoleBasisNegativeStatusOwner are the stored forms of the two credit bases.
 	RoleBasisNegativeStatusTrigger = roleBasisNegativeStatusTrigger
@@ -84,11 +95,15 @@ const maxStatusStackInstigators = 8
 // maxServerSequenceGaps bounds the remembered gaps of the server's frame sequence.
 const maxServerSequenceGaps = 16
 
-// Settlement kinds of a negative-status result, as the development diagnostics name them.
+// Settlement kinds of a negative-status result, as the development diagnostics name them: forced by an InvokePeriod, an
+// instant status Buff, the own execution of timed statuses, an application of a status without a period, a settlement
+// that can have spread from an overflow on another enemy, or no settlement the evidence can tell.
 const (
 	statusSettlementForced       = "forced"
+	statusSettlementInstant      = "instant"
 	statusSettlementOwn          = "own"
 	statusSettlementApplied      = "applied"
+	statusSettlementSpread       = "spread"
 	statusSettlementUndetermined = "undetermined"
 )
 
@@ -103,6 +118,8 @@ type negativeStatusSettlement struct {
 	executesOnCreation bool
 	// clearsOnOverflow is buff.b_clear_stack_on_overflow: an application past the stack limit removes the instance.
 	clearsOnOverflow bool
+	// instant is buff.duration_policy 0: the Buff has no instance and executes its status once when applied.
+	instant bool
 }
 
 // negativeStatusSettlementOf returns how a status Buff settles.
@@ -115,9 +132,10 @@ func (m *gameMaster) negativeStatusSettlementOf(effectID uint64) negativeStatusS
 
 // NegativeStatusSettlement is the product's reading of how a status Buff executes a negative-status DamageId, for the
 // version readiness gate: whether the product takes damageID as negative-status damage executed by effectID, and how the
-// status settles (Known is false when the Buff row gave no period).
+// status settles (Known is false when the Buff row gave no period). Instant is a Buff without an instance that executes
+// its status when applied; SpreadsOnOverflow a status whose overflow settlement the product lets reach other enemies.
 type NegativeStatusSettlement struct {
-	Executes, Known, Periodic, ExecutesOnCreation, ClearsOnOverflow, Forcible bool
+	Executes, Known, Periodic, ExecutesOnCreation, ClearsOnOverflow, Forcible, Instant, SpreadsOnOverflow bool
 }
 
 // NegativeStatusSettlement returns the product's reading of status Buff effectID executing damageID.
@@ -129,7 +147,8 @@ func (m *MasterData) NegativeStatusSettlement(effectID, damageID uint64) Negativ
 	return NegativeStatusSettlement{
 		Executes: m.masters.isNegativeStatusDamage(damageID) && m.masters.negativeStatusExecutes(effectID, damageID),
 		Known:    settlement.known, Periodic: settlement.periodic, ExecutesOnCreation: settlement.executesOnCreation,
-		ClearsOnOverflow: settlement.clearsOnOverflow, Forcible: m.masters.statusCanBeForced(effectID),
+		ClearsOnOverflow: settlement.clearsOnOverflow, Forcible: m.masters.statusCanBeForced(effectID), Instant: settlement.instant,
+		SpreadsOnOverflow: m.masters.statusSpreadsOnOverflow(effectID),
 	}
 }
 
@@ -141,7 +160,7 @@ type negativeStatusTerm struct {
 	iconBuff uint64
 }
 
-// statusTrigger is one InvokePeriod the server applied on a holder.
+// statusTrigger is one InvokePeriod, or one instant status Buff, the server applied on a holder.
 type statusTrigger struct {
 	session            int
 	holder, generation uint64
@@ -149,6 +168,10 @@ type statusTrigger struct {
 	effectID           uint64
 	source             uint64
 	hasSource          bool
+	// executes is the negative-status DamageId an instant status Buff executes by itself; zero for an InvokePeriod.
+	// consumed is set once an instant status Buff explained a result.
+	executes uint64
+	consumed bool
 	// eligible lists the status instances (tracker ordinals) the InvokePeriod found alive on the holder when the server
 	// applied it: the only ones it can have forced.
 	eligible []uint64
@@ -248,9 +271,12 @@ func (p *processor) serverStreamIncomplete(from, to time.Time) bool {
 type statusCandidate struct {
 	ordinal   uint64
 	handle    uint64
+	key       effectKey
 	effectID  uint64
 	source    uint64
 	hasSource bool
+	// createdAt is when the tracker first saw the instance.
+	createdAt time.Time
 	// local is set when the instance's source is the local team (a role, an entity it owns, or the local player); enemy
 	// when it is an entity unrelated to any player (an enemy). An instance with neither names an instigator the processor
 	// cannot place, or none.
@@ -278,23 +304,35 @@ type negativeStatusExecution struct {
 	Owner uint64
 	// Candidates is the number of distinct entities the evidence leaves as the cause; one for a credited result.
 	Candidates int
+	// Spread is the number of instances on other enemies whose overflow in the result's moment can have spread it.
+	Spread int
+	// Instant is set when an instant status Buff applied in the result's moment can be the result; InstantNotLocal when one
+	// of those Buffs names an instigator that is no local role or summon of one.
+	Instant, InstantNotLocal bool
 	// Reason says why the result has no credit entity; empty with one.
 	Reason string
 }
 
-// recordStatusTrigger remembers an instant InvokePeriod the server applied, with the named status instances it found alive.
+// recordStatusTrigger remembers an instant InvokePeriod the server applied, with the named status instances it found alive,
+// and an instant status Buff, which executes its negative status by itself.
 func (p *processor) recordStatusTrigger(row buffLifecycleAuditRow, holder uint64) {
 	if p == nil || row.ID == nil || row.HandleID == nil || validEffectHandle(*row.HandleID) {
-		return
-	}
-	named := p.masters.invokePeriodStatuses(*row.ID)
-	if len(named) == 0 {
 		return
 	}
 	generation := p.effectHolderGeneration(holder)
 	trigger := statusTrigger{session: row.SessionNumber, holder: holder, generation: generation, at: row.Timestamp, effectID: *row.ID}
 	if row.InstigatorID != nil && *row.InstigatorID != 0 {
 		trigger.source, trigger.hasSource = *row.InstigatorID, true
+	}
+	if damageID, executes := p.masters.negativeStatusExecutorDamage(*row.ID); executes {
+		trigger.executes = damageID
+		p.statusTriggers.add(trigger)
+		p.notifyStats.instantStatusExecutions++
+		return
+	}
+	named := p.masters.invokePeriodStatuses(*row.ID)
+	if len(named) == 0 {
+		return
 	}
 	for _, candidate := range p.effects.statusCandidates(row.SessionNumber, holder, generation, func(effectID uint64) bool { return containsID(named, effectID) }, row.Timestamp, negativeStatusLiveSlack, 0) {
 		trigger.eligible = insertSortedID(trigger.eligible, candidate.ordinal)
@@ -317,30 +355,47 @@ func (p *processor) negativeStatusCandidates(target, damageID uint64, at time.Ti
 type statusActors struct {
 	entities map[uint64]struct{}
 	reason   string
-	// periodic is set for a status with its own timer.
-	periodic bool
+	// periodic is set for a status with its own timer (or one whose period is unknown, credited to its owner); applied for
+	// a status that settles on an application (or one whose period is unknown).
+	periodic, applied bool
 }
 
-// ownSettlementActors returns the entities that can have caused an execution of candidate that no pending InvokePeriod
-// explains: the owner of a timed status, every applier of a status without a period, and the instigator of any InvokePeriod
-// that found the instance alive, forced nothing yet and could still explain a late result.
-func (p *processor) ownSettlementActors(target, generation uint64, candidate statusCandidate, at time.Time) statusActors {
+// settlementActors returns the entities that can have caused an execution of candidate that no pending InvokePeriod
+// explains: the own execution of a timed status (ownSettlementActors), the application of a status without a period
+// (appliedSettlementActors), and both for a status whose Buff row gave no period (the strictest reading).
+func (p *processor) settlementActors(target, generation uint64, candidate statusCandidate, at time.Time) statusActors {
 	settlement := p.masters.negativeStatusSettlementOf(candidate.effectID)
-	actors := statusActors{entities: map[uint64]struct{}{}, periodic: settlement.periodic}
+	switch {
+	case settlement.periodic:
+		return p.ownSettlementActors(target, generation, candidate, at)
+	case settlement.known:
+		return p.appliedSettlementActors(candidate, at)
+	}
+	own := p.ownSettlementActors(target, generation, candidate, at)
+	if own.reason != "" {
+		return own
+	}
+	applied := p.appliedSettlementActors(candidate, at)
+	if applied.reason != "" {
+		return applied
+	}
+	for entity := range applied.entities {
+		own.entities[entity] = struct{}{}
+	}
+	own.applied = true
+	return own
+}
+
+// ownSettlementActors returns the entities that can have caused an own execution of candidate, an instance of a timed
+// status: its owner, and the instigator of any InvokePeriod that found the instance alive, forced nothing yet and could
+// still explain a late result.
+func (p *processor) ownSettlementActors(target, generation uint64, candidate statusCandidate, at time.Time) statusActors {
+	actors := statusActors{entities: map[uint64]struct{}{}, periodic: true}
 	if !candidate.hasSource {
 		actors.reason = "a status instance that can have executed the result names no instigator"
 		return actors
 	}
 	actors.entities[candidate.source] = struct{}{}
-	if !settlement.periodic {
-		if candidate.manyStackInstigators {
-			actors.reason = "too many entities applied the status instance"
-			return actors
-		}
-		for _, applier := range candidate.stackInstigators {
-			actors.entities[applier] = struct{}{}
-		}
-	}
 	for i := range p.statusTriggers.entries {
 		trigger := &p.statusTriggers.entries[i]
 		if trigger.session != p.sessionNumber || trigger.holder != target || trigger.generation != generation || at.Before(trigger.at) ||
@@ -371,17 +426,75 @@ func (p *processor) pendingStatusTriggers(target, generation, ordinal uint64, at
 	return pending
 }
 
-// matchNegativeStatusExecution explains one negative-status result on target from its candidate instances. It runs for
-// every such result, counted or not, so a trigger explains at most one execution of each instance it names.
-func (p *processor) matchNegativeStatusExecution(target uint64, candidates []statusCandidate, at time.Time) negativeStatusExecution {
-	if len(candidates) == 0 {
-		return negativeStatusExecution{Settlement: statusSettlementUndetermined, Reason: "no live status instance on the target executes this DamageId"}
+// instantStatusExecutions returns, oldest first, the instant status Buffs executing damageID that the server applied on
+// target and that explained no result yet: pending ones (at most statusTriggerCarry before at) or, with doubtful, the older
+// ones of the last statusTriggerDoubt, whose result may still arrive late.
+func (p *processor) instantStatusExecutions(target, generation, damageID uint64, at time.Time, doubtful bool) []*statusTrigger {
+	var found []*statusTrigger
+	for i := range p.statusTriggers.entries {
+		trigger := &p.statusTriggers.entries[i]
+		if trigger.executes != damageID || trigger.consumed || trigger.session != p.sessionNumber || trigger.holder != target ||
+			trigger.generation != generation || at.Before(trigger.at) || at.Sub(trigger.at) > statusTriggerDoubt {
+			continue
+		}
+		if (at.Sub(trigger.at) > statusTriggerCarry) != doubtful {
+			continue
+		}
+		found = append(found, trigger)
 	}
+	return found
+}
+
+// hasInstantExecutor reports a negative-status DamageId that an instant status Buff can execute: the Master's status Buffs
+// of the DamageId with no duration (buff.duration_policy 0).
+func (m *gameMaster) hasInstantExecutor(damageID uint64) bool {
+	if m == nil {
+		return false
+	}
+	for effectID, executed := range m.negativeStatusExecutors {
+		if executed == damageID && m.negativeStatusSettlementOf(effectID).instant {
+			return true
+		}
+	}
+	return false
+}
+
+// otherCausesNameOnly reports, for a result credited to entity, a pending instant status Buff or an overflow on another
+// enemy that names someone else or nobody: either could be the result instead.
+func otherCausesNameOnly(entity uint64, instants []*statusTrigger, spread []spreadCandidate) string {
+	for _, trigger := range instants {
+		if !trigger.hasSource || trigger.source != entity {
+			return "an instant execution of the status by another instigator was pending at once"
+		}
+	}
+	for _, candidate := range spread {
+		if candidate.unknown || len(candidate.actors) != 1 || !containsKey(candidate.actors, entity) {
+			return "an overflow on another enemy in the moment of the result can have spread it, and it names another instigator"
+		}
+	}
+	return ""
+}
+
+// matchNegativeStatusExecution explains one negative-status result of damageID on target from its candidate instances, the
+// overflows on other enemies that can have spread it (spread) and the instant status Buffs applied on the target. It runs
+// for every such result, counted or not, so a trigger explains at most one execution of each instance it names and an
+// instant status Buff at most one result.
+func (p *processor) matchNegativeStatusExecution(target, damageID uint64, candidates []statusCandidate, spread []spreadCandidate, at time.Time) negativeStatusExecution {
 	generation := p.effectHolderGeneration(target)
 	p.statusTriggers.prune(at)
+	instants := p.instantStatusExecutions(target, generation, damageID, at, false)
+	if len(candidates) == 0 && len(spread) == 0 && len(instants) == 0 {
+		return negativeStatusExecution{Settlement: statusSettlementUndetermined, Reason: "no status instance on the target or around it can have executed this DamageId"}
+	}
+	instantNotLocal := false
+	for _, trigger := range instants {
+		if !trigger.hasSource || p.localRoleForEntity(trigger.source, entityIdentity{}) == nil {
+			instantNotLocal = true
+		}
+	}
 	// A forced execution: an InvokePeriod applied within the carry window found the instance alive and has not explained
 	// an execution of it yet. The oldest such trigger is used up; all pending ones must agree on the role, and so must the
-	// own settlement of every other instance that can have executed this result instead.
+	// own settlement of every other instance that can have executed this result instead, and every other possible cause.
 	for i, candidate := range candidates {
 		pending := p.pendingStatusTriggers(target, generation, candidate.ordinal, at)
 		if len(pending) == 0 {
@@ -389,7 +502,8 @@ func (p *processor) matchNegativeStatusExecution(target uint64, candidates []sta
 		}
 		chosen := pending[0]
 		chosen.used = insertSortedID(chosen.used, candidate.ordinal)
-		execution := negativeStatusExecution{Settlement: statusSettlementForced, StatusEffectID: candidate.effectID, TriggerEffectID: chosen.effectID}
+		execution := negativeStatusExecution{Settlement: statusSettlementForced, StatusEffectID: candidate.effectID, TriggerEffectID: chosen.effectID,
+			Spread: len(spread), Instant: len(instants) > 0, InstantNotLocal: instantNotLocal}
 		if candidate.hasSource {
 			execution.Owner = candidate.source
 		}
@@ -422,29 +536,87 @@ func (p *processor) matchNegativeStatusExecution(target uint64, candidates []sta
 			if j == i {
 				continue
 			}
-			own := p.ownSettlementActors(target, generation, other, at)
+			own := p.settlementActors(target, generation, other, at)
 			if own.reason != "" || len(own.entities) != 1 || !containsKey(own.entities, chosen.source) {
 				execution.Candidates++
 				execution.Reason = "another status instance that can have executed the result instead has another owner or applier"
 				return execution
 			}
 		}
+		if reason := otherCausesNameOnly(chosen.source, instants, spread); reason != "" {
+			execution.Candidates++
+			execution.Reason = reason
+			return execution
+		}
+		if p.serverStreamIncomplete(at.Add(-statusTriggerCarry), at) {
+			execution.Reason = "server frames of the result's moment are missing: a trigger of another instigator may be lost"
+			return execution
+		}
 		execution.CreditEntity, execution.CreditBasis = chosen.source, roleBasisNegativeStatusTrigger
 		return execution
 	}
-	// The instances' own settlement.
-	execution := negativeStatusExecution{Settlement: statusSettlementOwn}
+	// An instant status Buff applied within the carry window executes this DamageId by itself. The oldest such Buff is used
+	// up; every pending one, every candidate instance's own settlement and every overflow that can have spread the result
+	// must name the same entity.
+	if len(instants) > 0 {
+		chosen := instants[0]
+		chosen.consumed = true
+		execution := negativeStatusExecution{Settlement: statusSettlementInstant, TriggerEffectID: chosen.effectID, Spread: len(spread), Instant: true, InstantNotLocal: instantNotLocal}
+		actors := map[uint64]struct{}{}
+		for _, trigger := range instants {
+			if !trigger.hasSource {
+				execution.Reason = "an instant execution of the status names no instigator"
+				return execution
+			}
+			actors[trigger.source] = struct{}{}
+		}
+		for _, candidate := range candidates {
+			own := p.settlementActors(target, generation, candidate, at)
+			if own.reason != "" {
+				execution.Reason = own.reason
+				return execution
+			}
+			for entity := range own.entities {
+				actors[entity] = struct{}{}
+			}
+		}
+		for _, candidate := range spread {
+			if candidate.unknown {
+				execution.Reason = "an overflow on another enemy in the moment of the result names no instigator"
+				return execution
+			}
+			for entity := range candidate.actors {
+				actors[entity] = struct{}{}
+			}
+		}
+		execution.Candidates = len(actors)
+		if len(actors) != 1 {
+			execution.Reason = "the status's instant execution and another possible cause name different entities"
+			return execution
+		}
+		if p.serverStreamIncomplete(at.Add(-statusTriggerCarry), at) {
+			execution.Reason = "server frames of the result's moment are missing: a trigger of another instigator may be lost"
+			return execution
+		}
+		execution.CreditEntity, execution.CreditBasis = chosen.source, roleBasisNegativeStatusTrigger
+		return execution
+	}
+	// The instances' own settlement, and the overflows that can have spread the result.
+	execution := negativeStatusExecution{Settlement: statusSettlementOwn, Spread: len(spread)}
 	entities := map[uint64]struct{}{}
 	owners := map[uint64]struct{}{}
-	forcible, periodicOnly := false, true
+	forcible, periodicOnly, applied := false, true, false
 	for _, candidate := range candidates {
-		own := p.ownSettlementActors(target, generation, candidate, at)
+		own := p.settlementActors(target, generation, candidate, at)
 		if own.reason != "" {
 			execution.Settlement, execution.Reason = statusSettlementUndetermined, own.reason
 			return execution
 		}
 		if !own.periodic {
 			periodicOnly = false
+		}
+		if own.applied {
+			applied = true
 		}
 		if p.masters.statusCanBeForced(candidate.effectID) {
 			forcible = true
@@ -454,7 +626,27 @@ func (p *processor) matchNegativeStatusExecution(target uint64, candidates []sta
 		}
 		owners[candidate.source] = struct{}{}
 	}
-	if !periodicOnly {
+	for _, candidate := range spread {
+		periodicOnly, applied = false, true
+		if candidate.unknown {
+			execution.Settlement, execution.Reason = statusSettlementUndetermined, "an overflow on another enemy in the moment of the result can have spread it, and the application that overflowed names no instigator"
+			return execution
+		}
+		for entity := range candidate.actors {
+			entities[entity] = struct{}{}
+		}
+	}
+	for _, trigger := range p.instantStatusExecutions(target, generation, damageID, at, true) {
+		if !trigger.hasSource {
+			execution.Settlement, execution.Reason = statusSettlementUndetermined, "an instant execution of the status that names no instigator may be the result, late"
+			return execution
+		}
+		entities[trigger.source] = struct{}{}
+	}
+	switch {
+	case len(spread) > 0:
+		execution.Settlement = statusSettlementSpread
+	case !periodicOnly:
 		execution.Settlement = statusSettlementApplied
 	}
 	execution.Candidates = len(entities)
@@ -464,26 +656,35 @@ func (p *processor) matchNegativeStatusExecution(target uint64, candidates []sta
 			execution.StatusEffectID = candidates[0].effectID
 		}
 	}
-	if forcible && p.serverStreamIncomplete(at.Add(-statusTriggerDoubt), at) {
+	if (forcible || p.masters.hasInstantExecutor(damageID)) && p.serverStreamIncomplete(at.Add(-statusTriggerDoubt), at) {
 		execution.Settlement, execution.Reason = statusSettlementUndetermined, "server frames before the result are missing: an InvokePeriod that forced it may be lost"
+		return execution
+	}
+	if applied && p.serverStreamIncomplete(at.Add(-statusTriggerCarry), at) {
+		execution.Settlement, execution.Reason = statusSettlementUndetermined, "server frames of the result's moment are missing: the application that caused it may be lost"
 		return execution
 	}
 	if len(entities) != 1 {
 		switch {
-		case len(owners) > 1:
+		case periodicOnly && len(owners) > 1:
 			execution.StatusEffectID = 0
 			execution.Reason = "the status instances that can have executed the result have different owners"
-		case !periodicOnly && len(entities) > len(owners):
-			execution.Reason = "several entities applied the status instance and the server does not name the application that caused the result"
+		case len(spread) > 0:
+			execution.Reason = "an overflow on another enemy in the moment of the result can have spread it, and the possible causes name different entities"
+		case !periodicOnly:
+			execution.Reason = "the applications that can have caused the result name different entities"
 		default:
-			execution.Reason = "an InvokePeriod of another instigator that found the status instance alive may have forced the result"
+			execution.Reason = "an InvokePeriod or instant status Buff of another instigator may have caused the result"
 		}
 		return execution
 	}
 	for entity := range entities {
 		execution.CreditEntity = entity
 	}
-	execution.CreditBasis = roleBasisNegativeStatusOwner
+	execution.CreditBasis = roleBasisNegativeStatusTrigger
+	if periodicOnly {
+		execution.CreditBasis = roleBasisNegativeStatusOwner
+	}
 	return execution
 }
 
@@ -574,8 +775,8 @@ func (t *EffectTracker) statusCandidates(session int, holder, generation uint64,
 
 func statusCandidateOf(instance *effectInstance) statusCandidate {
 	candidate := statusCandidate{
-		ordinal: instance.insertionOrdinal, handle: instance.key.handle, effectID: instance.effectID, source: instance.source, hasSource: instance.hasSource,
-		stackInstigators: append([]uint64(nil), instance.stackInstigators...), manyStackInstigators: instance.manyStackInstigators,
+		ordinal: instance.insertionOrdinal, handle: instance.key.handle, key: instance.key, effectID: instance.effectID, source: instance.source, hasSource: instance.hasSource,
+		createdAt: instance.firstObservedAt, stackInstigators: append([]uint64(nil), instance.stackInstigators...), manyStackInstigators: instance.manyStackInstigators,
 	}
 	switch instance.sourceRelation {
 	case EffectRelationLocalRole, EffectRelationLocalOwned, EffectRelationLocalPlayer:
@@ -608,6 +809,15 @@ func insertSortedID(ids []uint64, id uint64) []uint64 {
 	copy(ids[index+1:], ids[index:])
 	ids[index] = id
 	return ids
+}
+
+// negativeStatusExecutorDamage returns the negative-status DamageId a status Buff executes; false for any other Buff.
+func (m *gameMaster) negativeStatusExecutorDamage(effectID uint64) (uint64, bool) {
+	if m == nil {
+		return 0, false
+	}
+	damageID, ok := m.negativeStatusExecutors[effectID]
+	return damageID, ok
 }
 
 // invokePeriodStatuses returns the status Buffs an InvokePeriod Buff forces, sorted; nil for any other Buff.
