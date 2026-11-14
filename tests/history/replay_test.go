@@ -858,7 +858,7 @@ func normalizeEnemies(enemies []capture.EncounterEnemySnapshot) []capture.Encoun
 func recompute(t *testing.T, store *Store, id int64, snapshot capture.EncounterSnapshot) {
 	t.Helper()
 	ctx := context.Background()
-	rows, err := store.db.QueryContext(ctx, `SELECT kind, flow, amount, applied_healing, skill_id, vehicle_kind, context_downgrade,
+	rows, err := store.db.QueryContext(ctx, `SELECT kind, flow, evidence, amount, applied_healing, skill_id, damage_id, vehicle_kind, context_downgrade,
 		source_player_id, source_role_id, source_role_basis, target_player_id, target_role_id FROM combat_event WHERE encounter_id = ?`, id)
 	if err != nil {
 		t.Fatal(err)
@@ -866,15 +866,16 @@ func recompute(t *testing.T, store *Store, id int64, snapshot capture.EncounterS
 	defer rows.Close()
 	type role struct{ player, role int64 }
 	totals := capture.EncounterTotals{}
-	dealt, direct, summon, taken := map[role]int64{}, map[role]int64{}, map[role]int64{}, map[role]int64{}
+	dealt, direct, summon, status, taken := map[role]int64{}, map[role]int64{}, map[role]int64{}, map[role]int64{}, map[role]int64{}
 	skills := map[role]map[int64]int64{}
+	statuses := map[role]map[int64]int64{}
 	var vehicle, unassignedDealt, unassignedTaken, healingEffective, healingReported int64
 	for rows.Next() {
-		var kind, flow, vehicleKind, downgrade string
-		var amount, applied, skill int64
+		var kind, flow, evidence, vehicleKind, downgrade string
+		var amount, applied, skill, damageID int64
 		var sourcePlayer, sourceRole, targetPlayer, targetRole *int64
 		var basis *string
-		if err := rows.Scan(&kind, &flow, &amount, &applied, &skill, &vehicleKind, &downgrade, &sourcePlayer, &sourceRole, &basis, &targetPlayer, &targetRole); err != nil {
+		if err := rows.Scan(&kind, &flow, &evidence, &amount, &applied, &skill, &damageID, &vehicleKind, &downgrade, &sourcePlayer, &sourceRole, &basis, &targetPlayer, &targetRole); err != nil {
 			t.Fatal(err)
 		}
 		if kind == string(capture.CombatEventHealing) {
@@ -892,6 +893,15 @@ func recompute(t *testing.T, store *Store, id int64, snapshot capture.EncounterS
 			case sourceRole != nil:
 				key := role{*sourcePlayer, *sourceRole}
 				dealt[key] += amount
+				// A negative-status result credited to a role is its status damage, in the status row of its DamageId.
+				if evidence == capture.CombatEvidenceNegativeStatusNotify && basis != nil && capture.IsNegativeStatusRoleBasis(*basis) {
+					status[key] += amount
+					if statuses[key] == nil {
+						statuses[key] = map[int64]int64{}
+					}
+					statuses[key][damageID] += amount
+					continue
+				}
 				if basis != nil && *basis == "summoner_chain" {
 					summon[key] += amount
 				} else {
@@ -934,10 +944,19 @@ func recompute(t *testing.T, store *Store, id int64, snapshot capture.EncounterS
 	}
 	for _, stored := range snapshot.Roles {
 		key := role{int64(stored.PlayerID), int64(stored.RoleID)}
-		if dealt[key] != stored.DamageDealt || direct[key] != stored.DirectDamage || summon[key] != stored.SummonDamage || taken[key] != stored.DamageTaken {
-			t.Fatalf("encounter %d role %d: recomputed %d/%d/%d/%d, stored %+v", id, stored.RoleID, dealt[key], direct[key], summon[key], taken[key], stored)
+		if dealt[key] != stored.DamageDealt || direct[key] != stored.DirectDamage || summon[key] != stored.SummonDamage || status[key] != stored.StatusDamage || taken[key] != stored.DamageTaken {
+			t.Fatalf("encounter %d role %d: recomputed %d/%d/%d/%d/%d, stored %+v", id, stored.RoleID, dealt[key], direct[key], summon[key], status[key], taken[key], stored)
+		}
+		if len(stored.Statuses) != len(statuses[key]) {
+			t.Fatalf("encounter %d role %d: %d status rows stored, %d recomputed", id, stored.RoleID, len(stored.Statuses), len(statuses[key]))
 		}
 		sum := stored.UnassignedSkill.DamageDealt
+		for _, row := range stored.Statuses {
+			if statuses[key][int64(row.DamageID)] != row.DamageDealt {
+				t.Fatalf("encounter %d role %d status %d: recomputed %d, stored %d", id, stored.RoleID, row.DamageID, statuses[key][int64(row.DamageID)], row.DamageDealt)
+			}
+			sum += row.DamageDealt
+		}
 		for _, skill := range stored.Skills {
 			if skills[key][int64(skill.SkillID)] != skill.DamageDealt {
 				t.Fatalf("encounter %d role %d skill %d: recomputed %d, stored %d", id, stored.RoleID, skill.SkillID, skills[key][int64(skill.SkillID)], skill.DamageDealt)
