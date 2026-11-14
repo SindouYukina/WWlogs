@@ -484,6 +484,7 @@ const (
 	fieldSceneInformationPlayerInfos       = 4  // YFs.TRs
 	fieldSceneInformationDynamicEntityList = 5  // YFs.LRs
 	fieldSceneInformationAoiData           = 11 // YFs.RRs
+	fieldSceneInformationSceneEntityID     = 24 // YFs.tla
 
 	// ScenePlayerInformation (WFs)
 	fieldScenePlayerInformationPlayerID             = 1  // WFs.W5n

@@ -51,11 +51,14 @@ const combatEvidenceDamageRPCResponse = "damage_rpc_response"
 type CombatEventKey struct {
 	ProtocolSession int    `json:"protocolSession"`
 	RPCID           uint64 `json:"rpcId"`
+	// Notify identifies a server-executed DamageExecuteNotify instead (notifyEventKey: the server frame's sequence and the
+	// result's position in it); RPCID is then zero. The two key spaces never meet.
+	Notify uint64 `json:"notify,omitempty"`
 }
 
-// hasIdentity reports whether the key names a real response. Events without an RPC id are never deduplicated.
+// hasIdentity reports whether the key names a real response or notification. Events without one are never deduplicated.
 func (k CombatEventKey) hasIdentity() bool {
-	return k.RPCID != 0
+	return k.RPCID != 0 || k.Notify != 0
 }
 
 // CombatEndpoint is one side of an event with the relation established for it at event time.
@@ -155,11 +158,19 @@ func (f CombatFlow) confidence() AttributionConfidence {
 	}
 }
 
-// normalizeCombatEvent builds the statistics record for a decoded damage-RPC result. It returns false for results
-// that cannot enter statistics: a non-positive amount or a missing endpoint, which keeps the v0.3 admission rule.
+// normalizeCombatEvent builds the statistics record for a decoded damage-RPC result or a notified result
+// (damage_notify.go). It returns false for results that cannot enter statistics: a non-positive amount or a missing
+// endpoint, which keeps the v0.3 admission rule.
 func normalizeCombatEvent(event combatEvent, source, target playerRelation) (CombatEventRecord, bool) {
 	if event.Damage <= 0 || !event.HasSourceEntity || event.SourceEntityID == 0 || !event.HasTargetEntity || event.TargetEntityID == 0 {
 		return CombatEventRecord{}, false
+	}
+	key, evidence := CombatEventKey{ProtocolSession: event.SessionNumber, RPCID: extendedRequestID(event.RPCID, event.RequestEpoch)}, combatEvidenceDamageRPCResponse
+	if event.Notify != nil {
+		key, evidence = CombatEventKey{ProtocolSession: event.SessionNumber, Notify: event.Notify.Key}, combatEvidenceDamageExecuteNotify
+		if event.Notify.NegativeStatusLocal {
+			evidence = combatEvidenceNegativeStatusNotify
+		}
 	}
 	kind := CombatEventOther
 	switch event.EventTypeCandidate {
@@ -171,9 +182,9 @@ func normalizeCombatEvent(event combatEvent, source, target playerRelation) (Com
 	flow := classifyCombatFlow(source, target)
 	record := CombatEventRecord{
 		Kind:       kind,
-		Key:        CombatEventKey{ProtocolSession: event.SessionNumber, RPCID: extendedRequestID(event.RPCID, event.RequestEpoch)},
+		Key:        key,
 		ObservedAt: event.Timestamp,
-		Evidence:   combatEvidenceDamageRPCResponse,
+		Evidence:   evidence,
 		Source: CombatEndpoint{
 			EntityID: event.SourceEntityID, EntityGeneration: event.Source.Lifecycle.ReusedAfterRemove, Relation: source.String(),
 		},

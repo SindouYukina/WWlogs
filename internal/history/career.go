@@ -58,11 +58,14 @@ type CareerTotals struct {
 	Classes    map[string]int `json:"classes"`
 	Damage     int64          `json:"damage"`
 	// DamageLowerBound is set when a counted encounter's damage is a lower bound (degraded or known_affected).
-	DamageLowerBound bool       `json:"damageLowerBound,omitempty"`
-	Seconds          float64    `json:"seconds"`
-	ActiveDays       int        `json:"activeDays"`
-	First            *CareerRef `json:"first,omitempty"`
-	Latest           *CareerRef `json:"latest,omitempty"`
+	DamageLowerBound bool `json:"damageLowerBound,omitempty"`
+	// WithoutNotifiedDamage counts the encounters of the scope whose recording build did not count server-executed damage
+	// (EncounterSummary.NotifiedDamageCounted false): their totals and records may be lower than a current analysis.
+	WithoutNotifiedDamage int        `json:"withoutNotifiedDamage,omitempty"`
+	Seconds               float64    `json:"seconds"`
+	ActiveDays            int        `json:"activeDays"`
+	First                 *CareerRef `json:"first,omitempty"`
+	Latest                *CareerRef `json:"latest,omitempty"`
 }
 
 // CareerDay is one date's activity.
@@ -255,6 +258,9 @@ func (s *Store) Career(ctx context.Context, query CareerQuery, zone *time.Locati
 		class := e.Class()
 		view.Totals.Encounters++
 		view.Totals.Classes[class]++
+		if !e.NotifiedDamageCounted {
+			view.Totals.WithoutNotifiedDamage++
+		}
 		if view.Totals.First == nil {
 			first := ref(e)
 			view.Totals.First = &first

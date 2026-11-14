@@ -34,6 +34,27 @@ type compareInput struct {
 	class   string
 	// view is the projected stored result (a checkpoint for an unfinished encounter); nil when the encounter stored none.
 	view *capture.ViewEncounter
+	// olderAccounting is set when the recording build did not count server-executed damage
+	// (history.EncounterSummary.NotifiedDamageCounted): the stored values of a complete record are then lower bounds.
+	olderAccounting bool
+}
+
+// status is recordStatus of the input's class, a lower bound for a complete record of an older accounting.
+func (input compareInput) status() string {
+	status := recordStatus(input.class)
+	if status == compareAvailable && input.olderAccounting {
+		return compareLowerBound
+	}
+	return status
+}
+
+// rate is rateStatus of the input, with the same lower bound for an older accounting.
+func (input compareInput) rate(dps capture.ViewDPS) string {
+	status := rateStatus(input.class, dps)
+	if status == compareAvailable && input.olderAccounting {
+		return compareLowerBound
+	}
+	return status
 }
 
 type compareValue struct {
@@ -327,7 +348,7 @@ func compareEncounters(inputs []compareInput) comparison {
 	reliable := make([]bool, len(inputs))
 	out.Context.Reliable = true
 	for i, input := range inputs {
-		reliable[i] = input.class == history.ClassComplete && input.view != nil
+		reliable[i] = input.class == history.ClassComplete && input.view != nil && !input.olderAccounting
 		out.Context.Reliable = out.Context.Reliable && reliable[i]
 		out.Encounters = append(out.Encounters, compareEncounter{historySummaryJSON: input.summary, Class: input.class, Reliable: reliable[i], Results: input.view != nil})
 	}
@@ -337,7 +358,7 @@ func compareEncounters(inputs []compareInput) comparison {
 	dps := compareMetric{Key: "dps"}
 	peak := compareMetric{Key: "peak_dps"}
 	for _, input := range inputs {
-		status := recordStatus(input.class)
+		status := input.status()
 		if seconds := input.summary.DurationSeconds; seconds != nil {
 			value := compareValue{Value: number(*seconds), Status: compareAvailable}
 			if status == comparePartial || status == compareUnreliable {
@@ -358,7 +379,7 @@ func compareEncounters(inputs []compareInput) comparison {
 			metric *compareMetric
 			value  capture.ViewDPS
 		}{{&dps, input.view.DPS}, {&peak, input.view.PeakDPS}} {
-			status := rateStatus(input.class, rate.value)
+			status := input.rate(rate.value)
 			value := compareValue{Status: status}
 			if status != compareUnavailable && status != compareUnreliable {
 				value.Value = number(rate.value.Value)
@@ -379,7 +400,7 @@ func compareEncounters(inputs []compareInput) comparison {
 		if input.view == nil {
 			continue
 		}
-		perEncounter[i] = encounterContributors(input.view, recordStatus(input.class))
+		perEncounter[i] = encounterContributors(input.view, input.status())
 		for key := range perEncounter[i] {
 			if _, known := order[key]; !known {
 				order[key] = len(keys)
@@ -538,7 +559,7 @@ func (b *Bridge) HistoryCompare(ids []int64, zoneName string) (json.RawMessage, 
 		if err != nil {
 			return nil, err
 		}
-		input := compareInput{summary: names.summary(detail.Summary), class: classes[id]}
+		input := compareInput{summary: names.summary(detail.Summary), class: classes[id], olderAccounting: !detail.Summary.NotifiedDamageCounted}
 		if detail.Snapshot != nil {
 			view := b.masters.ProjectEncounter(*detail.Snapshot)
 			names.encounter(&view)

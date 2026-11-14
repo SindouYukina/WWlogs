@@ -114,6 +114,7 @@
     "not_finished": "The capture ended before this encounter finished."
   },
   "checkpointNote": "The values below are the last checkpoint, at {{time}}. The encounter is incomplete; they are not its final result.",
+  "olderAccountingNote": "An earlier WWlogs analysed this encounter without the damage the server executes itself (negative status damage, for example); its stored values may be lower than a current analysis. Stored records are never recalculated.",
   "coverage": {
     "title": "What this record contains",
     "combat": "Damage and healing",
@@ -532,6 +533,7 @@
     "damage": "Confirmed damage",
     "damageNote": "Over the counted encounters",
     "damageLowerBound": "Includes records with transport loss or a known undercount: the total is a lower bound",
+    "olderAccounting": "{{count}} encounters were analysed by an earlier WWlogs that did not count server-executed damage; their totals and records may be low.",
     "time": "Combat time",
     "timeNote": "Duration of the counted encounters",
     "hoursMinutes": "{{h}} h {{m}} min",

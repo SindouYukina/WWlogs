@@ -31,21 +31,3 @@ func TestVehicleDamageIsItsOwnSummaryRowNotACharacter(t *testing.T) {
 		t.Fatalf("vehicle row text = %q", text)
 	}
 }
-
-func TestPushDamageBlockListsAttackerLabelsAndStaysOutOfTotals(t *testing.T) {
-	summary := &encounterSummary{pushDamage: map[string]*pushDamageSummary{
-		"Party character 角色甲 [CharacterId:1]":                             {label: "Party character 角色甲 [CharacterId:1]", status: resolutionCorrelated, events: 2, damage: 300},
-		"Scene entity 場景戰鬥實體 [Template:14000169] (no character credited)": {label: "Scene entity 場景戰鬥實體 [Template:14000169] (no character credited)", status: resolutionCorrelated, events: 5, damage: 900},
-	}}
-	var out bytes.Buffer
-	if err := writePushDamage(&out, summary); err != nil {
-		t.Fatal(err)
-	}
-	text := out.String()
-	if !strings.Contains(text, "not included in any total") || !strings.Contains(text, "2 event(s), magnitude 300") || !strings.Contains(text, "no character credited") {
-		t.Fatalf("push block = %q", text)
-	}
-	if summary.combatResultAbs != 0 || summary.eventCount != 0 {
-		t.Fatal("push rows must never touch the encounter totals")
-	}
-}

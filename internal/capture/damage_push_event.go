@@ -4,31 +4,21 @@ import (
 	"regexp"
 )
 
-// pushCategoryAbnormal marks pushed damage whose DamageId is named by an AbnormalDamageConfig column.
-const (
-	pushCategoryAbnormal     = "ABNORMAL_STATE_DAMAGE"
-	pushCategoryUnclassified = "UNCLASSIFIED_PUSH"
-)
-
+// abnormalColumn matches the AbnormalDamageConfig columns Abnormal<id> that name negative-status DamageIds.
 var abnormalColumn = regexp.MustCompile(`^abnormal(\d+)$`)
 
-// combatEventPushJSONL is what a pushed DamageExecuteNotify adds to the common event fields.
+// combatEventPushJSONL is what a server-executed DamageExecuteNotify adds to the common event fields of a development event
+// line. The result itself went through the shared accounting (damage_notify.go); these fields only describe it.
 type combatEventPushJSONL struct {
-	Stream           string           `json:"stream"`
-	PairedWithRPC    bool             `json:"pairedWithRpc"`
-	Category         string           `json:"category"`
-	CategoryStatus   resolutionStatus `json:"categoryStatus"`
-	CategoryEvidence string           `json:"categoryEvidence"`
-	ProtocolElement  int64            `json:"protocolElementType"`
-	ElementName      string           `json:"elementName,omitempty"`
-	PartID           int64            `json:"partId"`
-	IsCrit           bool             `json:"isCrit"`
-	KilledTarget     bool             `json:"killedTarget"`
-	DamageRaw        int64            `json:"damageRaw"`
-	ChangeLifeRaw    int64            `json:"changeLifeRaw"`
-	Attribution      string           `json:"attribution"`
-	// AttributedCharacter is set when the push's attacker entity is a party character that hit the same target shortly before.
-	AttributedCharacter *combatEventCreditJSONL `json:"attributedCharacter,omitempty"`
-	// SourceKind says what kind of entity the push names as attacker: "party character", "scene template" or "unresolved".
-	SourceKind string `json:"sourceKind"`
+	Stream        string `json:"stream"`
+	PairedWithRPC bool   `json:"pairedWithRpc"`
+	// NotifyKey is the deduplication key of the result (notifyEventKey); zero when the frame had no sequence.
+	NotifyKey      uint64 `json:"notifyKey"`
+	NegativeStatus bool   `json:"negativeStatus"`
+	// NegativeStatusLocal and NegativeStatusBasis are negativeStatusOwnership's decision for a negative-status result.
+	NegativeStatusLocal bool   `json:"negativeStatusLocal,omitempty"`
+	NegativeStatusBasis string `json:"negativeStatusBasis,omitempty"`
+	DamageRaw           int32  `json:"damageRaw"`
+	ChangeLifeRaw       int32  `json:"changeLifeRaw"`
+	HasChangeLife       bool   `json:"hasChangeLife"`
 }

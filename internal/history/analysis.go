@@ -747,6 +747,10 @@ func (m *encounterModel) rangeSnapshot(q resolvedQuery) capture.EncounterSnapsho
 				if event.overflow {
 					snapshot.UnassignedRole.OverflowEvents++
 				}
+				if event.evidence == capture.CombatEvidenceNegativeStatusNotify {
+					snapshot.UnassignedRole.NegativeStatusDamage += event.amount
+					snapshot.UnassignedRole.NegativeStatusEvents++
+				}
 				continue
 			}
 			s := &splits[event.contributor]

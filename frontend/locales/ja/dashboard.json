@@ -46,6 +46,7 @@
   "damageTaken": "被ダメージ",
   "noRoles": "ダメージ貢献のデータはありません。",
   "unknownOwnership": "帰属不明",
+  "negativeStatus": "うち状態異常ダメージ",
   "unknownTotals": "与ダメージ {{out}} · 被ダメージ {{in}}",
   "intactNote": "この区間に欠損・コンテキスト低下の報告はありません。",
   "degradedNote": "イベント欠損の可能性があります。算出可能な DPS は下限値です。",

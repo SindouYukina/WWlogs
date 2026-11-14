@@ -164,6 +164,10 @@ type EncounterSummary struct {
 	// GameVersion is the major.minor game version of the protocol session the encounter was fought in, as that session
 	// reported it and the recording build decoded it.
 	GameVersion string `json:"gameVersion"`
+	// NotifiedDamageCounted is false for an encounter whose recording build did not count server-executed damage
+	// (notifiedDamageCounted): its stored damage may be lower than the same fight analysed now. It is a fact about the
+	// analyser, not a finding that this fight had such damage.
+	NotifiedDamageCounted bool `json:"notifiedDamageCounted"`
 	// State is the history state: open (still running), finished, or abandoned (the application ended first).
 	State   string `json:"state"`
 	Outcome string `json:"outcome"`
@@ -193,6 +197,66 @@ type DayView struct {
 	Encounters []EncounterSummary `json:"encounters"`
 }
 
+// lastBuildWithoutNotifiedDamage is the last official v0.7.0 Build Number whose analyser counted only the damage responses
+// to the client's requests and none of the server-executed DamageExecuteNotify results (capture/damage_notify.go). Build 36
+// is the last official build before that accounting; every later official build has it.
+const lastBuildWithoutNotifiedDamage = 36
+
+// notifiedDamageCounted reports whether the analyser that recorded a span counted server-executed damage, from the identity
+// the span stored: a product version before 0.7.0, or 0.7.0 with an official Build Number up to
+// lastBuildWithoutNotifiedDamage, did not. An unofficial 0.7.0 build has no number to compare; it is a developer build of
+// the current source and is taken as counting it. Stored results are never recomputed (schema.go).
+func notifiedDamageCounted(version sql.NullString, build sql.NullInt64) bool {
+	if !version.Valid {
+		return false
+	}
+	switch compareProductVersion(version.String, "0.7.0") {
+	case -1:
+		return false
+	case 0:
+		return !build.Valid || build.Int64 > lastBuildWithoutNotifiedDamage
+	}
+	return true
+}
+
+// compareProductVersion orders two MAJOR.MINOR.PATCH versions (-1, 0, 1); an unparsable version sorts first.
+func compareProductVersion(a, b string) int {
+	parse := func(text string) ([3]int, bool) {
+		var parts [3]int
+		fields := strings.Split(text, ".")
+		if len(fields) != 3 {
+			return parts, false
+		}
+		for i, field := range fields {
+			value, err := strconv.Atoi(field)
+			if err != nil || value < 0 {
+				return parts, false
+			}
+			parts[i] = value
+		}
+		return parts, true
+	}
+	left, okLeft := parse(a)
+	right, okRight := parse(b)
+	switch {
+	case !okLeft && !okRight:
+		return 0
+	case !okLeft:
+		return -1
+	case !okRight:
+		return 1
+	}
+	for i := range left {
+		if left[i] != right[i] {
+			if left[i] < right[i] {
+				return -1
+			}
+			return 1
+		}
+	}
+	return 0
+}
+
 // summaryFrom joins an encounter to its span and to the protocol session its game version is recorded on; both are key
 // lookups, so a page of a day's list is one query.
 const summaryFrom = ` FROM encounter e JOIN capture_session s ON s.id = e.capture_session_id
@@ -200,7 +264,8 @@ const summaryFrom = ` FROM encounter e JOIN capture_session s ON s.id = e.captur
 
 const summaryColumns = `e.id, e.started_at_ns, e.utc_offset_s, e.local_date, e.ended_at_ns, e.state, e.outcome, e.complete, s.source, e.integrity_status,
 	e.dps_status, e.dps_reason, e.dps_value, e.dps_damage, e.dps_duration_ns, e.dps_confidence, e.damage_dealt,
-	e.scene_instance_id, e.capture_session_id, e.protocol_session, p.game_version, e.incomplete_reason, e.checkpoint_at_ns`
+	e.scene_instance_id, e.capture_session_id, e.protocol_session, p.game_version, e.incomplete_reason, e.checkpoint_at_ns,
+	s.app_version, s.app_build`
 
 type summaryRow struct {
 	summary         EncounterSummary
@@ -215,14 +280,16 @@ func scanSummary(scanner interface{ Scan(...any) error }, zone *time.Location) (
 	var ended, dpsDamage, dpsDuration, damage, scene sql.NullInt64
 	var integrity, dpsStatus, dpsReason, dpsConfidence, incompleteReason sql.NullString
 	var dpsValue sql.NullFloat64
-	var checkpoint sql.NullInt64
+	var checkpoint, appBuild sql.NullInt64
+	var appVersion sql.NullString
 	var complete int
 	s := &row.summary
 	if err := scanner.Scan(&s.ID, &started, &s.Recorded.OffsetSeconds, &s.Recorded.Date, &ended, &s.State, &s.Outcome, &complete, &s.Source, &integrity,
 		&dpsStatus, &dpsReason, &dpsValue, &dpsDamage, &dpsDuration, &dpsConfidence, &damage, &scene, &row.sessionID, &row.protocolSession, &s.GameVersion,
-		&incompleteReason, &checkpoint); err != nil {
+		&incompleteReason, &checkpoint, &appVersion, &appBuild); err != nil {
 		return row, err
 	}
+	s.NotifiedDamageCounted = notifiedDamageCounted(appVersion, appBuild)
 	zone = viewLocation(zone)
 	s.IncompleteReason = incompleteReason.String
 	if checkpoint.Valid && s.State != "finished" {
@@ -572,6 +639,8 @@ func (s *Store) snapshot(ctx context.Context, id int64) (capture.EncounterSnapsh
 	var dpsDuration, peakDuration int64
 	var dpsStart, dpsEnd, peakStart, peakEnd sql.NullInt64
 	var healingEvents, healingUnknownEvents, unassignedOut, unassignedIn, unassignedOverflow, downgraded int64
+	// The engine counted negative-status damage apart inside its unassigned bucket; the stored events keep it by evidence.
+	var negativeStatusDamage, negativeStatusEvents int64
 	var state string
 	err := s.db.QueryRowContext(ctx, `SELECT statistics_interval, sequence, protocol_session, outcome, started_at_ns, start_basis, start_confirmed, battle_entered_at_ns,
 		ended_at_ns, end_basis, end_decided_at_ns, first_activity_at_ns, last_activity_at_ns, reentries,
@@ -581,7 +650,11 @@ func (s *Store) snapshot(ctx context.Context, id int64) (capture.EncounterSnapsh
 		peak_status, peak_reason, peak_value, peak_damage, peak_duration_ns, peak_start_ns, peak_end_ns, peak_confidence,
 		healing_status, healing_reason, healing_effective, healing_reported, healing_overheal, healing_events, healing_unknown_effective, healing_unknown_events,
 		unassigned_damage_dealt, unassigned_outgoing_events, unassigned_damage_taken, unassigned_incoming_events, unassigned_overflow_events
-		, state FROM encounter WHERE id = ? AND (state = 'finished' OR checkpoint_at_ns IS NOT NULL)`, id).Scan(
+		, state,
+		(SELECT coalesce(sum(amount), 0) FROM combat_event WHERE encounter_id = encounter.id AND kind = 'damage' AND flow = 'local_outgoing' AND evidence = ?),
+		(SELECT count(*) FROM combat_event WHERE encounter_id = encounter.id AND kind = 'damage' AND flow = 'local_outgoing' AND evidence = ?)
+		FROM encounter WHERE id = ? AND (state = 'finished' OR checkpoint_at_ns IS NOT NULL)`,
+		capture.CombatEvidenceNegativeStatusNotify, capture.CombatEvidenceNegativeStatusNotify, id).Scan(
 		&interval, &sequence, &e.ProtocolSession, &e.Outcome, &started, &e.StartBasis, &startConfirmed, &battle,
 		&ended, &endBasis, &decided, &firstActivity, &lastActivity, &reentries,
 		&e.Totals.DamageDealt, &e.Totals.DamageTaken, &outgoing, &incoming, &e.Totals.UnattributedOutgoingDamage, &e.Totals.UnattributedIncomingDamage, &unattributedOut, &unattributedIn,
@@ -589,7 +662,8 @@ func (s *Store) snapshot(ctx context.Context, id int64) (capture.EncounterSnapsh
 		&dpsStatus, &dps.Reason, &dps.Value, &dps.Damage, &dpsDuration, &dpsStart, &dpsEnd, &dps.Confidence,
 		&peakStatus, &peak.Reason, &peak.Value, &peak.Damage, &peakDuration, &peakStart, &peakEnd, &peak.Confidence,
 		&healingStatus, &e.Healing.Reason, &e.Healing.Effective, &e.Healing.Reported, &e.Healing.Overheal, &healingEvents, &e.Healing.UnknownHealerEffective, &healingUnknownEvents,
-		&e.UnassignedRole.DamageDealt, &unassignedOut, &e.UnassignedRole.DamageTaken, &unassignedIn, &unassignedOverflow, &state)
+		&e.UnassignedRole.DamageDealt, &unassignedOut, &e.UnassignedRole.DamageTaken, &unassignedIn, &unassignedOverflow, &state,
+		&negativeStatusDamage, &negativeStatusEvents)
 	if err != nil {
 		return e, fmt.Errorf("read history encounter: %w", err)
 	}
@@ -609,6 +683,7 @@ func (s *Store) snapshot(ctx context.Context, id int64) (capture.EncounterSnapsh
 	e.EncounterDPS, e.PeakDPS = dps, peak
 	e.Healing.Status, e.Healing.Events, e.Healing.UnknownHealerEvents = capture.DPSStatus(healingStatus), uint64(healingEvents), uint64(healingUnknownEvents)
 	e.UnassignedRole.OutgoingEvents, e.UnassignedRole.IncomingEvents, e.UnassignedRole.OverflowEvents = uint64(unassignedOut), uint64(unassignedIn), uint64(unassignedOverflow)
+	e.UnassignedRole.NegativeStatusDamage, e.UnassignedRole.NegativeStatusEvents = negativeStatusDamage, uint64(negativeStatusEvents)
 	if e.Integrity.Risks, err = s.strings(ctx, "SELECT risk FROM encounter_risk WHERE encounter_id = ? ORDER BY risk", id); err != nil {
 		return e, err
 	}

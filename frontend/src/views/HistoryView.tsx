@@ -287,6 +287,7 @@ function EncounterDetail({ detail, backLabel, onBack, onDeleted, timelineMode, s
       {summary.checkpoint && <p className="ww-history-note" data-tone="warn" data-field="checkpoint-note">{t("checkpointNote", { time: summary.checkpoint.clock })}</p>}
       {summary.integrity === "DEGRADED" && <p className="ww-history-note" data-tone="warn">{d("degradedNote")}</p>}
       {summary.integrity === "UNRELIABLE" && <p className="ww-history-note" data-tone="critical">{d("unreliableNote")}</p>}
+      {summary.notifiedDamageCounted === false && <p className="ww-history-note" data-tone="warn" data-field="older-accounting-note">{t("olderAccountingNote")}</p>}
       <CoverageFacts detail={detail} />
     </Card>
     {analysed ? <AnalysisWorkspace detail={detail} timelineMode={timelineMode} setTimelineMode={setTimelineMode} /> : !encounter ? <Card className="ww-history-context"><p className="ww-dash-empty-note" data-field="no-statistics">{t(summary.state === "open" ? "openNote" : "abandonedNote")}</p></Card> : <>

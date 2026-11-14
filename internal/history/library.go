@@ -84,6 +84,8 @@ type indexedEncounter struct {
 	Roles           []indexedRole
 	Vehicle         bool
 	Affected        bool
+	// NotifiedDamageCounted is the recording build's accounting (notifiedDamageCounted).
+	NotifiedDamageCounted bool
 }
 
 // Class is the record class of an encounter.
@@ -213,7 +215,7 @@ func (s *Store) index(ctx context.Context) ([]indexedEncounter, error) {
 func (s *Store) readIndex(ctx context.Context) ([]indexedEncounter, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT e.id, e.capture_session_id, e.protocol_session, e.started_at_ns, coalesce(e.ended_at_ns, 0), e.state, e.complete,
 		coalesce(e.integrity_status, ''), coalesce(e.dps_status, ''), coalesce(e.dps_value, 0), coalesce(e.dps_duration_ns, 0), coalesce(e.peak_status, ''),
-		coalesce(e.peak_value, 0), e.damage_dealt, e.scene_instance_id, p.game_version, s.source`+summaryFrom+` WHERE e.state IN `+listedStates+`
+		coalesce(e.peak_value, 0), e.damage_dealt, e.scene_instance_id, p.game_version, s.source, s.app_version, s.app_build`+summaryFrom+` WHERE e.state IN `+listedStates+`
 		ORDER BY e.started_at_ns, e.id`)
 	if err != nil {
 		return nil, err
@@ -223,14 +225,16 @@ func (s *Store) readIndex(ctx context.Context) ([]indexedEncounter, error) {
 	for rows.Next() {
 		var e indexedEncounter
 		var complete int
-		var damage, instance sql.NullInt64
+		var damage, instance, appBuild sql.NullInt64
+		var appVersion sql.NullString
 		if err := rows.Scan(&e.ID, &e.Span, &e.ProtocolSession, &e.StartedNs, &e.EndedNs, &e.State, &complete, &e.Integrity, &e.DPSStatus, &e.DPSValue,
-			&e.DPSDurationNs, &e.PeakStatus, &e.PeakValue, &damage, &instance, &e.GameVersion, &e.Source); err != nil {
+			&e.DPSDurationNs, &e.PeakStatus, &e.PeakValue, &damage, &instance, &e.GameVersion, &e.Source, &appVersion, &appBuild); err != nil {
 			rows.Close()
 			return nil, err
 		}
 		e.Complete = complete == 1
 		e.Damage, e.HasDamage = damage.Int64, damage.Valid
+		e.NotifiedDamageCounted = notifiedDamageCounted(appVersion, appBuild)
 		if instance.Valid {
 			e.Instance, e.InstanceKnown = uint64(instance.Int64), true
 		}

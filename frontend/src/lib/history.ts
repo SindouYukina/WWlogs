@@ -87,6 +87,8 @@ export interface HistoryEncounterSummary {
   durationSeconds?: number
   /** The major.minor game version of the protocol session the encounter was fought in, as stored with it. */
   gameVersion: string
+  /** False when the recording build did not count server-executed damage: the stored values may be lower than a current analysis. */
+  notifiedDamageCounted?: boolean
   state: HistoryEncounterState
   outcome: string
   complete: boolean

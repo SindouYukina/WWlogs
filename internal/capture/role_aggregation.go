@@ -15,7 +15,8 @@ import "sort"
 // mapping names the local player and a RoleId, or it is a summon whose verified SummonerId chain ends at such an
 // entity. Static skill-to-role tables, names, and fixed IDs are never used. Confirmed local damage without that
 // evidence is a separate vehicle contributor when its runtime vehicle chain is known; otherwise it stays in the
-// unassigned bucket. Unattributed and excluded damage never enters this aggregation.
+// unassigned bucket, which also counts apart the negative-status damage the game credits to no character
+// (UnassignedRoleTotals.NegativeStatusDamage). Unattributed and excluded damage never enters this aggregation.
 //
 // Invariants (checked by tests and by the encounter replay collector):
 //   sum(Roles.DamageDealt) + Vehicle.DamageDealt + UnassignedRole.DamageDealt == DamageDealt (confirmed local outgoing), events likewise;
@@ -117,6 +118,11 @@ type UnassignedRoleTotals struct {
 	IncomingEvents uint64 `json:"incomingEvents"`
 	// OverflowEvents counts events that had a role but arrived after maxAggregatedRoles roles were held.
 	OverflowEvents uint64 `json:"overflowEvents"`
+	// NegativeStatusDamage and NegativeStatusEvents are the part of DamageDealt and OutgoingEvents that is the local team's
+	// negative-status damage the server executed through the scene's combat entity (damage_notify.go). The game credits it
+	// to no character, so it never belongs to a role; it is not a gap in role attribution either.
+	NegativeStatusDamage int64  `json:"negativeStatusDamage"`
+	NegativeStatusEvents uint64 `json:"negativeStatusEvents"`
 }
 
 // maxAggregatedRoles bounds the role table; a team has four slots, so this only stops pathological input.
@@ -174,6 +180,10 @@ func (a *roleAggregate) add(record CombatEventRecord) (TimelineContributor, bool
 		if entry == nil {
 			a.unassigned.DamageDealt += record.Amount
 			a.unassigned.OutgoingEvents++
+			if record.Evidence == combatEvidenceNegativeStatusNotify {
+				a.unassigned.NegativeStatusDamage += record.Amount
+				a.unassigned.NegativeStatusEvents++
+			}
 			return TimelineContributor{Kind: TimelineContributorUnassigned}, true
 		}
 		entry.DamageDealt += record.Amount

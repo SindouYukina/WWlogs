@@ -339,6 +339,7 @@ export function CareerView({ theme, refreshKey, indicator, state, onState, onOpe
         <StatCard index={4} icon="clock" label={t("career.time")} field="career-time" value={totals.seconds} format={formats.hours} note={t("career.timeNote")} scope="career" stale={false} numberMode="tween" />
         <StatCard index={5} icon="grid" label={t("career.activeDays")} field="career-active-days" value={totals.activeDays} format={format.integer} note={totals.first && totals.latest ? t("career.activeDaysNote", { first: dates.short(totals.first.start.date), latest: dates.short(totals.latest.start.date) }) : undefined} scope="career" stale={false} numberMode="tween" />
       </div>
+      {(totals.withoutNotifiedDamage ?? 0) > 0 && <p className="ww-history-note" data-tone="warn" data-field="older-accounting-note">{t("career.olderAccounting", { count: totals.withoutNotifiedDamage })}</p>}
       <Reveal index={6}><Card className="ww-history-context">
         <div className="ww-career-classes" data-field="career-classes">
           <span className="ww-career-fact-label">{t("career.classes")}</span>

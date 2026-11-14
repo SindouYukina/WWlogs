@@ -93,13 +93,16 @@ func receivePackDamageResponses(body []byte) ([]combatDamageResponse, int) {
 
 // handleCombatReceivePacks reads the CombatReceivePackNotify bodies of one frame of either container: first every damage
 // response of every body, then every notification, so a frame is read in the same order whichever container the server
-// used. A response is paired and deduplicated by its RequestId alone (handleOneDamageResult), never by its container.
+// used. A response is paired and deduplicated by its RequestId alone (handleOneDamageResult), never by its container; a
+// server-executed DamageExecuteNotify by the frame's sequence and its position among the frame's notifications
+// (damage_notify.go).
 func (p *processor) handleCombatReceivePacks(frame gameFrame, plain []byte) error {
 	bodies, err := receivePackNotifyBodies(frame.commandID, plain)
 	if err != nil {
 		return err
 	}
 	p.expireHeldResponses()
+	p.frameNotifyOrdinal = 0
 	for _, body := range bodies {
 		responses, malformed := receivePackDamageResponses(body)
 		p.stats.parseErrors += malformed

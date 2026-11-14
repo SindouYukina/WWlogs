@@ -468,6 +468,11 @@ func (p *processor) handleCombatReceivePackNotify(frame gameFrame, body []byte) 
 						return fmt.Errorf("write CombatNotifyData audit field %d: %w", notification.number, err)
 					}
 				}
+				if notification.number == fieldCombatNotifyDataDamageExecuteNotify && notification.wire == 2 {
+					p.handleDamageExecuteNotify(frame, notification.data, p.frameNotifyOrdinal)
+					p.frameNotifyOrdinal++
+					continue
+				}
 				if notification.number == fieldCombatNotifyDataPlayerBattleStateChangeNotify && notification.wire == 2 {
 					if err := p.handlePlayerBattleState(frame, combatNotifyContainer(frame.commandID), notification.data); err != nil {
 						return err
