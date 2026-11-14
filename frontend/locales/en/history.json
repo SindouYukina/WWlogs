@@ -129,7 +129,7 @@
     "action": "Delete encounter",
     "recording": "An encounter that is still being recorded cannot be deleted.",
     "confirmTitle": "Confirm deletion",
-    "confirm": "Delete this encounter and everything stored for it? This cannot be undone. The data is removed from the history file; this is not a secure erase of the disk.",
+    "confirm": "Delete this encounter and everything stored for it? This cannot be undone.",
     "confirmAction": "Delete",
     "cancel": "Cancel",
     "done": "The encounter was deleted from the history.",

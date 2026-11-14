@@ -186,3 +186,17 @@ test("deleting an encounter starts from a button that reads as a deletion", () =
   const icons = readFileSync(new URL("../../frontend/src/design/components/Icon.tsx", import.meta.url), "utf8")
   assert.match(icons, /\n  trash: "M[^"]+",/)
 })
+
+test("deletion confirmations only say that a deletion cannot be undone", () => {
+  // The owner asked for no disk-erasure caveat in these prompts (2026-11-15).
+  const manifest = JSON.parse(readFileSync(new URL("../../frontend/locales/manifest.json", import.meta.url), "utf8"))
+  const read = (locale, ns) => JSON.parse(readFileSync(new URL(`../../frontend/locales/${locale}/${ns}.json`, import.meta.url), "utf8"))
+  for (const locale of manifest.supportedLocales) {
+    const history = read(locale, "history")
+    const prompts = [history.delete.confirm, history.library.bulkDelete.confirm, read(locale, "settings").historySettings.clearConfirm]
+    for (const prompt of prompts) {
+      assert.ok(prompt, locale)
+      assert.doesNotMatch(prompt, /安全抹除|安全擦除|secure erase|安全な消去|안전한 삭제/, locale)
+    }
+  }
+})
