@@ -149,3 +149,26 @@ test("every Combat History settings string exists in every bundled language", ()
     assert.ok(read(locale).pages.history, locale)
   }
 })
+
+test("the History header is one control row: indicator, year switch, then the view switcher at the right edge", () => {
+  const view = readFileSync(new URL("../../frontend/src/views/HistoryView.tsx", import.meta.url), "utf8")
+  const start = view.indexOf('className="ww-history-actions"')
+  assert.ok(start > 0, "the header has one control row")
+  const row = view.slice(start, view.indexOf("</Reveal>", start))
+  const at = text => row.indexOf(text)
+  // The return to the Career Overview (when the page was opened from there), the indicator, the year switch and the view
+  // switcher, in this order: the view switcher is the last item, so nothing appearing before it can move it.
+  assert.ok(at('data-field="history-return"') >= 0 && at('data-field="history-return"') < at("<HistoryIndicatorChip"))
+  assert.ok(at("<HistoryIndicatorChip") < at("<YearSwitch") && at("<YearSwitch") < at('data-field="history-mode"'))
+  // The year switch is always laid out and only hidden outside the calendar.
+  assert.doesNotMatch(row, /&&\s*<YearSwitch/)
+  const css = readFileSync(new URL("../../frontend/src/design/views.css", import.meta.url), "utf8").replace(/\r\n/g, "\n")
+  const rule = selector => css.split("\n").find(line => line.startsWith(`${selector} {`)) ?? ""
+  assert.match(rule(".ww-history-actions"), /display: flex; align-items: center;/)
+  assert.match(rule('.ww-history-years[data-shown="false"]'), /visibility: hidden;/)
+  // The controls share the row's centre line; none is nudged on its own.
+  for (const selector of [".ww-history-actions", ".ww-history-mode", ".ww-history-years", ".ww-history-indicator"]) {
+    assert.notEqual(rule(selector), "", selector)
+    assert.doesNotMatch(rule(selector), /margin-top|translate|[{;]\s*top:/, selector)
+  }
+})
