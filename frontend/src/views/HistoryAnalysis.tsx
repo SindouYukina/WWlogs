@@ -563,6 +563,7 @@ function HitDetail({ cluster, track, rows, seriesName, query, setQuery, onClose 
   const single = cluster.members.length === 1 ? rows[cluster.members[0]!.series] : undefined
   const markable = single?.skillRow ? single.skillRow : null
   const marked = markable !== null && query.skillRow === markable
+  const markableStatus = markable !== null && parseSkillRow(markable)?.statusDamageId !== undefined
   return <aside className="ww-analysis-detail" data-field="hit-detail" data-count={cluster.count} data-from={Math.round(cluster.fromMs)} data-to={Math.round(cluster.toMs)}>
     <div className="ww-analysis-detail-head"><h4>{t("analysis.icon.hits.title")}</h4><Button size="sm" variant="ghost" onClick={onClose} data-field="hit-detail-close">{t("analysis.icon.hits.close")}</Button></div>
     <dl className="ww-analysis-facts">
@@ -571,7 +572,7 @@ function HitDetail({ cluster, track, rows, seriesName, query, setQuery, onClose 
       <div><dt>{t("analysis.icon.hits.skill")}</dt><dd>{cluster.members.map(member => seriesName(track.series[member.series]!.key, rows[member.series]?.skillId ?? 0)).join("、")}</dd></div>
     </dl>
     <p className="ww-history-note">{t("analysis.icon.hits.note")}</p>
-    {markable && <Button size="sm" variant={marked ? "secondary" : "ghost"} aria-pressed={marked} onClick={() => setQuery(q => ({ ...q, skillRow: marked ? "" : markable }))} data-field="hit-mark">{t(marked ? "analysis.icon.hits.unmark" : "analysis.icon.hits.mark")}</Button>}
+    {markable && <Button size="sm" variant={marked ? "secondary" : "ghost"} aria-pressed={marked} onClick={() => setQuery(q => ({ ...q, skillRow: marked ? "" : markable }))} data-field="hit-mark">{t(marked ? "analysis.icon.hits.unmark" : markableStatus ? "analysis.icon.hits.markStatus" : "analysis.icon.hits.mark")}</Button>}
     <ol className="ww-analysis-intervals" data-field="hit-list">{listed.slice(0, listedHits).map(entry => {
       const row = rows[entry.series]!
       return <li key={`${entry.series}:${entry.hit}`} data-sequence={row.sequence[entry.hit]} data-amount={row.amount[entry.hit]}>
@@ -899,6 +900,8 @@ const SkillsTab = memo(function SkillsTab({ analysis, encounter, rows, query, se
       name: <span className="ww-dash-skill-name">{breakdown.unassigned.iconKind !== undefined && breakdown.unassigned.iconId !== undefined && <GameAssetImage kind={breakdown.unassigned.iconKind} id={breakdown.unassigned.iconId} />}<span className="ww-truncate">{breakdown.unassigned.name ?? d("unassignedSkill")}</span>{breakdown.unassigned.derived && <span className="ww-dash-skill-derived">≈</span>}{breakdown.unassigned.derived && <span className="ww-dash-skill-noid">{d("noSkillIdTag")}</span>}</span> })
   }
   const focused = skillRows.find(row => current && query.skillRow === row.key)
+  // A negative-status row is a server settlement, not a skill: its notes say so.
+  const focusedStatus = focused !== undefined && parseSkillRow(focused.key)?.statusDamageId !== undefined
   return <div className="ww-analysis-skills">
     <div className="ww-analysis-board" data-field="analysis-ranking">
       <div className="ww-dash-card-head"><h3>{d("ranking")}</h3></div>
@@ -936,8 +939,8 @@ const SkillsTab = memo(function SkillsTab({ analysis, encounter, rows, query, se
             <div><dt>{t("analysis.skills.marked")}</dt><dd className="ww-num" data-field="skill-hits-marked">{format.integer(analysis.hits.length)}{analysis.hitsTruncated ? "+" : ""}</dd></div>
           </dl>
           {focused.stat && <Sparkline bins={focused.stat.bins} range={range} durationMs={analysis.range.durationMs} />}
-          <p className="ww-history-note">{t("analysis.skills.distributionNote")}</p>
-          <p className="ww-history-note">{t("coverage.skillCastsNotStored")}</p>
+          <p className="ww-history-note" data-field="skill-distribution-note">{t(focusedStatus ? "analysis.skills.statusDistributionNote" : "analysis.skills.distributionNote")}</p>
+          <p className="ww-history-note" data-field="skill-source-note">{t(focusedStatus ? "analysis.skills.statusSettlementsNote" : "coverage.skillCastsNotStored")}</p>
         </>}
       </aside>
     </div>

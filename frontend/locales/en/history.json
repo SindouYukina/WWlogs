@@ -257,7 +257,9 @@
       "selectHint": "Select a skill to mark each of its hits on the timeline.",
       "detailHint": "Select a skill to see its hit statistics in this range.",
       "marked": "Hits on the timeline",
-      "distributionNote": "The distribution shows this skill's damage over the whole encounter (enemy filter applied); the highlighted part is the selected range."
+      "distributionNote": "The distribution shows this skill's damage over the whole encounter (enemy filter applied); the highlighted part is the selected range.",
+      "statusDistributionNote": "The distribution shows this negative status's damage over the whole encounter (enemy filter applied); the highlighted part is the selected range.",
+      "statusSettlementsNote": "The server settles negative status damage; the hit count is the number of settlements, not of applications."
     },
     "events": {
       "kinds": "Event kinds",
@@ -348,6 +350,7 @@
         "close": "Close",
         "note": "Hits close in time are only drawn together: a hit is a damage result, not a skill cast, and a group of hits is not one cast.",
         "mark": "Mark this skill's hits on the DPS lines",
+        "markStatus": "Mark this negative status's hits on the DPS lines",
         "unmark": "Clear the marks",
         "more": "{{n}} more are not listed; the Events tab lists them all."
       },
