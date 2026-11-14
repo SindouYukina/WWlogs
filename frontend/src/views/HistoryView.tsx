@@ -222,7 +222,7 @@ function DeleteEncounter({ summary, onDeleted }: { summary: HistoryEncounterSumm
   }
   return <div className="ww-history-delete" data-field="delete-encounter" data-asking={asking}>
     {!asking
-      ? <Button size="sm" variant="ghost" disabled={recording || busy} title={recording ? t("delete.recording") : undefined} data-field="delete-encounter-start" onClick={() => setAsking(true)}>{t("delete.action")}</Button>
+      ? <Button size="sm" variant="danger" disabled={recording || busy} title={recording ? t("delete.recording") : undefined} data-field="delete-encounter-start" onClick={() => setAsking(true)}><Icon name="trash" size={14} />{t("delete.action")}</Button>
       : <div className="ww-history-confirm" role="group" aria-label={t("delete.confirmTitle")}>
         <p>{t("delete.confirm")}</p>
         <div className="ww-history-confirm-actions">
@@ -448,10 +448,7 @@ export function HistoryView({ theme, refreshKey, indicator, intent, onReturn }: 
   const empty = yearView !== null && yearView.firstYear === 0
   return <div className="ww-history ww-has-backdrop" data-field="history" data-year={shownYear}><ThemeBackdrop theme={theme} intensity="art" /><div className="ww-history-layout">
     <Reveal className="ww-history-top">
-      <div>
-        <div className="ww-caps">{t("subtitle")}</div>
-        <h2 className="ww-history-title">{t("title")}</h2>
-      </div>
+      <h2 className="ww-history-title">{t("title")}</h2>
       {/* One control row, in this order in every view. The view switcher stays the last item at the right edge; outside the
           calendar there is no year switch, so the indicator sits right beside the view switcher. */}
       <div className="ww-history-actions" data-field="history-actions">

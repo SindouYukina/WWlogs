@@ -154,6 +154,10 @@ test("the History header is one control row: indicator, year switch, then the vi
   const view = readFileSync(new URL("../../frontend/src/views/HistoryView.tsx", import.meta.url), "utf8")
   const start = view.indexOf('className="ww-history-actions"')
   assert.ok(start > 0, "the header has one control row")
+  // The page title stands alone: no caption line above it (owner's request, 2026-11-15).
+  const header = view.slice(view.indexOf('<Reveal className="ww-history-top">'), start)
+  assert.match(header, /<h2 className="ww-history-title">/)
+  assert.doesNotMatch(header, /ww-caps/)
   const row = view.slice(start, view.indexOf("</Reveal>", start))
   const at = text => row.indexOf(text)
   // The return to the Career Overview (when the page was opened from there), the indicator, the year switch and the view
@@ -172,4 +176,13 @@ test("the History header is one control row: indicator, year switch, then the vi
     assert.notEqual(rule(selector), "", selector)
     assert.doesNotMatch(rule(selector), /margin-top|translate|[{;]\s*top:/, selector)
   }
+})
+
+test("deleting an encounter starts from a button that reads as a deletion", () => {
+  const view = readFileSync(new URL("../../frontend/src/views/HistoryView.tsx", import.meta.url), "utf8")
+  const start = view.slice(view.indexOf('data-field="delete-encounter-start"') - 400, view.indexOf('data-field="delete-encounter-start"') + 200)
+  assert.match(start, /variant="danger"/)
+  assert.match(start, /<Icon name="trash"/)
+  const icons = readFileSync(new URL("../../frontend/src/design/components/Icon.tsx", import.meta.url), "utf8")
+  assert.match(icons, /\n  trash: "M[^"]+",/)
 })
