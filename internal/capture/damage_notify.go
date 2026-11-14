@@ -164,6 +164,10 @@ type damageNotifyStats struct {
 	creditedOwner       int // of those, credited to the role that owns the executing instance
 	uncredited          int // of those, credited to no role
 	statusTriggers      int // InvokePeriod Buffs the server applied on a holder
+	// statusTriggersForcingNothing counts InvokePeriods that found no named status alive on the holder.
+	statusTriggersForcingNothing int
+	// settledByApplication counts local results of statuses without a period (caused by an application).
+	settledByApplication int
 }
 
 // handleDamageExecuteNotify reads one DamageExecuteNotify of a CombatNotifyData; ordinal is its position among the
@@ -180,8 +184,10 @@ func (p *processor) handleDamageExecuteNotify(frame gameFrame, body []byte, ordi
 	// deals nothing, so a trigger never explains a later execution of the same instance.
 	negativeStatus := notify.hasDamageID && p.masters.isNegativeStatusDamage(notify.damageID)
 	var execution negativeStatusExecution
+	var candidates []statusCandidate
 	if negativeStatus && notify.hasAttacker && notify.hasTarget && notify.attacker == p.sceneCombatEntity() && notify.attacker != 0 {
-		execution = p.matchNegativeStatusExecution(notify.target, notify.damageID, frame.timestamp)
+		candidates = p.negativeStatusCandidates(notify.target, notify.damageID, frame.timestamp)
+		execution = p.matchNegativeStatusExecution(notify.target, candidates, frame.timestamp)
 	}
 	if !notify.hasDamage || notify.damage == 0 || notify.immuneType != 0 {
 		p.notifyStats.noAmount++
@@ -208,7 +214,7 @@ func (p *processor) handleDamageExecuteNotify(frame gameFrame, body []byte, ordi
 	if negativeStatus {
 		p.notifyStats.negativeStatus++
 		event.Notify.NegativeStatus = true
-		event.Notify.NegativeStatusLocal, event.Notify.NegativeStatusBasis = p.negativeStatusOwnership(event)
+		event.Notify.NegativeStatusLocal, event.Notify.NegativeStatusBasis = p.negativeStatusOwnership(event, candidates, execution)
 		if event.Notify.NegativeStatusLocal {
 			p.notifyStats.negativeStatusLocal++
 			event.Notify.Execution = execution
@@ -224,6 +230,9 @@ func (p *processor) handleDamageExecuteNotify(frame gameFrame, body []byte, ordi
 				if execution.Reason == "" {
 					event.Notify.Execution.Reason = "the credited entity is no local role or summon of one"
 				}
+			}
+			if execution.Settlement == statusSettlementApplied {
+				p.notifyStats.settledByApplication++
 			}
 		}
 	}
@@ -255,9 +264,11 @@ type notifiedResult struct {
 //   - the attacker is the current scene's combat entity (SceneInformation.SceneEntityId), never a role or summon,
 //   - the target is an enemy (UNRELATED to the local player),
 //   - the scene lists no player but the local one (with another player in the scene a status could be theirs), and
-//   - the target holds at least one live status instance that executes this DamageId, and every such instance was applied
-//     by the local team (EffectTracker.liveStatusSources).
-func (p *processor) negativeStatusOwnership(event combatEvent) (bool, string) {
+//   - the target holds at least one status instance that can have executed this DamageId (alive, or removed by the
+//     server just before: negativeStatusCandidates), and every such instance was applied by the local team, or the
+//     result is an execution a local role forced (execution) and no such instance was applied by an enemy: the status
+//     instance names no instigator the processor can place, but the action that caused this result is the local team's.
+func (p *processor) negativeStatusOwnership(event combatEvent, candidates []statusCandidate, execution negativeStatusExecution) (bool, string) {
 	if scene := p.sceneCombatEntity(); scene == 0 || event.SourceEntityID != scene {
 		return false, "attacker is not the scene's combat entity"
 	}
@@ -267,16 +278,26 @@ func (p *processor) negativeStatusOwnership(event combatEvent) (bool, string) {
 	if len(p.scenePlayerIDs) != 1 || p.playerRelevance == nil || !p.playerRelevance.isLocalPlayerID(p.scenePlayerIDs[0]) {
 		return false, "the scene does not list the local player alone"
 	}
-	executes := func(effectID uint64) bool { return p.masters.negativeStatusExecutes(effectID, event.DamageID) }
-	local, other := p.effects.liveStatusSources(p.sessionNumber, event.TargetEntityID, p.effectHolderGeneration(event.TargetEntityID), executes, event.Timestamp, negativeStatusLiveSlack)
-	switch {
-	case local == 0 && other == 0:
+	if len(candidates) == 0 {
 		return false, "no live status instance on the target executes this DamageId"
-	case other > 0:
-		return false, "a live status instance on the target that executes this DamageId was not applied by the local team"
-	default:
+	}
+	unplaced := false
+	for _, candidate := range candidates {
+		switch {
+		case candidate.local:
+		case candidate.enemy:
+			return false, "a live status instance on the target that executes this DamageId was not applied by the local team"
+		default:
+			unplaced = true
+		}
+	}
+	if !unplaced {
 		return true, "every live status instance on the target that executes this DamageId was applied by the local team"
 	}
+	if execution.Settlement == statusSettlementForced && execution.CreditBasis == roleBasisNegativeStatusTrigger && p.localRoleForEntity(execution.CreditEntity, entityIdentity{}) != nil {
+		return true, "a local role forced the execution of a status instance whose instigator is unknown"
+	}
+	return false, "a live status instance on the target that executes this DamageId was not applied by the local team"
 }
 
 // sceneCombatEntity is the current scene's combat entity, or 0 when the scene named none.
@@ -285,34 +306,6 @@ func (p *processor) sceneCombatEntity() uint64 {
 		return 0
 	}
 	return p.entities.sceneCombatEntityID
-}
-
-// liveStatusSources counts the live instances on one holder whose effect id satisfies executes, split into those the
-// local team applied and all others (another source, an unknown source or none). An instance past its estimated expiry
-// by more than slack is no longer live.
-func (t *EffectTracker) liveStatusSources(session int, holder, generation uint64, executes func(uint64) bool, at time.Time, slack time.Duration) (local, other int) {
-	if t == nil {
-		return 0, 0
-	}
-	t.mu.RLock()
-	defer t.mu.RUnlock()
-	for key, instance := range t.instances {
-		if key.session != session || key.holder != holder || key.generation != generation || !instance.hasEffectID || !executes(instance.effectID) {
-			continue
-		}
-		if instance.timeKnown && !at.IsZero() && t.overdueLocked(instance, at) > slack.Seconds() {
-			continue
-		}
-		switch instance.sourceRelation {
-		case EffectRelationLocalRole, EffectRelationLocalOwned, EffectRelationLocalPlayer:
-			if instance.hasSource {
-				local++
-				continue
-			}
-		}
-		other++
-	}
-	return local, other
 }
 
 // isNegativeStatusDamage reports a DamageId named by an Abnormal<id> column of AbnormalDamageConfig.
@@ -337,36 +330,68 @@ func (m *gameMaster) negativeStatusExecutes(effectID, damageID uint64) bool {
 	return ok && executed == damageID
 }
 
-// loadSQLiteNegativeStatusDamage reads the DamageIds that AbnormalDamageConfig names through its Abnormal<id> columns and
-// the Buffs whose extra effect type is one of those ids.
+// negativeStatusFormula is the damage FormulaType of the negative statuses: the client's formula table has no entry for it
+// (CharacterDamageCalculations, "unexpected formula type"), so only the server computes such damage.
+const negativeStatusFormula = 9
+
+// loadSQLiteNegativeStatusDamage reads the negative-status DamageIds, the Buffs whose extra effect type is one of them, and
+// how each such Buff settles. AbnormalDamageConfig names 1001-1006 through its Abnormal<id> columns; the damage rows of
+// FormulaType 9 add the DamageIds it has no column for (Global 3.8: 1007, executed by the Glacio Chafe variant 10011100
+// that replaces 10011000 for some appliers, buff.replace_buff_ids).
 func loadSQLiteNegativeStatusDamage(db *sql.DB, master *gameMaster) error {
 	exists, err := masterTableExists(db, "abnormaldamageconfig")
-	if err != nil || !exists {
+	if err != nil {
 		return err
 	}
-	rows, err := db.Query(`PRAGMA table_info("abnormaldamageconfig")`)
-	if err != nil {
-		return fmt.Errorf("inspect abnormaldamageconfig columns: %w", err)
-	}
-	for rows.Next() {
-		var ordinal, notNull, primaryKey int
-		var name, columnType string
-		var defaultValue sql.NullString
-		if err := rows.Scan(&ordinal, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
-			rows.Close()
-			return fmt.Errorf("read abnormaldamageconfig column: %w", err)
+	if exists {
+		rows, err := db.Query(`PRAGMA table_info("abnormaldamageconfig")`)
+		if err != nil {
+			return fmt.Errorf("inspect abnormaldamageconfig columns: %w", err)
 		}
-		if match := abnormalColumn.FindStringSubmatch(name); match != nil {
-			id, err := strconv.ParseUint(match[1], 10, 64)
+		for rows.Next() {
+			var ordinal, notNull, primaryKey int
+			var name, columnType string
+			var defaultValue sql.NullString
+			if err := rows.Scan(&ordinal, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
+				rows.Close()
+				return fmt.Errorf("read abnormaldamageconfig column: %w", err)
+			}
+			if match := abnormalColumn.FindStringSubmatch(name); match != nil {
+				id, err := strconv.ParseUint(match[1], 10, 64)
+				if err != nil {
+					rows.Close()
+					return fmt.Errorf("abnormaldamageconfig column %q: %w", name, err)
+				}
+				master.abnormalDamageIDs[id] = struct{}{}
+			}
+		}
+		if err := rows.Close(); err != nil {
+			return err
+		}
+	}
+	if present, err := masterColumnExists(db, "damage", "formula_type"); err != nil {
+		return err
+	} else if present {
+		rows, err := db.Query(`SELECT CAST(id AS TEXT) FROM damage WHERE CAST(formula_type AS TEXT) = ?`, strconv.Itoa(negativeStatusFormula))
+		if err != nil {
+			return fmt.Errorf("query negative-status damage rows: %w", err)
+		}
+		for rows.Next() {
+			var raw string
+			if err := rows.Scan(&raw); err != nil {
+				rows.Close()
+				return fmt.Errorf("read negative-status damage row: %w", err)
+			}
+			id, err := parseMasterID(raw, "damage.id")
 			if err != nil {
 				rows.Close()
-				return fmt.Errorf("abnormaldamageconfig column %q: %w", name, err)
+				return err
 			}
 			master.abnormalDamageIDs[id] = struct{}{}
 		}
-	}
-	if err := rows.Close(); err != nil {
-		return err
+		if err := rows.Close(); err != nil {
+			return err
+		}
 	}
 	if len(master.abnormalDamageIDs) == 0 {
 		return nil
@@ -375,18 +400,32 @@ func loadSQLiteNegativeStatusDamage(db *sql.DB, master *gameMaster) error {
 	if err != nil || !present {
 		return err
 	}
+	// The settlement columns are optional: a status without them settles by the strictest rule (negativeStatusSettlement).
+	columns := []string{"CAST(id AS TEXT)", "CAST(extra_effect_id AS TEXT)"}
+	for _, column := range []string{"period", "b_execute_periodic_effect_on_application", "b_clear_stack_on_overflow"} {
+		present, err := masterColumnExists(db, "buff", column)
+		if err != nil {
+			return err
+		}
+		if present {
+			columns = append(columns, "CAST("+column+" AS TEXT)")
+		} else {
+			columns = append(columns, "NULL")
+		}
+	}
 	ids := make([]string, 0, len(master.abnormalDamageIDs))
 	for id := range master.abnormalDamageIDs {
 		ids = append(ids, strconv.FormatUint(id, 10))
 	}
-	executors, err := db.Query("SELECT CAST(id AS TEXT), CAST(extra_effect_id AS TEXT) FROM buff WHERE CAST(extra_effect_id AS TEXT) IN ('" + strings.Join(ids, "','") + "')")
+	executors, err := db.Query("SELECT " + strings.Join(columns, ", ") + " FROM buff WHERE CAST(extra_effect_id AS TEXT) IN ('" + strings.Join(ids, "','") + "')")
 	if err != nil {
 		return fmt.Errorf("query negative-status Buffs: %w", err)
 	}
 	defer executors.Close()
 	for executors.Next() {
 		var rawBuff, rawType string
-		if err := executors.Scan(&rawBuff, &rawType); err != nil {
+		var period, onApplication, clearOnOverflow sql.NullString
+		if err := executors.Scan(&rawBuff, &rawType, &period, &onApplication, &clearOnOverflow); err != nil {
 			return fmt.Errorf("read negative-status Buff: %w", err)
 		}
 		buffID, err := parseMasterID(rawBuff, "buff.id")
@@ -398,12 +437,35 @@ func loadSQLiteNegativeStatusDamage(db *sql.DB, master *gameMaster) error {
 			return err
 		}
 		master.negativeStatusExecutors[buffID] = statusType
+		settlement, err := parseNegativeStatusSettlement(period, onApplication, clearOnOverflow)
+		if err != nil {
+			return fmt.Errorf("negative-status Buff %d: %w", buffID, err)
+		}
+		master.negativeStatusSettlements[buffID] = settlement
 	}
 	return executors.Err()
 }
 
+// parseNegativeStatusSettlement reads buff.period, buff.b_execute_periodic_effect_on_application and
+// buff.b_clear_stack_on_overflow of an executing status Buff; any of them may be absent.
+func parseNegativeStatusSettlement(period, onApplication, clearOnOverflow sql.NullString) (negativeStatusSettlement, error) {
+	var settlement negativeStatusSettlement
+	if period.Valid && strings.TrimSpace(period.String) != "" {
+		value, err := strconv.ParseFloat(strings.TrimSpace(period.String), 64)
+		if err != nil {
+			return settlement, fmt.Errorf("buff.period %q: %w", period.String, err)
+		}
+		settlement.known = true
+		settlement.periodic = value > 0
+	}
+	settlement.executesOnCreation = onApplication.Valid && strings.TrimSpace(onApplication.String) == "1"
+	settlement.clearsOnOverflow = clearOnOverflow.Valid && strings.TrimSpace(clearOnOverflow.String) == "1"
+	return settlement, nil
+}
+
 // damageNotifyLine formats the notified-result counters for development diagnostics.
-func damageNotifyLine(s damageNotifyStats) string {
-	return fmt.Sprintf("damage_notify notifies=%d no_amount=%d malformed=%d keyless=%d negative_status=%d negative_status_local=%d credited_trigger=%d credited_owner=%d uncredited=%d status_triggers=%d",
-		s.notifies, s.noAmount, s.malformed, s.keyless, s.negativeStatus, s.negativeStatusLocal, s.creditedTrigger, s.creditedOwner, s.uncredited, s.statusTriggers)
+func damageNotifyLine(s damageNotifyStats, sequenceGaps int) string {
+	return fmt.Sprintf("damage_notify notifies=%d no_amount=%d malformed=%d keyless=%d negative_status=%d negative_status_local=%d credited_trigger=%d credited_owner=%d uncredited=%d status_triggers=%d status_triggers_forcing_nothing=%d settled_by_application=%d server_sequence_gaps=%d",
+		s.notifies, s.noAmount, s.malformed, s.keyless, s.negativeStatus, s.negativeStatusLocal, s.creditedTrigger, s.creditedOwner, s.uncredited, s.statusTriggers,
+		s.statusTriggersForcingNothing, s.settledByApplication, sequenceGaps)
 }

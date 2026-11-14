@@ -648,3 +648,42 @@ func TestGateFailsMissingHUDIcon(t *testing.T) {
 		t.Fatalf("effects.hud-icons = %s with %s removed from the manifest, want FAIL", c.Status, icon)
 	}
 }
+
+// Failure injection: the negative-status role credit lacks its static inputs, in an isolated copy of the Master: a new
+// negative-status DamageId no status Buff executes, a status Buff whose period the Master lost, and an InvokePeriod naming a
+// status without a period, which the credit has no rule for.
+func TestGateFailsNegativeStatusSettlementGaps(t *testing.T) {
+	root := repositoryRoot(t)
+	clean := run(t, readiness.Inputs{Root: root, MasterPath: filepath.Join(root, "data", "master_data.db"), Locales: []string{"zh-TW"}})
+	if c := checkOf(t, clean, "combat.negative-status-settlement"); c.Status != readiness.StatusPass {
+		t.Fatalf("combat.negative-status-settlement on the tracked Master = %s: %v", c.Status, c.Findings)
+	}
+	fixture := filepath.Join(t.TempDir(), "master_data.db")
+	copyFile(t, filepath.Join(root, "data", "master_data.db"), fixture)
+	db, err := sql.Open("sqlite", "file:"+filepath.ToSlash(fixture))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range []string{
+		`INSERT INTO damage (id, calculate_type, formula_type, type) VALUES ('1008', 0, 9, 10)`,
+		`UPDATE buff SET period = NULL WHERE id = '10041000'`,
+		`INSERT INTO buff (id, extra_effect_id, period) VALUES ('99990067', '67', 0)`,
+		`INSERT INTO buff_extra_effect_parameters (owner_id, ordinal, value) VALUES ('99990067', 0, '10061000')`,
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			db.Close()
+			t.Fatalf("%s: %v", statement, err)
+		}
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	report := run(t, readiness.Inputs{Root: root, MasterPath: fixture, Locales: []string{"zh-TW"}})
+	if loads := checkOf(t, report, "master.loads"); loads.Status == readiness.StatusFail {
+		t.Fatalf("the product loader refused the fixture: %v", loads.Findings)
+	}
+	wantFail(t, report, "combat.negative-status-settlement",
+		"negative-status DamageId 1008 has no executing status Buff",
+		"status Buff 10041000 of DamageId 1001 lacks a settlement column",
+		"InvokePeriod 99990067 names status Buff 10061000, which has no period")
+}

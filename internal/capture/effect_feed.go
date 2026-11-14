@@ -172,6 +172,9 @@ func (p *processor) observeEffectLifecycle(row buffLifecycleAuditRow) {
 		}
 		if row.EventKind == "BUFF_STACK_COUNT_CHANGE" && row.StackCount != nil {
 			event.StackCount, event.HasStackCount = *row.StackCount, true
+			if row.InstigatorID != nil && *row.InstigatorID != 0 {
+				event.StackInstigator, event.HasStackInstigator = *row.InstigatorID, true
+			}
 		}
 		p.effects.ObserveUpdate(event)
 		p.effects.RefreshRelations(row.SessionNumber, holder, p.effectEntityRelation)
