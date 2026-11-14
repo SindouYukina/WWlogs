@@ -16,6 +16,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 
+	"wwlogs/internal/assets"
 	"wwlogs/internal/capture"
 	"wwlogs/internal/service"
 )
@@ -42,6 +43,9 @@ type Options struct {
 	// GameAssetRoot is an explicitly supplied directory for game images. Empty means the images embedded in the
 	// executable, if any. Only Development flags can set it.
 	GameAssetRoot string
+	// HistoryDatabase is an explicitly supplied Combat History file for tests; empty uses the user's own. Only it records
+	// replays, so a replay never enters the user's own history. Only Development flags can set it.
+	HistoryDatabase string
 	// PreviewFontRoot is an explicitly supplied directory for Development Showcase font candidates.
 	PreviewFontRoot string
 	// WebviewArguments are extra browser arguments for rendering experiments; only Development flags can set them.
@@ -84,7 +88,8 @@ func Run(options Options) error {
 	if err != nil {
 		return err
 	}
-	assetHandler := withGameAssets(application.AssetFileServerFS(frontend), gameAssetSource(options.GameAssetRoot, gameAssetArchive))
+	images := gameAssetSource(options.GameAssetRoot, gameAssetArchive)
+	assetHandler := withGameAssets(application.AssetFileServerFS(frontend), images)
 	if options.PreviewFontRoot != "" {
 		// A wrong path is reported here and shows as Missing in the Showcase; it never stops the application.
 		if info, err := os.Stat(options.PreviewFontRoot); err != nil || !info.IsDir() {
@@ -125,9 +130,15 @@ func Run(options Options) error {
 	}
 	defer masters.Close()
 	resolver := masters.DisplayResolver()
+	historyStore := openHistory(options.HistoryDatabase, masters)
+	// Deferred after masters.Close, so it runs first: the capture has stopped and finished its history by then.
+	defer historyStore.Close()
 	captureService := service.NewCaptureService(service.SessionOpener(masters))
 	captureService.SetPublishInterval(effectiveUpdateInterval(settings.current().Settings))
-	bridge := &Bridge{capture: captureService, defaults: options.Session, settings: settings}
+	recorders := &recorderTracker{}
+	captureService.SetHistory(historyStarter(historyStore, options.HistoryDatabase != "", recorders))
+	captureService.SetHistoryRecording(!settings.current().Settings.HistoryRecordingDisabled)
+	bridge := &Bridge{capture: captureService, defaults: options.Session, settings: settings, history: historyStore, masters: masters, recorders: recorders, images: assets.NewResolver(images)}
 	bridge.catalog = catalog
 	bridge.projection = &displayProjection{resolver: resolver}
 	environmentProbe := options.EnvironmentProbe

@@ -18,10 +18,10 @@ func TestClientEffectReportsPrintLabelledConsoleLines(t *testing.T) {
 	var stdout bytes.Buffer
 	p.stdout, p.showEffectEvents = &stdout, true
 	common := testCombatCommon{entityID: 100}
-	deliverClientPush(t, p, 0, clientPushBody(common, 9, clientApplyPayload(268436729, 1505701002, 102, 1, 1.1)))
-	deliverClientPush(t, p, 0.9, clientPushBody(common, 37, clientStackPayload(268436729, 102, 1, 1.1, false)))
-	deliverClientPush(t, p, 1.8, clientPushBody(common, 37, clientStackPayload(268436729, 102, 2, 1.1, false)))
-	deliverClientPush(t, p, 3, clientPushBody(common, 10, clientRemovePayload(268436729, 100, false)))
+	deliverClientPush(t, p, 0, clientPushBody(common, fieldCombatPushDataApplyGameplayEffectPush, clientApplyPayload(268436729, 1505701002, 102, 1, 1.1)))
+	deliverClientPush(t, p, 0.9, clientPushBody(common, fieldCombatPushDataBuffStackCountPush, clientStackPayload(268436729, 102, 1, 1.1, false)))
+	deliverClientPush(t, p, 1.8, clientPushBody(common, fieldCombatPushDataBuffStackCountPush, clientStackPayload(268436729, 102, 2, 1.1, false)))
+	deliverClientPush(t, p, 3, clientPushBody(common, fieldCombatPushDataRemoveGameplayEffectPush, clientRemovePayload(268436729, 100, false)))
 	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
 	if len(lines) != 3 {
 		t.Fatalf("console lines = %d, want apply, changed stack and remove only:\n%s", len(lines), stdout.String())
@@ -47,8 +47,8 @@ func TestClientEffectReportJSONLKeepsServerRowsUnchanged(t *testing.T) {
 	p := newClientEffectTestProcessor()
 	var lifecycle bytes.Buffer
 	p.buffLifecycle = &lifecycle
-	deliverEffectMessage(t, p, 0, effectPackBody(200, 5, effectApplyPayload(1, 42, 200, 100, 1, 30, 30)))
-	deliverClientPush(t, p, 1, clientPushBody(testCombatCommon{entityID: 100, messageID: 9}, 9, clientApplyPayload(268436729, 1505701002, 102, 1, 1.1)))
+	deliverEffectMessage(t, p, 0, effectPackBody(200, fieldCombatNotifyDataApplyGameplayEffectNotify, effectApplyPayload(1, 42, 200, 100, 1, 30, 30)))
+	deliverClientPush(t, p, 1, clientPushBody(testCombatCommon{entityID: 100, messageID: 9}, fieldCombatPushDataApplyGameplayEffectPush, clientApplyPayload(268436729, 1505701002, 102, 1, 1.1)))
 	lines := strings.Split(strings.TrimSpace(lifecycle.String()), "\n")
 	if len(lines) != 2 {
 		t.Fatalf("lifecycle rows = %d", len(lines))
@@ -73,16 +73,16 @@ func TestDefaultEffectConsoleShowsOnlyCombatLifecycleOfTheLocalTeam(t *testing.T
 		var stdout bytes.Buffer
 		p.stdout, p.showEffectEvents, p.showAllEffectEvents = &stdout, true, all
 		common := testCombatCommon{entityID: 100}
-		deliverClientPush(t, p, 0, clientPushBody(common, 9, clientApplyPayload(268436801, 12, 100, 1, 12)))           // combat
-		deliverClientPush(t, p, 0, clientPushBody(common, 9, clientApplyPayload(268436802, 13, 100, 1, 10)))           // non-combat
-		deliverClientPush(t, p, 0, clientPushBody(common, 9, clientApplyPayload(268436803, 14, 100, 1, 5)))            // unknown
-		deliverClientPush(t, p, 0, clientPushBody(common, 9, clientApplyPayload(18446744073709551614, 12, 100, 1, 0))) // instant
-		deliverClientPush(t, p, 1, clientPushBody(common, 37, clientStackPayload(268436801, 100, 1, 12, false)))       // refresh, same stack
-		deliverClientPush(t, p, 2, clientPushBody(common, 37, clientStackPayload(268436801, 100, 2, 12, false)))       // stack change
-		deliverClientPush(t, p, 3, clientPushBody(common, 10, clientRemovePayload(268436802, 100, true)))
-		deliverClientPush(t, p, 12, clientPushBody(common, 10, clientRemovePayload(268436801, 100, false)))
+		deliverClientPush(t, p, 0, clientPushBody(common, fieldCombatPushDataApplyGameplayEffectPush, clientApplyPayload(268436801, 12, 100, 1, 12)))           // combat
+		deliverClientPush(t, p, 0, clientPushBody(common, fieldCombatPushDataApplyGameplayEffectPush, clientApplyPayload(268436802, 13, 100, 1, 10)))           // non-combat
+		deliverClientPush(t, p, 0, clientPushBody(common, fieldCombatPushDataApplyGameplayEffectPush, clientApplyPayload(268436803, 14, 100, 1, 5)))            // unknown
+		deliverClientPush(t, p, 0, clientPushBody(common, fieldCombatPushDataApplyGameplayEffectPush, clientApplyPayload(18446744073709551614, 12, 100, 1, 0))) // instant
+		deliverClientPush(t, p, 1, clientPushBody(common, fieldCombatPushDataBuffStackCountPush, clientStackPayload(268436801, 100, 1, 12, false)))             // refresh, same stack
+		deliverClientPush(t, p, 2, clientPushBody(common, fieldCombatPushDataBuffStackCountPush, clientStackPayload(268436801, 100, 2, 12, false)))             // stack change
+		deliverClientPush(t, p, 3, clientPushBody(common, fieldCombatPushDataRemoveGameplayEffectPush, clientRemovePayload(268436802, 100, true)))
+		deliverClientPush(t, p, 12, clientPushBody(common, fieldCombatPushDataRemoveGameplayEffectPush, clientRemovePayload(268436801, 100, false)))
 		// A monster effect between monsters is not player-related even when its definition is combat.
-		deliverClientPush(t, p, 4, clientPushBody(testCombatCommon{entityID: 200}, 9, clientApplyPayload(268436810, 12, 201, 1, 5)))
+		deliverClientPush(t, p, 4, clientPushBody(testCombatCommon{entityID: 200}, fieldCombatPushDataApplyGameplayEffectPush, clientApplyPayload(268436810, 12, 201, 1, 5)))
 		return stdout.String()
 	}
 	combat := run(false)
@@ -115,12 +115,12 @@ func TestEffectConsoleReevaluatesTheTeamWhenTheLocalAnchorArrivesLater(t *testin
 	p.stdout, p.showEffectEvents = &stdout, true
 	addTestPlayerRoleGroupEntity(p, 100, 7, 1312)
 	// No local role report yet: the holder's relation is unknown and the apply stays off the console.
-	deliverClientPush(t, p, 0, clientPushBody(testCombatCommon{entityID: 100}, 9, clientApplyPayload(268436801, 12, 100, 1, 12)))
+	deliverClientPush(t, p, 0, clientPushBody(testCombatCommon{entityID: 100}, fieldCombatPushDataApplyGameplayEffectPush, clientApplyPayload(268436801, 12, 100, 1, 12)))
 	if stdout.Len() != 0 {
 		t.Fatalf("printed before the local team was known:\n%s", stdout.String())
 	}
 	p.observeLocalRoleEntity(100)
-	deliverClientPush(t, p, 12, clientPushBody(testCombatCommon{entityID: 100}, 10, clientRemovePayload(268436801, 100, false)))
+	deliverClientPush(t, p, 12, clientPushBody(testCombatCommon{entityID: 100}, fieldCombatPushDataRemoveGameplayEffectPush, clientRemovePayload(268436801, 100, false)))
 	if !strings.Contains(stdout.String(), "kind=CLIENT_EFFECT_REMOVE_REPORT") || !strings.Contains(stdout.String(), "localTeam=true") {
 		t.Fatalf("remove after the anchor was not printed:\n%s", stdout.String())
 	}
@@ -135,7 +135,7 @@ func TestEffectConsoleNamesVerifiedCharacters(t *testing.T) {
 	}
 	var stdout bytes.Buffer
 	p.stdout, p.showEffectEvents = &stdout, true
-	deliverClientPush(t, p, 0, clientPushBody(testCombatCommon{entityID: 100}, 9, clientApplyPayload(268436801, 12, 102, 1, 12)))
+	deliverClientPush(t, p, 0, clientPushBody(testCombatCommon{entityID: 100}, fieldCombatPushDataApplyGameplayEffectPush, clientApplyPayload(268436801, 12, 102, 1, 12)))
 	line := stdout.String()
 	if !strings.Contains(line, "holder=100 holderStatus=CORRELATED holderName=Holder Role") {
 		t.Fatalf("verified holder name missing:\n%s", line)

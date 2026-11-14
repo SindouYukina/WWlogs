@@ -26,7 +26,7 @@ func TestObserveShieldReferencesUsesOnlyTheTypedConfigIDNamespace(t *testing.T) 
 		messageField("CombatNotifyData", &decodedMessage{Type: "CombatNotifyData", Fields: []decodedField{messageField("ShieldUpdateNotify", shieldNotify)}}),
 		messageField("Unrelated", &decodedMessage{Type: "Unrelated", Fields: []decodedField{scalarField("ConfigId", 1409404003)}}),
 	}}
-	p.observeShieldReferences(gameFrame{commandID: 25706, token: 99}, data, "in")
+	p.observeShieldReferences(gameFrame{commandID: cmdCombatReceivePackNotify, token: 99}, data, "in")
 
 	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
 	if len(lines) != 3 {
@@ -44,7 +44,7 @@ func TestObserveShieldReferencesUsesOnlyTheTypedConfigIDNamespace(t *testing.T) 
 	if first.ShieldValue == nil || *first.ShieldValue != 720 || first.Handle == nil || *first.Handle != 31 || first.UpdateType == nil || *first.UpdateType != 1 {
 		t.Fatalf("raw ShieldUpdateInfo values were not preserved: %+v", first)
 	}
-	if first.FieldPath != "Data.CombatNotifyData.ShieldUpdateNotify.Shields[0].ConfigId" || first.OuterCommandID != 25706 || first.FrameToken != 99 || first.Direction != "in" {
+	if first.FieldPath != "Data.CombatNotifyData.ShieldUpdateNotify.Shields[0].ConfigId" || first.OuterCommandID != cmdCombatReceivePackNotify || first.FrameToken != 99 || first.Direction != "in" {
 		t.Fatalf("typed reference context missing: %+v", first)
 	}
 	if second.ConfigID == nil || *second.ConfigID != 1508990003 || second.ShieldDefinitionStatus != resolutionCorrelated {

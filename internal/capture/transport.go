@@ -54,6 +54,8 @@ const (
 	kcpSkipCaptureEnd   = "capture_end"
 	// kcpLossStreamEvicted: a stream left the bounded table while data still waited behind its gap.
 	kcpLossStreamEvicted = "stream_evicted"
+	// kcpLossSuperseded: a new protocol session retired the stream while it still held a loss (retireSupersededStreams).
+	kcpLossSuperseded = "superseded_by_new_session"
 )
 
 type segment struct {
@@ -64,6 +66,7 @@ type segment struct {
 
 type stream struct {
 	key               string
+	conv              uint32
 	direction         string
 	next              uint32
 	initialized       bool
@@ -142,7 +145,11 @@ func consumeDatagram(payload []byte, direction string, capturedAt time.Time, str
 			continue
 		}
 		stats.kcpPush++
-		state := streamFor(fmt.Sprintf("%08x/%s", conv, direction), direction, capturedAt, streams, processor, stats)
+		if processor.retiredKCP.ignores(conv, seq) {
+			stats.kcpRetiredStragglers++
+			continue
+		}
+		state := streamFor(conv, direction, capturedAt, streams, processor, stats)
 		acceptKCPSegment(state, seq, segment{data: data, fragments: fragments, timestamp: capturedAt}, streams, processor, stats)
 	}
 	if !hasKCP && len(payload) > 0 {
@@ -150,14 +157,16 @@ func consumeDatagram(payload []byte, direction string, capturedAt time.Time, str
 	}
 }
 
-// streamFor returns the stream for key, creating it and evicting the least recently active stream past maxKCPStreams.
-func streamFor(key, direction string, at time.Time, streams map[string]*stream, processor *processor, stats *captureStats) *stream {
+// streamFor returns the stream of one conversation and direction, creating it and evicting the least recently active
+// stream past maxKCPStreams.
+func streamFor(conv uint32, direction string, at time.Time, streams map[string]*stream, processor *processor, stats *captureStats) *stream {
+	key := fmt.Sprintf("%08x/%s", conv, direction)
 	state, ok := streams[key]
 	if !ok {
 		if len(streams) >= maxKCPStreams {
 			evictIdlestStream(streams, processor, stats)
 		}
-		state = &stream{key: key, direction: direction, pending: make(map[uint32]segment)}
+		state = &stream{key: key, conv: conv, direction: direction, pending: make(map[uint32]segment)}
 		streams[key] = state
 	}
 	if at.After(state.lastActivityAt) {
@@ -454,7 +463,7 @@ func processApplicationData(data []byte, capturedAt time.Time, direction string,
 		stats.malformed++
 	}
 	if processor.sessionGeneration != previousSession {
-		clearOtherApplicationBuffers(streams, state)
+		retireSupersededStreams(streams, state, processor, stats)
 	}
 }
 
@@ -634,13 +643,80 @@ func outboundSequenceEvidence(state *stream, sequence uint32) sequenceEvidence {
 	return sequenceEvidence{status: sequenceEvidenceConsistent, lostFrames: int(jump - 1)}
 }
 
-func clearOtherApplicationBuffers(streams map[string]*stream, current *stream) {
-	for _, state := range streams {
-		if state != current {
-			state.applicationBuffer = nil
-			state.applicationSpans = nil
+// Session replacement. A handshake starts a new protocol session on its own connection, so the streams of every other
+// conversation belong to a connection the new session has superseded: a re-login, a reconnect, or the connection a
+// capture saw after missing its login. Those streams can never carry data of the new session, so they are retired at
+// the handshake: an open gap closes, a loss episode still open ends there unrecovered, data still waiting behind a gap
+// is lost to the previous session, and the stream leaves the table. Kept, an open gap or recovery of a dead connection
+// would stay open for the rest of the capture, mark every encounter of the new session as possibly incomplete, and
+// hold the transport state at recovering: a re-login could only be recovered by restarting the capture.
+//
+// The other direction of the handshake's own conversation is the same connection and stays; its partial frame
+// predates the key and is dropped.
+func retireSupersededStreams(streams map[string]*stream, current *stream, processor *processor, stats *captureStats) {
+	at := processor.protocolSessionStartedAt
+	for _, state := range sortedStreams(streams) {
+		if state == current {
+			continue
+		}
+		if state.conv == current.conv {
+			state.applicationBuffer, state.applicationSpans = nil, nil
+			continue
+		}
+		if state.gapOpen {
+			closeKCPGap(state, processor)
+		}
+		if state.recovery.active || len(state.pending) > 0 {
+			processor.supersedeStreamLoss(state, at)
+		}
+		stats.kcpStreamsRetired++
+		stats.kcpRetiredPendingSegments += len(state.pending)
+		processor.retiredKCP.retire(state.conv)
+		delete(streams, state.key)
+	}
+}
+
+// maxRetiredConversations bounds the conversations remembered as superseded.
+const maxRetiredConversations = maxKCPStreams
+
+// retiredConversations are the conversations of superseded connections. A later PUSH segment of one is a straggler of
+// the dead connection and is ignored, so it cannot open a new stream whose gap would never close; a PUSH with sequence
+// 0 starts a new connection (KCP numbers every connection from 0), so it brings the conversation back.
+type retiredConversations struct {
+	set   map[uint32]struct{}
+	order []uint32
+}
+
+func (r *retiredConversations) retire(conv uint32) {
+	if r.set == nil {
+		r.set = make(map[uint32]struct{})
+	}
+	if _, known := r.set[conv]; known {
+		return
+	}
+	r.set[conv] = struct{}{}
+	r.order = append(r.order, conv)
+	for len(r.order) > maxRetiredConversations {
+		delete(r.set, r.order[0])
+		r.order = r.order[1:]
+	}
+}
+
+func (r *retiredConversations) ignores(conv, sequence uint32) bool {
+	if _, retired := r.set[conv]; !retired {
+		return false
+	}
+	if sequence != 0 {
+		return true
+	}
+	delete(r.set, conv)
+	for i, value := range r.order {
+		if value == conv {
+			r.order = append(r.order[:i], r.order[i+1:]...)
+			break
 		}
 	}
+	return false
 }
 
 func consumeApplicationSpans(spans []applicationSpan, consumed int) []applicationSpan {
@@ -694,10 +770,10 @@ func transportHealthLine(streams map[string]*stream, stats captureStats) string 
 	if !health.OldestGapSince.IsZero() {
 		oldest = health.OldestGapSince.UTC().Format(time.RFC3339Nano)
 	}
-	return fmt.Sprintf("transport_health kcp_streams=%d kcp_open_gaps=%d kcp_oldest_open_gap=%s kcp_pending_segments=%d kcp_pending_bytes=%d kcp_pending_peak=%d kcp_pending_overflow=%d kcp_out_of_order=%d kcp_duplicates=%d kcp_gaps_opened=%d kcp_gaps_filled=%d kcp_max_gap_wait=%s kcp_gaps_skipped=%d kcp_segments_skipped=%d kcp_fragment_resets=%d kcp_fragment_tail_drops=%d kcp_fragments_discarded=%d kcp_streams_evicted=%d frame_desyncs=%d resync_attempts=%d resync_successes=%d resync_failures=%d resync_recovering=%d resync_bytes_discarded=%d resync_candidates=%d resync_budget_stops=%d",
+	return fmt.Sprintf("transport_health kcp_streams=%d kcp_open_gaps=%d kcp_oldest_open_gap=%s kcp_pending_segments=%d kcp_pending_bytes=%d kcp_pending_peak=%d kcp_pending_overflow=%d kcp_out_of_order=%d kcp_duplicates=%d kcp_gaps_opened=%d kcp_gaps_filled=%d kcp_max_gap_wait=%s kcp_gaps_skipped=%d kcp_segments_skipped=%d kcp_fragment_resets=%d kcp_fragment_tail_drops=%d kcp_fragments_discarded=%d kcp_streams_evicted=%d kcp_streams_retired=%d kcp_retired_pending_segments=%d kcp_retired_stragglers=%d frame_desyncs=%d resync_attempts=%d resync_successes=%d resync_failures=%d resync_recovering=%d resync_bytes_discarded=%d resync_candidates=%d resync_budget_stops=%d",
 		health.Streams, health.OpenGaps, oldest, health.PendingSegments, health.PendingBytes, stats.kcpPendingPeak, stats.kcpPendingOverflow,
 		stats.kcpOutOfOrder, stats.kcpDuplicates, stats.kcpGapsOpened, stats.kcpGapsFilled, stats.kcpMaxGapWait,
 		stats.kcpGapsSkipped, stats.kcpSegmentsSkipped, stats.kcpFragmentResets, stats.kcpFragmentTailDrops, stats.kcpFragmentsDiscarded,
-		stats.kcpStreamsEvicted, stats.frameDesyncs, stats.resyncAttempts, stats.resyncSuccesses, stats.resyncFailures, health.Recovering,
+		stats.kcpStreamsEvicted, stats.kcpStreamsRetired, stats.kcpRetiredPendingSegments, stats.kcpRetiredStragglers, stats.frameDesyncs, stats.resyncAttempts, stats.resyncSuccesses, stats.resyncFailures, health.Recovering,
 		stats.resyncBytesDiscarded, stats.resyncCandidatesChecked, stats.resyncBudgetStops)
 }

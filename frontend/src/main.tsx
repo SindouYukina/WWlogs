@@ -17,10 +17,13 @@ const showcase = __WWLOGS_SHOWCASE__ && parameters.get("view") === "showcase"
 const surfaceWindow = parameters.get("view") === "overlay" || (showcase && parameters.has("surface"))
 const surface: OverlayKind = parameters.get("surface") === "effects" ? "effects" : "combat"
 document.body.dataset.view = surfaceWindow ? "overlay" : showcase ? "showcase" : "desktop"
-if (surfaceWindow) {
-  for (const eventType of ["contextmenu", "dragstart"]) {
-    document.body.addEventListener(eventType, event => event.preventDefault())
-  }
+// No window shows the WebView2 context menu (reload, save as, print, inspect): it is browser chrome, not part of WWlogs.
+// Wails leaves it on in its debug mode (the Development profile), and in Public over text fields and selected text, so the
+// page turns it off itself, the same way in both profiles: one capture listener on the window reaches every element,
+// portals and text fields included, before any other handler. DevTools and the Development remote debugging port are
+// untouched. An Overlay also moves with a press anywhere on it, so no text or image drag starts there.
+for (const eventType of surfaceWindow ? ["contextmenu", "dragstart"] : ["contextmenu"]) {
+  window.addEventListener(eventType, event => event.preventDefault(), { capture: true })
 }
 
 const root = createRoot(document.getElementById("root")!)

@@ -6,68 +6,58 @@ import (
 	"encoding/json"
 )
 
-// damageRPCPayloads extracts (rpcId, payload) pairs from a damage RPC wrapper.
-// Request wrappers (19470) carry one item per field 3. Response wrappers (20332)
-// carry batches in field 5, each with items in field 3. Field numbers follow the
-// typed pipeline in handleDamageRequests and handleDamageResponses.
+// damageRPCPayloads extracts (rpcId, payload) pairs from a damage RPC frame: CombatSendPackRequest.Data[].Request
+// (CombatRequestData) for requests, and for responses Data[].CombatResponseData of every CombatReceivePackNotify the frame
+// carries, embedded in a CombatSendPackResponse or standalone. The paths are the ones handleDamageRequests and
+// handleCombatReceivePacks read.
 func damageRPCPayloads(commandID uint16, body []byte) ([]damageRPCItem, error) {
+	if commandID != cmdCombatSendPackRequest {
+		bodies, err := receivePackNotifyBodies(commandID, body)
+		if err != nil {
+			return nil, err
+		}
+		var items []damageRPCItem
+		for _, notify := range bodies {
+			responses, _ := receivePackDamageResponses(notify)
+			for _, response := range responses {
+				items = append(items, damageRPCItem{RPCID: response.rpcID, Payload: response.payload})
+			}
+		}
+		return items, nil
+	}
 	outer, err := parseProtoFields(body)
 	if err != nil {
 		return nil, err
 	}
 	var items []damageRPCItem
 	for _, field := range outer {
-		if field.number != 14 || field.wire != 2 {
+		if field.number != fieldCombatSendPackRequestData || field.wire != 2 {
 			continue
 		}
-		var containers [][]byte
-		if commandID == 19470 {
-			envelopes, err := parseProtoFields(field.data)
-			if err != nil {
-				return nil, err
-			}
-			for _, envelope := range envelopes {
-				if envelope.number == 3 && envelope.wire == 2 {
-					containers = append(containers, envelope.data)
-				}
-			}
-		} else {
-			batches, err := parseProtoFields(field.data)
-			if err != nil {
-				return nil, err
-			}
-			for _, batch := range batches {
-				if batch.number != 5 || batch.wire != 2 {
-					continue
-				}
-				entries, err := parseProtoFields(batch.data)
-				if err != nil {
-					return nil, err
-				}
-				for _, entry := range entries {
-					if entry.number == 3 && entry.wire == 2 {
-						containers = append(containers, entry.data)
-					}
-				}
-			}
+		envelopes, err := parseProtoFields(field.data)
+		if err != nil {
+			return nil, err
 		}
-		for _, container := range containers {
-			fields, err := parseProtoFields(container)
+		for _, envelope := range envelopes {
+			if envelope.number != fieldCombatSendDataRequest || envelope.wire != 2 {
+				continue
+			}
+			fields, err := parseProtoFields(envelope.data)
 			if err != nil {
 				continue
 			}
+			// An absent RequestId is the proto3 default 0, as in handleDamageRequests.
 			var rpcID uint64
-			var hasRPC bool
 			var payload []byte
 			for _, f := range fields {
-				if f.number == 2 && f.wire == 0 {
-					rpcID, hasRPC = f.value, true
+				if f.number == fieldCombatRequestDataRequestID && f.wire == 0 {
+					rpcID = f.value
 				}
-				if f.number == 5 && f.wire == 2 {
+				if f.number == fieldCombatRequestDataDamageExecuteRequest && f.wire == 2 {
 					payload = f.data
 				}
 			}
-			if hasRPC && payload != nil {
+			if payload != nil {
 				items = append(items, damageRPCItem{RPCID: rpcID, Payload: payload})
 			}
 		}
@@ -84,9 +74,9 @@ func (p *processor) archiveDamageRPCSchema(frame gameFrame, plain []byte) {
 	}
 	var message string
 	switch frame.commandID {
-	case 19470:
+	case cmdCombatSendPackRequest:
 		message = "DamageExecuteRequest"
-	case 20332:
+	case cmdCombatSendPackResponse, cmdCombatReceivePackNotify:
 		message = "DamageExecuteResponse"
 	default:
 		return

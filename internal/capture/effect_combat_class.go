@@ -26,7 +26,7 @@ const (
 	effectCombatBasisDefinitionMissing = "definition_unresolved"
 )
 
-// attributeTypeNames is the protocol EAttributeType enumeration (Windows Global 3.7.1 Aki.Protocol).
+// attributeTypeNames is the client protocol's EAttributeType enumeration, named from the client's protocol assembly.
 // buff.game_attribute_id uses the same numbering: across two live captures the server's
 // AttributeChangedNotify for the holder changed by exactly the row's modifier for attributes 8, 9,
 // 11, 24, 60 and 77 when the effect was applied and removed.

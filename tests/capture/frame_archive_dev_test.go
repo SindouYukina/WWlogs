@@ -13,19 +13,23 @@ import (
 
 func TestFrameDecodeStatusClassifiesWithoutDecrypting(t *testing.T) {
 	tests := []struct {
-		name  string
-		frame gameFrame
-		want  string
+		name     string
+		frame    gameFrame
+		readable bool
+		state    protocolState
+		want     string
 	}{
-		{"handshake", gameFrame{commandID: 112, direction: "in", body: []byte{1}}, frameStatusHandshake},
-		{"empty body", gameFrame{commandID: 1651, direction: "in"}, frameStatusEmptyBody},
-		{"implemented", gameFrame{commandID: 19470, direction: "out", body: []byte{1}}, frameStatusImplemented},
-		{"undecoded", gameFrame{commandID: 1651, direction: "in", body: []byte{1}}, frameStatusUndecoded},
-		{"command 112 outbound is not handshake", gameFrame{commandID: 112, direction: "out", body: []byte{1}}, frameStatusUndecoded},
+		{"handshake", gameFrame{commandID: cmdProtoKeyResponse, direction: "in", body: []byte{1}}, false, protocolNone, frameStatusHandshake},
+		{"empty body", gameFrame{commandID: 1651, direction: "in"}, true, protocolCurrent, frameStatusEmptyBody},
+		{"implemented in the current protocol", gameFrame{commandID: cmdCombatSendPackRequest, direction: "out", body: []byte{1}}, true, protocolCurrent, frameStatusImplemented},
+		{"undecoded", gameFrame{commandID: 1651, direction: "in", body: []byte{1}}, true, protocolCurrent, frameStatusUndecoded},
+		{"another game version", gameFrame{commandID: cmdCombatSendPackRequest, direction: "out", body: []byte{1}}, false, protocolUnsupported, frameStatusNotCurrentProtocol},
+		{"before the version report", gameFrame{commandID: cmdCombatSendPackRequest, direction: "out", body: []byte{1}}, false, protocolPending, frameStatusNotCurrentProtocol},
+		{"command 112 outbound is not handshake", gameFrame{commandID: cmdProtoKeyResponse, direction: "out", body: []byte{1}}, false, protocolNone, frameStatusUndecoded},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := frameDecodeStatus(tt.frame); got != tt.want {
+			if got := frameDecodeStatus(tt.frame, tt.readable, tt.state); got != tt.want {
 				t.Fatalf("status = %q, want %q", got, tt.want)
 			}
 		})

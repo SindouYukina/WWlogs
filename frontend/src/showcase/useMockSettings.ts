@@ -19,6 +19,7 @@ export function useMockSettings(theme: ThemeId, setTheme: (theme: ThemeId) => vo
   const [overlays, setOverlays] = useState(initialOverlays)
   const [defaultAdapter, setDefaultAdapter] = useState("")
   const [autoStartCapture, setAutoStartCapture] = useState(false)
+  const [historyRecording, setHistoryRecording] = useState(true)
   const [updateIntervalMs, setUpdateInterval] = useState<UpdateInterval>(defaultUpdateInterval)
   return useMemo(() => ({
     locale: i18n.language,
@@ -34,6 +35,11 @@ export function useMockSettings(theme: ThemeId, setTheme: (theme: ThemeId) => vo
     setDefaultAdapter,
     autoStartCapture,
     setAutoStartCapture,
+    historyRecording,
+    setHistoryRecording,
+    // A mock history that is never written: the Showcase has no history file.
+    history: { state: historyRecording ? "waiting" : "disabled", enabled: historyRecording, capturing: false, encrypted: true, keyProtection: "dpapi-user" },
+    clearHistory: () => Promise.resolve({ encounters: 0, spans: 0, compacted: false }),
     captureBusy: false,
     environment: "ready",
     checking: false,
@@ -51,5 +57,5 @@ export function useMockSettings(theme: ThemeId, setTheme: (theme: ThemeId) => vo
     loadFailed: false,
     warning: "",
     connected: true,
-  }), [i18n, i18n.language, theme, setTheme, reduced, setReduced, overlays, defaultAdapter, autoStartCapture, updateIntervalMs])
+  }), [i18n, i18n.language, theme, setTheme, reduced, setReduced, overlays, defaultAdapter, autoStartCapture, historyRecording, updateIntervalMs])
 }

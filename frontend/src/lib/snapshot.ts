@@ -2,6 +2,7 @@
 // Every number here was computed by the Go statistics engine; the frontend only formats it.
 
 import type { AppIdentity } from "./build-identity"
+import type { HistoryIndicator } from "./history"
 
 export type ServiceState = "stopped" | "starting" | "running" | "stopping" | "error"
 export type IntegrityStatus = "INTACT" | "DEGRADED" | "UNRELIABLE"
@@ -24,6 +25,8 @@ export interface Snapshot {
   updateIntervalMs?: number
   overlays?: OverlayStates
   settingsWarning?: string
+  /** The Combat History indicator the host decides. */
+  history?: HistoryIndicator
 }
 
 /** The selectable live combat data cadences, in milliseconds. The host only reports one of these. */
@@ -60,18 +63,19 @@ export interface ListeningInfo {
   since: string
 }
 
-type ShellFields = "listening" | "theme" | "reduceMotion" | "updateIntervalMs" | "overlays" | "settingsWarning"
+type ShellFields = "listening" | "theme" | "reduceMotion" | "updateIntervalMs" | "overlays" | "settingsWarning" | "history"
 
 /** True when only host state differs, so the window updates it without treating the snapshot as new core data. */
 export function shellChanged(next: Pick<Snapshot, ShellFields>, previous: Pick<Snapshot, ShellFields>): boolean {
   return next.listening?.state !== previous.listening?.state || next.listening?.reason !== previous.listening?.reason || next.theme !== previous.theme || next.reduceMotion !== previous.reduceMotion || next.settingsWarning !== previous.settingsWarning
     || next.updateIntervalMs !== previous.updateIntervalMs
     || JSON.stringify(next.overlays) !== JSON.stringify(previous.overlays)
+    || JSON.stringify(next.history) !== JSON.stringify(previous.history)
 }
 
 /** Copies host state onto the current core snapshot, for a heartbeat whose sequence did not move. */
 export function withShell(current: Snapshot, next: Pick<Snapshot, ShellFields>): Snapshot {
-  return { ...current, listening: next.listening, theme: next.theme, reduceMotion: next.reduceMotion, updateIntervalMs: next.updateIntervalMs, overlays: next.overlays, settingsWarning: next.settingsWarning }
+  return { ...current, listening: next.listening, theme: next.theme, reduceMotion: next.reduceMotion, updateIntervalMs: next.updateIntervalMs, overlays: next.overlays, settingsWarning: next.settingsWarning, history: next.history }
 }
 
 // Locale changes may reproject the same core sequence; neither dimension may move backwards.
@@ -124,6 +128,9 @@ export interface DPS {
 export interface Role {
   playerId: number
   roleId: number
+  /** The RoleId whose static data and character art describe roleId: a trial role's parent, else roleId. From the display
+   * projection; images are addressed by it, statistics never. */
+  staticRoleId?: number
   name: string
   nameStatus: string
   /** Static Master element, from the display projection. Absent means unknown. */
@@ -136,12 +143,36 @@ export interface Role {
   dps?: number
   directDamage: number
   summonDamage: number
+  /** Negative-status damage the server executed for this role (Go negative_status_credit.go); absent from older hosts. */
+  statusDamage?: number
   outgoingEvents: number
   damageTaken: number
   incomingEvents: number
   /** Damage split by DamageContext.SkillId, ordered by damage; absent from hosts older than skill breakdown. */
   skills?: Skill[]
   unassignedSkill?: UnassignedSkill
+  /** statusDamage by DamageId, ordered by DamageId. These hits have no SkillId and never join a skill row. */
+  statuses?: Status[]
+}
+
+/**
+ * The negative-status damage of one DamageId credited to a role: an action of the role set the settlement off (triggerEvents:
+ * a forced or instant settlement, or an application that settled a status without a period, its overflow spread included),
+ * or the role owns the timed status instance that executed on its own. name is the status's official glossary term
+ * (nameStatus CORRELATED); absent when the engine found no single term, and the UI then shows the DamageId.
+ */
+export interface Status {
+  damageId: number
+  name?: string
+  nameStatus: string
+  termId?: number
+  iconKind?: string
+  iconId?: number
+  damageDealt: number
+  damageShare?: number
+  outgoingEvents: number
+  triggerEvents: number
+  triggerDamage: number
 }
 
 /** One DamageContext.SkillId of a contributor. The share uses the contributor's own confirmed damage. */
@@ -191,6 +222,9 @@ export interface UnassignedRole {
   damageTaken: number
   incomingEvents: number
   overflowEvents: number
+  /** The part of damageDealt that is the team's negative-status damage no role could be credited with. */
+  negativeStatusDamage?: number
+  negativeStatusEvents?: number
 }
 
 export interface Encounter {
@@ -222,6 +256,9 @@ export interface DamageCompleteness {
   roleAttributionComplete: boolean
   unassignedDamage: number
   unassignedEvents: number
+  /** The part of the unassigned damage that is negative-status damage; it never makes role attribution incomplete. */
+  negativeStatusDamage?: number
+  negativeStatusEvents?: number
   skillBreakdownComplete: boolean
   noSkillDamage: number
   noSkillEvents: number
@@ -262,7 +299,7 @@ export interface Effect {
   holderName?: string
   holderNameStatus?: string
   sourceRelation: string
-  /** The direction the game's HUD draws: "buff" or "debuff" for every listed effect, "unclassified" otherwise. */
+  /** The direction the game's HUD draws: "buff" or "debuff", "neutral" for a status it draws without an arrow, "unclassified" without HUD evidence. */
   polarity: string
   combatClass: string
   /** What the definition says the effect is for (Go EffectKind). */

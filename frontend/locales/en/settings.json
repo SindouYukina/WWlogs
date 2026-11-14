@@ -51,7 +51,8 @@
     "combatOverlay": "Combat Overlay",
     "effectsOverlay": "Effects Overlay",
     "about": "WWlogs",
-    "licenses": "Licenses"
+    "licenses": "Licenses",
+    "history": "Combat history"
   },
   "sections": {
     "language": "Language",
@@ -135,5 +136,28 @@
     "order": "Each line runs left to right by when a status ends: soonest first, statuses without a time last.",
     "onlyHud": "Only statuses the game draws in its HUD with its own icon and direction are shown. Internal states are left out.",
     "noNames": "Effects are shown without names, as in the game; most effects have no name in the game data."
+  },
+  "historySettings": {
+    "sections": {
+      "recording": "Recording",
+      "storage": "Storage",
+      "data": "Data"
+    },
+    "recording": "Record combat history",
+    "recordingHint": "Turning it off stops recording at once; a fight in progress is kept as unfinished. Turning it on starts with the next fight. Live DPS and the Overlays work either way, and stored history is kept.",
+    "status": "Status",
+    "coverage": "What is recorded",
+    "coverageHint": "Skill casts are not recorded: no reliable source for them exists.",
+    "coverageValue": "Encounters, damage and healing results, effect lifecycle changes",
+    "encryption": "Encryption",
+    "encrypted": "Encrypted (AES-256-XTS)",
+    "encryptedHint": "The key is protected by Windows (DPAPI) for your user account, not by TPM hardware. Programs that run as you can still read it.",
+    "notEncrypted": "Not encrypted",
+    "notEncryptedHint": "The history file is not open, or it is an unencrypted file of an earlier version.",
+    "clear": "Clear all history",
+    "clearHint": "Deletes every stored encounter and its backup copies. Not available while a capture records.",
+    "clearAction": "Clear history",
+    "clearConfirm": "Delete all combat history permanently? This cannot be undone.",
+    "clearConfirmAction": "Delete all"
   }
 }

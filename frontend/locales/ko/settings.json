@@ -51,7 +51,8 @@
     "combatOverlay": "전투 오버레이",
     "effectsOverlay": "효과 오버레이",
     "about": "WWlogs",
-    "licenses": "라이선스"
+    "licenses": "라이선스",
+    "history": "전투 기록"
   },
   "sections": {
     "language": "언어",
@@ -135,5 +136,28 @@
     "order": "각 줄은 빨리 끝나는 순서로 왼쪽부터 놓이고, 시간이 없는 상태는 맨 뒤에 놓입니다.",
     "onlyHud": "게임 HUD가 공식 아이콘과 방향으로 그리는 상태만 표시합니다. 내부 상태는 표시하지 않습니다.",
     "noNames": "게임과 같이 효과 이름은 표시하지 않습니다. 게임 데이터의 효과 대부분에는 이름이 없습니다."
+  },
+  "historySettings": {
+    "sections": {
+      "recording": "기록",
+      "storage": "저장",
+      "data": "데이터"
+    },
+    "recording": "전투 기록 저장",
+    "recordingHint": "끄면 즉시 기록을 멈추며, 진행 중인 전투는 미완료로 남습니다. 켜면 다음 전투부터 기록합니다. 실시간 DPS와 오버레이는 어느 쪽이든 동작하며, 저장된 기록은 유지됩니다.",
+    "status": "상태",
+    "coverage": "기록되는 내용",
+    "coverageHint": "스킬 시전은 기록하지 않습니다: 신뢰할 수 있는 출처가 없습니다.",
+    "coverageValue": "전투, 피해와 치유 결과, 효과 수명 주기 변화",
+    "encryption": "암호화",
+    "encrypted": "암호화됨(AES-256-XTS)",
+    "encryptedHint": "키는 Windows(DPAPI)가 사용자 계정별로 보호하며, TPM 하드웨어 보호가 아닙니다. 사용자 권한으로 실행되는 프로그램은 여전히 읽을 수 있습니다.",
+    "notEncrypted": "암호화되지 않음",
+    "notEncryptedHint": "기록 파일이 열려 있지 않거나, 이전 버전의 암호화되지 않은 파일입니다.",
+    "clear": "모든 기록 지우기",
+    "clearHint": "저장된 모든 전투와 백업 사본을 삭제합니다. 캡처가 기록 중일 때는 사용할 수 없습니다.",
+    "clearAction": "기록 지우기",
+    "clearConfirm": "모든 전투 기록을 영구적으로 삭제할까요? 되돌릴 수 없습니다.",
+    "clearConfirmAction": "모두 삭제"
   }
 }

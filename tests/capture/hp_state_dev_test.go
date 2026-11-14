@@ -12,7 +12,7 @@ import (
 func TestHPStateKeepsLifeAndLifeMaxOnly(t *testing.T) {
 	var out strings.Builder
 	p := &processor{protocolSchema: hpTestSchema(), hpStateOut: &out, frameOrdinal: 1, sessionNumber: 2}
-	frame := gameFrame{commandID: 25706, timestamp: time.Date(2026, 10, 28, 9, 44, 28, 0, time.UTC)}
+	frame := gameFrame{commandID: cmdCombatReceivePackNotify, timestamp: time.Date(2026, 10, 28, 9, 44, 28, 0, time.UTC)}
 	decoded := wrapData(notifyWithEntity(52082,
 		attributeMessage(3, 484076, false),
 		attributeMessage(2, 500000, true),
@@ -39,8 +39,8 @@ func TestHPStateKeepsLifeAndLifeMaxOnly(t *testing.T) {
 func TestHPStateSkipsNotifyWithoutEntity(t *testing.T) {
 	var out strings.Builder
 	p := &processor{protocolSchema: hpTestSchema(), hpStateOut: &out}
-	notify := decodedField{Number: 2, Name: "CombatNotifyData", Kind: "class", Message: &decodedMessage{Type: "CombatNotifyData", Fields: []decodedField{
-		{Number: 22, Name: "AttributeChangedNotify", Kind: "class", Message: &decodedMessage{Fields: []decodedField{attributeMessage(3, 10, true)}}},
+	notify := decodedField{Number: fieldCombatReceiveDataCombatNotifyData, Name: "CombatNotifyData", Kind: "class", Message: &decodedMessage{Type: "CombatNotifyData", Fields: []decodedField{
+		{Number: fieldCombatNotifyDataAttributeChangedNotify, Name: "AttributeChangedNotify", Kind: "class", Message: &decodedMessage{Fields: []decodedField{attributeMessage(3, 10, true)}}},
 	}}}
 	p.archiveHPState(gameFrame{}, wrapData(notify))
 	if out.Len() != 0 {

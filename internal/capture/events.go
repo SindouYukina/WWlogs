@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-
-	"wwlogs/internal/versioninfo"
 )
 
 type combatEventJSONL struct {
@@ -15,6 +13,7 @@ type combatEventJSONL struct {
 	Timestamp                  time.Time                   `json:"timestamp"`
 	SessionNumber              int                         `json:"sessionNumber"`
 	RPCID                      uint64                      `json:"rpcId"`
+	RequestEpoch               uint64                      `json:"requestEpoch,omitempty"` // wraps of the client's RequestId counter before the request
 	Source                     combatEventEntityJSONL      `json:"source"`
 	Target                     combatEventEntityJSONL      `json:"target"`
 	Credit                     combatEventCreditJSONL      `json:"credit"`
@@ -236,9 +235,11 @@ type combatEventMasterJSONL struct {
 }
 
 type combatEvent struct {
-	Timestamp         time.Time
-	SessionNumber     int
+	Timestamp     time.Time
+	SessionNumber int
+	// RPCID is the RequestId on the wire; RequestEpoch the wraps of the client's RequestId counter before the request.
 	RPCID             uint64
+	RequestEpoch      uint64
 	DamageID          uint64
 	SourceEntityID    uint64
 	HasSourceEntity   bool
@@ -281,6 +282,8 @@ type combatEvent struct {
 	EventTypeStatus            resolutionStatus
 	EventTypeProof             string
 	DamageContributorCandidate *damageContributorCandidate
+	// Notify is set on a result read from a server-executed DamageExecuteNotify (damage_notify.go); nil for a response.
+	Notify *notifiedResult
 }
 
 func (p *processor) buildDamageEvent(rpcID uint64, request pendingDamageRequest, resultRaw, changeLifeRaw int32, hasChangeLife bool, damage int64) combatEvent {
@@ -288,6 +291,7 @@ func (p *processor) buildDamageEvent(rpcID uint64, request pendingDamageRequest,
 		Timestamp:           p.currentFrameTime,
 		SessionNumber:       p.sessionNumber,
 		RPCID:               rpcID,
+		RequestEpoch:        request.requestEpoch,
 		DamageID:            request.damageID,
 		SourceEntityID:      request.attackerEntityID,
 		HasSourceEntity:     request.hasAttackerEntityID && request.attackerEntityID != 0,
@@ -379,10 +383,10 @@ func (event *combatEvent) resolveEventType(masters *gameMaster) {
 	switch record.CalculateType {
 	case 0:
 		event.EventTypeCandidate = "DAMAGE_CANDIDATE"
-		event.EventTypeProof = source + "; " + versioninfo.ReferenceSchemaLabel() + " DamageUiController CalculateType 0 uses ordinary damage text"
+		event.EventTypeProof = source + "; client code (static research): DamageUiController shows CalculateType 0 as ordinary damage text"
 	case 1:
 		event.EventTypeCandidate = "HEALING_CANDIDATE"
-		event.EventTypeProof = source + "; " + versioninfo.ReferenceSchemaLabel() + " DamageUiController CalculateType 1 uses cure/heal display"
+		event.EventTypeProof = source + "; client code (static research): DamageUiController shows CalculateType 1 as a cure/heal number"
 	default:
 		event.EventTypeCandidate = "OTHER_COMBAT_RESULT_CANDIDATE"
 		event.EventTypeProof = source + "; nonzero type other than 1 has no verified event semantics"
@@ -395,9 +399,16 @@ func (p *processor) writeDamageEvent(event combatEvent) bool {
 	sourceRelation, targetRelation, visible := p.playerRelevantDamageEvent(event)
 	if record, ok := normalizeCombatEvent(event, sourceRelation, targetRelation); ok && p.damageStatistics != nil {
 		record = p.gateAttribution(record)
+		record.SourceActor, record.TargetActor = combatActorTypeOf(event.Source), combatActorTypeOf(event.Target)
 		switch record.Flow {
 		case CombatFlowLocalOutgoing:
 			record.SourceRole = p.localRoleForEntity(event.SourceEntityID, event.Source)
+			if event.Notify != nil && event.Notify.NegativeStatusLocal && event.Notify.Credit != nil {
+				// The scene combat entity stays the source; the role is the one whose trigger or status instance the server
+				// executed (negative_status_credit.go).
+				credit := *event.Notify.Credit
+				record.SourceRole = &credit
+			}
 			if candidate := event.DamageContributorCandidate; candidate != nil && candidate.Kind == vehicleKindMotorcycle && candidate.ActorType == "Vehicle" && candidate.EntityType == "BattleVehicle" && candidate.Status == resolutionCorrelated {
 				record.VehicleKind = candidate.Kind
 			}
@@ -417,7 +428,7 @@ func (p *processor) writeDamageEvent(event combatEvent) bool {
 	if visible {
 		p.recordDamageForOverlap(event)
 	}
-	p.writeStructuredEventJSONL(event.jsonlView(p.masters))
+	p.writeDamageEventJSONL(event)
 	if visible {
 		normalOutput := event.formatNormalForSourceRelation(sourceRelation)
 		switch {

@@ -1,14 +1,19 @@
 import { memo, useEffect, useLayoutEffect, useRef } from "react"
-import { motionReduced, numberOmega } from "../motion/tokens.ts"
-import { planNumberUpdate, stepCritical, type NumberState } from "../motion/spring.ts"
+import { motionReduced, numberOmega, selectionNumberMs } from "../motion/tokens.ts"
+import { easeNumber, planNumberUpdate, planSelectionUpdate, stepCritical, type NumberState } from "../motion/spring.ts"
 import { animateFrames } from "../motion/ticker.ts"
+
+/**
+ * "tween" follows a live value with a critically damped counter; "roll" spins individual digits; "ease" moves a number
+ * that describes a selection to the answer for a new one within selectionNumberMs, in either direction.
+ */
+export type NumberMode = "tween" | "roll" | "ease"
 
 export interface AnimatedNumberProps {
   /** The engine value. Undefined shows the placeholder and cancels any animation. */
   value: number | undefined
   format: (value: number) => string
-  /** "tween" follows the value with a critically damped counter; "roll" spins individual digits. */
-  mode?: "tween" | "roll"
+  mode?: NumberMode
   /** A changed scope (for example a new encounter) shows the new value at once and never animates across scopes. */
   scope?: string
   /** A stale value is shown as it is, without motion. */
@@ -23,6 +28,7 @@ export interface AnimatedNumberProps {
  */
 export const AnimatedNumber = memo(function AnimatedNumber({ value, format, mode = "tween", scope = "", stale = false, placeholder = "—", className }: AnimatedNumberProps) {
   if (mode === "roll") return <RollingNumber value={value} format={format} scope={scope} stale={stale} placeholder={placeholder} className={className} />
+  if (mode === "ease") return <EaseNumber value={value} format={format} scope={scope} stale={stale} placeholder={placeholder} className={className} />
   return <TweenNumber value={value} format={format} scope={scope} stale={stale} placeholder={placeholder} className={className} />
 })
 
@@ -89,6 +95,77 @@ function TweenNumber({ value, format, scope, stale, placeholder, className }: In
   // A format change (locale, precision) rewrites the current value on the next render.
   useLayoutEffect(() => {
     if (value !== undefined && !stop.current) write(motion.current.position)
+  }, [format])
+  return <span ref={node} className={className ? `ww-number ww-num ${className}` : "ww-number ww-num"} data-stale={stale} />
+}
+
+/**
+ * A number that describes a selection. A new answer moves it from what it shows now to the exact answer within
+ * selectionNumberMs with an ease-out, up or down alike; the final frame writes the answer itself. Frames write to the DOM
+ * directly on the shared clock, so a range drag never re-renders React per frame.
+ */
+function EaseNumber({ value, format, scope, stale, placeholder, className }: InnerProps) {
+  const node = useRef<HTMLSpanElement>(null)
+  const position = useRef(value ?? 0)
+  const tween = useRef<{ from: number; to: number; elapsed: number } | null>(null)
+  const shown = useRef("")
+  const previous = useRef<{ value: number | undefined; scope: string }>({ value: undefined, scope })
+  const stop = useRef<(() => void) | null>(null)
+  const formatRef = useRef(format)
+  formatRef.current = format
+
+  const write = (next: number) => {
+    const text = formatRef.current(next)
+    if (text !== shown.current && node.current) {
+      node.current.textContent = text
+      shown.current = text
+    }
+  }
+  const halt = () => {
+    stop.current?.()
+    stop.current = null
+    tween.current = null
+  }
+
+  useLayoutEffect(() => {
+    const planned = planSelectionUpdate(previous.current.value, value, previous.current.scope === scope, stale)
+    const plan = planned === "animate" && motionReduced() ? "snap" : planned
+    previous.current = { value, scope }
+    if (plan === "hide") {
+      halt()
+      if (node.current) node.current.textContent = placeholder
+      shown.current = placeholder
+      return
+    }
+    const next = value as number
+    if (plan === "snap") {
+      halt()
+      position.current = next
+      write(next)
+      return
+    }
+    if ((tween.current?.to ?? position.current) === next) return
+    // A new answer while the number moves starts from where it is now, so it never jumps.
+    tween.current = { from: position.current, to: next, elapsed: 0 }
+    if (stop.current) return
+    stop.current = animateFrames(dt => {
+      const current = tween.current
+      if (!current) {
+        stop.current = null
+        return false
+      }
+      current.elapsed += dt * 1000
+      position.current = easeNumber(current.from, current.to, current.elapsed, selectionNumberMs)
+      write(position.current)
+      if (current.elapsed < selectionNumberMs) return true
+      tween.current = null
+      stop.current = null
+      return false
+    })
+  }, [value, scope, stale, placeholder])
+  useEffect(() => () => halt(), [])
+  useLayoutEffect(() => {
+    if (value !== undefined && !stop.current) write(position.current)
   }, [format])
   return <span ref={node} className={className ? `ww-number ww-num ${className}` : "ww-number ww-num"} data-stale={stale} />
 }

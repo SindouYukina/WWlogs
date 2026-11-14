@@ -10,18 +10,27 @@ import (
 
 // frameDecodeStatus classifies a frame for the archive. Handshake and empty
 // bodies take precedence over command support because neither path decrypts
-// a payload.
-func frameDecodeStatus(frame gameFrame) string {
-	if frame.commandID == 112 && frame.direction == "in" {
+// a payload. readable says whether the protocol session reads the frame's
+// numbering (protocolSession.readable).
+func frameDecodeStatus(frame gameFrame, readable bool, state protocolState) string {
+	if frame.commandID == cmdProtoKeyResponse && frame.direction == "in" {
 		return frameStatusHandshake
 	}
 	if len(frame.body) == 0 {
 		return frameStatusEmptyBody
 	}
-	if isImplementedCommand(frame.commandID) {
+	if !readable && (state == protocolPending || state == protocolUnsupported) {
+		return frameStatusNotCurrentProtocol
+	}
+	if readable && isImplementedCommand(frame.commandID) {
 		return frameStatusImplemented
 	}
 	return frameStatusUndecoded
+}
+
+// archivedFrameStatus classifies frame in the current protocol session.
+func (p *processor) archivedFrameStatus(frame gameFrame) string {
+	return frameDecodeStatus(frame, p.protocol.readable(frame.commandID), p.protocol.state)
 }
 
 // archiveFrame appends one record for the frame and advances the capture-order
@@ -48,7 +57,7 @@ func (p *processor) archiveFrame(frame gameFrame) {
 		BodyLength:       len(frame.body),
 		BodySHA256:       hex.EncodeToString(digest[:]),
 		SessionKeyReady:  len(p.session) == 32,
-		DecodeStatus:     frameDecodeStatus(frame),
+		DecodeStatus:     p.archivedFrameStatus(frame),
 		Timestamp:        frame.timestamp.Format("2006-01-02T15:04:05.000000000Z07:00"),
 	}
 	line, err := json.Marshal(record)

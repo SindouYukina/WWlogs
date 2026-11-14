@@ -45,15 +45,20 @@ const (
 const combatEvidenceDamageRPCResponse = "damage_rpc_response"
 
 // CombatEventKey identifies one server response inside a statistics owner. The RPC layer already drops repeated
-// responses; the key lets the statistics layer stay idempotent if the same response is delivered twice.
+// responses; the key lets the statistics layer stay idempotent if the same response is delivered twice. RPCID is the
+// request's RequestId continued past each wrap of the client's RequestId counter (extendedRequestID), so two requests that
+// shared a RequestId in a long session keep two keys; until the first wrap it is the RequestId itself.
 type CombatEventKey struct {
 	ProtocolSession int    `json:"protocolSession"`
 	RPCID           uint64 `json:"rpcId"`
+	// Notify identifies a server-executed DamageExecuteNotify instead (notifyEventKey: the server frame's sequence and the
+	// result's position in it); RPCID is then zero. The two key spaces never meet.
+	Notify uint64 `json:"notify,omitempty"`
 }
 
-// hasIdentity reports whether the key names a real response. Events without an RPC id are never deduplicated.
+// hasIdentity reports whether the key names a real response or notification. Events without one are never deduplicated.
 func (k CombatEventKey) hasIdentity() bool {
-	return k.RPCID != 0
+	return k.RPCID != 0 || k.Notify != 0
 }
 
 // CombatEndpoint is one side of an event with the relation established for it at event time.
@@ -95,7 +100,16 @@ type CombatEventRecord struct {
 	// a healing result whose ChangeLife lowered HP; it applies nothing.
 	AppliedHealing      int64 `json:"appliedHealing,omitempty"`
 	HealingInconsistent bool  `json:"healingInconsistent,omitempty"`
+	// SourceActor and TargetActor are the static identity evidence of each endpoint at event time (history_journal.go).
+	// They only group enemy instances for Combat History and never change a statistic.
+	SourceActor *CombatActorType `json:"-"`
+	TargetActor *CombatActorType `json:"-"`
+	// historySequence numbers the record in the Combat History journal once the statistics accepted it; zero otherwise.
+	historySequence uint64
 }
+
+// HistorySequence is the record's place in its capture session's Combat History journal; zero when it was not journaled.
+func (r CombatEventRecord) HistorySequence() uint64 { return r.historySequence }
 
 func (r playerRelation) String() string {
 	switch r {
@@ -144,11 +158,19 @@ func (f CombatFlow) confidence() AttributionConfidence {
 	}
 }
 
-// normalizeCombatEvent builds the statistics record for a decoded damage-RPC result. It returns false for results
-// that cannot enter statistics: a non-positive amount or a missing endpoint, which keeps the v0.3 admission rule.
+// normalizeCombatEvent builds the statistics record for a decoded damage-RPC result or a notified result
+// (damage_notify.go). It returns false for results that cannot enter statistics: a non-positive amount or a missing
+// endpoint, which keeps the v0.3 admission rule.
 func normalizeCombatEvent(event combatEvent, source, target playerRelation) (CombatEventRecord, bool) {
 	if event.Damage <= 0 || !event.HasSourceEntity || event.SourceEntityID == 0 || !event.HasTargetEntity || event.TargetEntityID == 0 {
 		return CombatEventRecord{}, false
+	}
+	key, evidence := CombatEventKey{ProtocolSession: event.SessionNumber, RPCID: extendedRequestID(event.RPCID, event.RequestEpoch)}, combatEvidenceDamageRPCResponse
+	if event.Notify != nil {
+		key, evidence = CombatEventKey{ProtocolSession: event.SessionNumber, Notify: event.Notify.Key}, combatEvidenceDamageExecuteNotify
+		if event.Notify.NegativeStatusLocal {
+			evidence = combatEvidenceNegativeStatusNotify
+		}
 	}
 	kind := CombatEventOther
 	switch event.EventTypeCandidate {
@@ -160,9 +182,9 @@ func normalizeCombatEvent(event combatEvent, source, target playerRelation) (Com
 	flow := classifyCombatFlow(source, target)
 	record := CombatEventRecord{
 		Kind:       kind,
-		Key:        CombatEventKey{ProtocolSession: event.SessionNumber, RPCID: event.RPCID},
+		Key:        key,
 		ObservedAt: event.Timestamp,
-		Evidence:   combatEvidenceDamageRPCResponse,
+		Evidence:   evidence,
 		Source: CombatEndpoint{
 			EntityID: event.SourceEntityID, EntityGeneration: event.Source.Lifecycle.ReusedAfterRemove, Relation: source.String(),
 		},

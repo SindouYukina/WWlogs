@@ -123,3 +123,458 @@ body[data-view="overlay"][data-editing="true"] { --wails-draggable: drag; }
 .ww-effects-legend-more { width: var(--ww-effect-more); }
 .ww-effects-legend-note { margin: 0; padding-bottom: var(--ww-space-2); font-size: var(--ww-text-xs); color: var(--ww-text-3); }
 .ww-overlay-surface[data-surface="effects"]:has(> .ww-overlay-edit) { padding-bottom: calc(var(--ww-space-2) * 2 + var(--ww-overlay-edit-height)); }
+
+/* ------------------------------ Combat History ------------------------------ */
+.ww-history { position: relative; height: 100%; background: var(--ww-surface-canvas); isolation: isolate; }
+/* The gutter is kept even when nothing scrolls, so a day list loading in never shifts the heatmap sideways. */
+.ww-history-layout { display: flex; flex-direction: column; gap: var(--ww-space-3); height: 100%; padding: var(--ww-space-4) var(--ww-space-5); overflow-y: auto; scrollbar-gutter: stable; scrollbar-width: thin; scrollbar-color: var(--ww-surface-4) transparent; }
+/* A page header: the one-line title, and on the right the Career Overview's recording indicator or the History page's
+   control row, centred on the title's line. When the two do not fit side by side, the right side moves below the title as
+   a whole and keeps to the right edge. */
+.ww-history-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--ww-space-2) var(--ww-space-4); }
+.ww-history-top > .ww-history-indicator, .ww-history-actions { margin-inline-start: auto; }
+/* The History page's control row: the return to the Career Overview when the page was opened from there, the recording
+   indicator, the calendar's year switch and the view switcher. Every control is centred on the row's one line whatever its
+   own height. The view switcher is the last item, so the year switch coming and going before it never moves it; without
+   the calendar the indicator sits right beside the view switcher. */
+.ww-history-actions { display: flex; align-items: center; gap: var(--ww-space-4); }
+/* The view switcher's wrapper carries its data fields; as a flex box it is exactly the switcher's box. */
+.ww-history-mode { display: flex; }
+.ww-history-title { margin: 0; font-family: var(--ww-font-display); font-size: var(--ww-text-xl); font-weight: var(--ww-weight-display); }
+.ww-history-years { display: flex; align-items: center; gap: var(--ww-space-2); }
+.ww-history-year { min-width: 4ch; text-align: center; font-size: var(--ww-text-lg); font-weight: var(--ww-weight-semibold); }
+.ww-history-heat { padding: var(--ww-space-3) var(--ww-space-4); }
+.ww-history-heat-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--ww-space-3); margin-bottom: var(--ww-space-2); }
+.ww-history-heat-head h3 { margin: 0; font-size: var(--ww-text-base); font-weight: var(--ww-weight-semibold); }
+.ww-history-total { font-size: var(--ww-text-sm); color: var(--ww-text-3); }
+.ww-history-note { margin: 0; font-size: var(--ww-text-xs); color: var(--ww-text-3); }
+.ww-history-note[data-tone="warn"] { color: var(--ww-warn); }
+.ww-history-note[data-tone="critical"] { color: var(--ww-critical); }
+.ww-history-day { padding: var(--ww-space-3) var(--ww-space-4); min-height: 160px; }
+.ww-history-table { width: 100%; border-collapse: collapse; font-size: var(--ww-text-sm); }
+.ww-history-table th { padding: 0 var(--ww-space-2) var(--ww-space-1_5); font-size: var(--ww-text-2xs); font-weight: var(--ww-weight-medium); color: var(--ww-text-4); text-align: start; white-space: nowrap; }
+.ww-history-table td { padding: 7px var(--ww-space-2); border-top: 1px solid var(--ww-line-soft); text-align: start; vertical-align: middle; }
+.ww-history-table th:first-child, .ww-history-table td:first-child { padding-inline-start: 0; }
+.ww-history-table .ww-num { text-align: end; }
+.ww-history-table td.ww-history-time { text-align: start; }
+.ww-history-table th.ww-num { text-align: end; }
+.ww-history-row { cursor: pointer; transition: background-color var(--ww-dur-fast) var(--ww-ease-standard); }
+.ww-history-row:hover { background: var(--ww-surface-hover); }
+.ww-history-row:focus-visible { outline: none; box-shadow: var(--ww-focus-ring); }
+.ww-history-unknown { color: var(--ww-text-4); }
+.ww-history-mark { margin-inline-start: var(--ww-space-1); font-size: var(--ww-text-2xs); color: var(--ww-text-4); cursor: help; }
+.ww-history-more { display: flex; align-items: center; justify-content: space-between; gap: var(--ww-space-3); margin-top: var(--ww-space-2); font-size: var(--ww-text-xs); color: var(--ww-text-3); }
+
+/* History Library: the filter bar, its inputs and the list's role avatars. */
+.ww-history-library { display: flex; flex-direction: column; gap: var(--ww-space-3); }
+.ww-history-filters { padding: var(--ww-space-3) var(--ww-space-4); display: flex; flex-direction: column; gap: var(--ww-space-2); }
+.ww-history-filter-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--ww-space-2) var(--ww-space-3); align-items: end; }
+.ww-history-filter { display: flex; flex-direction: column; gap: 4px; min-width: 0; font-size: var(--ww-text-2xs); color: var(--ww-text-4); }
+.ww-history-filter-wide { grid-column: span 2; }
+.ww-history-filter-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--ww-space-3); }
+.ww-input { box-sizing: border-box; width: 100%; height: 30px; padding: 0 var(--ww-space-2); border: 1px solid var(--ww-line); border-radius: var(--ww-radius-sm); background: var(--ww-surface-2); color: var(--ww-text-1); font: inherit; font-size: var(--ww-text-sm); color-scheme: dark; }
+.ww-input:hover { border-color: var(--ww-line-strong); }
+.ww-input:focus-visible { outline: none; box-shadow: var(--ww-focus-ring); }
+.ww-input::placeholder { color: var(--ww-text-4); }
+.ww-history-roles { display: inline-flex; gap: 2px; align-items: center; }
+.ww-history-compare-column { width: 28px; }
+.ww-check { width: 15px; height: 15px; margin: 0; accent-color: var(--ww-accent); cursor: pointer; }
+.ww-check:disabled { cursor: not-allowed; opacity: 0.4; }
+/* Deleting several encounters: a bar above the list (its actions keep to the right), checkboxes in the deletion colour, and
+   the chosen rows tinted so the whole choice reads at a glance. */
+.ww-history-bulk { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ww-space-2) var(--ww-space-3); min-height: 34px; margin-bottom: var(--ww-space-2); }
+.ww-history-bulk-actions { display: flex; gap: var(--ww-space-2); margin-inline-start: auto; }
+.ww-history-bulk > .ww-history-confirm { flex: 1 1 100%; }
+.ww-check[data-purpose="delete"] { accent-color: var(--ww-critical); }
+.ww-history-row[data-chosen="true"] { background: var(--ww-critical-soft); }
+.ww-history-detail { display: flex; flex-direction: column; gap: var(--ww-space-3); }
+.ww-history-detail-head { display: flex; align-items: center; justify-content: space-between; gap: var(--ww-space-3); flex-wrap: wrap; }
+.ww-history-detail-head h3 { margin: 0; font-size: var(--ww-text-lg); font-weight: var(--ww-weight-semibold); }
+/* The game version follows the date and time as quiet metadata, not a badge. */
+.ww-history-version { font-weight: var(--ww-weight-regular); color: var(--ww-text-3); font-variant-numeric: tabular-nums; }
+/* The game version column holds a short major.minor value: it shrinks to its header, so the scene, enemy and DPS columns
+   keep their width. */
+.ww-history-table .ww-history-version-column { width: 1%; white-space: nowrap; }
+.ww-history-chips { display: flex; flex-wrap: wrap; gap: var(--ww-space-1_5); }
+.ww-history-facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: var(--ww-space-2) var(--ww-space-4); margin: 0; font-size: var(--ww-text-sm); }
+.ww-history-facts > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ww-history-facts dt { font-size: var(--ww-text-2xs); color: var(--ww-text-4); }
+.ww-history-facts dd { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ww-history-context { padding: var(--ww-space-3) var(--ww-space-4); }
+.ww-history-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--ww-space-3); }
+.ww-history-main { display: grid; grid-template-columns: minmax(280px, 0.8fr) minmax(0, 1.5fr); gap: var(--ww-space-3); }
+.ww-history-main .ww-dash-board { min-height: 300px; }
+.ww-history-enemies { padding: var(--ww-space-3) var(--ww-space-4); }
+.ww-history-indicator { display: inline-flex; }
+/* Coverage facts are sentences: they wrap instead of being cut. */
+.ww-history-facts-wrap dd { overflow: visible; white-space: normal; }
+.ww-history-delete { display: flex; flex-direction: column; align-items: flex-end; gap: var(--ww-space-1_5); }
+.ww-history-confirm { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--ww-space-2) var(--ww-space-3); max-width: 100%; padding: var(--ww-space-2) var(--ww-space-3); border: 1px solid var(--ww-critical); border-radius: var(--ww-radius-md); background: var(--ww-critical-soft); }
+.ww-history-confirm p { flex: 1 1 280px; min-width: 0; margin: 0; font-size: var(--ww-text-sm); }
+.ww-history-confirm-actions { display: flex; gap: var(--ww-space-2); }
+
+/* ------------------------------ Career Overview ------------------------------ */
+/* The range presets need their full width; the selects keep the filter grid's column. */
+.ww-career-filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--ww-space-2) var(--ww-space-3); }
+.ww-career-filters > .ww-history-filter { flex: 0 1 180px; }
+.ww-career-filters > .ww-history-filter:first-child { flex: 0 0 auto; }
+.ww-career-split { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: var(--ww-space-3); align-items: start; }
+.ww-career-fact-label { font-size: var(--ww-text-2xs); color: var(--ww-text-4); }
+.ww-career-classes { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ww-space-2) var(--ww-space-4); }
+.ww-career-class { display: inline-flex; align-items: center; gap: var(--ww-space-1_5); font-size: var(--ww-text-sm); }
+.ww-career-empty { display: flex; align-items: flex-start; gap: var(--ww-space-3); color: var(--ww-text-3); }
+.ww-career-empty h3 { margin: 0 0 var(--ww-space-1); font-size: var(--ww-text-base); font-weight: var(--ww-weight-semibold); color: var(--ww-text); }
+/* A personal record is a row that opens its encounter. */
+.ww-career-records { display: flex; flex-direction: column; gap: var(--ww-space-1); }
+.ww-career-record { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "label value" "who who" "where where"; gap: 2px var(--ww-space-3); width: 100%; padding: var(--ww-space-2); border: 0; border-top: 1px solid var(--ww-line-soft); border-radius: 0; background: transparent; color: inherit; font: inherit; text-align: start; }
+button.ww-career-record { cursor: pointer; transition: background-color var(--ww-dur-fast) var(--ww-ease-standard); }
+button.ww-career-record:hover { background: var(--ww-surface-hover); }
+button.ww-career-record:focus-visible { outline: none; box-shadow: var(--ww-focus-ring); }
+.ww-career-record[data-empty="true"] { grid-template-areas: "label value"; }
+.ww-career-record-label { grid-area: label; font-size: var(--ww-text-xs); color: var(--ww-text-3); }
+.ww-career-record-value { grid-area: value; font-size: var(--ww-text-lg); font-weight: var(--ww-weight-semibold); color: var(--ww-hero-number); }
+.ww-career-record > .ww-history-unknown { grid-area: value; font-size: var(--ww-text-xs); }
+.ww-career-record-who { grid-area: who; display: flex; align-items: center; gap: var(--ww-space-1_5); min-width: 0; font-size: var(--ww-text-sm); }
+.ww-career-record-skill { min-width: 0; color: var(--ww-text-3); }
+.ww-career-record-where { grid-area: where; display: flex; flex-wrap: wrap; gap: 0 var(--ww-space-3); font-size: var(--ww-text-2xs); color: var(--ww-text-3); }
+/* Characters: one card per role, opening the role's encounters in the History Library. */
+.ww-career-role-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--ww-space-2); }
+.ww-career-role { display: flex; flex-direction: column; gap: var(--ww-space-1_5); min-width: 0; padding: var(--ww-space-2); border-radius: var(--ww-radius-md); background: var(--ww-surface-2); box-shadow: inset 0 0 0 1px var(--ww-line-soft); }
+.ww-career-role-open { display: flex; align-items: flex-start; gap: var(--ww-space-2); min-width: 0; margin: calc(var(--ww-space-1) * -1); padding: var(--ww-space-1); border: 0; border-radius: var(--ww-radius-sm); background: transparent; color: inherit; font: inherit; text-align: start; cursor: pointer; transition: background-color var(--ww-dur-fast) var(--ww-ease-standard); }
+.ww-career-role-open:hover { background: var(--ww-surface-hover); }
+.ww-career-role-open:focus-visible { outline: none; box-shadow: var(--ww-focus-ring); }
+/* A record value that opens its encounter reads as a number with a quiet underline. */
+.ww-career-link { padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: start; text-decoration: underline; text-decoration-color: var(--ww-line-strong); text-underline-offset: 3px; cursor: pointer; }
+.ww-career-link:hover { color: var(--ww-accent-bright); text-decoration-color: currentColor; }
+.ww-career-link:focus-visible { outline: none; border-radius: 2px; box-shadow: var(--ww-focus-ring); }
+.ww-career-combo-best { display: inline-flex; align-items: baseline; gap: var(--ww-space-1_5); justify-content: flex-end; }
+.ww-career-trend-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ww-space-2) var(--ww-space-3); margin-bottom: var(--ww-space-1); }
+.ww-career-role-main { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
+.ww-career-role-line { display: flex; align-items: baseline; justify-content: space-between; gap: var(--ww-space-2); min-width: 0; }
+.ww-career-role-count { font-size: var(--ww-text-xs); color: var(--ww-text-3); }
+.ww-career-role-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--ww-space-2); font-size: var(--ww-text-sm); }
+.ww-career-role-facts > span { display: flex; flex-direction: column; min-width: 0; }
+.ww-career-strip { display: block; width: 100%; height: 12px; }
+.ww-career-strip-track { fill: var(--ww-line-soft); }
+.ww-career-strip-bar { fill: var(--ww-strip-color, var(--ww-accent)); }
+/* Trends: one bar per date of the range, scaled to the range's largest value. */
+.ww-career-trend { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: 140px auto; gap: 2px var(--ww-space-2); margin: var(--ww-space-1) 0 var(--ww-space-2); }
+.ww-career-trend-scale { display: flex; flex-direction: column; justify-content: space-between; font-size: var(--ww-text-2xs); color: var(--ww-text-4); text-align: end; }
+.ww-career-trend-plot { width: 100%; height: 100%; border-bottom: 1px solid var(--ww-line); }
+.ww-career-trend-grid { stroke: var(--ww-chart-grid); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.ww-career-trend-bar { fill: var(--ww-accent); }
+.ww-career-trend-bar[data-lower-bound="true"] { fill: color-mix(in oklab, var(--ww-accent) 55%, var(--ww-surface-2)); }
+.ww-career-trend-bar:hover { fill: var(--ww-accent-bright); }
+.ww-career-trend-axis { grid-column: 2; display: flex; justify-content: space-between; font-size: var(--ww-text-2xs); color: var(--ww-text-4); }
+.ww-career-combos { display: flex; flex-direction: column; margin: var(--ww-space-2) 0 0; padding: 0; list-style: none; }
+.ww-career-combo { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; align-items: center; gap: var(--ww-space-3); padding: 6px 0; border-top: 1px solid var(--ww-line-soft); font-size: var(--ww-text-sm); }
+.ww-career-combo > .ww-num { text-align: end; color: var(--ww-text-2); }
+.ww-career-rules { margin: 0; padding-inline-start: var(--ww-space-4); font-size: var(--ww-text-xs); color: var(--ww-text-3); display: flex; flex-direction: column; gap: 4px; }
+
+/* Effect detail: the stack steps and the damage/effect time correlation. */
+.ww-analysis-stacks { margin: var(--ww-space-2) 0 0; }
+.ww-analysis-stacks svg { display: block; width: 100%; height: 28px; border-bottom: 1px solid var(--ww-line-soft); }
+.ww-analysis-stacks rect { fill: var(--ww-accent); }
+.ww-analysis-stacks rect[data-evidence="stated"] { fill: color-mix(in oklab, var(--ww-accent) 55%, var(--ww-surface-2)); }
+.ww-analysis-stacks rect[data-evidence="unknown"] { fill: var(--ww-surface-4); }
+.ww-analysis-stacks-axis { display: flex; justify-content: space-between; font-size: var(--ww-text-2xs); color: var(--ww-text-4); }
+.ww-analysis-correlation { display: flex; flex-direction: column; gap: var(--ww-space-2); margin-top: var(--ww-space-3); padding-top: var(--ww-space-3); border-top: 1px solid var(--ww-line-soft); }
+.ww-analysis-correlation h5 { margin: 0; font-size: var(--ww-text-sm); font-weight: var(--ww-weight-semibold); }
+.ww-correlation-bar { display: flex; height: 8px; overflow: hidden; border-radius: 999px; background: var(--ww-surface-3); }
+.ww-correlation-bar > span { min-width: 2px; }
+.ww-correlation-bar > span[data-class="confirmed"], .ww-correlation-swatch[data-class="confirmed"] { background: var(--ww-accent); }
+.ww-correlation-bar > span[data-class="stated"], .ww-correlation-swatch[data-class="stated"] { background: color-mix(in oklab, var(--ww-accent) 50%, var(--ww-surface-2)); }
+.ww-correlation-bar > span[data-class="unknown"], .ww-correlation-swatch[data-class="unknown"] { background: var(--ww-surface-4); }
+.ww-correlation-bar > span[data-class="outside"], .ww-correlation-swatch[data-class="outside"] { background: var(--ww-accent-2); }
+.ww-correlation-classes { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
+.ww-correlation-class { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto auto 56px; align-items: center; gap: var(--ww-space-2); width: 100%; padding: 5px var(--ww-space-1); border: 0; border-radius: var(--ww-radius-sm); background: transparent; color: inherit; font: inherit; font-size: var(--ww-text-sm); text-align: start; cursor: pointer; transition: background-color var(--ww-dur-fast) var(--ww-ease-standard); }
+.ww-correlation-class:hover:not(:disabled), .ww-correlation-class[aria-pressed="true"] { background: var(--ww-surface-hover); }
+.ww-correlation-class:disabled { cursor: default; opacity: 0.55; }
+.ww-correlation-class:focus-visible { outline: none; box-shadow: var(--ww-focus-ring); }
+.ww-correlation-class > .ww-num { text-align: end; }
+.ww-correlation-swatch { width: 10px; height: 10px; border-radius: 3px; }
+.ww-correlation-hits ol { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; max-height: 220px; overflow-y: auto; font-size: var(--ww-text-xs); }
+.ww-correlation-hits li { display: grid; grid-template-columns: 52px minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1fr) 64px auto; gap: var(--ww-space-2); padding: 3px 0; border-top: 1px solid var(--ww-line-soft); }
+.ww-correlation-table td.ww-num > .ww-compare-sub { display: block; }
+
+/* ------------------------------ Encounter Comparison ------------------------------ */
+/* The comparison set: chips of the chosen encounters and the actions, above the calendar or the library. */
+.ww-compare-tray { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ww-space-2) var(--ww-space-3); padding: var(--ww-space-2) var(--ww-space-3); border-radius: var(--ww-radius-md); background: var(--ww-surface-1); box-shadow: inset 0 0 0 1px var(--ww-accent-line); }
+.ww-compare-chip { display: inline-flex; align-items: center; gap: var(--ww-space-1); height: 26px; padding-inline: var(--ww-space-2) 2px; border-radius: var(--ww-radius-sm); background: var(--ww-surface-3); font-size: var(--ww-text-xs); }
+.ww-compare-chip-remove { width: 22px; height: 22px; padding: 0; border: 0; border-radius: var(--ww-radius-sm); background: transparent; color: var(--ww-text-3); font: inherit; font-size: var(--ww-text-sm); line-height: 1; cursor: pointer; }
+.ww-compare-chip-remove:hover { background: var(--ww-surface-hover); color: var(--ww-text); }
+.ww-compare-chip-remove:focus-visible { outline: none; box-shadow: var(--ww-focus-ring); }
+.ww-compare-tray-actions { display: inline-flex; gap: var(--ww-space-2); margin-inline-start: auto; }
+.ww-compare-conditions { display: flex; flex-wrap: wrap; gap: var(--ww-space-2) var(--ww-space-4); margin-bottom: var(--ww-space-2); }
+.ww-compare-condition { display: inline-flex; align-items: center; gap: var(--ww-space-1_5); }
+/* The tables size to their columns, so an encounter's heading stays above its values. No column takes a percentage width:
+   in an auto-width table that would stretch the table to the whole card again. Values stay right-aligned with the change
+   below. */
+.ww-compare-table { width: auto; max-width: 100%; }
+.ww-compare-table .ww-compare-label { min-width: 132px; white-space: nowrap; font-size: var(--ww-text-xs); font-weight: var(--ww-weight-medium); color: var(--ww-text-3); text-align: start; }
+.ww-compare-table td.ww-num, .ww-compare-table th.ww-num { min-width: 150px; padding-inline-start: var(--ww-space-6); }
+.ww-compare-table td.ww-num { vertical-align: top; }
+.ww-compare-table td.ww-num > span { display: block; }
+.ww-compare-head { min-width: 170px; padding-inline-start: var(--ww-space-6); vertical-align: top; text-align: end; font-size: var(--ww-text-xs); font-weight: var(--ww-weight-regular); color: var(--ww-text-2); white-space: normal; }
+.ww-compare-head-line { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 2px var(--ww-space-2); min-width: 0; margin-bottom: 2px; }
+.ww-compare-time { font-size: var(--ww-text-sm); font-weight: var(--ww-weight-semibold); color: var(--ww-text); }
+.ww-compare-sub { font-size: var(--ww-text-2xs); color: var(--ww-text-3); }
+/* A change is a fact, not a verdict: one quiet color for both signs. */
+.ww-compare-delta { font-size: var(--ww-text-2xs); color: var(--ww-accent-2); }
+.ww-compare-who { display: inline-flex; align-items: center; gap: var(--ww-space-1_5); min-width: 0; max-width: 200px; color: var(--ww-text); font-size: var(--ww-text-sm); }
+.ww-compare-skill { display: inline-flex; align-items: baseline; gap: var(--ww-space-1); min-width: 0; max-width: 240px; color: var(--ww-text); font-size: var(--ww-text-sm); }
+
+/* ------------------------------ History analysis ------------------------------ */
+/* One gutter is shared by the DPS timeline's value axis, the time axis and the effect lanes' labels, so a moment of the
+   encounter lines up across all of them. */
+.ww-history-detail { --ww-analysis-gutter: 184px; }
+.ww-history-summary-row { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--ww-space-3); }
+.ww-history-summary-row > .ww-history-facts { flex: 1 1 auto; min-width: 0; }
+.ww-history-coverage { margin-top: var(--ww-space-2); padding-top: var(--ww-space-2); border-top: 1px solid var(--ww-line-soft); }
+.ww-history-coverage .ww-history-facts { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); font-size: var(--ww-text-xs); }
+.ww-analysis { display: flex; flex-direction: column; gap: var(--ww-space-3); min-width: 0; }
+/* The bars of an opening grow with the timeline's reveal: while the reveal waits at the start for the page's first drawing,
+   they wait at theirs, so a first rasterization never stops a bar halfway. The selector names the bar's three layers
+   (DamageBar) instead of ending in `*`: a state selector whose last part names nothing makes the browser restyle the whole
+   analysis when data-reveal changes, about 1500 elements in the sweep's first frame. */
+.ww-analysis[data-reveal="waiting"] .ww-bar[data-enter="true"] > .ww-bar-trail,
+.ww-analysis[data-reveal="waiting"] .ww-bar[data-enter="true"] > .ww-bar-fill,
+.ww-analysis[data-reveal="waiting"] .ww-bar[data-enter="true"] > .ww-bar-edge { animation-play-state: paused; }
+.ww-analysis-toolbar { padding: var(--ww-space-2) var(--ww-space-4); }
+.ww-analysis-toolbar-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ww-space-2) var(--ww-space-4); }
+.ww-analysis-filter { display: flex; align-items: center; gap: var(--ww-space-2); min-width: 0; font-size: var(--ww-text-xs); color: var(--ww-text-3); }
+.ww-analysis-filter > span:first-child { white-space: nowrap; }
+.ww-analysis-filter .ww-select-trigger { min-width: 150px; max-width: 240px; }
+.ww-analysis-range strong { font-size: var(--ww-text-sm); font-weight: var(--ww-weight-semibold); color: var(--ww-text); white-space: nowrap; }
+.ww-analysis-timeline, .ww-analysis-tabs { padding: var(--ww-space-3) var(--ww-space-4); min-width: 0; }
+.ww-analysis-tabs-head { margin-bottom: var(--ww-space-3); }
+.ww-analysis-timeline-tools { display: inline-flex; align-items: center; gap: var(--ww-space-2); min-width: 0; }
+:root[data-ww-motion="reduced"] .ww-analysis-replay { display: none; }
+.ww-analysis-lanes-head { display: flex; align-items: baseline; justify-content: space-between; margin: var(--ww-space-3) 0 var(--ww-space-1); padding-top: var(--ww-space-3); border-top: 1px solid var(--ww-line-soft); }
+.ww-analysis-lanes-head h4 { margin: 0; font-size: var(--ww-text-sm); font-weight: var(--ww-weight-semibold); }
+.ww-analysis-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 300px); gap: var(--ww-space-4); align-items: start; min-width: 0; }
+/* A stack keeps its content at the full width of the card, so lanes line up with the timeline above; details follow. */
+.ww-analysis-stack { display: flex; flex-direction: column; gap: var(--ww-space-2); min-width: 0; }
+.ww-analysis-stack > .ww-analysis-detail { position: static; }
+.ww-analysis-stack > .ww-analysis-detail .ww-analysis-facts { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
+.ww-analysis-main-col { min-width: 0; display: flex; flex-direction: column; gap: var(--ww-space-2); }
+.ww-analysis-detail { position: sticky; top: 0; display: flex; flex-direction: column; gap: var(--ww-space-2); min-width: 0; padding: var(--ww-space-3); border-radius: var(--ww-radius-md); background: var(--ww-surface-overlay-subtle); font-size: var(--ww-text-sm); }
+.ww-analysis-detail h4 { margin: 0; font-size: var(--ww-text-md); font-weight: var(--ww-weight-semibold); min-width: 0; }
+.ww-analysis-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--ww-space-1_5) var(--ww-space-3); margin: 0; }
+.ww-analysis-facts > div { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.ww-analysis-facts dt { font-size: var(--ww-text-2xs); color: var(--ww-text-4); }
+.ww-analysis-facts dd { margin: 0; overflow: hidden; text-overflow: ellipsis; }
+.ww-analysis-intervals { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; max-height: 220px; overflow-y: auto; font-size: var(--ww-text-xs); }
+.ww-analysis-intervals li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: var(--ww-space-2); padding: 2px 0; border-top: 1px solid var(--ww-line-soft); }
+.ww-analysis-intervals li[data-evidence="stated"] { color: var(--ww-text-3); }
+.ww-analysis-intervals li[data-evidence="unknown"] { color: var(--ww-text-4); font-style: italic; }
+.ww-analysis-skills { display: grid; grid-template-columns: minmax(220px, 0.42fr) minmax(0, 2fr); gap: var(--ww-space-4); min-width: 0; }
+.ww-analysis-board { min-width: 0; }
+.ww-analysis-scroll { max-height: 420px; }
+.ww-analysis-table td { vertical-align: middle; }
+.ww-analysis-table tr[data-selected="true"], .ww-analysis-skill-table tr[data-selected="true"] { background: var(--ww-surface-selected); }
+.ww-analysis-skill-table th { white-space: nowrap; }
+.ww-analysis-skill-table .ww-dash-skill-name { max-width: 220px; }
+.ww-analysis-skill-table .ww-dash-skill-share { grid-template-columns: minmax(48px, 1fr) 46px; min-width: 104px; }
+.ww-analysis-skill-table .ww-history-row { cursor: pointer; }
+.ww-analysis-spark { width: 96px; height: 18px; display: block; fill: var(--ww-series, var(--ww-element-unknown)); }
+.ww-analysis-spark-range { fill: var(--ww-accent-soft); }
+.ww-analysis-effect { display: inline-flex; align-items: center; gap: var(--ww-space-1_5); min-width: 0; max-width: 100%; }
+.ww-analysis-effect img { width: 18px; height: 18px; flex: none; }
+.ww-analysis-legend { display: flex; flex-wrap: wrap; gap: var(--ww-space-1) var(--ww-space-3); font-size: var(--ww-text-2xs); color: var(--ww-text-3); }
+.ww-analysis-legend > span { display: inline-flex; align-items: center; gap: var(--ww-space-1); }
+.ww-analysis-events { display: flex; flex-direction: column; gap: var(--ww-space-2); min-width: 0; }
+.ww-analysis-kinds, .ww-analysis-pager { display: flex; gap: var(--ww-space-1); }
+.ww-analysis-pager { margin-inline-start: auto; }
+.ww-analysis-events-wrap { max-height: 480px; }
+.ww-analysis-kind { font-size: var(--ww-text-xs); }
+.ww-analysis-kind[data-kind="damage"] { color: var(--ww-text-2); }
+.ww-analysis-kind[data-kind="healing"] { color: var(--ww-good); }
+.ww-analysis-kind[data-kind="effect"] { color: var(--ww-info); }
+.ww-analysis-event-detail { display: inline-flex; align-items: center; gap: var(--ww-space-2); min-width: 0; }
+
+/* The analysis timeline: a value axis in the gutter, one SVG layer per line, a range drawn over the plot. */
+.ww-atl { min-width: 0; }
+.ww-atl-legend { display: flex; flex-wrap: wrap; gap: var(--ww-space-1) var(--ww-space-3); margin: 0 0 var(--ww-space-2) var(--ww-analysis-gutter); font-size: var(--ww-text-xs); color: var(--ww-text-2); }
+.ww-atl[data-focusing="true"] .ww-chart-legend-item[data-focused="false"] { opacity: 0.55; }
+.ww-atl-body { display: grid; grid-template-columns: var(--ww-analysis-gutter) minmax(0, 1fr); }
+.ww-atl-axis { position: relative; font-size: var(--ww-text-2xs); color: var(--ww-text-4); }
+.ww-atl-axis > span { position: absolute; right: var(--ww-space-2); transform: translateY(-50%); }
+.ww-atl-plot { position: relative; min-width: 0; cursor: crosshair; touch-action: none; }
+.ww-atl-plot:focus-visible { outline: none; box-shadow: var(--ww-focus-ring); border-radius: var(--ww-radius-xs); }
+.ww-atl-plot > svg, .ww-atl-reveal-inner > svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+/* The opening reveal: a window over the lines widens from the encounter's start to its end while its content moves back by
+   the same amount, so the lines never move and only how much of them shows changes. It reaches 6px past the plot so a
+   line's stroke at the top or bottom is never cut. backwards fill holds nothing afterwards. */
+.ww-atl-reveal { position: absolute; inset: -6px 0; overflow: hidden; pointer-events: none; }
+.ww-atl-reveal-inner { position: absolute; inset: 6px 0; }
+@keyframes ww-reveal-window { from { transform: translateX(-100%); } }
+@keyframes ww-reveal-content { from { transform: translateX(100%); } }
+@keyframes ww-reveal-edge { from { opacity: 0.85; } 40% { opacity: 0.85; } to { opacity: 0; } }
+/* A playing waits at the encounter's start (useRevealClock) with its content drawn in place but invisible, already in the
+   composited layers the sweep is about to move. The first rasterization of the lines, the tracks and the edge, and any GPU
+   program no earlier frame needed, so happens while nothing moves and never in the sweep's first frames. Nothing in it can
+   be pointed at while it waits. */
+/* The state selectors of a reveal window name the elements they style (its inner content and its edge, the only children it
+   has) and never end in `*`, which would restyle every icon and track under it each time data-enter changes. Pointer
+   events are inherited, so the waiting window turns them off for everything in it; lane marks are the only elements inside
+   that turn them back on, so they are named. */
+.ww-atl-reveal[data-enter], .ww-atl-reveal[data-enter] > .ww-atl-reveal-inner, .ww-atl-reveal[data-enter] > .ww-atl-reveal-edge { will-change: transform; }
+.ww-atl-reveal[data-enter="waiting"] { opacity: 0.004; }
+.ww-atl-reveal[data-enter="waiting"], .ww-atl-reveal[data-enter="waiting"] .ww-lane-mark { pointer-events: none; }
+.ww-atl-reveal[data-enter="waiting"] > .ww-atl-reveal-edge { opacity: 0.85; }
+/* --ww-reveal-at (set on the window when the playing starts: how far into it the window joins) is not inherited, and only the
+   window's two children take it from the window. Inherited, setting it would restyle every icon and track in the window in
+   the sweep's first frame. */
+@property --ww-reveal-at { syntax: "<time>"; inherits: false; initial-value: 0ms; }
+.ww-atl-reveal[data-enter="true"] { animation: ww-reveal-window var(--ww-curve-enter-dur) var(--ww-ease-curve-enter) var(--ww-reveal-at, 0ms) backwards; }
+.ww-atl-reveal[data-enter="true"] > .ww-atl-reveal-inner { --ww-reveal-at: inherit; animation: ww-reveal-content var(--ww-curve-enter-dur) var(--ww-ease-curve-enter) var(--ww-reveal-at, 0ms) backwards; }
+.ww-atl-reveal-edge { position: absolute; top: 6px; bottom: 6px; right: 0; width: 2px; border-radius: 1px; background: var(--ww-accent-bright); box-shadow: 0 0 10px 1px color-mix(in oklch, var(--ww-accent) 55%, transparent); opacity: 0; }
+.ww-atl-reveal[data-enter="true"] > .ww-atl-reveal-edge { --ww-reveal-at: inherit; animation: ww-reveal-edge var(--ww-curve-enter-dur) linear var(--ww-reveal-at, 0ms) backwards; }
+:root[data-ww-motion="reduced"] .ww-atl-reveal[data-enter="true"],
+:root[data-ww-motion="reduced"] .ww-atl-reveal[data-enter="true"] > .ww-atl-reveal-inner,
+:root[data-ww-motion="reduced"] .ww-atl-reveal[data-enter="true"] > .ww-atl-reveal-edge { animation: none; }
+.ww-atl-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.ww-atl-line[data-focused="true"] { stroke-width: 3; }
+.ww-atl[data-focusing="true"] .ww-chart-layer[data-focused="false"] { opacity: 0.2; }
+.ww-atl[data-focusing="true"] .ww-chart-layer[data-aggregate="true"][data-focused="false"] { opacity: 0.42; }
+.ww-atl-dim { position: absolute; top: 0; bottom: 0; background: color-mix(in oklch, var(--ww-surface-canvas) 55%, transparent); pointer-events: none; }
+.ww-atl-range { position: absolute; top: 0; bottom: 0; border-inline: 1px solid var(--ww-accent); background: var(--ww-accent-soft); pointer-events: none; }
+.ww-atl-range[data-pending="true"] { border-style: dashed; }
+.ww-atl-gap { position: absolute; top: 0; bottom: 0; border-inline: 1px dashed var(--ww-warn); background: repeating-linear-gradient(135deg in srgb, var(--ww-warn-soft) 0 4px, transparent 4px 8px); pointer-events: none; }
+.ww-atl-plot > svg.ww-atl-marks { inset: auto 0 0 0; height: 12px; pointer-events: none; }
+.ww-atl-marks line { stroke: var(--ww-accent-bright); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.ww-atl-time { display: grid; grid-template-columns: var(--ww-analysis-gutter) minmax(0, 1fr); height: 18px; margin-top: var(--ww-space-1); font-size: var(--ww-text-2xs); color: var(--ww-text-4); }
+.ww-atl-time-track { position: relative; }
+.ww-atl-time-track > span { position: absolute; top: 2px; transform: translateX(-50%); white-space: nowrap; }
+
+/* Effect lanes: the label column is the shared gutter; an interval's look says how it is known. */
+.ww-lanes { position: relative; min-width: 0; }
+/* The lanes keep exactly the width of the DPS plot above them: a scrollbar would narrow them and shift every moment, so the
+   list scrolls by wheel and focus, and a fade at its edge says that more rows follow. */
+.ww-lanes-scroll { position: relative; overflow-y: auto; scrollbar-width: none; }
+.ww-lanes-scroll::-webkit-scrollbar { display: none; }
+/* The fade of a track list that has more rows below is painted over the rows in the card's own color, never cut out of
+   them with a CSS mask: a mask needs its own render surface and GPU programs, and the first frame that shows one in a
+   new WebView2 profile stalls 55-70 ms while they compile (measured on the first scroll to the icon timeline). */
+.ww-lanes[data-more="true"]::after, .ww-itl[data-more="true"]::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; z-index: 3; height: 28px; pointer-events: none; background: linear-gradient(to bottom, transparent, color-mix(in oklab, var(--ww-surface-1) var(--ww-card-opacity), transparent)); }
+.ww-lanes-inner { position: relative; }
+.ww-lanes-overlay { position: absolute; inset: 0 0 0 var(--ww-analysis-gutter); pointer-events: none; z-index: 1; }
+.ww-lane { position: absolute; top: 0; left: 0; right: 0; height: var(--ww-lane-height); display: grid; grid-template-columns: var(--ww-analysis-gutter) minmax(0, 1fr); --ww-lane-color: var(--ww-ink-400); }
+.ww-lane[data-polarity="buff"] { --ww-lane-color: var(--ww-good); }
+.ww-lane[data-polarity="debuff"] { --ww-lane-color: var(--ww-critical); }
+/* A status the game's HUD draws without a BUFF or DEBUFF arrow: shown, but with no direction claimed. */
+.ww-lane[data-polarity="neutral"] { --ww-lane-color: var(--ww-info); }
+.ww-lane[data-selected="true"] { background: var(--ww-surface-selected); border-radius: var(--ww-radius-xs); }
+.ww-lane-label { display: flex; flex-direction: column; justify-content: center; gap: 2px; min-width: 0; overflow: hidden; padding: 2px var(--ww-space-2) 2px 0; border: 0; background: transparent; color: inherit; font: inherit; font-size: var(--ww-text-xs); line-height: 1.2; text-align: start; cursor: pointer; }
+.ww-lane-label:focus-visible { outline: none; box-shadow: var(--ww-focus-ring); border-radius: var(--ww-radius-xs); }
+.ww-lane-name, .ww-lane-sub { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.25; }
+.ww-lane-name .ww-analysis-effect img { width: 14px; height: 14px; }
+.ww-lane-sub { font-size: var(--ww-text-2xs); color: var(--ww-text-4); }
+.ww-lane-track { position: relative; border-top: 1px solid var(--ww-line-soft); cursor: pointer; }
+.ww-lane-seg { position: absolute; top: 5px; bottom: 5px; min-width: 1px; display: flex; align-items: center; justify-content: flex-end; overflow: hidden; border-radius: 3px; background: var(--ww-lane-color); opacity: 0.85; }
+.ww-lane-seg > b { padding-inline-end: 3px; font-size: 9px; font-weight: var(--ww-weight-semibold); color: var(--ww-ink-950); }
+.ww-lane-seg[data-evidence="stated"] { background: color-mix(in oklch, var(--ww-lane-color) 32%, transparent); box-shadow: inset 0 0 0 1px var(--ww-lane-color); opacity: 1; }
+.ww-lane-seg[data-evidence="stated"] > b { color: var(--ww-text); }
+.ww-lane-seg[data-evidence="unknown"] { background: repeating-linear-gradient(135deg in srgb, color-mix(in oklch, var(--ww-lane-color) 30%, transparent) 0 3px, transparent 3px 6px); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--ww-lane-color) 45%, transparent); opacity: 1; }
+.ww-lane-mark { position: absolute; top: 3px; bottom: 3px; width: 2px; margin-inline-start: -1px; background: var(--ww-text-2); pointer-events: auto; z-index: 1; }
+.ww-lane-mark[data-kind="applied"] { background: var(--ww-lane-color); }
+.ww-lane-mark[data-kind="start_unconfirmed"] { width: 0; margin-inline-start: 0; background: none; border-inline-start: 2px dotted var(--ww-warn); }
+.ww-lane-mark[data-kind="removed"] { background: var(--ww-text); }
+.ww-lane-mark[data-kind="holder_removed"] { width: 0; margin-inline-start: 0; background: none; border-inline-start: 2px dashed var(--ww-text-2); }
+.ww-lane-mark[data-kind="superseded"], .ww-lane-mark[data-kind="untracked"] { background: var(--ww-text-4); }
+.ww-lane-mark[data-kind="instant"] { top: 50%; bottom: auto; width: 7px; height: 7px; margin: -3.5px 0 0 -3.5px; background: var(--ww-lane-color); transform: rotate(45deg); }
+.ww-lane-mark[data-kind="continues"] { width: 0; margin-inline-start: -6px; background: none; border-block: 5px solid transparent; border-inline-start: 6px solid var(--ww-text-3); top: calc(50% - 5px); bottom: auto; }
+.ww-lane-swatch { display: inline-block; width: 18px; height: 8px; border-radius: 2px; --ww-lane-color: var(--ww-good); background: var(--ww-lane-color); }
+.ww-lane-swatch[data-evidence="stated"] { background: color-mix(in oklch, var(--ww-lane-color) 32%, transparent); box-shadow: inset 0 0 0 1px var(--ww-lane-color); }
+.ww-lane-swatch[data-evidence="unknown"] { background: repeating-linear-gradient(135deg in srgb, color-mix(in oklch, var(--ww-lane-color) 30%, transparent) 0 3px, transparent 3px 6px); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--ww-lane-color) 45%, transparent); }
+.ww-lane-swatch[data-evidence="gap"] { border: 1px dashed var(--ww-warn); background: repeating-linear-gradient(135deg in srgb, var(--ww-warn-soft) 0 3px, transparent 3px 6px); }
+.ww-lane-mark-swatch { display: inline-block; width: 0; height: 10px; border-inline-start: 2px dotted var(--ww-warn); }
+
+/* The timeline card's head: the presentation switch, zoom and replay share one line with the title; the hint sits under it. */
+.ww-analysis-timeline-head { flex-wrap: wrap; gap: var(--ww-space-2) var(--ww-space-3); }
+.ww-analysis-timeline-head .ww-analysis-timeline-tools { flex-wrap: wrap; justify-content: flex-end; }
+.ww-analysis-zoom { display: inline-flex; align-items: center; gap: 2px; }
+.ww-analysis-zoom .ww-btn[data-field="zoom-in"], .ww-analysis-zoom .ww-btn[data-field="zoom-out"] { min-width: 28px; font-size: var(--ww-text-md); line-height: 1; }
+.ww-analysis-hint { margin: 0 0 var(--ww-space-2); font-size: var(--ww-text-2xs); color: var(--ww-text-4); }
+.ww-analysis-icon-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--ww-space-2) var(--ww-space-3); margin-top: var(--ww-space-3); padding-top: var(--ww-space-3); border-top: 1px solid var(--ww-line-soft); }
+.ww-analysis-detail-head { display: flex; align-items: center; justify-content: space-between; gap: var(--ww-space-2); }
+.ww-analysis-segment { display: flex; flex-direction: column; gap: var(--ww-space-1_5); padding-top: var(--ww-space-2); border-top: 1px solid var(--ww-line-soft); }
+.ww-analysis-segment h5 { margin: 0; font-size: var(--ww-text-xs); font-weight: var(--ww-weight-semibold); color: var(--ww-text-2); }
+.ww-analysis-segment dd { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--ww-space-1); }
+.ww-sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+
+/* The overview under a zoomed timeline: the whole encounter with the window shown as a thumb. */
+.ww-atl-nav { display: grid; grid-template-columns: var(--ww-analysis-gutter) minmax(0, 1fr); margin-top: var(--ww-space-1_5); }
+.ww-atl-nav-bar { position: relative; height: 10px; border-radius: var(--ww-radius-full); background: oklch(1 0 0 / 0.05); cursor: pointer; touch-action: none; }
+.ww-atl-nav-bar:focus-visible { outline: none; box-shadow: var(--ww-focus-ring); }
+.ww-atl-nav-thumb { position: absolute; top: 0; bottom: 0; min-width: 6px; border-radius: inherit; background: var(--ww-accent-line); box-shadow: inset 0 0 0 1px var(--ww-accent); cursor: grab; }
+.ww-atl-time-track > span[data-edge="start"] { transform: none; }
+/* The moment under the pointer on the DPS lines, carried down every track. */
+.ww-track-guide { position: absolute; top: 0; bottom: 0; width: 1px; margin-inline-start: -0.5px; background: var(--ww-line-strong); pointer-events: none; }
+
+/* The icon timeline: groups of tracks on the shared gutter and window. Labels and tracks scroll together; only the rows in
+   view are mounted. Group headers span the card; the overlay draws gaps, the range, a drag and the pointer moment. */
+.ww-itl { position: relative; min-width: 0; }
+.ww-itl-scroll { position: relative; overflow-x: hidden; overflow-y: auto; scrollbar-width: thin; }
+.ww-itl-body { position: relative; display: grid; grid-template-columns: var(--ww-analysis-gutter) minmax(0, 1fr); }
+.ww-itl-labels, .ww-itl-tracks { position: relative; min-width: 0; }
+.ww-itl-overlay { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
+.ww-itl-reveal { pointer-events: auto; }
+.ww-itl-reveal:not([data-enter="true"]) { overflow: visible; }
+.ww-itl-row { position: absolute; left: 0; right: 0; border-top: 1px solid var(--ww-line-soft); }
+.ww-itl-label { position: absolute; left: 0; right: 0; display: flex; align-items: center; min-width: 0; padding-inline-end: var(--ww-space-2); border-top: 1px solid var(--ww-line-soft); font-size: var(--ww-text-xs); }
+.ww-itl-label[data-selected="true"], .ww-itl-row[data-selected="true"] { background: var(--ww-surface-selected); }
+.ww-itl-label-button, .ww-itl-label-static { display: flex; flex-direction: column; justify-content: center; gap: 1px; width: 100%; min-width: 0; height: 100%; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: start; }
+.ww-itl-label-button { cursor: pointer; }
+.ww-itl-label-button:focus-visible { outline: none; box-shadow: var(--ww-focus-ring); border-radius: var(--ww-radius-xs); }
+.ww-itl-label-main { display: flex; align-items: center; min-width: 0; overflow: hidden; white-space: nowrap; }
+.ww-itl-label-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--ww-text-2xs); color: var(--ww-text-4); }
+.ww-itl-who { display: inline-flex; align-items: center; gap: var(--ww-space-1_5); min-width: 0; font-weight: var(--ww-weight-semibold); color: var(--ww-text); }
+.ww-itl-who-mark { display: inline-grid; place-items: center; width: 22px; height: 22px; flex: none; border-radius: var(--ww-radius-full); background: oklch(1 0 0 / 0.06); color: var(--ww-text-3); }
+.ww-itl-effect-name { display: inline-flex; align-items: center; gap: var(--ww-space-1_5); min-width: 0; }
+.ww-itl-effect-name img { width: 20px; height: 20px; flex: none; }
+.ww-itl-face-mark { display: inline-block; width: 16px; height: 16px; flex: none; border-radius: var(--ww-radius-full); border: 1.5px solid var(--ww-text-3); }
+.ww-itl-face-mark[data-face="unknown"] { border-style: dashed; border-color: var(--ww-text-4); }
+.ww-itl-group { position: absolute; left: 0; right: 0; z-index: 2; display: flex; align-items: center; gap: var(--ww-space-1_5); padding: 0 var(--ww-space-1); border: 0; border-radius: var(--ww-radius-xs); background: color-mix(in oklch, var(--ww-surface-canvas) 62%, transparent); color: var(--ww-text-2); font: inherit; font-size: var(--ww-text-xs); font-weight: var(--ww-weight-semibold); text-align: start; cursor: pointer; }
+.ww-itl-group:hover { color: var(--ww-text); }
+.ww-itl-group:focus-visible { outline: none; box-shadow: var(--ww-focus-ring); }
+.ww-itl-group > svg { flex: none; transition: transform var(--ww-dur-fast) var(--ww-ease-out); }
+.ww-itl-group[aria-expanded="false"] > svg { transform: rotate(-90deg); }
+.ww-itl-group-note { font-weight: var(--ww-weight-regular); color: var(--ww-text-4); }
+/* Hit icons: centred on the first hit they draw; a tail runs to the last one when a group spans time; a count when they are several. */
+.ww-itl-hit-wrap { position: absolute; width: 0; height: 22px; }
+.ww-itl-hit-tail { position: absolute; left: 0; top: 10px; height: 2px; border-radius: 1px; background: color-mix(in oklch, var(--ww-series, var(--ww-ink-400)) 55%, transparent); }
+/* The icon's border is the colour a 75% border showed over the icon's own background, mixed opaque: a translucent rounded
+   border over a background is painted through a clip Chromium draws as a path, which made every icon a path draw and the
+   first one compile the path programs. */
+.ww-itl-hit { position: absolute; left: -11px; top: 0; width: 22px; height: 22px; padding: 0; border: 1px solid color-mix(in srgb, var(--ww-series, var(--ww-ink-400)) 75%, color-mix(in oklch, var(--ww-series, var(--ww-ink-400)) 30%, var(--ww-surface-3))); border-radius: var(--ww-radius-xs); background: color-mix(in oklch, var(--ww-series, var(--ww-ink-400)) 30%, var(--ww-surface-3)); cursor: pointer; transition: transform var(--ww-dur-fast) var(--ww-ease-out); }
+.ww-itl-hit:hover { transform: scale(1.12); z-index: 2; }
+.ww-itl-hit:focus-visible { outline: none; box-shadow: var(--ww-focus-ring); z-index: 2; }
+.ww-itl-hit[data-selected="true"] { box-shadow: 0 0 0 2px var(--ww-accent); z-index: 2; }
+.ww-itl-hit[data-mixed="true"] { box-shadow: 2px -2px 0 -1px var(--ww-surface-3), 2px -2px 0 0 color-mix(in oklch, var(--ww-series, var(--ww-ink-400)) 70%, transparent); }
+.ww-itl-hit[data-mixed="true"][data-selected="true"] { box-shadow: 0 0 0 2px var(--ww-accent); }
+.ww-itl-hit > img { position: absolute; inset: 1px; width: calc(100% - 2px); height: calc(100% - 2px); border-radius: 2px; object-fit: cover; }
+.ww-itl-hit-mark { position: absolute; inset: 6px; border-radius: var(--ww-radius-full); background: var(--ww-series, var(--ww-ink-400)); opacity: 0.85; }
+.ww-itl-hit > img[data-asset-state="loaded"] + .ww-itl-hit-mark { display: none; }
+.ww-itl-count { position: absolute; right: -6px; bottom: -6px; min-width: 14px; height: 14px; padding: 0 3px; border-radius: var(--ww-radius-full); background: var(--ww-surface-canvas); color: var(--ww-text); font-size: 9px; font-weight: var(--ww-weight-semibold); line-height: 14px; text-align: center; box-shadow: 0 0 0 1px var(--ww-line-strong); }
+/* Effect bars use the precise lanes' own evidence styles, so both presentations read an interval the same way. */
+.ww-itl-effect { --ww-lane-color: var(--ww-ink-400); }
+.ww-itl-effect[data-polarity="buff"] { --ww-lane-color: var(--ww-good); }
+.ww-itl-effect[data-polarity="debuff"] { --ww-lane-color: var(--ww-critical); }
+.ww-itl-effect[data-polarity="neutral"] { --ww-lane-color: var(--ww-info); }
+.ww-itl-effect > .ww-lane-seg { cursor: pointer; }
+.ww-itl-stack { position: absolute; top: 5px; height: 18px; padding-inline-end: 3px; transform: translateX(-100%); font-size: 9px; font-weight: var(--ww-weight-semibold); line-height: 18px; color: var(--ww-ink-950); pointer-events: none; z-index: 1; }
+.ww-itl-stack[data-evidence="stated"], .ww-itl-stack[data-evidence="unknown"] { color: var(--ww-text); }
+.ww-itl-effect-icon { position: absolute; top: 5px; width: 18px; height: 18px; margin-inline-start: 1px; border-radius: 3px; overflow: hidden; background: var(--ww-surface-3); box-shadow: 0 0 0 1px color-mix(in oklch, var(--ww-lane-color) 60%, transparent); pointer-events: none; z-index: 1; }
+.ww-itl-effect-icon > img { width: 100%; height: 100%; display: block; }
+.ww-itl-tip { position: absolute; top: 0; z-index: 4; min-width: 0; max-width: 340px; margin-top: 14px; white-space: nowrap; }
+
+@media (max-width: 1180px) {
+  .ww-history-detail { --ww-analysis-gutter: 136px; }
+  .ww-analysis-split { grid-template-columns: minmax(0, 1fr); }
+  .ww-analysis-detail { position: static; }
+  .ww-analysis-skills { grid-template-columns: minmax(0, 1fr); }
+  .ww-history-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ww-career-split { grid-template-columns: minmax(0, 1fr); }
+}

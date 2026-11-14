@@ -1,6 +1,6 @@
 import type { GameAssetKind } from "../design/assets.ts"
-import type { SkillBreakdown, SkillRow } from "./combat-data"
-import type { Effect, Encounter, Role, Skill, UnassignedSkill, Vehicle, ViewSnapshot } from "./snapshot"
+import type { SkillBreakdown, SkillRow, StatusRow } from "./combat-data"
+import type { Effect, Encounter, Role, Skill, Status, UnassignedSkill, Vehicle, ViewSnapshot } from "./snapshot"
 
 // Adapts engine snapshot types to the row models the shared components render. Nothing here adds information: a value
 // the engine did not report stays undefined, and unresolved identities keep their raw IDs. Damage, share, DPS and rank are
@@ -10,6 +10,8 @@ export interface CombatRowModel {
   key: string
   kind: "role" | "vehicle"
   roleId?: number
+  /** The role whose character art shows this row, as Go resolved it: a trial role's parent. Images only. */
+  staticRoleId?: number
   /** Static Master element; undefined means unknown. */
   elementId?: number
   /** Null when the Master lookup is not VERIFIED; the UI must then show UNKNOWN with roleId. */
@@ -32,6 +34,7 @@ function roleRow(role: Role): CombatRowModel {
     key: `role-${role.playerId}-${role.roleId}`,
     kind: "role",
     roleId: role.roleId,
+    staticRoleId: role.staticRoleId ?? role.roleId,
     elementId: role.elementId,
     name: role.nameStatus === "VERIFIED" && role.name !== "" ? role.name : null,
     directDamage: role.directDamage,
@@ -118,7 +121,7 @@ function unassignedSkillSource(unassigned: UnassignedSkill): Pick<NonNullable<Sk
  * The engine's skill split of one contributor. Names, evidence grades and whether a row shows its ID are the engine's
  * decisions (ViewSkill); this only adapts the shape the table draws.
  */
-export function skillBreakdown(contributor: { skills?: Skill[]; unassignedSkill?: UnassignedSkill }): SkillBreakdown | undefined {
+export function skillBreakdown(contributor: { skills?: Skill[]; unassignedSkill?: UnassignedSkill; statuses?: Status[] }): SkillBreakdown | undefined {
   if (contributor.skills === undefined) return undefined
   const rows = contributor.skills.map(skill => ({
     skillId: skill.skillId,
@@ -131,7 +134,25 @@ export function skillBreakdown(contributor: { skills?: Skill[]; unassignedSkill?
     share: skill.damageShare,
   }))
   const unassigned = contributor.unassignedSkill
-  return { rows, unassigned: unassigned && unassigned.outgoingEvents > 0 ? { ...unassignedSkillSource(unassigned), damage: unassigned.damageDealt, events: unassigned.outgoingEvents, share: unassigned.damageShare } : undefined }
+  const statuses = (contributor.statuses ?? []).filter(status => status.outgoingEvents > 0).map(statusRow)
+  return {
+    rows,
+    ...(statuses.length > 0 ? { statuses } : {}),
+    unassigned: unassigned && unassigned.outgoingEvents > 0 ? { ...unassignedSkillSource(unassigned), damage: unassigned.damageDealt, events: unassigned.outgoingEvents, share: unassigned.damageShare } : undefined,
+  }
+}
+
+/** One status row as the table draws it; the icon is the status Buff's own icon. */
+function statusRow(status: Status): StatusRow {
+  return {
+    damageId: status.damageId,
+    ...(status.name ? { name: status.name } : {}),
+    ...(status.iconKind === "buff" && status.iconId !== undefined ? { iconKind: "buff" as const, iconId: status.iconId } : {}),
+    damage: status.damageDealt,
+    events: status.outgoingEvents,
+    triggerEvents: status.triggerEvents,
+    share: status.damageShare,
+  }
 }
 
 /** Skill splits by ranking-row key, from the same encounter (or interval) the ranking rows come from. */

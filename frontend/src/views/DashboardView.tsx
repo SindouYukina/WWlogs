@@ -1,7 +1,7 @@
 import { memo, useMemo, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
-import { AnimatedNumber, Card, CharacterAvatar, Chip, ContentSwitch, DamageBar, GameAssetImage, Icon, LiveChart, Reveal, Segmented, StackList, ThemeBackdrop, type ChartSeries, type IconName, type ThemeId } from "@/design"
-import { dataChip, displayedEncounter, isFrozen, usableDps, type CombatData, type SkillBreakdown } from "@/lib/combat-data"
+import { AnimatedNumber, Card, CharacterAvatar, Chip, ContentSwitch, DamageBar, GameAssetImage, Icon, LiveChart, Reveal, Segmented, StackList, ThemeBackdrop, type ChartSeries, type IconName, type NumberMode, type ThemeId } from "@/design"
+import { dataChip, displayedEncounter, isFrozen, usableDps, type CombatData, type CombatTimeline, type SkillBreakdown, type StatusRow } from "@/lib/combat-data"
 import { teamSeriesKey, unassignedSeriesKey } from "@/lib/timeline"
 import { combatRows, detailRow, selectionScope, type CombatRowModel } from "@/lib/combat-view"
 import { useDetailPick, type DetailPick } from "@/lib/useDetailPick"
@@ -18,13 +18,13 @@ interface StatProps {
   scope: string
   stale: boolean
   hero?: boolean
-  numberMode: "tween" | "roll"
+  numberMode: NumberMode
   index: number
   field: string
   status?: string
 }
 
-const StatCard = memo(function StatCard({ icon, label, value, format, note, scope, stale, hero = false, numberMode, index, field, status }: StatProps) {
+export const StatCard = memo(function StatCard({ icon, label, value, format, note, scope, stale, hero = false, numberMode, index, field, status }: StatProps) {
   return <Reveal index={index} className={hero ? "ww-dash-stat-wrap ww-dash-stat-hero" : "ww-dash-stat-wrap"}>
     <Card interactive className="ww-dash-stat">
       <div className="ww-dash-stat-label"><Icon name={icon} size={14} />{label}</div>
@@ -34,15 +34,16 @@ const StatCard = memo(function StatCard({ icon, label, value, format, note, scop
   </Reveal>
 })
 
-function RoleBoard({ rows, selected, onSelect, scope, stale, numberMode }: { rows: readonly CombatRowModel[]; selected: string; onSelect: (key: string) => void; scope: string; stale: boolean; numberMode: "tween" | "roll" }) {
+/** The ranking. With enter, each bar grows in once when its row mounts, in rank order (History opens an encounter this way). */
+export function RoleBoard({ rows, selected, onSelect, scope, stale, numberMode, enter = false }: { rows: readonly CombatRowModel[]; selected: string; onSelect: (key: string) => void; scope: string; stale: boolean; numberMode: NumberMode; enter?: boolean }) {
   const format = useFormatters()
   const nameOf = useRowNames()
   return <StackList items={rows} keyOf={row => row.key} rowHeight={58} gap={6} renderItem={row => <div className="ww-dash-role" data-key={row.key} data-rank={row.rank} data-field={row.kind === "vehicle" ? "vehicle" : undefined} data-selected={row.key === selected} data-element={row.elementId} role="button" tabIndex={0} onClick={() => onSelect(row.key)} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") onSelect(row.key) }}>
-    <CharacterAvatar roleId={row.roleId} elementId={row.elementId} size={42} fallback={row.kind === "vehicle" ? <Icon name="bolt" size={18} /> : "?"} />
+    <CharacterAvatar roleId={row.staticRoleId} elementId={row.elementId} size={42} fallback={row.kind === "vehicle" ? <Icon name="bolt" size={18} /> : "?"} />
     <div className="ww-dash-role-main">
       <div className="ww-dash-role-line"><strong className="ww-truncate">{nameOf(row)}</strong><span className="ww-num ww-dash-role-dps"><AnimatedNumber value={row.dps} format={format.integer} mode={numberMode} scope={scope} stale={stale} /></span></div>
-      <DamageBar share={row.share} scope={scope} />
-      <div className="ww-dash-role-line ww-dash-role-sub"><span className="ww-num"><AnimatedNumber value={row.damage} format={format.integer} mode="tween" scope={scope} stale={stale} /></span><span className="ww-num">{row.share === undefined ? "—" : format.percent(row.share)}</span></div>
+      <DamageBar share={row.share} scope={scope} enter={enter ? row.rank : undefined} />
+      <div className="ww-dash-role-line ww-dash-role-sub"><span className="ww-num"><AnimatedNumber value={row.damage} format={format.integer} mode={numberMode === "ease" ? "ease" : "tween"} scope={scope} stale={stale} /></span><span className="ww-num">{row.share === undefined ? "—" : format.percent(row.share)}</span></div>
     </div>
   </div>} />
 }
@@ -50,26 +51,39 @@ function RoleBoard({ rows, selected, onSelect, scope, stale, numberMode }: { row
 const derivedNoteKey = { damage_list: "derivedSkillNote", skill_type: "derivedSkillTypeNote", tune_break: "derivedTuneBreakNote", echo: "derivedEchoSkillNote" } as const
 const derivedUnassignedNoteKey = { echo: "derivedUnassignedEchoNote", damage_list: "derivedUnassignedSkillNote", damage_type: "derivedUnassignedOutroNote" } as const
 
-/** The engine's skill split of one contributor. Rows plus the unassigned row add up to the contributor's damage. */
-const SkillTable = memo(function SkillTable({ breakdown, color }: { breakdown: SkillBreakdown; color: string }) {
+/** The name cell of a role's negative-status row: the status's icon and official name (or its DamageId) and a status tag. */
+export function StatusSkillName({ status }: { status: Pick<StatusRow, "damageId" | "name" | "iconKind" | "iconId"> }) {
+  const { t } = useTranslation("dashboard")
+  return <span className="ww-dash-skill-name" title={t("statusNote")}>{status.iconKind !== undefined && status.iconId !== undefined && <GameAssetImage kind={status.iconKind} id={status.iconId} />}<span className="ww-truncate" data-field="status-name">{status.name ?? `DamageId ${status.damageId}`}</span><span className="ww-dash-skill-noid" data-field="status-tag">{t("statusTag")}</span></span>
+}
+
+/** The engine's skill split of one contributor. Rows, status rows and the unassigned row add up to the contributor's damage. */
+export const SkillTable = memo(function SkillTable({ breakdown, color, enter = false }: { breakdown: SkillBreakdown; color: string; enter?: boolean }) {
   const { t } = useTranslation("dashboard")
   const format = useFormatters()
   const share = (value: number | undefined) => value === undefined ? "—" : format.percent(value)
   const { rows, unassigned } = breakdown
-  if (rows.length === 0 && !unassigned) return <p className="ww-dash-empty-note">{t("noSkillRows")}</p>
+  const statuses = breakdown.statuses ?? []
+  if (rows.length === 0 && statuses.length === 0 && !unassigned) return <p className="ww-dash-empty-note">{t("noSkillRows")}</p>
   return <div className="ww-dash-skills-wrap"><table className="ww-dash-skills" data-field="skills" style={{ "--ww-series": color } as React.CSSProperties}>
     <thead><tr><th>{t("skill")}</th><th>{t("damageColumn")}</th><th>{t("damageEvents")}</th><th>{t("shareColumn")}</th></tr></thead>
-    <tbody>{rows.map(row => <tr key={row.skillId} data-skill-id={row.skillId} data-named={row.name !== undefined} data-name-source={row.derived}>
+    <tbody>{rows.map((row, index) => <tr key={row.skillId} data-skill-id={row.skillId} data-named={row.name !== undefined} data-name-source={row.derived}>
       <td><span className="ww-dash-skill-name" title={row.showId ? `SkillId ${row.skillId}` : undefined}><GameAssetImage kind={row.iconKind ?? "skill"} id={row.iconId ?? row.skillId} /><span className="ww-truncate">{row.name ?? t("unnamedSkill")}</span>{row.derived && <span className="ww-dash-skill-derived" data-field="derived-name" title={t(derivedNoteKey[row.derived])} aria-label={t(derivedNoteKey[row.derived])}>≈</span>}{row.showId && <span className="ww-dash-skill-id ww-num ww-selectable" data-field="skill-id">{row.skillId}</span>}</span></td>
       <td className="ww-num"><AnimatedNumber value={row.damage} format={format.integer} /></td>
       <td className="ww-num">{format.integer(row.events)}</td>
-      <td><div className="ww-dash-skill-share"><DamageBar share={row.share} /><span className="ww-num">{share(row.share)}</span></div></td>
+      <td><div className="ww-dash-skill-share"><DamageBar share={row.share} enter={enter ? index : undefined} /><span className="ww-num">{share(row.share)}</span></div></td>
+    </tr>)}
+    {statuses.map((status, index) => <tr key={`status-${status.damageId}`} data-field="status-skill" data-damage-id={status.damageId} data-named={status.name !== undefined}>
+      <td><StatusSkillName status={status} /></td>
+      <td className="ww-num"><AnimatedNumber value={status.damage} format={format.integer} /></td>
+      <td className="ww-num">{format.integer(status.events)}</td>
+      <td><div className="ww-dash-skill-share"><DamageBar share={status.share} enter={enter ? rows.length + index : undefined} /><span className="ww-num">{share(status.share)}</span></div></td>
     </tr>)}
     {unassigned && <tr className="ww-dash-skill-unassigned" data-field="unassigned-skill" data-named={unassigned.name !== undefined} data-name-source={unassigned.derived}>
       <td><span className="ww-dash-skill-name" title={unassigned.derived ? t(derivedUnassignedNoteKey[unassigned.derived]) : t("unassignedSkillNote")}>{unassigned.iconKind !== undefined && unassigned.iconId !== undefined && <GameAssetImage kind={unassigned.iconKind} id={unassigned.iconId} />}<span className="ww-truncate" data-field="unassigned-name">{unassigned.name ?? t("unassignedSkill")}</span>{unassigned.derived && <span className="ww-dash-skill-derived" data-field="derived-name" title={t(derivedUnassignedNoteKey[unassigned.derived])} aria-label={t(derivedUnassignedNoteKey[unassigned.derived])}>≈</span>}{unassigned.derived && <span className="ww-dash-skill-noid" data-field="no-skill-id">{t("noSkillIdTag")}</span>}</span></td>
       <td className="ww-num"><AnimatedNumber value={unassigned.damage} format={format.integer} /></td>
       <td className="ww-num">{format.integer(unassigned.events)}</td>
-      <td><div className="ww-dash-skill-share"><DamageBar share={unassigned.share} /><span className="ww-num">{share(unassigned.share)}</span></div></td>
+      <td><div className="ww-dash-skill-share"><DamageBar share={unassigned.share} enter={enter ? rows.length + statuses.length : undefined} /><span className="ww-num">{share(unassigned.share)}</span></div></td>
     </tr>}</tbody>
   </table></div>
 })
@@ -93,6 +107,7 @@ function IntegrityPanel({ view, diagnostics }: { view: ViewSnapshot | null; diag
         <dt>{t("paired")}</dt><dd className="ww-num">{view ? `${number(view.health.rpcPairing.paired)} / ${number(view.health.rpcPairing.requests)}` : "—"}</dd>
         <dt>{t("finished")}</dt><dd className="ww-num" data-field="encounters-finished">{number(view?.encounters.completedTotal)}</dd>
         <dt>{c("unassigned")}</dt><dd className="ww-num" data-field="unassigned">{number(view?.unassignedRole.damageDealt)}</dd>
+        <dt>{t("negativeStatus")}</dt><dd className="ww-num" data-field="negative-status">{number(view?.unassignedRole.negativeStatusDamage ?? 0)}</dd>
         <dt>{t("unknownOwnership")}</dt><dd className="ww-num" data-field="unknown-ownership">{t("unknownTotals", { out: number(view?.statistics.unattributed.outgoingDamage), in: number(view?.statistics.unattributed.incomingDamage) })}</dd>
       </>}
     </dl>
@@ -101,6 +116,25 @@ function IntegrityPanel({ view, diagnostics }: { view: ViewSnapshot | null; diag
 }
 
 type DetailTab = "skills" | "integrity"
+
+/**
+ * The chart lines of one encounter timeline: the team, each ranked contributor in RoleId order then the vehicle, then unassigned
+ * damage. The Dashboard and the History view draw the same lines from the same engine series.
+ */
+export function chartSeries(timeline: CombatTimeline | undefined, rows: readonly CombatRowModel[], labels: { team: string; unassigned: string }, nameOf: (row: CombatRowModel) => string): ChartSeries[] {
+  if (!timeline) return []
+  const fit = (values: ReadonlyArray<number | null> | undefined) => Array.from({ length: timeline.slots }, (_, slot) => values?.[slot] ?? null)
+  const lines: ChartSeries[] = []
+  const team = timeline.series.get(teamSeriesKey)
+  if (team) lines.push({ key: teamSeriesKey, label: labels.team, color: "var(--ww-ink-100)", values: fit(team), aggregate: true })
+  // Roles keep their element color in RoleId order, then the vehicle; the same contributor keeps its line when ranks change.
+  for (const row of rows.filter(row => timeline.series.has(row.key)).sort((a, b) => (a.kind === b.kind ? (a.roleId ?? 0) - (b.roleId ?? 0) : a.kind === "role" ? -1 : 1))) {
+    lines.push({ key: row.key, label: nameOf(row), color: elementColor(row.elementId), values: fit(timeline.series.get(row.key)) })
+  }
+  const unassigned = timeline.series.get(unassignedSeriesKey)
+  if (unassigned) lines.push({ key: unassignedSeriesKey, label: labels.unassigned, color: "var(--ww-ink-400)", values: fit(unassigned) })
+  return lines
+}
 
 export interface DashboardViewProps {
   data: CombatData
@@ -151,20 +185,7 @@ export function DashboardView({ data, theme, numberMode = "tween", actions, deta
   const timeline = data.timeline
   // The timeline changes once per second; the memo keeps the chart from re-rendering at the publish rate.
   const timelineKey = timeline ? `${timeline.encounterId ?? ""}:${timeline.slots}:${timeline.slotSeconds}:${timeline.final === true}:` + [...timeline.series].map(([key, values]) => `${key}=${values.length}:${values.at(-1) ?? ""}`).join() : ""
-  const series = useMemo<ChartSeries[]>(() => {
-    if (!timeline) return []
-    const fit = (values: ReadonlyArray<number | null> | undefined) => Array.from({ length: timeline.slots }, (_, slot) => values?.[slot] ?? null)
-    const lines: ChartSeries[] = []
-    const team = timeline.series.get(teamSeriesKey)
-    if (team) lines.push({ key: teamSeriesKey, label: t("teamDps"), color: "var(--ww-ink-100)", values: fit(team), aggregate: true })
-    // Roles keep their element color in RoleId order, then the vehicle; the same contributor keeps its line when ranks change.
-    for (const row of rows.filter(row => timeline.series.has(row.key)).sort((a, b) => (a.kind === b.kind ? (a.roleId ?? 0) - (b.roleId ?? 0) : a.kind === "role" ? -1 : 1))) {
-      lines.push({ key: row.key, label: nameOf(row), color: elementColor(row.elementId), values: fit(timeline.series.get(row.key)) })
-    }
-    const unassigned = timeline.series.get(unassignedSeriesKey)
-    if (unassigned) lines.push({ key: unassignedSeriesKey, label: c("unassigned"), color: "var(--ww-ink-400)", values: fit(unassigned) })
-    return lines
-  }, [timelineKey, rows, nameOf, t])
+  const series = useMemo<ChartSeries[]>(() => chartSeries(timeline, rows, { team: t("teamDps"), unassigned: c("unassigned") }, nameOf), [timelineKey, rows, nameOf, t])
   const skills = data.skillsOf && selected ? data.skillsOf(selected.key) : undefined
   // The engine's facts for the scope on screen: this encounter when one is shown, not the whole capture.
   const completeness = (encounter ?? view)?.completeness
@@ -196,7 +217,7 @@ export function DashboardView({ data, theme, numberMode = "tween", actions, deta
           </div>
           {completeness?.roleAttributionComplete === false && <p className="ww-dash-warning" data-field="attribution-incomplete">{c("attributionIncomplete")}</p>}
           {completeness !== undefined && completeness.unknownOwnershipEvents > 0 && <p className="ww-dash-warning" data-field="unknown-ownership-note">{t("unknownOwnershipNote", { ns: "common", value: format.integer(completeness.unknownOwnershipDamage) })}</p>}
-          {selected?.roleId !== undefined && <ContentSwitch contentKey={selected.key} className="ww-dash-portrait"><GameAssetImage kind="character-portrait" id={selected.roleId} /></ContentSwitch>}
+          {selected?.staticRoleId !== undefined && <ContentSwitch contentKey={selected.key} className="ww-dash-portrait"><GameAssetImage kind="character-portrait" id={selected.staticRoleId} /></ContentSwitch>}
         </Card>
       </Reveal>
       <Reveal index={5} className="ww-dash-detail-wrap">

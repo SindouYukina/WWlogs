@@ -13,10 +13,11 @@ import (
 )
 
 type gameFrame struct {
-	direction        string
-	messageType      byte
-	sequence         uint32
-	token            uint16
+	direction   string
+	messageType byte
+	sequence    uint32
+	token       uint16
+	// commandID is the command number on the wire, which the decoders read as it is (protocol_numbers.go).
 	commandID        uint16
 	compressed       bool
 	compressedLength uint32
@@ -37,22 +38,55 @@ type protoField struct {
 }
 
 type pendingDamageRequest struct {
-	attackerEntityID    uint64 // DamageExecuteRequest.AttackerEntityId, field 13
+	attackerEntityID    uint64 // DamageExecuteRequest.AttackerEntityId
 	hasAttackerEntityID bool
-	targetEntityID      uint64 // DamageExecuteRequest.TargetEntityId, field 10
+	targetEntityID      uint64 // DamageExecuteRequest.TargetEntityId
 	hasTargetEntityID   bool
-	partID              int32 // DamageExecuteRequest.PartId, field 5
+	partID              int32 // DamageExecuteRequest.PartId
 	hasPartID           bool
-	skillLevel          uint64 // DamageExecuteRequest.SkillLevel, field 12
-	skillID             uint64 // DamageContext.SkillId, field 4
-	skillMessageID      uint64 // DamageContext.SkillMessageId, field 5
-	damageID            uint64 // DamageExecuteRequest.DamageId, field 9
+	skillLevel          uint64 // DamageExecuteRequest.SkillLevel
+	skillID             uint64 // DamageContext.SkillId
+	skillMessageID      uint64 // DamageContext.SkillMessageId
+	damageID            uint64 // DamageExecuteRequest.DamageId
 	hasDamageID         bool
-	damageSourceType    uint64 // DamageContext.SourceType, field 1
+	damageSourceType    uint64 // DamageContext.SourceType
 	hasDamageSourceType bool
-	bulletID            int64 // DamageContext.BulletId, field 2
+	bulletID            int64 // DamageContext.BulletId
 	hasBulletID         bool
-	sequence            uint64
+	// requestEpoch is how many times the combat RequestId counter had wrapped in this protocol session when the request
+	// was sent (combatRequestCounter); with the RequestId it names the result (extendedRequestID).
+	requestEpoch uint64
+	sequence     uint64
+}
+
+// combatRequestIDSpace is the number of RequestId values of combat requests. The client numbers every CombatRequestData
+// with CombatNet.GenerateRpcId, which counts 1..32767 and then 0 again (CombatMessage.js, Global 3.8.0 base, unchanged by
+// the 3.8.9 hotfix); a capture of Build 31 shows 1..32767, 0 (absent on the wire, the proto3 default), 1 after 46,399
+// combat requests. A long protocol session therefore uses one RequestId for several requests.
+const combatRequestIDSpace = 32768
+
+// combatRequestCounter follows the client's combat RequestId counter through its wraps. Every CombatRequestData of the
+// outbound stream advances it in arrival order, damage or not; the outbound stream is one ordered KCP stream, and a step
+// down by more than half the space is a wrap (requests sent in one frame may be out of order by a few).
+type combatRequestCounter struct {
+	last  uint64
+	seen  bool
+	epoch uint64
+}
+
+// observe records one RequestId and returns the epoch it belongs to.
+func (c *combatRequestCounter) observe(requestID uint64) uint64 {
+	if c.seen && requestID+combatRequestIDSpace/2 < c.last {
+		c.epoch++
+	}
+	c.last, c.seen = requestID, true
+	return c.epoch
+}
+
+// extendedRequestID names one combat result within its protocol session: the RequestId continued past each wrap of the
+// client's counter. It equals the RequestId until the first wrap, so results of shorter sessions keep their RequestId.
+func extendedRequestID(requestID, epoch uint64) uint64 {
+	return epoch*combatRequestIDSpace + requestID
 }
 
 type pendingRef struct {
@@ -63,6 +97,33 @@ type pendingRef struct {
 type consumedRef struct {
 	rpcID    uint64
 	sequence uint64
+}
+
+// consumedResponse remembers a processed response: its place in the bounded FIFO, a digest of its payload, so that a
+// later copy with the same RequestId is told apart as an identical duplicate or as a conflicting one, and the capture
+// time it was processed at, so that a later response with that RequestId is known to be a copy only while copies can
+// still arrive (consumedCopyWindow).
+type consumedResponse struct {
+	sequence uint64
+	digest   uint64
+	at       time.Time
+}
+
+// consumedCopyWindow is how long after a response further responses with its RequestId are taken as copies of it. The
+// server sends a response's copies in the same or the next frames; the client reuses a RequestId only after 32,767
+// further combat requests, many minutes later. A response with the RequestId of one processed longer ago belongs to a
+// later request that reused it, whose request may still be on its way, so it is held like any response without its
+// request.
+const consumedCopyWindow = damageResponseHoldWindow
+
+// responseDigest is the 64-bit FNV-1a hash of a DamageExecuteResponse payload. It only compares copies of one response.
+func responseDigest(payload []byte) uint64 {
+	hash := uint64(14695981039346656037)
+	for _, b := range payload {
+		hash ^= uint64(b)
+		hash *= 1099511628211
+	}
+	return hash
 }
 
 type pendingActiveRequest struct {
@@ -76,10 +137,15 @@ type processorStats struct {
 	handshakeErrors                  int
 	damageRequests                   int
 	candidateResponses               int
+	standaloneNotifyResponses        int // of candidateResponses, those a standalone CombatReceivePackNotify carried
 	printed                          int
 	unpairedResponses                int
 	invalidResponses                 int
-	duplicateResponses               int
+	duplicateResponses               int // a further copy of a response already seen, byte for byte
+	conflictingResponses             int // a further response with the RequestId of one already seen but other content
+	reusedRequestIDs                 int // a completed RequestId taken by a later request after the counter wrapped
+	timeStopPushesWithoutState       int // RTimeStopPush that stated neither a duration nor a dilation
+	supersededRequests               int // an unanswered request whose RequestId a later request took (never answered)
 	missingAttackerEntityID          int
 	evictedPending                   int
 	entityAdds                       int
@@ -123,17 +189,36 @@ type processorStats struct {
 }
 
 type processor struct {
-	rsa                       *staticRSA
-	session                   []byte
-	sessionGeneration         uint64
-	sessionHealth             sessionHealthState
+	// notifyStats counts DamageExecuteNotify results; frameNotifyOrdinal numbers them within the frame being read.
+	notifyStats        damageNotifyStats
+	frameNotifyOrdinal int
+	// statusTriggers remembers the InvokePeriod Buffs and instant status Buffs the server applied recently, for the
+	// negative-status results that follow them (negative_status_credit.go).
+	statusTriggers statusTriggerLog
+	// statusCauses remembers the recent applications and removals of statuses without a period, and excludedStatuses the
+	// status instances the effect tracker leaves out (negative_status_causes.go).
+	statusCauses     statusCauseLog
+	excludedStatuses excludedStatusIndex
+	// serverSequence follows the sequence of the server's frames, so a missing frame is known (negative_status_credit.go).
+	serverSequence    serverSequenceState
+	rsa               *staticRSA
+	session           []byte
+	sessionGeneration uint64
+	sessionHealth     sessionHealthState
+	// protocol is the wire protocol of the current protocol session: decoded only once it reports the current game version.
+	protocol protocolSession
+	// protocolSessionStartedAt is the capture time of the latest handshake; retiredKCP holds the conversations of the
+	// connections it superseded (retireSupersededStreams).
+	protocolSessionStartedAt  time.Time
+	retiredKCP                retiredConversations
 	pending                   map[uint64]pendingDamageRequest
 	pendingOrder              []pendingRef
 	pendingHead               int
 	pendingSequence           uint64
-	consumed                  map[uint64]uint64
+	consumed                  map[uint64]consumedResponse
 	consumedOrder             []consumedRef
 	consumedSequence          uint64
+	requestCounter            combatRequestCounter
 	entities                  *entityResolver
 	sourceRoles               *sourceRoleResolver
 	playerRelevance           *playerRelevanceResolver
@@ -234,14 +319,14 @@ func newProcessor(rsaKey *staticRSA, stdout, diagnostic, audit io.Writer) *proce
 	return &processor{
 		rsa:                  rsaKey,
 		pending:              make(map[uint64]pendingDamageRequest),
-		consumed:             make(map[uint64]uint64),
+		consumed:             make(map[uint64]consumedResponse),
 		activeRequests:       make(map[uint16]pendingActiveRequest),
 		combatActionRequests: make(map[combatActionRequestKey]combatActionRequest),
 		entities:             newEntityResolver(),
 		sourceRoles:          newSourceRoleResolver(),
 		playerRelevance:      newPlayerRelevanceResolver(),
 		damageStatistics:     statistics,
-		effects:              NewEffectTracker(statistics.captureSessionID),
+		effects:              newJournaledEffectTracker(statistics),
 		stdout:               stdout,
 		diagnostic:           diagnostic,
 		audit:                audit,
@@ -402,7 +487,7 @@ func crc32IEEE(data []byte) uint32 {
 // handleFrame. Other commands are only counted and inspected by the census.
 func isImplementedCommand(commandID uint16) bool {
 	switch commandID {
-	case 103, 116, 15380, 19470, 20332, 25706, 17250, 17286, 18559, 25185, 17769, 28030, 28481, 26702, 25830, 18345, 20358, 17893, 22102, 29363, 16974:
+	case cmdLoginRequest, cmdCheckClientPush, cmdBasicInfoNotify, cmdCombatSendPackRequest, cmdCombatSendPackResponse, cmdCombatReceivePackNotify, cmdTimeCheckResponse, cmdTimeStopPush, cmdTimeCheckRequest, cmdUpdateSceneGroupDataNotify, cmdJoinSceneNotify, cmdEntityAddNotify, cmdEntityRemoveNotify, cmdUpdateTimerInfoNotify, cmdEntityActiveRequest, cmdEntityActiveResponse, cmdApplyGameplayEffectNotify, cmdRemoveGameplayEffectNotify, cmdRemoveGameplayEffectPush, cmdSimpleCombatEntityBuffUpdateNotify, cmdSimpleCombatEntityBuffLayerCountNotify, cmdBuffStackCountNotify, cmdBuffDurationNotify:
 		return true
 	}
 	return false
@@ -411,6 +496,7 @@ func isImplementedCommand(commandID uint16) bool {
 func (p *processor) handleFrame(frame gameFrame) {
 	p.archiveFrame(frame)
 	p.currentFrameTime = frame.timestamp
+	p.observeServerSequence(frame)
 	p.observePairingClock(frame.timestamp)
 	p.observeEncounterClock(frame.timestamp)
 	p.sessionHealth.observeFrame(frame.timestamp)
@@ -418,7 +504,7 @@ func (p *processor) handleFrame(frame gameFrame) {
 	if p.census != nil {
 		censusEntry = p.census.observeFrame(frame, p.sessionNumber)
 	}
-	if frame.commandID == 112 && frame.direction == "in" {
+	if frame.commandID == cmdProtoKeyResponse && frame.direction == "in" {
 		p.stats.handshakeFrames++
 		if err := p.handleProtoKeyResponse(frame.body); err != nil {
 			p.stats.handshakeErrors++
@@ -435,6 +521,9 @@ func (p *processor) handleFrame(frame gameFrame) {
 			censusEntry.DecodedFrames++
 		}
 		p.sessionNumber++
+		p.protocolSessionStartedAt = frame.timestamp
+		// A new protocol session may come from another client build: its protocol is known only once it reports it.
+		p.protocol.beginSession()
 		p.playerRelevance.reset()
 		p.scenePlayerIDs = nil
 		p.observeContextSessionStart(frame.timestamp)
@@ -444,15 +533,19 @@ func (p *processor) handleFrame(frame gameFrame) {
 		}
 		return
 	}
-	if !isImplementedCommand(frame.commandID) {
+	decodable := p.protocol.decodes(frame.commandID)
+	if decodable && censusEntry != nil {
+		censusEntry.describeCurrentProtocol()
+	}
+	if !decodable || !isImplementedCommand(frame.commandID) {
 		if censusEntry != nil {
-			p.inspectUndecodedFrame(frame, censusEntry)
-		} else {
+			p.inspectUndecodedFrame(frame, decodable, censusEntry)
+		} else if decodable {
 			p.archiveUndecodedSchema(frame)
 		}
 		return
 	}
-	if ((frame.commandID == 103 || frame.commandID == 116 || frame.commandID == 19470 || frame.commandID == 28481) && frame.direction != "out") || ((frame.commandID == 15380 || frame.commandID == 20332 || frame.commandID == 25706 || frame.commandID == 17250 || frame.commandID == 17286 || frame.commandID == 18559 || frame.commandID == 25185 || frame.commandID == 17769 || frame.commandID == 28030 || frame.commandID == 26702 || frame.commandID == 25830 || frame.commandID == 18345 || frame.commandID == 20358 || frame.commandID == 17893 || frame.commandID == 22102 || frame.commandID == 29363 || frame.commandID == 16974) && frame.direction != "in") {
+	if ((frame.commandID == cmdLoginRequest || frame.commandID == cmdCheckClientPush || frame.commandID == cmdCombatSendPackRequest || frame.commandID == cmdEntityActiveRequest || frame.commandID == cmdTimeStopPush || frame.commandID == cmdTimeCheckRequest) && frame.direction != "out") || ((frame.commandID == cmdBasicInfoNotify || frame.commandID == cmdCombatSendPackResponse || frame.commandID == cmdCombatReceivePackNotify || frame.commandID == cmdTimeCheckResponse || frame.commandID == cmdUpdateSceneGroupDataNotify || frame.commandID == cmdJoinSceneNotify || frame.commandID == cmdEntityAddNotify || frame.commandID == cmdEntityRemoveNotify || frame.commandID == cmdUpdateTimerInfoNotify || frame.commandID == cmdEntityActiveResponse || frame.commandID == cmdApplyGameplayEffectNotify || frame.commandID == cmdRemoveGameplayEffectNotify || frame.commandID == cmdRemoveGameplayEffectPush || frame.commandID == cmdSimpleCombatEntityBuffUpdateNotify || frame.commandID == cmdSimpleCombatEntityBuffLayerCountNotify || frame.commandID == cmdBuffStackCountNotify || frame.commandID == cmdBuffDurationNotify) && frame.direction != "in") {
 		p.stats.otherFrameDirections++
 		if censusEntry != nil {
 			censusEntry.FailureReasons["direction differs from implemented schema"]++
@@ -470,6 +563,12 @@ func (p *processor) handleFrame(frame gameFrame) {
 		// would misreport transport health.
 		if censusEntry != nil {
 			censusEntry.FailureReasons[emptyBodyFailureReason]++
+		}
+		if frame.commandID == cmdTimeStopPush {
+			// proto3 leaves a 0 dilation off the wire: an empty TimeStopPush pauses every effect.
+			if err := p.observeTimeStopPush(frame, nil); err != nil {
+				p.stats.parseErrors++
+			}
 		}
 		return
 	}
@@ -509,41 +608,48 @@ func (p *processor) handleFrame(frame gameFrame) {
 	p.archiveSummonOwnerFrame(frame, plain)
 	parseErrorsBefore := p.stats.parseErrors
 	switch frame.commandID {
-	case 15380:
+	case cmdBasicInfoNotify:
 		if err := p.observeLocalPlayerInfo(plain); err != nil {
 			p.stats.parseErrors++
 			fmt.Fprintf(p.diagnostic, "local_player_info_parse_error=%v\n", err)
 			return
 		}
-	case 103, 116:
+	case cmdLoginRequest, cmdCheckClientPush:
 		if err := p.observeClientVersion(frame.commandID, plain); err != nil {
 			p.stats.parseErrors++
 			fmt.Fprintf(p.diagnostic, "client_version_parse_error command=%d reason=%v\n", frame.commandID, err)
 			return
 		}
-	case 19470:
+	case cmdCombatSendPackRequest:
 		p.handleDamageRequests(frame, plain)
 		if err := p.handleClientEffectPushes(frame, plain); err != nil {
 			p.stats.parseErrors++
 			fmt.Fprintf(p.diagnostic, "client_effect_push_parse_error=%v\n", err)
 		}
-	case 20332:
-		p.handleDamageResponses(plain)
-		if err := p.handleEmbeddedCombatReceivePackNotify(frame, plain); err != nil {
+	case cmdCombatSendPackResponse, cmdCombatReceivePackNotify:
+		if err := p.handleCombatReceivePacks(frame, plain); err != nil {
 			p.stats.parseErrors++
-			fmt.Fprintf(p.diagnostic, "combat_response_notify_parse_error=%v\n", err)
+			label := "combat_receive_pack_parse_error"
+			if frame.commandID == cmdCombatSendPackResponse {
+				label = "combat_response_notify_parse_error"
+			}
+			fmt.Fprintf(p.diagnostic, "%s=%v\n", label, err)
 			return
 		}
-	case 17250, 28030:
+	case cmdTimeStopPush:
+		if err := p.observeTimeStopPush(frame, plain); err != nil {
+			p.stats.parseErrors++
+			fmt.Fprintf(p.diagnostic, "time_stop_push_parse_error=%v\n", err)
+		}
+	case cmdTimeCheckRequest:
+		if err := p.observeTimeCheckRequest(frame, plain); err != nil {
+			p.stats.parseErrors++
+			fmt.Fprintf(p.diagnostic, "time_check_request_parse_error=%v\n", err)
+		}
+	case cmdTimeCheckResponse, cmdUpdateTimerInfoNotify:
 		// TimeCheckResponse and UpdateTimerInfoNotify are interpreted by the
 		// schema-directed observer to preserve their observed field provenance.
-	case 25706:
-		if err := p.handleCombatReceivePackNotify(frame, plain); err != nil {
-			p.stats.parseErrors++
-			fmt.Fprintf(p.diagnostic, "combat_receive_pack_parse_error=%v\n", err)
-			return
-		}
-	case 17286:
+	case cmdUpdateSceneGroupDataNotify:
 		if _, err := p.entities.applyUpdateSceneGroupDataNotify(plain); err != nil {
 			p.stats.parseErrors++
 			fmt.Fprintf(p.diagnostic, "scene_group_update_parse_error=%v\n", err)
@@ -551,13 +657,13 @@ func (p *processor) handleFrame(frame gameFrame) {
 		}
 		p.playerRelevance.reconcileLocalPlayers(p.entities)
 		p.refreshEffectRelations()
-	case 25830, 18345, 20358, 17893, 22102, 29363, 16974:
+	case cmdApplyGameplayEffectNotify, cmdRemoveGameplayEffectNotify, cmdRemoveGameplayEffectPush, cmdSimpleCombatEntityBuffUpdateNotify, cmdSimpleCombatEntityBuffLayerCountNotify, cmdBuffStackCountNotify, cmdBuffDurationNotify:
 		if err := p.handleBuffLifecycleMessage(frame, plain); err != nil {
 			p.stats.parseErrors++
 			fmt.Fprintf(p.diagnostic, "buff_lifecycle_parse_error=%v\n", err)
 			return
 		}
-	case 18559:
+	case cmdJoinSceneNotify:
 		if _, err := p.entities.applyJoinSceneNotify(plain); err != nil {
 			p.stats.parseErrors++
 			fmt.Fprintf(p.diagnostic, "join_scene_parse_error=%v\n", err)
@@ -566,11 +672,11 @@ func (p *processor) handleFrame(frame gameFrame) {
 		p.playerRelevance.resetSceneEntities()
 		p.observeContextSceneJoin(frame.timestamp)
 		p.observeSceneJoin(plain, frame.timestamp)
-		p.effects.EndLiveState()
+		p.effects.EndLiveStateFor(EffectUntrackedSceneChange)
 		p.backfillAvailableSummaryCredits()
 		p.sourceRoles.reset()
 		p.resetPendingSummaryCredits()
-	case 25185:
+	case cmdEntityAddNotify:
 		added, err := p.entities.applyEntityAddNotify(plain)
 		if err != nil {
 			p.stats.parseErrors++
@@ -579,20 +685,20 @@ func (p *processor) handleFrame(frame gameFrame) {
 		}
 		p.stats.entityAdds += added
 		p.refreshEffectRelations()
-	case 17769:
+	case cmdEntityRemoveNotify:
 		if err := p.handleEntityRemoveNotify(plain); err != nil {
 			p.stats.parseErrors++
 			fmt.Fprintf(p.diagnostic, "entity_remove_parse_error=%v\n", err)
 			return
 		}
-	case 28481:
+	case cmdEntityActiveRequest:
 		if err := p.handleActiveRequest(frame.token, plain); err != nil {
 			p.stats.parseErrors++
 			fmt.Fprintf(p.diagnostic, "entity_active_parse_error=%v\n", err)
 			return
 		}
 		p.stats.entityActiveRequests++
-	case 26702:
+	case cmdEntityActiveResponse:
 		if err := p.handleActiveResponse(frame, plain); err != nil {
 			p.stats.parseErrors++
 			fmt.Fprintf(p.diagnostic, "entity_active_response_parse_error=%v\n", err)
@@ -630,7 +736,16 @@ func (p *processor) handleEntityRemoveNotify(body []byte) error {
 // emptyBodyFailureReason labels frames whose command body is zero-length.
 const emptyBodyFailureReason = "empty body; no payload to decrypt"
 
-func (p *processor) inspectUndecodedFrame(frame gameFrame, entry *commandCensusEntry) {
+// Census reasons for frames the current protocol session cannot hand to a decoder.
+const (
+	protocolNoHandshakeReason        = "no handshake in this capture; protocol unknown"
+	protocolPendingFailureReason     = "client version not reported yet; protocol unknown"
+	protocolUnsupportedFailureReason = "not the current game version; not decoded"
+)
+
+// inspectUndecodedFrame counts what the census can learn about a frame no decoder reads. decodable says whether the
+// protocol session reads its numbering (protocolSession.decodes); otherwise only the top-level wire shape is counted.
+func (p *processor) inspectUndecodedFrame(frame gameFrame, decodable bool, entry *commandCensusEntry) {
 	if len(p.session) != 32 {
 		entry.FailureReasons["no implemented schema; session key unavailable"]++
 		return
@@ -652,19 +767,28 @@ func (p *processor) inspectUndecodedFrame(frame gameFrame, entry *commandCensusE
 			return
 		}
 	}
+	if !decodable {
+		if fields, err := parseProtoFields(plain); err == nil {
+			entry.GenericProtoValid++
+			entry.observeTopLevelFields(fields)
+		}
+		entry.FailureReasons[p.protocol.undecodableReason()]++
+		return
+	}
 	if fields, err := parseProtoFields(plain); err == nil {
 		entry.GenericProtoValid++
+		// The optional external schema describes the current protocol.
 		p.archiveSchemaDecode(frame, plain)
 		entry.observeTopLevelFields(fields)
 		entry.FailureReasons["message schema not implemented"]++
-		if frame.commandID == 24756 {
+		if frame.commandID == cmdMovePackagePush {
 			observation, err := extractMovePackageObservation(plain)
 			if err != nil {
 				entry.FailureReasons["MovePackagePush schema-field extraction failed"]++
 			} else {
 				p.census.observeMovePackage(observation)
 			}
-		} else if frame.commandID == 27918 {
+		} else if frame.commandID == cmdPlayerFollowerNotify {
 			observation, err := extractPlayerFollowerObservation(plain)
 			if err != nil {
 				entry.FailureReasons["PlayerFollowerNotify schema-field extraction failed"]++
@@ -686,12 +810,12 @@ func (p *processor) inspectUndecodedFrame(frame gameFrame, entry *commandCensusE
 
 func entityNotifyKeyField(commandID uint16) (uint64, bool) {
 	switch commandID {
-	case 19212:
-		return 5, true // EntityRemoveDynamicInteractNotify.EntityId
-	case 19566:
-		return 5, true // EntityCommonTagNotify.Id
-	case 23517:
-		return 1, true // EntityStateReadyNotify.EntityId
+	case cmdEntityRemoveDynamicInteractNotify:
+		return fieldEntityRemoveDynamicInteractNotifyEntityID, true // EntityRemoveDynamicInteractNotify.EntityId
+	case cmdEntityCommonTagNotify:
+		return fieldEntityCommonTagNotifyID, true // EntityCommonTagNotify.Id
+	case cmdEntityStateReadyNotify:
+		return fieldEntityStateReadyNotifyEntityID, true // EntityStateReadyNotify.EntityId
 	default:
 		return 0, false
 	}
@@ -705,10 +829,10 @@ func (p *processor) handleProtoKeyResponse(body []byte) error {
 	var responseType uint64
 	var encrypted []byte
 	for _, field := range fields {
-		if field.number == 2 && field.wire == 0 {
+		if field.number == fieldProtoKeyResponseType && field.wire == 0 {
 			responseType = field.value
 		}
-		if field.number == 3 && field.wire == 2 {
+		if field.number == fieldProtoKeyResponseKey && field.wire == 2 {
 			encrypted = field.data
 		}
 	}
@@ -727,14 +851,15 @@ func (p *processor) handleProtoKeyResponse(body []byte) error {
 	p.pendingOrder = nil
 	p.pendingHead = 0
 	p.pendingSequence = 0
-	p.consumed = make(map[uint64]uint64)
+	p.consumed = make(map[uint64]consumedResponse)
 	p.consumedOrder = nil
 	p.consumedSequence = 0
+	p.requestCounter = combatRequestCounter{}
 	// RPC ids restart with the session: a held response can never pair with a request of the new session.
 	p.discardHeldResponses(&p.pairing.sessionChange)
 	p.entities.reset()
 	p.playerRelevance.reset()
-	p.effects.EndLiveState()
+	p.effects.EndLiveStateFor(EffectUntrackedSessionChange)
 	p.backfillAvailableSummaryCredits()
 	p.sourceRoles.reset()
 	p.resetPendingSummaryCredits()
@@ -755,7 +880,7 @@ func (p *processor) handleDamageRequests(frame gameFrame, body []byte) {
 		return
 	}
 	for _, field := range outer {
-		if field.number != 14 || field.wire != 2 { // sZn.VFs
+		if field.number != fieldCombatSendPackRequestData || field.wire != 2 { // sZn.VFs
 			continue
 		}
 		variants, err := parseProtoFields(field.data)
@@ -764,7 +889,7 @@ func (p *processor) handleDamageRequests(frame gameFrame, body []byte) {
 			continue
 		}
 		for _, variant := range variants {
-			if variant.number != 3 || variant.wire != 2 { // VFs.FFs RequestData; field 5 is U3n
+			if variant.number != fieldCombatSendDataRequest || variant.wire != 2 { // VFs.FFs RequestData; field 5 is U3n
 				continue
 			}
 			requestFields, err := parseProtoFields(variant.data)
@@ -772,18 +897,19 @@ func (p *processor) handleDamageRequests(frame gameFrame, body []byte) {
 				p.stats.parseErrors++
 				continue
 			}
+			// An absent RequestId is the proto3 default 0, which the client's counter sends once per wrap.
 			var rpcID uint64
-			var hasRPC bool
 			var u3n []byte
 			for _, requestField := range requestFields {
-				if requestField.number == 2 && requestField.wire == 0 {
-					rpcID, hasRPC = requestField.value, true
+				if requestField.number == fieldCombatRequestDataRequestID && requestField.wire == 0 {
+					rpcID = requestField.value
 				}
-				if requestField.number == 5 && requestField.wire == 2 {
+				if requestField.number == fieldCombatRequestDataDamageExecuteRequest && requestField.wire == 2 {
 					u3n = requestField.data
 				}
 			}
-			if !hasRPC || u3n == nil {
+			epoch := p.requestCounter.observe(rpcID)
+			if u3n == nil {
 				continue
 			}
 			damageFields, err := parseProtoFields(u3n)
@@ -795,22 +921,22 @@ func (p *processor) handleDamageRequests(frame gameFrame, body []byte) {
 			identity := pendingDamageRequest{}
 			for _, damageField := range damageFields {
 				switch {
-				case damageField.number == 9 && damageField.wire == 0: // U3n.Fjn DamageId
+				case damageField.number == fieldDamageExecuteRequestDamageID && damageField.wire == 0: // U3n.Fjn DamageId
 					damageIDPresent = true
 					identity.damageID = damageField.value
 					identity.hasDamageID = true
-				case damageField.number == 10 && damageField.wire == 0: // DamageExecuteRequest.TargetEntityId
+				case damageField.number == fieldDamageExecuteRequestTargetEntityID && damageField.wire == 0: // DamageExecuteRequest.TargetEntityId
 					identity.targetEntityID = damageField.value
 					identity.hasTargetEntityID = true
-				case damageField.number == 5 && damageField.wire == 0: // DamageExecuteRequest.PartId
+				case damageField.number == fieldDamageExecuteRequestPartID && damageField.wire == 0: // DamageExecuteRequest.PartId
 					identity.partID = int32(uint32(damageField.value))
 					identity.hasPartID = true
-				case damageField.number == 12 && damageField.wire == 0: // DamageExecuteRequest.SkillLevel
+				case damageField.number == fieldDamageExecuteRequestSkillLevel && damageField.wire == 0: // DamageExecuteRequest.SkillLevel
 					identity.skillLevel = damageField.value
-				case damageField.number == 13 && damageField.wire == 0: // DamageExecuteRequest.AttackerEntityId
+				case damageField.number == fieldDamageExecuteRequestAttackerEntityID && damageField.wire == 0: // DamageExecuteRequest.AttackerEntityId
 					identity.attackerEntityID = damageField.value
 					identity.hasAttackerEntityID = true
-				case damageField.number == 15 && damageField.wire == 2: // DamageExecuteRequest.DamageContext
+				case damageField.number == fieldDamageExecuteRequestDamageContext && damageField.wire == 2: // DamageExecuteRequest.DamageContext
 					context, err := parseProtoFields(damageField.data)
 					if err != nil {
 						p.stats.parseErrors++
@@ -821,15 +947,15 @@ func (p *processor) handleDamageRequests(frame gameFrame, body []byte) {
 							continue
 						}
 						switch contextField.number {
-						case 1: // DamageContext.SourceType
+						case fieldDamageContextSourceType: // DamageContext.SourceType
 							identity.damageSourceType = contextField.value
 							identity.hasDamageSourceType = true
-						case 2: // DamageContext.BulletId
+						case fieldDamageContextBulletID: // DamageContext.BulletId
 							identity.bulletID = int64(contextField.value)
 							identity.hasBulletID = true
-						case 4: // DamageContext.SkillId
+						case fieldDamageContextSkillID: // DamageContext.SkillId
 							identity.skillID = contextField.value
-						case 5: // DamageContext.SkillMessageId
+						case fieldDamageContextSkillMessageID: // DamageContext.SkillMessageId
 							identity.skillMessageID = contextField.value
 						}
 					}
@@ -839,14 +965,21 @@ func (p *processor) handleDamageRequests(frame gameFrame, body []byte) {
 				continue
 			}
 			if p.census != nil {
-				p.census.innerEntries["22022 Client->Server DamageExecuteRequest"]++
+				p.census.innerEntries["Client->Server DamageExecuteRequest"]++
 			}
 			p.stats.damageRequests++
+			identity.requestEpoch = epoch
 			if _, alreadyConsumed := p.consumed[rpcID]; alreadyConsumed {
-				fmt.Fprintf(p.diagnostic, "rpc_id_reused_after_completion rpc_id=%d\n", rpcID)
+				// The counter wrapped: the RequestId now names this request. The earlier result keeps its own extended id,
+				// and this request's response is paired with this request instead of being taken for a copy.
+				delete(p.consumed, rpcID)
+				p.stats.reusedRequestIDs++
+				fmt.Fprintf(p.diagnostic, "rpc_id_reused_after_completion rpc_id=%d epoch=%d\n", rpcID, epoch)
 			}
 			if _, exists := p.pending[rpcID]; exists {
-				fmt.Fprintf(p.diagnostic, "duplicate_pending_damage_rpc rpc_id=%d\n", rpcID)
+				// The earlier request with this RequestId was never answered; it stays unanswered, now superseded.
+				p.stats.supersededRequests++
+				fmt.Fprintf(p.diagnostic, "duplicate_pending_damage_rpc rpc_id=%d epoch=%d\n", rpcID, epoch)
 			}
 			if p.masters != nil && identity.hasAttackerEntityID {
 				if skill, ok := p.masters.skills[identity.skillID]; ok {
@@ -893,81 +1026,49 @@ func (p *processor) compactPendingOrder() {
 	p.pendingHead = 0
 }
 
-func (p *processor) rememberConsumed(rpcID uint64) {
+func (p *processor) rememberConsumed(rpcID, digest uint64) {
 	p.consumedSequence++
-	p.consumed[rpcID] = p.consumedSequence
+	p.consumed[rpcID] = consumedResponse{sequence: p.consumedSequence, digest: digest, at: p.currentFrameTime}
 	p.consumedOrder = append(p.consumedOrder, consumedRef{rpcID: rpcID, sequence: p.consumedSequence})
 	for len(p.consumed) > maxConsumedRPCIDs && len(p.consumedOrder) > 0 {
 		ref := p.consumedOrder[0]
 		p.consumedOrder = p.consumedOrder[1:]
-		if p.consumed[ref.rpcID] == ref.sequence {
+		if p.consumed[ref.rpcID].sequence == ref.sequence {
 			delete(p.consumed, ref.rpcID)
 		}
 	}
-}
-
-func (p *processor) handleDamageResponses(body []byte) {
-	p.expireHeldResponses()
-	outer, err := parseProtoFields(body)
-	if err != nil {
-		p.stats.parseErrors++
-		return
-	}
-	for _, field := range outer {
-		if field.number != 14 || field.wire != 2 { // aZn.hZn
-			continue
-		}
-		batches, err := parseProtoFields(field.data)
-		if err != nil {
-			p.stats.parseErrors++
-			continue
-		}
-		for _, batch := range batches {
-			if batch.number != 5 || batch.wire != 2 { // hZn.$Fs batch
-				continue
-			}
-			items, err := parseProtoFields(batch.data)
-			if err != nil {
-				p.stats.parseErrors++
-				continue
-			}
-			for _, item := range items {
-				if item.number != 3 || item.wire != 2 { // $Fs.QLs ResponseData
-					continue
-				}
-				response, err := parseProtoFields(item.data)
-				if err != nil {
-					p.stats.parseErrors++
-					continue
-				}
-				var rpcID uint64
-				var hasRPC bool
-				var lis []byte
-				for _, responseField := range response {
-					if responseField.number == 2 && responseField.wire == 0 {
-						rpcID, hasRPC = responseField.value, true
-					}
-					if responseField.number == 5 && responseField.wire == 2 {
-						lis = responseField.data
-					}
-				}
-				if !hasRPC || lis == nil {
-					continue
-				}
-				p.stats.candidateResponses++
-				if p.census != nil {
-					p.census.innerEntries["22022 Server->Client DamageExecuteResponse"]++
-				}
-				p.handleOneDamageResult(rpcID, lis)
+	// A reused RequestId leaves its entry's place behind (the map entry is gone); keep the order bounded as well.
+	if len(p.consumedOrder) > 2*maxConsumedRPCIDs {
+		live := make([]consumedRef, 0, len(p.consumed))
+		for _, ref := range p.consumedOrder {
+			if p.consumed[ref.rpcID].sequence == ref.sequence {
+				live = append(live, ref)
 			}
 		}
+		p.consumedOrder = live
 	}
 }
 
+// handleOneDamageResult takes one server DamageExecuteResponse, from either container (handleCombatReceivePacks). A result
+// is named by its RequestId within the protocol session and by the wrap of the client's RequestId counter it was sent in
+// (extendedRequestID): a response is processed once, with the request of that RequestId, and every further copy is
+// counted as a duplicate (same bytes) or a conflicting response (other bytes), never as a second result. Copies arrive
+// within consumedCopyWindow of the response they repeat; a response with the RequestId of one processed earlier than that
+// answers a later request that reused the RequestId. Equal values never make two responses one.
 func (p *processor) handleOneDamageResult(rpcID uint64, payload []byte) {
-	if _, already := p.consumed[rpcID]; already {
-		p.stats.duplicateResponses++
-		return
+	if consumed, already := p.consumed[rpcID]; already {
+		if p.currentFrameTime.Sub(consumed.at) <= consumedCopyWindow {
+			if consumed.digest == responseDigest(payload) {
+				p.stats.duplicateResponses++
+			} else {
+				p.stats.conflictingResponses++
+			}
+			return
+		}
+		// The response of a later request with this RequestId, ahead of its request: the earlier result keeps its own
+		// extended id, and this one is held for its request like any response that arrives first.
+		delete(p.consumed, rpcID)
+		p.stats.reusedRequestIDs++
 	}
 	request, matched := p.pending[rpcID]
 	if !matched {
@@ -992,27 +1093,27 @@ func (p *processor) handleOneDamageResult(rpcID uint64, payload []byte) {
 			continue
 		}
 		switch field.number {
-		case 4: // lis.Q4n
+		case fieldDamageExecuteResponseErrorCode: // lis.Q4n
 			errorCode = int32(uint32(field.value))
-		case 5: // lis.lAs
+		case fieldDamageExecuteResponseImmuneType: // lis.lAs
 			immuneType = int32(uint32(field.value))
-		case 7: // lis.jQ_, client-mapped ChangeLife
+		case fieldDamageExecuteResponseChangeLife: // lis.jQ_, client-mapped ChangeLife
 			changeLife = int32(uint32(field.value))
 			hasChangeLife = true
-		case 10: // lis.nAs
+		case fieldDamageExecuteResponseDamage: // lis.nAs
 			amount = int32(uint32(field.value))
 			hasAmount = true
 		}
 	}
 	if !hasAmount || errorCode != 0 || immuneType != 0 {
 		p.stats.invalidResponses++
-		p.rememberConsumed(rpcID)
+		p.rememberConsumed(rpcID, responseDigest(payload))
 		delete(p.pending, rpcID)
 		p.writeNoAmountEvent(rpcID, request, hasAmount, errorCode, immuneType, hasChangeLife, changeLife)
 		return
 	}
 
-	p.rememberConsumed(rpcID)
+	p.rememberConsumed(rpcID, responseDigest(payload))
 	delete(p.pending, rpcID)
 	value := int64(amount)
 	if value < 0 {
@@ -1182,6 +1283,7 @@ func (p *processor) startProtocolSessionStatistics(at time.Time) {
 	}
 	p.damageStatistics.observeSessionChange(at)
 	p.flushEncounterTransitions()
+	p.damageStatistics.endProtocolSession()
 	if p.intervalPerProtocolSession && p.sessionNumber > 1 {
 		p.damageStatistics.Reset()
 	}

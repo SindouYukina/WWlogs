@@ -47,37 +47,37 @@ func extractLoginRequestBuild(data []byte) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("parse LoginRequest: %w", err)
 	}
-	field8Seen := false
-	field19Shape := "absent"
+	basicInfoSeen := false
+	versionShape := "absent"
 	for _, field := range fields {
-		if field.number != 8 || field.wire != 2 {
+		if field.number != fieldLoginRequestClientBasicInfo || field.wire != 2 {
 			continue
 		}
-		field8Seen = true
+		basicInfoSeen = true
 		nested, err := parseProtoFields(field.data)
 		if err != nil {
-			return "", fmt.Errorf("parse LoginRequest field 8: %w", err)
+			return "", fmt.Errorf("parse LoginRequest.ClientBasicInfo: %w", err)
 		}
 		for _, value := range nested {
-			if value.number != 19 || value.wire != 2 {
-				if value.number == 19 {
-					field19Shape = fmt.Sprintf("wire=%d", value.wire)
+			if value.number != fieldClientBasicInfoClientVersion || value.wire != 2 {
+				if value.number == fieldClientBasicInfoClientVersion {
+					versionShape = fmt.Sprintf("wire=%d", value.wire)
 				}
 				continue
 			}
 			build := string(value.data)
 			if !utf8.Valid(value.data) || strings.TrimSpace(build) == "" {
-				return "", fmt.Errorf("LoginRequest field 8.19 is not a non-empty UTF-8 version string")
+				return "", fmt.Errorf("LoginRequest.ClientBasicInfo.ClientVersion is not a non-empty UTF-8 version string")
 			}
 			for _, r := range build {
 				if unicode.IsControl(r) {
-					return "", fmt.Errorf("LoginRequest field 8.19 contains a control character")
+					return "", fmt.Errorf("LoginRequest.ClientBasicInfo.ClientVersion contains a control character")
 				}
 			}
 			return build, nil
 		}
 	}
-	return "", fmt.Errorf("LoginRequest field 8.19 is absent or invalid (field8=%t field19=%s)", field8Seen, field19Shape)
+	return "", fmt.Errorf("LoginRequest.ClientBasicInfo.ClientVersion is absent or invalid (ClientBasicInfo=%t ClientVersion=%s)", basicInfoSeen, versionShape)
 }
 
 func (p *processor) observeClientVersion(commandID uint16, data []byte) error {
@@ -87,13 +87,13 @@ func (p *processor) observeClientVersion(commandID uint16, data []byte) error {
 	var build string
 	var versions []string
 	switch commandID {
-	case 103:
+	case cmdLoginRequest:
 		parsed, err := extractLoginRequestBuild(data)
 		if err != nil {
 			return err
 		}
 		build = parsed
-	case 116:
+	case cmdCheckClientPush:
 		parsed, err := extractCheckClientVersions(data)
 		if err != nil {
 			return err
@@ -101,6 +101,17 @@ func (p *processor) observeClientVersion(commandID uint16, data []byte) error {
 		versions = parsed
 	default:
 		return fmt.Errorf("unsupported version command %d", commandID)
+	}
+	// The session's own report decides whether it is decoded (protocol_session.go); the census report below keeps the first.
+	before := p.protocol.state
+	if build != "" {
+		p.protocol.observeVersion(gameVersionOf(build))
+	} else {
+		p.protocol.observeVersion(gameVersionOf(versions[0]))
+	}
+	if before == protocolPending && p.protocol.state == protocolCurrent {
+		// From here on the session is decoded; Combat History records which game version everything of it came from.
+		p.damageStatistics.confirmProtocolSession(p.sessionNumber, p.protocol.gameVersion)
 	}
 	if p.clientVersion == nil {
 		p.clientVersion = &clientVersionReport{SessionNumber: p.sessionNumber, FirstObservedAt: p.currentFrameTime}

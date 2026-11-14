@@ -50,8 +50,32 @@ func (p *processor) effectStaticInfo(effectID uint64) *EffectStaticInfo {
 	if p == nil {
 		return nil
 	}
-	static, hasStatic := p.masters.buffStatic(effectID)
-	term, hasTerm := p.masters.buffTerm(effectID)
+	return p.masters.effectStaticInfo(effectID)
+}
+
+// EffectDefinition is the static Master evidence of one effect id for a view of stored effects: the same definition the
+// effect tracker attaches to a live instance. Polarity is the game's HUD arrow (effectPolarityFor) and HUDIcon reports that a
+// HUD buff bar draws the effect with an icon of its own; neither says what the effect does.
+type EffectDefinition struct {
+	Static   *EffectStaticInfo
+	Polarity EffectPolarity
+	HUDIcon  bool
+}
+
+// EffectDefinition looks up an effect id the way the effect tracker does. An id without a static row has a nil Static and
+// stays unclassified.
+func (m *MasterData) EffectDefinition(effectID uint64) EffectDefinition {
+	var static *EffectStaticInfo
+	if m != nil {
+		static = m.masters.effectStaticInfo(effectID)
+	}
+	return EffectDefinition{Static: static, Polarity: effectPolarityFor(EffectInstanceSnapshot{Static: static}), HUDIcon: static != nil && len(static.HUDCueTypes) > 0}
+}
+
+// effectStaticInfo builds the static definition parameters of an effect id, or nil without a static row or a term.
+func (m *gameMaster) effectStaticInfo(effectID uint64) *EffectStaticInfo {
+	static, hasStatic := m.buffStatic(effectID)
+	term, hasTerm := m.buffTerm(effectID)
 	if !hasStatic && !hasTerm {
 		return nil
 	}
@@ -120,6 +144,9 @@ func (p *processor) observeEffectLifecycle(row buffLifecycleAuditRow) {
 			event.StackCount, event.HasStackCount = *row.StackCount, true
 		}
 		event.HolderMonster, event.SourceMonster = p.effectMonsterEntity(event.HolderEntityID), event.HasSource && p.effectMonsterEntity(event.SourceEntityID)
+		p.withHistoryActors(&event)
+		p.recordStatusTrigger(row, holder)
+		p.observeStatusCause(row, holder, &event.HolderRelation, event.SourceRelation)
 		p.effects.ObserveApply(event)
 		p.effects.RefreshRelations(row.SessionNumber, holder, p.effectEntityRelation)
 	case "GAMEPLAY_EFFECT_REMOVE":
@@ -128,6 +155,7 @@ func (p *processor) observeEffectLifecycle(row buffLifecycleAuditRow) {
 			p.effects.NoteSkippedUncorrelatedHolder()
 			return
 		}
+		p.observeStatusCause(row, holder, nil, EffectRelationUnknown)
 		p.effects.ObserveRemove(EffectRemoveEvent{
 			SessionNumber: row.SessionNumber, HolderEntityID: holder, HolderGeneration: p.effectHolderGeneration(holder),
 			HandleID: *row.HandleID, ObservedAt: row.Timestamp,
@@ -146,6 +174,11 @@ func (p *processor) observeEffectLifecycle(row buffLifecycleAuditRow) {
 		}
 		if row.EventKind == "BUFF_STACK_COUNT_CHANGE" && row.StackCount != nil {
 			event.StackCount, event.HasStackCount = *row.StackCount, true
+			if row.InstigatorID != nil && *row.InstigatorID != 0 {
+				event.StackInstigator, event.HasStackInstigator = *row.InstigatorID, true
+			}
+			// Before the tracker takes the new count: the cause compares it with the count before.
+			p.observeStatusCause(row, holder, nil, EffectRelationUnknown)
 		}
 		p.effects.ObserveUpdate(event)
 		p.effects.RefreshRelations(row.SessionNumber, holder, p.effectEntityRelation)
@@ -188,15 +221,16 @@ func (p *processor) observeClientEffectReport(row buffLifecycleAuditRow) {
 			event.StackCount, event.HasStackCount = *row.StackCount, true
 		}
 		event.HolderMonster, event.SourceMonster = p.effectMonsterEntity(event.HolderEntityID), event.HasSource && p.effectMonsterEntity(event.SourceEntityID)
+		p.withHistoryActors(&event)
 		p.effects.ObserveApply(event)
 	case "CLIENT_EFFECT_STACK_REPORT":
 		event := EffectUpdateEvent{
 			SessionNumber: row.SessionNumber, HolderEntityID: holder, HolderGeneration: generation,
-			HandleID: *row.HandleID, ObservedAt: row.Timestamp,
+			HandleID: *row.HandleID, ObservedAt: row.Timestamp, Evidence: EffectEvidenceClientReport,
 		}
-		// The push carries the full duration it restarts; observed natural expiries follow
-		// the last such push plus its duration on the client clock. NotRefreshDuration
-		// keeps the running estimate.
+		// The push carries the remaining time when it was sent (BroadcastBuffStackChanged sends
+		// GetRemainDuration()); natural expiries follow the last such push plus that time on the
+		// effect clock. NotRefreshDuration keeps the running estimate.
 		if row.NotRefreshDuration == nil || !*row.NotRefreshDuration {
 			event.DurationSeconds = float64Pointer(row.DurationSeconds)
 		}
@@ -254,6 +288,7 @@ func (p *processor) observeEffectSnapshot(frame gameFrame, record rawBuffSnapsho
 		event.RemainingSeconds = &remaining
 	}
 	event.HolderMonster, event.SourceMonster = p.effectMonsterEntity(event.HolderEntityID), event.HasSource && p.effectMonsterEntity(event.SourceEntityID)
+	p.withHistoryActors(&event)
 	p.effects.ObserveSnapshot(event)
 	p.effects.RefreshRelations(p.sessionNumber, entityID, p.effectEntityRelation)
 }

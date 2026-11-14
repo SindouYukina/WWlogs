@@ -416,6 +416,94 @@ func (s *DamageStatistics) encounterTimelines() []EncounterTimelineSnapshot {
 	return s.encounters.allTimelines(time.Time{})
 }
 
+// StoredTimeline is an encounter timeline's stored intervals as Combat History keeps them: per contributor, the confirmed
+// local damage of each stored interval. Render rebuilds the timeline and draws it with the engine's own rules, so a stored
+// encounter shows exactly the timeline it had when it finished.
+type StoredTimeline struct {
+	Anchor time.Time
+	// ScaleSeconds is the stored interval length in seconds: 1, or a power of two after a very long encounter coarsened.
+	ScaleSeconds int64
+	Contributors []TimelineContributor
+	Buckets      []StoredTimelineBucket
+}
+
+// StoredTimelineBucket is one contributor's damage in one stored interval. Index counts intervals from Anchor.
+type StoredTimelineBucket struct {
+	Index       int64
+	Contributor int
+	Damage      int64
+}
+
+// store copies the timeline's intervals, ordered by interval then contributor.
+func (tl *encounterTimeline) store() StoredTimeline {
+	if tl == nil {
+		return StoredTimeline{}
+	}
+	stored := StoredTimeline{Anchor: tl.anchor, ScaleSeconds: tl.scale, Contributors: append([]TimelineContributor{}, tl.contributors...)}
+	for k, bucket := range tl.buckets {
+		for position, part := range bucket.parts {
+			if part != 0 {
+				stored.Buckets = append(stored.Buckets, StoredTimelineBucket{Index: k, Contributor: position, Damage: part})
+			}
+		}
+	}
+	sort.Slice(stored.Buckets, func(i, j int) bool {
+		if stored.Buckets[i].Index != stored.Buckets[j].Index {
+			return stored.Buckets[i].Index < stored.Buckets[j].Index
+		}
+		return stored.Buckets[i].Contributor < stored.Buckets[j].Contributor
+	})
+	return stored
+}
+
+// restore rebuilds the incremental store. ok is false for a timeline no engine could have stored.
+func (s StoredTimeline) restore() (*encounterTimeline, bool) {
+	if s.ScaleSeconds < 1 || s.ScaleSeconds&(s.ScaleSeconds-1) != 0 {
+		return nil, false
+	}
+	tl := newEncounterTimeline(s.Anchor)
+	tl.scale = s.ScaleSeconds
+	for _, contributor := range s.Contributors {
+		if _, duplicate := tl.index[contributor]; duplicate {
+			return nil, false
+		}
+		tl.index[contributor] = len(tl.contributors)
+		tl.contributors = append(tl.contributors, contributor)
+	}
+	for _, stored := range s.Buckets {
+		if stored.Contributor < 0 || stored.Contributor >= len(tl.contributors) || stored.Damage <= 0 {
+			return nil, false
+		}
+		bucket := tl.buckets[stored.Index]
+		if bucket == nil {
+			bucket = &timelineBucket{}
+			tl.buckets[stored.Index] = bucket
+		}
+		for len(bucket.parts) <= stored.Contributor {
+			bucket.parts = append(bucket.parts, 0)
+		}
+		bucket.parts[stored.Contributor] += stored.Damage
+		bucket.damage += stored.Damage
+		tl.damage += stored.Damage
+	}
+	return tl, true
+}
+
+// Render draws a finished encounter's stored timeline over [start, end] with at most maxPoints points (0: stored
+// resolution), with the same intervals and clipping the live view used. ok is false for a timeline that is not valid.
+func (s StoredTimeline) Render(encounterID string, start, end time.Time, maxPoints int) (EncounterTimelineSnapshot, bool) {
+	tl, ok := s.restore()
+	if !ok {
+		return EncounterTimelineSnapshot{EncounterID: encounterID, Final: true, StartedAt: start, EndAt: end, Contributors: []TimelineContributor{}, Points: []TimelinePoint{}}, false
+	}
+	return tl.render(encounterID, start, end, false, maxPoints), true
+}
+
+// RenderForView draws the stored timeline with the live view's point bound (maxViewTimelinePoints).
+func (s StoredTimeline) RenderForView(encounterID string, start, end time.Time) (EncounterTimelineSnapshot, bool) {
+	return s.Render(encounterID, start, end, maxViewTimelinePoints)
+}
+
 // encounterPeakDPS is the highest 1-second Encounter DPS interval of the encounter's timeline, evaluated at the same end
 // as Encounter DPS, before data integrity is applied. Damage is that interval's confirmed local damage; Value is that
 // damage over the nominal interval length.

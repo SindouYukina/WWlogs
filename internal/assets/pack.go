@@ -104,7 +104,21 @@ type PackFS struct {
 	once   sync.Once
 	reader *zip.Reader
 	index  map[string]string
-	err    error
+	// blobs maps a content entry name to its header, for Stat.
+	blobs map[string]*zip.File
+	err   error
+}
+
+func (p *PackFS) load() {
+	p.once.Do(func() {
+		p.reader, p.index, p.err = readPack(p.pack)
+		if p.err == nil {
+			p.blobs = make(map[string]*zip.File, len(p.reader.File))
+			for _, file := range p.reader.File {
+				p.blobs[file.Name] = file
+			}
+		}
+	})
 }
 
 // NewPackFS wraps a pack. A damaged pack is reported by Open as an error that does not match fs.ErrNotExist, which keeps
@@ -138,9 +152,28 @@ func readPack(pack string) (*zip.Reader, map[string]string, error) {
 	return reader, index, nil
 }
 
+// Stat implements fs.StatFS from the pack index and the stored entry's header, without opening the content, so asking
+// whether an ID has an image costs no decompression.
+func (p *PackFS) Stat(name string) (fs.FileInfo, error) {
+	p.load()
+	if p.err != nil {
+		return nil, &fs.PathError{Op: "stat", Path: name, Err: p.err}
+	}
+	hash, found := p.index[name]
+	if !found {
+		return nil, &fs.PathError{Op: "stat", Path: name, Err: fs.ErrNotExist}
+	}
+	file := p.blobs[packBlobPrefix+hash]
+	if file == nil {
+		// The index promised this content, so its absence is damage, not a missing image.
+		return nil, &fs.PathError{Op: "stat", Path: name, Err: errors.New("image pack content is unavailable")}
+	}
+	return file.FileInfo(), nil
+}
+
 // Open implements fs.FS.
 func (p *PackFS) Open(name string) (fs.File, error) {
-	p.once.Do(func() { p.reader, p.index, p.err = readPack(p.pack) })
+	p.load()
 	if p.err != nil {
 		return nil, &fs.PathError{Op: "open", Path: name, Err: p.err}
 	}

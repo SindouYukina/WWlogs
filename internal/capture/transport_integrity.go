@@ -127,6 +127,23 @@ const maxTransportLossEpisodes = 4 * maxKCPStreams
 // beginTransportLoss records that data of direction was lost after from and returns the episode ID. It marks the
 // context that depends on that direction suspect and tells statistics and effect tracking.
 func (p *processor) beginTransportLoss(direction string, from, detectedAt time.Time, reason string, skippedSegments int) uint64 {
+	id := p.openLossEpisode(direction, from, detectedAt, reason, skippedSegments)
+	p.context.invalidate(direction, from, reason)
+	if direction == "in" && p.damageStatistics != nil {
+		p.damageStatistics.setBattleStateUnverified(true)
+	}
+	if p.damageStatistics != nil {
+		p.damageStatistics.beginTransportLoss(id, direction, from)
+		p.flushEncounterTransitions()
+	}
+	if p.effects != nil {
+		p.effects.MarkTransportLoss(from)
+	}
+	return id
+}
+
+// openLossEpisode records a new loss episode of direction and counts it.
+func (p *processor) openLossEpisode(direction string, from, detectedAt time.Time, reason string, skippedSegments int) uint64 {
 	m := &p.transport
 	m.nextLossID++
 	id := m.nextLossID
@@ -146,18 +163,35 @@ func (p *processor) beginTransportLoss(direction string, from, detectedAt time.T
 	counters.losses++
 	counters.skippedSegments += uint64(skippedSegments)
 	counters.lastLossAt, counters.lastLossReason = detectedAt, reason
-	p.context.invalidate(direction, from, reason)
-	if direction == "in" && p.damageStatistics != nil {
-		p.damageStatistics.setBattleStateUnverified(true)
+	return id
+}
+
+// supersedeStreamLoss records what a retired stream loses when a new protocol session supersedes its connection (see
+// retireSupersededStreams). An open loss episode, or data still waiting behind a gap, is lost from the previous session
+// and never recovered; the episode ends at the handshake, so it can mark only encounters before it. The new session's
+// context is not invalidated and no effect is touched: both were rebuilt at the handshake and depend on nothing the old
+// connection carried.
+func (p *processor) supersedeStreamLoss(state *stream, at time.Time) {
+	id := state.recovery.lossID
+	if !state.recovery.active {
+		from := state.lastDeliveredAt
+		if from.IsZero() || from.After(at) {
+			from = at
+		}
+		id = p.openLossEpisode(state.direction, from, at, kcpLossSuperseded, len(state.pending))
+		if p.damageStatistics != nil {
+			p.damageStatistics.beginTransportLoss(id, state.direction, from)
+		}
+	}
+	state.recovery.active = false
+	p.failTransportLoss(id, state.direction)
+	if episode, ok := p.transport.episodes[id]; ok {
+		episode.ended = true
 	}
 	if p.damageStatistics != nil {
-		p.damageStatistics.beginTransportLoss(id, direction, from)
+		p.damageStatistics.endTransportLoss(id, at)
 		p.flushEncounterTransitions()
 	}
-	if p.effects != nil {
-		p.effects.MarkTransportLoss(from)
-	}
-	return id
 }
 
 func sortedEpisodeIDs(episodes map[uint64]*transportLossEpisode) []uint64 {

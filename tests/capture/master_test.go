@@ -27,7 +27,7 @@ func TestSceneTemplateResolutionUsesActiveSessionSceneAndPreservesAmbiguity(t *t
 	})
 	resolver := &entityResolver{
 		entities: map[uint64]runtimeEntity{
-			123: {entityID: 123, configID: 244750005, hasConfigID: true, configType: 1, hasConfigType: true, sourceMessageID: 25185},
+			123: {entityID: 123, configID: 244750005, hasConfigID: true, configType: 1, hasConfigType: true, sourceMessageID: cmdEntityAddNotify},
 		},
 		sceneInstanceID: 50, hasSceneInstanceID: true,
 	}

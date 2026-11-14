@@ -4,6 +4,8 @@ import { BrandEmblem, Button, ContentSwitch, Icon, ListeningStatus, Segmented, T
 import { statusText } from "@/i18n"
 import { adapterProblem, adapterUsable, captureBusy, environmentNotice } from "@/lib/capture-environment"
 import { displayedEncounter } from "@/lib/combat-data"
+import { defaultCareerState, type CareerState } from "@/lib/history-career"
+import type { HistoryIntent } from "@/lib/history-library"
 import { selectionScope } from "@/lib/combat-view"
 import { useDetailPick } from "@/lib/useDetailPick"
 import { host } from "@/lib/host"
@@ -11,11 +13,15 @@ import { useLiveSettings } from "@/lib/settings-controller"
 import type { OverlayKind } from "@/lib/snapshot"
 import { useLiveCombatData } from "@/lib/useLiveCombatData"
 import { useListeningLabels } from "@/lib/useListeningLabels"
+import { CareerView } from "./CareerView"
 import { CaptureEnvironmentNotice } from "./CaptureEnvironmentNotice"
 import { DashboardView } from "./DashboardView"
+import { HistoryView } from "./HistoryView"
 import { SettingsView } from "./SettingsView"
 
-type Page = "dashboard" | "settings"
+type Page = "dashboard" | "history" | "career" | "settings"
+
+const pageOrder: readonly Page[] = ["dashboard", "history", "career", "settings"]
 
 const overlayToggles: ReadonlyArray<{ kind: OverlayKind; icon: IconName; label: string }> = [
   { kind: "combat", icon: "overlay", label: "pages.combatOverlay" },
@@ -23,8 +29,9 @@ const overlayToggles: ReadonlyArray<{ kind: OverlayKind; icon: IconName; label: 
 ]
 
 /**
- * The production Desktop window: one global header over the Dashboard and Settings views. The header reads, from left to
- * right, capture status, the two Overlay switches and the capture button; the capture interface is chosen in Settings.
+ * The production Desktop window: one global header over the Dashboard, History, Career and Settings pages. The header
+ * reads, from left to right, capture status, the two Overlay switches and the capture button; the capture interface is
+ * chosen in Settings.
  */
 export function DesktopApp() {
   const { t } = useTranslation(["dashboard", "common", "settings"])
@@ -35,6 +42,16 @@ export function DesktopApp() {
   const controller = useLiveSettings(snapshot, connected, changeLocale)
   const describeListening = useListeningLabels()
   const [page, setPage] = useState<Page>("dashboard")
+  const [direction, setDirection] = useState<"forward" | "back">("forward")
+  const showPage = (next: Page) => { setDirection(pageOrder.indexOf(next) > pageOrder.indexOf(page) ? "forward" : "back"); setPage(next) }
+  // The Career Overview keeps its range and filters while another page shows. It sends the History page to a date, an
+  // encounter or a filtered list; History then offers the way back until another page is chosen.
+  const [careerState, setCareerState] = useState<CareerState>(defaultCareerState)
+  const [historyIntent, setHistoryIntent] = useState<{ seq: number; target: HistoryIntent } | null>(null)
+  const changePage = (next: Page) => { setHistoryIntent(null); showPage(next) }
+  const openHistory = (target: HistoryIntent) => { setHistoryIntent(previous => ({ seq: (previous?.seq ?? 0) + 1, target })); showPage("history") }
+  // The History page reloads when the engine may have finished an encounter: a new session, interval or finished count.
+  const historyKey = `${snapshot?.view?.captureSessionId ?? 0}-${snapshot?.view?.statisticsIntervalId ?? 0}-${snapshot?.view?.encounters.completedTotal ?? 0}-${snapshot?.service.state ?? ""}`
   // The Dashboard unmounts while Settings shows, so the window holds the ranking pick and ends it with its encounter.
   const detailPick = useDetailPick(selectionScope(snapshot?.view, displayedEncounter(snapshot?.view)))
   const [action, setAction] = useState<"start" | "stop" | null>(null)
@@ -68,7 +85,7 @@ export function DesktopApp() {
   return <div className="ww-root ww-app">
     <header className="ww-app-header">
       <div className="ww-app-brand"><BrandEmblem /><div><strong>WWlogs</strong><span>{c("appSubtitle")}</span></div></div>
-      <Segmented variant="tabs" label={c("dashboard")} value={page} onChange={setPage} options={[{ value: "dashboard", label: c("dashboard") }, { value: "settings", label: c("settings") }]} />
+      <Segmented variant="tabs" label={c("dashboard")} value={page} onChange={changePage} options={[{ value: "dashboard", label: c("dashboard") }, { value: "history", label: c("history") }, { value: "career", label: c("career") }, { value: "settings", label: c("settings") }]} />
       <div className="ww-app-tools">
         {listening && listeningText && <span data-field="listening" data-state={listening.state} data-reason={listening.reason}><ListeningStatus state={listening.state} label={listeningText.label} detail={listeningText.detail} /></span>}
         <div className="ww-app-overlays">
@@ -91,12 +108,15 @@ export function DesktopApp() {
       <CaptureEnvironmentNotice controller={controller} />
       {adapterNotice && <div className="ww-env-notice" role="status" data-field="adapter-notice" data-problem={problem}>
         <div className="ww-env-notice-text"><span>{t(problem === "unset" ? "interfaceUnset" : "interfaceUnavailable")}</span></div>
-        <div className="ww-env-notice-actions"><Button size="sm" data-field="open-general-settings" onClick={() => setPage("settings")}>{t("openSettings")}</Button></div>
+        <div className="ww-env-notice-actions"><Button size="sm" data-field="open-general-settings" onClick={() => changePage("settings")}>{t("openSettings")}</Button></div>
       </div>}
     </div>}
     <main className="ww-app-main">
-      <ContentSwitch contentKey={page} direction={page === "settings" ? "forward" : "back"} className="ww-app-page">
-        {page === "dashboard" ? <DashboardView data={data} theme={resolveTheme(snapshot?.theme)} detailPick={detailPick} /> : <SettingsView controller={controller} />}
+      <ContentSwitch contentKey={page} direction={direction} className="ww-app-page">
+        {page === "dashboard" ? <DashboardView data={data} theme={resolveTheme(snapshot?.theme)} detailPick={detailPick} />
+          : page === "history" ? <HistoryView theme={resolveTheme(snapshot?.theme)} refreshKey={historyKey} indicator={snapshot?.history} intent={historyIntent ?? undefined} onReturn={historyIntent ? () => changePage("career") : undefined} />
+          : page === "career" ? <CareerView theme={resolveTheme(snapshot?.theme)} refreshKey={historyKey} indicator={snapshot?.history} state={careerState} onState={setCareerState} onOpen={openHistory} />
+          : <SettingsView controller={controller} />}
       </ContentSwitch>
     </main>
   </div>

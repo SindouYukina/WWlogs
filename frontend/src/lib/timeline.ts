@@ -31,7 +31,11 @@ export function emptyTimeline(): CombatTimeline {
  * encounter) become points.
  */
 export function timelineFromView(view: ViewSnapshot | null | undefined, encounterId: string | undefined): CombatTimeline {
-  const timeline: Timeline | undefined = view?.timeline
+  return timelineFromSnapshot(view?.timeline, encounterId)
+}
+
+/** The chart data of one engine timeline, for the encounter it belongs to; the History view draws stored timelines with it. */
+export function timelineFromSnapshot(timeline: Timeline | null | undefined, encounterId: string | undefined): CombatTimeline {
   if (!timeline || encounterId === undefined || timeline.encounterId !== encounterId) return emptyTimeline()
   const settled = timeline.points.map(point => point.state !== "in_progress" && point.dps !== null && point.durationSeconds > 0)
   const series = new Map<string, Array<number | null>>()

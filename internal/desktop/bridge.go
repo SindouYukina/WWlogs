@@ -7,7 +7,9 @@ import (
 	"sync"
 	"time"
 
+	"wwlogs/internal/assets"
 	"wwlogs/internal/capture"
+	"wwlogs/internal/history"
 	"wwlogs/internal/service"
 )
 
@@ -33,6 +35,14 @@ type Bridge struct {
 	openBrowser func(string) error
 	// startup is the launch-time automatic start; a manual start or stop settles it for the rest of the run.
 	startup startupCapture
+	// history is the run's Combat History; masters projects a stored encounter with the live view's projection; recorders
+	// follows the running capture's recorder for the history indicator.
+	history   *history.Store
+	masters   *capture.MasterData
+	recorders *recorderTracker
+	// images is the resolver the /game-assets/ route serves from; the History analysis asks it whether an effect's Buff.Id
+	// has an image, so the view decides nothing about icons itself.
+	images assets.Resolver
 }
 
 // snapshotWaitLimit is the heartbeat base: one NextSnapshot call waits at most this plus one update interval, and an
@@ -144,7 +154,7 @@ func (b *Bridge) CurrentSnapshot() (json.RawMessage, error) {
 }
 
 func (b *Bridge) encode(snapshot *service.Snapshot) (json.RawMessage, error) {
-	return b.projection.encode(snapshot, b.settings.current(), b.catalog, b.listeningStatus(snapshot), b.overlays.states())
+	return b.projection.encode(snapshot, b.settings.current(), b.catalog, b.listeningStatus(snapshot), b.overlays.states(), b.historyIndicator())
 }
 
 // shellSignal wakes long-polling windows when host state changes, so a setting applies at once instead of at the next
@@ -176,7 +186,7 @@ func (s *shellSignal) fire() {
 func (b *Bridge) listeningStatus(snapshot *service.Snapshot) service.ListeningStatus {
 	var process service.GameProcess
 	// A replay has no game process, so absence must not count as evidence.
-	if b.process != nil && (snapshot.Service.Session == nil || snapshot.Service.Session.Source != "replay") {
+	if b.process != nil && (snapshot.Service.Session == nil || snapshot.Service.Session.Source != capture.SourceReplay) {
 		process = b.process.Latest()
 	}
 	return b.listening.Evaluate(snapshot.Service, snapshot.View, process, time.Now())

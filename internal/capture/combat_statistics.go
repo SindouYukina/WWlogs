@@ -173,17 +173,23 @@ type DamageStatistics struct {
 	healingDuplicates      uint64
 	appliedHealingKeys     map[CombatEventKey]struct{}
 	appliedHealingKeyOrder []CombatEventKey
+	// history is the Combat History journal (history_journal.go); it outlives Reset like appliedKeys, and the processor
+	// shares it with its effect tracker.
+	history *historyJournal
 }
 
 // NewDamageStatistics creates an empty damage statistics accumulator.
 func NewDamageStatistics() *DamageStatistics {
 	captureSessionID := captureSessionSequence.Add(1)
-	return &DamageStatistics{
+	statistics := &DamageStatistics{
 		captureSessionID:     captureSessionID,
 		statisticsIntervalID: 1,
 		entities:             make(map[combatStatisticsKey]PlayerEntityDamageSnapshot),
 		encounters:           newEncounterTracker(captureSessionID, 1),
+		history:              &historyJournal{},
 	}
+	statistics.encounters.history = statistics.history
+	return statistics
 }
 
 // Snapshot returns an independent copy of the current statistics.
@@ -464,6 +470,7 @@ func (s *DamageStatistics) addCombatEvent(record CombatEventRecord) string {
 		}
 		s.rememberAppliedKeyLocked(record.Key)
 	}
+	s.history.accept(&record)
 	if record.ContextDowngrade != "" {
 		s.encounters.contextDowngraded++
 		if record.ObservedAt.After(s.lastDowngradeAt) {
@@ -524,6 +531,7 @@ func (s *DamageStatistics) addHealingLocked(record CombatEventRecord) string {
 		}
 		rememberBoundedKey(&s.appliedHealingKeys, &s.appliedHealingKeyOrder, record.Key)
 	}
+	s.history.accept(&record)
 	if !isLocalHealing(record) {
 		s.healingNotLocal++
 		return statisticsAssignmentNotCounted

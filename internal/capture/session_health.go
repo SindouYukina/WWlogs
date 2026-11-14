@@ -19,6 +19,16 @@ type ViewSessionHealth struct {
 	// FirstFrameAgeSeconds and FrameIdleSeconds are measured on the capture clock; nil before the first frame.
 	FirstFrameAgeSeconds *float64 `json:"firstFrameAgeSeconds,omitempty"`
 	FrameIdleSeconds     *float64 `json:"frameIdleSeconds,omitempty"`
+	// Protocol says whether the protocol session reported the current game version and is decoded (protocol_session.go).
+	Protocol ViewProtocolHealth `json:"protocol"`
+}
+
+// ViewProtocolHealth is the protocol of the current protocol session: ProtocolStatusNone before any handshake,
+// ProtocolStatusPending until the session reports its client version, then supported or unsupported. GameVersion is the
+// major.minor the session reported; nothing else about the protocol is exposed.
+type ViewProtocolHealth struct {
+	Status      string `json:"status"`
+	GameVersion string `json:"gameVersion,omitempty"`
 }
 
 type sessionHealthState struct {
@@ -61,6 +71,7 @@ func (p *processor) sessionHealthSnapshot() ViewSessionHealth {
 		FramesObserved:             s.framesObserved,
 		ConsecutiveDecryptFailures: s.consecutiveDecryptFailures,
 	}
+	view.Protocol.Status, view.Protocol.GameVersion = p.protocol.status()
 	if !s.firstFrameAt.IsZero() {
 		first := max(s.clock.Sub(s.firstFrameAt).Seconds(), 0)
 		idle := max(s.clock.Sub(s.lastFrameAt).Seconds(), 0)

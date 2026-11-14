@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import type { AppIdentity } from "./build-identity"
 import { captureBusy, environmentNotice, type Adapter, type EnvironmentState, type NpcapDownload } from "./capture-environment"
+import type { HistoryChange, HistoryIndicator } from "./history"
 import { host, type OverlayChange } from "./host"
 import { normalizeUpdateInterval, type OverlayKind, type OverlayStates, type Snapshot, type UpdateInterval } from "./snapshot"
 
@@ -36,6 +37,13 @@ export interface SettingsController {
   /** A launch starts one capture by itself on `defaultAdapter`. Takes effect at the next launch. */
   autoStartCapture: boolean
   setAutoStartCapture: (enabled: boolean) => void
+  /** Combat History records; switching it off never deletes stored history. */
+  historyRecording: boolean
+  setHistoryRecording: (enabled: boolean) => void
+  /** The host's Combat History indicator, or undefined before the first snapshot. */
+  history: HistoryIndicator | undefined
+  /** Deletes every stored encounter; the caller has asked the user to confirm. */
+  clearHistory: () => Promise<HistoryChange>
   /** A capture is starting, running or stopping, so its interface cannot be changed now. */
   captureBusy: boolean
   /** The last finished check, or null before the first one. */
@@ -153,6 +161,10 @@ export function useLiveSettings(snapshot: Snapshot | null, connected: boolean, c
     setDefaultAdapter: ipv4 => guard(host.setDefaultAdapter(ipv4).then(state => { if (mounted.current) setStoredAdapter(state.settings.defaultAdapterIPv4) })),
     autoStartCapture,
     setAutoStartCapture: enabled => guard(host.setAutoStartCapture(enabled).then(state => { if (mounted.current) setStoredAutoStart(state.settings.autoStartCapture === true) })),
+    historyRecording: snapshot?.history?.enabled ?? true,
+    setHistoryRecording: enabled => guard(host.setHistoryRecording(enabled)),
+    history: snapshot?.history,
+    clearHistory: host.clearHistory,
     captureBusy: captureBusy(snapshot?.service.state),
     environment,
     checking,

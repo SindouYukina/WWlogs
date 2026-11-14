@@ -154,7 +154,7 @@ func (p *processor) archiveSchemaDecode(frame gameFrame, plain []byte) {
 	// Commands 103 and 116 carry device and account identifiers beside the client
 	// version fields. The census keeps only the version fields; this output does not
 	// decode them at all.
-	if frame.commandID == 103 || frame.commandID == 116 {
+	if frame.commandID == cmdLoginRequest || frame.commandID == cmdCheckClientPush {
 		p.schemaDecodeSkipped++
 		return
 	}
@@ -309,9 +309,10 @@ func (p *processor) schemaMessageFor(commandID uint16) (string, bool) {
 }
 
 // archiveUndecodedSchema writes schema decodes for commands outside the typed
-// decoder when no census is running. It decrypts and decompresses the frame the
-// same way the census path does, and writes only frames that parse as top-level
-// Protobuf.
+// decoder when no census is running. handleFrame calls it only for frames the
+// protocol session reads, whose numbering is the current protocol the external
+// schema describes. It decrypts and decompresses the frame the same way the
+// census path does and writes only frames that parse as top-level Protobuf.
 func (p *processor) archiveUndecodedSchema(frame gameFrame) {
 	if p.protocolSchema == nil || (p.schemaDecodeOut == nil && p.roleConfigOut == nil) || len(p.session) != 32 || len(frame.body) == 0 {
 		return

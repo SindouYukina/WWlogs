@@ -20,11 +20,13 @@ type listeningView struct {
 	firstAge, idle    *float64
 	decryptFailures   int
 	transport         capture.TransportState
+	protocolStatus    string
 }
 
 func (v listeningView) build() *capture.ViewSnapshot {
 	view := &capture.ViewSnapshot{CaptureSessionID: v.capture, ProtocolSession: int(v.protocol)}
 	view.Health.Session = capture.ViewSessionHealth{KeyReady: v.keyReady, LastHandshakeFailed: v.handshakeFailed, FramesObserved: v.frames, FirstFrameAgeSeconds: v.firstAge, FrameIdleSeconds: v.idle, ConsecutiveDecryptFailures: v.decryptFailures}
+	view.Health.Session.Protocol.Status = v.protocolStatus
 	view.Health.Transport.State = v.transport
 	if view.Health.Transport.State == "" {
 		view.Health.Transport.State = capture.TransportHealthy
@@ -56,6 +58,9 @@ func TestListeningClassification(t *testing.T) {
 		{"process unknown, no traffic", running, listeningView{capture: 1}, noOSInfo, ListeningWaiting, ReasonNoGameTraffic},
 		{"first frames just arrived", running, listeningView{capture: 1, frames: 1, firstAge: seconds(0.01), idle: seconds(0)}, gameUp, ListeningEstablishing, ReasonHandshakeInProgress},
 		{"capture began after login", running, listeningView{capture: 1, frames: 80, firstAge: seconds(30), idle: seconds(1)}, gameUp, ListeningWaiting, ReasonTrafficWithoutKey},
+		{"missed connection still busy just under the limit", running, listeningView{capture: 1, frames: 80, firstAge: seconds(30), idle: seconds(capture.LiveFrameSilenceLimit.Seconds() - 0.01)}, gameUp, ListeningWaiting, ReasonTrafficWithoutKey},
+		{"missed connection went quiet: back at the login screen", running, listeningView{capture: 1, frames: 80, firstAge: seconds(73), idle: seconds(capture.LiveFrameSilenceLimit.Seconds())}, gameUp, ListeningWaiting, ReasonAwaitingRelogin},
+		{"game closed after a missed login", running, listeningView{capture: 1, frames: 80, firstAge: seconds(73), idle: seconds(30)}, gameDown, ListeningWaiting, ReasonGameNotRunning},
 		{"handshake failed", running, listeningView{capture: 1, frames: 1, handshakeFailed: true, firstAge: seconds(1), idle: seconds(0)}, gameUp, ListeningError, ReasonHandshakeFailed},
 		{"normal parsing", running, active, gameUp, ListeningActive, ReasonReceiving},
 		{"process list unavailable while parsing", running, active, noOSInfo, ListeningActive, ReasonReceiving},
@@ -69,6 +74,9 @@ func TestListeningClassification(t *testing.T) {
 		{"recovery exhausted", running, listeningView{capture: 1, protocol: 1, keyReady: true, frames: 500, firstAge: seconds(60), idle: seconds(1), transport: capture.TransportUnrecoverable}, gameUp, ListeningError, ReasonTransportUnrecovered},
 		{"a run of decrypt failures", running, listeningView{capture: 1, protocol: 1, keyReady: true, frames: 500, firstAge: seconds(60), idle: seconds(1), decryptFailures: 20}, gameUp, ListeningError, ReasonDecryptFailing},
 		{"isolated decrypt failures do not alarm", running, listeningView{capture: 1, protocol: 1, keyReady: true, frames: 500, firstAge: seconds(60), idle: seconds(1), decryptFailures: 3}, gameUp, ListeningActive, ReasonReceiving},
+		{"a supported game version parses", running, listeningView{capture: 1, protocol: 1, keyReady: true, frames: 500, firstAge: seconds(60), idle: seconds(1), protocolStatus: capture.ProtocolStatusSupported}, gameUp, ListeningActive, ReasonReceiving},
+		{"an unsupported game version is an error, not listening", running, listeningView{capture: 1, protocol: 1, keyReady: true, frames: 500, firstAge: seconds(60), idle: seconds(1), protocolStatus: capture.ProtocolStatusUnsupported}, gameUp, ListeningError, ReasonUnsupportedGameVersion},
+		{"the version report after the key is still establishing", running, listeningView{capture: 1, protocol: 1, keyReady: true, frames: 2, firstAge: seconds(60), idle: seconds(0), protocolStatus: capture.ProtocolStatusPending}, gameUp, ListeningEstablishing, ReasonHandshakeInProgress},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			var monitor ListeningMonitor

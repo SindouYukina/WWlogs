@@ -36,7 +36,7 @@ func (p *processor) writePartReference(frame gameFrame, rpcID uint64, request pe
 		CommandID:     frame.commandID,
 		RPCID:         rpcID,
 		FieldPath:     "DamageExecuteRequest.PartId",
-		FieldNumber:   5,
+		FieldNumber:   fieldDamageExecuteRequestPartID,
 		TargetEntityID: optionalUint64(
 			request.targetEntityID,
 			request.hasTargetEntityID,

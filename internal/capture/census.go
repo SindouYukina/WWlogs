@@ -3,8 +3,6 @@ package capture
 import (
 	"fmt"
 	"time"
-
-	"wwlogs/internal/versioninfo"
 )
 
 type censusKey struct {
@@ -144,181 +142,189 @@ func newCommandCensus() *commandCensus {
 
 func commandName(id uint16) string {
 	switch id {
-	case 103:
+	case cmdLoginRequest:
 		return "LoginRequest"
-	case 116:
+	case cmdCheckClientPush:
 		return "CheckClientPush"
-	case 112:
+	case cmdProtoKeyResponse:
 		return "ProtoKeyResponse"
-	case 18559:
+	case cmdJoinSceneNotify:
 		return "JoinSceneNotify"
-	case 17286:
+	case cmdUpdateSceneGroupDataNotify:
 		return "UpdateSceneGroupDataNotify"
-	case 22492:
+	case cmdPlayerLivingStatesNotify:
 		return "PlayerLivingStatesNotify"
-	case 21803:
+	case cmdAddSysBuffNotify:
 		return "AddSysBuffNotify"
-	case 25830:
+	case cmdApplyGameplayEffectNotify:
 		return "ApplyGameplayEffectNotify"
-	case 29488:
+	case cmdApplyGameplayEffectPush:
 		return "ApplyGameplayEffectPush"
-	case 18345:
+	case cmdRemoveGameplayEffectNotify:
 		return "RemoveGameplayEffectNotify"
-	case 20358:
+	case cmdRemoveGameplayEffectPush:
 		return "RemoveGameplayEffectPush"
-	case 17893:
+	case cmdSimpleCombatEntityBuffUpdateNotify:
 		return "SimpleCombatEntityBuffUpdateNotify"
-	case 22102:
+	case cmdSimpleCombatEntityBuffLayerCountNotify:
 		return "SimpleCombatEntityBuffLayerCountNotify"
-	case 29363:
+	case cmdBuffStackCountNotify:
 		return "BuffStackCountNotify"
-	case 16974:
+	case cmdBuffDurationNotify:
 		return "BuffDurationNotify"
-	case 22973:
+	case cmdApplyGameplayEffectRequest:
 		return "ApplyGameplayEffectRequest"
-	case 22915:
+	case cmdApplyGameplayEffectResponse:
 		return "ApplyGameplayEffectResponse"
-	case 19884:
+	case cmdRemoveGameplayEffectRequest:
 		return "RemoveGameplayEffectRequest"
-	case 28077:
+	case cmdRemoveGameplayEffectResponse:
 		return "RemoveGameplayEffectResponse"
-	case 21800:
+	case cmdOrderApplyBuffRequest:
 		return "OrderApplyBuffRequest"
-	case 27266:
+	case cmdOrderApplyBuffResponse:
 		return "OrderApplyBuffResponse"
-	case 29255:
+	case cmdOrderRemoveBuffRequest:
 		return "OrderRemoveBuffRequest"
-	case 17452:
+	case cmdOrderRemoveBuffResponse:
 		return "OrderRemoveBuffResponse"
-	case 18641:
+	case cmdApplyBuffS2cRequestNotify:
 		return "ApplyBuffS2cRequestNotify"
-	case 16890:
+	case cmdApplyBuffS2cResponsePush:
 		return "ApplyBuffS2cResponsePush"
-	case 20022:
+	case cmdRemoveBuffS2cRequestNotify:
 		return "RemoveBuffS2cRequestNotify"
-	case 23971:
+	case cmdRemoveBuffS2cResponsePush:
 		return "RemoveBuffS2cResponsePush"
-	case 19482:
+	case cmdRemoveBuffByIDS2cRequestNotify:
 		return "RemoveBuffByIdS2cRequestNotify"
-	case 19162:
+	case cmdRemoveBuffByIDS2cResponsePush:
 		return "RemoveBuffByIdS2cResponsePush"
-	case 17149:
+	case cmdActivateBuffRequest:
 		return "ActivateBuffRequest"
-	case 19917:
+	case cmdActivateBuffResponse:
 		return "ActivateBuffResponse"
-	case 28221:
+	case cmdActivateBuffNotify:
 		return "ActivateBuffNotify"
-	case 20926:
+	case cmdActivateBuffPush:
 		return "ActivateBuffPush"
-	case 19820:
+	case cmdBuffStackCountRequest:
 		return "BuffStackCountRequest"
-	case 26251:
+	case cmdBuffStackCountResponse:
 		return "BuffStackCountResponse"
-	case 21666:
+	case cmdBuffStackCountPush:
 		return "BuffStackCountPush"
-	case 22540:
+	case cmdBuffEffectRequest:
 		return "BuffEffectRequest"
-	case 16967:
+	case cmdBuffEffectResponse:
 		return "BuffEffectResponse"
-	case 20706:
+	case cmdBuffEffectPush:
 		return "BuffEffectPush"
-	case 26094:
+	case cmdBuffEffectExecuteRequest:
 		return "BuffEffectExecuteRequest"
-	case 17533:
+	case cmdBuffEffectExecuteResponse:
 		return "BuffEffectExecuteResponse"
-	case 18099:
+	case cmdBuffEffectExecutePush:
 		return "BuffEffectExecutePush"
-	case 18682:
+	case cmdEntityBuffProducerRequest:
 		return "EntityBuffProducerRequest"
-	case 22006:
+	case cmdEntityBuffProducerResponse:
 		return "EntityBuffProducerResponse"
-	case 26503:
+	case cmdEntityBuffProducerOperateRequest:
 		return "EntityBuffProducerOperateRequest"
-	case 27203:
+	case cmdEntityBuffProducerOperateResponse:
 		return "EntityBuffProducerOperateResponse"
-	case 22742:
+	case cmdOrderRemoveBuffByTagsRequest:
 		return "OrderRemoveBuffByTagsRequest"
-	case 16551:
+	case cmdOrderRemoveBuffByTagsResponse:
 		return "OrderRemoveBuffByTagsResponse"
-	case 24520:
+	case cmdOrderRemoveBuffByTagsNotify:
 		return "OrderRemoveBuffByTagsNotify"
-	case 23494:
+	case cmdRemoveBuffByServerIDS2cRequestNotify:
 		return "RemoveBuffByServerIdS2cRequestNotify"
-	case 16727:
+	case cmdAtomicProcessAddBuffRequest:
 		return "AtomicProcessAddBuffRequest"
-	case 19678:
+	case cmdAtomicProcessAddBuffResponse:
 		return "AtomicProcessAddBuffResponse"
-	case 27565:
+	case cmdAtomicProcessRemoveBuffRequest:
 		return "AtomicProcessRemoveBuffRequest"
-	case 23095:
+	case cmdAtomicProcessRemoveBuffResponse:
 		return "AtomicProcessRemoveBuffResponse"
-	case 27991:
+	case cmdTransformBuffStackNotify:
 		return "TransformBuffStackNotify"
-	case 26471:
+	case cmdOrderApplyBuffNotify:
 		return "OrderApplyBuffNotify"
-	case 17807:
+	case cmdOrderRemoveBuffNotify:
 		return "OrderRemoveBuffNotify"
-	case 27178:
+	case cmdRefreshBuffDurationPush:
 		return "RefreshBuffDurationPush"
-	case 24831:
+	case cmdRemoveSysBuffNotify:
 		return "RemoveSysBuffNotify"
-	case 16764:
+	case cmdSimpleCombatEntityAttributeUpdateNotify:
 		return "SimpleCombatEntityAttributeUpdateNotify"
-	case 29113:
+	case cmdSimpleCombatEntitySyncAttributePush:
 		return "SimpleCombatEntitySyncAttributePush"
-	case 29655:
+	case cmdUpdateSysBuffNotify:
 		return "UpdateSysBuffNotify"
-	case 21051:
+	case cmdUpdatePlayerAllFightRoleNotify:
 		return "UpdatePlayerAllFightRoleNotify"
-	case 18899:
+	case cmdUpdatePlayersFightRolesInfoNotify:
 		return "UpdatePlayersFightRolesInfoNotify"
-	case 18580:
+	case cmdUpdatePlayerSingleFightRoleNotify:
 		return "UpdatePlayerSingleFightRoleNotify"
-	case 27633:
+	case cmdChangePlayerFightRoleNotify:
 		return "ChangePlayerFightRoleNotify"
-	case 19470:
+	case cmdCombatSendPackRequest:
 		return "CombatRequest (outer transport)"
-	case 20332:
+	case cmdCombatSendPackResponse:
 		return "CombatResponse (outer transport)"
-	case 25706:
+	case cmdCombatReceivePackNotify:
 		return "CombatReceivePackNotify"
-	case 22022:
+	case cmdDamageExecuteRequest:
 		return "DamageExecute RPC (inner candidate)"
-	case 22535:
+	case cmdPhantomAttrRecommendResponse:
 		return "PhantomAttrRecommendResponse"
-	case 19212:
+	case cmdEntityRemoveDynamicInteractNotify:
 		return "EntityRemoveDynamicInteractNotify"
-	case 19566:
+	case cmdEntityCommonTagNotify:
 		return "EntityCommonTagNotify"
-	case 23517:
+	case cmdEntityStateReadyNotify:
 		return "EntityStateReadyNotify"
-	case 24756:
+	case cmdMovePackagePush:
 		return "MovePackagePush"
-	case 27918:
+	case cmdPlayerFollowerNotify:
 		return "PlayerFollowerNotify"
-	case 25185:
+	case cmdEntityAddNotify:
 		return "EntityAddNotify (candidate)"
-	case 26702:
+	case cmdEntityActiveResponse:
 		return "EntityActiveResponse (candidate)"
-	case 28481:
+	case cmdEntityActiveRequest:
 		return "EntityActiveRequest (candidate)"
-	case 17769:
+	case cmdEntityRemoveNotify:
 		return "EntityRemoveNotify (candidate)"
 	default:
 		return ""
 	}
 }
 
-func hasWindowsProtocolSchema(id uint16) bool {
+// hasCurrentProtocolSchema reports the commands whose census entries record the current client protocol as their
+// schema basis.
+func hasCurrentProtocolSchema(id uint16) bool {
 	switch id {
-	case 17286, 22492, 21803, 25830, 29488, 18345, 20358, 17893, 22102, 29363, 16974, 26471, 17807, 27178, 24831, 16764, 29113, 29655,
-		22973, 22915, 19884, 28077, 21800, 27266, 29255, 17452, 18641, 16890, 20022, 23971, 19482, 19162, 17149, 19917, 28221, 20926,
-		19820, 26251, 21666, 22540, 16967, 20706, 26094, 17533, 18099, 18682, 22006, 26503, 27203, 22742, 16551, 24520, 23494,
-		16727, 19678, 27565, 23095, 27991, 18559, 25185, 17769, 28481, 21051, 18899, 18580, 27633, 25706:
+	case cmdUpdateSceneGroupDataNotify, cmdPlayerLivingStatesNotify, cmdAddSysBuffNotify, cmdApplyGameplayEffectNotify, cmdApplyGameplayEffectPush, cmdRemoveGameplayEffectNotify, cmdRemoveGameplayEffectPush, cmdSimpleCombatEntityBuffUpdateNotify, cmdSimpleCombatEntityBuffLayerCountNotify, cmdBuffStackCountNotify, cmdBuffDurationNotify, cmdOrderApplyBuffNotify, cmdOrderRemoveBuffNotify, cmdRefreshBuffDurationPush, cmdRemoveSysBuffNotify, cmdSimpleCombatEntityAttributeUpdateNotify, cmdSimpleCombatEntitySyncAttributePush, cmdUpdateSysBuffNotify,
+		cmdApplyGameplayEffectRequest, cmdApplyGameplayEffectResponse, cmdRemoveGameplayEffectRequest, cmdRemoveGameplayEffectResponse, cmdOrderApplyBuffRequest, cmdOrderApplyBuffResponse, cmdOrderRemoveBuffRequest, cmdOrderRemoveBuffResponse, cmdApplyBuffS2cRequestNotify, cmdApplyBuffS2cResponsePush, cmdRemoveBuffS2cRequestNotify, cmdRemoveBuffS2cResponsePush, cmdRemoveBuffByIDS2cRequestNotify, cmdRemoveBuffByIDS2cResponsePush, cmdActivateBuffRequest, cmdActivateBuffResponse, cmdActivateBuffNotify, cmdActivateBuffPush,
+		cmdBuffStackCountRequest, cmdBuffStackCountResponse, cmdBuffStackCountPush, cmdBuffEffectRequest, cmdBuffEffectResponse, cmdBuffEffectPush, cmdBuffEffectExecuteRequest, cmdBuffEffectExecuteResponse, cmdBuffEffectExecutePush, cmdEntityBuffProducerRequest, cmdEntityBuffProducerResponse, cmdEntityBuffProducerOperateRequest, cmdEntityBuffProducerOperateResponse, cmdOrderRemoveBuffByTagsRequest, cmdOrderRemoveBuffByTagsResponse, cmdOrderRemoveBuffByTagsNotify, cmdRemoveBuffByServerIDS2cRequestNotify,
+		cmdAtomicProcessAddBuffRequest, cmdAtomicProcessAddBuffResponse, cmdAtomicProcessRemoveBuffRequest, cmdAtomicProcessRemoveBuffResponse, cmdTransformBuffStackNotify, cmdJoinSceneNotify, cmdEntityAddNotify, cmdEntityRemoveNotify, cmdEntityActiveRequest, cmdUpdatePlayerAllFightRoleNotify, cmdUpdatePlayersFightRolesInfoNotify, cmdUpdatePlayerSingleFightRoleNotify, cmdChangePlayerFightRoleNotify, cmdCombatReceivePackNotify,
+		cmdEntityActiveResponse, cmdPhantomAttrRecommendResponse, cmdMovePackagePush, cmdPlayerFollowerNotify, cmdEntityRemoveDynamicInteractNotify, cmdEntityCommonTagNotify, cmdEntityStateReadyNotify:
 		return true
 	default:
 		return false
 	}
+}
+
+// censusSchemaBasis is the schema basis of a census entry named from the current client protocol.
+func censusSchemaBasis() string {
+	return "command defined by the " + CurrentProtocol()
 }
 
 func (c *commandCensus) entry(id uint16, direction string) *commandCensusEntry {
@@ -327,24 +333,34 @@ func (c *commandCensus) entry(id uint16, direction string) *commandCensusEntry {
 	if entry == nil {
 		entry = &commandCensusEntry{
 			CommandID:      id,
-			Name:           commandName(id),
 			Direction:      direction,
 			Status:         "PRESENT BUT UNDECODED",
 			Sessions:       make(map[int]int),
 			FailureReasons: make(map[string]int),
 		}
-		if id == 103 || id == 116 {
+		switch id {
+		case cmdLoginRequest, cmdCheckClientPush:
+			entry.Name = commandName(id)
 			entry.SchemaBasis = "Only extracted version fields are retained; command 103/116 sibling fields contain device/account identifiers and are excluded from logs and audit"
-		} else if hasWindowsProtocolSchema(id) {
-			entry.SchemaBasis = versioninfo.WindowsSchemaLabel() + " Aki.Protocol metadata; client version observed, schema compatibility unverified"
-		} else if id == 26702 {
-			entry.SchemaBasis = versioninfo.ReferenceSchemaLabel() + " static schema; client version observed, cross-platform schema compatibility unverified"
-		} else if id == 22535 || id == 24756 || id == 27918 || id == 19212 || id == 19566 || id == 23517 {
-			entry.SchemaBasis = versioninfo.WindowsSchemaLabel() + " Aki.Protocol metadata; client version observed, schema compatibility unverified"
+		case cmdProtoKeyResponse:
+			entry.Name = commandName(id)
 		}
 		c.entries[key] = entry
 	}
 	return entry
+}
+
+// describeCurrentProtocol names an entry, and records its schema basis, from the current client protocol. The
+// processor calls it only for a frame the current protocol session decodes, so a frame of another game version, or one
+// sent before its session reported a version, never takes a current-protocol name. The handshake and the two version
+// reports are read in every protocol session, so their entries are named when they are created.
+func (e *commandCensusEntry) describeCurrentProtocol() {
+	if e.Name == "" {
+		e.Name = commandName(e.CommandID)
+	}
+	if e.SchemaBasis == "" && hasCurrentProtocolSchema(e.CommandID) {
+		e.SchemaBasis = censusSchemaBasis()
+	}
 }
 
 func extractMovePackageObservation(data []byte) (movePackageObservation, error) {
@@ -354,11 +370,11 @@ func extractMovePackageObservation(data []byte) (movePackageObservation, error) 
 	}
 	var observation movePackageObservation
 	for _, field := range fields {
-		if field.number == 4 && field.wire == 0 {
+		if field.number == fieldMovePackagePushSceneOwnerID && field.wire == 0 {
 			observation.SceneOwnerIDs = append(observation.SceneOwnerIDs, field.value)
 			continue
 		}
-		if field.number != 12 || field.wire != 2 {
+		if field.number != fieldMovePackagePushMovingEntities || field.wire != 2 {
 			continue
 		}
 		movingEntity, err := parseProtoFields(field.data)
@@ -368,10 +384,10 @@ func extractMovePackageObservation(data []byte) (movePackageObservation, error) 
 		var entity movePackageEntityObservation
 		hasEntityID := false
 		for _, nested := range movingEntity {
-			if nested.number == 1 && nested.wire == 0 {
+			if nested.number == fieldMovingEntityDataEntityID && nested.wire == 0 {
 				entity.EntityID = nested.value
 				hasEntityID = true
-			} else if nested.number == 2 && nested.wire == 0 {
+			} else if nested.number == fieldMovingEntityDataOriginator && nested.wire == 0 {
 				entity.OriginatorValue = nested.value
 				entity.HasOriginator = true
 			}
@@ -415,12 +431,12 @@ func extractPlayerFollowerObservation(data []byte) (playerFollowerObservation, e
 	}
 	var observation playerFollowerObservation
 	for _, field := range fields {
-		if field.number == 13 && field.wire == 0 {
+		if field.number == fieldPlayerFollowerNotifyPlayerID && field.wire == 0 {
 			observation.PlayerID = field.value
 			observation.HasPlayerID = true
 			continue
 		}
-		if field.number != 10 || field.wire != 2 {
+		if field.number != fieldPlayerFollowerNotifyListPlayerFollowerPb || field.wire != 2 {
 			continue
 		}
 		nestedFields, err := parseProtoFields(field.data)
@@ -429,10 +445,10 @@ func extractPlayerFollowerObservation(data []byte) (playerFollowerObservation, e
 		}
 		var follower playerFollowerEntity
 		for _, nested := range nestedFields {
-			if nested.number == 1 && nested.wire == 0 {
+			if nested.number == fieldPlayerFollowerPbType && nested.wire == 0 {
 				follower.Type = nested.value
 				follower.HasType = true
-			} else if nested.number == 2 && nested.wire == 0 {
+			} else if nested.number == fieldPlayerFollowerPbEntityID && nested.wire == 0 {
 				follower.EntityID = nested.value
 				follower.HasEntityID = true
 			}

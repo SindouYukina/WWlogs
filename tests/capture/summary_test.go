@@ -378,7 +378,7 @@ func TestEncounterSummaryReportsBuffSnapshotObservationsWithoutLifecycleClaims(t
 	var output bytes.Buffer
 	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
 	p.encounterSummary = &output
-	p.entities.entities[8801] = runtimeEntity{entityID: 8801, sceneInstanceID: 9001, hasSceneInstanceID: true, sourceMessageID: 26702}
+	p.entities.entities[8801] = runtimeEntity{entityID: 8801, sceneInstanceID: 9001, hasSceneInstanceID: true, sourceMessageID: cmdEntityActiveResponse}
 	entityID := uint64(8801)
 	p.observeBuffSnapshot(buffSnapshotAuditRow{
 		SessionNumber: 4,

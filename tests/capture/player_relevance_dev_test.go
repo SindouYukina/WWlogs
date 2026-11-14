@@ -741,9 +741,9 @@ func TestDamageResponseDeduplicatesPlayerOutputAndKeepsRawCounts(t *testing.T) {
 		attackerEntityID: 100, hasAttackerEntityID: true,
 		targetEntityID: 200, hasTargetEntityID: true,
 	}
-	response := appendVarintField(nil, 4, 0)
-	response = appendVarintField(response, 5, 0)
-	response = appendVarintField(response, 10, 9001)
+	response := appendVarintField(nil, fieldDamageExecuteResponseErrorCode, 0)
+	response = appendVarintField(response, fieldDamageExecuteResponseImmuneType, 0)
+	response = appendVarintField(response, fieldDamageExecuteResponseDamage, 9001)
 	p.handleOneDamageResult(42, response)
 	p.handleOneDamageResult(42, response)
 	if strings.Count(stdout.String(), "\n") != 1 || p.stats.printed != 1 || p.stats.matchedCombatResultAbs != 9001 {

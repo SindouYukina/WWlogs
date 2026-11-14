@@ -102,12 +102,12 @@ func TestResolveVehicleDamageContributorCandidateWithoutResolvedSkillRequest(t *
 func vehicleDamageContributorFixture() (*entityResolver, *gameMaster, combatEvent) {
 	source := runtimeEntity{
 		entityID: 10, followerSummonConfigID: 290101, hasFollowerSummonConfigID: true,
-		followEntityID: 11, hasFollowEntityID: true, sourceMessageID: 25185,
+		followEntityID: 11, hasFollowEntityID: true, sourceMessageID: cmdEntityAddNotify,
 	}
 	motorcycle := runtimeEntity{
 		entityID: 11, summonerID: 10, hasSummonerID: true,
 		summonType: summonTypeConcomitantMotorcycle, hasSummonType: true,
-		summonSkillID: 6013, hasSummonSkillID: true, sourceMessageID: 25185,
+		summonSkillID: 6013, hasSummonSkillID: true, sourceMessageID: cmdEntityAddNotify,
 	}
 	resolver := &entityResolver{entities: map[uint64]runtimeEntity{10: source, 11: motorcycle}}
 	master := &gameMaster{

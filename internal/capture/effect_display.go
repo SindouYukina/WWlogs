@@ -133,7 +133,8 @@ func classifyEffectKind(class EffectCombatClass, basis string, static *EffectSta
 type EffectDisplayEligibility string
 
 const (
-	// EffectDisplayEligible is a verified HUD status: an active local instance the game draws with an icon and a direction.
+	// EffectDisplayEligible is a verified HUD status: an active local instance the game draws with an icon, with its BUFF
+	// or DEBUFF arrow or without an arrow (EffectPolarityNeutral).
 	EffectDisplayEligible EffectDisplayEligibility = "eligible"
 	// EffectDisplayPredictedExpired is a verified HUD status past its expected expiry by more than effectDisplayExpiryGrace.
 	// Nothing confirmed its end: it stays tracked and returns if the game refreshes it, but it is no longer shown as active.
@@ -147,7 +148,8 @@ const (
 	// lists no HUD cue or its holder is not an entity any HUD surface reads.
 	EffectDisplayNonHUD EffectDisplayEligibility = "non_hud"
 	// EffectDisplayHUDUnresolved is an unresolved HUD mapping. It is not a statement that the game shows nothing: the
-	// definition is missing, the game draws no direction for it, or the holder cannot be placed on a HUD surface.
+	// definition is missing, the Master holds no cue parameters to read its direction from, or the holder cannot be
+	// placed on a HUD surface.
 	EffectDisplayHUDUnresolved EffectDisplayEligibility = "hud_unresolved"
 )
 
@@ -156,7 +158,7 @@ const (
 	effectDisplayBasisNoDefinition     = "definition_missing"
 	effectDisplayBasisNoCue            = "no_hud_cue"
 	effectDisplayBasisSummonHolder     = "holder_is_not_a_hud_surface"
-	effectDisplayBasisNoDirection      = "hud_cue_has_no_direction"
+	effectDisplayBasisDirectionUnknown = "hud_cue_direction_unknown"
 	effectDisplayBasisHolderUnresolved = "holder_unresolved"
 	effectDisplayBasisMonsterHead      = "hidden_on_monster_heads"
 )
@@ -214,8 +216,10 @@ func effectHUDDecision(effect EffectInstanceSnapshot, target EffectDisplayTarget
 	default:
 		return EffectDisplayHUDUnresolved, effectDisplayBasisHolderUnresolved
 	}
+	// A cue without an arrow is drawn all the same (BuffItem.Activate): only a Master without cue parameters leaves the
+	// direction unknown.
 	if effectPolarityFor(effect) == EffectPolarityUnclassified {
-		return EffectDisplayHUDUnresolved, effectDisplayBasisNoDirection
+		return EffectDisplayHUDUnresolved, effectDisplayBasisDirectionUnknown
 	}
 	return EffectDisplayEligible, ""
 }
@@ -457,10 +461,15 @@ func effectDisplayCells(eligible []EffectInstanceSnapshot) []effectDisplayCell {
 }
 
 // effectPolarityFor returns the direction the game's HUD draws for the effect: the BUFF or DEBUFF arrow its definition's
-// HUD cue selects (effect_hud_cues.go). Every other effect stays unclassified. An attribute, an element, a term or an
-// icon cannot give the direction, because the game uses the same icons and attributes for both.
+// HUD cue selects, or neutral when that cue draws no arrow (effect_hud_cues.go). Every other effect stays unclassified.
+// An attribute, an element, a term or an icon cannot give the direction, because the game uses the same icons and
+// attributes for both.
 func effectPolarityFor(effect EffectInstanceSnapshot) EffectPolarity {
-	if effect.Static != nil && (effect.Static.HUDPolarity == EffectPolarityBuff || effect.Static.HUDPolarity == EffectPolarityDebuff) {
+	if effect.Static == nil || len(effect.Static.HUDCueTypes) == 0 {
+		return EffectPolarityUnclassified
+	}
+	switch effect.Static.HUDPolarity {
+	case EffectPolarityBuff, EffectPolarityDebuff, EffectPolarityNeutral:
 		return effect.Static.HUDPolarity
 	}
 	return EffectPolarityUnclassified

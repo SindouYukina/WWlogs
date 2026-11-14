@@ -125,6 +125,15 @@ func readVCS() (revision, modified string) {
 // Official reports whether the build carries an official Build Number.
 func (i Identity) Official() bool { return i.BuildNumber > 0 }
 
+// ProductVersion is the product version as MAJOR.MINOR.PATCH (with any pre-release suffix), without the v of the version
+// tag, or empty when the version is Unavailable.
+func (i Identity) ProductVersion() string {
+	if i.Version == Unavailable || len(i.Version) < 2 || i.Version[0] != 'v' {
+		return ""
+	}
+	return i.Version[1:]
+}
+
 // BuildLabel is the Build Number in decimal, or "unofficial".
 func (i Identity) BuildLabel() string {
 	if !i.Official() {

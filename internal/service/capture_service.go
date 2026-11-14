@@ -32,8 +32,37 @@ type Status struct {
 	LastError string `json:"lastError,omitempty"`
 	// LastResult is how the last session ended.
 	LastResult *capture.SessionResult `json:"lastResult,omitempty"`
-	App        AppIdentity            `json:"app"`
+	// History is whether the current or last session keeps Combat History: HistoryRecording, HistoryOff, or a stable reason
+	// code why it could not (the capture runs either way).
+	History string      `json:"history,omitempty"`
+	App     AppIdentity `json:"app"`
 }
+
+// Combat History states of a session.
+const (
+	HistoryRecording   = "recording"
+	HistoryOff         = "off"
+	HistoryUnavailable = "unavailable"
+	HistoryDuplicate   = "duplicate_source"
+)
+
+// HistoryRecorder is one session's Combat History. It receives the session's journal (capture.HistorySink) and is finished
+// after the session ended; *history.Recorder implements it.
+type HistoryRecorder interface {
+	capture.HistorySink
+	Finish(ctx context.Context, stopReason string) error
+	Abort()
+}
+
+// HistoryStarter begins the Combat History of a capture about to open. It returns a nil recorder and a nil error for a
+// capture that keeps no history, and a state code (HistoryUnavailable, HistoryDuplicate) with an error when it cannot.
+type HistoryStarter func(cfg capture.SessionConfig) (HistoryRecorder, string, error)
+
+// historyFinishLimit bounds storing a live session's last history after it stopped; beyond it the session is left for the
+// next start's recovery, which marks it abandoned, and the capture lifecycle is not held up. A replay has no such limit: its
+// history is complete only once the writer committed all of it, and the queue it may still hold is bounded by backpressure,
+// so it waits until then unless Stop cancels it, which removes the replay from the history.
+const historyFinishLimit = 4 * time.Second
 
 // AppIdentity is the build identity shown in the UI, taken from buildinfo. It carries no paths or hashes.
 type AppIdentity struct {
@@ -54,6 +83,10 @@ type Session interface {
 	Close()
 	// SetPublishInterval changes the snapshot cadence while the session runs; it must be safe for concurrent use.
 	SetPublishInterval(interval time.Duration)
+	// SetHistoryRecording and HistoryRecording switch and report Combat History recording of a session that keeps history;
+	// both must be safe for concurrent use.
+	SetHistoryRecording(on bool)
+	HistoryRecording() capture.HistoryRecordingState
 }
 
 // Opener opens a session for cfg. It must release everything it opened when it fails.
@@ -86,6 +119,39 @@ type CaptureService struct {
 	done            chan struct{} // closed when the current session goroutine has released everything
 	stopAsked       bool          // Stop arrived while the session was still opening
 	closed          bool
+	history         HistoryStarter
+	// historyRecording is the user's recording setting: every session starts with it and a running one follows changes.
+	historyRecording bool
+}
+
+// SetHistory makes every later session keep Combat History through start; nil keeps none.
+func (s *CaptureService) SetHistory(start HistoryStarter) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.history = start
+}
+
+// SetHistoryRecording sets whether Combat History records. A running session stops recording at once, or starts at its next
+// clean encounter boundary (capture.DamageStatistics.SetHistoryRecording); later sessions start with the setting. Live
+// statistics and views never depend on it.
+func (s *CaptureService) SetHistoryRecording(on bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.historyRecording = on
+	if s.session != nil {
+		s.session.SetHistoryRecording(on)
+	}
+}
+
+// HistoryRecording reports the running session's recording state; without a running session it reports none.
+func (s *CaptureService) HistoryRecording() capture.HistoryRecordingState {
+	s.mu.Lock()
+	session := s.session
+	s.mu.Unlock()
+	if session == nil {
+		return capture.HistoryRecordingState{}
+	}
+	return session.HistoryRecording()
 }
 
 // NewCaptureService creates a stopped service using open to create sessions.
@@ -94,7 +160,7 @@ func NewCaptureService(open Opener) *CaptureService {
 	identity := AppIdentity{Version: record.Version, BuildNumber: record.BuildNumber, Official: record.Official(),
 		Commit: record.Commit, Dirty: record.Dirty, Profile: string(record.Profile)}
 	status := Status{State: StateStopped, App: identity}
-	return &CaptureService{open: open, publisher: NewPublisher(status), identity: identity, status: status}
+	return &CaptureService{open: open, publisher: NewPublisher(status), identity: identity, status: status, historyRecording: true}
 }
 
 // SessionOpener adapts capture.OpenSession with preloaded Master data.
@@ -144,13 +210,31 @@ func (s *CaptureService) Start(cfg capture.SessionConfig) error {
 	s.status = Status{State: StateStarting, App: s.identity}
 	done := make(chan struct{})
 	s.done = done
+	startHistory := s.history
+	cfg.HistoryPaused = !s.historyRecording
 	s.publishLocked()
 	s.mu.Unlock()
 
+	// History never decides whether a capture runs: a failure to begin it only leaves this session without history.
+	historyState, recorder := HistoryOff, HistoryRecorder(nil)
+	if startHistory != nil {
+		var state string
+		recorder, state, _ = startHistory(cfg)
+		switch {
+		case recorder != nil:
+			historyState = HistoryRecording
+			cfg.History = recorder
+		case state != "":
+			historyState = state
+		}
+	}
 	session, err := s.open(cfg)
 
 	s.mu.Lock()
 	if err != nil {
+		if recorder != nil {
+			recorder.Abort()
+		}
 		s.status = Status{State: StateError, LastError: err.Error(), App: s.identity}
 		s.publishLocked()
 		close(done)
@@ -162,6 +246,9 @@ func (s *CaptureService) Start(cfg capture.SessionConfig) error {
 		// Close may drain diagnostic writers; never hold the lifecycle lock while waiting.
 		s.mu.Unlock()
 		session.Close()
+		if recorder != nil {
+			recorder.Abort()
+		}
 		s.mu.Lock()
 		s.status = Status{State: StateStopped, Session: &info, App: s.identity,
 			LastResult: &capture.SessionResult{StopReason: capture.StopReasonRequested}}
@@ -176,15 +263,18 @@ func (s *CaptureService) Start(cfg capture.SessionConfig) error {
 	if s.publishInterval != 0 {
 		session.SetPublishInterval(s.publishInterval)
 	}
+	if s.historyRecording == cfg.HistoryPaused {
+		session.SetHistoryRecording(s.historyRecording)
+	}
 	s.session = session
-	s.status = Status{State: StateRunning, Session: &info, StartedAt: time.Now(), App: s.identity}
+	s.status = Status{State: StateRunning, Session: &info, StartedAt: time.Now(), History: historyState, App: s.identity}
 	s.publishLocked()
 	s.mu.Unlock()
-	go s.run(ctx, generation, session, done)
+	go s.run(ctx, generation, session, recorder, done)
 	return nil
 }
 
-func (s *CaptureService) run(ctx context.Context, generation uint64, session Session, done chan struct{}) {
+func (s *CaptureService) run(ctx context.Context, generation uint64, session Session, recorder HistoryRecorder, done chan struct{}) {
 	defer close(done)
 	result, err := session.Run(ctx, func(view capture.ViewSnapshot) {
 		s.mu.Lock()
@@ -195,6 +285,17 @@ func (s *CaptureService) run(ctx context.Context, generation uint64, session Ses
 		s.view = &view
 		s.publishLocked()
 	})
+	if recorder != nil {
+		// The session no longer submits; store what it queued (historyFinishLimit). Stop waits for this like for the handle.
+		finishCtx, cancel := ctx, context.CancelFunc(func() {})
+		if session.Info().Source != capture.SourceReplay {
+			finishCtx, cancel = context.WithTimeout(context.Background(), historyFinishLimit)
+		}
+		if recorder.Finish(finishCtx, result.StopReason) != nil {
+			result.HistoryIncomplete = true
+		}
+		cancel()
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if generation != s.generation {

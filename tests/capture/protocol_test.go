@@ -27,21 +27,21 @@ func appendTestVarint(dst []byte, value uint64) []byte {
 
 func TestDamageRequestUsesSchemaEntityAndSkillFields(t *testing.T) {
 	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
-	u3n := appendVarintField(nil, 9, 70010001)       // DamageId
-	u3n = appendVarintField(u3n, 10, 902)            // TargetEntityId
-	u3n = appendVarintField(u3n, 12, 2)              // SkillLevel
-	u3n = appendVarintField(u3n, 13, 25320)          // AttackerEntityId
-	context := appendVarintField(nil, 1, 0)          // SourceType: FromBullet
-	context = appendVarintField(context, 2, 9001)    // BulletId
-	context = appendVarintField(context, 4, 1312011) // SkillId
-	context = appendVarintField(context, 5, 77)      // SkillMessageId
-	u3n = appendBytesField(u3n, 15, context)         // DamageContext
-	request := appendVarintField(nil, 2, 42)         // RPC ID
-	request = appendBytesField(request, 5, u3n)
-	variant := appendBytesField(nil, 3, request)
-	outer := appendBytesField(nil, 14, variant)
+	u3n := appendVarintField(nil, fieldDamageExecuteRequestDamageID, 70010001)     // DamageId
+	u3n = appendVarintField(u3n, fieldDamageExecuteRequestTargetEntityID, 902)     // TargetEntityId
+	u3n = appendVarintField(u3n, fieldDamageExecuteRequestSkillLevel, 2)           // SkillLevel
+	u3n = appendVarintField(u3n, fieldDamageExecuteRequestAttackerEntityID, 25320) // AttackerEntityId
+	context := appendVarintField(nil, fieldDamageContextSourceType, 0)             // SourceType: FromBullet
+	context = appendVarintField(context, fieldDamageContextBulletID, 9001)         // BulletId
+	context = appendVarintField(context, fieldDamageContextSkillID, 1312011)       // SkillId
+	context = appendVarintField(context, fieldDamageContextSkillMessageID, 77)     // SkillMessageId
+	u3n = appendBytesField(u3n, fieldDamageExecuteRequestDamageContext, context)   // DamageContext
+	request := appendVarintField(nil, fieldCombatRequestDataRequestID, 42)         // RPC ID
+	request = appendBytesField(request, fieldCombatRequestDataDamageExecuteRequest, u3n)
+	variant := appendBytesField(nil, fieldCombatSendDataRequest, request)
+	outer := appendBytesField(nil, fieldCombatSendPackRequestData, variant)
 
-	p.handleDamageRequests(gameFrame{direction: "out", commandID: 19470}, outer)
+	p.handleDamageRequests(gameFrame{direction: "out", commandID: cmdCombatSendPackRequest}, outer)
 
 	got, ok := p.pending[42]
 	if !ok {
@@ -65,10 +65,10 @@ func TestDamageCandidateResultHasSeparateSemanticBucket(t *testing.T) {
 		70010001: {ID: 70010001, CalculateType: 0, SourceHash: strings.Repeat("a", 64), SourceTable: "damage"},
 	}}
 	p.pending[10] = pendingDamageRequest{damageID: 70010001, hasDamageID: true}
-	response := appendVarintField(nil, 4, 0)
-	response = appendVarintField(response, 5, 0)
+	response := appendVarintField(nil, fieldDamageExecuteResponseErrorCode, 0)
+	response = appendVarintField(response, fieldDamageExecuteResponseImmuneType, 0)
 	result := int32(-42)
-	response = appendVarintField(response, 10, uint64(uint32(result)))
+	response = appendVarintField(response, fieldDamageExecuteResponseDamage, uint64(uint32(result)))
 
 	p.handleOneDamageResult(10, response)
 
@@ -81,9 +81,9 @@ func TestDamageResponseWithoutSourceUsesUnknown(t *testing.T) {
 	var stdout, diagnostic bytes.Buffer
 	p := newProcessor(nil, &stdout, &diagnostic, nil)
 	p.pending[7] = pendingDamageRequest{}
-	response := appendVarintField(nil, 4, 0)
-	response = appendVarintField(response, 5, 0)
-	response = appendVarintField(response, 10, 33)
+	response := appendVarintField(nil, fieldDamageExecuteResponseErrorCode, 0)
+	response = appendVarintField(response, fieldDamageExecuteResponseImmuneType, 0)
+	response = appendVarintField(response, fieldDamageExecuteResponseDamage, 33)
 
 	p.handleOneDamageResult(7, response)
 
@@ -97,18 +97,18 @@ func TestDamageResponseWithoutSourceUsesUnknown(t *testing.T) {
 
 func TestEntityAddCapturesRawIdentityWithoutPromotingSkinToCharacter(t *testing.T) {
 	resolver := newEntityResolver()
-	monsterCapture := appendVarintField(nil, 1, 310000010)           // TemplateId
-	monsterCapture = appendVarintField(monsterCapture, 3, 310000020) // MonsterId
-	component := appendBytesField(nil, 18, monsterCapture)           // EntityComponentPb.MonsterCaptureComponent
-	entity := appendVarintField(nil, 1, 4201)                        // EntityPb.Id
-	entity = appendVarintField(entity, 2, 692750288)                 // ConfigId
-	entity = appendVarintField(entity, 3, 1)                         // ConfigType
-	entity = appendVarintField(entity, 4, 2)                         // EntityType
-	entity = appendVarintField(entity, 10, 77)                       // PlayerId
-	entity = appendBytesField(entity, 11, component)                 // ComponentPbs
-	entity = appendVarintField(entity, 23, 901)                      // RoleSkinId, not CharacterId
-	notify := appendVarintField(nil, 1, 1)                           // IsAdd
-	notify = appendBytesField(notify, 6, entity)
+	monsterCapture := appendVarintField(nil, fieldMonsterCaptureComponentPbTemplateID, 310000010)          // TemplateId
+	monsterCapture = appendVarintField(monsterCapture, fieldMonsterCaptureComponentPbMonsterID, 310000020) // MonsterId
+	component := appendBytesField(nil, fieldEntityComponentPbMonsterCaptureComponent, monsterCapture)      // EntityComponentPb.MonsterCaptureComponent
+	entity := appendVarintField(nil, fieldEntityPbID, 4201)                                                // EntityPb.Id
+	entity = appendVarintField(entity, fieldEntityPbConfigID, 692750288)                                   // ConfigId
+	entity = appendVarintField(entity, fieldEntityPbConfigType, 1)                                         // ConfigType
+	entity = appendVarintField(entity, fieldEntityPbEntityType, 2)                                         // EntityType
+	entity = appendVarintField(entity, fieldEntityPbPlayerID, 77)                                          // PlayerId
+	entity = appendBytesField(entity, fieldEntityPbComponentPbs, component)                                // ComponentPbs
+	entity = appendVarintField(entity, fieldEntityPbRoleSkinID, 901)                                       // RoleSkinId, not CharacterId
+	notify := appendVarintField(nil, fieldEntityAddNotifyIsAdd, 1)                                         // IsAdd
+	notify = appendBytesField(notify, fieldEntityAddNotifyEntityPbs, entity)
 
 	count, err := resolver.applyEntityAddNotify(notify)
 	if err != nil {
@@ -131,12 +131,12 @@ func TestEntityAddCapturesRawIdentityWithoutPromotingSkinToCharacter(t *testing.
 
 func TestMonsterCaptureIdentityRemainsCorrelatedUntilMasterCompatibilityVerified(t *testing.T) {
 	resolver := newEntityResolver()
-	capture := appendVarintField(nil, 1, 702)    // MonsterCaptureComponentPb.TemplateId
-	capture = appendVarintField(capture, 3, 701) // MonsterCaptureComponentPb.MonsterId
-	component := appendBytesField(nil, 18, capture)
-	entity := appendVarintField(nil, 1, 500) // EntityPb.Id
-	entity = appendBytesField(entity, 11, component)
-	notify := appendBytesField(appendVarintField(nil, 1, 1), 6, entity)
+	capture := appendVarintField(nil, fieldMonsterCaptureComponentPbTemplateID, 702)   // MonsterCaptureComponentPb.TemplateId
+	capture = appendVarintField(capture, fieldMonsterCaptureComponentPbMonsterID, 701) // MonsterCaptureComponentPb.MonsterId
+	component := appendBytesField(nil, fieldEntityComponentPbMonsterCaptureComponent, capture)
+	entity := appendVarintField(nil, fieldEntityPbID, 500) // EntityPb.Id
+	entity = appendBytesField(entity, fieldEntityPbComponentPbs, component)
+	notify := appendBytesField(appendVarintField(nil, fieldEntityAddNotifyIsAdd, 1), fieldEntityAddNotifyEntityPbs, entity)
 	if _, err := resolver.applyEntityAddNotify(notify); err != nil {
 		t.Fatal(err)
 	}
@@ -159,51 +159,51 @@ func TestMonsterCaptureIdentityRemainsCorrelatedUntilMasterCompatibilityVerified
 
 func TestJoinSceneSnapshotResolvesBothEntityBranchesAndPreservesOwnerNamespaces(t *testing.T) {
 	resolver := newEntityResolver()
-	stale := appendVarintField(nil, 1, 99)
-	if _, err := resolver.applyEntityAddNotify(appendBytesField(appendVarintField(nil, 1, 1), 6, stale)); err != nil {
+	stale := appendVarintField(nil, fieldEntityPbID, 99)
+	if _, err := resolver.applyEntityAddNotify(appendBytesField(appendVarintField(nil, fieldEntityAddNotifyIsAdd, 1), fieldEntityAddNotifyEntityPbs, stale)); err != nil {
 		t.Fatal(err)
 	}
 
-	summonerComponent := appendVarintField(nil, 1, 600) // SummonerComponentPb.SummonerId
-	summonerComponent = appendVarintField(summonerComponent, 2, 610)
-	summonerComponent = appendVarintField(summonerComponent, 3, 620)
-	summonerComponent = appendVarintField(summonerComponent, 4, 630)
-	summonerComponent = appendVarintField(summonerComponent, 5, 2)
-	monsterComponent := appendVarintField(nil, 1, 700) // MonsterCaptureComponentPb.TemplateId
-	monsterComponent = appendVarintField(monsterComponent, 3, 701)
-	followerComponent := appendVarintField(nil, 1, 640)
-	followerComponent = appendVarintField(followerComponent, 2, 611)
-	components := appendBytesField(nil, 4, summonerComponent)
-	components = appendBytesField(components, 18, monsterComponent)
-	components = appendBytesField(components, 42, followerComponent)
+	summonerComponent := appendVarintField(nil, fieldSummonerComponentPbSummonerID, 600) // SummonerComponentPb.SummonerId
+	summonerComponent = appendVarintField(summonerComponent, fieldSummonerComponentPbSummonCfgID, 610)
+	summonerComponent = appendVarintField(summonerComponent, fieldSummonerComponentPbSummonSkillID, 620)
+	summonerComponent = appendVarintField(summonerComponent, fieldSummonerComponentPbPlayerID, 630)
+	summonerComponent = appendVarintField(summonerComponent, fieldSummonerComponentPbType, 2)
+	monsterComponent := appendVarintField(nil, fieldMonsterCaptureComponentPbTemplateID, 700) // MonsterCaptureComponentPb.TemplateId
+	monsterComponent = appendVarintField(monsterComponent, fieldMonsterCaptureComponentPbMonsterID, 701)
+	followerComponent := appendVarintField(nil, fieldPlayerFollowerSelfComponentPbPlayerEntityID, 640)
+	followerComponent = appendVarintField(followerComponent, fieldPlayerFollowerSelfComponentPbSummonConfigID, 611)
+	components := appendBytesField(nil, fieldEntityComponentPbSummonerComponent, summonerComponent)
+	components = appendBytesField(components, fieldEntityComponentPbMonsterCaptureComponent, monsterComponent)
+	components = appendBytesField(components, fieldEntityComponentPbPlayerFollowerSelfComponentPb, followerComponent)
 
-	summonInfo := appendVarintField(nil, 1, 710)       // SummonInfo.SummonCfgId
-	summonInfo = appendVarintField(summonInfo, 2, 800) // SummonInfo.SummonerId
-	summonInfo = appendVarintField(summonInfo, 3, 720) // SummonInfo.SummonSkillId
-	dynamic := appendVarintField(nil, 1, 500)          // DynamicEntityInformation.Id
-	dynamic = appendVarintField(dynamic, 2, 4)         // EntityType
-	dynamic = appendVarintField(dynamic, 3, 900)       // ConfigId
-	dynamic = appendVarintField(dynamic, 4, 77)        // PlayerId
-	dynamic = appendVarintField(dynamic, 5, 88)        // OwnerId
-	dynamic = appendBytesField(dynamic, 31, summonInfo)
-	for _, component := range [][]byte{appendBytesField(nil, 4, summonerComponent), appendBytesField(nil, 18, monsterComponent), appendBytesField(nil, 42, followerComponent)} {
-		dynamic = appendBytesField(dynamic, 32, component)
+	summonInfo := appendVarintField(nil, fieldSummonInfoSummonCfgID, 710)            // SummonInfo.SummonCfgId
+	summonInfo = appendVarintField(summonInfo, fieldSummonInfoSummonerID, 800)       // SummonInfo.SummonerId
+	summonInfo = appendVarintField(summonInfo, fieldSummonInfoSummonSkillID, 720)    // SummonInfo.SummonSkillId
+	dynamic := appendVarintField(nil, fieldDynamicEntityInformationID, 500)          // DynamicEntityInformation.Id
+	dynamic = appendVarintField(dynamic, fieldDynamicEntityInformationEntityType, 4) // EntityType
+	dynamic = appendVarintField(dynamic, fieldDynamicEntityInformationConfigID, 900) // ConfigId
+	dynamic = appendVarintField(dynamic, fieldDynamicEntityInformationPlayerID, 77)  // PlayerId
+	dynamic = appendVarintField(dynamic, fieldDynamicEntityInformationOwnerID, 88)   // OwnerId
+	dynamic = appendBytesField(dynamic, fieldDynamicEntityInformationSummonInfo, summonInfo)
+	for _, component := range [][]byte{appendBytesField(nil, fieldEntityComponentPbSummonerComponent, summonerComponent), appendBytesField(nil, fieldEntityComponentPbMonsterCaptureComponent, monsterComponent), appendBytesField(nil, fieldEntityComponentPbPlayerFollowerSelfComponentPb, followerComponent)} {
+		dynamic = appendBytesField(dynamic, fieldDynamicEntityInformationComponentPbs, component)
 	}
 
-	entityPb := appendVarintField(nil, 1, 500)      // EntityPb.Id, same entity as DynamicEntityInformation.Id
-	entityPb = appendVarintField(entityPb, 21, 889) // OwnerIncId is distinct from OwnerId
-	entityPb = appendBytesField(entityPb, 11, components)
-	entityPb = appendVarintField(entityPb, 23, 901) // RoleSkinId is not CharacterId
+	entityPb := appendVarintField(nil, fieldEntityPbID, 500)             // EntityPb.Id, same entity as DynamicEntityInformation.Id
+	entityPb = appendVarintField(entityPb, fieldEntityPbOwnerIncID, 889) // OwnerIncId is distinct from OwnerId
+	entityPb = appendBytesField(entityPb, fieldEntityPbComponentPbs, components)
+	entityPb = appendVarintField(entityPb, fieldEntityPbRoleSkinID, 901) // RoleSkinId is not CharacterId
 
-	aoi := appendBytesField(nil, 1, dynamic)
-	aoi = appendBytesField(aoi, 3, entityPb)
-	otherAoiDynamic := appendVarintField(nil, 1, 501)
-	aoi = appendBytesField(aoi, 1, otherAoiDynamic)
-	sceneInfo := appendVarintField(nil, 1, 42)      // SceneId
-	sceneInfo = appendVarintField(sceneInfo, 2, 43) // InstanceId
-	sceneInfo = appendBytesField(sceneInfo, 5, dynamic)
-	sceneInfo = appendBytesField(sceneInfo, 11, aoi)
-	joinScene := appendBytesField(nil, 5, sceneInfo)
+	aoi := appendBytesField(nil, fieldPlayerSceneAoiDataDynamicEntityList, dynamic)
+	aoi = appendBytesField(aoi, fieldPlayerSceneAoiDataEntities, entityPb)
+	otherAoiDynamic := appendVarintField(nil, fieldDynamicEntityInformationID, 501)
+	aoi = appendBytesField(aoi, fieldPlayerSceneAoiDataDynamicEntityList, otherAoiDynamic)
+	sceneInfo := appendVarintField(nil, fieldSceneInformationSceneID, 42)         // SceneId
+	sceneInfo = appendVarintField(sceneInfo, fieldSceneInformationInstanceID, 43) // InstanceId
+	sceneInfo = appendBytesField(sceneInfo, fieldSceneInformationDynamicEntityList, dynamic)
+	sceneInfo = appendBytesField(sceneInfo, fieldSceneInformationAoiData, aoi)
+	joinScene := appendBytesField(nil, fieldJoinSceneNotifySceneInfo, sceneInfo)
 
 	count, err := resolver.applyJoinSceneNotify(joinScene)
 	if err != nil {
@@ -216,7 +216,7 @@ func TestJoinSceneSnapshotResolvesBothEntityBranchesAndPreservesOwnerNamespaces(
 		t.Fatal("scene snapshot retained a stale entity from the prior scene")
 	}
 	got, status := resolver.resolve(500)
-	if status != resolutionVerified || got.sourceMessageID != 18559 || got.sourceFieldPath != "JoinSceneNotify.SceneInfo.AoiData.Entities.EntityPb.Id" {
+	if status != resolutionVerified || got.sourceMessageID != cmdJoinSceneNotify || got.sourceFieldPath != "JoinSceneNotify.SceneInfo.AoiData.Entities.EntityPb.Id" {
 		t.Fatalf("snapshot EntityPb proof/status = %q/%s entity=%+v", got.sourceFieldPath, status, got)
 	}
 	if got.configID != 900 || !got.hasConfigID || got.entityTypeCode != 4 || got.playerID != 77 || got.ownerID != 88 || got.ownerIncID != 889 {
@@ -245,13 +245,13 @@ func TestJoinSceneLevelConfigResolvesOnlyUniqueVersionedMonsterCandidate(t *test
 			levelMonsters: map[sceneLevelKey]uint64{{mapID: 100, entityID: 900}: 700},
 		},
 	}
-	entity := appendVarintField(nil, 1, 500)   // EntityPb.Id is the runtime CreatureDataId.
-	entity = appendVarintField(entity, 2, 900) // EntityPb.ConfigId / PbDataId.
-	entity = appendVarintField(entity, 3, 1)   // Proto_Level; other config namespaces must not use this crosswalk.
-	aoi := appendBytesField(nil, 3, entity)
-	sceneInfo := appendVarintField(nil, 2, 43) // InstanceId, resolved through same-version InstanceDungeon data.
-	sceneInfo = appendBytesField(sceneInfo, 11, aoi)
-	if _, err := resolver.applyJoinSceneNotify(appendBytesField(nil, 5, sceneInfo)); err != nil {
+	entity := appendVarintField(nil, fieldEntityPbID, 500)         // EntityPb.Id is the runtime CreatureDataId.
+	entity = appendVarintField(entity, fieldEntityPbConfigID, 900) // EntityPb.ConfigId / PbDataId.
+	entity = appendVarintField(entity, fieldEntityPbConfigType, 1) // Proto_Level; other config namespaces must not use this crosswalk.
+	aoi := appendBytesField(nil, fieldPlayerSceneAoiDataEntities, entity)
+	sceneInfo := appendVarintField(nil, fieldSceneInformationInstanceID, 43) // InstanceId, resolved through same-version InstanceDungeon data.
+	sceneInfo = appendBytesField(sceneInfo, fieldSceneInformationAoiData, aoi)
+	if _, err := resolver.applyJoinSceneNotify(appendBytesField(nil, fieldJoinSceneNotifySceneInfo, sceneInfo)); err != nil {
 		t.Fatal(err)
 	}
 	identity := resolveEntityIdentity(resolver, masters, 500)
@@ -266,13 +266,13 @@ func TestJoinSceneLevelConfigResolvesOnlyUniqueVersionedMonsterCandidate(t *test
 	}
 
 	// ConfigType and map scope are required; matching ConfigId alone is insufficient.
-	entity = appendVarintField(nil, 1, 501)
-	entity = appendVarintField(entity, 2, 900)
-	entity = appendVarintField(entity, 3, 2)
-	aoi = appendBytesField(nil, 3, entity)
-	sceneInfo = appendVarintField(nil, 2, 43)
-	sceneInfo = appendBytesField(sceneInfo, 11, aoi)
-	if _, err := resolver.applyJoinSceneNotify(appendBytesField(nil, 5, sceneInfo)); err != nil {
+	entity = appendVarintField(nil, fieldEntityPbID, 501)
+	entity = appendVarintField(entity, fieldEntityPbConfigID, 900)
+	entity = appendVarintField(entity, fieldEntityPbConfigType, 2)
+	aoi = appendBytesField(nil, fieldPlayerSceneAoiDataEntities, entity)
+	sceneInfo = appendVarintField(nil, fieldSceneInformationInstanceID, 43)
+	sceneInfo = appendBytesField(sceneInfo, fieldSceneInformationAoiData, aoi)
+	if _, err := resolver.applyJoinSceneNotify(appendBytesField(nil, fieldJoinSceneNotifySceneInfo, sceneInfo)); err != nil {
 		t.Fatal(err)
 	}
 	identity = resolveEntityIdentity(resolver, masters, 501)
@@ -287,14 +287,14 @@ func TestJoinSceneLevelConfigResolvesOnlyUniqueVersionedMonsterCandidate(t *test
 
 func TestJoinSceneSnapshotParseFailureKeepsPriorResolverState(t *testing.T) {
 	resolver := newEntityResolver()
-	entity := appendVarintField(nil, 1, 99)
-	notify := appendBytesField(appendVarintField(nil, 1, 1), 6, entity)
+	entity := appendVarintField(nil, fieldEntityPbID, 99)
+	notify := appendBytesField(appendVarintField(nil, fieldEntityAddNotifyIsAdd, 1), fieldEntityAddNotifyEntityPbs, entity)
 	if _, err := resolver.applyEntityAddNotify(notify); err != nil {
 		t.Fatal(err)
 	}
 	malformedDynamic := []byte{0x0a, 0x80} // truncated varint in DynamicEntityInformation
-	sceneInfo := appendBytesField(nil, 5, malformedDynamic)
-	joinScene := appendBytesField(nil, 5, sceneInfo)
+	sceneInfo := appendBytesField(nil, fieldSceneInformationDynamicEntityList, malformedDynamic)
+	joinScene := appendBytesField(nil, fieldJoinSceneNotifySceneInfo, sceneInfo)
 	if _, err := resolver.applyJoinSceneNotify(joinScene); err == nil {
 		t.Fatal("malformed scene entity should fail decoding")
 	}
@@ -305,14 +305,14 @@ func TestJoinSceneSnapshotParseFailureKeepsPriorResolverState(t *testing.T) {
 
 func TestJoinScenePlayerFormationMapsCreatureDataIDToRoleID(t *testing.T) {
 	resolver := newEntityResolver()
-	role := appendVarintField(nil, 1, 1312) // SceneRoleInformation.RoleId
-	role = appendVarintField(role, 2, 502)  // SceneRoleInformation.EntityId
-	role = appendVarintField(role, 3, 1)    // OnStageOutOfControl
-	group := appendBytesField(nil, 2, role) // PlayerSceneGroupData.FightRoleInfos[]
-	player := appendVarintField(nil, 1, 77) // ScenePlayerInformation.PlayerId
-	player = appendBytesField(player, 11, group)
-	sceneInfo := appendBytesField(nil, 4, player) // SceneInformation.PlayerInfos[]
-	joinScene := appendBytesField(nil, 5, sceneInfo)
+	role := appendVarintField(nil, fieldSceneRoleInformationRoleID, 1312)           // SceneRoleInformation.RoleId
+	role = appendVarintField(role, fieldSceneRoleInformationEntityID, 502)          // SceneRoleInformation.EntityId
+	role = appendVarintField(role, fieldSceneRoleInformationOnStageOutOfControl, 1) // OnStageOutOfControl
+	group := appendBytesField(nil, fieldPlayerSceneGroupDataFightRoleInfos, role)   // PlayerSceneGroupData.FightRoleInfos[]
+	player := appendVarintField(nil, fieldScenePlayerInformationPlayerID, 77)       // ScenePlayerInformation.PlayerId
+	player = appendBytesField(player, fieldScenePlayerInformationPlayerSceneGroupData, group)
+	sceneInfo := appendBytesField(nil, fieldSceneInformationPlayerInfos, player) // SceneInformation.PlayerInfos[]
+	joinScene := appendBytesField(nil, fieldJoinSceneNotifySceneInfo, sceneInfo)
 
 	count, err := resolver.applyJoinSceneNotify(joinScene)
 	if err != nil {
@@ -343,16 +343,16 @@ func TestJoinScenePlayerFormationMapsCreatureDataIDToRoleID(t *testing.T) {
 
 func TestUpdateSceneGroupDataMapsEntityIDToRoleID(t *testing.T) {
 	resolver := newEntityResolver()
-	role := appendVarintField(nil, 1, 1312) // SceneRoleInformation.RoleId
-	role = appendVarintField(role, 2, 502)  // SceneRoleInformation.EntityId
-	role = appendVarintField(role, 3, 1)    // SceneRoleInformation.OnStageOutOfControl
-	group := appendVarintField(nil, 1, 1)   // PlayerSceneGroupData.Group
-	group = appendBytesField(group, 2, role)
-	group = appendVarintField(group, 3, 1312) // PlayerSceneGroupData.CurRole
-	player := appendVarintField(nil, 1, 77)   // PlayerSceneGroupDataList.PlayerId
-	player = appendBytesField(player, 2, group)
-	player = appendVarintField(player, 3, 1)   // PlayerSceneGroupDataList.CurrentGroup
-	notify := appendBytesField(nil, 2, player) // UpdateSceneGroupDataNotify.PlayerSceneGroupDataList[]
+	role := appendVarintField(nil, fieldSceneRoleInformationRoleID, 1312)           // SceneRoleInformation.RoleId
+	role = appendVarintField(role, fieldSceneRoleInformationEntityID, 502)          // SceneRoleInformation.EntityId
+	role = appendVarintField(role, fieldSceneRoleInformationOnStageOutOfControl, 1) // SceneRoleInformation.OnStageOutOfControl
+	group := appendVarintField(nil, fieldPlayerSceneGroupDataGroup, 1)              // PlayerSceneGroupData.Group
+	group = appendBytesField(group, fieldPlayerSceneGroupDataFightRoleInfos, role)
+	group = appendVarintField(group, fieldPlayerSceneGroupDataCurRole, 1312)    // PlayerSceneGroupData.CurRole
+	player := appendVarintField(nil, fieldPlayerSceneGroupDataListPlayerID, 77) // PlayerSceneGroupDataList.PlayerId
+	player = appendBytesField(player, fieldPlayerSceneGroupDataListPlayerSceneGroupData, group)
+	player = appendVarintField(player, fieldPlayerSceneGroupDataListCurrentGroup, 1)                 // PlayerSceneGroupDataList.CurrentGroup
+	notify := appendBytesField(nil, fieldUpdateSceneGroupDataNotifyPlayerSceneGroupDataList, player) // UpdateSceneGroupDataNotify.PlayerSceneGroupDataList[]
 
 	count, err := resolver.applyUpdateSceneGroupDataNotify(notify)
 	if err != nil {
@@ -378,23 +378,23 @@ func TestUpdateSceneGroupDataMapsEntityIDToRoleID(t *testing.T) {
 
 func TestUpdateSceneGroupDataPreservesLifecycleAndRejectsRoleConflicts(t *testing.T) {
 	resolver := newEntityResolver()
-	entityPb := appendVarintField(nil, 1, 502) // EntityPb.Id
-	entityPb = appendVarintField(entityPb, 2, 1312)
-	entityPb = appendVarintField(entityPb, 3, 3)
-	if _, err := resolver.applyEntityAddNotify(appendBytesField(appendVarintField(nil, 1, 1), 6, entityPb)); err != nil {
+	entityPb := appendVarintField(nil, fieldEntityPbID, 502) // EntityPb.Id
+	entityPb = appendVarintField(entityPb, fieldEntityPbConfigID, 1312)
+	entityPb = appendVarintField(entityPb, fieldEntityPbConfigType, 3)
+	if _, err := resolver.applyEntityAddNotify(appendBytesField(appendVarintField(nil, fieldEntityAddNotifyIsAdd, 1), fieldEntityAddNotifyEntityPbs, entityPb)); err != nil {
 		t.Fatal(err)
 	}
 	makeUpdate := func(roleID uint64) []byte {
-		role := appendVarintField(nil, 1, roleID)
-		role = appendVarintField(role, 2, 502)
-		group := appendBytesField(nil, 2, role)
-		player := appendBytesField(appendVarintField(nil, 1, 77), 2, group)
-		return appendBytesField(nil, 2, player)
+		role := appendVarintField(nil, fieldSceneRoleInformationRoleID, roleID)
+		role = appendVarintField(role, fieldSceneRoleInformationEntityID, 502)
+		group := appendBytesField(nil, fieldPlayerSceneGroupDataFightRoleInfos, role)
+		player := appendBytesField(appendVarintField(nil, fieldPlayerSceneGroupDataListPlayerID, 77), fieldPlayerSceneGroupDataListPlayerSceneGroupData, group)
+		return appendBytesField(nil, fieldUpdateSceneGroupDataNotifyPlayerSceneGroupDataList, player)
 	}
 	if _, err := resolver.applyUpdateSceneGroupDataNotify(makeUpdate(1312)); err != nil {
 		t.Fatal(err)
 	}
-	if entity, status := resolver.resolve(502); status != resolutionVerified || entity.sourceMessageID != 25185 || entity.roleID != 1312 {
+	if entity, status := resolver.resolve(502); status != resolutionVerified || entity.sourceMessageID != cmdEntityAddNotify || entity.roleID != 1312 {
 		t.Fatalf("team update downgraded EntityAdd lifecycle evidence: %+v status=%s", entity, status)
 	}
 	if _, err := resolver.applyUpdateSceneGroupDataNotify(makeUpdate(1313)); err != nil {
@@ -408,12 +408,12 @@ func TestUpdateSceneGroupDataPreservesLifecycleAndRejectsRoleConflicts(t *testin
 
 func TestMalformedSceneGroupUpdateDoesNotPartiallyMutateResolver(t *testing.T) {
 	resolver := newEntityResolver()
-	validRole := appendVarintField(nil, 1, 1312)
-	validRole = appendVarintField(validRole, 2, 502)
-	validGroup := appendBytesField(nil, 2, validRole)
-	validPlayer := appendBytesField(appendVarintField(nil, 1, 77), 2, validGroup)
-	notify := appendBytesField(nil, 2, validPlayer)
-	notify = appendBytesField(notify, 2, []byte{0x0a, 0x80}) // truncated PlayerId varint
+	validRole := appendVarintField(nil, fieldSceneRoleInformationRoleID, 1312)
+	validRole = appendVarintField(validRole, fieldSceneRoleInformationEntityID, 502)
+	validGroup := appendBytesField(nil, fieldPlayerSceneGroupDataFightRoleInfos, validRole)
+	validPlayer := appendBytesField(appendVarintField(nil, fieldPlayerSceneGroupDataListPlayerID, 77), fieldPlayerSceneGroupDataListPlayerSceneGroupData, validGroup)
+	notify := appendBytesField(nil, fieldUpdateSceneGroupDataNotifyPlayerSceneGroupDataList, validPlayer)
+	notify = appendBytesField(notify, fieldUpdateSceneGroupDataNotifyPlayerSceneGroupDataList, []byte{0x0a, 0x80}) // truncated PlayerId varint
 	if _, err := resolver.applyUpdateSceneGroupDataNotify(notify); err == nil {
 		t.Fatal("malformed nested player record should fail")
 	}
@@ -424,10 +424,10 @@ func TestMalformedSceneGroupUpdateDoesNotPartiallyMutateResolver(t *testing.T) {
 
 func TestEntityPbCharacterConfigIDResolvesRoleWithUnknownCaptureVersion(t *testing.T) {
 	resolver := newEntityResolver()
-	entity := appendVarintField(nil, 1, 502)    // EntityPb.Id
-	entity = appendVarintField(entity, 2, 1312) // EntityPb.ConfigId / PbDataId
-	entity = appendVarintField(entity, 3, 3)    // EntityConfigType.Proto_Character
-	notify := appendBytesField(appendVarintField(nil, 1, 1), 6, entity)
+	entity := appendVarintField(nil, fieldEntityPbID, 502)          // EntityPb.Id
+	entity = appendVarintField(entity, fieldEntityPbConfigID, 1312) // EntityPb.ConfigId / PbDataId
+	entity = appendVarintField(entity, fieldEntityPbConfigType, 3)  // EntityConfigType.Proto_Character
+	notify := appendBytesField(appendVarintField(nil, fieldEntityAddNotifyIsAdd, 1), fieldEntityAddNotifyEntityPbs, entity)
 	if _, err := resolver.applyEntityAddNotify(notify); err != nil {
 		t.Fatal(err)
 	}
@@ -445,10 +445,10 @@ func TestEntityPbCharacterConfigIDResolvesRoleWithUnknownCaptureVersion(t *testi
 
 func TestEntityPbNonCharacterConfigIDDoesNotResolveCharacter(t *testing.T) {
 	resolver := newEntityResolver()
-	entity := appendVarintField(nil, 1, 502)
-	entity = appendVarintField(entity, 2, 1312)
-	entity = appendVarintField(entity, 3, 1) // ConfigType is not Proto_Character.
-	notify := appendBytesField(appendVarintField(nil, 1, 1), 6, entity)
+	entity := appendVarintField(nil, fieldEntityPbID, 502)
+	entity = appendVarintField(entity, fieldEntityPbConfigID, 1312)
+	entity = appendVarintField(entity, fieldEntityPbConfigType, 1) // ConfigType is not Proto_Character.
+	notify := appendBytesField(appendVarintField(nil, fieldEntityAddNotifyIsAdd, 1), fieldEntityAddNotifyEntityPbs, entity)
 	if _, err := resolver.applyEntityAddNotify(notify); err != nil {
 		t.Fatal(err)
 	}
@@ -462,12 +462,12 @@ func TestEntityPbNonCharacterConfigIDDoesNotResolveCharacter(t *testing.T) {
 
 func TestRoleSkinCharacterJoinRemainsCorrelatedUntilMasterCompatibilityVerified(t *testing.T) {
 	resolver := newEntityResolver()
-	entity := appendVarintField(nil, 1, 503)    // EntityPb.Id
-	entity = appendVarintField(entity, 23, 901) // EntityPb.RoleSkinId
-	unknownEntity := appendVarintField(nil, 1, 504)
-	unknownEntity = appendVarintField(unknownEntity, 23, 902)
-	notify := appendBytesField(appendVarintField(nil, 1, 1), 6, entity)
-	notify = appendBytesField(notify, 6, unknownEntity)
+	entity := appendVarintField(nil, fieldEntityPbID, 503)           // EntityPb.Id
+	entity = appendVarintField(entity, fieldEntityPbRoleSkinID, 901) // EntityPb.RoleSkinId
+	unknownEntity := appendVarintField(nil, fieldEntityPbID, 504)
+	unknownEntity = appendVarintField(unknownEntity, fieldEntityPbRoleSkinID, 902)
+	notify := appendBytesField(appendVarintField(nil, fieldEntityAddNotifyIsAdd, 1), fieldEntityAddNotifyEntityPbs, entity)
+	notify = appendBytesField(notify, fieldEntityAddNotifyEntityPbs, unknownEntity)
 	if _, err := resolver.applyEntityAddNotify(notify); err != nil {
 		t.Fatal(err)
 	}
@@ -494,18 +494,18 @@ func TestRoleSkinCharacterJoinRemainsCorrelatedUntilMasterCompatibilityVerified(
 
 func TestEntityPbAndSceneRoleCharacterConflictStaysUnknown(t *testing.T) {
 	resolver := newEntityResolver()
-	role := appendVarintField(nil, 1, 1312)
-	role = appendVarintField(role, 2, 502)
-	group := appendBytesField(nil, 2, role)
-	player := appendVarintField(nil, 1, 77)
-	player = appendBytesField(player, 11, group)
-	entity := appendVarintField(nil, 1, 502)
-	entity = appendVarintField(entity, 2, 1313)
-	entity = appendVarintField(entity, 3, 3)
-	aoi := appendBytesField(nil, 3, entity) // PlayerSceneAoiData.Entities[]
-	sceneInfo := appendBytesField(nil, 4, player)
-	sceneInfo = appendBytesField(sceneInfo, 11, aoi)
-	if _, err := resolver.applyJoinSceneNotify(appendBytesField(nil, 5, sceneInfo)); err != nil {
+	role := appendVarintField(nil, fieldSceneRoleInformationRoleID, 1312)
+	role = appendVarintField(role, fieldSceneRoleInformationEntityID, 502)
+	group := appendBytesField(nil, fieldPlayerSceneGroupDataFightRoleInfos, role)
+	player := appendVarintField(nil, fieldScenePlayerInformationPlayerID, 77)
+	player = appendBytesField(player, fieldScenePlayerInformationPlayerSceneGroupData, group)
+	entity := appendVarintField(nil, fieldEntityPbID, 502)
+	entity = appendVarintField(entity, fieldEntityPbConfigID, 1313)
+	entity = appendVarintField(entity, fieldEntityPbConfigType, 3)
+	aoi := appendBytesField(nil, fieldPlayerSceneAoiDataEntities, entity) // PlayerSceneAoiData.Entities[]
+	sceneInfo := appendBytesField(nil, fieldSceneInformationPlayerInfos, player)
+	sceneInfo = appendBytesField(sceneInfo, fieldSceneInformationAoiData, aoi)
+	if _, err := resolver.applyJoinSceneNotify(appendBytesField(nil, fieldJoinSceneNotifySceneInfo, sceneInfo)); err != nil {
 		t.Fatal(err)
 	}
 	identity := resolveEntityIdentity(resolver, &gameMaster{characters: map[uint64]masterRecord{
@@ -520,15 +520,15 @@ func TestEntityPbAndSceneRoleCharacterConflictStaysUnknown(t *testing.T) {
 func TestJoinSceneConflictingRoleMappingsStayUnknown(t *testing.T) {
 	resolver := newEntityResolver()
 	makePlayer := func(playerID, roleID uint64) []byte {
-		role := appendVarintField(nil, 1, roleID)
-		role = appendVarintField(role, 2, 502)
-		group := appendBytesField(nil, 2, role)
-		player := appendVarintField(nil, 1, playerID)
-		return appendBytesField(player, 11, group)
+		role := appendVarintField(nil, fieldSceneRoleInformationRoleID, roleID)
+		role = appendVarintField(role, fieldSceneRoleInformationEntityID, 502)
+		group := appendBytesField(nil, fieldPlayerSceneGroupDataFightRoleInfos, role)
+		player := appendVarintField(nil, fieldScenePlayerInformationPlayerID, playerID)
+		return appendBytesField(player, fieldScenePlayerInformationPlayerSceneGroupData, group)
 	}
-	sceneInfo := appendBytesField(nil, 4, makePlayer(77, 1312))
-	sceneInfo = appendBytesField(sceneInfo, 4, makePlayer(88, 1313))
-	if _, err := resolver.applyJoinSceneNotify(appendBytesField(nil, 5, sceneInfo)); err != nil {
+	sceneInfo := appendBytesField(nil, fieldSceneInformationPlayerInfos, makePlayer(77, 1312))
+	sceneInfo = appendBytesField(sceneInfo, fieldSceneInformationPlayerInfos, makePlayer(88, 1313))
+	if _, err := resolver.applyJoinSceneNotify(appendBytesField(nil, fieldJoinSceneNotifySceneInfo, sceneInfo)); err != nil {
 		t.Fatal(err)
 	}
 	entity, _ := resolver.resolve(502)
@@ -549,10 +549,10 @@ func TestSummonerEntityChainRejectsCyclesAndCharacterConflicts(t *testing.T) {
 		resolver := newEntityResolver()
 		for i, id := range ids {
 			next := ids[(i+1)%len(ids)]
-			summoner := appendVarintField(nil, 1, next)
-			entity := appendVarintField(nil, 1, id)
-			entity = appendBytesField(entity, 11, appendBytesField(nil, 4, summoner))
-			notify := appendBytesField(appendVarintField(nil, 1, 1), 6, entity)
+			summoner := appendVarintField(nil, fieldSummonerComponentPbSummonerID, next)
+			entity := appendVarintField(nil, fieldEntityPbID, id)
+			entity = appendBytesField(entity, fieldEntityPbComponentPbs, appendBytesField(nil, fieldEntityComponentPbSummonerComponent, summoner))
+			notify := appendBytesField(appendVarintField(nil, fieldEntityAddNotifyIsAdd, 1), fieldEntityAddNotifyEntityPbs, entity)
 			if _, err := resolver.applyEntityAddNotify(notify); err != nil {
 				t.Fatal(err)
 			}
@@ -566,22 +566,22 @@ func TestSummonerEntityChainRejectsCyclesAndCharacterConflicts(t *testing.T) {
 	}
 
 	conflicted := newEntityResolver()
-	role := appendVarintField(nil, 1, 1312)
-	role = appendVarintField(role, 2, 100)
-	group := appendBytesField(nil, 2, role)
-	player := appendBytesField(appendVarintField(nil, 1, 77), 11, group)
-	pbEntity := appendVarintField(nil, 1, 100)
-	pbEntity = appendVarintField(pbEntity, 2, 1313)
-	pbEntity = appendVarintField(pbEntity, 3, 3)
-	aoi := appendBytesField(nil, 3, pbEntity)
-	sceneInfo := appendBytesField(appendBytesField(nil, 4, player), 11, aoi)
-	if _, err := conflicted.applyJoinSceneNotify(appendBytesField(nil, 5, sceneInfo)); err != nil {
+	role := appendVarintField(nil, fieldSceneRoleInformationRoleID, 1312)
+	role = appendVarintField(role, fieldSceneRoleInformationEntityID, 100)
+	group := appendBytesField(nil, fieldPlayerSceneGroupDataFightRoleInfos, role)
+	player := appendBytesField(appendVarintField(nil, fieldScenePlayerInformationPlayerID, 77), fieldScenePlayerInformationPlayerSceneGroupData, group)
+	pbEntity := appendVarintField(nil, fieldEntityPbID, 100)
+	pbEntity = appendVarintField(pbEntity, fieldEntityPbConfigID, 1313)
+	pbEntity = appendVarintField(pbEntity, fieldEntityPbConfigType, 3)
+	aoi := appendBytesField(nil, fieldPlayerSceneAoiDataEntities, pbEntity)
+	sceneInfo := appendBytesField(appendBytesField(nil, fieldSceneInformationPlayerInfos, player), fieldSceneInformationAoiData, aoi)
+	if _, err := conflicted.applyJoinSceneNotify(appendBytesField(nil, fieldJoinSceneNotifySceneInfo, sceneInfo)); err != nil {
 		t.Fatal(err)
 	}
-	summoner := appendVarintField(nil, 1, 100)
-	sourceEntity := appendVarintField(nil, 1, 200)
-	sourceEntity = appendBytesField(sourceEntity, 11, appendBytesField(nil, 4, summoner))
-	if _, err := conflicted.applyEntityAddNotify(appendBytesField(appendVarintField(nil, 1, 1), 6, sourceEntity)); err != nil {
+	summoner := appendVarintField(nil, fieldSummonerComponentPbSummonerID, 100)
+	sourceEntity := appendVarintField(nil, fieldEntityPbID, 200)
+	sourceEntity = appendBytesField(sourceEntity, fieldEntityPbComponentPbs, appendBytesField(nil, fieldEntityComponentPbSummonerComponent, summoner))
+	if _, err := conflicted.applyEntityAddNotify(appendBytesField(appendVarintField(nil, fieldEntityAddNotifyIsAdd, 1), fieldEntityAddNotifyEntityPbs, sourceEntity)); err != nil {
 		t.Fatal(err)
 	}
 	source, _ := conflicted.resolve(200)
@@ -596,7 +596,7 @@ func TestSummonerEntityChainRejectsCyclesAndCharacterConflicts(t *testing.T) {
 
 func TestEntityRemoveClearsMappingAndActiveRequestKeepsUnknownEntity(t *testing.T) {
 	resolver := newEntityResolver()
-	if err := resolver.observeActiveRequest(appendVarintField(nil, 4, 90)); err != nil {
+	if err := resolver.observeActiveRequest(appendVarintField(nil, fieldEntityActiveRequestEntityID, 90)); err != nil {
 		t.Fatal(err)
 	}
 	if got, status := resolver.resolve(90); status != resolutionCorrelated || got.entityID != 90 || got.hasMonsterID {
@@ -605,9 +605,9 @@ func TestEntityRemoveClearsMappingAndActiveRequestKeepsUnknownEntity(t *testing.
 	if proof := entityProof(resolver.entities[90]); proof != "EntityActiveRequest.EntityId; observed only" {
 		t.Fatalf("active-request evidence should remain explicit, got %q", proof)
 	}
-	info := appendVarintField(nil, 1, 90)  // EntityRemoveInfo.EntityId
-	remove := appendVarintField(nil, 4, 1) // EntityRemoveNotify.IsRemove
-	remove = appendBytesField(remove, 5, info)
+	info := appendVarintField(nil, fieldEntityRemoveInfoEntityID, 90)    // EntityRemoveInfo.EntityId
+	remove := appendVarintField(nil, fieldEntityRemoveNotifyIsRemove, 1) // EntityRemoveNotify.IsRemove
+	remove = appendBytesField(remove, fieldEntityRemoveNotifyRemoveInfos, info)
 	removed, removedIDs, err := resolver.applyEntityRemoveNotify(remove)
 	if err != nil {
 		t.Fatal(err)
@@ -620,20 +620,20 @@ func TestEntityRemoveClearsMappingAndActiveRequestKeepsUnknownEntity(t *testing.
 func TestEntityIDReuseAfterRemoveStartsFreshCharacterMapping(t *testing.T) {
 	resolver := newEntityResolver()
 	makeTeamUpdate := func(roleID uint64) []byte {
-		role := appendVarintField(nil, 1, roleID) // SceneRoleInformation.RoleId
-		role = appendVarintField(role, 2, 90)     // SceneRoleInformation.EntityId
-		group := appendBytesField(nil, 2, role)
-		player := appendBytesField(appendVarintField(nil, 1, 77), 2, group)
-		return appendBytesField(nil, 2, player)
+		role := appendVarintField(nil, fieldSceneRoleInformationRoleID, roleID) // SceneRoleInformation.RoleId
+		role = appendVarintField(role, fieldSceneRoleInformationEntityID, 90)   // SceneRoleInformation.EntityId
+		group := appendBytesField(nil, fieldPlayerSceneGroupDataFightRoleInfos, role)
+		player := appendBytesField(appendVarintField(nil, fieldPlayerSceneGroupDataListPlayerID, 77), fieldPlayerSceneGroupDataListPlayerSceneGroupData, group)
+		return appendBytesField(nil, fieldUpdateSceneGroupDataNotifyPlayerSceneGroupDataList, player)
 	}
 	addEntity := func() []byte {
-		entity := appendVarintField(nil, 1, 90) // EntityPb.Id
-		return appendBytesField(appendVarintField(nil, 1, 1), 6, entity)
+		entity := appendVarintField(nil, fieldEntityPbID, 90) // EntityPb.Id
+		return appendBytesField(appendVarintField(nil, fieldEntityAddNotifyIsAdd, 1), fieldEntityAddNotifyEntityPbs, entity)
 	}
 	removeEntity := func() []byte {
-		info := appendVarintField(nil, 1, 90)  // EntityRemoveInfo.EntityId
-		remove := appendVarintField(nil, 4, 1) // EntityRemoveNotify.IsRemove
-		return appendBytesField(remove, 5, info)
+		info := appendVarintField(nil, fieldEntityRemoveInfoEntityID, 90)    // EntityRemoveInfo.EntityId
+		remove := appendVarintField(nil, fieldEntityRemoveNotifyIsRemove, 1) // EntityRemoveNotify.IsRemove
+		return appendBytesField(remove, fieldEntityRemoveNotifyRemoveInfos, info)
 	}
 	masters := &gameMaster{characters: map[uint64]masterRecord{
 		1312: {ID: 1312, Name: "Old Role", Status: string(resolutionVerified)},
@@ -677,12 +677,12 @@ func TestEntityIDReuseAfterRemoveStartsFreshCharacterMapping(t *testing.T) {
 
 func TestActiveRequestDoesNotDowngradeEntityAddEvidence(t *testing.T) {
 	resolver := newEntityResolver()
-	entity := appendVarintField(nil, 1, 90) // EntityPb.Id
-	notify := appendBytesField(appendVarintField(nil, 1, 1), 6, entity)
+	entity := appendVarintField(nil, fieldEntityPbID, 90) // EntityPb.Id
+	notify := appendBytesField(appendVarintField(nil, fieldEntityAddNotifyIsAdd, 1), fieldEntityAddNotifyEntityPbs, entity)
 	if _, err := resolver.applyEntityAddNotify(notify); err != nil {
 		t.Fatal(err)
 	}
-	if err := resolver.observeActiveRequest(appendVarintField(nil, 4, 90)); err != nil {
+	if err := resolver.observeActiveRequest(appendVarintField(nil, fieldEntityActiveRequestEntityID, 90)); err != nil {
 		t.Fatal(err)
 	}
 	got, status := resolver.resolve(90)
@@ -693,15 +693,15 @@ func TestActiveRequestDoesNotDowngradeEntityAddEvidence(t *testing.T) {
 
 func TestLateEntityAddAndSessionResetKeepEntityIdentityScoped(t *testing.T) {
 	resolver := newEntityResolver()
-	if err := resolver.observeActiveRequest(appendVarintField(nil, 4, 90)); err != nil {
+	if err := resolver.observeActiveRequest(appendVarintField(nil, fieldEntityActiveRequestEntityID, 90)); err != nil {
 		t.Fatal(err)
 	}
 	if _, status := resolver.resolve(90); status != resolutionCorrelated {
 		t.Fatalf("active request should only correlate the entity, got %s", status)
 	}
 
-	entity := appendVarintField(nil, 1, 90) // EntityPb.Id
-	notify := appendBytesField(appendVarintField(nil, 1, 1), 6, entity)
+	entity := appendVarintField(nil, fieldEntityPbID, 90) // EntityPb.Id
+	notify := appendBytesField(appendVarintField(nil, fieldEntityAddNotifyIsAdd, 1), fieldEntityAddNotifyEntityPbs, entity)
 	if _, err := resolver.applyEntityAddNotify(notify); err != nil {
 		t.Fatal(err)
 	}
@@ -742,7 +742,7 @@ func TestPendingAndConsumedRPCWindowsStayBounded(t *testing.T) {
 		t.Fatalf("pending map not bounded: len=%d evicted=%d", len(p.pending), p.stats.evictedPending)
 	}
 	for rpcID := uint64(1); rpcID <= maxConsumedRPCIDs+10; rpcID++ {
-		p.rememberConsumed(rpcID)
+		p.rememberConsumed(rpcID, 0)
 	}
 	if len(p.consumed) != maxConsumedRPCIDs {
 		t.Fatalf("consumed RPC dedupe map not bounded: len=%d", len(p.consumed))
@@ -754,14 +754,14 @@ func TestPendingAndConsumedRPCWindowsStayBounded(t *testing.T) {
 
 func TestSummonerComponentKeepsRawIDSeparateFromSourceEntity(t *testing.T) {
 	resolver := newEntityResolver()
-	summoner := appendVarintField(nil, 1, 77) // SummonerComponentPb.SummonerId
-	summoner = appendVarintField(summoner, 2, 6001)
-	component := appendBytesField(nil, 4, summoner)
-	follower := appendVarintField(nil, 1, 88) // PlayerFollowerSelfComponentPb.PlayerEntityId
-	component = appendBytesField(component, 42, follower)
-	entity := appendVarintField(nil, 1, 500)
-	entity = appendBytesField(entity, 11, component)
-	notify := appendBytesField(appendVarintField(nil, 1, 1), 6, entity)
+	summoner := appendVarintField(nil, fieldSummonerComponentPbSummonerID, 77) // SummonerComponentPb.SummonerId
+	summoner = appendVarintField(summoner, fieldSummonerComponentPbSummonCfgID, 6001)
+	component := appendBytesField(nil, fieldEntityComponentPbSummonerComponent, summoner)
+	follower := appendVarintField(nil, fieldPlayerFollowerSelfComponentPbPlayerEntityID, 88) // PlayerFollowerSelfComponentPb.PlayerEntityId
+	component = appendBytesField(component, fieldEntityComponentPbPlayerFollowerSelfComponentPb, follower)
+	entity := appendVarintField(nil, fieldEntityPbID, 500)
+	entity = appendBytesField(entity, fieldEntityPbComponentPbs, component)
+	notify := appendBytesField(appendVarintField(nil, fieldEntityAddNotifyIsAdd, 1), fieldEntityAddNotifyEntityPbs, entity)
 	if _, err := resolver.applyEntityAddNotify(notify); err != nil {
 		t.Fatal(err)
 	}

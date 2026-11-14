@@ -20,22 +20,22 @@ func pairingFrame(p *processor, seconds float64) {
 }
 
 func damageRequestBody(rpcID, attackerID, targetID uint64) []byte {
-	u3n := appendVarintField(nil, 9, 70010001) // DamageId
-	u3n = appendVarintField(u3n, 10, targetID) // TargetEntityId
-	u3n = appendVarintField(u3n, 13, attackerID)
-	request := appendVarintField(nil, 2, rpcID)
-	request = appendBytesField(request, 5, u3n)
-	return appendBytesField(nil, 14, appendBytesField(nil, 3, request))
+	u3n := appendVarintField(nil, fieldDamageExecuteRequestDamageID, 70010001)      // DamageId
+	u3n = appendVarintField(u3n, fieldDamageExecuteRequestTargetEntityID, targetID) // TargetEntityId
+	u3n = appendVarintField(u3n, fieldDamageExecuteRequestAttackerEntityID, attackerID)
+	request := appendVarintField(nil, fieldCombatRequestDataRequestID, rpcID)
+	request = appendBytesField(request, fieldCombatRequestDataDamageExecuteRequest, u3n)
+	return appendBytesField(nil, fieldCombatSendPackRequestData, appendBytesField(nil, fieldCombatSendDataRequest, request))
 }
 
 func damageResponseBody(rpcID uint64, amount int32) []byte {
-	lis := appendVarintField(nil, 4, 0)
-	lis = appendVarintField(lis, 5, 0)
-	lis = appendVarintField(lis, 10, uint64(uint32(amount)))
-	response := appendVarintField(nil, 2, rpcID)
-	response = appendBytesField(response, 5, lis)
-	item := appendBytesField(nil, 3, response)
-	return appendBytesField(nil, 14, appendBytesField(nil, 5, item))
+	lis := appendVarintField(nil, fieldDamageExecuteResponseErrorCode, 0)
+	lis = appendVarintField(lis, fieldDamageExecuteResponseImmuneType, 0)
+	lis = appendVarintField(lis, fieldDamageExecuteResponseDamage, uint64(uint32(amount)))
+	response := appendVarintField(nil, fieldCombatResponseDataRequestID, rpcID)
+	response = appendBytesField(response, fieldCombatResponseDataDamageExecuteResponse, lis)
+	item := appendBytesField(nil, fieldCombatReceiveDataCombatResponseData, response)
+	return appendBytesField(nil, fieldCombatSendPackResponseReceivePackNotify, appendBytesField(nil, fieldCombatReceivePackNotifyData, item))
 }
 
 // newPairingTestProcessor has one local role entity (100) and one monster (200).
@@ -56,12 +56,14 @@ func newPairingTestProcessor() *processor {
 
 func sendDamageRequest(p *processor, seconds float64, rpcID uint64) {
 	pairingFrame(p, seconds)
-	p.handleDamageRequests(gameFrame{direction: "out", commandID: 19470, timestamp: pairingAt(seconds)}, damageRequestBody(rpcID, 100, 200))
+	p.handleDamageRequests(gameFrame{direction: "out", commandID: cmdCombatSendPackRequest, timestamp: pairingAt(seconds)}, damageRequestBody(rpcID, 100, 200))
 }
 
 func sendDamageResponse(p *processor, seconds float64, rpcID uint64, amount int32) {
 	pairingFrame(p, seconds)
-	p.handleDamageResponses(damageResponseBody(rpcID, amount))
+	if err := p.handleCombatReceivePacks(gameFrame{direction: "in", commandID: cmdCombatSendPackResponse, timestamp: pairingAt(seconds)}, damageResponseBody(rpcID, amount)); err != nil {
+		panic(err)
+	}
 }
 
 func TestDamageResponseBeforeRequestPairsAtResponseTime(t *testing.T) {
@@ -159,7 +161,7 @@ func TestHeldResponsesAreBoundedByCount(t *testing.T) {
 	p := newPairingTestProcessor()
 	pairingFrame(p, 1)
 	for rpcID := uint64(1); rpcID <= maxHeldDamageResponses+1; rpcID++ {
-		p.handleOneDamageResult(rpcID, appendVarintField(nil, 10, 1))
+		p.handleOneDamageResult(rpcID, appendVarintField(nil, fieldDamageExecuteResponseDamage, 1))
 	}
 	pairing := p.rpcPairingSnapshot()
 	if pairing.HeldResponses != maxHeldDamageResponses || pairing.UnpairedEvicted != 1 {
@@ -214,8 +216,8 @@ func TestHeldResponsesAreUnpairedAtCaptureEnd(t *testing.T) {
 func TestInvalidHeldResponseStaysInvalid(t *testing.T) {
 	p := newPairingTestProcessor()
 	pairingFrame(p, 1)
-	immune := appendVarintField(nil, 5, 1)
-	immune = appendVarintField(immune, 10, 100)
+	immune := appendVarintField(nil, fieldDamageExecuteResponseImmuneType, 1)
+	immune = appendVarintField(immune, fieldDamageExecuteResponseDamage, 100)
 	p.handleOneDamageResult(51, immune)
 	sendDamageRequest(p, 1.5, 51)
 	if got := p.damageStatistics.Snapshot(); got.DamageDealt != 0 {
@@ -236,9 +238,9 @@ func TestRPCPairingLineReportsCounters(t *testing.T) {
 }
 
 func entityRemoveBody(ids ...uint64) []byte {
-	body := appendVarintField(nil, 4, 1)
+	body := appendVarintField(nil, fieldEntityRemoveNotifyIsRemove, 1)
 	for _, id := range ids {
-		body = appendBytesField(body, 5, appendVarintField(nil, 1, id))
+		body = appendBytesField(body, fieldEntityRemoveNotifyRemoveInfos, appendVarintField(nil, fieldEntityRemoveInfoEntityID, id))
 	}
 	return body
 }

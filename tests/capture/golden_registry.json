@@ -1,0 +1,32 @@
+{
+  "gameVersion": "3.8",
+  "note": "Captures whose Golden facts (tests/capture/semantic_replay_dev_test.go) form the regression corpus of the current game version. A required capture must be executed by scripts/verify.ps1 -PcapDirectory with every fact checked, or the version readiness gate (scripts/readiness) fails. Supplementary captures keep their facts for when they are present; the owner decides the corpus (2026-11-13: only the Build 31 LIVE capture).",
+  "captures": [
+    {
+      "name": "LIVE_20261113_224240",
+      "sha256": "21f42752b3d03855febe0649389c1f9755e214a6ed51a5e6decc2d97a7036b21",
+      "required": true,
+      "note": "Owner's Build 31 LIVE capture of Global 3.8.9: 18 encounters, the first combat RequestId wrap, Lily's statuses the HUD draws without an arrow"
+    },
+    {
+      "name": "LIVE_20261112_110155",
+      "required": false,
+      "note": "Global 3.8.9 trial team with role 1512; supplementary since the owner reset logs/"
+    },
+    {
+      "name": "SYNTH-MISSED-LOGIN-RELOGIN-3.8",
+      "required": false,
+      "note": "Missed-login traffic followed by a relogin; supplementary"
+    },
+    {
+      "name": "LIVE_20261113_003512",
+      "required": false,
+      "note": "Owner's Build 29 LIVE capture, six attempts at one challenge; supplementary"
+    },
+    {
+      "name": "LIVE_20261112_230754",
+      "required": false,
+      "note": "Owner's Build 28 LIVE capture, 30 encounters, standalone CombatReceivePackNotify responses; supplementary"
+    }
+  ]
+}

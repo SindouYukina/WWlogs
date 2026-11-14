@@ -131,7 +131,6 @@ func Main() {
 	pcapOut := flag.String("pcap-out", "", "Optionally write captured UDP packets to a PCAP file")
 	masterDatabase := flag.String("master-db", "", "Development: use an explicit read-only Master SQLite database for testing (default: embedded)")
 	showVersion := flag.Bool("version", false, "Print the WWlogs version")
-	verifyBaseline := flag.Bool("verify-baseline", false, "Verify the decoding and player-output regression baseline for the Locking PCAP")
 	auditOut := flag.String("audit-out", "", "Optionally write RPC, entity, and damage-pairing TSV without secrets")
 	buffSnapshotOut := flag.String("buff-snapshot-out", "", "Optionally write EntityActiveResponse Buff snapshots as JSONL")
 	buffEventOut := flag.String("buff-event-out", "", "Optionally write supported Buff lifecycle observations as JSONL")
@@ -230,9 +229,6 @@ func Main() {
 	}
 	if *combatNotifyAuditOut != "" && *pcapIn == "" {
 		fatal("CombatNotifyData audit", fmt.Errorf("-combat-notify-audit-out requires -pcap-in"))
-	}
-	if *verifyBaseline && *pcapIn == "" {
-		fatal("baseline mode", fmt.Errorf("-verify-baseline requires -pcap-in"))
 	}
 	if *maxPCAPBytes > 0 && *maxPCAPBytes < 24 {
 		fatal("PCAP size limit", fmt.Errorf("-max-pcap-bytes must be at least 24"))
@@ -1014,6 +1010,7 @@ finished:
 		fmt.Fprintf(os.Stderr, "effect_state applies=%d duplicate_applies=%d instant_applies=%d updates=%d updates_without_apply=%d removes=%d removes_without_instance=%d holder_removals=%d excluded_unrelated=%d\n", counters.Applies, counters.DuplicateApplies, counters.InstantApplies, counters.Updates, counters.UpdatesWithoutApply, counters.Removes, counters.RemovesWithoutInstance, counters.HolderRemovals, counters.ExcludedUnrelated)
 	}
 	fmt.Fprintf(os.Stderr, "schema_decode errors=%d skipped_without_schema=%d\n", processor.schemaDecodeErrors, processor.schemaDecodeSkipped)
+	fmt.Fprintln(os.Stderr, processor.protocol.report().line())
 	if processor.roleConfigOut != nil {
 		fmt.Fprintf(os.Stderr, "role_config errors=%d\n", processor.roleConfigErrors)
 	}
@@ -1024,6 +1021,7 @@ finished:
 	fmt.Fprintf(diagnosticTarget, "statistics_final %s\n", processor.currentStatisticsReport())
 	fmt.Fprintln(diagnosticTarget, transportHealthLine(streams, stats))
 	fmt.Fprintln(diagnosticTarget, rpcPairingLine(processor.rpcPairingSnapshot()))
+	fmt.Fprintln(diagnosticTarget, damageNotifyLine(processor.notifyStats, processor.serverSequence.total))
 	fmt.Fprintln(diagnosticTarget, diagnosticPipelineLine(runID, pipelineStats))
 	fmt.Fprintln(diagnosticTarget, captureLatencyLine(processor.captureLayerHealth()))
 	if pcapIntegrity != nil {
@@ -1037,7 +1035,7 @@ finished:
 				fatal("create command census directory", err)
 			}
 		}
-		if err := processor.census.write(*commandCensusOut, stats, processor.clientVersion); err != nil {
+		if err := processor.census.write(*commandCensusOut, stats, processor.clientVersion, processor.protocol.report()); err != nil {
 			fatal("write command census", err)
 		}
 	}
@@ -1054,11 +1052,5 @@ finished:
 		if err := os.WriteFile(*clientVersionOut, data, 0o600); err != nil {
 			fatal("write client version metadata", err)
 		}
-	}
-	if *verifyBaseline {
-		if err := processor.verifyKnownBaseline(); err != nil {
-			fatal("baseline verification", err)
-		}
-		fmt.Fprintln(os.Stderr, "baseline_verification=PASS")
 	}
 }

@@ -21,6 +21,15 @@ func TestResolveUsesInjectedValues(t *testing.T) {
 	}
 }
 
+// The product version Combat History and other records keep is MAJOR.MINOR.PATCH, never the tag's v, and never a guess.
+func TestProductVersionDropsTheTagPrefix(t *testing.T) {
+	for version, want := range map[string]string{"v0.7.0": "0.7.0", "v1.2.3-rc.1": "1.2.3-rc.1", "not a version": ""} {
+		if got := resolve(version, "", sampleCommit, "false", noVCS).ProductVersion(); got != want {
+			t.Errorf("ProductVersion of %q = %q, want %q", version, got, want)
+		}
+	}
+}
+
 func TestResolveRejectsMalformedInjection(t *testing.T) {
 	got := resolve("not a version", "", "abc", "maybe", noVCS)
 	if got.Version != Unavailable {

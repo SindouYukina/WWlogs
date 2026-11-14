@@ -56,6 +56,7 @@ func (event combatEvent) jsonlView(masters *gameMaster) combatEventJSONL {
 		Timestamp:     event.Timestamp,
 		SessionNumber: event.SessionNumber,
 		RPCID:         event.RPCID,
+		RequestEpoch:  event.RequestEpoch,
 		Source:        combatEventEntityJSONL{RuntimeStatus: event.Source.RuntimeStatus, RuntimeEvidence: event.Source.RuntimeProof, RuntimeFields: json.RawMessage(marshalRuntimeIdentity(event.Source.Runtime))},
 		Target:        combatEventEntityJSONL{RuntimeStatus: event.Target.RuntimeStatus, RuntimeEvidence: event.Target.RuntimeProof, RuntimeFields: json.RawMessage(marshalRuntimeIdentity(event.Target.Runtime))},
 		Credit:        combatEventCreditJSONL{Status: event.CharacterStatus, NameStatus: event.CharacterNameStatus, Evidence: event.CharacterProof},
@@ -209,6 +210,34 @@ func optionalInt32(value int32, present bool) *int32 {
 
 func (p *processor) writeStructuredEventJSONL(event any) {
 	p.writeEnvelopedEventJSONL(event, "")
+}
+
+// writeDamageEventJSONL writes the development line of one damage result. A server-executed DamageExecuteNotify is a
+// DAMAGE_NOTIFY_RESULT in the auxiliary "p" id namespace, so response event ids stay as they were before notified results
+// were counted.
+func (p *processor) writeDamageEventJSONL(event combatEvent) {
+	view := event.jsonlView(p.masters)
+	if event.Notify == nil {
+		p.writeStructuredEventJSONL(view)
+		return
+	}
+	view.EventType = "DAMAGE_NOTIFY_RESULT"
+	view.Push = &combatEventPushJSONL{
+		Stream: "DAMAGE_EXECUTE_NOTIFY", NotifyKey: event.Notify.Key,
+		NegativeStatus: event.Notify.NegativeStatus, NegativeStatusLocal: event.Notify.NegativeStatusLocal, NegativeStatusBasis: event.Notify.NegativeStatusBasis,
+		DamageRaw: event.ServerResultRaw, ChangeLifeRaw: event.ChangeLifeRaw, HasChangeLife: event.HasChangeLife,
+	}
+	if event.Notify.NegativeStatusLocal {
+		execution := event.Notify.Execution
+		view.Push.CreditEntityID, view.Push.StatusEffectID, view.Push.TriggerEffectID = execution.CreditEntity, execution.StatusEffectID, execution.TriggerEffectID
+		view.Push.StatusOwnerEntityID, view.Push.CreditReason = execution.Owner, execution.Reason
+		view.Push.Settlement, view.Push.CreditCandidates = execution.Settlement, execution.Candidates
+		view.Push.SpreadCandidates, view.Push.InstantTrigger = execution.Spread, execution.Instant
+		if credit := event.Notify.Credit; credit != nil {
+			view.Push.CreditBasis, view.Push.CreditRoleID = credit.Basis, credit.RoleID
+		}
+	}
+	p.writeEnvelopedEventJSONL(view, "p")
 }
 
 // writeEnvelopedEventJSONL writes one event line; a non-empty kind selects an auxiliary id namespace.

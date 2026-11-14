@@ -20,10 +20,22 @@ func assertRoleTotalsReconcile(t *testing.T, snapshot DamageStatisticsSnapshot) 
 			assertSkillsReconcile(t, scope+" vehicle", vehicle.Skills, vehicle.UnassignedSkill, vehicle.DamageDealt, vehicle.OutgoingEvents)
 		}
 		for _, role := range roles {
-			if role.DirectDamage+role.SummonDamage != role.DamageDealt {
-				t.Fatalf("%s role %d/%d: direct %d + summon %d != dealt %d", scope, role.PlayerID, role.RoleID, role.DirectDamage, role.SummonDamage, role.DamageDealt)
+			if role.DirectDamage+role.SummonDamage+role.StatusDamage != role.DamageDealt {
+				t.Fatalf("%s role %d/%d: direct %d + summon %d + status %d != dealt %d", scope, role.PlayerID, role.RoleID, role.DirectDamage, role.SummonDamage, role.StatusDamage, role.DamageDealt)
 			}
-			assertSkillsReconcile(t, scope+" role "+strconv.FormatUint(role.RoleID, 10), role.Skills, role.UnassignedSkill, role.DamageDealt, role.OutgoingEvents)
+			var statusDamage int64
+			var statusEvents uint64
+			for i, row := range role.Statuses {
+				if row.DamageID == 0 || row.OutgoingEvents == 0 || (i > 0 && role.Statuses[i-1].DamageID >= row.DamageID) || row.TriggerEvents > row.OutgoingEvents || row.TriggerDamage > row.DamageDealt {
+					t.Fatalf("%s role %d status row %d is invalid: %+v", scope, role.RoleID, i, row)
+				}
+				statusDamage += row.DamageDealt
+				statusEvents += row.OutgoingEvents
+			}
+			if statusDamage != role.StatusDamage {
+				t.Fatalf("%s role %d: status rows %d != status damage %d", scope, role.RoleID, statusDamage, role.StatusDamage)
+			}
+			assertSkillsReconcile(t, scope+" role "+strconv.FormatUint(role.RoleID, 10), role.Skills, role.UnassignedSkill, role.DamageDealt-statusDamage, role.OutgoingEvents-statusEvents)
 			sumDealt += role.DamageDealt
 			sumTaken += role.DamageTaken
 			sumOutgoing += role.OutgoingEvents
@@ -283,7 +295,7 @@ func TestConcurrentQueriesSeeConsistentRoleTotals(t *testing.T) {
 func TestRoleAggregationCreditsRoleEntityTouchedByActiveRequest(t *testing.T) {
 	p := newPairingTestProcessor()
 	// An EntityActiveRequest update marks the record CORRELATED but keeps its PlayerSceneGroup mapping.
-	if err := p.entities.observeActiveRequest(appendVarintField(nil, 4, 100)); err != nil {
+	if err := p.entities.observeActiveRequest(appendVarintField(nil, fieldEntityActiveRequestEntityID, 100)); err != nil {
 		t.Fatal(err)
 	}
 	if _, status := p.entities.resolve(100); status != resolutionCorrelated {

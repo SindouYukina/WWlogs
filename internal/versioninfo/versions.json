@@ -1,28 +1,5 @@
 {
   "product": {
-    "developmentLine": "v0.6.0"
-  },
-  "observedClient": {
-    "region": "Global",
-    "gameVersion": "3.7.0",
-    "resourceVersion": "3.7.17",
-    "loginBuild": "release-3.7.0-win64-global-3.7.17",
-    "checkClientPushVersions": [
-      "3.7.0",
-      "3.7.17",
-      "3.7.17"
-    ]
-  },
-  "schemas": {
-    "windowsGlobal": {
-      "label": "Windows Global UHD",
-      "version": "3.7.1",
-      "compatibility": "unverified"
-    },
-    "referenceGlobal": {
-      "label": "Reference Protocol",
-      "version": "3.7.1",
-      "compatibility": "unverified"
-    }
+    "developmentLine": "v0.7.0"
   }
 }

@@ -113,8 +113,19 @@ type gameMaster struct {
 	buffOwners map[uint64][]buffOwnerText
 	// propertyNames maps a PropertyIndex id (the attribute id of the protocol) to its key and localized name.
 	propertyNames map[int64]propertyName
-	// abnormalDamageIDs holds the DamageIds named by the columns Abnormal<id> of AbnormalDamageConfig.
+	// abnormalDamageIDs holds the negative-status DamageIds: those named by the columns Abnormal<id> of AbnormalDamageConfig and
+	// every damage row of the server-only negative-status formula (FormulaType 9), such as 1007 of the Glacio Chafe variant.
 	abnormalDamageIDs map[uint64]struct{}
+	// negativeStatusExecutors maps a Buff whose extra effect type is one of abnormalDamageIDs to that type: the negative-status
+	// DamageId the server executes for the status (damage_notify.go).
+	negativeStatusExecutors map[uint64]uint64
+	// negativeStatusSettlements holds how each executing status Buff settles (negative_status_credit.go).
+	negativeStatusSettlements map[uint64]negativeStatusSettlement
+	// invokePeriodTargets maps an InvokePeriod Buff (extra effect type 67) to the negative-status Buffs whose execution it
+	// forces at once (negative_status_credit.go).
+	invokePeriodTargets map[uint64][]uint64
+	// negativeStatusTerms names a negative-status DamageId by the glossary term its executing status Buffs share.
+	negativeStatusTerms map[uint64]negativeStatusTerm
 	// fsm holds the AI state-machine node identities used to name ChangeStateNotify ids.
 	fsm *fsmMaster
 	// skillLabelText holds skill_dev_label_locale rows (master locale and zh-CN) by skill id and locale.
@@ -307,6 +318,19 @@ func (m *gameMaster) hasConcomitantVisionSummonSkill(id uint64) bool {
 	}
 	_, ok := m.concomitantVisionSummonSkills[id]
 	return ok
+}
+
+// staticRoleID is the RoleInfo whose static data describes the runtime RoleId roleID. A trial character
+// (TrialRoleInfo.Id, such as 15127004) plays its parent role (TrialRoleInfo.ParentId, 1512): its skills, Outro,
+// element and name are the parent's, and every DamageId the 2026-11-12 Global 3.8 capture credited to its three trial
+// roles is listed by a UI skill of the parent role. Statistics keep the runtime RoleId; only Master lookups use this.
+func (m *gameMaster) staticRoleID(roleID uint64) uint64 {
+	if m != nil {
+		if parent, ok := m.trialRoleParents[roleID]; ok {
+			return parent
+		}
+	}
+	return roleID
 }
 
 // roleSkinRole returns RoleSkin.RoleId for a RoleSkin.Id and reports whether the row exists.
