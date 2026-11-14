@@ -118,7 +118,8 @@ func (g *gate) masterChecks() {
 	modes := g.check("content.instance-modes", DomainContent, "Every Adventure Guide category with an instance only it names resolves through the product's mode resolver", KindStatic, true)
 	// Advisory: content the client data itself cannot place is reported, never guessed and never a blocker.
 	unresolved := g.check("content.unresolved-categories", DomainContent, "Guide categories the client data names only ambiguously (reported limitation)", KindStatic, false)
-	dependents := []*Check{loads, relations, names, art, trial, skillIcons, skillNames, hudClass, hudIcons, categories, modes, unresolved}
+	content := g.check("master.client-content", DomainMaster, "Every row, playable role and HUD buff the current client defines is in the Master, read from the client's own ConfigDB and decoded snapshot", KindResearch, true)
+	dependents := []*Check{loads, relations, names, art, trial, skillIcons, skillNames, hudClass, hudIcons, categories, modes, unresolved, content}
 
 	hash, err := fileSHA256(g.in.MasterPath)
 	if err != nil {
@@ -227,6 +228,7 @@ func (g *gate) masterChecks() {
 	}
 	g.hudChecks(hudClass, hudIcons, m)
 	g.contentChecks(categories, modes, unresolved, m)
+	g.clientContentCheck(content, m)
 }
 
 // relationRule is one lookup relation the product needs, stated as a query counting rows that break it.

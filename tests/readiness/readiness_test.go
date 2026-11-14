@@ -290,6 +290,7 @@ func TestStaticReadyAndLiveVerifiedAreSeparate(t *testing.T) {
 	in.Locales = []string{"zh-TW", "zh-CN", "en-US", "ja-JP", "ko-KR"}
 	in.ProtocolSchema = schemaFromConstants(t, "")
 	in.ClientReferences = clientInventory(t, manifestPaths(t))
+	in.ClientContent = contentInventory(t, nil)
 	passingEvidence(t, &in)
 	report := run(t, in)
 	if !report.StaticReady || report.LiveVerified {
@@ -513,4 +514,137 @@ func TestGateFailsClientReferenceDrift(t *testing.T) {
 	in.ClientReferences = clientInventory(t, append(paths[1:], "game/buffs/999999999/icon.webp"))
 	report := run(t, in)
 	wantFail(t, report, "assets.client-references", "game/buffs/999999999/icon.webp is referenced by the client but missing from the pack", paths[0]+" is in the pack but no longer referenced")
+}
+
+// contentInventory writes a client content inventory (research input clientContent) whose client side is a copy of the
+// tracked Master, changed by mutate: the clean control of master.client-content, and every defect injected into it.
+func contentInventory(t *testing.T, mutate func(inventory map[string]any)) string {
+	t.Helper()
+	db, err := sql.Open("sqlite", "file:"+filepath.ToSlash(filepath.Join(repositoryRoot(t), "data", "master_data.db"))+"?mode=ro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	column := func(query string) []string {
+		rows, err := db.Query(query)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+		var out []string
+		for rows.Next() {
+			var value string
+			if err := rows.Scan(&value); err != nil {
+				t.Fatal(err)
+			}
+			out = append(out, value)
+		}
+		return out
+	}
+	tables := map[string]any{}
+	for _, table := range []string{"roleinfo", "trialroleinfo", "buff", "gameplaycue", "skill", "secondaryguidedata", "dungeondetection", "silentareadetection", "instancedungeon"} {
+		ids := column("SELECT CAST(id AS TEXT) FROM " + table)
+		tables[table] = map[string]any{"sourceRows": len(ids), "decodedRows": len(ids), "ids": ids}
+	}
+	inventory := map[string]any{
+		"client": "Global 3.8.9", "resource": "3.8.9", "tables": tables,
+		"playableRoles": column("SELECT CAST(id AS TEXT) FROM roleinfo WHERE role_type = 1"),
+		"hudBuffs": column(`SELECT DISTINCT b.owner_id FROM buff_gameplay_cue_ids b JOIN gameplaycue g ON g.id = CAST(CAST(b.value AS INTEGER) AS TEXT)
+			WHERE g.path_asset_id IS NOT NULL AND g.path_asset_id <> '' AND g.cue_type IN (2, 14, 24, 37)`),
+		"exclusions": []any{},
+	}
+	if mutate != nil {
+		mutate(inventory)
+	}
+	return writeJSON(t, filepath.Join(t.TempDir(), "client-content.json"), inventory)
+}
+
+// addTableID adds an id to one table of a content inventory, as a row the client defines.
+func addTableID(inventory map[string]any, table, id string) {
+	entry := inventory["tables"].(map[string]any)[table].(map[string]any)
+	entry["ids"] = append(entry["ids"].([]string), id)
+	entry["sourceRows"] = entry["sourceRows"].(int) + 1
+	entry["decodedRows"] = entry["decodedRows"].(int) + 1
+}
+
+// The clean control: an inventory of exactly the Master's client rows passes, with every row counted.
+func TestGateClientContentMatchesTheMaster(t *testing.T) {
+	in := baseInputs(t)
+	in.ClientContent = contentInventory(t, nil)
+	report := run(t, in)
+	wantStatus(t, report, "master.client-content", readiness.StatusPass)
+	if c := checkOf(t, report, "master.client-content"); c.Coverage == nil || c.Coverage.Total == 0 || c.Coverage.Passed != c.Coverage.Total {
+		t.Fatalf("coverage %+v, want every client row", c.Coverage)
+	}
+}
+
+// Failure injection: the client defines a new role, a new HUD status and new rows that the Master build dropped. The
+// other Master checks walk the Master's own rows and cannot see them.
+func TestGateFailsClientContentTheMasterLacks(t *testing.T) {
+	in := baseInputs(t)
+	in.ClientContent = contentInventory(t, func(inventory map[string]any) {
+		addTableID(inventory, "roleinfo", "9999")
+		inventory["playableRoles"] = append(inventory["playableRoles"].([]string), "9999")
+		addTableID(inventory, "buff", "999999999")
+		addTableID(inventory, "gameplaycue", "999999998")
+		inventory["hudBuffs"] = append(inventory["hudBuffs"].([]string), "999999999")
+		addTableID(inventory, "instancedungeon", "999997")
+	})
+	report := run(t, in)
+	wantFail(t, report, "master.client-content", "roleinfo 9999 is in the client but not in the Master", "playable role 9999 of the client is not playable in the Master",
+		"buff 999999999 is in the client but not in the Master", "the client HUD draws buff 999999999 but the Master gives it no HUD cue",
+		"gameplaycue 999999998 is in the client but not in the Master", "instancedungeon 999997 is in the client but not in the Master")
+	// The static checks that read the Master alone still pass: only the cross-layer check sees the dropped rows.
+	wantStatus(t, report, "characters.art", readiness.StatusPass)
+	wantStatus(t, report, "effects.hud-classification", readiness.StatusPass)
+}
+
+// Failure injection: the Master gives a buff a HUD cue the client no longer draws (a stale Master after an update).
+func TestGateFailsClientContentStaleHUDRelation(t *testing.T) {
+	in := baseInputs(t)
+	in.ClientContent = contentInventory(t, func(inventory map[string]any) {
+		hud := inventory["hudBuffs"].([]string)
+		inventory["hudBuffs"] = hud[1:]
+	})
+	report := run(t, in)
+	wantFail(t, report, "master.client-content", "a HUD cue the client does not draw")
+}
+
+// Failure injection: the inventory was extracted from another client than the decoder's, or its extraction is partial.
+func TestGateFailsClientContentFromAnotherClientOrPartialExtraction(t *testing.T) {
+	in := baseInputs(t)
+	in.ClientContent = contentInventory(t, func(inventory map[string]any) { inventory["client"] = "Global 3.9.0" })
+	wantFail(t, run(t, in), "master.client-content", `the inventory describes client "Global 3.9.0", the decoder reads "Global 3.8.9"`)
+
+	in.ClientContent = contentInventory(t, func(inventory map[string]any) {
+		entry := inventory["tables"].(map[string]any)["buff"].(map[string]any)
+		entry["decodedRows"] = entry["decodedRows"].(int) - 3
+	})
+	wantFail(t, run(t, in), "master.client-content", "buff: 28009 of the client's 28012 rows decoded in the extraction snapshot")
+
+	in.ClientContent = contentInventory(t, func(inventory map[string]any) {
+		inventory["exclusions"] = []any{map[string]any{"table": "buff", "id": "1"}}
+	})
+	wantFail(t, run(t, in), "master.client-content", "the exclusion of buff 1 states no reason")
+}
+
+// Failure injection: a HUD status's icon is missing from the pack.
+func TestGateFailsMissingHUDIcon(t *testing.T) {
+	var icon string
+	for _, path := range manifestPaths(t) {
+		if strings.HasPrefix(path, "game/buffs/") {
+			icon = path
+			break
+		}
+	}
+	if icon == "" {
+		t.Fatal("the manifest lists no buff icon")
+	}
+	in := baseInputs(t)
+	in.ManifestPath = manifestWithout(t, icon)
+	report := run(t, in)
+	c := checkOf(t, report, "effects.hud-icons")
+	if c.Status != readiness.StatusFail {
+		t.Fatalf("effects.hud-icons = %s with %s removed from the manifest, want FAIL", c.Status, icon)
+	}
 }
