@@ -180,6 +180,13 @@ body[data-view="overlay"][data-editing="true"] { --wails-draggable: drag; }
 .ww-history-compare-column { width: 28px; }
 .ww-check { width: 15px; height: 15px; margin: 0; accent-color: var(--ww-accent); cursor: pointer; }
 .ww-check:disabled { cursor: not-allowed; opacity: 0.4; }
+/* Deleting several encounters: a bar above the list (its actions keep to the right), checkboxes in the deletion colour, and
+   the chosen rows tinted so the whole choice reads at a glance. */
+.ww-history-bulk { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ww-space-2) var(--ww-space-3); min-height: 34px; margin-bottom: var(--ww-space-2); }
+.ww-history-bulk-actions { display: flex; gap: var(--ww-space-2); margin-inline-start: auto; }
+.ww-history-bulk > .ww-history-confirm { flex: 1 1 100%; }
+.ww-check[data-purpose="delete"] { accent-color: var(--ww-critical); }
+.ww-history-row[data-chosen="true"] { background: var(--ww-critical-soft); }
 .ww-history-detail { display: flex; flex-direction: column; gap: var(--ww-space-3); }
 .ww-history-detail-head { display: flex; align-items: center; justify-content: space-between; gap: var(--ww-space-3); flex-wrap: wrap; }
 .ww-history-detail-head h3 { margin: 0; font-size: var(--ww-text-lg); font-weight: var(--ww-weight-semibold); }

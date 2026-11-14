@@ -464,7 +464,27 @@
       "unreliable": "戰鬥邊界或遺失範圍不明：不顯示 DPS，不列入總計與個人紀錄。",
       "unfinished": "仍在記錄中或程式結束時未完成：數值來自最後的檢查點，不列入總計與個人紀錄。"
     },
-    "backToList": "返回清單"
+    "backToList": "返回清單",
+    "bulkDelete": {
+      "start": "選取刪除",
+      "cancel": "取消",
+      "selectAll": "全選可刪除的戰鬥",
+      "selectRow": "選取這場戰鬥以刪除",
+      "rowLabel": "選取 {{date}} {{time}} 的戰鬥",
+      "selected": "已選取 {{n}} 場",
+      "action": "刪除所選（{{n}}）",
+      "confirmTitle": "確認刪除",
+      "confirm": "要刪除所選的 {{n}} 場戰鬥及其所有保存的資料嗎？此操作無法復原。",
+      "confirmAction": "刪除 {{n}} 場",
+      "done": "已從歷史中刪除 {{n}} 場戰鬥。",
+      "failed": "刪除失敗，沒有做任何變更。",
+      "refused": {
+        "encounter_recording": "所選的戰鬥中有仍在記錄的戰鬥，沒有刪除任何戰鬥。",
+        "recording_active": "目前有擷取正在寫入歷史，沒有刪除任何戰鬥。",
+        "not_writable": "此視窗無法變更這份歷史。",
+        "not_found": "所選的戰鬥中有已不在歷史中的戰鬥，沒有刪除任何戰鬥。"
+      }
+    }
   },
   "compare": {
     "select": "加入比較",

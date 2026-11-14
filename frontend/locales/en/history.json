@@ -464,7 +464,27 @@
       "unreliable": "A boundary or the extent of a loss is unknown: no DPS is shown. Not counted in totals or personal records.",
       "unfinished": "Still recording, or ended with the application: the values are a checkpoint. Not counted in totals or personal records."
     },
-    "backToList": "Back to the list"
+    "backToList": "Back to the list",
+    "bulkDelete": {
+      "start": "Select to delete",
+      "cancel": "Cancel",
+      "selectAll": "Select every encounter that can be deleted",
+      "selectRow": "Select this encounter for deletion",
+      "rowLabel": "Select the encounter of {{date}} {{time}}",
+      "selected": "Selected: {{n}}",
+      "action": "Delete selected ({{n}})",
+      "confirmTitle": "Confirm deletion",
+      "confirm": "Delete the selected encounters ({{n}}) and everything stored for them? This cannot be undone.",
+      "confirmAction": "Delete ({{n}})",
+      "done": "Deleted from the history: {{n}}.",
+      "failed": "The deletion failed. Nothing was changed.",
+      "refused": {
+        "encounter_recording": "One of the selected encounters is still being recorded. Nothing was deleted.",
+        "recording_active": "A capture is recording into the history. Nothing was deleted.",
+        "not_writable": "This window cannot change this history.",
+        "not_found": "One of the selected encounters is no longer in the history. Nothing was deleted."
+      }
+    }
   },
   "compare": {
     "select": "Add to comparison",

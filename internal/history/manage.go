@@ -60,88 +60,130 @@ func (s *Store) writable() error {
 	return nil
 }
 
-// DeleteEncounter removes one listed encounter that no capture is recording any more: its results, its combat events, and
-// the effect changes stored during it in its protocol session. An effect instance that also has changes outside the
-// encounter keeps them and no longer counts its start as recorded. A span left without any encounter is removed with
-// everything it still holds, unless it is still recording.
+// DeleteEncounter removes one listed encounter that no capture is recording any more, as DeleteEncounters does.
 func (s *Store) DeleteEncounter(ctx context.Context, id int64) (DeleteResult, error) {
-	var result DeleteResult
+	return s.DeleteEncounters(ctx, []int64{id})
+}
+
+// DeleteEncounters removes listed encounters that no capture is recording any more, all of them or none: they go in one
+// transaction, and an unknown or still recording encounter among them refuses the whole deletion. A repeated id counts once.
+// What one encounter takes with it is described at deleteEncounter; the file is compacted at most once, afterwards.
+func (s *Store) DeleteEncounters(ctx context.Context, ids []int64) (DeleteResult, error) {
+	ids = distinctIDs(ids)
 	// A deletion changes what an analysis, the library and the career read; their caches are dropped whatever the outcome,
 	// except the largest hits of the encounters that stay.
 	defer s.models.clear()
-	defer s.library.forget(id)
+	defer func() {
+		for _, id := range ids {
+			s.library.forget(id)
+		}
+	}()
 	if err := s.writable(); err != nil {
-		return result, err
+		return DeleteResult{}, err
+	}
+	if len(ids) == 0 {
+		return DeleteResult{}, nil
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return result, fmt.Errorf("delete history encounter: %w", err)
+		return DeleteResult{}, fmt.Errorf("delete history encounters: %w", err)
 	}
 	defer tx.Rollback()
+	var result DeleteResult
+	for _, id := range ids {
+		spans, err := deleteEncounter(ctx, tx, id)
+		if err != nil {
+			return DeleteResult{}, err
+		}
+		result.Encounters++
+		result.Spans += spans
+	}
+	if err := foreignKeysHold(ctx, tx); err != nil {
+		return DeleteResult{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return DeleteResult{}, fmt.Errorf("delete history encounters: %w", err)
+	}
+	result.Compacted = s.compactIfWorthIt(ctx, false)
+	return result, nil
+}
+
+// deleteEncounter removes, inside a deletion's transaction, one listed encounter that no capture is recording any more: its
+// results, its combat events, and the effect changes stored during it in its protocol session. An effect instance that also
+// has changes outside the encounter keeps them and no longer counts its start as recorded. A span left without any encounter
+// is removed with everything it still holds, unless it is still recording; the count of removed spans is returned.
+func deleteEncounter(ctx context.Context, tx *sql.Tx, id int64) (int, error) {
 	var span, protocolSession int64
 	var state string
 	var started int64
 	var end sql.NullInt64
-	err = tx.QueryRowContext(ctx, `SELECT capture_session_id, protocol_session, state, started_at_ns, coalesce(ended_at_ns, checkpoint_at_ns, last_activity_at_ns)
+	err := tx.QueryRowContext(ctx, `SELECT capture_session_id, protocol_session, state, started_at_ns, coalesce(ended_at_ns, checkpoint_at_ns, last_activity_at_ns)
 		FROM encounter WHERE id = ? AND state IN `+listedStates, id).Scan(&span, &protocolSession, &state, &started, &end)
 	if errors.Is(err, sql.ErrNoRows) {
-		return result, ErrNotFound
+		return 0, ErrNotFound
 	}
 	if err != nil {
-		return result, fmt.Errorf("delete history encounter: %w", err)
+		return 0, fmt.Errorf("delete history encounter: %w", err)
 	}
 	if state == "open" {
-		return result, ErrEncounterRecording
+		return 0, ErrEncounterRecording
 	}
 	if _, err := tx.ExecContext(ctx, "DELETE FROM combat_event WHERE encounter_id = ?", id); err != nil {
-		return result, fmt.Errorf("delete history encounter: %w", err)
+		return 0, fmt.Errorf("delete history encounter: %w", err)
 	}
 	if end.Valid {
 		window := `capture_session_id = ? AND observed_at_ns BETWEEN ? AND ? AND instance IN (SELECT instance FROM effect_instance WHERE capture_session_id = ? AND protocol_session = ?)`
 		if _, err := tx.ExecContext(ctx, `UPDATE effect_instance SET start_recorded = 0 WHERE capture_session_id = ? AND instance IN (SELECT instance FROM effect_event WHERE `+window+`)`,
 			span, span, started, end.Int64, span, protocolSession); err != nil {
-			return result, fmt.Errorf("delete history effects: %w", err)
+			return 0, fmt.Errorf("delete history effects: %w", err)
 		}
 		if _, err := tx.ExecContext(ctx, `CREATE TEMP TABLE IF NOT EXISTS deleted_effect_instance (instance INTEGER PRIMARY KEY); DELETE FROM deleted_effect_instance`); err != nil {
-			return result, fmt.Errorf("delete history effects: %w", err)
+			return 0, fmt.Errorf("delete history effects: %w", err)
 		}
 		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO deleted_effect_instance (instance) SELECT instance FROM effect_event WHERE `+window,
 			span, started, end.Int64, span, protocolSession); err != nil {
-			return result, fmt.Errorf("delete history effects: %w", err)
+			return 0, fmt.Errorf("delete history effects: %w", err)
 		}
 		if _, err := tx.ExecContext(ctx, "DELETE FROM effect_event WHERE "+window, span, started, end.Int64, span, protocolSession); err != nil {
-			return result, fmt.Errorf("delete history effects: %w", err)
+			return 0, fmt.Errorf("delete history effects: %w", err)
 		}
 		if _, err := tx.ExecContext(ctx, instanceLifeUpdate, span); err != nil {
-			return result, fmt.Errorf("delete history effects: %w", err)
+			return 0, fmt.Errorf("delete history effects: %w", err)
 		}
 		if _, err := tx.ExecContext(ctx, "DELETE FROM deleted_effect_instance"); err != nil {
-			return result, fmt.Errorf("delete history effects: %w", err)
+			return 0, fmt.Errorf("delete history effects: %w", err)
 		}
 		if _, err := tx.ExecContext(ctx, `DELETE FROM effect_instance WHERE capture_session_id = ? AND NOT EXISTS
 			(SELECT 1 FROM effect_event e WHERE e.capture_session_id = effect_instance.capture_session_id AND e.instance = effect_instance.instance)`, span); err != nil {
-			return result, fmt.Errorf("delete history effects: %w", err)
+			return 0, fmt.Errorf("delete history effects: %w", err)
 		}
 	}
 	if _, err := tx.ExecContext(ctx, "DELETE FROM encounter WHERE id = ?", id); err != nil {
-		return result, fmt.Errorf("delete history encounter: %w", err)
+		return 0, fmt.Errorf("delete history encounter: %w", err)
 	}
-	result.Encounters = 1
 	removed, err := tx.ExecContext(ctx, "DELETE FROM capture_session WHERE id = ? AND status != 'open' AND NOT EXISTS (SELECT 1 FROM encounter WHERE capture_session_id = ?)", span, span)
 	if err != nil {
-		return result, fmt.Errorf("delete history span: %w", err)
+		return 0, fmt.Errorf("delete history span: %w", err)
 	}
+	spans := 0
 	if count, err := removed.RowsAffected(); err == nil {
-		result.Spans = int(count)
+		spans = int(count)
 	}
-	if err := foreignKeysHold(ctx, tx); err != nil {
-		return result, err
+	return spans, nil
+}
+
+// distinctIDs keeps the first of each id, in order.
+func distinctIDs(ids []int64) []int64 {
+	seen := make(map[int64]struct{}, len(ids))
+	out := make([]int64, 0, len(ids))
+	for _, id := range ids {
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
 	}
-	if err := tx.Commit(); err != nil {
-		return result, fmt.Errorf("delete history encounter: %w", err)
-	}
-	result.Compacted = s.compactIfWorthIt(ctx, false)
-	return result, nil
+	return out
 }
 
 // ClearHistory removes every recorded span and encounter, then compacts the file. It refuses while a capture records into the
