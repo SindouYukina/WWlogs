@@ -24,7 +24,7 @@ func requireSeconds(t *testing.T, label string, got, want float64) {
 func TestEffectClockStandsStillDuringATimeStop(t *testing.T) {
 	c := newEffectClock()
 	c.mark(effectAt(0))
-	c.beginStop(77, 3*time.Second, effectAt(10))
+	c.beginStop(77, 3*time.Second, 0, effectAt(10))
 	requireSeconds(t, "during the stop", clockElapsed(&c, 10, 12), 0)
 	c.endStop(77, effectAt(13))
 	requireSeconds(t, "across the stop", clockElapsed(&c, 9, 15), 3)
@@ -38,7 +38,7 @@ func TestEffectClockStandsStillDuringATimeStop(t *testing.T) {
 func TestEffectClockBoundsAStopWithoutEnd(t *testing.T) {
 	c := newEffectClock()
 	c.mark(effectAt(0))
-	c.beginStop(77, 3*time.Second, effectAt(10))
+	c.beginStop(77, 3*time.Second, 0, effectAt(10))
 	// A query does not change the clock: the limit (10 + 3 + 1 s) is taken as the end.
 	requireSeconds(t, "past the limit", clockElapsed(&c, 10, 20), 6)
 	c.mark(effectAt(30))
@@ -47,7 +47,7 @@ func TestEffectClockBoundsAStopWithoutEnd(t *testing.T) {
 		t.Fatalf("counters = %+v, stops %v", c.counters, c.stops)
 	}
 	// A stop that declared no duration is bounded too.
-	c.beginStop(78, 0, effectAt(40))
+	c.beginStop(78, 0, 0, effectAt(40))
 	requireSeconds(t, "undeclared stop", clockElapsed(&c, 40, 40+effectStopDefaultLimit.Seconds()+5), 5)
 }
 
@@ -66,7 +66,7 @@ func TestEffectClockNestsStopsInAGlobalPause(t *testing.T) {
 	c := newEffectClock()
 	c.mark(effectAt(0))
 	c.setDilation(0, effectAt(5))
-	c.beginStop(77, 2*time.Second, effectAt(6))
+	c.beginStop(77, 2*time.Second, 0, effectAt(6))
 	c.endStop(77, effectAt(8))
 	requireSeconds(t, "still paused after the stop", clockElapsed(&c, 8, 11), 0)
 	c.setDilation(1, effectAt(12))
@@ -87,7 +87,7 @@ func TestEffectClockTimeCheckEndsAStuckPause(t *testing.T) {
 		t.Fatalf("counters = %+v", c.counters)
 	}
 
-	c.beginStop(77, time.Minute, effectAt(30))
+	c.beginStop(77, time.Minute, 0, effectAt(30))
 	c.sample(1, 1, effectAt(33))
 	requireSeconds(t, "stop ended by the sample", clockElapsed(&c, 30, 40), 7)
 	if c.counters.StopsSampled != 1 {
@@ -118,7 +118,8 @@ func TestDecodeRTimeStopPush(t *testing.T) {
 	}{
 		{"begin", begin, rTimeStop{begin: true, duration: 3451 * time.Millisecond, known: true}},
 		{"end", end, rTimeStop{known: true}},
-		{"slowed flow", appendVarintField(nil, fieldRTimeStopPushDilation, 30), rTimeStop{begin: true, known: true}},
+		{"slowed flow", appendVarintField(nil, fieldRTimeStopPushDilation, 30), rTimeStop{begin: true, scale: 0.3, known: true}},
+		{"slowed begin", appendVarintField(appendVarintField(nil, fieldRTimeStopPushDuration, 2000), fieldRTimeStopPushDilation, 25), rTimeStop{begin: true, duration: 2 * time.Second, scale: 0.25, known: true}},
 		{"empty", nil, rTimeStop{}},
 	} {
 		got, err := decodeRTimeStopPush(tc.body)
@@ -138,10 +139,10 @@ func TestEffectCountdownStandsStillDuringATimeStop(t *testing.T) {
 		// A status the HUD draws with a BUFF arrow.
 		event.DefinitionLinked, event.Static = true, &EffectStaticInfo{HUDCueTypes: []int32{2}, HUDPolarity: EffectPolarityBuff}
 	}))
-	tracker.ObserveTimeStop(1, 20, true, 5*time.Second, effectAt(4))
+	tracker.ObserveTimeStop(1, 20, true, 5*time.Second, 0, effectAt(4))
 	during := onlyEffect(t, tracker.SnapshotAt(effectQuery(7)))
 	requireNear(t, "remaining during the stop", during.RemainingSeconds, 6)
-	tracker.ObserveTimeStop(1, 20, false, 0, effectAt(9))
+	tracker.ObserveTimeStop(1, 20, false, 0, 0, effectAt(9))
 	after := onlyEffect(t, tracker.SnapshotAt(effectQuery(13.5)))
 	requireNear(t, "remaining after the stop", after.RemainingSeconds, 1.5)
 	if after.RemainingStatus != EffectRemainingEstimated || after.OverdueSeconds != nil {
@@ -168,7 +169,7 @@ func TestEffectCountdownStandsStillDuringATimeStop(t *testing.T) {
 func TestEffectClockStartsAgainWithANewProtocolSession(t *testing.T) {
 	tracker := newTestEffectTracker()
 	tracker.ObserveApply(testEffectApply(5, 0, nil))
-	tracker.ObserveTimeStop(1, 20, true, time.Minute, effectAt(1))
+	tracker.ObserveTimeStop(1, 20, true, time.Minute, 0, effectAt(1))
 	tracker.ObserveApply(testEffectApply(6, 2, func(event *EffectApplyEvent) {
 		event.SessionNumber = 2
 		event.DurationSeconds, event.RemainingSeconds = effectFloat(10), effectFloat(10)
@@ -181,7 +182,7 @@ func TestEffectClockStartsAgainWithANewProtocolSession(t *testing.T) {
 func TestEffectClockStopLimitWaitsOutAGlobalPause(t *testing.T) {
 	c := newEffectClock()
 	c.mark(effectAt(0))
-	c.beginStop(77, 3*time.Second, effectAt(10))
+	c.beginStop(77, 3*time.Second, 0, effectAt(10))
 	c.setDilation(0, effectAt(11))
 	c.mark(effectAt(20)) // past the unpaused limit (14 s): the stop still holds
 	if len(c.stops) != 1 {
@@ -205,4 +206,84 @@ func TestEmptyTimeStopPushPausesTheEffectClock(t *testing.T) {
 		t.Fatalf("clock counters = %+v", counters)
 	}
 	requireSeconds(t, "paused", p.effects.clock.at(effectAt(9))-p.effects.clock.at(effectAt(5)), 0)
+}
+
+// A TimeStopRequest with a scale above 0 slows effect timers to that scale instead of stopping them; concurrent requests
+// combine as the client does: 0 if any pauses, the lowest scale otherwise (TimeController.Wgp).
+func TestEffectClockFollowsAScaledTimeStop(t *testing.T) {
+	c := newEffectClock()
+	c.mark(effectAt(0))
+	c.beginStop(77, 10*time.Second, 0.5, effectAt(10))
+	requireSeconds(t, "at half speed", clockElapsed(&c, 10, 14), 2)
+	c.beginStop(78, 10*time.Second, 0.25, effectAt(14))
+	requireSeconds(t, "the lowest scale holds", clockElapsed(&c, 14, 18), 1)
+	c.beginStop(79, 2*time.Second, 0, effectAt(18))
+	requireSeconds(t, "a pausing stop wins", clockElapsed(&c, 18, 19), 0)
+	c.endStop(79, effectAt(19))
+	c.endStop(78, effectAt(20))
+	requireSeconds(t, "back to the remaining scale", clockElapsed(&c, 19, 20), 0.25)
+	c.endStop(77, effectAt(22))
+	requireSeconds(t, "after every stop", clockElapsed(&c, 22, 23), 1)
+	requireSeconds(t, "paused seconds count only the pause", c.counters.PausedSeconds, 1)
+}
+
+// The client keeps its flow clock running during a scaled stop, so a TimeCheckRequest never ends one; it still ends a
+// pausing stop whose end the capture missed.
+func TestEffectClockTimeCheckDoesNotEndAScaledStop(t *testing.T) {
+	c := newEffectClock()
+	c.mark(effectAt(0))
+	c.beginStop(77, time.Minute, 0.5, effectAt(10))
+	c.sample(0.5, 1, effectAt(13))
+	if len(c.stops) != 1 || c.counters.StopsSampled != 0 {
+		t.Fatalf("a scaled stop was ended by a sample: stops %v, counters %+v", c.stops, c.counters)
+	}
+	requireSeconds(t, "still at half speed", clockElapsed(&c, 13, 15), 1)
+	c.beginStop(78, time.Minute, 0, effectAt(15))
+	c.sample(0.5, 1, effectAt(17))
+	if _, scaled := c.stops[77]; len(c.stops) != 1 || !scaled || c.counters.StopsSampled != 1 {
+		t.Fatalf("a running flow clock ends the pausing stop only: stops %v, counters %+v", c.stops, c.counters)
+	}
+	requireSeconds(t, "the scaled stop still holds", clockElapsed(&c, 17, 19), 1)
+}
+
+// A scaled stop without an end slows effects until its declared duration and the margin, then the clock runs again.
+func TestEffectClockBoundsAScaledStopWithoutEnd(t *testing.T) {
+	c := newEffectClock()
+	c.mark(effectAt(0))
+	c.beginStop(77, 3*time.Second, 0.5, effectAt(10))
+	// 10..14 at half speed (limit 10 + 3 + 1 s), then 14..20 at full speed.
+	requireSeconds(t, "past the limit", clockElapsed(&c, 10, 20), 8)
+}
+
+// Changes the server states during a stop take effect in effect time: an APPLY or a refresh in a stop counts down only
+// once the stop ends, and a REMOVE in a stop ends the instance at once.
+func TestEffectCountdownFollowsChangesMadeDuringAStop(t *testing.T) {
+	tracker := newTestEffectTracker()
+	tracker.ObserveTimeStop(1, 20, true, 10*time.Second, 0, effectAt(1))
+	tracker.ObserveApply(testEffectApply(5, 2, func(event *EffectApplyEvent) {
+		event.DurationSeconds, event.RemainingSeconds = effectFloat(10), effectFloat(10)
+	}))
+	requireNear(t, "applied during the stop", onlyEffect(t, tracker.SnapshotAt(effectQuery(4))).RemainingSeconds, 10)
+	tracker.ObserveUpdate(EffectUpdateEvent{SessionNumber: 1, HolderEntityID: 10, HandleID: 5, StackCount: 2, HasStackCount: true,
+		DurationSeconds: effectFloat(8), RemainingSeconds: effectFloat(8), ObservedAt: effectAt(5)})
+	requireNear(t, "refreshed during the stop", onlyEffect(t, tracker.SnapshotAt(effectQuery(5.5))).RemainingSeconds, 8)
+	tracker.ObserveTimeStop(1, 20, false, 0, 0, effectAt(6))
+	requireNear(t, "after the stop", onlyEffect(t, tracker.SnapshotAt(effectQuery(9))).RemainingSeconds, 5)
+	tracker.ObserveTimeStop(1, 21, true, 10*time.Second, 0, effectAt(10))
+	tracker.ObserveRemove(EffectRemoveEvent{SessionNumber: 1, HolderEntityID: 10, HandleID: 5, ObservedAt: effectAt(11)})
+	if snapshot := tracker.SnapshotAt(effectQuery(12)); len(snapshot.Effects) != 0 {
+		t.Fatalf("a REMOVE during a stop must end the instance: %+v", snapshot.Effects)
+	}
+}
+
+// A scaled stop slows a status countdown to its scale.
+func TestEffectCountdownSlowsDuringAScaledStop(t *testing.T) {
+	tracker := newTestEffectTracker()
+	tracker.ObserveApply(testEffectApply(5, 0, func(event *EffectApplyEvent) {
+		event.DurationSeconds, event.RemainingSeconds = effectFloat(10), effectFloat(10)
+	}))
+	tracker.ObserveTimeStop(1, 20, true, 6*time.Second, 0.5, effectAt(2))
+	requireNear(t, "half speed", onlyEffect(t, tracker.SnapshotAt(effectQuery(6))).RemainingSeconds, 6)
+	tracker.ObserveTimeStop(1, 20, false, 0, 0, effectAt(6))
+	requireNear(t, "full speed again", onlyEffect(t, tracker.SnapshotAt(effectQuery(8))).RemainingSeconds, 4)
 }

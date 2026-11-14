@@ -1247,7 +1247,7 @@ func (t *EffectTracker) countersLocked() EffectCounters {
 
 // ObserveTimeStop follows a TimeStopRequest the caster began (begin) or ended, as the local client reported it
 // (RTimeStopPush). duration is the declared length of a begin, 0 when it declared none.
-func (t *EffectTracker) ObserveTimeStop(session int, caster uint64, begin bool, duration time.Duration, at time.Time) {
+func (t *EffectTracker) ObserveTimeStop(session int, caster uint64, begin bool, duration time.Duration, scale float64, at time.Time) {
 	if t == nil {
 		return
 	}
@@ -1257,7 +1257,7 @@ func (t *EffectTracker) ObserveTimeStop(session int, caster uint64, begin bool, 
 		return
 	}
 	if begin {
-		t.clock.beginStop(caster, duration, at)
+		t.clock.beginStop(caster, duration, scale, at)
 	} else {
 		t.clock.endStop(caster, at)
 	}
