@@ -201,3 +201,25 @@ test("a skill row keeps its name source and its own icon, and a row may have one
   const plain = skillBreakdown({ skills: [], unassignedSkill: { damageDealt: 7, outgoingEvents: 2, missingSkillEvents: 2, overflowEvents: 0 } })
   assert.equal(plain.unassigned.name, undefined)
 })
+
+test("a role's negative-status damage is its own rows, named and drawn as the engine decided, and adds up with its skills", () => {
+  const skills = [{ skillId: 1409011, name: "Strike", nameStatus: "VERIFIED", nameSource: "official", showSkillId: false, damageDealt: 300, outgoingEvents: 4, damageShare: 0.5 }]
+  const statuses = [
+    { damageId: 1001, name: "風蝕效應", nameStatus: "CORRELATED", termId: 850009, iconKind: "buff", iconId: 10040000, damageDealt: 250, outgoingEvents: 5, triggerEvents: 2, triggerDamage: 120, damageShare: 250 / 600 },
+    { damageId: 1005, nameStatus: "UNKNOWN", damageDealt: 50, outgoingEvents: 1, triggerEvents: 0, triggerDamage: 0, damageShare: 50 / 600 },
+    { damageId: 1006, nameStatus: "UNKNOWN", damageDealt: 0, outgoingEvents: 0, triggerEvents: 0, triggerDamage: 0 },
+  ]
+  const role = { playerId: 1, roleId: 1409, name: "A", nameStatus: "VERIFIED", damageDealt: 600, directDamage: 300, summonDamage: 0, statusDamage: 300, damageTaken: 0, skills, statuses }
+  const breakdown = skillBreakdown(role)
+  assert.deepEqual(breakdown.statuses, [
+    { damageId: 1001, name: "風蝕效應", iconKind: "buff", iconId: 10040000, damage: 250, events: 5, triggerEvents: 2, share: 250 / 600 },
+    { damageId: 1005, damage: 50, events: 1, triggerEvents: 0, share: 50 / 600 },
+  ], "an empty status row is left out and an unnamed one keeps no name")
+  const total = breakdown.rows.reduce((sum, row) => sum + row.damage, 0) + breakdown.statuses.reduce((sum, row) => sum + row.damage, 0)
+  assert.equal(total, role.damageDealt, "skill rows plus status rows add up to the role")
+  assert.equal(skillBreakdown({ ...role, statuses: undefined }).statuses, undefined, "a host without status rows has none")
+  const dashboard = readFileSync("frontend/src/views/DashboardView.tsx", "utf8")
+  assert.match(dashboard, /data-field="status-skill"/)
+  assert.match(dashboard, /statusTag/)
+  assert.match(dashboard, /DamageId \$\{status\.damageId\}/, "a status without a name shows its DamageId, never a made-up name")
+})

@@ -143,12 +143,35 @@ export interface Role {
   dps?: number
   directDamage: number
   summonDamage: number
+  /** Negative-status damage the server executed for this role (Go negative_status_credit.go); absent from older hosts. */
+  statusDamage?: number
   outgoingEvents: number
   damageTaken: number
   incomingEvents: number
   /** Damage split by DamageContext.SkillId, ordered by damage; absent from hosts older than skill breakdown. */
   skills?: Skill[]
   unassignedSkill?: UnassignedSkill
+  /** statusDamage by DamageId, ordered by DamageId. These hits have no SkillId and never join a skill row. */
+  statuses?: Status[]
+}
+
+/**
+ * The negative-status damage of one DamageId credited to a role: the role forced the execution (triggerEvents) or owns the
+ * status instance the server executed. name is the status's official glossary term (nameStatus CORRELATED); absent when
+ * the engine found no single term, and the UI then shows the DamageId.
+ */
+export interface Status {
+  damageId: number
+  name?: string
+  nameStatus: string
+  termId?: number
+  iconKind?: string
+  iconId?: number
+  damageDealt: number
+  damageShare?: number
+  outgoingEvents: number
+  triggerEvents: number
+  triggerDamage: number
 }
 
 /** One DamageContext.SkillId of a contributor. The share uses the contributor's own confirmed damage. */
@@ -198,7 +221,7 @@ export interface UnassignedRole {
   damageTaken: number
   incomingEvents: number
   overflowEvents: number
-  /** The part of damageDealt that is the team's negative-status damage, which the game credits to no character. */
+  /** The part of damageDealt that is the team's negative-status damage no role could be credited with. */
   negativeStatusDamage?: number
   negativeStatusEvents?: number
 }

@@ -192,10 +192,13 @@ type processor struct {
 	// notifyStats counts DamageExecuteNotify results; frameNotifyOrdinal numbers them within the frame being read.
 	notifyStats        damageNotifyStats
 	frameNotifyOrdinal int
-	rsa                *staticRSA
-	session            []byte
-	sessionGeneration  uint64
-	sessionHealth      sessionHealthState
+	// statusTriggers remembers the InvokePeriod Buffs the server applied recently, for the forced negative-status results
+	// that follow them (negative_status_credit.go).
+	statusTriggers    statusTriggerLog
+	rsa               *staticRSA
+	session           []byte
+	sessionGeneration uint64
+	sessionHealth     sessionHealthState
 	// protocol is the wire protocol of the current protocol session: decoded only once it reports the current game version.
 	protocol protocolSession
 	// protocolSessionStartedAt is the capture time of the latest handshake; retiredKCP holds the conversations of the

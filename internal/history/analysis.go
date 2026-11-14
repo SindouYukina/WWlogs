@@ -124,6 +124,9 @@ type analysisEvent struct {
 	contributor int
 	overflow    bool
 	summon      bool
+	// status marks a negative-status result credited to its contributor role (negative_status_credit.go): the role's
+	// StatusDamage and status row of its DamageId, never a skill row.
+	status bool
 	// taken is the contributor index of the target role of incoming damage, -1 when unassigned.
 	taken int
 	// enemy is the enemy ordinal of a confirmed local flow's non-player endpoint, -1 when there is none or it was not mapped.
@@ -413,6 +416,7 @@ func (m *encounterModel) credit(event *analysisEvent) {
 			if index, ok := m.byKey[roleKey(nullUint(event.source.player), nullUint(event.source.role))]; ok {
 				event.contributor = index
 				event.summon = event.source.basis.String == "summoner_chain"
+				event.status = event.evidence == capture.CombatEvidenceNegativeStatusNotify && capture.IsNegativeStatusRoleBasis(event.source.basis.String)
 			} else {
 				event.overflow = true
 			}
@@ -588,12 +592,26 @@ func sameRoles(a, b []capture.RoleDamageSnapshot) bool {
 	for _, role := range a {
 		other, ok := stored[roleKey(role.PlayerID, role.RoleID)]
 		if !ok || role.DirectDamage != other.DirectDamage || role.SummonDamage != other.SummonDamage || role.DamageTaken != other.DamageTaken || role.IncomingEvents != other.IncomingEvents ||
+			role.StatusDamage != other.StatusDamage || !sameStatuses(role.Statuses, other.Statuses) ||
 			!sameContributor(role.DamageDealt, role.OutgoingEvents, role.Skills, role.UnassignedSkill, other.DamageDealt, other.OutgoingEvents, other.Skills, other.UnassignedSkill) {
 			return false
 		}
 		delete(stored, roleKey(role.PlayerID, role.RoleID))
 	}
 	return len(stored) == 0
+}
+
+// sameStatuses compares two status splits row by row; both are ordered by DamageId.
+func sameStatuses(a, b []capture.StatusDamageSnapshot) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func sameContributor(damage int64, events uint64, skills []capture.SkillDamageSnapshot, unassigned capture.UnassignedSkillTotals,
@@ -692,10 +710,12 @@ func (m *encounterModel) rangeSnapshot(q resolvedQuery) capture.EncounterSnapsho
 		role       capture.RoleDamageSnapshot
 		skills     map[uint64]*capture.SkillDamageSnapshot
 		unassigned capture.UnassignedSkillTotals
+		statuses   map[uint64]*capture.StatusDamageSnapshot
 	}
 	splits := make([]split, len(m.contributors))
 	for i, contributor := range m.contributors {
-		splits[i] = split{role: capture.RoleDamageSnapshot{PlayerID: contributor.player, RoleID: contributor.role}, skills: map[uint64]*capture.SkillDamageSnapshot{}}
+		splits[i] = split{role: capture.RoleDamageSnapshot{PlayerID: contributor.player, RoleID: contributor.role}, skills: map[uint64]*capture.SkillDamageSnapshot{},
+			statuses: map[uint64]*capture.StatusDamageSnapshot{}}
 		evidence := contributor.unassigned
 		splits[i].unassigned = capture.UnassignedSkillTotals{DamageIDs: evidence.DamageIDs, DamageIDsIncomplete: evidence.DamageIDsIncomplete, EchoVisions: evidence.EchoVisions}
 	}
@@ -756,6 +776,21 @@ func (m *encounterModel) rangeSnapshot(q resolvedQuery) capture.EncounterSnapsho
 			s := &splits[event.contributor]
 			s.role.DamageDealt += event.amount
 			s.role.OutgoingEvents++
+			if event.status {
+				s.role.StatusDamage += event.amount
+				row := s.statuses[event.damage]
+				if row == nil {
+					row = &capture.StatusDamageSnapshot{DamageID: event.damage}
+					s.statuses[event.damage] = row
+				}
+				row.DamageDealt += event.amount
+				row.OutgoingEvents++
+				if event.source.basis.String == capture.RoleBasisNegativeStatusTrigger {
+					row.TriggerDamage += event.amount
+					row.TriggerEvents++
+				}
+				continue
+			}
 			if event.summon {
 				s.role.SummonDamage += event.amount
 			} else if !m.contributors[event.contributor].vehicle {
@@ -828,6 +863,10 @@ func (m *encounterModel) rangeSnapshot(q resolvedQuery) capture.EncounterSnapsho
 		}
 		role := s.role
 		role.Skills, role.UnassignedSkill = skills, s.unassigned
+		for _, row := range s.statuses {
+			role.Statuses = append(role.Statuses, *row)
+		}
+		sort.Slice(role.Statuses, func(a, b int) bool { return role.Statuses[a].DamageID < role.Statuses[b].DamageID })
 		snapshot.Roles = append(snapshot.Roles, role)
 	}
 	healing.ByHealer = make([]capture.HealerTotals, 0, len(healers))
@@ -1014,12 +1053,14 @@ type SelectionTotals struct {
 // SkillStats extends one skill row of the range with what only the stored hits tell: the largest hit, the average hit and
 // when its damage landed. SkillID 0 is the contributor's unassigned row. Hits are damage hits, never casts.
 type SkillStats struct {
-	Contributor string  `json:"contributor"`
-	SkillID     uint64  `json:"skillId"`
-	Damage      int64   `json:"damage"`
-	Hits        uint64  `json:"hits"`
-	MaxHit      int64   `json:"maxHit"`
-	AverageHit  float64 `json:"averageHit"`
+	Contributor string `json:"contributor"`
+	SkillID     uint64 `json:"skillId"`
+	// StatusDamageID is set, with SkillID 0, on the status row of a role: its negative-status damage of this DamageId.
+	StatusDamageID uint64  `json:"statusDamageId,omitempty"`
+	Damage         int64   `json:"damage"`
+	Hits           uint64  `json:"hits"`
+	MaxHit         int64   `json:"maxHit"`
+	AverageHit     float64 `json:"averageHit"`
 	// Bins splits the row's damage over the whole encounter in analysisSkillBins equal parts, with the enemy filter applied
 	// but not the range, so the range can be read against the whole fight.
 	Bins []int64 `json:"bins"`
@@ -1174,6 +1215,7 @@ func (m *encounterModel) skillStats(q resolvedQuery) []SkillStats {
 	type key struct {
 		contributor int
 		skill       uint64
+		status      uint64
 	}
 	rows := map[key]*SkillStats{}
 	var order []key
@@ -1181,7 +1223,7 @@ func (m *encounterModel) skillStats(q resolvedQuery) []SkillStats {
 	row := func(k key) *SkillStats {
 		r := rows[k]
 		if r == nil {
-			r = &SkillStats{Contributor: m.contributors[k.contributor].key, SkillID: k.skill, Bins: make([]int64, analysisSkillBins)}
+			r = &SkillStats{Contributor: m.contributors[k.contributor].key, SkillID: k.skill, StatusDamageID: k.status, Bins: make([]int64, analysisSkillBins)}
 			rows[k] = r
 			order = append(order, k)
 		}
@@ -1191,11 +1233,14 @@ func (m *encounterModel) skillStats(q resolvedQuery) []SkillStats {
 		if event.healing || event.flow != capture.CombatFlowLocalOutgoing || event.contributor < 0 || !q.matchesEnemy(event) {
 			continue
 		}
-		skill := event.skill
+		skill, status := event.skill, uint64(0)
 		if _, known := m.contributors[event.contributor].skills[skill]; !known {
 			skill = 0
 		}
-		r := row(key{event.contributor, skill})
+		if event.status {
+			skill, status = 0, event.damage
+		}
+		r := row(key{event.contributor, skill, status})
 		if event.rel >= 0 && duration > 0 {
 			bin := int(event.rel * analysisSkillBins / duration)
 			r.Bins[min(bin, analysisSkillBins-1)] += event.amount
@@ -1219,7 +1264,10 @@ func (m *encounterModel) skillStats(q resolvedQuery) []SkillStats {
 		if out[a].Contributor != out[b].Contributor {
 			return out[a].Contributor < out[b].Contributor
 		}
-		return out[a].SkillID < out[b].SkillID
+		if out[a].SkillID != out[b].SkillID {
+			return out[a].SkillID < out[b].SkillID
+		}
+		return out[a].StatusDamageID < out[b].StatusDamageID
 	})
 	return out
 }

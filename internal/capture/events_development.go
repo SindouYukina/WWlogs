@@ -227,6 +227,14 @@ func (p *processor) writeDamageEventJSONL(event combatEvent) {
 		NegativeStatus: event.Notify.NegativeStatus, NegativeStatusLocal: event.Notify.NegativeStatusLocal, NegativeStatusBasis: event.Notify.NegativeStatusBasis,
 		DamageRaw: event.ServerResultRaw, ChangeLifeRaw: event.ChangeLifeRaw, HasChangeLife: event.HasChangeLife,
 	}
+	if event.Notify.NegativeStatusLocal {
+		execution := event.Notify.Execution
+		view.Push.CreditEntityID, view.Push.StatusEffectID, view.Push.TriggerEffectID = execution.CreditEntity, execution.StatusEffectID, execution.TriggerEffectID
+		view.Push.StatusOwnerEntityID, view.Push.CreditReason = execution.Owner, execution.Reason
+		if credit := event.Notify.Credit; credit != nil {
+			view.Push.CreditBasis, view.Push.CreditRoleID = credit.Basis, credit.RoleID
+		}
+	}
 	p.writeEnvelopedEventJSONL(view, "p")
 }
 

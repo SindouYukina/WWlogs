@@ -185,10 +185,16 @@ type semanticCompletenessFact struct {
 	vehicle       int64
 	unknownDamage int64
 	unknownEvents uint64
-	// negativeStatus is the local team's negative-status damage the server executed through the scene's combat entity
-	// (DamageExecuteNotify, DamageId of an AbnormalDamageConfig column): no role's, and the whole unassigned bucket.
-	negativeStatus int64
+	// status is the negative-status damage the server executed through the scene's combat entity (DamageExecuteNotify,
+	// DamageId of an AbnormalDamageConfig column) and the product credits to a role (negative_status_credit.go): in this
+	// corpus all of it to role 1409, which applied every executing status instance and every InvokePeriod that forced one.
+	// statusTrigger is the part an InvokePeriod forced. The unassigned bucket of every encounter is empty.
+	status        int64
+	statusTrigger int64
 }
+
+// negativeStatusRole is the role every negative-status result of the corpus is credited to.
+const negativeStatusRole = 1409
 
 // Encounter 1 is role 1409 with a motorcycle; encounter 2 is the trial team. The six monster-on-monster hits of the
 // capture (1,675) belong to neither encounter. Encounter 2 includes the 11 server responses (80,862) that arrive in a
@@ -208,10 +214,22 @@ type semanticCompletenessFact struct {
 // alone; and every notified result with a ChangeLife has a Life step of its own after the responses take theirs. Here:
 // encounter 1 +6,379 (role 1409's DamageId 1000009900, 5,633, and one Aero Erosion tick, 746), encounter 2 +41,368 (trial
 // roles 13127004, 15127004 and 13117004, DamageId 1000009900).
+//
+// Role credit of the negative-status results (2026-11-14, research/runs/2026-11-14/v0.7.0-causal-damage-attribution,
+// work/causal-attribution/causal_audit.py on the generic schema decode, independent of the product's decoders): every
+// executing status instance on the target (server ApplyGameplayEffectNotify by handle, the client's StackingType 2 shared
+// instance) was created by role 1409's entity and every one of its stack changes (BuffStackCountNotify.InstigatorId) names
+// that entity; a result is a forced execution when an instant InvokePeriod Buff (client extra effect 67) naming the status
+// reached the same target earlier in its receive pack or within 0.15 s, with the InstigatorId of role 1409's entity; for
+// Aero Erosion the server also named the executing instance's InstigatorId at the execution itself (Buff 10040002, added
+// by the status's related extra effect with the instance as preceding Buff) in 1,026 of its 1,047 results, always role
+// 1409's entity. Of the 1,216 results (12,946,888), 681 were forced (9,020,386), 152 the first execution of a new instance
+// and 383 the instance's own period. The product's per-result credit equals the audit for all 1,216
+// (work/causal-attribution/compare_product.py).
 var semanticCompletenessFacts = append(append(currentGoldenFacts(func(capture string) []semanticCompletenessFact {
 	return []semanticCompletenessFact{
-		{capture, 1, 355025, 78716, 0, 0, 746},
-		{capture, 2, 636549, 0, 0, 0, 0},
+		{capture, 1, 355025, 78716, 0, 0, 746, 0},
+		{capture, 2, 636549, 0, 0, 0, 0, 0},
 	}
 }),
 	// The six encounters of the Build 29 capture; every hit comes from a role entity, none from a vehicle, and each
@@ -219,12 +237,12 @@ var semanticCompletenessFacts = append(append(currentGoldenFacts(func(capture st
 	// the boss (71,224 and 41,208) that arrive in a standalone CombatReceivePackNotify. Notified results (see above) add
 	// 154,020 to encounter 6: role 1508's 61,803 and Aero Erosion 92,217 (30 ticks on statuses role 1409 applied; the
 	// research audit's fixed 3 s lifetime missed the live instance of one, the effect tracker's refreshed duration did not).
-	semanticCompletenessFact{build29LiveCapture, 1, 2239230, 0, 0, 0, 0},
-	semanticCompletenessFact{build29LiveCapture, 2, 2661425, 0, 0, 0, 0},
-	semanticCompletenessFact{build29LiveCapture, 3, 1290079, 0, 0, 0, 0},
-	semanticCompletenessFact{build29LiveCapture, 4, 3558115, 0, 0, 0, 0},
-	semanticCompletenessFact{build29LiveCapture, 5, 3039257, 0, 0, 0, 0},
-	semanticCompletenessFact{build29LiveCapture, 6, 4181890, 0, 0, 0, 92217},
+	semanticCompletenessFact{build29LiveCapture, 1, 2239230, 0, 0, 0, 0, 0},
+	semanticCompletenessFact{build29LiveCapture, 2, 2661425, 0, 0, 0, 0, 0},
+	semanticCompletenessFact{build29LiveCapture, 3, 1290079, 0, 0, 0, 0, 0},
+	semanticCompletenessFact{build29LiveCapture, 4, 3558115, 0, 0, 0, 0, 0},
+	semanticCompletenessFact{build29LiveCapture, 5, 3039257, 0, 0, 0, 0, 0},
+	semanticCompletenessFact{build29LiveCapture, 6, 4181890, 0, 0, 0, 92217, 21272},
 ),
 	// The 30 encounters of the Build 28 capture; every confirmed hit comes from a role entity, none from a vehicle.
 	// Encounters 3, 9, 16 and 17 each join consecutive server battle intervals by the product's re-entry rule (an empty
@@ -235,36 +253,36 @@ var semanticCompletenessFacts = append(append(currentGoldenFacts(func(capture st
 	// negative-status ticks (Aero Erosion 1001 and Spectro Frazzle 1005, 7,666,224) on statuses role 1409 applied; three
 	// Spectro Frazzle ticks of encounters 5, 14 and 15 (17,173) came while the status was refreshed in the same frame and
 	// removed seconds later.
-	semanticCompletenessFact{build28LiveCapture, 1, 168148, 0, 0, 0, 727},
-	semanticCompletenessFact{build28LiveCapture, 2, 197195, 0, 0, 0, 9238},
-	semanticCompletenessFact{build28LiveCapture, 3, 803095, 0, 0, 0, 22764},
-	semanticCompletenessFact{build28LiveCapture, 4, 568753, 0, 0, 0, 27135},
-	semanticCompletenessFact{build28LiveCapture, 5, 1662887, 0, 0, 0, 36596},
-	semanticCompletenessFact{build28LiveCapture, 6, 571466, 0, 0, 0, 8668},
-	semanticCompletenessFact{build28LiveCapture, 7, 606702, 0, 0, 0, 13666},
-	semanticCompletenessFact{build28LiveCapture, 8, 958964, 0, 0, 0, 9041},
-	semanticCompletenessFact{build28LiveCapture, 9, 5237706, 0, 0, 0, 14724},
-	semanticCompletenessFact{build28LiveCapture, 10, 2037906, 0, 0, 0, 38884},
-	semanticCompletenessFact{build28LiveCapture, 11, 6505727, 0, 0, 0, 58655},
-	semanticCompletenessFact{build28LiveCapture, 12, 2349349, 0, 0, 0, 12662},
-	semanticCompletenessFact{build28LiveCapture, 13, 15504321, 0, 0, 0, 98061},
-	semanticCompletenessFact{build28LiveCapture, 14, 13224089, 0, 0, 0, 1299394},
-	semanticCompletenessFact{build28LiveCapture, 15, 306611253, 0, 0, 0, 5943391},
-	semanticCompletenessFact{build28LiveCapture, 16, 883756, 0, 0, 0, 0},
-	semanticCompletenessFact{build28LiveCapture, 17, 1289458, 0, 0, 0, 0},
-	semanticCompletenessFact{build28LiveCapture, 18, 775586, 0, 0, 0, 22457},
-	semanticCompletenessFact{build28LiveCapture, 19, 801006, 0, 0, 0, 7659},
-	semanticCompletenessFact{build28LiveCapture, 20, 776286, 0, 0, 0, 9425},
-	semanticCompletenessFact{build28LiveCapture, 21, 777776, 0, 0, 0, 5999},
-	semanticCompletenessFact{build28LiveCapture, 22, 781738, 0, 0, 0, 7605},
-	semanticCompletenessFact{build28LiveCapture, 23, 786617, 0, 0, 0, 19473},
-	semanticCompletenessFact{build28LiveCapture, 24, 40936, 0, 0, 0, 0},
-	semanticCompletenessFact{build28LiveCapture, 25, 207131, 0, 0, 0, 0},
-	semanticCompletenessFact{build28LiveCapture, 26, 51662, 0, 0, 0, 0},
-	semanticCompletenessFact{build28LiveCapture, 27, 789843, 0, 0, 0, 0},
-	semanticCompletenessFact{build28LiveCapture, 28, 805035, 0, 0, 0, 0},
-	semanticCompletenessFact{build28LiveCapture, 29, 778104, 0, 0, 0, 0},
-	semanticCompletenessFact{build28LiveCapture, 30, 774638, 0, 0, 0, 0},
+	semanticCompletenessFact{build28LiveCapture, 1, 168148, 0, 0, 0, 727, 0},
+	semanticCompletenessFact{build28LiveCapture, 2, 197195, 0, 0, 0, 9238, 0},
+	semanticCompletenessFact{build28LiveCapture, 3, 803095, 0, 0, 0, 22764, 0},
+	semanticCompletenessFact{build28LiveCapture, 4, 568753, 0, 0, 0, 27135, 0},
+	semanticCompletenessFact{build28LiveCapture, 5, 1662887, 0, 0, 0, 36596, 4875},
+	semanticCompletenessFact{build28LiveCapture, 6, 571466, 0, 0, 0, 8668, 0},
+	semanticCompletenessFact{build28LiveCapture, 7, 606702, 0, 0, 0, 13666, 0},
+	semanticCompletenessFact{build28LiveCapture, 8, 958964, 0, 0, 0, 9041, 0},
+	semanticCompletenessFact{build28LiveCapture, 9, 5237706, 0, 0, 0, 14724, 0},
+	semanticCompletenessFact{build28LiveCapture, 10, 2037906, 0, 0, 0, 38884, 3634},
+	semanticCompletenessFact{build28LiveCapture, 11, 6505727, 0, 0, 0, 58655, 21506},
+	semanticCompletenessFact{build28LiveCapture, 12, 2349349, 0, 0, 0, 12662, 0},
+	semanticCompletenessFact{build28LiveCapture, 13, 15504321, 0, 0, 0, 98061, 49127},
+	semanticCompletenessFact{build28LiveCapture, 14, 13224089, 0, 0, 0, 1299394, 1240086},
+	semanticCompletenessFact{build28LiveCapture, 15, 306611253, 0, 0, 0, 5943391, 5161686},
+	semanticCompletenessFact{build28LiveCapture, 16, 883756, 0, 0, 0, 0, 0},
+	semanticCompletenessFact{build28LiveCapture, 17, 1289458, 0, 0, 0, 0, 0},
+	semanticCompletenessFact{build28LiveCapture, 18, 775586, 0, 0, 0, 22457, 0},
+	semanticCompletenessFact{build28LiveCapture, 19, 801006, 0, 0, 0, 7659, 0},
+	semanticCompletenessFact{build28LiveCapture, 20, 776286, 0, 0, 0, 9425, 0},
+	semanticCompletenessFact{build28LiveCapture, 21, 777776, 0, 0, 0, 5999, 0},
+	semanticCompletenessFact{build28LiveCapture, 22, 781738, 0, 0, 0, 7605, 0},
+	semanticCompletenessFact{build28LiveCapture, 23, 786617, 0, 0, 0, 19473, 0},
+	semanticCompletenessFact{build28LiveCapture, 24, 40936, 0, 0, 0, 0, 0},
+	semanticCompletenessFact{build28LiveCapture, 25, 207131, 0, 0, 0, 0, 0},
+	semanticCompletenessFact{build28LiveCapture, 26, 51662, 0, 0, 0, 0, 0},
+	semanticCompletenessFact{build28LiveCapture, 27, 789843, 0, 0, 0, 0, 0},
+	semanticCompletenessFact{build28LiveCapture, 28, 805035, 0, 0, 0, 0, 0},
+	semanticCompletenessFact{build28LiveCapture, 29, 778104, 0, 0, 0, 0, 0},
+	semanticCompletenessFact{build28LiveCapture, 30, 774638, 0, 0, 0, 0, 0},
 	// The 18 encounters the engine finished in the Build 31 capture (it discarded a 19th, sequence 18). Checked outside the
 	// product's combat decoders with work/live-build31/completeness_audit_wrap.py on the generic schema decode: all 9,069
 	// responses of both containers keyed by their RequestId continued past the wrap of the client's counter and paired
@@ -279,24 +297,24 @@ var semanticCompletenessFacts = append(append(currentGoldenFacts(func(capture st
 	// above build29LiveCapture's facts) add 8,995,667: 157 hits of local roles (3,807,966; 154 with a Life step of their
 	// own, 3 with Life unchanged) and 549 Aero Erosion ticks (5,187,701; 538 with a Life step) on statuses role 1409
 	// applied, the negativeStatus column. Before 2026-11-14 the facts excluded them (encounter 7: 9,177,422).
-	semanticCompletenessFact{build31LiveCapture, 1, 5510829, 0, 0, 0, 0},
-	semanticCompletenessFact{build31LiveCapture, 2, 5635117, 0, 0, 0, 0},
-	semanticCompletenessFact{build31LiveCapture, 3, 5976286, 0, 0, 0, 0},
-	semanticCompletenessFact{build31LiveCapture, 4, 11612715, 0, 0, 0, 1042266},
-	semanticCompletenessFact{build31LiveCapture, 5, 6187588, 0, 0, 0, 587199},
-	semanticCompletenessFact{build31LiveCapture, 6, 2700158, 0, 0, 0, 279397},
-	semanticCompletenessFact{build31LiveCapture, 7, 10122800, 0, 0, 0, 945378},
-	semanticCompletenessFact{build31LiveCapture, 8, 3998523, 0, 0, 0, 0},
-	semanticCompletenessFact{build31LiveCapture, 9, 3493921, 0, 0, 0, 0},
-	semanticCompletenessFact{build31LiveCapture, 10, 18459692, 0, 0, 0, 806830},
-	semanticCompletenessFact{build31LiveCapture, 11, 34983860, 0, 0, 0, 1500447},
-	semanticCompletenessFact{build31LiveCapture, 12, 43889235, 0, 0, 0, 0},
-	semanticCompletenessFact{build31LiveCapture, 13, 47918, 0, 0, 0, 0},
-	semanticCompletenessFact{build31LiveCapture, 14, 7960715, 0, 0, 0, 0},
-	semanticCompletenessFact{build31LiveCapture, 15, 862762, 0, 0, 0, 19418},
-	semanticCompletenessFact{build31LiveCapture, 16, 920878, 0, 0, 0, 6766},
-	semanticCompletenessFact{build31LiveCapture, 17, 237931, 47230, 0, 0, 0},
-	semanticCompletenessFact{build31LiveCapture, 19, 936031, 47105, 0, 0, 0},
+	semanticCompletenessFact{build31LiveCapture, 1, 5510829, 0, 0, 0, 0, 0},
+	semanticCompletenessFact{build31LiveCapture, 2, 5635117, 0, 0, 0, 0, 0},
+	semanticCompletenessFact{build31LiveCapture, 3, 5976286, 0, 0, 0, 0, 0},
+	semanticCompletenessFact{build31LiveCapture, 4, 11612715, 0, 0, 0, 1042266, 518494},
+	semanticCompletenessFact{build31LiveCapture, 5, 6187588, 0, 0, 0, 587199, 258791},
+	semanticCompletenessFact{build31LiveCapture, 6, 2700158, 0, 0, 0, 279397, 104988},
+	semanticCompletenessFact{build31LiveCapture, 7, 10122800, 0, 0, 0, 945378, 431418},
+	semanticCompletenessFact{build31LiveCapture, 8, 3998523, 0, 0, 0, 0, 0},
+	semanticCompletenessFact{build31LiveCapture, 9, 3493921, 0, 0, 0, 0, 0},
+	semanticCompletenessFact{build31LiveCapture, 10, 18459692, 0, 0, 0, 806830, 437011},
+	semanticCompletenessFact{build31LiveCapture, 11, 34983860, 0, 0, 0, 1500447, 767498},
+	semanticCompletenessFact{build31LiveCapture, 12, 43889235, 0, 0, 0, 0, 0},
+	semanticCompletenessFact{build31LiveCapture, 13, 47918, 0, 0, 0, 0, 0},
+	semanticCompletenessFact{build31LiveCapture, 14, 7960715, 0, 0, 0, 0, 0},
+	semanticCompletenessFact{build31LiveCapture, 15, 862762, 0, 0, 0, 19418, 0},
+	semanticCompletenessFact{build31LiveCapture, 16, 920878, 0, 0, 0, 6766, 0},
+	semanticCompletenessFact{build31LiveCapture, 17, 237931, 47230, 0, 0, 0, 0},
+	semanticCompletenessFact{build31LiveCapture, 19, 936031, 47105, 0, 0, 0, 0},
 )
 
 type semanticEffectSeen struct {
@@ -411,8 +429,18 @@ func semanticCheckRankingScope(roles []ViewRole, vehicle *ViewVehicle, unassigne
 func semanticCheckSkillPartition(roles []ViewRole, vehicle *ViewVehicle, completeness ViewDamageCompleteness) error {
 	var noSkillDamage int64
 	var noSkillEvents uint64
-	check := func(label string, dealt int64, events uint64, skills []ViewSkill, unassigned ViewUnassignedSkill) error {
+	check := func(label string, dealt int64, events uint64, skills []ViewSkill, statuses []ViewStatus, unassigned ViewUnassignedSkill) error {
 		rowDamage, rowEvents := int64(0), uint64(0)
+		for _, status := range statuses {
+			if status.DamageID == 0 || status.OutgoingEvents == 0 || status.TriggerEvents > status.OutgoingEvents || status.TriggerDamage > status.DamageDealt {
+				return fmt.Errorf("%s has an invalid status row %+v", label, status)
+			}
+			if (status.Name == "") != (status.NameStatus == "UNKNOWN") || (status.Name != "" && status.NameStatus != "CORRELATED") {
+				return fmt.Errorf("%s status %d: name %q with status %s", label, status.DamageID, status.Name, status.NameStatus)
+			}
+			rowDamage += status.DamageDealt
+			rowEvents += status.OutgoingEvents
+		}
 		for _, skill := range skills {
 			if skill.SkillID == 0 {
 				return fmt.Errorf("%s has a row without a SkillId", label)
@@ -448,12 +476,12 @@ func semanticCheckSkillPartition(roles []ViewRole, vehicle *ViewVehicle, complet
 		return nil
 	}
 	for _, role := range roles {
-		if err := check(fmt.Sprintf("role %d", role.RoleID), role.DamageDealt, role.OutgoingEvents, role.Skills, role.UnassignedSkill); err != nil {
+		if err := check(fmt.Sprintf("role %d", role.RoleID), role.DamageDealt, role.OutgoingEvents, role.Skills, role.Statuses, role.UnassignedSkill); err != nil {
 			return err
 		}
 	}
 	if vehicle != nil {
-		if err := check("vehicle "+vehicle.Kind, vehicle.DamageDealt, vehicle.OutgoingEvents, vehicle.Skills, vehicle.UnassignedSkill); err != nil {
+		if err := check("vehicle "+vehicle.Kind, vehicle.DamageDealt, vehicle.OutgoingEvents, vehicle.Skills, nil, vehicle.UnassignedSkill); err != nil {
 			return err
 		}
 	}
@@ -613,7 +641,7 @@ func TestSemanticReplayCollector(t *testing.T) {
 				if !got.Conserved {
 					t.Errorf("encounter %d is not conserved: %+v", encounter.Sequence, got)
 				}
-				if got.RoleAttributionComplete != (encounter.UnassignedRole.OutgoingEvents == encounter.UnassignedRole.NegativeStatusEvents) {
+				if got.RoleAttributionComplete != (encounter.UnassignedRole.OutgoingEvents == 0) {
 					t.Errorf("encounter %d attribution does not follow its unassigned bucket: %+v", encounter.Sequence, got)
 				}
 			}
@@ -632,8 +660,24 @@ func TestSemanticReplayCollector(t *testing.T) {
 				}
 				got := encounterDamageCompleteness(encounter)
 				if encounter.Totals.DamageDealt != fact.total || vehicle != fact.vehicle || got.UnknownOwnershipDamage != fact.unknownDamage || got.UnknownOwnershipEvents != fact.unknownEvents || !got.RoleAttributionComplete ||
-					encounter.UnassignedRole.NegativeStatusDamage != fact.negativeStatus || encounter.UnassignedRole.DamageDealt != fact.negativeStatus {
-					t.Errorf("encounter %d = total %d, vehicle %d, %+v, want %+v", fact.sequence, encounter.Totals.DamageDealt, vehicle, got, fact)
+					encounter.UnassignedRole.NegativeStatusDamage != 0 || encounter.UnassignedRole.DamageDealt != 0 {
+					t.Errorf("encounter %d = total %d, vehicle %d, %+v, unassigned %+v, want %+v", fact.sequence, encounter.Totals.DamageDealt, vehicle, got, encounter.UnassignedRole, fact)
+				}
+				var status, statusTrigger, credited int64
+				for _, role := range encounter.Roles {
+					for _, row := range role.Statuses {
+						if role.RoleID == negativeStatusRole {
+							credited += row.DamageDealt
+						}
+						status += row.DamageDealt
+						statusTrigger += row.TriggerDamage
+					}
+					if role.DirectDamage+role.SummonDamage+role.StatusDamage != role.DamageDealt {
+						t.Errorf("encounter %d role %d: direct %d + summon %d + status %d != %d", fact.sequence, role.RoleID, role.DirectDamage, role.SummonDamage, role.StatusDamage, role.DamageDealt)
+					}
+				}
+				if status != fact.status || credited != fact.status || statusTrigger != fact.statusTrigger {
+					t.Errorf("encounter %d negative-status credit = %d (role %d: %d), forced %d, want %d forced %d", fact.sequence, status, negativeStatusRole, credited, statusTrigger, fact.status, fact.statusTrigger)
 				}
 			}
 			view := p.viewSnapshot()

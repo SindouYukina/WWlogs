@@ -22,9 +22,25 @@ export interface SkillRow {
   share?: number
 }
 
-/** A contributor's skill split. Rows plus unassigned add up to the contributor's confirmed damage. */
+/** A role's negative-status damage of one DamageId (Go ViewStatus); the engine names it by the status's glossary term. */
+export interface StatusRow {
+  damageId: number
+  /** The status's official name; absent means the engine found no single term and the table shows the DamageId. */
+  name?: string
+  iconKind?: GameAssetKind
+  iconId?: number
+  damage: number
+  events: number
+  /** Executions the role forced (InvokePeriod); the rest ran on the status instance the role owns. */
+  triggerEvents: number
+  share?: number
+}
+
+/** A contributor's skill split. Rows, statuses and unassigned add up to the contributor's confirmed damage. */
 export interface SkillBreakdown {
   rows: SkillRow[]
+  /** A role's negative-status damage by DamageId; absent or empty when there is none. */
+  statuses?: StatusRow[]
   /** Confirmed damage of the contributor without a skill source; absent when there is none. */
   unassigned?: { damage: number; events: number; share?: number; name?: string; derived?: "echo" | "damage_list" | "damage_type"; iconKind?: GameAssetKind; iconId?: number }
 }

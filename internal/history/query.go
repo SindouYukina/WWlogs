@@ -639,7 +639,8 @@ func (s *Store) snapshot(ctx context.Context, id int64) (capture.EncounterSnapsh
 	var dpsDuration, peakDuration int64
 	var dpsStart, dpsEnd, peakStart, peakEnd sql.NullInt64
 	var healingEvents, healingUnknownEvents, unassignedOut, unassignedIn, unassignedOverflow, downgraded int64
-	// The engine counted negative-status damage apart inside its unassigned bucket; the stored events keep it by evidence.
+	// The engine counted the negative-status damage it could credit to no role apart inside its unassigned bucket; the
+	// stored events keep it by evidence and by having no source role (a credited one is the status damage of the role).
 	var negativeStatusDamage, negativeStatusEvents int64
 	var state string
 	err := s.db.QueryRowContext(ctx, `SELECT statistics_interval, sequence, protocol_session, outcome, started_at_ns, start_basis, start_confirmed, battle_entered_at_ns,
@@ -651,8 +652,8 @@ func (s *Store) snapshot(ctx context.Context, id int64) (capture.EncounterSnapsh
 		healing_status, healing_reason, healing_effective, healing_reported, healing_overheal, healing_events, healing_unknown_effective, healing_unknown_events,
 		unassigned_damage_dealt, unassigned_outgoing_events, unassigned_damage_taken, unassigned_incoming_events, unassigned_overflow_events
 		, state,
-		(SELECT coalesce(sum(amount), 0) FROM combat_event WHERE encounter_id = encounter.id AND kind = 'damage' AND flow = 'local_outgoing' AND evidence = ?),
-		(SELECT count(*) FROM combat_event WHERE encounter_id = encounter.id AND kind = 'damage' AND flow = 'local_outgoing' AND evidence = ?)
+		(SELECT coalesce(sum(amount), 0) FROM combat_event WHERE encounter_id = encounter.id AND kind = 'damage' AND flow = 'local_outgoing' AND evidence = ? AND source_role_id IS NULL),
+		(SELECT count(*) FROM combat_event WHERE encounter_id = encounter.id AND kind = 'damage' AND flow = 'local_outgoing' AND evidence = ? AND source_role_id IS NULL)
 		FROM encounter WHERE id = ? AND (state = 'finished' OR checkpoint_at_ns IS NOT NULL)`,
 		capture.CombatEvidenceNegativeStatusNotify, capture.CombatEvidenceNegativeStatusNotify, id).Scan(
 		&interval, &sequence, &e.ProtocolSession, &e.Outcome, &started, &e.StartBasis, &startConfirmed, &battle,
@@ -814,6 +815,46 @@ func (s *Store) contributors(ctx context.Context, id int64, e *capture.Encounter
 				Kind: vehicleKind, Evidence: vehicleEvidence, DamageDealt: damage, OutgoingEvents: uint64(outgoing), Skills: rowSkills, UnassignedSkill: unassigned,
 			}
 		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	return s.roleStatuses(ctx, id, e.Roles)
+}
+
+// roleStatuses fills the negative-status damage the engine credited to each role. The engine stores it as the damage of
+// the role (encounter_contributor.damage_dealt) outside the direct and summon split, and keeps its rows only on the
+// events: each is a local negative-status result whose source role is the credited one (negative_status_credit.go).
+// History written before the credit existed has no such events, so its roles keep no status damage.
+func (s *Store) roleStatuses(ctx context.Context, id int64, roles []capture.RoleDamageSnapshot) error {
+	if len(roles) == 0 {
+		return nil
+	}
+	index := make(map[[2]uint64]int, len(roles))
+	for i, role := range roles {
+		index[[2]uint64{role.PlayerID, role.RoleID}] = i
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT coalesce(source_player_id, 0), source_role_id, damage_id, sum(amount), count(*),
+		coalesce(sum(CASE WHEN source_role_basis = ? THEN amount END), 0), coalesce(sum(CASE WHEN source_role_basis = ? THEN 1 END), 0)
+		FROM combat_event WHERE encounter_id = ? AND kind = 'damage' AND flow = ? AND evidence = ? AND source_role_id IS NOT NULL
+		GROUP BY coalesce(source_player_id, 0), source_role_id, damage_id ORDER BY 1, 2, 3`,
+		capture.RoleBasisNegativeStatusTrigger, capture.RoleBasisNegativeStatusTrigger, id, string(capture.CombatFlowLocalOutgoing), capture.CombatEvidenceNegativeStatusNotify)
+	if err != nil {
+		return fmt.Errorf("read history status damage: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var player, role, damageID, amount, events, triggerDamage, triggerEvents int64
+		if err := rows.Scan(&player, &role, &damageID, &amount, &events, &triggerDamage, &triggerEvents); err != nil {
+			return fmt.Errorf("read history status damage: %w", err)
+		}
+		i, ok := index[[2]uint64{uint64(player), uint64(role)}]
+		if !ok {
+			continue // a credited role the engine left out of its bounded role table; its damage is unassigned there
+		}
+		roles[i].StatusDamage += amount
+		roles[i].Statuses = append(roles[i].Statuses, capture.StatusDamageSnapshot{DamageID: uint64(damageID), DamageDealt: amount, OutgoingEvents: uint64(events),
+			TriggerDamage: triggerDamage, TriggerEvents: uint64(triggerEvents)})
 	}
 	return rows.Err()
 }

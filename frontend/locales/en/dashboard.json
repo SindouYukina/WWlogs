@@ -81,6 +81,8 @@
   "unassignedSkill": "Unconfirmed skill source",
   "unassignedSkillNote": "Damage confirmed for this source whose protocol data carries no skill ID.",
   "noSkillIdTag": "No skill ID",
+  "statusTag": "Negative status",
+  "statusNote": "Negative status damage the server settles through the scene's combat entity: a settlement this character forced, or one of a status instance this character owns, counts for this character.",
   "noSkillRows": "This source has no skill damage to break down.",
   "damageColumn": "Damage",
   "shareColumn": "Share",

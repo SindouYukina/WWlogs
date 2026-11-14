@@ -48,6 +48,8 @@ export interface CompareSkillValue {
 export interface CompareSkill {
   skillId?: number
   unassigned?: boolean
+  /** Set on a role's negative-status row: its damage of this DamageId (name is the status's glossary term). */
+  statusDamageId?: number
   name: HistoryName
   nameSource?: string
   showSkillId?: boolean

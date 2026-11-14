@@ -339,7 +339,8 @@ func (s *Store) affectedEncounters(ctx context.Context) (map[int64]bool, error) 
 }
 
 // maxHits returns, for each of the given finished encounters, its largest confirmed outgoing hit per runtime role (role
-// 0: hits credited to no role, such as a vehicle's). Results of a finished encounter never change, so each is read once.
+// 0: hits credited to no role, such as a vehicle's). A negative-status execution is no hit of a role: it stays out, so a
+// record always names the skill row of a hit. Results of a finished encounter never change, so each is read once.
 func (s *Store) maxHits(ctx context.Context, ids []int64) (map[int64]map[uint64]maxHit, error) {
 	s.library.mu.Lock()
 	defer s.library.mu.Unlock()
@@ -357,8 +358,8 @@ func (s *Store) maxHits(ctx context.Context, ids []int64) (map[int64]map[uint64]
 		chunk := missing[start:end]
 		// SQLite returns the other columns of the row that holds the max().
 		rows, err := s.db.QueryContext(ctx, `SELECT encounter_id, coalesce(source_role_id, 0), max(amount), skill_id FROM combat_event
-			WHERE encounter_id IN (`+strings.Join(chunk, ",")+`) AND kind = 'damage' AND flow = ? GROUP BY encounter_id, coalesce(source_role_id, 0)`,
-			string(capture.CombatFlowLocalOutgoing))
+			WHERE encounter_id IN (`+strings.Join(chunk, ",")+`) AND kind = 'damage' AND flow = ? AND evidence != ? GROUP BY encounter_id, coalesce(source_role_id, 0)`,
+			string(capture.CombatFlowLocalOutgoing), capture.CombatEvidenceNegativeStatusNotify)
 		if err != nil {
 			return nil, fmt.Errorf("read largest hits: %w", err)
 		}

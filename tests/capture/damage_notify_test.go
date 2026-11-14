@@ -143,20 +143,6 @@ func TestNotifiedKeysNeverMeetResponseKeys(t *testing.T) {
 	}
 }
 
-func TestNotifiedNegativeStatusDamageIsTheLocalTeamsWithoutARole(t *testing.T) {
-	p := newNotifyTestProcessor()
-	applyStatus(p, 0.5, 200, 1, notifyTestAeroBuff, 100, EffectRelationLocalRole)
-	deliverNotifyFrame(t, p, 1, 3, notifyData(testNotify{attacker: notifyTestScene, target: 200, damageID: notifyTestAero, damage: 1200, changeLife: 1200}))
-	snapshot := p.damageStatistics.Snapshot()
-	if snapshot.DamageDealt != 1200 || snapshot.UnassignedRole.DamageDealt != 1200 || snapshot.UnassignedRole.NegativeStatusDamage != 1200 || len(snapshot.Roles) != 0 {
-		t.Fatalf("dealt %d unassigned %+v roles %+v; negative-status damage is local, unassigned and no role's", snapshot.DamageDealt, snapshot.UnassignedRole, snapshot.Roles)
-	}
-	completeness := intervalDamageCompleteness(snapshot)
-	if !completeness.Conserved || !completeness.RoleAttributionComplete || completeness.NegativeStatusDamage != 1200 {
-		t.Fatalf("completeness %+v; negative-status damage must not read as incomplete role attribution", completeness)
-	}
-}
-
 func TestNotifiedNegativeStatusDamageNeedsLocalStatusEvidence(t *testing.T) {
 	aero := testNotify{attacker: notifyTestScene, target: 200, damageID: notifyTestAero, damage: 700, changeLife: 700}
 	cases := []struct {
@@ -270,4 +256,265 @@ func TestNotifiedSummonAndUnknownAttackersFollowTheResponseRules(t *testing.T) {
 	if snapshot.UnattributedOutgoingDamage != 90 || snapshot.UnattributedOutgoingEvents != 1 {
 		t.Fatalf("unattributed %d in %d; an attacker no message named is of unknown ownership", snapshot.UnattributedOutgoingDamage, snapshot.UnattributedOutgoingEvents)
 	}
+}
+
+// Role credit of negative-status damage (internal/capture/negative_status_credit.go;
+// research/runs/2026-11-14/v0.7.0-causal-damage-attribution). The expected credits follow the rule, not the code: a
+// forced execution belongs to the role whose InvokePeriod forced it, any other execution to the role owning the executing
+// instance, and nothing is credited without that runtime evidence.
+
+const (
+	notifyTestSpectro     = 1005     // negative-status DamageId (AbnormalDamageConfig Abnormal1005)
+	notifyTestSpectroBuff = 10051000 // a status Buff whose extra effect type is 1005
+	notifyTestAeroBuff2   = 10040000 // a second Aero Erosion status Buff
+	notifyTestInvokeAero  = 1409303001
+	notifyTestInvokeBoth  = 900266000023
+	notifyTestInvokeOther = 287110351 // an InvokePeriod naming no negative status
+)
+
+// newCreditTestProcessor adds the Master rows of the InvokePeriod Buffs and a second negative status.
+func newCreditTestProcessor() *processor {
+	p := newNotifyTestProcessor()
+	hash := strings.Repeat("a", 64)
+	p.masters.damage[notifyTestSpectro] = damageMasterRecord{ID: notifyTestSpectro, CalculateType: 0, SourceHash: hash, SourceTable: "damage"}
+	p.masters.abnormalDamageIDs[notifyTestSpectro] = struct{}{}
+	p.masters.negativeStatusExecutors[notifyTestSpectroBuff] = notifyTestSpectro
+	p.masters.negativeStatusExecutors[notifyTestAeroBuff2] = notifyTestAero
+	p.masters.invokePeriodTargets = map[uint64][]uint64{
+		notifyTestInvokeAero: {notifyTestAeroBuff},
+		notifyTestInvokeBoth: {notifyTestAeroBuff, notifyTestSpectroBuff},
+	}
+	return p
+}
+
+// triggerData is one CombatReceiveData item: the server's instant ApplyGameplayEffectNotify (handle -2) of a Buff on target.
+func triggerData(target, buff, instigator uint64) []byte {
+	payload := appendVarintField(nil, fieldApplyGameplayEffectNotifyHandle, uint64(0xFFFFFFFFFFFFFFFE)) // int32 -2
+	payload = appendVarintField(payload, fieldApplyGameplayEffectNotifyID, buff)
+	payload = appendVarintField(payload, fieldApplyGameplayEffectNotifyEntityID, target)
+	payload = appendVarintField(payload, fieldApplyGameplayEffectNotifyInstigatorID, instigator)
+	payload = appendVarintField(payload, fieldApplyGameplayEffectNotifyStackCount, 1)
+	notify := appendBytesField(nil, fieldCombatNotifyDataCombatCommon, appendVarintField(nil, fieldCombatCommonEntityID, target))
+	notify = appendBytesField(notify, fieldCombatNotifyDataApplyGameplayEffectNotify, payload)
+	return appendBytesField(nil, fieldCombatReceiveDataCombatNotifyData, notify)
+}
+
+func aeroTick(target uint64, damage int32) []byte {
+	return notifyData(testNotify{attacker: notifyTestScene, target: target, damageID: notifyTestAero, damage: damage, changeLife: damage})
+}
+
+// creditOf returns the status row of DamageId on role, and the role.
+func creditOf(t *testing.T, snapshot DamageStatisticsSnapshot, roleID, damageID uint64) (RoleDamageSnapshot, StatusDamageSnapshot) {
+	t.Helper()
+	for _, role := range snapshot.Roles {
+		if role.RoleID != roleID {
+			continue
+		}
+		for _, row := range role.Statuses {
+			if row.DamageID == damageID {
+				return role, row
+			}
+		}
+		return role, StatusDamageSnapshot{}
+	}
+	return RoleDamageSnapshot{}, StatusDamageSnapshot{}
+}
+
+func TestNotifiedNegativeStatusIsCreditedToTheRoleOwningTheStatus(t *testing.T) {
+	p := newCreditTestProcessor()
+	applyStatus(p, 0.5, 200, 1, notifyTestAeroBuff, 100, EffectRelationLocalRole)
+	deliverNotifyFrame(t, p, 1, 3, aeroTick(200, 1200))
+	snapshot := p.damageStatistics.Snapshot()
+	role, row := creditOf(t, snapshot, 1409, notifyTestAero)
+	if snapshot.DamageDealt != 1200 || snapshot.UnassignedRole.DamageDealt != 0 || snapshot.UnassignedRole.NegativeStatusDamage != 0 {
+		t.Fatalf("dealt %d unassigned %+v; the status owner's tick is the team's damage and a role's", snapshot.DamageDealt, snapshot.UnassignedRole)
+	}
+	if role.DamageDealt != 1200 || role.StatusDamage != 1200 || role.DirectDamage != 0 || role.SummonDamage != 0 || len(role.Skills) != 0 || role.UnassignedSkill.OutgoingEvents != 0 ||
+		row != (StatusDamageSnapshot{DamageID: notifyTestAero, DamageDealt: 1200, OutgoingEvents: 1}) {
+		t.Fatalf("role %+v; the tick is role 1409's status damage, outside its skill rows", role)
+	}
+	assertRoleTotalsReconcile(t, snapshot)
+	completeness := intervalDamageCompleteness(snapshot)
+	if !completeness.Conserved || !completeness.RoleAttributionComplete || !completeness.SkillBreakdownComplete {
+		t.Fatalf("completeness %+v", completeness)
+	}
+	if p.notifyStats.creditedOwner != 1 || p.notifyStats.creditedTrigger != 0 || p.notifyStats.uncredited != 0 {
+		t.Fatalf("notify stats %+v", p.notifyStats)
+	}
+}
+
+// The case the owner named first: role A (1409) applied the status, role B (1505) forced its execution. The forced tick
+// is B's; the status's own next tick is A's.
+func TestNotifiedNegativeStatusForcedByAnotherRoleIsCreditedToTheTrigger(t *testing.T) {
+	p := newCreditTestProcessor()
+	applyStatus(p, 0.5, 200, 1, notifyTestAeroBuff, 100, EffectRelationLocalRole)
+	deliverNotifyFrame(t, p, 1, 3, triggerData(200, notifyTestInvokeAero, 101), aeroTick(200, 900))
+	deliverNotifyFrame(t, p, 4, 4, aeroTick(200, 400))
+	snapshot := p.damageStatistics.Snapshot()
+	_, forced := creditOf(t, snapshot, 1505, notifyTestAero)
+	_, own := creditOf(t, snapshot, 1409, notifyTestAero)
+	if forced != (StatusDamageSnapshot{DamageID: notifyTestAero, DamageDealt: 900, OutgoingEvents: 1, TriggerEvents: 1, TriggerDamage: 900}) {
+		t.Fatalf("role 1505 status %+v; the forced tick belongs to the role whose InvokePeriod forced it", forced)
+	}
+	if own != (StatusDamageSnapshot{DamageID: notifyTestAero, DamageDealt: 400, OutgoingEvents: 1}) {
+		t.Fatalf("role 1409 status %+v; the status's own tick belongs to the role that owns it", own)
+	}
+	if snapshot.DamageDealt != 1300 || snapshot.UnassignedRole.DamageDealt != 0 {
+		t.Fatalf("dealt %d unassigned %+v; each tick counts once", snapshot.DamageDealt, snapshot.UnassignedRole)
+	}
+	assertRoleTotalsReconcile(t, snapshot)
+}
+
+// The server may close a receive pack right after the trigger: its forced result then opens the next pack. A trigger older
+// than the carry window explains nothing.
+func TestNegativeStatusTriggerCarriesIntoTheNextPackOnly(t *testing.T) {
+	p := newCreditTestProcessor()
+	applyStatus(p, 0.5, 200, 1, notifyTestAeroBuff, 100, EffectRelationLocalRole)
+	deliverNotifyFrame(t, p, 1, 3, triggerData(200, notifyTestInvokeAero, 101))
+	deliverNotifyFrame(t, p, 1.1, 4, aeroTick(200, 900))
+	deliverNotifyFrame(t, p, 2, 5, triggerData(200, notifyTestInvokeAero, 101))
+	deliverNotifyFrame(t, p, 2.2, 6, aeroTick(200, 300))
+	snapshot := p.damageStatistics.Snapshot()
+	if _, forced := creditOf(t, snapshot, 1505, notifyTestAero); forced.DamageDealt != 900 || forced.TriggerEvents != 1 {
+		t.Fatalf("role 1505 status %+v; a result in the next pack within the window is the forced one", forced)
+	}
+	if _, own := creditOf(t, snapshot, 1409, notifyTestAero); own.DamageDealt != 300 || own.TriggerEvents != 0 {
+		t.Fatalf("role 1409 status %+v; a trigger 0.2 s before a result is too old to explain it", own)
+	}
+}
+
+// One InvokePeriod forces one execution of each status it names: a second result on the same instance is the instance's
+// own, and a trigger naming two statuses explains one result of each.
+func TestNegativeStatusTriggerForcesEachNamedInstanceOnce(t *testing.T) {
+	p := newCreditTestProcessor()
+	applyStatus(p, 0.5, 200, 1, notifyTestAeroBuff, 100, EffectRelationLocalRole)
+	applyStatus(p, 0.5, 200, 2, notifyTestSpectroBuff, 100, EffectRelationLocalRole)
+	spectro := notifyData(testNotify{attacker: notifyTestScene, target: 200, damageID: notifyTestSpectro, damage: 250, changeLife: 250})
+	deliverNotifyFrame(t, p, 1, 3, triggerData(200, notifyTestInvokeBoth, 101), aeroTick(200, 900), spectro, aeroTick(200, 500))
+	snapshot := p.damageStatistics.Snapshot()
+	role, aero := creditOf(t, snapshot, 1505, notifyTestAero)
+	_, spectroRow := creditOf(t, snapshot, 1505, notifyTestSpectro)
+	if aero.DamageDealt != 900 || aero.TriggerEvents != 1 || spectroRow.DamageDealt != 250 || spectroRow.TriggerEvents != 1 || role.StatusDamage != 1150 {
+		t.Fatalf("role 1505 %+v; one trigger naming two statuses forces one result of each", role)
+	}
+	if _, own := creditOf(t, snapshot, 1409, notifyTestAero); own.DamageDealt != 500 || own.TriggerEvents != 0 {
+		t.Fatalf("role 1409 status %+v; the trigger is used up for that instance", own)
+	}
+	assertRoleTotalsReconcile(t, snapshot)
+}
+
+// A forced execution that deals nothing still uses up its trigger, so the next result of the instance is its own.
+func TestNegativeStatusTriggerIsUsedByAResultWithoutAnAmount(t *testing.T) {
+	p := newCreditTestProcessor()
+	applyStatus(p, 0.5, 200, 1, notifyTestAeroBuff, 100, EffectRelationLocalRole)
+	deliverNotifyFrame(t, p, 1, 3, triggerData(200, notifyTestInvokeAero, 101), aeroTick(200, 0))
+	deliverNotifyFrame(t, p, 1.05, 4, aeroTick(200, 600))
+	snapshot := p.damageStatistics.Snapshot()
+	if _, own := creditOf(t, snapshot, 1409, notifyTestAero); own.DamageDealt != 600 {
+		t.Fatalf("role 1409 status %+v; the zero result used the trigger", own)
+	}
+	if role, _ := creditOf(t, snapshot, 1505, notifyTestAero); role.StatusDamage != 0 {
+		t.Fatalf("role 1505 %+v; nothing was forced that dealt damage", role)
+	}
+}
+
+// Without one owner and without a trigger, or with a trigger of no local role, a tick stays the local team's but no role's.
+func TestNegativeStatusWithoutOneLocalCreditStaysUnassigned(t *testing.T) {
+	cases := []struct {
+		name  string
+		setup func(p *processor) [][]byte
+		want  string
+	}{
+		{"two live statuses of different owners", func(p *processor) [][]byte {
+			applyStatus(p, 0.5, 200, 1, notifyTestAeroBuff, 100, EffectRelationLocalRole)
+			applyStatus(p, 0.6, 200, 2, notifyTestAeroBuff2, 101, EffectRelationLocalRole)
+			return [][]byte{aeroTick(200, 700)}
+		}, "the live status instances on the target have different owners"},
+		{"a trigger of an enemy", func(p *processor) [][]byte {
+			applyStatus(p, 0.5, 200, 1, notifyTestAeroBuff, 100, EffectRelationLocalRole)
+			return [][]byte{triggerData(200, notifyTestInvokeAero, 201), aeroTick(200, 700)}
+		}, "the credited entity is no local role or summon of one"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			p := newCreditTestProcessor()
+			deliverNotifyFrame(t, p, 1, 3, c.setup(p)...)
+			snapshot := p.damageStatistics.Snapshot()
+			if snapshot.DamageDealt != 700 || snapshot.UnassignedRole.NegativeStatusDamage != 700 || snapshot.UnassignedRole.DamageDealt != 700 {
+				t.Fatalf("dealt %d unassigned %+v; the tick is the team's and no role's", snapshot.DamageDealt, snapshot.UnassignedRole)
+			}
+			for _, role := range snapshot.Roles {
+				if role.StatusDamage != 0 {
+					t.Fatalf("role %d credited %d without evidence", role.RoleID, role.StatusDamage)
+				}
+			}
+			if completeness := intervalDamageCompleteness(snapshot); completeness.RoleAttributionComplete || !completeness.Conserved {
+				t.Fatalf("completeness %+v; unassigned negative-status damage is an attribution gap", completeness)
+			}
+			if p.notifyStats.uncredited != 1 {
+				t.Fatalf("notify stats %+v", p.notifyStats)
+			}
+		})
+	}
+}
+
+// A trigger naming the other of two differently owned statuses forces that one: the credit then has its evidence.
+func TestNegativeStatusTriggerNamesTheInstanceAmongDifferentOwners(t *testing.T) {
+	p := newCreditTestProcessor()
+	applyStatus(p, 0.5, 200, 1, notifyTestAeroBuff, 100, EffectRelationLocalRole)
+	applyStatus(p, 0.6, 200, 2, notifyTestAeroBuff2, 101, EffectRelationLocalRole)
+	deliverNotifyFrame(t, p, 1, 3, triggerData(200, notifyTestInvokeAero, 100), aeroTick(200, 800))
+	snapshot := p.damageStatistics.Snapshot()
+	if _, row := creditOf(t, snapshot, 1409, notifyTestAero); row.DamageDealt != 800 || row.TriggerEvents != 1 || snapshot.UnassignedRole.DamageDealt != 0 {
+		t.Fatalf("role 1409 status %+v unassigned %+v", row, snapshot.UnassignedRole)
+	}
+}
+
+// An InvokePeriod that names no negative status, or names one not on the target, forces nothing.
+func TestNegativeStatusTriggerOfAnotherStatusIsNotUsed(t *testing.T) {
+	p := newCreditTestProcessor()
+	applyStatus(p, 0.5, 200, 1, notifyTestAeroBuff, 100, EffectRelationLocalRole)
+	deliverNotifyFrame(t, p, 1, 3, triggerData(200, notifyTestInvokeOther, 101), triggerData(201, notifyTestInvokeAero, 101), aeroTick(200, 500))
+	snapshot := p.damageStatistics.Snapshot()
+	if _, own := creditOf(t, snapshot, 1409, notifyTestAero); own.DamageDealt != 500 || own.TriggerEvents != 0 {
+		t.Fatalf("role 1409 status %+v; neither trigger forces this status on this target", own)
+	}
+	if p.notifyStats.statusTriggers != 1 {
+		t.Fatalf("notify stats %+v; only the InvokePeriod that names a negative status is remembered", p.notifyStats)
+	}
+}
+
+// A status a summon applied is its owning role's, as the summon's own hits are, but as status damage, not summon damage.
+func TestNegativeStatusOfASummonIsCreditedToItsRole(t *testing.T) {
+	p := newCreditTestProcessor()
+	addTestRuntimeEntity(p, 300, func(entity *runtimeEntity) {
+		entity.summonerID, entity.hasSummonerID = 100, true
+		entity.summonConfigID, entity.hasSummonConfigID = 77001, true
+	})
+	applyStatus(p, 0.5, 200, 1, notifyTestAeroBuff, 300, EffectRelationLocalOwned)
+	deliverNotifyFrame(t, p, 1, 3, aeroTick(200, 650))
+	snapshot := p.damageStatistics.Snapshot()
+	role, row := creditOf(t, snapshot, 1409, notifyTestAero)
+	if row.DamageDealt != 650 || role.StatusDamage != 650 || role.SummonDamage != 0 || role.DirectDamage != 0 {
+		t.Fatalf("role %+v; the summon's status is role 1409's status damage", role)
+	}
+}
+
+// A status keeps ticking while another role fights: who is acting when the tick lands is no evidence, so the tick stays
+// with the role that owns the status.
+func TestNegativeStatusTickWhileAnotherRoleFightsStaysWithItsOwner(t *testing.T) {
+	p := newCreditTestProcessor()
+	applyStatus(p, 0.5, 200, 1, notifyTestAeroBuff, 100, EffectRelationLocalRole)
+	deliverNotifyFrame(t, p, 1, 3,
+		notifyData(testNotify{attacker: 101, target: 200, damageID: notifyTestDamage, damage: 2000, changeLife: 2000}), aeroTick(200, 450))
+	deliverNotifyFrame(t, p, 4, 4, notifyData(testNotify{attacker: 101, target: 200, damageID: notifyTestDamage, damage: 2000, changeLife: 2000}))
+	deliverNotifyFrame(t, p, 4.01, 5, aeroTick(200, 450))
+	snapshot := p.damageStatistics.Snapshot()
+	if _, own := creditOf(t, snapshot, 1409, notifyTestAero); own.DamageDealt != 900 || own.OutgoingEvents != 2 {
+		t.Fatalf("role 1409 status %+v; the owner keeps its ticks", own)
+	}
+	if role, _ := creditOf(t, snapshot, 1505, notifyTestAero); role.StatusDamage != 0 || role.DirectDamage != 4000 {
+		t.Fatalf("role 1505 %+v; fighting next to a tick is not causing it", role)
+	}
+	assertRoleTotalsReconcile(t, snapshot)
 }

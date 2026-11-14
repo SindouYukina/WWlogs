@@ -31,9 +31,11 @@ import (
 //     appeared in a client request.
 //   - Negative-status damage (Aero Erosion, Spectro Frazzle and the other AbnormalDamageConfig statuses): the server
 //     names the scene's combat entity (SceneInformation.SceneEntityId) as attacker, and no character. It is the local
-//     team's damage, counted unassigned to any role, when the target is an enemy, the scene has no player but the local
-//     one, and every live status instance on the target that executes this DamageId was applied by the local team
-//     (negativeStatusOwnership). Otherwise its source stays as resolved, which keeps it out of the local totals.
+//     team's damage when the target is an enemy, the scene has no player but the local one, and every live status
+//     instance on the target that executes this DamageId was applied by the local team (negativeStatusOwnership).
+//     Otherwise its source stays as resolved, which keeps it out of the local totals. A local result is then credited to
+//     the role whose InvokePeriod forced the execution, or to the role that owns the executing status instance
+//     (negative_status_credit.go); without such a role it stays in the unassigned bucket.
 //   - The notification has no CombatCommon Originator, MessageId or PreMessageId (0 in every capture), so nothing in it
 //     names a player: local ownership comes only from the entity evidence above.
 
@@ -158,6 +160,10 @@ type damageNotifyStats struct {
 	keyless             int // counted without a deduplication key
 	negativeStatus      int // negative-status results seen
 	negativeStatusLocal int // of those, credited to the local team
+	creditedTrigger     int // of those, credited to the role whose InvokePeriod forced the execution
+	creditedOwner       int // of those, credited to the role that owns the executing instance
+	uncredited          int // of those, credited to no role
+	statusTriggers      int // InvokePeriod Buffs the server applied on a holder
 }
 
 // handleDamageExecuteNotify reads one DamageExecuteNotify of a CombatNotifyData; ordinal is its position among the
@@ -169,6 +175,13 @@ func (p *processor) handleDamageExecuteNotify(frame gameFrame, body []byte, ordi
 		p.notifyStats.malformed++
 		p.stats.parseErrors++
 		return
+	}
+	// Every negative-status execution the scene combat entity reports uses up the trigger that forced it, also one that
+	// deals nothing, so a trigger never explains a later execution of the same instance.
+	negativeStatus := notify.hasDamageID && p.masters.isNegativeStatusDamage(notify.damageID)
+	var execution negativeStatusExecution
+	if negativeStatus && notify.hasAttacker && notify.hasTarget && notify.attacker == p.sceneCombatEntity() && notify.attacker != 0 {
+		execution = p.matchNegativeStatusExecution(notify.target, notify.damageID, frame.timestamp)
 	}
 	if !notify.hasDamage || notify.damage == 0 || notify.immuneType != 0 {
 		p.notifyStats.noAmount++
@@ -192,12 +205,26 @@ func (p *processor) handleDamageExecuteNotify(frame gameFrame, body []byte, ordi
 	if event.Notify.Key == 0 {
 		p.notifyStats.keyless++
 	}
-	if p.masters.isNegativeStatusDamage(notify.damageID) && notify.hasDamageID {
+	if negativeStatus {
 		p.notifyStats.negativeStatus++
 		event.Notify.NegativeStatus = true
 		event.Notify.NegativeStatusLocal, event.Notify.NegativeStatusBasis = p.negativeStatusOwnership(event)
 		if event.Notify.NegativeStatusLocal {
 			p.notifyStats.negativeStatusLocal++
+			event.Notify.Execution = execution
+			if role := p.negativeStatusRole(execution); role != nil {
+				event.Notify.Credit = role
+				if role.Basis == roleBasisNegativeStatusTrigger {
+					p.notifyStats.creditedTrigger++
+				} else {
+					p.notifyStats.creditedOwner++
+				}
+			} else {
+				p.notifyStats.uncredited++
+				if execution.Reason == "" {
+					event.Notify.Execution.Reason = "the credited entity is no local role or summon of one"
+				}
+			}
 		}
 	}
 	p.stats.decodedMatchedEvents++
@@ -216,6 +243,10 @@ type notifiedResult struct {
 	NegativeStatus      bool
 	NegativeStatusLocal bool
 	NegativeStatusBasis string
+	// Execution is what the server's messages say caused a local negative-status result (negative_status_credit.go), and
+	// Credit the local role it is credited to; nil leaves it in the unassigned bucket.
+	Execution negativeStatusExecution
+	Credit    *CombatRole
 }
 
 // negativeStatusOwnership decides whether a notified negative-status result is the local team's damage. The server names
@@ -373,6 +404,6 @@ func loadSQLiteNegativeStatusDamage(db *sql.DB, master *gameMaster) error {
 
 // damageNotifyLine formats the notified-result counters for development diagnostics.
 func damageNotifyLine(s damageNotifyStats) string {
-	return fmt.Sprintf("damage_notify notifies=%d no_amount=%d malformed=%d keyless=%d negative_status=%d negative_status_local=%d",
-		s.notifies, s.noAmount, s.malformed, s.keyless, s.negativeStatus, s.negativeStatusLocal)
+	return fmt.Sprintf("damage_notify notifies=%d no_amount=%d malformed=%d keyless=%d negative_status=%d negative_status_local=%d credited_trigger=%d credited_owner=%d uncredited=%d status_triggers=%d",
+		s.notifies, s.noAmount, s.malformed, s.keyless, s.negativeStatus, s.negativeStatusLocal, s.creditedTrigger, s.creditedOwner, s.uncredited, s.statusTriggers)
 }

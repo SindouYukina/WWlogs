@@ -4,6 +4,7 @@ import { Button, Card, CharacterAvatar, Chip, Icon, Select, Tooltip } from "@/de
 import { useFormatters } from "@/lib/format"
 import type { CompareContributor, CompareEncounter, CompareValue, HistoryComparison } from "@/lib/history-compare"
 import { host } from "@/lib/host"
+import { StatusSkillName } from "./DashboardView"
 import { LinkedName } from "./HistoryAnalysis"
 import { ClassChip } from "./HistoryLibrary"
 
@@ -163,9 +164,11 @@ export function HistoryCompare({ ids, zone, refreshKey, onOpen, onRemove, onMiss
         <p className="ww-history-note">{t("compare.skillsNote")}</p>
         <div className="ww-dash-skills-wrap"><table className="ww-history-table ww-compare-table">
           <thead><tr><th className="ww-compare-label">{t("compare.skill")}</th>{encounters.map(encounter => <th key={encounter.id} className="ww-num">{encounter.localDate} {encounter.start.clock}</th>)}</tr></thead>
-          <tbody>{chosen.skills.map(skill => <tr key={skill.unassigned ? "unassigned" : skill.skillId} data-skill-id={skill.skillId ?? ""} data-unassigned={skill.unassigned === true}>
+          <tbody>{chosen.skills.map(skill => <tr key={skill.unassigned ? "unassigned" : skill.statusDamageId ? `status-${skill.statusDamageId}` : skill.skillId} data-skill-id={skill.skillId ?? ""} data-status-damage-id={skill.statusDamageId ?? ""} data-unassigned={skill.unassigned === true}>
             <th scope="row" className="ww-compare-label">
-              {skill.unassigned
+              {skill.statusDamageId
+                ? <StatusSkillName status={{ damageId: skill.statusDamageId, name: skill.name.name || undefined, iconKind: skill.iconKind === "buff" ? "buff" : undefined, iconId: skill.iconKind === "buff" ? skill.iconId : undefined }} />
+                : skill.unassigned
                 ? <Tooltip text={t("unassignedSkillNote", { ns: "dashboard" })} trigger="child" placement="top"><span className="ww-history-unknown">{t("unassignedSkill", { ns: "dashboard" })}</span></Tooltip>
                 : <span className="ww-compare-skill"><LinkedName name={skill.name} fallback={t("unidentified")} id={skill.skillId} title={t("correlatedNote")} />{skill.showSkillId && skill.name.name && <span className="ww-history-mark ww-num">#{skill.skillId}</span>}</span>}
             </th>

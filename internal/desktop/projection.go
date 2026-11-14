@@ -122,6 +122,25 @@ func (n *nameProjection) roles(original []capture.ViewRole) []capture.ViewRole {
 		result[i].ElementID = n.resolver.RoleElement(n.ctx, result[i].RoleID)
 		result[i].Skills = n.skills(result[i].Skills)
 		result[i].UnassignedSkill = projectUnassignedSkill(n.ctx, n.resolver, result[i].UnassignedSkill, n.locale, &n.err)
+		result[i].Statuses = n.statuses(result[i].Statuses)
+	}
+	return result
+}
+
+// statuses names the status rows of a role in the UI locale through the glossary term the engine found. A term without a
+// name in that locale keeps the engine's name.
+func (n *nameProjection) statuses(original []capture.ViewStatus) []capture.ViewStatus {
+	if len(original) == 0 {
+		return original
+	}
+	result := append([]capture.ViewStatus{}, original...)
+	for i := range result {
+		if result[i].TermID == 0 {
+			continue
+		}
+		if name := n.resolve("term", result[i].TermID); name.Name != "" {
+			result[i].Name = name.Name
+		}
 	}
 	return result
 }

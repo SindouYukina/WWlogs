@@ -81,6 +81,8 @@
   "unassignedSkill": "未確認技能來源",
   "unassignedSkillNote": "已確認屬於此來源，但協議沒有提供技能 ID 的傷害。",
   "noSkillIdTag": "無技能 ID",
+  "statusTag": "異常狀態",
+  "statusNote": "伺服器以場景戰鬥實體結算的異常狀態傷害：由此角色觸發的強制結算，或此角色擁有的狀態實例自身的結算，都計入此角色。",
   "noSkillRows": "此來源沒有可分解的技能傷害。",
   "damageColumn": "傷害",
   "shareColumn": "占比",

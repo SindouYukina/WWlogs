@@ -1,7 +1,7 @@
 import { memo, useMemo, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { AnimatedNumber, Card, CharacterAvatar, Chip, ContentSwitch, DamageBar, GameAssetImage, Icon, LiveChart, Reveal, Segmented, StackList, ThemeBackdrop, type ChartSeries, type IconName, type NumberMode, type ThemeId } from "@/design"
-import { dataChip, displayedEncounter, isFrozen, usableDps, type CombatData, type CombatTimeline, type SkillBreakdown } from "@/lib/combat-data"
+import { dataChip, displayedEncounter, isFrozen, usableDps, type CombatData, type CombatTimeline, type SkillBreakdown, type StatusRow } from "@/lib/combat-data"
 import { teamSeriesKey, unassignedSeriesKey } from "@/lib/timeline"
 import { combatRows, detailRow, selectionScope, type CombatRowModel } from "@/lib/combat-view"
 import { useDetailPick, type DetailPick } from "@/lib/useDetailPick"
@@ -51,13 +51,20 @@ export function RoleBoard({ rows, selected, onSelect, scope, stale, numberMode, 
 const derivedNoteKey = { damage_list: "derivedSkillNote", skill_type: "derivedSkillTypeNote", tune_break: "derivedTuneBreakNote", echo: "derivedEchoSkillNote" } as const
 const derivedUnassignedNoteKey = { echo: "derivedUnassignedEchoNote", damage_list: "derivedUnassignedSkillNote", damage_type: "derivedUnassignedOutroNote" } as const
 
-/** The engine's skill split of one contributor. Rows plus the unassigned row add up to the contributor's damage. */
+/** The name cell of a role's negative-status row: the status's icon and official name (or its DamageId) and a status tag. */
+export function StatusSkillName({ status }: { status: Pick<StatusRow, "damageId" | "name" | "iconKind" | "iconId"> }) {
+  const { t } = useTranslation("dashboard")
+  return <span className="ww-dash-skill-name" title={t("statusNote")}>{status.iconKind !== undefined && status.iconId !== undefined && <GameAssetImage kind={status.iconKind} id={status.iconId} />}<span className="ww-truncate" data-field="status-name">{status.name ?? `DamageId ${status.damageId}`}</span><span className="ww-dash-skill-noid" data-field="status-tag">{t("statusTag")}</span></span>
+}
+
+/** The engine's skill split of one contributor. Rows, status rows and the unassigned row add up to the contributor's damage. */
 export const SkillTable = memo(function SkillTable({ breakdown, color, enter = false }: { breakdown: SkillBreakdown; color: string; enter?: boolean }) {
   const { t } = useTranslation("dashboard")
   const format = useFormatters()
   const share = (value: number | undefined) => value === undefined ? "—" : format.percent(value)
   const { rows, unassigned } = breakdown
-  if (rows.length === 0 && !unassigned) return <p className="ww-dash-empty-note">{t("noSkillRows")}</p>
+  const statuses = breakdown.statuses ?? []
+  if (rows.length === 0 && statuses.length === 0 && !unassigned) return <p className="ww-dash-empty-note">{t("noSkillRows")}</p>
   return <div className="ww-dash-skills-wrap"><table className="ww-dash-skills" data-field="skills" style={{ "--ww-series": color } as React.CSSProperties}>
     <thead><tr><th>{t("skill")}</th><th>{t("damageColumn")}</th><th>{t("damageEvents")}</th><th>{t("shareColumn")}</th></tr></thead>
     <tbody>{rows.map((row, index) => <tr key={row.skillId} data-skill-id={row.skillId} data-named={row.name !== undefined} data-name-source={row.derived}>
@@ -66,11 +73,17 @@ export const SkillTable = memo(function SkillTable({ breakdown, color, enter = f
       <td className="ww-num">{format.integer(row.events)}</td>
       <td><div className="ww-dash-skill-share"><DamageBar share={row.share} enter={enter ? index : undefined} /><span className="ww-num">{share(row.share)}</span></div></td>
     </tr>)}
+    {statuses.map((status, index) => <tr key={`status-${status.damageId}`} data-field="status-skill" data-damage-id={status.damageId} data-named={status.name !== undefined}>
+      <td><StatusSkillName status={status} /></td>
+      <td className="ww-num"><AnimatedNumber value={status.damage} format={format.integer} /></td>
+      <td className="ww-num">{format.integer(status.events)}</td>
+      <td><div className="ww-dash-skill-share"><DamageBar share={status.share} enter={enter ? rows.length + index : undefined} /><span className="ww-num">{share(status.share)}</span></div></td>
+    </tr>)}
     {unassigned && <tr className="ww-dash-skill-unassigned" data-field="unassigned-skill" data-named={unassigned.name !== undefined} data-name-source={unassigned.derived}>
       <td><span className="ww-dash-skill-name" title={unassigned.derived ? t(derivedUnassignedNoteKey[unassigned.derived]) : t("unassignedSkillNote")}>{unassigned.iconKind !== undefined && unassigned.iconId !== undefined && <GameAssetImage kind={unassigned.iconKind} id={unassigned.iconId} />}<span className="ww-truncate" data-field="unassigned-name">{unassigned.name ?? t("unassignedSkill")}</span>{unassigned.derived && <span className="ww-dash-skill-derived" data-field="derived-name" title={t(derivedUnassignedNoteKey[unassigned.derived])} aria-label={t(derivedUnassignedNoteKey[unassigned.derived])}>≈</span>}{unassigned.derived && <span className="ww-dash-skill-noid" data-field="no-skill-id">{t("noSkillIdTag")}</span>}</span></td>
       <td className="ww-num"><AnimatedNumber value={unassigned.damage} format={format.integer} /></td>
       <td className="ww-num">{format.integer(unassigned.events)}</td>
-      <td><div className="ww-dash-skill-share"><DamageBar share={unassigned.share} enter={enter ? rows.length : undefined} /><span className="ww-num">{share(unassigned.share)}</span></div></td>
+      <td><div className="ww-dash-skill-share"><DamageBar share={unassigned.share} enter={enter ? rows.length + statuses.length : undefined} /><span className="ww-num">{share(unassigned.share)}</span></div></td>
     </tr>}</tbody>
   </table></div>
 })

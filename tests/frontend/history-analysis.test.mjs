@@ -1,7 +1,7 @@
 import test from "node:test"
 import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
-import { formatMs, fullQuery, minimumRangeMs, parseSkillRow, querySpan, rangeQuery, skillRowKey, timeTicks, visibleRows } from "../../frontend/src/lib/history-analysis.ts"
+import { formatMs, fullQuery, minimumRangeMs, parseSkillRow, querySpan, rangeQuery, skillRowKey, statsRowKey, statusRowKey, timeTicks, visibleRows } from "../../frontend/src/lib/history-analysis.ts"
 
 const source = path => readFileSync(new URL(`../../${path}`, import.meta.url), "utf8")
 
@@ -95,4 +95,14 @@ test("the timeline and the lanes share one gutter so a moment lines up across th
   }
   // The lanes span the timeline's width: the Timeline tab stacks its details under them.
   assert.match(source("frontend/src/views/HistoryAnalysis.tsx"), /<div className="ww-analysis-stack">\s*<EvidenceLegend \/>/)
+})
+
+test("a status row has its own key, which parses back to the role and its DamageId", () => {
+  assert.equal(statusRowKey("role-7-1409", 1001), "role-7-1409:status:1001")
+  assert.deepEqual(parseSkillRow("role-7-1409:status:1001"), { contributor: "role-7-1409", skillId: 0, statusDamageId: 1001 })
+  assert.deepEqual(parseSkillRow("role-7-1409:unassigned"), { contributor: "role-7-1409", skillId: 0 })
+  assert.deepEqual(parseSkillRow("role-7-1409:140901"), { contributor: "role-7-1409", skillId: 140901 })
+  assert.equal(statsRowKey({ contributor: "role-7-1409", skillId: 0, statusDamageId: 1001 }), "role-7-1409:status:1001")
+  assert.equal(statsRowKey({ contributor: "role-7-1409", skillId: 0 }), "role-7-1409:unassigned")
+  assert.notEqual(statusRowKey("role-7-1409", 1001), skillRowKey("role-7-1409", 1001), "a status row never shares a key with a skill row")
 })
