@@ -541,7 +541,6 @@
   },
   "career": {
     "title": "Career overview",
-    "subtitle": "Totals across the fights WWlogs recorded on this PC",
     "rangeLabel": "Range",
     "range": {
       "7d": "Last 7 days",

@@ -200,3 +200,18 @@ test("deletion confirmations only say that a deletion cannot be undone", () => {
     }
   }
 })
+
+test("the History and Career Overview titles stand alone, on one centre line with their controls", () => {
+  for (const path of ["../../frontend/src/views/HistoryView.tsx", "../../frontend/src/views/CareerView.tsx"]) {
+    const view = readFileSync(new URL(path, import.meta.url), "utf8")
+    const start = view.indexOf('<Reveal className="ww-history-top">')
+    assert.ok(start > 0, path)
+    const header = view.slice(start, view.indexOf("</Reveal>", start))
+    assert.match(header, /<h2 className="ww-history-title">/, path)
+    assert.doesNotMatch(header, /ww-caps/, path)
+  }
+  const css = readFileSync(new URL("../../frontend/src/design/views.css", import.meta.url), "utf8").replace(/\r\n/g, "\n")
+  const rule = selector => css.split("\n").find(line => line.startsWith(`${selector} {`)) ?? ""
+  assert.match(rule(".ww-history-top"), /align-items: center;/)
+  assert.match(rule(".ww-history-title"), /\{ margin: 0;/)
+})

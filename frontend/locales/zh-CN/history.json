@@ -541,7 +541,6 @@
   },
   "career": {
     "title": "生涯总览",
-    "subtitle": "WWlogs 在这台电脑上记录的战斗，跨日期的统计",
     "rangeLabel": "期间",
     "range": {
       "7d": "近 7 天",

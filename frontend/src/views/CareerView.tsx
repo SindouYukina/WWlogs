@@ -297,10 +297,7 @@ export function CareerView({ theme, refreshKey, indicator, state, onState, onOpe
 
   return <div className="ww-history ww-has-backdrop" data-field="career" data-preset={state.preset}><ThemeBackdrop theme={theme} intensity="art" /><div className="ww-history-layout">
     <Reveal className="ww-history-top">
-      <div>
-        <div className="ww-caps">{t("career.subtitle")}</div>
-        <h2 className="ww-history-title">{t("career.title")}</h2>
-      </div>
+      <h2 className="ww-history-title">{t("career.title")}</h2>
       <HistoryIndicatorChip indicator={indicator} />
     </Reveal>
     <Reveal index={1}><Card className="ww-history-filters">
