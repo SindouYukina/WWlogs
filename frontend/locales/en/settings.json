@@ -157,7 +157,7 @@
     "clear": "Clear all history",
     "clearHint": "Deletes every stored encounter and its backup copies. Not available while a capture records.",
     "clearAction": "Clear history",
-    "clearConfirm": "Delete all combat history permanently? This cannot be undone. The data is removed from the history file; this is not a secure erase of the disk.",
+    "clearConfirm": "Delete all combat history permanently? This cannot be undone.",
     "clearConfirmAction": "Delete all"
   }
 }
