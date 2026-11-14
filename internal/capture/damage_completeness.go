@@ -6,9 +6,9 @@ package capture
 //   - Conserved: confirmed local damage and events equal the role rows, the vehicle row and the unassigned bucket.
 //   - RoleAttributionComplete: no confirmed local hit is left without a role or a verified non-character contributor. A
 //     vehicle is a contributor of its own, so its damage never makes attribution incomplete and is never credited to a role.
-//     Negative-status damage the server executes through the scene's combat entity is the local team's and no character's
-//     by the game's own rule: it stays in the unassigned bucket (NegativeStatusDamage) without making attribution
-//     incomplete.
+//     Negative-status damage the server executes through the scene's combat entity is credited to the role that forced or
+//     owns the execution (negative_status_credit.go); what stays in the unassigned bucket (NegativeStatusDamage) had no
+//     such role, so it makes attribution incomplete like any other unassigned hit.
 //   - SkillBreakdownComplete: every contributor's hits carried a SkillId and fit its skill rows.
 //   - UnknownOwnership: outgoing hits with an UNKNOWN endpoint. They are outside the confirmed totals, so they say nothing about
 //     the three facts above; a non-zero value means the total shown does not include that damage.
@@ -17,7 +17,8 @@ type ViewDamageCompleteness struct {
 	RoleAttributionComplete bool   `json:"roleAttributionComplete"`
 	UnassignedDamage        int64  `json:"unassignedDamage"`
 	UnassignedEvents        uint64 `json:"unassignedEvents"`
-	// NegativeStatusDamage and NegativeStatusEvents are the part of the unassigned bucket that is negative-status damage.
+	// NegativeStatusDamage and NegativeStatusEvents are the part of the unassigned bucket that is negative-status damage no
+	// role could be credited with.
 	NegativeStatusDamage   int64  `json:"negativeStatusDamage"`
 	NegativeStatusEvents   uint64 `json:"negativeStatusEvents"`
 	SkillBreakdownComplete bool   `json:"skillBreakdownComplete"`
@@ -56,7 +57,7 @@ func damageCompleteness(scope damageScope) ViewDamageCompleteness {
 		addContributor(scope.vehicle.DamageDealt, scope.vehicle.OutgoingEvents, scope.vehicle.UnassignedSkill)
 	}
 	view.Conserved = damage == scope.damage && events == scope.events
-	view.RoleAttributionComplete = view.UnassignedEvents == view.NegativeStatusEvents
+	view.RoleAttributionComplete = view.UnassignedEvents == 0
 	view.SkillBreakdownComplete = view.NoSkillEvents == 0
 	return view
 }

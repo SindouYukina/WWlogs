@@ -145,6 +145,7 @@ func (p *processor) observeEffectLifecycle(row buffLifecycleAuditRow) {
 		}
 		event.HolderMonster, event.SourceMonster = p.effectMonsterEntity(event.HolderEntityID), event.HasSource && p.effectMonsterEntity(event.SourceEntityID)
 		p.withHistoryActors(&event)
+		p.recordStatusTrigger(row, holder)
 		p.effects.ObserveApply(event)
 		p.effects.RefreshRelations(row.SessionNumber, holder, p.effectEntityRelation)
 	case "GAMEPLAY_EFFECT_REMOVE":

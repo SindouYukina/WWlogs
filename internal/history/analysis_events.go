@@ -88,13 +88,17 @@ type SkillHit struct {
 	Amount int64   `json:"amount"`
 }
 
-// skillRowKey is the skill row a confirmed local outgoing result joined: "<contributor>:<SkillId>", or
+// skillRowKey is the skill row a confirmed local outgoing result joined: "<contributor>:<SkillId>", "<contributor>:status:<DamageId>"
+// for negative-status damage credited to a role, or
 // "<contributor>:unassigned" for a hit without a row; empty for any other result.
 func (m *encounterModel) skillRowKey(event analysisEvent) string {
 	if event.healing || event.flow != capture.CombatFlowLocalOutgoing || event.contributor < 0 {
 		return ""
 	}
 	contributor := m.contributors[event.contributor]
+	if event.status {
+		return contributor.key + ":status:" + strconv.FormatUint(event.damage, 10)
+	}
 	if _, known := contributor.skills[event.skill]; known && event.skill != 0 {
 		return contributor.key + ":" + strconv.FormatUint(event.skill, 10)
 	}

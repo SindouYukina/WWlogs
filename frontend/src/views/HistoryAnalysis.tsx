@@ -5,11 +5,11 @@ import { usableDps } from "@/lib/combat-data"
 import { combatRows, skillBreakdown, type CombatRowModel } from "@/lib/combat-view"
 import { elementColor, useFormatters, useRowNames } from "@/lib/format"
 import type { HistoryEncounterDetail, HistoryName } from "@/lib/history"
-import { clampView, correlationClasses, correlationQuery, correlationScopes, effectFace, effectGroupOf, eventPageSize, formatMs, fullQuery, fullView, isFullView, minimumRangeMs, minimumViewMs, panView, parseSkillRow, querySpan, rangeQuery, skillRowKey, unassignedContributor, viewAround, zoomView, type GapRef, type HitCluster, type HitRow, type HitTimeline, type TimeView, type ActorRef, type AnalysisQuery, type EffectCoverage, type EffectLanes as EffectLanesData, type EffectRow, type EffectScope, type EncounterAnalysis, type EnemyRange, type EventKind, type EventPage, type EventRow, type SkillStats, type CorrelationClass, type CorrelationRow, type CorrelationScope, type EffectCorrelation } from "@/lib/history-analysis"
+import { clampView, correlationClasses, correlationQuery, correlationScopes, effectFace, effectGroupOf, eventPageSize, formatMs, fullQuery, fullView, isFullView, minimumRangeMs, minimumViewMs, panView, parseSkillRow, querySpan, rangeQuery, skillRowKey, statsRowKey, statusRowKey, unassignedContributor, viewAround, zoomView, type GapRef, type HitCluster, type HitRow, type HitTimeline, type TimeView, type ActorRef, type AnalysisQuery, type EffectCoverage, type EffectLanes as EffectLanesData, type EffectRow, type EffectScope, type EncounterAnalysis, type EnemyRange, type EventKind, type EventPage, type EventRow, type SkillStats, type CorrelationClass, type CorrelationRow, type CorrelationScope, type EffectCorrelation } from "@/lib/history-analysis"
 import { host } from "@/lib/host"
 import { usableHealing, type Encounter, type Timeline } from "@/lib/snapshot"
 import { contributorKey, teamSeriesKey, unassignedSeriesKey } from "@/lib/timeline"
-import { RoleBoard, StatCard } from "./DashboardView"
+import { RoleBoard, StatCard, StatusSkillName } from "./DashboardView"
 
 // The analysis workspace of one stored encounter. Every number, interval, coverage and name comes from Go (HistoryAnalysis,
 // HistoryEffects, HistoryEvents); this view holds the shared selection (range, contributor, enemy, effect scope, skill) and
@@ -303,6 +303,7 @@ function useSkillFaces(encounter: Encounter | null) {
     const add = (contributor: string, source: Parameters<typeof skillBreakdown>[0]) => {
       const breakdown = skillBreakdown(source)
       breakdown?.rows.forEach(row => faces.set(skillRowKey(contributor, row.skillId), { icon: { kind: row.iconKind ?? "skill", id: row.iconId ?? row.skillId }, name: row.name ? `${row.name}${row.derived ? " ≈" : ""}` : `${t("unnamedSkill")} ${row.skillId}` }))
+      breakdown?.statuses?.forEach(status => faces.set(statusRowKey(contributor, status.damageId), { icon: status.iconKind !== undefined && status.iconId !== undefined ? { kind: status.iconKind, id: status.iconId } : null, name: status.name ?? `DamageId ${status.damageId}` }))
       const unassigned = breakdown?.unassigned
       if (unassigned) faces.set(skillRowKey(contributor, 0), { icon: unassigned.iconKind !== undefined && unassigned.iconId !== undefined ? { kind: unassigned.iconKind, id: unassigned.iconId } : null, name: unassigned.name ? `${unassigned.name}${unassigned.derived ? " ≈" : ""}` : t("unassignedSkill") })
     }
@@ -879,11 +880,9 @@ const SkillsTab = memo(function SkillsTab({ analysis, encounter, rows, query, se
     return encounter.roles.find(role => `role-${role.playerId}-${role.roleId}` === current.key)
   }, [encounter, current])
   const breakdown = contributor ? skillBreakdown(contributor) : undefined
-  const stats = useMemo(() => new Map(analysis.skills.filter(stat => stat.contributor === current?.key).map(stat => [stat.skillId, stat])), [analysis.skills, current?.key])
-  const selectedSkill = query.skillRow ? parseSkillRow(query.skillRow) : null
-  const pick = (skillId: number | undefined) => {
+  const stats = useMemo(() => new Map(analysis.skills.filter(stat => stat.contributor === current?.key).map(stat => [statsRowKey(stat), stat])), [analysis.skills, current?.key])
+  const pick = (key: string) => {
     if (!current) return
-    const key = skillRowKey(current.key, skillId)
     setQuery(q => ({ ...q, skillRow: q.skillRow === key ? "" : key }))
   }
   const color = elementColor(current?.elementId)
@@ -892,12 +891,14 @@ const SkillsTab = memo(function SkillsTab({ analysis, encounter, rows, query, se
   const scope = "analysis-ranking"
   const skillRows: Array<{ key: string; skillId: number; name: ReactNode; damage: number; share?: number; stat?: SkillStats }> = []
   if (breakdown && current) {
-    for (const row of breakdown.rows) skillRows.push({ key: skillRowKey(current.key, row.skillId), skillId: row.skillId, damage: row.damage, share: row.share, stat: stats.get(row.skillId),
+    for (const row of breakdown.rows) skillRows.push({ key: skillRowKey(current.key, row.skillId), skillId: row.skillId, damage: row.damage, share: row.share, stat: stats.get(skillRowKey(current.key, row.skillId)),
       name: <span className="ww-dash-skill-name" title={row.showId ? `SkillId ${row.skillId}` : undefined}><GameAssetImage kind={row.iconKind ?? "skill"} id={row.iconId ?? row.skillId} /><span className="ww-truncate">{row.name ?? d("unnamedSkill")}</span>{row.derived && <span className="ww-dash-skill-derived" title={d(derivedNoteKey[row.derived])}>≈</span>}{row.showId && <span className="ww-dash-skill-id ww-num">{row.skillId}</span>}</span> })
-    if (breakdown.unassigned) skillRows.push({ key: skillRowKey(current.key, 0), skillId: 0, damage: breakdown.unassigned.damage, share: breakdown.unassigned.share, stat: stats.get(0),
+    for (const status of breakdown.statuses ?? []) skillRows.push({ key: statusRowKey(current.key, status.damageId), skillId: 0, damage: status.damage, share: status.share, stat: stats.get(statusRowKey(current.key, status.damageId)),
+      name: <StatusSkillName status={status} /> })
+    if (breakdown.unassigned) skillRows.push({ key: skillRowKey(current.key, 0), skillId: 0, damage: breakdown.unassigned.damage, share: breakdown.unassigned.share, stat: stats.get(skillRowKey(current.key, 0)),
       name: <span className="ww-dash-skill-name">{breakdown.unassigned.iconKind !== undefined && breakdown.unassigned.iconId !== undefined && <GameAssetImage kind={breakdown.unassigned.iconKind} id={breakdown.unassigned.iconId} />}<span className="ww-truncate">{breakdown.unassigned.name ?? d("unassignedSkill")}</span>{breakdown.unassigned.derived && <span className="ww-dash-skill-derived">≈</span>}{breakdown.unassigned.derived && <span className="ww-dash-skill-noid">{d("noSkillIdTag")}</span>}</span> })
   }
-  const focused = skillRows.find(row => selectedSkill && current && selectedSkill.contributor === current.key && row.skillId === selectedSkill.skillId)
+  const focused = skillRows.find(row => current && query.skillRow === row.key)
   return <div className="ww-analysis-skills">
     <div className="ww-analysis-board" data-field="analysis-ranking">
       <div className="ww-dash-card-head"><h3>{d("ranking")}</h3></div>
@@ -910,8 +911,8 @@ const SkillsTab = memo(function SkillsTab({ analysis, encounter, rows, query, se
         {skillRows.length === 0 ? <p className="ww-dash-empty-note">{d("noSkillRows")}</p> :
           <div className="ww-dash-skills-wrap ww-analysis-scroll"><table className="ww-dash-skills ww-analysis-skill-table" data-field="analysis-skills" style={{ "--ww-series": color } as React.CSSProperties}>
             <thead><tr><th>{d("skill")}</th><th>{d("damageColumn")}</th><th>{d("shareColumn")}</th><th>{t("analysis.skills.hits")}</th><th>{t("analysis.skills.maxHit")}</th><th>{t("analysis.skills.averageHit")}</th><th>{t("analysis.skills.distribution")}</th></tr></thead>
-            <tbody>{skillRows.map((row, index) => <tr key={row.key} className="ww-history-row" tabIndex={0} data-skill-row={row.key} data-selected={focused?.key === row.key} onClick={() => pick(row.skillId)}
-              onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); pick(row.skillId) } }}>
+            <tbody>{skillRows.map((row, index) => <tr key={row.key} className="ww-history-row" tabIndex={0} data-skill-row={row.key} data-selected={focused?.key === row.key} onClick={() => pick(row.key)}
+              onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); pick(row.key) } }}>
               <td>{row.name}</td>
               <td className="ww-num">{format.integer(row.damage)}</td>
               <td><div className="ww-dash-skill-share"><DamageBar share={row.share} scope={`skills:${analysis.query.contributor}`} enter={entering ? index : undefined} /><span className="ww-num">{row.share === undefined ? "—" : format.percent(row.share)}</span></div></td>
@@ -982,6 +983,7 @@ const EventsTab = memo(function EventsTab({ id, query, analysis, lanes, actorNam
     const add = (contributor: string, source: Parameters<typeof skillBreakdown>[0]) => {
       const breakdown = skillBreakdown(source)
       breakdown?.rows.forEach(row => names.set(skillRowKey(contributor, row.skillId), row.name ? `${row.name}${row.derived ? " ≈" : ""}` : `${t("unnamedSkill", { ns: "dashboard" })} ${row.skillId}`))
+      breakdown?.statuses?.forEach(status => names.set(statusRowKey(contributor, status.damageId), status.name ?? `DamageId ${status.damageId}`))
       if (breakdown?.unassigned) names.set(skillRowKey(contributor, 0), breakdown.unassigned.name ?? t("unassignedSkill", { ns: "dashboard" }))
     }
     encounter.roles.forEach(role => add(`role-${role.playerId}-${role.roleId}`, role))

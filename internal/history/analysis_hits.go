@@ -32,10 +32,12 @@ type HitRow struct {
 	SkillRow string `json:"skillRow"`
 	// SkillID is the row's SkillId: 0 for a contributor's row without one; for damage credited to no contributor, the
 	// SkillId the result carried (0 without one).
-	SkillID  uint64    `json:"skillId"`
-	AtMs     []float64 `json:"atMs"`
-	Amount   []int64   `json:"amount"`
-	Sequence []int64   `json:"sequence"`
+	SkillID uint64 `json:"skillId"`
+	// StatusDamageID is set, with SkillID 0, on the status row of a role ("<contributor>:status:<DamageId>").
+	StatusDamageID uint64    `json:"statusDamageId,omitempty"`
+	AtMs           []float64 `json:"atMs"`
+	Amount         []int64   `json:"amount"`
+	Sequence       []int64   `json:"sequence"`
 }
 
 // HitTimeline answers one skill hit timeline query.
@@ -71,6 +73,7 @@ func (s *Store) Hits(ctx context.Context, id int64, query AnalysisQuery, masters
 	type rowKey struct {
 		contributor int
 		skill       uint64
+		status      uint64
 	}
 	index := map[rowKey]int{}
 	for _, event := range model.events {
@@ -97,7 +100,10 @@ func (s *Store) Hits(ctx context.Context, id int64, query AnalysisQuery, masters
 			if _, known := model.contributors[event.contributor].skills[event.skill]; !known || event.skill == 0 {
 				key.skill = 0
 			}
-			row = HitRow{Contributor: model.contributors[event.contributor].key, SkillRow: model.skillRowKey(event), SkillID: key.skill}
+			if event.status {
+				key.skill, key.status = 0, event.damage
+			}
+			row = HitRow{Contributor: model.contributors[event.contributor].key, SkillRow: model.skillRowKey(event), SkillID: key.skill, StatusDamageID: key.status}
 		}
 		position, found := index[key]
 		if !found {
@@ -127,7 +133,14 @@ func (s *Store) Hits(ctx context.Context, id int64, query AnalysisQuery, masters
 		if (ra.SkillID == 0) != (rb.SkillID == 0) {
 			return rb.SkillID == 0
 		}
-		return ra.SkillID < rb.SkillID
+		if ra.SkillID != rb.SkillID {
+			return ra.SkillID < rb.SkillID
+		}
+		// Status rows before the row without a skill.
+		if (ra.StatusDamageID == 0) != (rb.StatusDamageID == 0) {
+			return ra.StatusDamageID != 0
+		}
+		return ra.StatusDamageID < rb.StatusDamageID
 	})
 	return out, nil
 }

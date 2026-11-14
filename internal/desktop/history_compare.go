@@ -92,13 +92,15 @@ type compareSkillValue struct {
 
 type compareSkill struct {
 	// SkillID is the DamageContext.SkillId; the unassigned row has none.
-	SkillID     uint64      `json:"skillId,omitempty"`
-	Unassigned  bool        `json:"unassigned,omitempty"`
-	Name        historyName `json:"name"`
-	NameSource  string      `json:"nameSource,omitempty"`
-	ShowSkillID bool        `json:"showSkillId,omitempty"`
-	IconKind    string      `json:"iconKind,omitempty"`
-	IconID      uint64      `json:"iconId,omitempty"`
+	SkillID    uint64 `json:"skillId,omitempty"`
+	Unassigned bool   `json:"unassigned,omitempty"`
+	// StatusDamageID is set on the negative-status row of a role: its damage of this DamageId (capture.ViewStatus).
+	StatusDamageID uint64      `json:"statusDamageId,omitempty"`
+	Name           historyName `json:"name"`
+	NameSource     string      `json:"nameSource,omitempty"`
+	ShowSkillID    bool        `json:"showSkillId,omitempty"`
+	IconKind       string      `json:"iconKind,omitempty"`
+	IconID         uint64      `json:"iconId,omitempty"`
 	// Values has one entry per encounter; nil where the contributor dealt no damage with the skill.
 	Values []*compareSkillValue `json:"values"`
 }
@@ -230,6 +232,9 @@ type contributorRow struct {
 	named     map[uint64]capture.ViewSkill
 	// unassigned is the contributor's damage without a SkillId.
 	unassigned compareSkillValue
+	// statuses is a role's negative-status damage by DamageId, with the row that names each.
+	statuses    map[uint64]*compareSkillValue
+	statusNamed map[uint64]capture.ViewStatus
 }
 
 func contributorKey(kind string, role uint64) string {
@@ -267,6 +272,23 @@ func encounterContributors(view *capture.ViewEncounter, status string) map[strin
 		row.unassigned.Damage += unassigned.DamageDealt
 		row.unassigned.Hits += unassigned.OutgoingEvents
 	}
+	addStatuses := func(row *contributorRow, statuses []capture.ViewStatus) {
+		for _, status := range statuses {
+			if row.statuses == nil {
+				row.statuses, row.statusNamed = map[uint64]*compareSkillValue{}, map[uint64]capture.ViewStatus{}
+			}
+			value := row.statuses[status.DamageID]
+			if value == nil {
+				value = &compareSkillValue{}
+				row.statuses[status.DamageID] = value
+			}
+			value.Damage += status.DamageDealt
+			value.Hits += status.OutgoingEvents
+			if named, ok := row.statusNamed[status.DamageID]; !ok || named.Name == "" {
+				row.statusNamed[status.DamageID] = status
+			}
+		}
+	}
 	for _, role := range view.Roles {
 		static := role.StaticRoleID
 		if static == 0 {
@@ -290,6 +312,7 @@ func encounterContributors(view *capture.ViewEncounter, status string) map[strin
 		row.value.DPS = addShare(row.value.DPS, role.DPS)
 		row.value.Trial = row.value.Trial || role.RoleID != static
 		addSkills(row, role.Skills, role.UnassignedSkill)
+		addStatuses(row, role.Statuses)
 	}
 	if vehicle := view.Vehicle; vehicle != nil && vehicle.DamageDealt > 0 {
 		row := &contributorRow{kind: "vehicle", name: historyName{Status: "UNKNOWN"}, value: compareContribution{Damage: vehicle.DamageDealt, Share: vehicle.DamageShare, DPS: vehicle.DPS, Status: status},
@@ -311,8 +334,19 @@ func encounterContributors(view *capture.ViewEncounter, status string) map[strin
 		if row.unassigned.Damage > 0 {
 			row.unassigned.Share = number(float64(row.unassigned.Damage) / float64(row.value.Damage))
 		}
+		for _, value := range row.statuses {
+			value.Share = number(float64(value.Damage) / float64(row.value.Damage))
+		}
 	}
 	return rows
+}
+
+// statusName is the name of a status row: the glossary term the engine found, else UNKNOWN (the UI shows the DamageId).
+func statusName(status capture.ViewStatus) historyName {
+	if status.Name == "" {
+		return historyName{Status: "UNKNOWN"}
+	}
+	return historyName{Name: status.Name, Status: status.NameStatus}
 }
 
 // sameState says whether every encounter has the same known value (keys; "" is unknown).
@@ -414,6 +448,8 @@ func compareEncounters(inputs []compareInput) comparison {
 		var skillOrder []uint64
 		unassigned := compareSkill{Unassigned: true, Name: historyName{Status: "UNKNOWN"}, Values: make([]*compareSkillValue, len(inputs))}
 		hasUnassigned := false
+		statusRows := map[uint64]*compareSkill{}
+		var statusOrder []uint64
 		for i, rows := range perEncounter {
 			row := rows[key]
 			if row == nil {
@@ -442,6 +478,19 @@ func compareEncounters(inputs []compareInput) comparison {
 				unassigned.Values[i] = &copied
 				hasUnassigned = true
 			}
+			for damageID, amount := range row.statuses {
+				compared := statusRows[damageID]
+				named := row.statusNamed[damageID]
+				if compared == nil {
+					compared = &compareSkill{StatusDamageID: damageID, Name: statusName(named), IconKind: named.IconKind, IconID: named.IconID, Values: make([]*compareSkillValue, len(inputs))}
+					statusRows[damageID] = compared
+					statusOrder = append(statusOrder, damageID)
+				} else if compared.Name.Name == "" && named.Name != "" {
+					compared.Name, compared.IconKind, compared.IconID = statusName(named), named.IconKind, named.IconID
+				}
+				copied := *amount
+				compared.Values[i] = &copied
+			}
 		}
 		// The DPS change of a contributor is measured between complete records where it dealt damage in both.
 		if base := contributor.Values[0]; base != nil && reliable[0] && base.DPS != nil && *base.DPS > 0 {
@@ -469,6 +518,11 @@ func compareEncounters(inputs []compareInput) comparison {
 		})
 		for _, skill := range skillOrder {
 			contributor.Skills = append(contributor.Skills, *skillRows[skill])
+		}
+		// Status rows follow the skill rows, by DamageId, before the damage without a SkillId.
+		sort.Slice(statusOrder, func(a, b int) bool { return statusOrder[a] < statusOrder[b] })
+		for _, damageID := range statusOrder {
+			contributor.Skills = append(contributor.Skills, *statusRows[damageID])
 		}
 		if hasUnassigned {
 			contributor.Skills = append(contributor.Skills, unassigned)

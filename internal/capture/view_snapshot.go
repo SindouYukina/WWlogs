@@ -196,13 +196,39 @@ type ViewRole struct {
 	DPS            *float64 `json:"dps,omitempty"`
 	DirectDamage   int64    `json:"directDamage"`
 	SummonDamage   int64    `json:"summonDamage"`
+	StatusDamage   int64    `json:"statusDamage"`
 	OutgoingEvents uint64   `json:"outgoingEvents"`
 	DamageTaken    int64    `json:"damageTaken"`
 	IncomingEvents uint64   `json:"incomingEvents"`
-	// Skills and UnassignedSkill split DamageDealt by DamageContext.SkillId; shares use DamageDealt as denominator.
+	// Skills and UnassignedSkill split DamageDealt by DamageContext.SkillId, Statuses holds StatusDamage by DamageId;
+	// shares use DamageDealt as denominator.
 	Skills          []ViewSkill         `json:"skills"`
 	UnassignedSkill ViewUnassignedSkill `json:"unassignedSkill"`
+	Statuses        []ViewStatus        `json:"statuses,omitempty"`
 }
+
+// ViewStatus is the negative-status damage of one DamageId credited to a role (negative_status_credit.go). The hits have
+// no SkillId and never join a skill row. Name is the official glossary term every status Buff executing the DamageId
+// carries (buff_term_ref, CORRELATED); it is empty with NameStatus UNKNOWN when they name no single term, and the UI then
+// shows the DamageId. IconKind and IconID address the Buff icon of the lowest such Buff. TriggerEvents and TriggerDamage
+// are the part credited through an InvokePeriod of the role.
+type ViewStatus struct {
+	DamageID   uint64 `json:"damageId"`
+	Name       string `json:"name,omitempty"`
+	NameStatus string `json:"nameStatus"`
+	// TermID is the glossary term behind Name, so a view in another UI locale can name the row in that locale.
+	TermID         uint64   `json:"termId,omitempty"`
+	IconKind       string   `json:"iconKind,omitempty"`
+	IconID         uint64   `json:"iconId,omitempty"`
+	DamageDealt    int64    `json:"damageDealt"`
+	DamageShare    *float64 `json:"damageShare,omitempty"`
+	OutgoingEvents uint64   `json:"outgoingEvents"`
+	TriggerEvents  uint64   `json:"triggerEvents"`
+	TriggerDamage  int64    `json:"triggerDamage"`
+}
+
+// statusIconKind is the host's asset route for a Buff icon (internal/desktop/preview.go).
+const statusIconKind = "buff"
 
 // ViewSkill is one DamageContext.SkillId of a contributor. Name is a Master name for the selected locale, filled by the
 // display projection. NameStatus VERIFIED is the SkillId's own official name; DERIVED is the official name of the
@@ -517,10 +543,11 @@ func projectRoles(masters *gameMaster, roles []RoleDamageSnapshot, total int64) 
 		name, status := roleDisplayName(masters, role.RoleID)
 		view = append(view, ViewRole{
 			PlayerID: role.PlayerID, RoleID: role.RoleID, Name: name, NameStatus: status,
-			DamageDealt: role.DamageDealt, DirectDamage: role.DirectDamage, SummonDamage: role.SummonDamage,
+			DamageDealt: role.DamageDealt, DirectDamage: role.DirectDamage, SummonDamage: role.SummonDamage, StatusDamage: role.StatusDamage,
 			OutgoingEvents: role.OutgoingEvents, DamageTaken: role.DamageTaken, IncomingEvents: role.IncomingEvents,
 		})
 		view[len(view)-1].Skills, view[len(view)-1].UnassignedSkill = projectSkills(masters, role.RoleID, role.Skills, role.UnassignedSkill, role.DamageDealt)
+		view[len(view)-1].Statuses = projectStatuses(masters, role.Statuses, role.DamageDealt)
 		if total > 0 {
 			share := float64(role.DamageDealt) / float64(total)
 			view[len(view)-1].DamageShare = &share
@@ -562,6 +589,27 @@ func projectSkills(masters *gameMaster, roleID uint64, skills []SkillDamageSnaps
 	}
 	row.UnnamedReason = reason
 	return view, row
+}
+
+// projectStatuses names the status rows of a role. Shares use the role's own confirmed damage, never the team's.
+func projectStatuses(masters *gameMaster, statuses []StatusDamageSnapshot, total int64) []ViewStatus {
+	if len(statuses) == 0 {
+		return nil
+	}
+	view := make([]ViewStatus, 0, len(statuses))
+	for _, status := range statuses {
+		row := ViewStatus{DamageID: status.DamageID, NameStatus: string(resolutionUnknown), DamageDealt: status.DamageDealt, OutgoingEvents: status.OutgoingEvents,
+			TriggerEvents: status.TriggerEvents, TriggerDamage: status.TriggerDamage}
+		if term, ok := masters.negativeStatusTerm(status.DamageID); ok {
+			row.Name, row.NameStatus, row.TermID, row.IconKind, row.IconID = term.name, string(resolutionCorrelated), term.termID, statusIconKind, term.iconBuff
+		}
+		if total > 0 {
+			share := float64(status.DamageDealt) / float64(total)
+			row.DamageShare = &share
+		}
+		view = append(view, row)
+	}
+	return view
 }
 
 // roleDisplayName returns the Master name of a RoleId. A name is shown only when Master marks it verified; anything

@@ -403,6 +403,12 @@ func (p *processor) writeDamageEvent(event combatEvent) bool {
 		switch record.Flow {
 		case CombatFlowLocalOutgoing:
 			record.SourceRole = p.localRoleForEntity(event.SourceEntityID, event.Source)
+			if event.Notify != nil && event.Notify.NegativeStatusLocal && event.Notify.Credit != nil {
+				// The scene combat entity stays the source; the role is the one whose trigger or status instance the server
+				// executed (negative_status_credit.go).
+				credit := *event.Notify.Credit
+				record.SourceRole = &credit
+			}
 			if candidate := event.DamageContributorCandidate; candidate != nil && candidate.Kind == vehicleKindMotorcycle && candidate.ActorType == "Vehicle" && candidate.EntityType == "BattleVehicle" && candidate.Status == resolutionCorrelated {
 				record.VehicleKind = candidate.Kind
 			}

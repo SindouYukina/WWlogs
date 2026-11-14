@@ -44,8 +44,10 @@ export interface SelectionTotals {
 
 export interface SkillStats {
   contributor: string
-  /** 0 is the contributor's row without a skill. */
+  /** 0 is the contributor's row without a skill, or a status row when statusDamageId is set. */
   skillId: number
+  /** Set on a role's negative-status row: its damage of this DamageId. */
+  statusDamageId?: number
   damage: number
   hits: number
   maxHit: number
@@ -202,6 +204,8 @@ export interface HitRow {
   skillRow: string
   /** 0 for a contributor's row without a skill; for damage credited to no contributor, the SkillId it carried (0 without). */
   skillId: number
+  /** Set on a role's negative-status row (skillId 0). */
+  statusDamageId?: number
   atMs: number[]
   amount: number[]
   /** The stored results' sequences: the event browser lists the same results as "c<sequence>". */
@@ -572,8 +576,20 @@ export function skillRowKey(contributor: string, skillId: number | undefined): s
   return `${contributor}:${skillId === undefined || skillId === 0 ? "unassigned" : skillId}`
 }
 
-/** Splits a skill row key into its contributor and SkillId (0 for the unassigned row). */
-export function parseSkillRow(key: string): { contributor: string; skillId: number } | null {
+/** The row key of a role's negative-status row (Go skillRowKey "<contributor>:status:<DamageId>"). */
+export function statusRowKey(contributor: string, damageId: number): string {
+  return `${contributor}:status:${damageId}`
+}
+
+/** The row key a skill statistic belongs to. */
+export function statsRowKey(stat: Pick<SkillStats, "contributor" | "skillId" | "statusDamageId">): string {
+  return stat.statusDamageId ? statusRowKey(stat.contributor, stat.statusDamageId) : skillRowKey(stat.contributor, stat.skillId)
+}
+
+/** Splits a skill row key into its contributor and SkillId (0 for the unassigned row and for a status row, which names its DamageId). */
+export function parseSkillRow(key: string): { contributor: string; skillId: number; statusDamageId?: number } | null {
+  const status = key.lastIndexOf(":status:")
+  if (status > 0) return { contributor: key.slice(0, status), skillId: 0, statusDamageId: Number(key.slice(status + ":status:".length)) }
   const index = key.lastIndexOf(":")
   if (index <= 0) return null
   const skill = key.slice(index + 1)

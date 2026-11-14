@@ -13,16 +13,20 @@ import "sort"
 //
 // An event is credited to a role only by runtime evidence: its local endpoint is a role entity whose PlayerSceneGroup
 // mapping names the local player and a RoleId, or it is a summon whose verified SummonerId chain ends at such an
-// entity. Static skill-to-role tables, names, and fixed IDs are never used. Confirmed local damage without that
-// evidence is a separate vehicle contributor when its runtime vehicle chain is known; otherwise it stays in the
-// unassigned bucket, which also counts apart the negative-status damage the game credits to no character
-// (UnassignedRoleTotals.NegativeStatusDamage). Unattributed and excluded damage never enters this aggregation.
+// entity. Negative-status damage, which the server executes through the scene combat entity, is credited to the role
+// whose InvokePeriod forced the execution or that owns the executing status instance, by the server's own messages
+// (negative_status_credit.go); it is that role's StatusDamage, split by DamageId in Statuses, never a skill row. Static
+// skill-to-role tables, names, and fixed IDs are never used. Confirmed local damage without that evidence is a separate
+// vehicle contributor when its runtime vehicle chain is known; otherwise it stays in the unassigned bucket, which also
+// counts apart the negative-status damage no role could be credited with (UnassignedRoleTotals.NegativeStatusDamage).
+// Unattributed and excluded damage never enters this aggregation.
 //
 // Invariants (checked by tests and by the encounter replay collector):
 //   sum(Roles.DamageDealt) + Vehicle.DamageDealt + UnassignedRole.DamageDealt == DamageDealt (confirmed local outgoing), events likewise;
 //   sum(Roles.DamageTaken) + UnassignedRole.DamageTaken == DamageTaken (confirmed local incoming), events likewise;
-//   per role, DirectDamage + SummonDamage == DamageDealt;
-//   per role and for the vehicle, sum(Skills) + UnassignedSkill == DamageDealt, events likewise (skill_breakdown.go);
+//   per role, DirectDamage + SummonDamage + StatusDamage == DamageDealt;
+//   per role and for the vehicle, sum(Skills) + UnassignedSkill + sum(Statuses) == DamageDealt, events likewise
+//   (skill_breakdown.go; a vehicle has no Statuses);
 //   the same holds per encounter against its Totals.
 
 // Role credit bases.
@@ -89,15 +93,32 @@ type RoleDamageSnapshot struct {
 	RoleID         uint64 `json:"roleId"`
 	DamageDealt    int64  `json:"damageDealt"`
 	OutgoingEvents uint64 `json:"outgoingEvents"`
-	// DirectDamage came from the role entity itself, SummonDamage through a verified summoner chain.
+	// DirectDamage came from the role entity itself, SummonDamage through a verified summoner chain, StatusDamage from
+	// negative statuses the server executed for the role (negative_status_credit.go).
 	DirectDamage   int64  `json:"directDamage"`
 	SummonDamage   int64  `json:"summonDamage"`
+	StatusDamage   int64  `json:"statusDamage"`
 	DamageTaken    int64  `json:"damageTaken"`
 	IncomingEvents uint64 `json:"incomingEvents"`
-	// Skills and UnassignedSkill split DamageDealt by DamageContext.SkillId.
-	Skills          []SkillDamageSnapshot `json:"skills"`
-	UnassignedSkill UnassignedSkillTotals `json:"unassignedSkill"`
+	// Skills and UnassignedSkill split DamageDealt by DamageContext.SkillId; Statuses holds StatusDamage by DamageId.
+	Skills          []SkillDamageSnapshot  `json:"skills"`
+	UnassignedSkill UnassignedSkillTotals  `json:"unassignedSkill"`
+	Statuses        []StatusDamageSnapshot `json:"statuses,omitempty"`
 }
+
+// StatusDamageSnapshot is the negative-status damage of one DamageId credited to a role. TriggerEvents and TriggerDamage
+// are the part credited through an InvokePeriod of the role; the rest was credited because the role owns the executing
+// status instance.
+type StatusDamageSnapshot struct {
+	DamageID       uint64 `json:"damageId"`
+	DamageDealt    int64  `json:"damageDealt"`
+	OutgoingEvents uint64 `json:"outgoingEvents"`
+	TriggerEvents  uint64 `json:"triggerEvents"`
+	TriggerDamage  int64  `json:"triggerDamage"`
+}
+
+// maxStatusesPerRole bounds the status rows of one role; there are six negative statuses.
+const maxStatusesPerRole = 16
 
 // VehicleDamageSnapshot is a local motorcycle contributor, not a character or a replacement of raw source identity.
 type VehicleDamageSnapshot struct {
@@ -119,8 +140,9 @@ type UnassignedRoleTotals struct {
 	// OverflowEvents counts events that had a role but arrived after maxAggregatedRoles roles were held.
 	OverflowEvents uint64 `json:"overflowEvents"`
 	// NegativeStatusDamage and NegativeStatusEvents are the part of DamageDealt and OutgoingEvents that is the local team's
-	// negative-status damage the server executed through the scene's combat entity (damage_notify.go). The game credits it
-	// to no character, so it never belongs to a role; it is not a gap in role attribution either.
+	// negative-status damage the server executed through the scene's combat entity (damage_notify.go) and that no role
+	// could be credited with: the live status instances had different owners or none, or the trigger or owner was no local
+	// role (negative_status_credit.go). Damage credited to a role is the StatusDamage of that role instead.
 	NegativeStatusDamage int64  `json:"negativeStatusDamage"`
 	NegativeStatusEvents uint64 `json:"negativeStatusEvents"`
 }
@@ -137,10 +159,50 @@ type roleAggregate struct {
 	unassigned    UnassignedRoleTotals
 }
 
-// roleEntry holds one role's totals and its skill split; Skills on the embedded snapshot stay nil until snapshot().
+// roleEntry holds the totals of one role with its skill and status splits; Skills and Statuses on the embedded snapshot
+// stay nil until snapshot().
 type roleEntry struct {
 	RoleDamageSnapshot
-	skills skillAggregate
+	skills   skillAggregate
+	statuses map[uint64]*StatusDamageSnapshot
+}
+
+// addStatus credits one negative-status result to the status row of its DamageId.
+func (e *roleEntry) addStatus(record CombatEventRecord) {
+	row := e.statuses[record.DamageID]
+	if row == nil {
+		if len(e.statuses) >= maxStatusesPerRole {
+			// Pathological input only: the damage stays with the role, in its unassigned-skill bucket.
+			e.DirectDamage += record.Amount
+			e.skills.add(0, record.DamageID, record.Amount, nil)
+			return
+		}
+		if e.statuses == nil {
+			e.statuses = make(map[uint64]*StatusDamageSnapshot)
+		}
+		row = &StatusDamageSnapshot{DamageID: record.DamageID}
+		e.statuses[record.DamageID] = row
+	}
+	e.StatusDamage += record.Amount
+	row.DamageDealt += record.Amount
+	row.OutgoingEvents++
+	if record.SourceRole.Basis == roleBasisNegativeStatusTrigger {
+		row.TriggerEvents++
+		row.TriggerDamage += record.Amount
+	}
+}
+
+// statusSnapshot returns the status rows ordered by DamageId.
+func (e *roleEntry) statusSnapshot() []StatusDamageSnapshot {
+	if len(e.statuses) == 0 {
+		return nil
+	}
+	rows := make([]StatusDamageSnapshot, 0, len(e.statuses))
+	for _, row := range e.statuses {
+		rows = append(rows, *row)
+	}
+	sort.Slice(rows, func(i, j int) bool { return rows[i].DamageID < rows[j].DamageID })
+	return rows
 }
 
 func (a *roleAggregate) entry(role *CombatRole) *roleEntry {
@@ -188,6 +250,10 @@ func (a *roleAggregate) add(record CombatEventRecord) (TimelineContributor, bool
 		}
 		entry.DamageDealt += record.Amount
 		entry.OutgoingEvents++
+		if record.Evidence == combatEvidenceNegativeStatusNotify && isNegativeStatusRoleBasis(record.SourceRole.Basis) {
+			entry.addStatus(record)
+			return TimelineContributor{Kind: TimelineContributorRole, PlayerID: entry.PlayerID, RoleID: entry.RoleID}, true
+		}
 		entry.skills.add(record.SkillID, record.DamageID, record.Amount, record.EchoVisions)
 		if record.SourceRole.Basis == roleBasisSummonerChain {
 			entry.SummonDamage += record.Amount
@@ -214,6 +280,7 @@ func (a *roleAggregate) snapshot() ([]RoleDamageSnapshot, UnassignedRoleTotals) 
 	for _, entry := range a.roles {
 		role := entry.RoleDamageSnapshot
 		role.Skills, role.UnassignedSkill = entry.skills.snapshot()
+		role.Statuses = entry.statusSnapshot()
 		roles = append(roles, role)
 	}
 	sort.Slice(roles, func(i, j int) bool {

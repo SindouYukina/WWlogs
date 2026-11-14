@@ -343,6 +343,8 @@
     "internal/history/central_manage_test.go": "tests/history/manage_test.go",
     "tests/history/analysis_test.go": "",
     "internal/history/central_analysis_test.go": "tests/history/analysis_test.go",
+    "tests/history/status_credit_test.go": "",
+    "internal/history/central_status_credit_test.go": "tests/history/status_credit_test.go",
     "tests/history/wal_stress_support_windows_test.go": "",
     "internal/history/central_wal_stress_support_windows_test.go": "tests/history/wal_stress_support_windows_test.go",
     "tests/history/wal_stress_windows_test.go": "",

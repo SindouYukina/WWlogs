@@ -170,6 +170,8 @@ func loadMasterDataFromDatabase(db *sql.DB, databasePath, hash, locale string) (
 		propertyNames:                 make(map[int64]propertyName),
 		abnormalDamageIDs:             make(map[uint64]struct{}),
 		negativeStatusExecutors:       make(map[uint64]uint64),
+		invokePeriodTargets:           make(map[uint64][]uint64),
+		negativeStatusTerms:           make(map[uint64]negativeStatusTerm),
 		elementNames:                  make(map[int32]string),
 		damage:                        make(map[uint64]damageMasterRecord),
 		sceneIdentity: &sceneIdentityMaster{
@@ -222,6 +224,9 @@ func loadMasterDataFromDatabase(db *sql.DB, databasePath, hash, locale string) (
 		return nil, err
 	}
 	if err := loadSQLiteNegativeStatusDamage(db, master); err != nil {
+		return nil, err
+	}
+	if err := loadSQLiteNegativeStatusTriggers(db, master); err != nil {
 		return nil, err
 	}
 	if err := loadSQLitePropertyNames(db, locale, master); err != nil {

@@ -118,6 +118,11 @@ type gameMaster struct {
 	// negativeStatusExecutors maps a Buff whose extra effect type is one of abnormalDamageIDs to that type: the negative-status
 	// DamageId the server executes for the status (damage_notify.go).
 	negativeStatusExecutors map[uint64]uint64
+	// invokePeriodTargets maps an InvokePeriod Buff (extra effect type 67) to the negative-status Buffs whose execution it
+	// forces at once (negative_status_credit.go).
+	invokePeriodTargets map[uint64][]uint64
+	// negativeStatusTerms names a negative-status DamageId by the glossary term its executing status Buffs share.
+	negativeStatusTerms map[uint64]negativeStatusTerm
 	// fsm holds the AI state-machine node identities used to name ChangeStateNotify ids.
 	fsm *fsmMaster
 	// skillLabelText holds skill_dev_label_locale rows (master locale and zh-CN) by skill id and locale.

@@ -81,6 +81,8 @@
   "unassignedSkill": "스킬 미확인",
   "unassignedSkillNote": "이 소스의 피해로 확인되었지만 프로토콜에 스킬 ID가 없습니다.",
   "noSkillIdTag": "스킬 ID 없음",
+  "statusTag": "상태 이상",
+  "statusNote": "서버가 장면의 전투 엔티티로 정산한 상태 이상 피해입니다. 이 캐릭터가 일으킨 강제 정산과 이 캐릭터가 소유한 상태 인스턴스 자체의 정산을 이 캐릭터에 계상합니다.",
   "noSkillRows": "이 소스에는 세부 내역으로 나눌 스킬 피해가 없습니다.",
   "damageColumn": "피해량",
   "shareColumn": "비율",

@@ -18,6 +18,16 @@ type combatEventPushJSONL struct {
 	// NegativeStatusLocal and NegativeStatusBasis are negativeStatusOwnership's decision for a negative-status result.
 	NegativeStatusLocal bool   `json:"negativeStatusLocal,omitempty"`
 	NegativeStatusBasis string `json:"negativeStatusBasis,omitempty"`
+	// Credit* describe the role credit of a local negative-status result (negative_status_credit.go): the basis
+	// (negative_status_trigger or negative_status_owner), the credited role, the executing status Buff, the InvokePeriod
+	// that forced it, the instance owner, and why there is no credit.
+	CreditBasis         string `json:"creditBasis,omitempty"`
+	CreditRoleID        uint64 `json:"creditRoleId,omitempty"`
+	CreditEntityID      uint64 `json:"creditEntityId,omitempty"`
+	StatusEffectID      uint64 `json:"statusEffectId,omitempty"`
+	TriggerEffectID     uint64 `json:"triggerEffectId,omitempty"`
+	StatusOwnerEntityID uint64 `json:"statusOwnerEntityId,omitempty"`
+	CreditReason        string `json:"creditReason,omitempty"`
 	DamageRaw           int32  `json:"damageRaw"`
 	ChangeLifeRaw       int32  `json:"changeLifeRaw"`
 	HasChangeLife       bool   `json:"hasChangeLife"`
