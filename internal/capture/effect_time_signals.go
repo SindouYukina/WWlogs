@@ -11,7 +11,8 @@ import (
 // to the server, decoded with the current protocol's field numbers in both build profiles:
 //
 //   - RTimeStopPush (a CombatPushData of CombatSendPackRequest): a TimeStopRequest begins with its declared Duration in
-//     milliseconds and no Dilation, and ends with Dilation 100 and no Duration; CombatCommon.EntityId is the caster.
+//     milliseconds and its scale as Dilation (100 x scale, absent for the default pause), and ends with Dilation 100 and
+//     no Duration; CombatCommon.EntityId is the caster.
 //   - TimeStopPush (a top-level message): the new global time dilation as a float; an empty body is 0.
 //   - TimeCheckRequest (a top-level message the client sends every 3 s): its FlowTimeDilation and TimeDilation then; an
 //     absent field is 0.
@@ -23,6 +24,8 @@ const rTimeStopPushFullDilation = 100
 type rTimeStop struct {
 	begin    bool
 	duration time.Duration
+	// scale is a begin's rate lock: 0 pauses effects, a value in (0, 1) slows them (Dilation / 100).
+	scale float64
 	// known is false for a push that states neither a duration nor a dilation, which names no begin or end.
 	known bool
 }
@@ -46,14 +49,18 @@ func decodeRTimeStopPush(body []byte) (rTimeStop, error) {
 		}
 	}
 	durationMs := int64(int32(uint32(duration)))
+	scale := 0.0
+	if signed := int64(int32(uint32(dilation))); hasDilation && signed > 0 {
+		scale = math.Min(float64(signed)/rTimeStopPushFullDilation, 1)
+	}
 	switch {
 	case hasDuration && durationMs > 0:
-		return rTimeStop{begin: true, duration: time.Duration(durationMs) * time.Millisecond, known: true}, nil
+		return rTimeStop{begin: true, duration: time.Duration(durationMs) * time.Millisecond, scale: scale, known: true}, nil
 	case hasDilation && dilation == rTimeStopPushFullDilation:
 		return rTimeStop{known: true}, nil
 	case hasDilation:
-		// A stop that slows the flow clock instead of stopping it still puts the pause lock on every effect.
-		return rTimeStop{begin: true, known: true}, nil
+		// A begin without a declared duration: the stop runs effects at its scale (CharacterBuffComponent.AddPauseLock).
+		return rTimeStop{begin: true, scale: scale, known: true}, nil
 	}
 	return rTimeStop{}, nil
 }
@@ -72,7 +79,7 @@ func (p *processor) observeRTimeStopPush(frame gameFrame, body []byte, common co
 	if common.entityID != nil {
 		caster = *common.entityID
 	}
-	p.effects.ObserveTimeStop(p.sessionNumber, caster, stop.begin, stop.duration, frame.timestamp)
+	p.effects.ObserveTimeStop(p.sessionNumber, caster, stop.begin, stop.duration, stop.scale, frame.timestamp)
 	return nil
 }
 

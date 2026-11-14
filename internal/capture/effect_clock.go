@@ -1,19 +1,23 @@
 package capture
 
 import (
+	"math"
 	"sort"
 	"time"
 )
 
 // The game's effect clock.
 //
-// The client runs every effect timer on its unscaled clock times a rate (ActiveBuffInternal, Global 3.8.9): the rate is 0
-// while the holder's buff component holds a pause lock, which a TimeStopRequest puts on every entity
-// (TimeController.AddTimeStopRequestLock), and it otherwise follows the global time dilation that menus, UI and QTE set
-// (GameModeController.SetTimeDilation; 0 pauses every effect). The client reports both changes to the server: an
-// RTimeStopPush in its combat pushes when a TimeStopRequest begins (Duration, no Dilation) and ends (Dilation 100), and a
-// TimeStopPush with each new global dilation (an empty body is 0). Effect time is therefore the capture clock with the
-// stops cut out and the rest scaled by the dilation; a server statement of remaining time counts down in effect time.
+// The client runs every effect timer on its unscaled clock times a rate (ActiveBuffInternal, Global 3.8.9): the global time
+// dilation that menus, UI and QTE set (GameModeController.SetTimeDilation; 0 pauses every effect) times the lowest rate lock
+// of the holder's buff component, or 0 while it holds a pause lock. A TimeStopRequest locks every entity with its scale
+// (SkillUtils.BeginTimeStopRequest -> TimeController.AddTimeStopRequestLock -> CharacterBuffComponent.AddPauseLock): a
+// scale of 0, the default, is a pause lock, a scale in (0, 1] a rate lock, and concurrent requests combine to 0 if any is 0
+// and to their lowest scale otherwise (TimeController.Wgp). The client reports both changes to the server: an RTimeStopPush
+// in its combat pushes when a TimeStopRequest begins (Duration, Dilation = 100 x scale, absent for the default 0) and ends
+// (Dilation 100), and a TimeStopPush with each new global dilation (an empty body is 0). Effect time is therefore the
+// capture clock with the stops cut out or slowed and the rest scaled by the dilation; a server statement of remaining time
+// counts down in effect time. Every stop of the Global 3.8.9 corpus had scale 0 (158 begins, none with a Dilation).
 //
 // AbsoluteTimeStop (RTimeStopAnimPush) changes only effects flagged DurationAffectedByBulletTime, and no definition a
 // HUD draws carries that flag, so it is not followed. A per-effect rate (ModifyBuffTimeScale) is not followed either: in
@@ -48,10 +52,11 @@ type effectClockPoint struct {
 	rate      float64
 }
 
-// effectStop is one TimeStopRequest the capture saw begin and not end yet.
+// effectStop is one TimeStopRequest the capture saw begin and not end yet; scale is its rate lock, 0 for a pause.
 type effectStop struct {
 	since time.Time
 	limit time.Time
+	scale float64
 }
 
 // EffectClockCounters report what the effect clock followed and every place it had to assume.
@@ -96,15 +101,25 @@ func (c *effectClock) ensure() {
 	}
 }
 
-// rate is the rate the clock runs at after its last point, before any stop limit passes.
+// rate is the rate the clock runs at after its last point, before any stop limit passes: the dilation times the lowest
+// stop scale, 0 when a stop pauses.
 func (c *effectClock) rate() float64 {
-	switch {
-	case c.stops == nil:
+	if c.stops == nil {
 		return 1
-	case len(c.stops) > 0:
-		return 0
 	}
-	return c.dilation
+	return c.dilation * c.stopScale()
+}
+
+// stopScale combines the scales of the held stops as the client does: 0 if any pauses, the lowest otherwise, 1 without one.
+func (c *effectClock) stopScale() float64 {
+	scale := 1.0
+	for _, stop := range c.stops {
+		if stop.scale <= 0 {
+			return 0
+		}
+		scale = math.Min(scale, stop.scale)
+	}
+	return scale
 }
 
 // stopsEnd is when the current stops end at the latest: the last of their limits.
@@ -134,16 +149,17 @@ func (c *effectClock) at(t time.Time) float64 {
 	if index < len(c.points)-1 || len(c.stops) == 0 {
 		return point.effective + point.rate*t.Sub(point.at).Seconds()
 	}
-	// After the last point, while stops hold, the clock stands until the last stop's limit, then runs at the dilation.
+	// After the last point, while stops hold, the clock runs at the rate of the held stops (0 for a pause) until the last
+	// stop's limit, then at the dilation.
 	end := c.stopsEnd()
 	if !t.After(end) {
-		return point.effective
+		return point.effective + point.rate*t.Sub(point.at).Seconds()
 	}
 	from := point.at
 	if end.After(from) {
 		from = end
 	}
-	return point.effective + c.dilation*t.Sub(from).Seconds()
+	return point.effective + point.rate*from.Sub(point.at).Seconds() + c.dilation*t.Sub(from).Seconds()
 }
 
 // mark brings the clock up to at before a change: the stops whose limits passed before at end at those limits. A change
@@ -204,8 +220,9 @@ func (c *effectClock) expireStops(at time.Time) {
 	}
 }
 
-// beginStop follows a TimeStopRequest the caster began at at, declared to last duration (0: undeclared).
-func (c *effectClock) beginStop(caster uint64, duration time.Duration, at time.Time) {
+// beginStop follows a TimeStopRequest the caster began at at, declared to last duration (0: undeclared), with the rate
+// lock scale (0: a pause).
+func (c *effectClock) beginStop(caster uint64, duration time.Duration, scale float64, at time.Time) {
 	if at.IsZero() {
 		return
 	}
@@ -221,7 +238,10 @@ func (c *effectClock) beginStop(caster uint64, duration time.Duration, at time.T
 	if duration > 0 {
 		limit = at.Add(duration + effectStopEndMargin)
 	}
-	c.stops[caster] = effectStop{since: at, limit: limit}
+	if scale != scale || scale < 0 {
+		scale = 0
+	}
+	c.stops[caster] = effectStop{since: at, limit: limit, scale: math.Min(scale, 1)}
 	c.counters.StopsBegun++
 	c.appendPoint(at, effective)
 }
@@ -277,8 +297,9 @@ func (c *effectClock) resumeStops(at time.Time) {
 	}
 }
 
-// sample reconciles the clock with a TimeCheckRequest: the client's flow clock running means no TimeStopRequest holds,
-// and a running time dilation means no global pause holds. A sample never starts a pause.
+// sample reconciles the clock with a TimeCheckRequest: the client's flow clock running means no pausing TimeStopRequest
+// holds (a stop with a scale above 0 keeps the flow clock running, so a sample never ends one), and a running time
+// dilation means no global pause holds. A sample never starts a pause.
 func (c *effectClock) sample(flowDilation, dilation float64, at time.Time) {
 	if at.IsZero() {
 		return
@@ -286,16 +307,18 @@ func (c *effectClock) sample(flowDilation, dilation float64, at time.Time) {
 	c.ensure()
 	c.mark(at)
 	at = c.changeAt(at)
-	if flowDilation > 0 && len(c.stops) > 0 {
+	if flowDilation > 0 && len(c.stops) > 0 && c.stopScale() == 0 {
 		recent := false
 		for _, stop := range c.stops {
-			recent = recent || at.Sub(stop.since) < effectClockSampleGrace
+			recent = recent || stop.scale <= 0 && at.Sub(stop.since) < effectClockSampleGrace
 		}
 		if !recent {
 			effective := c.at(at)
-			for key := range c.stops {
-				delete(c.stops, key)
-				c.counters.StopsSampled++
+			for key, stop := range c.stops {
+				if stop.scale <= 0 {
+					delete(c.stops, key)
+					c.counters.StopsSampled++
+				}
 			}
 			c.appendPoint(at, effective)
 		}
