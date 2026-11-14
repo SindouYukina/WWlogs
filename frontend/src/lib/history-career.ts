@@ -47,6 +47,8 @@ export interface CareerTotals {
   classes: Record<string, number>
   damage: number
   damageLowerBound?: boolean
+  /** Encounters of the scope recorded by a build that did not count server-executed damage. */
+  withoutNotifiedDamage?: number
   seconds: number
   activeDays: number
   first?: CareerRef

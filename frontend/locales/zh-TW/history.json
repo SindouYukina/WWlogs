@@ -114,6 +114,7 @@
     "not_finished": "擷取在這場戰鬥結束前就停止了。"
   },
   "checkpointNote": "以下數值是 {{time}} 的最後檢查點。這場戰鬥並不完整，這些數值不是最終結果。",
+  "olderAccountingNote": "此場由較早版本的 WWlogs 分析，當時尚未計入伺服器執行的傷害（例如異常狀態傷害），保存的數值可能低於目前版本的分析結果；既有紀錄不會重新計算。",
   "coverage": {
     "title": "這筆紀錄包含的內容",
     "combat": "傷害與治療",
@@ -532,6 +533,7 @@
     "damage": "確認傷害",
     "damageNote": "計入合計的戰鬥",
     "damageLowerBound": "含傳輸缺損或已知少算的紀錄，合計是下限",
+    "olderAccounting": "{{count}} 場由較早版本的 WWlogs 分析，當時尚未計入伺服器執行的傷害；這些場次的總計與個人紀錄可能偏低。",
     "time": "戰鬥時間",
     "timeNote": "計入合計的戰鬥持續時間",
     "hoursMinutes": "{{h}} 小時 {{m}} 分",
