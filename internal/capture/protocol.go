@@ -192,9 +192,13 @@ type processor struct {
 	// notifyStats counts DamageExecuteNotify results; frameNotifyOrdinal numbers them within the frame being read.
 	notifyStats        damageNotifyStats
 	frameNotifyOrdinal int
-	// statusTriggers remembers the InvokePeriod Buffs the server applied recently, for the forced negative-status results
-	// that follow them (negative_status_credit.go).
+	// statusTriggers remembers the InvokePeriod Buffs and instant status Buffs the server applied recently, for the
+	// negative-status results that follow them (negative_status_credit.go).
 	statusTriggers statusTriggerLog
+	// statusCauses remembers the recent applications and removals of statuses without a period, and excludedStatuses the
+	// status instances the effect tracker leaves out (negative_status_causes.go).
+	statusCauses     statusCauseLog
+	excludedStatuses excludedStatusIndex
 	// serverSequence follows the sequence of the server's frames, so a missing frame is known (negative_status_credit.go).
 	serverSequence    serverSequenceState
 	rsa               *staticRSA

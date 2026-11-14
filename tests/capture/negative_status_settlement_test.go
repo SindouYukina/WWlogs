@@ -296,12 +296,22 @@ func TestMissingServerFramesKeepTheOwnerFromTakingAPossiblyForcedResult(t *testi
 	if row := statusRow(t, complete, 1409, notifyTestAero); row.DamageDealt != 1000 {
 		t.Fatalf("role 1409 status %+v; with every server frame present the tick is the owner's", row)
 	}
-	// A status no InvokePeriod can force is not affected by a gap.
+	// A status without a period settles on an application. When no application of the result's moment explains it, every
+	// applier of the instance is a possible cause, and a gap since the instance's creation may have carried the
+	// application of another entity: the result stays the team's, credited to nobody.
 	glacio := newSettlementTestProcessor()
 	deliverServerFrame(t, glacio, 0.5, 10, statusApplyItem(200, 8, settleGlacioBuff, 100, 1))
 	deliverServerFrame(t, glacio, 2.0, 14, statusTick(200, settleGlacio, 300))
-	if row := statusRow(t, glacio, 1409, settleGlacio); row.DamageDealt != 300 {
-		t.Fatalf("role 1409 Glacio Chafe %+v; no InvokePeriod forces Glacio Chafe", row)
+	if row := statusRow(t, glacio, 1409, settleGlacio); row.DamageDealt != 0 {
+		t.Fatalf("role 1409 Glacio Chafe %+v; a lost frame may have carried another entity's application", row)
+	}
+	assertUnassignedStatus(t, glacio, 300)
+	// With every server frame present, A is the only applier the instance ever had.
+	glacioComplete := newSettlementTestProcessor()
+	deliverServerFrame(t, glacioComplete, 0.5, 10, statusApplyItem(200, 8, settleGlacioBuff, 100, 1))
+	deliverServerFrame(t, glacioComplete, 2.0, 11, statusTick(200, settleGlacio, 300))
+	if row := statusRow(t, glacioComplete, 1409, settleGlacio); row.DamageDealt != 300 {
+		t.Fatalf("role 1409 Glacio Chafe %+v; A applied every stack and no frame is missing", row)
 	}
 }
 
@@ -345,7 +355,9 @@ func TestNegativeStatusOwnerFollowsTheInstanceLifecycle(t *testing.T) {
 }
 
 // Several roles stacking a timed status: the executions are still the instance's own, so the owner's. Several roles
-// applying a status without a period: the server does not name the application that caused a result.
+// applying a status without a period: the result is caused by the application the server reported in its moment (the
+// server reports a cause before its effect, and Glacio Chafe settles on every application), so each result is credited
+// to the role whose application set it off, as an action of that role.
 func TestStackingByAnotherRoleDependsOnTheSettlement(t *testing.T) {
 	timed := newSettlementTestProcessor()
 	deliverNotifyFrame(t, timed, 0.5, 2, statusApplyItem(200, 7, notifyTestAeroBuff, 100, 1))
@@ -361,21 +373,21 @@ func TestStackingByAnotherRoleDependsOnTheSettlement(t *testing.T) {
 	deliverNotifyFrame(t, applied, 0.5, 2, statusApplyItem(200, 8, settleGlacioBuff, 100, 1), statusTick(200, settleGlacio, 120))
 	deliverNotifyFrame(t, applied, 1, 3, statusStackItem(200, 8, 2, 100), statusTick(200, settleGlacio, 150))
 	deliverNotifyFrame(t, applied, 1.5, 4, statusStackItem(200, 8, 3, 101), statusTick(200, settleGlacio, 180))
-	if row := statusRow(t, applied, 1409, settleGlacio); row != (StatusDamageSnapshot{DamageID: settleGlacio, DamageDealt: 270, OutgoingEvents: 2}) {
-		t.Fatalf("role 1409 Glacio Chafe %+v; A alone applied it until B's application", row)
+	if row := statusRow(t, applied, 1409, settleGlacio); row != (StatusDamageSnapshot{DamageID: settleGlacio, DamageDealt: 270, OutgoingEvents: 2, TriggerEvents: 2, TriggerDamage: 270}) {
+		t.Fatalf("role 1409 Glacio Chafe %+v; A's two applications set off the first two results", row)
 	}
-	if row := statusRow(t, applied, 1505, settleGlacio); row.DamageDealt != 0 {
-		t.Fatalf("role 1505 Glacio Chafe %+v; B's application is not proven the cause", row)
+	if row := statusRow(t, applied, 1505, settleGlacio); row != (StatusDamageSnapshot{DamageID: settleGlacio, DamageDealt: 180, OutgoingEvents: 1, TriggerEvents: 1, TriggerDamage: 180}) {
+		t.Fatalf("role 1505 Glacio Chafe %+v; B's application is the only one in the third result's moment", row)
 	}
-	assertUnassignedStatus(t, applied, 180)
+	assertUnassignedStatus(t, applied, 0)
 	if applied.notifyStats.settledByApplication != 3 {
 		t.Fatalf("notify stats %+v", applied.notifyStats)
 	}
 }
 
 // Fusion Burst bursts on the application that overflows its stack limit, which also clears the instance: the server may
-// report the removal before the burst. The burst is still the local team's damage; it is credited when one entity applied
-// every stack, and to nobody when the overflow came from another role.
+// report the removal before the burst. The burst is still the local team's damage, credited to the role whose
+// application overflowed the instance (a stack report that keeps the count at the limit), whoever applied the rest.
 func TestOverflowBurstAfterItsInstanceWasRemoved(t *testing.T) {
 	burst := func(overflowBy uint64) *processor {
 		p := newSettlementTestProcessor()
@@ -396,7 +408,10 @@ func TestOverflowBurstAfterItsInstanceWasRemoved(t *testing.T) {
 	if got := other.damageStatistics.Snapshot().DamageDealt; got != 5000 {
 		t.Fatalf("dealt %d; the burst is the team's damage whoever caused it", got)
 	}
-	assertUnassignedStatus(t, other, 5000)
+	if row := statusRow(t, other, 1505, settleFusion); row != (StatusDamageSnapshot{DamageID: settleFusion, DamageDealt: 5000, OutgoingEvents: 1, TriggerEvents: 1, TriggerDamage: 5000}) {
+		t.Fatalf("role 1505 Fusion Burst %+v; B's application overflowed the instance A built", row)
+	}
+	assertUnassignedStatus(t, other, 0)
 	// Long after the removal the instance can no longer be the executing one.
 	late := newSettlementTestProcessor()
 	deliverNotifyFrame(t, late, 0.5, 2, statusApplyItem(200, 8, settleFusionBuff, 100, 9), statusRemoveItem(200, 8))

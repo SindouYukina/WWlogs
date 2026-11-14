@@ -156,9 +156,10 @@ export interface Role {
 }
 
 /**
- * The negative-status damage of one DamageId credited to a role: the role forced the execution (triggerEvents) or owns the
- * status instance the server executed. name is the status's official glossary term (nameStatus CORRELATED); absent when
- * the engine found no single term, and the UI then shows the DamageId.
+ * The negative-status damage of one DamageId credited to a role: an action of the role set the settlement off (triggerEvents:
+ * a forced or instant settlement, or an application that settled a status without a period, its overflow spread included),
+ * or the role owns the timed status instance that executed on its own. name is the status's official glossary term
+ * (nameStatus CORRELATED); absent when the engine found no single term, and the UI then shows the DamageId.
  */
 export interface Status {
   damageId: number

@@ -146,6 +146,7 @@ func (p *processor) observeEffectLifecycle(row buffLifecycleAuditRow) {
 		event.HolderMonster, event.SourceMonster = p.effectMonsterEntity(event.HolderEntityID), event.HasSource && p.effectMonsterEntity(event.SourceEntityID)
 		p.withHistoryActors(&event)
 		p.recordStatusTrigger(row, holder)
+		p.observeStatusCause(row, holder, &event.HolderRelation, event.SourceRelation)
 		p.effects.ObserveApply(event)
 		p.effects.RefreshRelations(row.SessionNumber, holder, p.effectEntityRelation)
 	case "GAMEPLAY_EFFECT_REMOVE":
@@ -154,6 +155,7 @@ func (p *processor) observeEffectLifecycle(row buffLifecycleAuditRow) {
 			p.effects.NoteSkippedUncorrelatedHolder()
 			return
 		}
+		p.observeStatusCause(row, holder, nil, EffectRelationUnknown)
 		p.effects.ObserveRemove(EffectRemoveEvent{
 			SessionNumber: row.SessionNumber, HolderEntityID: holder, HolderGeneration: p.effectHolderGeneration(holder),
 			HandleID: *row.HandleID, ObservedAt: row.Timestamp,
@@ -175,6 +177,8 @@ func (p *processor) observeEffectLifecycle(row buffLifecycleAuditRow) {
 			if row.InstigatorID != nil && *row.InstigatorID != 0 {
 				event.StackInstigator, event.HasStackInstigator = *row.InstigatorID, true
 			}
+			// Before the tracker takes the new count: the cause compares it with the count before.
+			p.observeStatusCause(row, holder, nil, EffectRelationUnknown)
 		}
 		p.effects.ObserveUpdate(event)
 		p.effects.RefreshRelations(row.SessionNumber, holder, p.effectEntityRelation)

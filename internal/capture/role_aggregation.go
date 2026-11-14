@@ -107,8 +107,9 @@ type RoleDamageSnapshot struct {
 }
 
 // StatusDamageSnapshot is the negative-status damage of one DamageId credited to a role. TriggerEvents and TriggerDamage
-// are the part credited through an InvokePeriod of the role; the rest was credited because the role owns the executing
-// status instance.
+// are the part an action of the role set off (an InvokePeriod that forced it, an instant status Buff, or the application
+// that settled a status without a period, an overflowing one and its spread included); the rest is the own execution of a
+// timed status instance the role owns.
 type StatusDamageSnapshot struct {
 	DamageID       uint64 `json:"damageId"`
 	DamageDealt    int64  `json:"damageDealt"`

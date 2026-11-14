@@ -669,6 +669,10 @@ func TestGateFailsNegativeStatusSettlementGaps(t *testing.T) {
 		`UPDATE buff SET period = NULL WHERE id = '10041000'`,
 		`INSERT INTO buff (id, extra_effect_id, period) VALUES ('99990067', '67', 0)`,
 		`INSERT INTO buff_extra_effect_parameters (owner_id, ordinal, value) VALUES ('99990067', 0, '10061000')`,
+		// Fusion Burst spreads on overflow; without a stack limit its overflow cannot be told.
+		`UPDATE buff SET stack_limit_count = 0 WHERE id = '10021000'`,
+		// A status Buff without its duration policy cannot be read as instant or not.
+		`UPDATE buff SET duration_policy = NULL WHERE id = '150721001'`,
 	} {
 		if _, err := db.Exec(statement); err != nil {
 			db.Close()
@@ -685,5 +689,7 @@ func TestGateFailsNegativeStatusSettlementGaps(t *testing.T) {
 	wantFail(t, report, "combat.negative-status-settlement",
 		"negative-status DamageId 1008 has no executing status Buff",
 		"status Buff 10041000 of DamageId 1001 lacks a settlement column",
-		"InvokePeriod 99990067 names status Buff 10061000, which has no period")
+		"InvokePeriod 99990067 names status Buff 10061000, which has no period",
+		"status Buff 10021000 of DamageId 1004 spreads on overflow but has no positive stack limit",
+		"status Buff 150721001 of DamageId 1005 lacks a settlement column")
 }
