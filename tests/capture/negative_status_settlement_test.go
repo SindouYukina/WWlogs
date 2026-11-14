@@ -25,7 +25,7 @@ const (
 	settleGlacioBuff  = 10011000 // its status Buff
 	settleFusion      = 1004
 	settleFusionBuff  = 10021000
-	settleHavoc       = 1006     // DEF reduction, no damage per the client glossary
+	settleHavoc       = 1006 // DEF reduction, no damage per the client glossary
 	settleHavocBuff   = 10061000
 	settleGlacioNew   = 1007     // the FormulaType 9 Glacio Chafe variant
 	settleGlacioNewBf = 10011100 // replaces 10011000 for some appliers
@@ -252,8 +252,8 @@ func TestLateForcedResultIsNotGivenToTheOwner(t *testing.T) {
 	p := newSettlementTestProcessor()
 	deliverNotifyFrame(t, p, 0.5, 2, statusApplyItem(200, 7, notifyTestAeroBuff, 100, 1))
 	deliverNotifyFrame(t, p, 2, 3, triggerData(200, notifyTestInvokeAero, 101))
-	deliverNotifyFrame(t, p, 2.3, 4, aeroTick(200, 900))   // 0.3 s later: late forced result or the owner's tick
-	deliverNotifyFrame(t, p, 3.2, 5, aeroTick(200, 500))   // the InvokePeriod's doubt has passed
+	deliverNotifyFrame(t, p, 2.3, 4, aeroTick(200, 900)) // 0.3 s later: late forced result or the owner's tick
+	deliverNotifyFrame(t, p, 3.2, 5, aeroTick(200, 500)) // the InvokePeriod's doubt has passed
 	if row := statusRow(t, p, 1505, notifyTestAero); row.DamageDealt != 0 {
 		t.Fatalf("role 1505 status %+v; the late result is not proven forced", row)
 	}
