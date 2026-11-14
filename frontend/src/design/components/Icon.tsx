@@ -27,6 +27,7 @@ const paths = {
   play: "M7 5l12 7-12 7z",
   pause: "M8 5v14M16 5v14",
   reset: "M4 12a8 8 0 108-8H7M7 4L4 7l3 3",
+  trash: "M4 7h16M10 4h4M6 7l1 12a2 2 0 002 2h6a2 2 0 002-2l1-12M10 11v6M14 11v6",
 } as const
 
 export type IconName = keyof typeof paths
