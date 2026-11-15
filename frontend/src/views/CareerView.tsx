@@ -305,7 +305,8 @@ export function CareerView({ theme, refreshKey, indicator, state, onState, onOpe
       <h2 className="ww-history-title">{t("career.title")}</h2>
       <HistoryIndicatorChip indicator={indicator} />
     </Reveal>
-    <Reveal index={1}><Card className="ww-history-filters">
+    {/* A history that cannot be opened has no totals to filter or show: the page shows the recovery prompt only. */}
+    {!unavailable && <Reveal index={1}><Card className="ww-history-filters">
       <div className="ww-career-filters" data-field="career-filters">
         <div className="ww-history-filter"><span>{t("career.rangeLabel")}</span>
           <span data-field="career-preset" data-preset={state.preset}><Segmented label={t("career.rangeLabel")} value={state.preset} options={presetOptions} onChange={(preset: CareerPreset) => set({ preset })} /></span>
@@ -323,8 +324,8 @@ export function CareerView({ theme, refreshKey, indicator, state, onState, onOpe
         <Button size="sm" variant="ghost" disabled={!filtered} data-field="career-reset" onClick={() => onState({ preset: "all" })}>{t("library.reset")}</Button>
       </div>
       {note && <p className="ww-history-note" data-tone={note.tone} data-field="history-status" data-reason={career?.status.reason}>{t(note.key)}</p>}
-      {failed && !unavailable && <p className="ww-history-note" data-tone="critical" role="alert">{t("loadFailed")}</p>}
-    </Card></Reveal>
+      {failed && <p className="ww-history-note" data-tone="critical" role="alert">{t("loadFailed")}</p>}
+    </Card></Reveal>}
     {unavailable && <Reveal index={2}><Card className="ww-history-recovery-card"><HistoryRecovery rebuildable={career?.status.rebuildable === true} retry={host.retryHistory} rebuild={host.rebuildHistory} onRecovered={() => { setFailed(false); setReopened(count => count + 1) }} /></Card></Reveal>}
 
     {empty && <Reveal index={2}><Card className="ww-history-context ww-career-empty" data-field="career-empty" data-filtered={filtered}>
@@ -335,7 +336,7 @@ export function CareerView({ theme, refreshKey, indicator, state, onState, onOpe
       </div>
     </Card></Reveal>}
 
-    {career && totals && !empty && <>
+    {career && totals && !empty && !unavailable && <>
       <div className="ww-history-stats" data-field="career-totals">
         <StatCard index={2} hero icon="list" label={t("career.encounters")} field="career-encounters" value={totals.encounters} format={format.integer} note={t("career.encountersNote", { counted: format.integer(totals.counted) })} scope="career" stale={false} numberMode="tween" />
         <StatCard index={3} icon="spark" label={t("career.damage")} field="career-damage" status={totals.damageLowerBound ? "lower_bound" : "available"} value={totals.damage} format={value => formats.damage(value, totals.damageLowerBound)} note={t(totals.damageLowerBound ? "career.damageLowerBound" : "career.damageNote")} scope="career" stale={false} numberMode="tween" />

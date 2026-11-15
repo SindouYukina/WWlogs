@@ -27,8 +27,14 @@ test("an unreadable history shows the prompt, never a reason or the first-run te
   assert.match(history, /\{unavailable && <Reveal index=\{1\}><Card className="ww-history-recovery-card"><HistoryRecovery rebuildable=\{status\?\.rebuildable === true\}/)
   // The status line is for a history another WWlogs records into; an unavailable one has none.
   assert.match(history, /if \(!status \|\| status\.state !== "read_only"\) return null/)
+  // Nor zero counts: the year, the day, the list and the comparison are not drawn for a history that cannot be opened.
+  assert.match(history, /\{mode === "calendar" && !comparing && !unavailable && <Reveal index=\{1\}><Card className="ww-history-heat">/)
+  assert.match(history, /\{!unavailable && <Reveal index=\{2\}><ContentSwitch /)
+  assert.match(history, /\{compared\.length > 0 && !comparing && !unavailable && <div className="ww-compare-tray"/)
   const career = source("CareerView.tsx")
   assert.match(career, /const empty = career !== null && totals\?\.encounters === 0 && !unavailable/)
+  assert.match(career, /\{!unavailable && <Reveal index=\{1\}><Card className="ww-history-filters">/)
+  assert.match(career, /\{career && totals && !empty && !unavailable && <>/)
   assert.match(career, /<HistoryRecovery rebuildable=\{career\?\.status\.rebuildable === true\}/)
   const settings = source("SettingsView.tsx")
   assert.match(settings, /\{unavailable && <div className="ww-row-block"><HistoryRecovery rebuildable=\{indicator\?\.rebuildable === true\} retry=\{controller\.retryHistory\} rebuild=\{controller\.rebuildHistory\}/)
