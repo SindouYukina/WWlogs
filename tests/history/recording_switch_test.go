@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -142,4 +145,61 @@ func firstEncounterViews(t *testing.T, store *Store) string {
 		t.Fatal(err)
 	}
 	return string(data)
+}
+
+// TestClearAllKeepsTheHistoryFileAndItsKey: clearing every encounter, which the user asks for in Settings, deletes rows in
+// the history, nothing else: the same database file with the same identity and key record stays, no rebuild or migration
+// starts, and the history records again.
+func TestClearAllKeepsTheHistoryFileAndItsKey(t *testing.T) {
+	path := testPath(t)
+	store, err := openWith(path, KeyInputs{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { store.Close() })
+	twoEncounters(t, store)
+	ctx := context.Background()
+	storedRecord := readFile(t, keyRecordPath(path))
+	identity, err := readIdentity(ctx, store.db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result, err := store.ClearHistory(ctx); err != nil || result.Encounters != 2 {
+		t.Fatalf("clear = %+v (%v)", result, err)
+	}
+	if again, err := os.Stat(path); err != nil || !os.SameFile(file, again) {
+		t.Fatalf("clearing replaced the database file (%v)", err)
+	}
+	if got, err := readIdentity(ctx, store.db); err != nil || got != identity {
+		t.Fatalf("identity %+v, was %+v (%v)", got, identity, err)
+	}
+	if !bytes.Equal(readFile(t, keyRecordPath(path)), storedRecord) {
+		t.Fatal("clearing changed the key record")
+	}
+	if status := store.Status(); status.State != StateReady || status.Rebuildable {
+		t.Fatalf("after clearing: %+v", status)
+	}
+	if _, err := store.Rebuild(); !errors.Is(err, ErrNotRebuildable) {
+		t.Fatalf("a cleared history was offered a rebuild: %v", err)
+	}
+	entries, err := os.ReadDir(filepath.Dir(path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if name := entry.Name(); strings.HasSuffix(name, discardedSuffix) || strings.HasSuffix(name, rebuildSuffix) || strings.HasSuffix(name, migrationSuffix) {
+			t.Fatalf("clearing left %s", name)
+		}
+	}
+	recordOneEncounter(t, store)
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if got := encountersWith(t, path, KeyInputs{}); got != 1 {
+		t.Fatalf("after clearing and a restart the history holds %d encounters, want 1", got)
+	}
 }
