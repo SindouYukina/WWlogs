@@ -45,6 +45,46 @@ func TestLegacyFixtureCollector(t *testing.T) {
 	}
 }
 
+// TestForeignHistoryCollector writes a history made on another computer into the directory WWLOGS_FOREIGN_HISTORY_OUT: a
+// derived history of a made-up motherboard (otherMachine) with its key record and WWLOGS_FOREIGN_HISTORY_ENCOUNTERS (default
+// 12) made-up encounters of yesterday. In a test binary that carries the embedded protocol key it uses that key, as a copy
+// from another PC running the same build would; otherwise the synthetic one. A real build on this computer refuses it, so
+// an end-to-end run can walk the recovery of a history copied from another PC.
+func TestForeignHistoryCollector(t *testing.T) {
+	out := os.Getenv("WWLOGS_FOREIGN_HISTORY_OUT")
+	if out == "" {
+		t.Skip("WWLOGS_FOREIGN_HISTORY_OUT is not set")
+	}
+	encounters := 12
+	if value := os.Getenv("WWLOGS_FOREIGN_HISTORY_ENCOUNTERS"); value != "" {
+		parsed, err := strconv.Atoi(value)
+		if err != nil || parsed < 1 {
+			t.Fatalf("WWLOGS_FOREIGN_HISTORY_ENCOUNTERS = %q", value)
+		}
+		encounters = parsed
+	}
+	inputs := anotherComputer()
+	if material, err := capture.ProtocolKeyMaterial(); err == nil {
+		clear(material)
+		inputs = KeyInputs{Machine: func() (Machine, error) { return otherMachine(), nil }, ProtocolKey: capture.ProtocolKeyMaterial}
+	}
+	path := filepath.Join(out, "combat-history.db")
+	if _, err := os.Stat(path); err == nil {
+		t.Fatalf("%s exists already", path)
+	}
+	store, err := openWith(path, inputs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recordEncounters(t, store, time.Now().Add(-24*time.Hour).Truncate(time.Hour), 0, encounters)
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(path + ".lock"); err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+}
+
 // TestHistoryCopyCollector opens a copy of the history directory WWLOGS_HISTORY_COPY_DIR with the real inputs of a build
 // (this computer's SMBIOS table and the protocol key the build embeds) and writes WWLOGS_HISTORY_COPY_OUT: the store's state,
 // reason and migration, its encounter count and the row count of every table. It shows that a backup of the owner's
