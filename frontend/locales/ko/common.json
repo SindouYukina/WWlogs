@@ -98,7 +98,7 @@
       "awaiting_login": "게임이 다시 시작되었습니다. 로그인을 기다리는 중",
       "handshake_failed": "로그인 핸드셰이크를 읽을 수 없습니다",
       "unsupported_game_version": "이 게임 버전은 아직 지원되지 않습니다. WWlogs를 업데이트하세요",
-      "decrypt_failing": "게임 데이터를 복호화할 수 없습니다",
+      "decrypt_failing": "게임 데이터를 읽을 수 없습니다",
       "transport_unrecoverable": "패킷 복구에 실패했습니다",
       "receiving": "게임 데이터 수신 중",
       "transport_recovering": "패킷 손실에서 복구하는 중",

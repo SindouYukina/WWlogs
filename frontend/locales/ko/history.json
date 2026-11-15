@@ -15,7 +15,7 @@
   "emptyDay": "이 날에는 기록된 전투가 없습니다.",
   "emptyYear": "{{year}}년에는 기록된 전투가 없습니다.",
   "emptyHistory": "아직 전투 기록이 없습니다. 캡처를 시작하고 전투하면 끝난 전투가 여기에 표시됩니다.",
-  "localOnly": "전투 기록은 이 PC에만 저장되며, 이 파일은 암호화되어 있지 않습니다.",
+  "localOnly": "전투 기록은 이 PC에만 저장됩니다.",
   "loadFailed": "전투 기록을 읽을 수 없습니다.",
   "recovered": "이전 실행에서 끝나지 않은 전투 {{n}}회를 미완료로 표시했습니다.",
   "columns": {
@@ -98,7 +98,6 @@
     "rebuilt": "새 전투 기록을 만들었습니다.",
     "rebuildFailed": "전투 기록을 다시 만들 수 없었습니다. 기존 기록은 그대로입니다."
   },
-  "localEncrypted": "전투 기록은 이 PC에만 저장되며, Windows가 사용자 계정별로 보호하는 키로 암호화됩니다.",
   "zoneNote": "날짜와 시간은 이 PC의 현재 시간대로 표시됩니다: {{zone}} ({{offset}}).",
   "zoneLocal": "Windows 시간대",
   "zoneFallback": "현재 시간대의 전체 규칙을 불러오지 못해, WWlogs 시작 시 Windows에서 읽은 시간대를 사용합니다.",

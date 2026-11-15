@@ -98,7 +98,7 @@
       "awaiting_login": "ゲームが再起動しました。ログインを待っています",
       "handshake_failed": "ログインのハンドシェイクを読み取れません",
       "unsupported_game_version": "このゲームバージョンはまだサポートされていません。WWlogs を更新してください",
-      "decrypt_failing": "ゲームデータを復号できません",
+      "decrypt_failing": "ゲームデータを読み取れません",
       "transport_unrecoverable": "パケットの復旧に失敗しました",
       "receiving": "ゲームデータを受信中",
       "transport_recovering": "パケットロスから復旧中",

@@ -44,3 +44,20 @@ test("the prompt texts exist in every bundled locale and name no cause", () => {
     assert.deepEqual(Object.keys(texts.unavailable).sort(), ["duplicate_source", "locked_by_other_process", "open_failed", "storage_stopped"], locale)
   }
 })
+
+// How the History is stored is WWlogs' own concern: no bundled text and no view tells the user about its encryption, its
+// key or the machine it is bound to, and Settings has no storage section for it.
+test("no user-visible text names how the History is stored", () => {
+  const manifest = JSON.parse(readFileSync(new URL("../../frontend/locales/manifest.json", import.meta.url), "utf8"))
+  const forbidden = /加密|解密|金鑰|密钥|密鑰|硬體識別|硬件识别|指紋|指纹|DPAPI|TPM|AES|XTS|HKDF|RSA|HWID|encrypt|decrypt|cipher|fingerprint|key deriv|key mismatch|keys?|暗号|復号|鍵|암호|복호|키|\.key/i
+  const strings = (value, path) => typeof value === "string" ? [[path, value]] : Object.entries(value).flatMap(([key, entry]) => strings(entry, `${path}.${key}`))
+  for (const locale of manifest.supportedLocales) for (const namespace of manifest.namespaces) {
+    const texts = JSON.parse(readFileSync(new URL(`../../frontend/locales/${locale}/${namespace}.json`, import.meta.url), "utf8"))
+    for (const [path, text] of strings(texts, `${locale}/${namespace}`)) assert.doesNotMatch(text, forbidden, path)
+  }
+  const settings = source("SettingsView.tsx")
+  assert.doesNotMatch(settings, /historySettings\.sections\.storage|historySettings\.encrypt|history-encryption/)
+  for (const view of ["HistoryView.tsx", "CareerView.tsx", "SettingsView.tsx", "HistoryRecovery.tsx", "DashboardView.tsx"]) {
+    assert.doesNotMatch(source(view), /\.encrypted|keyProtection|localEncrypted/, view)
+  }
+})

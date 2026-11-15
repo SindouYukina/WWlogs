@@ -140,7 +140,6 @@
   "historySettings": {
     "sections": {
       "recording": "记录",
-      "storage": "存储",
       "data": "数据"
     },
     "recording": "记录战斗历史",
@@ -149,11 +148,6 @@
     "coverage": "记录内容",
     "coverageHint": "不记录技能释放：目前没有可靠的来源。",
     "coverageValue": "战斗、伤害与治疗结果、效果生命周期变化",
-    "encryption": "加密",
-    "encrypted": "已加密（AES-256-XTS）",
-    "encryptedHint": "密钥由 Windows（DPAPI）为你的用户账户保护，并非 TPM 硬件保护。以你的身份运行的程序仍可读取。",
-    "notEncrypted": "未加密",
-    "notEncryptedHint": "历史文件未打开，或是较早版本的未加密文件。",
     "clear": "清除全部历史",
     "clearHint": "删除所有保存的战斗及其备份副本。采集正在记录时无法使用。",
     "clearAction": "清除历史",

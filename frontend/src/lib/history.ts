@@ -15,10 +15,6 @@ export interface HistoryStatus {
   latestSchemaVersion: number
   recoveredSessions: number
   recoveredEncounters: number
-  /** True when the open file is encrypted at rest (encryption names the cipher, keyProtection what seals its key). */
-  encrypted: boolean
-  encryption?: string
-  keyProtection?: string
   /** True when the history cannot be opened and a new, empty one may replace it at the user's request (Go decides). */
   rebuildable?: boolean
 }
@@ -186,8 +182,6 @@ export interface HistoryIndicator {
   capturing: boolean
   /** Journal entries of the running capture that never reached storage. */
   lost?: number
-  encrypted: boolean
-  keyProtection?: string
   /** True when the unavailable history may be replaced by a new one at the user's request. */
   rebuildable?: boolean
 }

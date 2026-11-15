@@ -98,7 +98,7 @@
       "awaiting_login": "The game restarted. Waiting for login",
       "handshake_failed": "The login handshake could not be read",
       "unsupported_game_version": "This game version is not supported yet. Update WWlogs",
-      "decrypt_failing": "Game data cannot be decrypted",
+      "decrypt_failing": "Game data cannot be read",
       "transport_unrecoverable": "Packet recovery failed",
       "receiving": "Receiving game data",
       "transport_recovering": "Recovering from packet loss",
