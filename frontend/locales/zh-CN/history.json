@@ -87,6 +87,10 @@
     "key_unavailable": "Windows 无法为此用户解开历史密钥。文件未被更改，也不会记录历史。",
     "key_mismatch": "历史密钥无法打开这个历史文件。文件未被更改，也不会记录历史。",
     "wal_integrity_failure": "无法确认历史文件最近的更改，已保持原样，不会记录历史。",
+    "hardware_identity_unavailable": "目前无法打开战斗历史。文件未被更改，也不会记录历史。",
+    "key_material_unavailable": "目前无法打开战斗历史。文件未被更改，也不会记录历史。",
+    "key_verification_failed": "目前无法打开战斗历史。文件未被更改，也不会记录历史。",
+    "history_format_unsupported": "目前无法打开战斗历史。文件未被更改，也不会记录历史。",
     "duplicate_source": "这个采集文件已在历史中，因此不会再次保存。"
   },
   "localEncrypted": "战斗历史只保存在这台电脑上，并使用 Windows 为你的用户账户保护的密钥加密。",

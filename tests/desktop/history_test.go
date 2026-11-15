@@ -1,7 +1,11 @@
 package desktop
 
 import (
+	"bytes"
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
 	"errors"
 	"os"
 	"path/filepath"
@@ -32,7 +36,7 @@ func TestEffectRowsCarryAnIconOnlyForTheirOwnBuffID(t *testing.T) {
 }
 
 func TestReplayNeverEntersTheOwnHistory(t *testing.T) {
-	store, err := history.Open(history.Options{Path: filepath.Join(t.TempDir(), "combat-history.db")})
+	store, err := history.Open(history.Options{Path: filepath.Join(t.TempDir(), "combat-history.db"), KeyInputs: testHistoryKeyInputs(t)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,5 +69,21 @@ func TestReplayNeverEntersTheOwnHistory(t *testing.T) {
 	again, state, err := test(capture.SessionConfig{ReplayPath: replay})
 	if again != nil || state != service.HistoryDuplicate || !errors.Is(err, history.ErrDuplicateSource) {
 		t.Fatalf("the same file was recorded twice: %v %q %v", again, state, err)
+	}
+}
+
+// testHistoryKeyInputs are synthetic key inputs: a made-up motherboard UUID and an RSA key generated for the test. No desktop
+// test derives a history key from this computer or from the protocol key a build embeds.
+func testHistoryKeyInputs(t *testing.T) history.KeyInputs {
+	t.Helper()
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	der := x509.MarshalPKCS1PrivateKey(key)
+	uuid := []byte("WWLGDESKTOPTEST1")
+	return history.KeyInputs{
+		Machine:     func() (history.Machine, error) { return history.Machine{SystemUUID: bytes.Clone(uuid)}, nil },
+		ProtocolKey: func() ([]byte, error) { return bytes.Clone(der), nil },
 	}
 }

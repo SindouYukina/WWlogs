@@ -20,7 +20,9 @@ import (
 // The history file is an SQLite database that the "xts" VFS of github.com/ncruces/go-sqlite3 encrypts page by page: every
 // database, write-ahead log, journal and temporary file it opens is encrypted with AES-256-XTS (golang.org/x/crypto/xts,
 // IEEE 1619) in 512-byte sectors, the cipher mode of disk encryption. Only the write-ahead log index (-shm) is not encrypted:
-// it holds page numbers and checksums, never content. The key is random and stored only sealed by a KeyProvider (keys.go).
+// it holds page numbers and checksums, never content. The key is derived from the computer's motherboard identity and the
+// game protocol key every time the history opens, and stored nowhere (keyderive.go); a history of WWlogs v0.7.0 has a
+// random key that DPAPI seals (keys.go) until it is moved to a derived key.
 // The history is never written unencrypted: a plaintext SQLite file at the history path is not a history, and the store
 // leaves it untouched (Store.open).
 //
@@ -31,8 +33,8 @@ import (
 //
 // XTS hides the content from anyone without the key, including copies and backups of the file. It is deterministic and has
 // no authentication: comparing two copies shows which sectors changed, and a modified file is not detected as such (SQLite
-// may still report it as corrupt). Any process of the same Windows user can unseal a DPAPI key, so encryption at rest does
-// not protect the history from software that runs as that user.
+// may still report it as corrupt). Any program on the computer can read the motherboard identity, and the protocol key ships
+// in every build, so encryption at rest keeps the file unreadable away from this computer, not from software running on it.
 
 const encryptionName = "aes-256-xts"
 

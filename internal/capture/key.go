@@ -41,6 +41,19 @@ func parsePrivateKeyPEM(data []byte) (*staticRSA, error) {
 }
 
 func loadEmbeddedPrivateKey() (*staticRSA, error) {
+	data, err := ProtocolKeyMaterial()
+	if err != nil {
+		return nil, err
+	}
+	defer clear(data)
+	return parsePrivateKeyPEM(data)
+}
+
+// ProtocolKeyMaterial returns the game protocol RSA private key this build embeds, decrypted in memory exactly as the build
+// embedded it (a PKCS#1 PEM block). It is the one copy of the key in the executable: the traffic decoder reads it here, and
+// so does the Combat History, which derives its key from it. Nothing is read from disk. The caller owns the returned bytes
+// and clears them; a build without the embedded key returns an error.
+func ProtocolKeyMaterial() ([]byte, error) {
 	data, err := keyembed.Decrypt(keyembed.Payload{
 		Ciphertext:    embeddedKeyCiphertext,
 		EncryptionKey: embeddedKeyEncryptionKey,
@@ -48,8 +61,7 @@ func loadEmbeddedPrivateKey() (*staticRSA, error) {
 	if err != nil {
 		return nil, fmt.Errorf("decrypt embedded RSA key: %w", err)
 	}
-	defer clear(data)
-	return parsePrivateKeyPEM(data)
+	return data, nil
 }
 
 func (key *staticRSA) decryptSessionKey(ciphertext []byte) ([]byte, error) {

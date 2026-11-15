@@ -1,7 +1,7 @@
 // Package history keeps the player's Combat History: a local SQLite file, separate from the read-only Master, that stores
 // capture sessions and the encounters the engine segmented in them. It receives the engine's journal through a Recorder
 // (one per capture session) on its own goroutine, so storage never slows, stalls or changes a live capture and analysis, and
-// it answers the History view's queries. The file is local and encrypted at rest (encryption.go, keys.go).
+// it answers the History view's queries. The file is local and encrypted at rest (encryption.go, keyderive.go).
 package history
 
 import (
@@ -52,7 +52,21 @@ const (
 	// ReasonWALIntegrity: the history file decrypts with its key, but its write-ahead log does not; the log is kept as it is
 	// rather than handed to SQLite, which would drop it.
 	ReasonWALIntegrity = "wal_integrity_failure"
+	// ReasonHardwareIdentity: the motherboard identity the history key derives from cannot be read, or names no usable
+	// identifier (keysource.go).
+	ReasonHardwareIdentity = "hardware_identity_unavailable"
+	// ReasonKeyMaterial: the protocol key the history key derives from is not in this build.
+	ReasonKeyMaterial = "key_material_unavailable"
+	// ReasonKeyVerification: no key derived on this computer with this build opens the history. It was made on another
+	// computer, before the motherboard identity changed, or with another protocol key.
+	ReasonKeyVerification = "key_verification_failed"
+	// ReasonFormatUnsupported: the history is of a format or a key derivation version this build does not know.
+	ReasonFormatUnsupported = "history_format_unsupported"
 )
+
+// Key protection of an open history (Status.KeyProtection): a key derived from the machine and the protocol key, version 2,
+// or the DPAPI-sealed key of a history WWlogs v0.7.0 made (KeyProvider.ID).
+const keyProtectionDerived = "machine-derived-v2"
 
 // Status is the Store's state for the UI.
 type Status struct {
@@ -83,7 +97,10 @@ type Options struct {
 	// Build and MasterSHA256 identify the analyser that recorded a session; they are stored with it.
 	Build        *buildinfo.Identity
 	MasterSHA256 string
-	// KeyProvider seals the history key; nil uses the platform's (DPAPI for the current user on Windows).
+	// KeyInputs supply what the key of a history derives from; zero uses this computer and this build (keysource.go).
+	KeyInputs KeyInputs
+	// KeyProvider unseals the key of a history WWlogs v0.7.0 or earlier made; nil uses the platform's (DPAPI for the current
+	// user on Windows). No history is ever given such a key again.
 	KeyProvider KeyProvider
 }
 
@@ -96,9 +113,15 @@ type Store struct {
 	now      func() time.Time
 	build    buildinfo.Identity
 	master   string
+	inputs   KeyInputs
 	provider KeyProvider
-	// key is the unsealed database key, kept for the connections the pool opens; Close clears it.
-	key []byte
+	// key is the database key, kept for the connections the pool opens; Close clears it. protection says where it came from.
+	key        []byte
+	protection string
+	// repair is the record to write beside a derived history that was opened without a readable one (keyformat.go);
+	// repairReplace allows it to replace a damaged record.
+	repair        *keyRecord
+	repairReplace bool
 
 	// models caches the analysis models of recently analysed encounters (analysis.go).
 	models modelCache
@@ -126,9 +149,12 @@ func DefaultPath() (string, error) {
 // Open opens or creates the history file at options.Path. It always returns a Store: when the file cannot be recorded into,
 // the Store says why in Status and, where it can, still answers queries. The error describes the same problem.
 func Open(options Options) (*Store, error) {
-	store := &Store{path: options.Path, location: options.Location, now: options.Now, master: options.MasterSHA256, provider: options.KeyProvider}
+	store := &Store{path: options.Path, location: options.Location, now: options.Now, master: options.MasterSHA256, inputs: options.KeyInputs, provider: options.KeyProvider}
 	if store.provider == nil {
 		store.provider = defaultKeyProvider()
+	}
+	if store.inputs.zero() {
+		store.inputs = platformKeyInputs
 	}
 	store.status.LatestSchemaVersion = schemaVersion
 	if store.location == nil {
@@ -156,7 +182,8 @@ func (s *Store) setStatus(state State, reason string) {
 
 // open opens the file for recording, or creates it. A file this build cannot use as its history is never modified: a
 // plaintext SQLite file (the history is never written unencrypted), a file of another application or of another layout, a
-// file whose key is missing or does not open it, and a file another WWlogs records into, which is opened read-only.
+// file no key of this computer and build opens, and a file another WWlogs records into, which is opened read-only. The key
+// is proven against the file before SQLite sees it (unlock).
 func (s *Store) open() error {
 	if s.path == "" {
 		s.setStatus(StateUnavailable, ReasonOpenFailed)
@@ -191,15 +218,8 @@ func (s *Store) open() error {
 		s.setStatus(StateUnavailable, ReasonNotHistory)
 		return errors.New("the file is an unencrypted SQLite file, not a WWlogs history")
 	}
-	if err := s.unlockKey(kind != fileOpaque); err != nil {
+	if err := s.unlock(kind, false); err != nil {
 		return err
-	}
-	if kind == fileOpaque {
-		// An existing file is opened only with a key the preflight showed to be its own: SQLite never sees another key, so
-		// it can never drop the file's write-ahead log or journal for being unreadable.
-		if err := s.verifyKey(true); err != nil {
-			return err
-		}
 	}
 	db, err := openEncrypted(s.path, s.key, false)
 	if err != nil {
@@ -217,7 +237,7 @@ func (s *Store) open() error {
 		s.setStatus(StateUnavailable, ReasonOpenFailed)
 		return err
 	}
-	s.status.Encrypted, s.status.Encryption, s.status.KeyProtection = true, encryptionName, s.provider.ID()
+	s.status.Encrypted, s.status.Encryption, s.status.KeyProtection = true, encryptionName, s.protection
 	if identity.empty() {
 		if err := s.create(ctx); err != nil {
 			s.setStatus(StateUnavailable, ReasonOpenFailed)
@@ -239,6 +259,12 @@ func (s *Store) open() error {
 	if err := s.recover(ctx); err != nil {
 		s.setStatus(StateUnavailable, ReasonOpenFailed)
 		return err
+	}
+	if s.repair != nil {
+		// The history opened without a readable record of its key; it gets one again. A failure only means the next open
+		// finds its key the same way.
+		_ = writeKeyRecord(s.path, *s.repair, s.repairReplace)
+		s.repair = nil
 	}
 	s.setStatus(StateReady, "")
 	return nil
@@ -263,48 +289,6 @@ func (s *Store) create(ctx context.Context) error {
 	return nil
 }
 
-// verifyKey runs the preflight with the unsealed key and turns any outcome but ready into the store's status. Nothing is
-// open yet, so a refusal leaves every file as it was.
-func (s *Store) verifyKey(withLogs bool) error {
-	outcome, err := preflight(s.path, s.key, withLogs)
-	switch {
-	case err != nil:
-		s.setStatus(StateUnavailable, ReasonOpenFailed)
-		return fmt.Errorf("check history key: %w", err)
-	case outcome == preflightKeyMismatch:
-		s.setStatus(StateUnavailable, ReasonKeyMismatch)
-		return errors.New("the history key does not decrypt the history file")
-	case outcome == preflightWALDamaged:
-		s.setStatus(StateUnavailable, ReasonWALIntegrity)
-		return errors.New("the write-ahead log beside the history does not decrypt with the history key")
-	case outcome == preflightJournalDamaged:
-		s.setStatus(StateUnavailable, ReasonCorrupt)
-		return errors.New("the rollback journal beside the history does not decrypt with the history key")
-	}
-	return nil
-}
-
-// unlockKey unseals the history key, creating one only when allowed: never for an encrypted file that lost its key file.
-func (s *Store) unlockKey(create bool) error {
-	key, err := loadKey(s.path, s.provider, create)
-	switch {
-	case errors.Is(err, errKeyMissing):
-		s.setStatus(StateUnavailable, ReasonKeyMissing)
-		return err
-	case err != nil:
-		s.setStatus(StateUnavailable, ReasonKeyUnavailable)
-		return err
-	}
-	s.key = key
-	return nil
-}
-
-// readOnlyPreflightAttempts and readOnlyPreflightPause bound how often a read-only open reads the first sector again.
-const (
-	readOnlyPreflightAttempts = 3
-	readOnlyPreflightPause    = 50 * time.Millisecond
-)
-
 // openReadOnly opens the history another process records into, for queries only.
 func (s *Store) openReadOnly() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -318,28 +302,11 @@ func (s *Store) openReadOnly() error {
 		s.setStatus(StateUnavailable, ReasonNotHistory)
 		return errors.New("the file is an unencrypted SQLite file, not a WWlogs history")
 	}
-	key, err := loadKey(s.path, s.provider, false)
-	if err != nil {
+	if err := s.unlock(kind, true); err != nil {
 		s.setStatus(StateUnavailable, ReasonLocked)
 		return errors.Join(err, errors.New("the history file cannot be read"))
 	}
-	s.key = key
-	if kind == fileOpaque {
-		// The recording process owns the logs; a read-only connection never discards them, so only the database's own
-		// header is checked. That process may rewrite the first sector while it is read, so a mismatch is read again.
-		outcome := preflightKeyMismatch
-		for attempt := 0; attempt < readOnlyPreflightAttempts && err == nil && outcome != preflightReady; attempt++ {
-			if attempt > 0 {
-				time.Sleep(readOnlyPreflightPause)
-			}
-			outcome, err = preflight(s.path, key, false)
-		}
-		if err != nil || outcome != preflightReady {
-			s.setStatus(StateUnavailable, ReasonLocked)
-			return errors.Join(err, errors.New("the history key does not decrypt the history file"))
-		}
-	}
-	db, err := openEncrypted(s.path, key, true)
+	db, err := openEncrypted(s.path, s.key, true)
 	if err != nil {
 		s.setStatus(StateUnavailable, ReasonLocked)
 		return fmt.Errorf("open history read-only: %w", err)
@@ -355,7 +322,7 @@ func (s *Store) openReadOnly() error {
 		return errors.Join(err, errors.New("the history file cannot be read"))
 	}
 	s.status.SchemaVersion = identity.version
-	s.status.Encrypted, s.status.Encryption, s.status.KeyProtection = true, encryptionName, s.provider.ID()
+	s.status.Encrypted, s.status.Encryption, s.status.KeyProtection = true, encryptionName, s.protection
 	s.setStatus(StateReadOnly, ReasonLocked)
 	return errLocked
 }

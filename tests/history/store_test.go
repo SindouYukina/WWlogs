@@ -129,7 +129,7 @@ var liveStart = SessionStart{Source: SourceLive}
 func TestOpenCreatesLatestSchema(t *testing.T) {
 	store := openTestStore(t, testPath(t), nil)
 	status := store.Status()
-	if status.State != StateReady || status.SchemaVersion != schemaVersion || !status.Encrypted || status.Encryption != "aes-256-xts" || status.KeyProtection != "dpapi-user" {
+	if status.State != StateReady || status.SchemaVersion != schemaVersion || !status.Encrypted || status.Encryption != "aes-256-xts" || status.KeyProtection != keyProtectionDerived {
 		t.Fatalf("status = %+v", status)
 	}
 	var mode string
@@ -772,8 +772,10 @@ func TestUnencryptedHistoryIsNotTouched(t *testing.T) {
 	if fileDigest(t, path) != before {
 		t.Fatal("a plaintext file was modified")
 	}
-	if _, err := os.Stat(path + ".key"); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("a key was made for a plaintext file: %v", err)
+	for _, made := range []string{keyPath(path), keyRecordPath(path)} {
+		if _, err := os.Stat(made); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("%s was made for a plaintext file: %v", filepath.Base(made), err)
+		}
 	}
 }
 
