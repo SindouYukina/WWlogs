@@ -15,7 +15,7 @@
   "emptyDay": "这一天没有记录到战斗。",
   "emptyYear": "{{year}} 年没有记录到战斗。",
   "emptyHistory": "目前还没有战斗历史。开始抓包并进行战斗后，每一场结束的战斗都会出现在这里。",
-  "localOnly": "战斗历史只保存在这台电脑上，且此文件未加密。",
+  "localOnly": "战斗历史只保存在这台电脑上。",
   "loadFailed": "无法读取战斗历史。",
   "recovered": "之前运行时未结束的 {{n}} 场战斗已标记为未完成。",
   "columns": {
@@ -98,7 +98,6 @@
     "rebuilt": "已建立新的战斗记录。",
     "rebuildFailed": "无法重新建立战斗记录，现有记录保持原样。"
   },
-  "localEncrypted": "战斗历史只保存在这台电脑上，并使用 Windows 为你的用户账户保护的密钥加密。",
   "zoneNote": "日期与时间按这台电脑当前的时区显示：{{zone}}（{{offset}}）。",
   "zoneLocal": "Windows 时区",
   "zoneFallback": "无法载入当前时区的完整规则，因此改用 WWlogs 启动时从 Windows 读取的时区。",

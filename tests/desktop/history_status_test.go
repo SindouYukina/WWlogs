@@ -39,7 +39,7 @@ func TestHistoryIndicatorStates(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			got := historyIndicatorOf(test.enabled, test.store, test.running, test.begin, test.journal, test.health)
-			if got.State != test.want || got.Reason != test.reason || got.Enabled != test.enabled || got.Encrypted != test.store.Encrypted {
+			if got.State != test.want || got.Reason != test.reason || got.Enabled != test.enabled {
 				t.Fatalf("indicator = %+v, want %s/%s", got, test.want, test.reason)
 			}
 			if test.running && got.Lost != test.health.Lost {

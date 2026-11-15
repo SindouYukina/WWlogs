@@ -50,9 +50,6 @@ type historyIndicator struct {
 	// so the encounters they belong to are stored as incomplete.
 	Capturing bool   `json:"capturing"`
 	Lost      uint64 `json:"lost,omitempty"`
-	// Encrypted and KeyProtection describe the open file.
-	Encrypted     bool   `json:"encrypted"`
-	KeyProtection string `json:"keyProtection,omitempty"`
 	// Rebuildable says the unavailable history may be replaced by a new one at the user's request (history.Status).
 	Rebuildable bool `json:"rebuildable,omitempty"`
 }
@@ -85,8 +82,7 @@ func (t *recorderTracker) health() history.RecorderHealth {
 // historyIndicatorOf decides the indicator. A store problem outranks the setting, which outranks the capture's state. begin is
 // how the running capture's history began (service.Status.History).
 func historyIndicatorOf(enabled bool, store history.Status, running bool, begin string, journal capture.HistoryRecordingState, health history.RecorderHealth) historyIndicator {
-	indicator := historyIndicator{Enabled: enabled, Capturing: running, Encrypted: store.Encrypted, KeyProtection: store.KeyProtection,
-		Rebuildable: store.State == history.StateUnavailable && store.Rebuildable}
+	indicator := historyIndicator{Enabled: enabled, Capturing: running, Rebuildable: store.State == history.StateUnavailable && store.Rebuildable}
 	if running {
 		indicator.Lost = health.Lost
 	}

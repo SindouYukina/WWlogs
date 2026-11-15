@@ -75,8 +75,9 @@ function GeneralPage({ controller }: { controller: SettingsController }) {
 }
 
 /**
- * Combat History: the recording switch, what the history is doing now, how it is stored, and clearing it. The state and
- * every reason come from the host's indicator.
+ * Combat History: the recording switch, what the history is doing now, and clearing it, or, when it cannot be opened, the
+ * recovery prompt. The state comes from the host's indicator. How the history is stored is WWlogs' own concern and is not a
+ * setting.
  */
 function HistoryPage({ controller }: { controller: SettingsController }) {
   const { t } = useTranslation(["settings", "history"])
@@ -103,11 +104,6 @@ function HistoryPage({ controller }: { controller: SettingsController }) {
       <SettingsRow title={t("historySettings.status")} description={text.detail ? h(text.detail) : undefined}><HistoryIndicatorChip indicator={indicator} /></SettingsRow>
       {indicator?.lost ? <p className="ww-settings-notice" data-tone="warn" data-field="history-lost">{h("indicator.lost", { n: indicator.lost })}</p> : null}
       <SettingsRow title={t("historySettings.coverage")} description={t("historySettings.coverageHint")}><span className="ww-history-unknown">{t("historySettings.coverageValue")}</span></SettingsRow>
-    </SettingsSection>
-    <SettingsSection title={t("historySettings.sections.storage")}>
-      <SettingsRow title={t("historySettings.encryption")} description={t(indicator?.encrypted ? "historySettings.encryptedHint" : "historySettings.notEncryptedHint")}>
-        <span data-field="history-encryption" data-encrypted={indicator?.encrypted === true}>{t(indicator?.encrypted ? "historySettings.encrypted" : "historySettings.notEncrypted")}</span>
-      </SettingsRow>
     </SettingsSection>
     <SettingsSection title={t("historySettings.sections.data")}>
       {unavailable && <div className="ww-row-block"><HistoryRecovery rebuildable={indicator?.rebuildable === true} retry={controller.retryHistory} rebuild={controller.rebuildHistory} onRecovered={() => setOutcome(null)} /></div>}

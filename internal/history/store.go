@@ -80,17 +80,18 @@ type Status struct {
 	RecoveredSessions   int `json:"recoveredSessions"`
 	RecoveredEncounters int `json:"recoveredEncounters"`
 	RemovedReplays      int `json:"removedReplays,omitempty"`
-	// Migration says whether this open moved a WWlogs v0.7.0 history to a derived key (migrate.go); internal, never shown.
-	Migration string `json:"migration,omitempty"`
+	// Migration says whether this open moved a WWlogs v0.7.0 history to a derived key (migrate.go).
+	Migration string `json:"-"`
 	// Rebuildable is true when the store is unavailable for a reason only a new, empty history solves, and one can be
 	// created on this computer: the UI may then offer to delete the history and start a new one (Rebuild). A history that is
 	// busy, briefly unreadable or whose key inputs are missing is never offered for deletion.
 	Rebuildable bool `json:"rebuildable,omitempty"`
-	// Encrypted is true when the open file is encrypted at rest with Encryption (aes-256-xts) and a key KeyProtection seals
-	// (dpapi-user).
-	Encrypted     bool   `json:"encrypted"`
-	Encryption    string `json:"encryption,omitempty"`
-	KeyProtection string `json:"keyProtection,omitempty"`
+	// Encrypted is true when the open file is encrypted at rest with Encryption (aes-256-xts) and a key that KeyProtection
+	// names (machine-derived-v2, or dpapi-user for a v0.7.0 history). The encryption is how the history is stored, never a
+	// feature of it: these facts stay in Go for diagnostics and tests and are not sent to the UI.
+	Encrypted     bool   `json:"-"`
+	Encryption    string `json:"-"`
+	KeyProtection string `json:"-"`
 }
 
 // Options configure a Store. Zero values use the running build and the host clock and time zone.

@@ -140,7 +140,6 @@
   "historySettings": {
     "sections": {
       "recording": "기록",
-      "storage": "저장",
       "data": "데이터"
     },
     "recording": "전투 기록 저장",
@@ -149,11 +148,6 @@
     "coverage": "기록되는 내용",
     "coverageHint": "스킬 시전은 기록하지 않습니다: 신뢰할 수 있는 출처가 없습니다.",
     "coverageValue": "전투, 피해와 치유 결과, 효과 수명 주기 변화",
-    "encryption": "암호화",
-    "encrypted": "암호화됨(AES-256-XTS)",
-    "encryptedHint": "키는 Windows(DPAPI)가 사용자 계정별로 보호하며, TPM 하드웨어 보호가 아닙니다. 사용자 권한으로 실행되는 프로그램은 여전히 읽을 수 있습니다.",
-    "notEncrypted": "암호화되지 않음",
-    "notEncryptedHint": "기록 파일이 열려 있지 않거나, 이전 버전의 암호화되지 않은 파일입니다.",
     "clear": "모든 기록 지우기",
     "clearHint": "저장된 모든 전투와 백업 사본을 삭제합니다. 캡처가 기록 중일 때는 사용할 수 없습니다.",
     "clearAction": "기록 지우기",

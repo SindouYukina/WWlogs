@@ -38,10 +38,10 @@ export function useMockSettings(theme: ThemeId, setTheme: (theme: ThemeId) => vo
     historyRecording,
     setHistoryRecording,
     // A mock history that is never written: the Showcase has no history file.
-    history: { state: historyRecording ? "waiting" : "disabled", enabled: historyRecording, capturing: false, encrypted: true, keyProtection: "dpapi-user" },
+    history: { state: historyRecording ? "waiting" : "disabled", enabled: historyRecording, capturing: false },
     clearHistory: () => Promise.resolve({ encounters: 0, spans: 0, compacted: false }),
-    retryHistory: () => Promise.resolve({ status: { state: "ready", schemaVersion: 1, latestSchemaVersion: 1, recoveredSessions: 0, recoveredEncounters: 0, encrypted: true }, open: true }),
-    rebuildHistory: () => Promise.resolve({ status: { state: "ready", schemaVersion: 1, latestSchemaVersion: 1, recoveredSessions: 0, recoveredEncounters: 0, encrypted: true }, open: true }),
+    retryHistory: () => Promise.resolve({ status: { state: "ready", schemaVersion: 1, latestSchemaVersion: 1, recoveredSessions: 0, recoveredEncounters: 0 }, open: true }),
+    rebuildHistory: () => Promise.resolve({ status: { state: "ready", schemaVersion: 1, latestSchemaVersion: 1, recoveredSessions: 0, recoveredEncounters: 0 }, open: true }),
     captureBusy: false,
     environment: "ready",
     checking: false,

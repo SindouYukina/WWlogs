@@ -492,7 +492,7 @@ export function HistoryView({ theme, refreshKey, indicator, intent, onReturn }: 
       {empty ? <p className="ww-history-note" data-field="history-empty">{t("emptyHistory")}</p> : layout.total === 0 && yearView !== null && !unavailable && <p className="ww-history-note">{t("emptyYear", { year: shownYear })}</p>}
       {deleted && <p className="ww-history-note" role="status" data-field="history-deleted">{t("delete.done")}</p>}
       <ZoneNote zone={yearView?.zone} />
-      {status && status.state !== "unavailable" && <p className="ww-history-note" data-field="history-storage" data-encrypted={status.encrypted}>{t(status.encrypted ? "localEncrypted" : "localOnly")}</p>}
+      {status && status.state !== "unavailable" && <p className="ww-history-note" data-field="history-storage">{t("localOnly")}</p>}
     </Card></Reveal>}
     <Reveal index={2}><ContentSwitch contentKey={detail ? `detail-${detail.summary.id}` : comparing ? "compare" : mode === "list" ? "library" : `day-${date ?? ""}`}>
       {detail ? <EncounterDetail detail={detail}

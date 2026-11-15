@@ -110,7 +110,7 @@ test("every history string exists in every bundled language and the namespace is
   for (const locale of manifest.supportedLocales) assert.deepEqual(flatten(read(locale)).sort(), baseline, locale)
   // The view reads these keys; a missing one would show the raw key.
   for (const key of ["unidentified", "incomplete", "state.abandoned", "state.open", "integrity.UNRELIABLE", "outcome.INCOMPLETE", "unavailable.locked_by_other_process", "localOnly",
-    "localEncrypted", "checkpointNote", "columns.version", "versionUnknown", "coverage.combatStored", "coverage.skillCastsNotStored", "delete.confirm", "clear.done"]) {
+    "checkpointNote", "columns.version", "versionUnknown", "coverage.combatStored", "coverage.skillCastsNotStored", "delete.confirm", "clear.done"]) {
     assert.ok(baseline.includes(key), key)
   }
   // Every indicator label and reason the mapping can name exists, for the reasons the host gives each state, and every
@@ -151,7 +151,9 @@ test("every Combat History settings string exists in every bundled language", ()
   const flatten = (value, prefix = "") => Object.entries(value).flatMap(([key, entry]) => typeof entry === "string" ? [prefix + key] : flatten(entry, `${prefix}${key}.`))
   const keys = locale => flatten(read(locale).historySettings).sort()
   const baseline = keys(manifest.fallbackLocale)
-  assert.ok(baseline.includes("clearConfirm") && baseline.includes("encryptedHint") && baseline.includes("recordingHint"))
+  assert.ok(baseline.includes("clearConfirm") && baseline.includes("recordingHint"))
+  // How the history is stored is not a setting: no storage section, no encryption row.
+  assert.ok(!baseline.some(key => key.startsWith("sections.storage") || key.startsWith("encrypt") || key.startsWith("notEncrypt")), baseline.join(","))
   for (const locale of manifest.supportedLocales) {
     assert.deepEqual(keys(locale), baseline, locale)
     assert.ok(read(locale).pages.history, locale)
