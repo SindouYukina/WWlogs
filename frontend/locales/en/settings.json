@@ -149,7 +149,7 @@
     "coverageHint": "Skill casts are not recorded: no reliable source for them exists.",
     "coverageValue": "Encounters, damage and healing results, effect lifecycle changes",
     "clear": "Clear all history",
-    "clearHint": "Deletes every stored encounter and its backup copies. Not available while a capture records.",
+    "clearHint": "Deletes every stored encounter. Not available while a capture records.",
     "clearAction": "Clear history",
     "clearConfirm": "Delete all combat history permanently? This cannot be undone.",
     "clearConfirmAction": "Delete all"

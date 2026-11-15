@@ -64,6 +64,16 @@ test("a capture that began without its history speaks of that capture, not of th
   assert.doesNotMatch(read("en"), /could not be opened/)
 })
 
+// Clear All deletes rows of the history (history.Store.ClearHistory); since the format freeze of 2026-11-13 no backup copy of
+// a history exists, so its description names none.
+test("the Clear All description names no backup copies", () => {
+  const manifest = JSON.parse(readFileSync(new URL("../../frontend/locales/manifest.json", import.meta.url), "utf8"))
+  for (const locale of manifest.supportedLocales) {
+    const settings = JSON.parse(readFileSync(new URL(`../../frontend/locales/${locale}/settings.json`, import.meta.url), "utf8"))
+    assert.doesNotMatch(settings.historySettings.clearHint, /備份|备份|backup|バックアップ|백업|副本|사본|コピー/i, locale)
+  }
+})
+
 // How the History is stored is WWlogs' own concern: no bundled text and no view tells the user about its encryption, its
 // key or the machine it is bound to, and Settings has no storage section for it.
 test("no user-visible text names how the History is stored", () => {
