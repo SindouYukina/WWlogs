@@ -36,8 +36,7 @@ const (
 	// preflightReady: the database and its logs decrypt to valid headers with the key; SQLite may open them with it.
 	preflightReady preflightOutcome = "ready"
 	// preflightKeyMismatch: the first sector of the database does not decrypt to an SQLite header with the key. Either the
-	// key is not the file's, or the first sector is damaged; from the file alone the two cannot be told apart, and the key is
-	// the conservative explanation.
+	// key is not the file's, or the first sector is damaged; keyDecryptsStructure tells the two apart once no key opens it.
 	preflightKeyMismatch preflightOutcome = "key_mismatch"
 	// preflightWALDamaged: the database decrypts with the key but its write-ahead log header does not. SQLite would treat the
 	// log as empty and drop it, so the history is not opened and the log is kept.
@@ -171,6 +170,111 @@ func walHeader(header []byte, pageSize uint32) bool {
 	}
 	s0, s1 := walChecksum(header[:24], magic == walMagicBigEndian)
 	return s0 == binary.BigEndian.Uint32(header[24:28]) && s1 == binary.BigEndian.Uint32(header[28:32])
+}
+
+// probePages bounds how many pages of each possible page size keyDecryptsStructure decrypts.
+const probePages = 64
+
+// keyDecryptsStructure reports whether key decrypts pages of the database at path, after its first one, to SQLite b-tree
+// pages. A database whose first sector does not decrypt is damaged when its key decrypts the rest; a database made with
+// another key decrypts to noise everywhere. Only the database itself counts: a log beside it may belong to another file (a
+// database copied over this computer's history leaves this computer's log beside it). The page size is in the unreadable
+// header, so each possible one is tried on at most probePages pages after the first. Random bytes pass the b-tree page
+// checks with a probability far below one in a million per page. It reads, never writes.
+func keyDecryptsStructure(path string, key []byte) (bool, error) {
+	cipher, err := xts.NewCipher(aes.NewCipher, key)
+	if err != nil {
+		return false, fmt.Errorf("history key: %w", err)
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return false, err
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return false, err
+	}
+	size := info.Size()
+	sector := make([]byte, sectorSize)
+	defer clear(sector)
+	for pageSize := int64(512); pageSize <= 65536; pageSize *= 2 {
+		if size < 2*pageSize || size%pageSize != 0 {
+			continue
+		}
+		pages := size / pageSize
+		for page := int64(2); page <= pages && page < 2+probePages; page++ {
+			offset := (page - 1) * pageSize
+			if _, err := file.ReadAt(sector, offset); err != nil {
+				return false, err
+			}
+			cipher.Decrypt(sector, sector, uint64(offset/sectorSize))
+			if btreePageHeader(sector, uint32(pageSize), uint32(min(pages, 1<<31))) {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
+}
+
+// btreePageHeader checks the first sector of a page as the header of an SQLite b-tree page
+// (https://sqlite.org/fileformat.html#b_tree_pages): its page type, the offsets of its first freeblock and of its cell
+// content area, its cell count, its fragmented bytes, the right-most child of an interior page, and every cell pointer in the
+// sector, which must point into the cell content area.
+func btreePageHeader(data []byte, pageSize, pages uint32) bool {
+	header := uint32(8)
+	switch data[0] {
+	case 0x02, 0x05:
+		header = 12
+	case 0x0a, 0x0d:
+	default:
+		return false
+	}
+	freeblock := uint32(binary.BigEndian.Uint16(data[1:3]))
+	cells := uint32(binary.BigEndian.Uint16(data[3:5]))
+	content := uint32(binary.BigEndian.Uint16(data[5:7]))
+	if content == 0 {
+		content = 65536
+	}
+	switch {
+	case freeblock != 0 && (freeblock < header || freeblock >= pageSize):
+		return false
+	case content > pageSize || content < header+2*cells:
+		return false
+	case data[7] > 60:
+		return false
+	}
+	if header == 12 {
+		if child := binary.BigEndian.Uint32(data[8:12]); child < 2 || child > pages {
+			return false
+		}
+	}
+	for i := uint32(0); i < cells && header+2*i+2 <= uint32(len(data)); i++ {
+		if pointer := uint32(binary.BigEndian.Uint16(data[header+2*i:])); pointer < content || pointer >= pageSize {
+			return false
+		}
+	}
+	return true
+}
+
+// orphanedLogs reports whether a write-ahead log or a rollback journal with content sits beside a history file that is
+// missing or empty. SQLite deletes such a log when it opens a database without pages, so creating a new history there would
+// delete the log of a history that was moved away or deleted. The log is kept for the history it was written for; only a
+// rebuild the user confirms removes it.
+func orphanedLogs(path string) (bool, error) {
+	for _, log := range []string{path + "-wal", path + "-journal"} {
+		info, err := os.Stat(log)
+		switch {
+		case errors.Is(err, os.ErrNotExist):
+			continue
+		case err != nil:
+			return false, fmt.Errorf("inspect history log: %w", err)
+		}
+		if info.Size() > 0 {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // walChecksum is the SQLite write-ahead log checksum (https://sqlite.org/fileformat.html#checksum_algorithm) of data, a
