@@ -149,7 +149,7 @@
     "coverageHint": "不记录技能释放：目前没有可靠的来源。",
     "coverageValue": "战斗、伤害与治疗结果、效果生命周期变化",
     "clear": "清除全部历史",
-    "clearHint": "删除所有保存的战斗及其备份副本。采集正在记录时无法使用。",
+    "clearHint": "删除所有保存的战斗。采集正在记录时无法使用。",
     "clearAction": "清除历史",
     "clearConfirm": "要永久删除全部战斗历史吗？此操作无法撤销。",
     "clearConfirmAction": "全部删除"

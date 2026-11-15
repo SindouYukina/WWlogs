@@ -149,7 +149,7 @@
     "coverageHint": "不記錄技能施放：目前沒有可靠的來源。",
     "coverageValue": "戰鬥、傷害與治療結果、效果生命週期變化",
     "clear": "清除全部歷史",
-    "clearHint": "刪除所有保存的戰鬥及其備份副本。擷取正在記錄時無法使用。",
+    "clearHint": "刪除所有保存的戰鬥。擷取正在記錄時無法使用。",
     "clearAction": "清除歷史",
     "clearConfirm": "要永久刪除全部戰鬥歷史嗎？此操作無法復原。",
     "clearConfirmAction": "全部刪除"
