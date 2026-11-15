@@ -87,6 +87,10 @@
     "key_unavailable": "Windows가 이 사용자의 기록 키를 풀지 못했습니다. 파일은 변경되지 않았고 기록도 저장되지 않습니다.",
     "key_mismatch": "기록 키로 이 기록 파일을 열 수 없습니다. 파일은 변경되지 않았고 기록도 저장되지 않습니다.",
     "wal_integrity_failure": "기록 파일의 최근 변경 내용을 확인할 수 없어 그대로 두었습니다. 기록이 저장되지 않습니다.",
+    "hardware_identity_unavailable": "지금은 기록을 열 수 없습니다. 파일은 변경되지 않았고 기록도 저장되지 않습니다.",
+    "key_material_unavailable": "지금은 기록을 열 수 없습니다. 파일은 변경되지 않았고 기록도 저장되지 않습니다.",
+    "key_verification_failed": "지금은 기록을 열 수 없습니다. 파일은 변경되지 않았고 기록도 저장되지 않습니다.",
+    "history_format_unsupported": "지금은 기록을 열 수 없습니다. 파일은 변경되지 않았고 기록도 저장되지 않습니다.",
     "duplicate_source": "이 캡처 파일은 이미 기록에 있으므로 다시 저장하지 않습니다."
   },
   "localEncrypted": "전투 기록은 이 PC에만 저장되며, Windows가 사용자 계정별로 보호하는 키로 암호화됩니다.",

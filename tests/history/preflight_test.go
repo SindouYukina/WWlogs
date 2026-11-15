@@ -36,14 +36,14 @@ func recordEncounters(t *testing.T, store *Store, start time.Time, first, n int)
 // historyFileSuffixes are the files of a history at a path: the database, its logs and its key file.
 var historyFileSuffixes = []string{"", "-wal", "-shm", "-journal"}
 
-// copyHistoryFiles copies the database, its logs and its key file from the history path from to the history path to, while
-// the store that writes from may still hold them open.
+// copyHistoryFiles copies the database, its logs, its key file and its key record from the history path from to the history
+// path to, while the store that writes from may still hold them open.
 func copyHistoryFiles(t *testing.T, from, to string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(to), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	pairs := [][2]string{{keyPath(from), keyPath(to)}}
+	pairs := [][2]string{{keyPath(from), keyPath(to)}, {keyRecordPath(from), keyRecordPath(to)}}
 	for _, suffix := range historyFileSuffixes {
 		pairs = append(pairs, [2]string{from + suffix, to + suffix})
 	}
@@ -61,12 +61,18 @@ func copyHistoryFiles(t *testing.T, from, to string) {
 	}
 }
 
-// logFixture returns a copy of a history whose first checkpointed encounters are in the database file and whose next inLog
-// encounters were committed only to its write-ahead log. The copy is taken while the store that wrote it is still open.
+// logFixture returns a copy of a v0.7.0 history whose first checkpointed encounters are in the database file and whose next
+// inLog encounters were committed only to its write-ahead log. The copy is taken while the store that wrote it is still open.
 func logFixture(t *testing.T, checkpointed, inLog int) string {
 	t.Helper()
 	path := testPath(t)
-	store := openTestStore(t, path, nil)
+	return logFixtureOf(t, legacyStore(t, path), checkpointed, inLog)
+}
+
+// logFixtureOf records into store as logFixture does and returns the copy.
+func logFixtureOf(t *testing.T, store *Store, checkpointed, inLog int) string {
+	t.Helper()
+	path := store.Path()
 	start := time.Date(2026, 11, 12, 1, 0, 0, 0, time.UTC)
 	if checkpointed > 0 {
 		recordEncounters(t, store, start, 0, checkpointed)
@@ -191,7 +197,7 @@ func TestWrongKeyNeverDiscardsTheWriteAheadLog(t *testing.T) {
 	const checkpointed, inLog = 100, 40
 	original := logFixture(t, checkpointed, inLog)
 	ownKey := readFile(t, keyPath(original))
-	other, otherPath := recordedStore(t)
+	other, otherPath := recordedLegacyStore(t)
 	if err := other.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -217,7 +223,7 @@ func TestWrongKeyNeverDiscardsTheWriteAheadLog(t *testing.T) {
 	naive := filepath.Join(t.TempDir(), "naive", "combat-history.db")
 	copyHistoryFiles(t, original, naive)
 	writeFile(t, keyPath(naive), foreignKey)
-	wrongKey, err := loadKey(naive, defaultKeyProvider(), false)
+	wrongKey, err := loadKey(naive, defaultKeyProvider())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -277,7 +283,7 @@ func TestReadableHistoriesPassThePreflight(t *testing.T) {
 
 func mustLoadKey(t *testing.T, path string) []byte {
 	t.Helper()
-	key, err := loadKey(path, defaultKeyProvider(), false)
+	key, err := loadKey(path, defaultKeyProvider())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -354,7 +360,7 @@ func TestUnreadableHistoriesAreLeftAsTheyWere(t *testing.T) {
 			damage: func(t *testing.T, path string) {},
 		},
 		{
-			name: "missing key file", reason: ReasonKeyMissing,
+			name: "missing key file", reason: ReasonKeyVerification,
 			damage: func(t *testing.T, path string) {
 				if err := os.Remove(keyPath(path)); err != nil {
 					t.Fatal(err)

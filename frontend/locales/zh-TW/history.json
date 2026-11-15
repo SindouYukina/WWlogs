@@ -87,6 +87,10 @@
     "key_unavailable": "Windows 無法為這個使用者解開歷史金鑰。檔案未被變更，也不會記錄歷史。",
     "key_mismatch": "歷史金鑰無法開啟這個歷史檔案。檔案未被變更，也不會記錄歷史。",
     "wal_integrity_failure": "無法確認歷史檔案最近的變更，已保持原樣，不會記錄歷史。",
+    "hardware_identity_unavailable": "目前無法開啟戰鬥歷史。檔案未被變更，也不會記錄歷史。",
+    "key_material_unavailable": "目前無法開啟戰鬥歷史。檔案未被變更，也不會記錄歷史。",
+    "key_verification_failed": "目前無法開啟戰鬥歷史。檔案未被變更，也不會記錄歷史。",
+    "history_format_unsupported": "目前無法開啟戰鬥歷史。檔案未被變更，也不會記錄歷史。",
     "duplicate_source": "這個擷取檔案已在歷史中，因此不會再次保存。"
   },
   "localEncrypted": "戰鬥歷史只保存在這台電腦上，並以 Windows 為你的使用者帳戶保護的金鑰加密。",
