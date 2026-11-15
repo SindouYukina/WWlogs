@@ -80,6 +80,8 @@ type Status struct {
 	RecoveredSessions   int `json:"recoveredSessions"`
 	RecoveredEncounters int `json:"recoveredEncounters"`
 	RemovedReplays      int `json:"removedReplays,omitempty"`
+	// Migration says whether this open moved a WWlogs v0.7.0 history to a derived key (migrate.go); internal, never shown.
+	Migration string `json:"migration,omitempty"`
 	// Encrypted is true when the open file is encrypted at rest with Encryption (aes-256-xts) and a key KeyProtection seals
 	// (dpapi-user).
 	Encrypted     bool   `json:"encrypted"`
@@ -122,6 +124,8 @@ type Store struct {
 	// repairReplace allows it to replace a damaged record.
 	repair        *keyRecord
 	repairReplace bool
+	// finishMigration removes what a migration left once the moved history is open (migrate.go).
+	finishMigration bool
 
 	// models caches the analysis models of recently analysed encounters (analysis.go).
 	models modelCache
@@ -209,6 +213,9 @@ func (s *Store) open() error {
 	s.lock = lock
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
+	if err := s.resumeMigration(); err != nil {
+		return err
+	}
 	kind, err := inspectFile(s.path)
 	if err != nil {
 		s.setStatus(StateUnavailable, ReasonOpenFailed)
@@ -250,8 +257,14 @@ func (s *Store) open() error {
 	} else if err := quickCheck(ctx, db); err != nil {
 		s.setStatus(StateUnavailable, ReasonCorrupt)
 		return err
+	} else if s.protection != keyProtectionDerived {
+		// A WWlogs v0.7.0 history moves to a derived key now; s.db is then the moved history.
+		if err := s.migrateLegacy(ctx); err != nil {
+			return err
+		}
+		s.status.KeyProtection = s.protection
 	}
-	if _, err := db.ExecContext(ctx, "PRAGMA journal_mode=WAL"); err != nil {
+	if _, err := s.db.ExecContext(ctx, "PRAGMA journal_mode=WAL"); err != nil {
 		s.setStatus(StateUnavailable, ReasonOpenFailed)
 		return fmt.Errorf("enable history write-ahead log: %w", err)
 	}
@@ -265,6 +278,10 @@ func (s *Store) open() error {
 		// finds its key the same way.
 		_ = writeKeyRecord(s.path, *s.repair, s.repairReplace)
 		s.repair = nil
+	}
+	if s.finishMigration {
+		s.cleanUpMigration()
+		s.finishMigration = false
 	}
 	s.setStatus(StateReady, "")
 	return nil
@@ -301,6 +318,11 @@ func (s *Store) openReadOnly() error {
 	if kind == filePlain {
 		s.setStatus(StateUnavailable, ReasonNotHistory)
 		return errors.New("the file is an unencrypted SQLite file, not a WWlogs history")
+	}
+	// The recording process may be moving a v0.7.0 history to a derived key: its files are not read until it has.
+	if moving, _ := fileExists(s.migrationPath()); moving {
+		s.setStatus(StateUnavailable, ReasonLocked)
+		return errors.New("the process that records into the history is moving it to another key")
 	}
 	if err := s.unlock(kind, true); err != nil {
 		s.setStatus(StateUnavailable, ReasonLocked)

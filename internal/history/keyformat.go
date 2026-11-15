@@ -115,21 +115,29 @@ func newKeyRecord(source string, check []byte, keyID string) keyRecord {
 	return keyRecord{Format: keyRecordFormat, KDFVersion: derivationVersion, Source: source, RSAKeyID: keyID, KeyCheck: hex.EncodeToString(check)}
 }
 
-// writeKeyRecord writes the record atomically: a temporary file, flushed, then moved into place with write-through. It never
-// replaces a record unless replace is set, which only a record that describes no readable history allows.
+// writeKeyRecord writes the record atomically. It never replaces a record unless replace is set, which only a record that
+// describes no readable history allows.
 func writeKeyRecord(historyPath string, record keyRecord, replace bool) error {
 	data, err := json.Marshal(record)
 	if err != nil {
 		return err
 	}
-	path := keyRecordPath(historyPath)
+	if err := writeFileDurably(keyRecordPath(historyPath), append(data, '\n'), replace); err != nil {
+		return fmt.Errorf("write history format: %w", err)
+	}
+	return nil
+}
+
+// writeFileDurably writes data to path atomically: a temporary file, flushed, then moved into place with write-through. It
+// replaces an existing file only when replace is set.
+func writeFileDurably(path string, data []byte, replace bool) error {
 	temporary := path + ".tmp"
 	_ = os.Remove(temporary)
 	out, err := os.OpenFile(temporary, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
-		return fmt.Errorf("write history format: %w", err)
+		return err
 	}
-	_, err = out.Write(append(data, '\n'))
+	_, err = out.Write(data)
 	if err == nil {
 		err = out.Sync()
 	}
@@ -141,7 +149,6 @@ func writeKeyRecord(historyPath string, record keyRecord, replace bool) error {
 	}
 	if err != nil {
 		os.Remove(temporary)
-		return fmt.Errorf("write history format: %w", err)
 	}
-	return nil
+	return err
 }
