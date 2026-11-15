@@ -115,7 +115,7 @@ test("every history string exists in every bundled language and the namespace is
   }
   // Every indicator label and reason the mapping can name exists, and every incomplete reason the host stores.
   const states = ["disabled", "waiting", "recording", "starting", "unavailable", "read_only", "write_failed", "not_recorded"]
-  const reasons = ["newer_schema", "locked_by_other_process", "not_a_history_file", "integrity_check_failed", "open_failed", "storage_stopped", "key_missing", "key_unavailable", "key_mismatch", "duplicate_source"]
+  const reasons = ["newer_schema", "locked_by_other_process", "not_a_history_file", "integrity_check_failed", "open_failed", "storage_stopped", "key_missing", "key_unavailable", "key_mismatch", "wal_integrity_failure", "duplicate_source"]
   for (const state of states) for (const reason of reasons) for (const capturing of [false, true]) {
     const text = indicatorText({ state, reason, enabled: true, capturing, encrypted: true })
     assert.ok(baseline.includes(text.key), text.key)
