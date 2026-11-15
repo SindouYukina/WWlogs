@@ -320,9 +320,19 @@ func TestLegacyMigrationCollector(t *testing.T) {
 		return info.Size()
 	}
 	sizes := map[string]int64{"db": fileSize(path), "wal": fileSize(path + "-wal")}
+	// Each step's share of the move, from the steps migrateLegacy and cleanUpMigration name.
+	steps := map[string]string{}
+	saved := migrationStep
+	stepStarted := time.Now()
+	migrationStep = func(step string) error {
+		steps[step] = time.Since(stepStarted).Round(time.Millisecond).String()
+		stepStarted = time.Now()
+		return nil
+	}
 	started := time.Now()
 	store, err := openWith(path, KeyInputs{})
 	elapsed := time.Since(started)
+	migrationStep = saved
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -336,7 +346,7 @@ func TestLegacyMigrationCollector(t *testing.T) {
 	for name, table := range want.tables {
 		rows[name] = table.rows
 	}
-	summary := map[string]any{"tables": len(want.tables), "rows": rows, "legacyBytes": sizes, "migratedBytes": fileSize(path), "openWithMigration": elapsed.String(), "viewsEqual": true}
+	summary := map[string]any{"tables": len(want.tables), "rows": rows, "legacyBytes": sizes, "migratedBytes": fileSize(path), "openWithMigration": elapsed.String(), "steps": steps, "viewsEqual": true}
 	if err := os.MkdirAll(out, 0o700); err != nil {
 		t.Fatal(err)
 	}
