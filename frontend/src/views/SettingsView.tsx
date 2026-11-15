@@ -10,6 +10,7 @@ import { defaultUpdateInterval, normalizeUpdateInterval, updateIntervals, type O
 import { useThemeDescriptions } from "@/lib/useListeningLabels"
 import { indicatorText, type HistoryChange } from "@/lib/history"
 import { HistoryIndicatorChip } from "./HistoryView"
+import { HistoryRecovery } from "./HistoryRecovery"
 import { LicensesPage } from "./LicensesPage"
 
 type Page = "general" | "history" | "appearance" | "combatOverlay" | "effectsOverlay" | "about" | "licenses"
@@ -93,6 +94,7 @@ function HistoryPage({ controller }: { controller: SettingsController }) {
     }).catch(() => setOutcome({ key: "delete.failed", tone: "critical" })).finally(() => { setBusy(false); setAsking(false) })
   }
   const writable = indicator !== undefined && indicator.state !== "unavailable" && indicator.state !== "read_only"
+  const unavailable = indicator?.state === "unavailable"
   return <>
     <SettingsSection title={t("historySettings.sections.recording")}>
       <SettingsRow title={t("historySettings.recording")} description={t("historySettings.recordingHint")}>
@@ -108,14 +110,15 @@ function HistoryPage({ controller }: { controller: SettingsController }) {
       </SettingsRow>
     </SettingsSection>
     <SettingsSection title={t("historySettings.sections.data")}>
-      <SettingsRow title={t("historySettings.clear")} description={t("historySettings.clearHint")}>
+      {unavailable && <div className="ww-row-block"><HistoryRecovery rebuildable={indicator?.rebuildable === true} retry={controller.retryHistory} rebuild={controller.rebuildHistory} onRecovered={() => setOutcome(null)} /></div>}
+      {!unavailable && <SettingsRow title={t("historySettings.clear")} description={t("historySettings.clearHint")}>
         {!asking
           ? <Button size="sm" variant="ghost" disabled={!controller.connected || !writable || busy} data-field="history-clear-start" onClick={() => { setOutcome(null); setAsking(true) }}>{t("historySettings.clearAction")}</Button>
           : <span className="ww-row-pair" role="group" aria-label={t("historySettings.clearConfirm")} data-field="history-clear-confirm-group">
             <Button size="sm" variant="danger" disabled={busy} data-field="history-clear-confirm" onClick={clear}>{t("historySettings.clearConfirmAction")}</Button>
             <Button size="sm" disabled={busy} data-field="history-clear-cancel" onClick={() => setAsking(false)}>{h("delete.cancel")}</Button>
           </span>}
-      </SettingsRow>
+      </SettingsRow>}
       {asking && <p className="ww-settings-notice" data-tone="critical" role="alert" data-field="history-clear-warning">{t("historySettings.clearConfirm")}</p>}
       {outcome && <p className="ww-settings-notice" data-tone={outcome.tone} role="status" data-field="history-clear-outcome">{h(outcome.key, { n: outcome.n ?? 0 })}</p>}
     </SettingsSection>

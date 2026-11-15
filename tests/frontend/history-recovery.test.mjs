@@ -1,0 +1,46 @@
+import assert from "node:assert/strict"
+import { readFileSync } from "node:fs"
+import test from "node:test"
+
+// The prompt of a Combat History that cannot be opened (frontend/src/views/HistoryRecovery.tsx) and the views that show it.
+// The host decides whether a history may be rebuilt; the view only offers what it says, and deletes nothing without the
+// second confirmation.
+
+const source = name => readFileSync(new URL(`../../frontend/src/views/${name}`, import.meta.url), "utf8")
+const recovery = source("HistoryRecovery.tsx")
+
+test("the rebuild runs only from the second confirmation, and only when the host offers it", () => {
+  // The host's rebuild is called in one place, run("rebuild"), which only the confirmation's danger button reaches.
+  assert.equal(recovery.match(/\brebuild\(\)/g)?.length, 1)
+  assert.equal(recovery.match(/run\("rebuild"\)/g)?.length, 1)
+  const confirmButton = recovery.slice(recovery.indexOf('data-field="history-recovery-confirm-rebuild"') - 120, recovery.indexOf('data-field="history-recovery-confirm-rebuild"') + 120)
+  assert.match(confirmButton, /variant="danger"[^>]*data-field="history-recovery-confirm-rebuild" onClick=\{\(\) => run\("rebuild"\)\}/)
+  // The first button only opens the confirmation, and exists only when the host says a new history would solve it.
+  assert.match(recovery, /\{rebuildable && <Button [^>]*data-field="history-recovery-rebuild" onClick=\{\(\) => \{ setFailed\(null\); setConfirming\(true\) \}\}>/)
+  // Trying again is always there.
+  assert.match(recovery, /data-field="history-recovery-retry" onClick=\{\(\) => run\("retry"\)\}/)
+})
+
+test("an unreadable history shows the prompt, never a reason or the first-run text", () => {
+  const history = source("HistoryView.tsx")
+  assert.match(history, /const empty = yearView !== null && yearView\.firstYear === 0 && !unavailable/)
+  assert.match(history, /\{unavailable && <Reveal index=\{1\}><Card className="ww-history-recovery-card"><HistoryRecovery rebuildable=\{status\?\.rebuildable === true\}/)
+  // The status line is for a history another WWlogs records into; an unavailable one has none.
+  assert.match(history, /if \(!status \|\| status\.state !== "read_only"\) return null/)
+  const career = source("CareerView.tsx")
+  assert.match(career, /const empty = career !== null && totals\?\.encounters === 0 && !unavailable/)
+  assert.match(career, /<HistoryRecovery rebuildable=\{career\?\.status\.rebuildable === true\}/)
+  const settings = source("SettingsView.tsx")
+  assert.match(settings, /\{unavailable && <div className="ww-row-block"><HistoryRecovery rebuildable=\{indicator\?\.rebuildable === true\} retry=\{controller\.retryHistory\} rebuild=\{controller\.rebuildHistory\}/)
+})
+
+test("the prompt texts exist in every bundled locale and name no cause", () => {
+  const manifest = JSON.parse(readFileSync(new URL("../../frontend/locales/manifest.json", import.meta.url), "utf8"))
+  for (const locale of manifest.supportedLocales) {
+    const texts = JSON.parse(readFileSync(new URL(`../../frontend/locales/${locale}/history.json`, import.meta.url), "utf8"))
+    for (const key of ["title", "body", "bodyRetry", "detail", "retry", "retrying", "retryFailed", "rebuild", "confirmTitle", "confirmBody", "cancel", "confirm", "rebuilding", "rebuilt", "rebuildFailed"]) {
+      assert.equal(typeof texts.recovery[key], "string", `${locale} recovery.${key}`)
+    }
+    assert.deepEqual(Object.keys(texts.unavailable).sort(), ["duplicate_source", "locked_by_other_process", "open_failed", "storage_stopped"], locale)
+  }
+})

@@ -212,6 +212,15 @@ body[data-view="overlay"][data-editing="true"] { --wails-draggable: drag; }
 .ww-history-confirm { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--ww-space-2) var(--ww-space-3); max-width: 100%; padding: var(--ww-space-2) var(--ww-space-3); border: 1px solid var(--ww-critical); border-radius: var(--ww-radius-md); background: var(--ww-critical-soft); }
 .ww-history-confirm p { flex: 1 1 280px; min-width: 0; margin: 0; font-size: var(--ww-text-sm); }
 .ww-history-confirm-actions { display: flex; gap: var(--ww-space-2); }
+/* A history that cannot be opened: one neutral prompt with its actions; the confirmation reuses .ww-history-confirm. */
+.ww-history-recovery-card { padding: var(--ww-space-3) var(--ww-space-4); border-color: var(--ww-critical); }
+.ww-history-recovery { display: flex; flex-direction: column; gap: var(--ww-space-3); }
+.ww-history-recovery-head { display: flex; align-items: flex-start; gap: var(--ww-space-2); color: var(--ww-critical); }
+.ww-history-recovery-text { flex: 1 1 280px; min-width: 0; color: var(--ww-text); }
+.ww-history-recovery-text h3, .ww-history-recovery-text h4 { margin: 0 0 var(--ww-space-1); font-size: var(--ww-text-md); font-weight: var(--ww-weight-semibold); }
+.ww-history-recovery-text p { margin: 0; font-size: var(--ww-text-sm); color: var(--ww-text-2); }
+.ww-history-recovery-actions { display: flex; flex-wrap: wrap; gap: var(--ww-space-2); }
+.ww-history-recovery > .ww-history-confirm { justify-content: space-between; }
 
 /* ------------------------------ Career Overview ------------------------------ */
 /* The range presets need their full width; the selects keep the filter grid's column. */

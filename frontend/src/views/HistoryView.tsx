@@ -17,6 +17,7 @@ import { HistoryCompare } from "./HistoryCompare"
 import { compareLimit, toggleCompared, type ComparedEntry } from "@/lib/history-compare"
 import { defaultLibraryQuery, type HistoryIntent, type HistoryLibraryQuery } from "@/lib/history-library"
 import { useSettledKey } from "@/lib/useSettledKey"
+import { HistoryRecovery, type RecoveryKind } from "./HistoryRecovery"
 
 export interface HistoryViewProps {
   theme: ThemeId
@@ -331,11 +332,13 @@ function EncounterDetail({ detail, backLabel, onBack, onDeleted, timelineMode, s
   </div>
 }
 
-/** The reason a history cannot record or be read, for the status line. */
+/**
+ * The status line of a history that can be read but not recorded into. A history that cannot be opened at all shows
+ * HistoryRecovery instead, with no reason: every cause reads the same to the user.
+ */
 export function statusNote(status: HistoryStatus | undefined): { key: string; tone: "warn" | "critical" } | null {
-  if (!status || status.state === "ready") return null
-  const reason = status.reason ?? "open_failed"
-  return { key: `unavailable.${reason}`, tone: status.state === "read_only" ? "warn" : "critical" }
+  if (!status || status.state !== "read_only") return null
+  return { key: `unavailable.${status.reason ?? "locked_by_other_process"}`, tone: "warn" }
 }
 
 /**
@@ -376,6 +379,7 @@ export function HistoryView({ theme, refreshKey, indicator, intent, onReturn }: 
   // A deletion changes what every query returns, so it counts as a refresh of its own.
   const [changes, setChanges] = useState(0)
   const [deleted, setDeleted] = useState(false)
+  const [rebuilt, setRebuilt] = useState(false)
   const settledKey = useSettledKey(refreshKey)
   // A later request while the page is open moves it the same way the first one opened it.
   const [appliedSeq, setAppliedSeq] = useState(intent?.seq)
@@ -445,7 +449,10 @@ export function HistoryView({ theme, refreshKey, indicator, intent, onReturn }: 
     if (openId !== null) dropCompared([openId])
     setOpenId(null); setDeleted(true); setChanges(count => count + 1)
   }, [openId, dropCompared])
-  const empty = yearView !== null && yearView.firstYear === 0
+  // A history that cannot be opened is no empty history: it shows the recovery prompt, never the first-run text.
+  const unavailable = status?.state === "unavailable"
+  const empty = yearView !== null && yearView.firstYear === 0 && !unavailable
+  const recovered = useCallback((kind: RecoveryKind) => { setFailed(false); setRebuilt(kind === "rebuild"); setChanges(count => count + 1) }, [])
   return <div className="ww-history ww-has-backdrop" data-field="history" data-year={shownYear}><ThemeBackdrop theme={theme} intensity="art" /><div className="ww-history-layout">
     <Reveal className="ww-history-top">
       <h2 className="ww-history-title">{t("title")}</h2>
@@ -458,6 +465,7 @@ export function HistoryView({ theme, refreshKey, indicator, intent, onReturn }: 
         <span className="ww-history-mode" data-field="history-mode" data-mode={mode}><Segmented label={t("library.viewLabel")} value={mode} onChange={next => { setMode(next); setOpenId(null); setComparing(false) }} options={[{ value: "calendar", label: t("library.calendar") }, { value: "list", label: t("library.list") }]} /></span>
       </div>
     </Reveal>
+    {unavailable && <Reveal index={1}><Card className="ww-history-recovery-card"><HistoryRecovery rebuildable={status?.rebuildable === true} retry={host.retryHistory} rebuild={host.rebuildHistory} onRecovered={recovered} /></Card></Reveal>}
     {compared.length > 0 && !comparing && <div className="ww-compare-tray" role="region" aria-label={t("compare.tray")} data-field="compare-tray" data-count={compared.length}>
       <span className="ww-career-fact-label">{t("compare.tray")}</span>
       {compared.map(entry => <span key={entry.id} className="ww-compare-chip" data-encounter-id={entry.id}>
@@ -478,9 +486,10 @@ export function HistoryView({ theme, refreshKey, indicator, intent, onReturn }: 
       {shownYear !== 0 && <ActivityHeatmap weeks={layout.weeks} monthStarts={layout.monthStarts} selected={date} today={today} onSelect={select}
         monthLabel={dates.month} weekdayLabel={dates.weekday} dayLabel={dayLabel} less={t("less")} more={t("more")} label={t("heatmapLabel", { year: shownYear })} />}
       {note && <p className="ww-history-note" data-tone={note.tone} data-field="history-status" data-reason={status?.reason}>{t(note.key)}</p>}
-      {failed && <p className="ww-history-note" data-tone="critical" role="alert">{t("loadFailed")}</p>}
+      {failed && !unavailable && <p className="ww-history-note" data-tone="critical" role="alert">{t("loadFailed")}</p>}
+      {rebuilt && !unavailable && <p className="ww-history-note" role="status" data-field="history-rebuilt">{t("recovery.rebuilt")}</p>}
       {status && status.recoveredEncounters > 0 && <p className="ww-history-note" data-tone="warn">{t("recovered", { n: format.integer(status.recoveredEncounters) })}</p>}
-      {empty ? <p className="ww-history-note" data-field="history-empty">{t("emptyHistory")}</p> : layout.total === 0 && yearView !== null && <p className="ww-history-note">{t("emptyYear", { year: shownYear })}</p>}
+      {empty ? <p className="ww-history-note" data-field="history-empty">{t("emptyHistory")}</p> : layout.total === 0 && yearView !== null && !unavailable && <p className="ww-history-note">{t("emptyYear", { year: shownYear })}</p>}
       {deleted && <p className="ww-history-note" role="status" data-field="history-deleted">{t("delete.done")}</p>}
       <ZoneNote zone={yearView?.zone} />
       {status && status.state !== "unavailable" && <p className="ww-history-note" data-field="history-storage" data-encrypted={status.encrypted}>{t(status.encrypted ? "localEncrypted" : "localOnly")}</p>}

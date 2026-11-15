@@ -82,6 +82,10 @@ type Status struct {
 	RemovedReplays      int `json:"removedReplays,omitempty"`
 	// Migration says whether this open moved a WWlogs v0.7.0 history to a derived key (migrate.go); internal, never shown.
 	Migration string `json:"migration,omitempty"`
+	// Rebuildable is true when the store is unavailable for a reason only a new, empty history solves, and one can be
+	// created on this computer: the UI may then offer to delete the history and start a new one (Rebuild). A history that is
+	// busy, briefly unreadable or whose key inputs are missing is never offered for deletion.
+	Rebuildable bool `json:"rebuildable,omitempty"`
 	// Encrypted is true when the open file is encrypted at rest with Encryption (aes-256-xts) and a key KeyProtection seals
 	// (dpapi-user).
 	Encrypted     bool   `json:"encrypted"`
@@ -126,6 +130,11 @@ type Store struct {
 	repairReplace bool
 	// finishMigration removes what a migration left once the moved history is open (migrate.go).
 	finishMigration bool
+	// options reopen the history (Retry, Rebuild); reopening serializes them with Close. rebuildErr is the failure of a
+	// rebuild this open ran (rebuild.go).
+	options    Options
+	reopening  sync.Mutex
+	rebuildErr error
 
 	// models caches the analysis models of recently analysed encounters (analysis.go).
 	models modelCache
@@ -153,7 +162,7 @@ func DefaultPath() (string, error) {
 // Open opens or creates the history file at options.Path. It always returns a Store: when the file cannot be recorded into,
 // the Store says why in Status and, where it can, still answers queries. The error describes the same problem.
 func Open(options Options) (*Store, error) {
-	store := &Store{path: options.Path, location: options.Location, now: options.Now, master: options.MasterSHA256, inputs: options.KeyInputs, provider: options.KeyProvider}
+	store := &Store{path: options.Path, location: options.Location, now: options.Now, master: options.MasterSHA256, inputs: options.KeyInputs, provider: options.KeyProvider, options: options}
 	if store.provider == nil {
 		store.provider = defaultKeyProvider()
 	}
@@ -176,6 +185,7 @@ func Open(options Options) (*Store, error) {
 	if err != nil && store.status.State == StateUnavailable {
 		// A read-only Store keeps its handle for queries; an unavailable one keeps nothing open.
 		store.closeHandles()
+		store.status.Rebuildable = rebuildableReason(store.status.Reason) && store.canCreate()
 	}
 	return store, err
 }
@@ -213,6 +223,7 @@ func (s *Store) open() error {
 	s.lock = lock
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
+	s.rebuildErr = s.resumeRebuild(ctx)
 	if err := s.resumeMigration(); err != nil {
 		return err
 	}
@@ -287,10 +298,13 @@ func (s *Store) open() error {
 	return nil
 }
 
-// create lays the schema out in a new, empty file: the whole layout and its identity in one transaction, so a file is either
-// empty or a complete history.
-func (s *Store) create(ctx context.Context) error {
-	tx, err := s.db.BeginTx(ctx, nil)
+// create lays the schema out in a new, empty file.
+func (s *Store) create(ctx context.Context) error { return createSchema(ctx, s.db) }
+
+// createSchema lays the schema out in a new, empty file: the whole layout and its identity in one transaction, so a file is
+// either empty or a complete history.
+func createSchema(ctx context.Context, db *sql.DB) error {
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("create history: %w", err)
 	}
@@ -319,8 +333,11 @@ func (s *Store) openReadOnly() error {
 		s.setStatus(StateUnavailable, ReasonNotHistory)
 		return errors.New("the file is an unencrypted SQLite file, not a WWlogs history")
 	}
-	// The recording process may be moving a v0.7.0 history to a derived key: its files are not read until it has.
-	if moving, _ := fileExists(s.migrationPath()); moving {
+	// The recording process may be moving a v0.7.0 history to a derived key or rebuilding it: its files are not read until it
+	// has.
+	moving, _ := fileExists(s.migrationPath())
+	rebuilding, _ := fileExists(s.rebuildPath())
+	if moving || rebuilding {
 		s.setStatus(StateUnavailable, ReasonLocked)
 		return errors.New("the process that records into the history is moving it to another key")
 	}
@@ -448,9 +465,12 @@ func (s *Store) Status() Status {
 	return s.status
 }
 
+// readable reports whether queries may read the history. It reads the handle and the state together: Retry and Rebuild may
+// give an unavailable store its handle while queries run.
 func (s *Store) readable() bool {
-	status := s.Status()
-	return s.db != nil && (status.State == StateReady || status.State == StateReadOnly || status.Reason == ReasonStorageStopped)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.db != nil && (s.status.State == StateReady || s.status.State == StateReadOnly || s.status.Reason == ReasonStorageStopped)
 }
 
 // closeWaitLimit bounds how long Close waits for sessions still storing their history.
@@ -463,6 +483,8 @@ func (s *Store) Close() error {
 	if s == nil {
 		return nil
 	}
+	s.reopening.Lock()
+	defer s.reopening.Unlock()
 	s.mu.Lock()
 	if s.closed {
 		s.mu.Unlock()

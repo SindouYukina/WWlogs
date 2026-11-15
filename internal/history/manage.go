@@ -53,8 +53,9 @@ const (
 )
 
 func (s *Store) writable() error {
-	status := s.Status()
-	if s.db == nil || status.State != StateReady {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.db == nil || s.status.State != StateReady {
 		return ErrNotWritable
 	}
 	return nil
