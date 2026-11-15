@@ -359,6 +359,8 @@
     "internal/history/central_external_history_test.go": "tests/history/external_history_test.go",
     "tests/history/recording_switch_test.go": "",
     "internal/history/central_recording_switch_test.go": "tests/history/recording_switch_test.go",
+    "tests/history/acceptance_collectors_test.go": "",
+    "internal/history/central_acceptance_collectors_test.go": "tests/history/acceptance_collectors_test.go",
     "tests/history/performance_collector_windows_test.go": "",
     "internal/history/central_performance_collector_windows_test.go": "tests/history/performance_collector_windows_test.go",
     "tests/history/secret_scan_test.go": "",
