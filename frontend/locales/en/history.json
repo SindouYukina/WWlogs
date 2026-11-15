@@ -77,7 +77,7 @@
   "enemyDamageDealt": "Damage to the team",
   "unavailable": {
     "locked_by_other_process": "Another WWlogs window is recording this history. This window only reads it and records nothing.",
-    "open_failed": "The history could not be opened. Capture works as usual, but no history is recorded.",
+    "open_failed": "The history could not be used when this capture started, so this capture is not recorded; capture works as usual. The next capture tries again.",
     "storage_stopped": "Saving history stopped after repeated write errors. Capture works as usual.",
     "duplicate_source": "This capture file is already in the history, so it is not stored again."
   },

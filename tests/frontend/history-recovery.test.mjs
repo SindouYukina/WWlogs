@@ -51,6 +51,19 @@ test("the prompt texts exist in every bundled locale and name no cause", () => {
   }
 })
 
+// A capture that began while the history could not be used is "not recorded" (unavailable.open_failed): the indicator shows
+// it only once the history can be used again (the host ranks an unavailable history first), for example right after a retry
+// or a rebuild, so the text speaks of this capture and the next one, never of a history that cannot be opened.
+test("a capture that began without its history speaks of that capture, not of the history", () => {
+  const read = locale => JSON.parse(readFileSync(new URL(`../../frontend/locales/${locale}/history.json`, import.meta.url), "utf8")).unavailable.open_failed
+  assert.match(read("zh-TW"), /這次擷取/)
+  assert.match(read("zh-TW"), /下次開始擷取/)
+  assert.doesNotMatch(read("zh-TW"), /無法開啟戰鬥歷史/)
+  assert.match(read("en"), /this capture/)
+  assert.match(read("en"), /next capture/)
+  assert.doesNotMatch(read("en"), /could not be opened/)
+})
+
 // How the History is stored is WWlogs' own concern: no bundled text and no view tells the user about its encryption, its
 // key or the machine it is bound to, and Settings has no storage section for it.
 test("no user-visible text names how the History is stored", () => {
