@@ -77,7 +77,7 @@
   "enemyDamageDealt": "對隊伍造成的傷害",
   "unavailable": {
     "locked_by_other_process": "另一個 WWlogs 視窗正在記錄這份歷史，此視窗只讀取、不記錄。",
-    "open_failed": "無法開啟戰鬥歷史。擷取照常運作，但不會記錄歷史。",
+    "open_failed": "這次擷取開始時無法使用戰鬥歷史，因此不會記錄；擷取照常運作。下次開始擷取時會再試一次。",
     "storage_stopped": "多次寫入失敗後已停止保存歷史。擷取照常運作。",
     "duplicate_source": "這個擷取檔案已在歷史中，因此不會再次保存。"
   },

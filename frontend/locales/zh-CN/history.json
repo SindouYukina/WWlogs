@@ -77,7 +77,7 @@
   "enemyDamageDealt": "对队伍造成的伤害",
   "unavailable": {
     "locked_by_other_process": "另一个 WWlogs 窗口正在记录这份历史，此窗口只读取、不记录。",
-    "open_failed": "无法打开战斗历史。抓包照常运行，但不会记录历史。",
+    "open_failed": "本次抓包开始时无法使用战斗历史，因此不会记录；抓包照常运行。下次开始抓包时会再试一次。",
     "storage_stopped": "多次写入失败后已停止保存历史。抓包照常运行。",
     "duplicate_source": "这个采集文件已在历史中，因此不会再次保存。"
   },
