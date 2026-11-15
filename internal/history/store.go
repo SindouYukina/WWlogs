@@ -32,10 +32,13 @@ const (
 
 // Reasons a Store is not ready. They are stable codes for the UI; none of them carries a path.
 const (
-	ReasonNewerSchema    = "newer_schema"
-	ReasonLocked         = "locked_by_other_process"
-	ReasonNotHistory     = "not_a_history_file"
-	ReasonCorrupt        = "integrity_check_failed"
+	ReasonNewerSchema = "newer_schema"
+	ReasonLocked      = "locked_by_other_process"
+	ReasonNotHistory  = "not_a_history_file"
+	// ReasonCorrupt: the file decrypts with its own key but is damaged: it fails quick_check, SQLite cannot read it as a
+	// database, or a rollback journal beside it is not one.
+	ReasonCorrupt = "integrity_check_failed"
+	// ReasonOpenFailed: the file or its directory could not be read or written (storage and I/O errors).
 	ReasonOpenFailed     = "open_failed"
 	ReasonNoHistoryFile  = "no_history_file"
 	ReasonStorageStopped = "storage_stopped"
@@ -43,8 +46,12 @@ const (
 	ReasonKeyMissing = "key_missing"
 	// ReasonKeyUnavailable: the key file cannot be read or unsealed (for example DPAPI refused it for this user).
 	ReasonKeyUnavailable = "key_unavailable"
-	// ReasonKeyMismatch: the unsealed key does not open the history file, or the file is not an encrypted history.
+	// ReasonKeyMismatch: the unsealed key does not decrypt the history file, or the file is not an encrypted history. The
+	// preflight decides it before SQLite sees the key (preflight.go).
 	ReasonKeyMismatch = "key_mismatch"
+	// ReasonWALIntegrity: the history file decrypts with its key, but its write-ahead log does not; the log is kept as it is
+	// rather than handed to SQLite, which would drop it.
+	ReasonWALIntegrity = "wal_integrity_failure"
 )
 
 // Status is the Store's state for the UI.
@@ -187,6 +194,13 @@ func (s *Store) open() error {
 	if err := s.unlockKey(kind != fileOpaque); err != nil {
 		return err
 	}
+	if kind == fileOpaque {
+		// An existing file is opened only with a key the preflight showed to be its own: SQLite never sees another key, so
+		// it can never drop the file's write-ahead log or journal for being unreadable.
+		if err := s.verifyKey(true); err != nil {
+			return err
+		}
+	}
 	db, err := openEncrypted(s.path, s.key, false)
 	if err != nil {
 		s.setStatus(StateUnavailable, ReasonOpenFailed)
@@ -196,8 +210,9 @@ func (s *Store) open() error {
 	identity, err := readIdentity(ctx, db)
 	if err != nil {
 		if isNotADatabase(err) {
-			s.setStatus(StateUnavailable, ReasonKeyMismatch)
-			return errors.New("the history key does not open the history file")
+			// The preflight showed the key to be the file's, so SQLite refusing it as a database is damage, not a wrong key.
+			s.setStatus(StateUnavailable, ReasonCorrupt)
+			return errors.New("the history file decrypts with its key but is not a readable database")
 		}
 		s.setStatus(StateUnavailable, ReasonOpenFailed)
 		return err
@@ -248,6 +263,27 @@ func (s *Store) create(ctx context.Context) error {
 	return nil
 }
 
+// verifyKey runs the preflight with the unsealed key and turns any outcome but ready into the store's status. Nothing is
+// open yet, so a refusal leaves every file as it was.
+func (s *Store) verifyKey(withLogs bool) error {
+	outcome, err := preflight(s.path, s.key, withLogs)
+	switch {
+	case err != nil:
+		s.setStatus(StateUnavailable, ReasonOpenFailed)
+		return fmt.Errorf("check history key: %w", err)
+	case outcome == preflightKeyMismatch:
+		s.setStatus(StateUnavailable, ReasonKeyMismatch)
+		return errors.New("the history key does not decrypt the history file")
+	case outcome == preflightWALDamaged:
+		s.setStatus(StateUnavailable, ReasonWALIntegrity)
+		return errors.New("the write-ahead log beside the history does not decrypt with the history key")
+	case outcome == preflightJournalDamaged:
+		s.setStatus(StateUnavailable, ReasonCorrupt)
+		return errors.New("the rollback journal beside the history does not decrypt with the history key")
+	}
+	return nil
+}
+
 // unlockKey unseals the history key, creating one only when allowed: never for an encrypted file that lost its key file.
 func (s *Store) unlockKey(create bool) error {
 	key, err := loadKey(s.path, s.provider, create)
@@ -262,6 +298,12 @@ func (s *Store) unlockKey(create bool) error {
 	s.key = key
 	return nil
 }
+
+// readOnlyPreflightAttempts and readOnlyPreflightPause bound how often a read-only open reads the first sector again.
+const (
+	readOnlyPreflightAttempts = 3
+	readOnlyPreflightPause    = 50 * time.Millisecond
+)
 
 // openReadOnly opens the history another process records into, for queries only.
 func (s *Store) openReadOnly() error {
@@ -282,6 +324,21 @@ func (s *Store) openReadOnly() error {
 		return errors.Join(err, errors.New("the history file cannot be read"))
 	}
 	s.key = key
+	if kind == fileOpaque {
+		// The recording process owns the logs; a read-only connection never discards them, so only the database's own
+		// header is checked. That process may rewrite the first sector while it is read, so a mismatch is read again.
+		outcome := preflightKeyMismatch
+		for attempt := 0; attempt < readOnlyPreflightAttempts && err == nil && outcome != preflightReady; attempt++ {
+			if attempt > 0 {
+				time.Sleep(readOnlyPreflightPause)
+			}
+			outcome, err = preflight(s.path, key, false)
+		}
+		if err != nil || outcome != preflightReady {
+			s.setStatus(StateUnavailable, ReasonLocked)
+			return errors.Join(err, errors.New("the history key does not decrypt the history file"))
+		}
+	}
 	db, err := openEncrypted(s.path, key, true)
 	if err != nil {
 		s.setStatus(StateUnavailable, ReasonLocked)
