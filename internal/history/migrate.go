@@ -229,26 +229,56 @@ func (s *Store) copyHistory(ctx context.Context, target string, key []byte) erro
 	if outcome, err := preflight(target, key, true); err != nil || outcome != preflightReady {
 		return errors.Join(err, fmt.Errorf("the copy does not decrypt with its key (%s)", outcome))
 	}
-	source, err := readHistoryTables(ctx, s.db)
-	if err != nil {
-		return err
-	}
+	// The rows of the history are read while the copy is checked: they are separate databases on separate connections, and
+	// reading both is most of the migration's time. The reader always finishes before this returns.
+	var source historyTables
+	var sourceErr error
+	sourceRead := make(chan struct{})
+	go func() {
+		defer close(sourceRead)
+		source, sourceErr = readHistoryTables(ctx, s.db)
+	}()
 	copied, err := openEncrypted(target, key, false)
-	if err != nil {
-		return err
+	if err == nil {
+		err = proveCopy(ctx, copied, func() (historyTables, error) {
+			<-sourceRead
+			return source, sourceErr
+		})
+		if closeErr := copied.Close(); err == nil {
+			err = closeErr
+		}
 	}
-	err = proveCopy(ctx, copied, source)
-	if closeErr := copied.Close(); err == nil {
-		err = closeErr
-	}
+	<-sourceRead
 	if err != nil {
 		return err
 	}
 	return migrationStep("verified")
 }
 
-// proveCopy checks the copy on its own and against the content of the history it was made from.
-func proveCopy(ctx context.Context, copied *sql.DB, source historyTables) error {
+// proveCopy checks the copy on its own and against the content of the history it was made from, which source returns. The
+// file checks and the reading of its rows run at once, on two connections of the copy.
+func proveCopy(ctx context.Context, copied *sql.DB, source func() (historyTables, error)) error {
+	checked := make(chan error, 1)
+	go func() { checked <- checkCopy(ctx, copied) }()
+	content, err := readHistoryTables(ctx, copied)
+	if checkErr := <-checked; checkErr != nil {
+		return checkErr
+	}
+	if err != nil {
+		return err
+	}
+	original, err := source()
+	if err != nil {
+		return err
+	}
+	if !content.equal(original) {
+		return errors.New("the copy does not hold the same rows as the history")
+	}
+	return nil
+}
+
+// checkCopy runs integrity_check and foreign_key_check on the copy and checks it is this build's history.
+func checkCopy(ctx context.Context, copied *sql.DB) error {
 	var integrity string
 	if err := copied.QueryRowContext(ctx, "PRAGMA integrity_check").Scan(&integrity); err != nil || integrity != "ok" {
 		return errors.Join(err, fmt.Errorf("the copy fails its integrity check: %s", integrity))
@@ -260,17 +290,7 @@ func proveCopy(ctx context.Context, copied *sql.DB, source historyTables) error 
 	if err != nil {
 		return err
 	}
-	if err := checkIdentity(identity); err != nil {
-		return err
-	}
-	content, err := readHistoryTables(ctx, copied)
-	if err != nil {
-		return err
-	}
-	if !content.equal(source) {
-		return errors.New("the copy does not hold the same rows as the history")
-	}
-	return nil
+	return checkIdentity(identity)
 }
 
 func noForeignKeyViolations(ctx context.Context, db *sql.DB) error {
@@ -285,7 +305,9 @@ func noForeignKeyViolations(ctx context.Context, db *sql.DB) error {
 	return rows.Err()
 }
 
-// openMigrated opens the moved history with the derived key, as the preflight and the store check every history.
+// openMigrated opens the moved history with the derived key: the preflight proves the key against the file in its new place,
+// and the file must read as this build's history. The copy passed integrity_check, the stricter check, just before it was
+// moved, and a rename does not change it, so quick_check is not run again.
 func (s *Store) openMigrated(ctx context.Context) error {
 	if outcome, err := preflight(s.path, s.key, true); err != nil || outcome != preflightReady {
 		return errors.Join(err, fmt.Errorf("the moved history does not decrypt with its key (%s)", outcome))
@@ -298,9 +320,6 @@ func (s *Store) openMigrated(ctx context.Context) error {
 	identity, err := readIdentity(ctx, db)
 	if err == nil {
 		err = checkIdentity(identity)
-	}
-	if err == nil {
-		err = quickCheck(ctx, db)
 	}
 	return err
 }
