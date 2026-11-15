@@ -109,17 +109,25 @@ test("every history string exists in every bundled language and the namespace is
   const baseline = flatten(read(manifest.fallbackLocale)).sort()
   for (const locale of manifest.supportedLocales) assert.deepEqual(flatten(read(locale)).sort(), baseline, locale)
   // The view reads these keys; a missing one would show the raw key.
-  for (const key of ["unidentified", "incomplete", "state.abandoned", "state.open", "integrity.UNRELIABLE", "outcome.INCOMPLETE", "unavailable.newer_schema", "localOnly",
+  for (const key of ["unidentified", "incomplete", "state.abandoned", "state.open", "integrity.UNRELIABLE", "outcome.INCOMPLETE", "unavailable.locked_by_other_process", "localOnly",
     "localEncrypted", "checkpointNote", "columns.version", "versionUnknown", "coverage.combatStored", "coverage.skillCastsNotStored", "delete.confirm", "clear.done"]) {
     assert.ok(baseline.includes(key), key)
   }
-  // Every indicator label and reason the mapping can name exists, and every incomplete reason the host stores.
-  const states = ["disabled", "waiting", "recording", "starting", "unavailable", "read_only", "write_failed", "not_recorded"]
-  const reasons = ["newer_schema", "locked_by_other_process", "not_a_history_file", "integrity_check_failed", "open_failed", "storage_stopped", "key_missing", "key_unavailable", "key_mismatch", "wal_integrity_failure", "hardware_identity_unavailable", "key_material_unavailable", "key_verification_failed", "history_format_unsupported", "duplicate_source"]
-  for (const state of states) for (const reason of reasons) for (const capturing of [false, true]) {
+  // Every indicator label and reason the mapping can name exists, for the reasons the host gives each state, and every
+  // incomplete reason the host stores. An unavailable history names no reason to the user, whatever the host's is.
+  const unreadable = ["newer_schema", "not_a_history_file", "integrity_check_failed", "open_failed", "no_history_file", "key_missing", "key_unavailable",
+    "key_mismatch", "wal_integrity_failure", "hardware_identity_unavailable", "key_material_unavailable", "key_verification_failed",
+    "history_format_unsupported", "migration_failed", "locked_by_other_process"]
+  const reasons = { disabled: [""], waiting: [""], recording: [""], starting: [""], unavailable: unreadable, read_only: ["locked_by_other_process"],
+    write_failed: ["storage_stopped"], not_recorded: ["open_failed", "duplicate_source"] }
+  for (const [state, list] of Object.entries(reasons)) for (const reason of list) for (const capturing of [false, true]) {
     const text = indicatorText({ state, reason, enabled: true, capturing, encrypted: true })
     assert.ok(baseline.includes(text.key), text.key)
     if (text.detail) assert.ok(baseline.includes(text.detail), text.detail)
+    if (state === "unavailable") assert.equal(text.detail, "recovery.detail", reason)
+  }
+  for (const key of ["title", "body", "bodyRetry", "detail", "retry", "rebuild", "confirmTitle", "confirmBody", "cancel", "confirm", "rebuildFailed", "retryFailed"]) {
+    assert.ok(baseline.includes(`recovery.${key}`), key)
   }
   for (const reason of ["entries_lost", "application_exit", "recording_disabled", "not_finished"]) assert.ok(baseline.includes(`incompleteReason.${reason}`), reason)
   for (const refusal of ["encounter_recording", "recording_active", "not_writable", "not_found"]) assert.ok(baseline.includes(`delete.refused.${refusal}`), refusal)
@@ -131,7 +139,7 @@ test("the indicator only maps the host state to text and tone", () => {
   assert.deepEqual(indicatorText({ state: "waiting", enabled: true, capturing: false, encrypted: true }), { key: "indicator.ready", tone: "neutral" })
   assert.deepEqual(indicatorText({ state: "starting", enabled: true, capturing: true, encrypted: true }), { key: "indicator.starting", tone: "warn" })
   assert.deepEqual(indicatorText({ state: "disabled", enabled: false, capturing: true, encrypted: true }), { key: "indicator.disabled", tone: "neutral" })
-  assert.deepEqual(indicatorText({ state: "unavailable", reason: "key_missing", enabled: true, capturing: false, encrypted: false }), { key: "indicator.unavailable", tone: "critical", detail: "unavailable.key_missing" })
+  assert.deepEqual(indicatorText({ state: "unavailable", reason: "key_verification_failed", enabled: true, capturing: false, encrypted: false }), { key: "indicator.unavailable", tone: "critical", detail: "recovery.detail" })
   assert.deepEqual(indicatorText({ state: "write_failed", reason: "storage_stopped", enabled: true, capturing: true, encrypted: true }), { key: "indicator.writeFailed", tone: "critical", detail: "unavailable.storage_stopped" })
   assert.deepEqual(indicatorText({ state: "not_recorded", reason: "open_failed", enabled: true, capturing: true, encrypted: true }), { key: "indicator.notRecorded", tone: "warn", detail: "unavailable.open_failed" })
   assert.deepEqual(indicatorText(undefined), { key: "indicator.unknown", tone: "neutral" })

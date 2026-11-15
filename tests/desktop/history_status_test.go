@@ -2,6 +2,7 @@ package desktop
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -88,5 +89,27 @@ func TestDeletionAnswersCarryTheRefusal(t *testing.T) {
 	}
 	if err := json.Unmarshal(raw, &answer); err != nil || answer.Refused != "recording_active" {
 		t.Fatalf("answer = %s (%v)", raw, err)
+	}
+}
+
+// TestRecoveryAnswersSayOnlyWhetherTheHistoryIsOpen: a retry or a rebuild answers with the status and whether the history is
+// open, and a refused rebuild with its refusal; the indicator offers a rebuild only for an unavailable history the store
+// marks rebuildable.
+func TestRecoveryAnswersSayOnlyWhetherTheHistoryIsOpen(t *testing.T) {
+	if got := recoveryResult(history.Status{State: history.StateReady}, nil); !got.Open || got.Refused != "" {
+		t.Fatalf("ready: %+v", got)
+	}
+	unavailable := history.Status{State: history.StateUnavailable, Reason: history.ReasonKeyVerification, Rebuildable: true}
+	if got := recoveryResult(unavailable, errors.New("still closed")); got.Open || got.Refused != "" {
+		t.Fatalf("still unavailable: %+v", got)
+	}
+	if got := recoveryResult(unavailable, history.ErrNotRebuildable); got.Open || got.Refused != "not_rebuildable" {
+		t.Fatalf("refused: %+v", got)
+	}
+	if indicator := historyIndicatorOf(true, unavailable, false, "", capture.HistoryRecordingState{}, history.RecorderHealth{}); !indicator.Rebuildable || indicator.State != historyUnavailable {
+		t.Fatalf("indicator = %+v", indicator)
+	}
+	if indicator := historyIndicatorOf(true, history.Status{State: history.StateReady, Rebuildable: true}, false, "", capture.HistoryRecordingState{}, history.RecorderHealth{}); indicator.Rebuildable {
+		t.Fatalf("an open history offered a rebuild: %+v", indicator)
 	}
 }
