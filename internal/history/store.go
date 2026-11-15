@@ -35,8 +35,8 @@ const (
 	ReasonNewerSchema = "newer_schema"
 	ReasonLocked      = "locked_by_other_process"
 	ReasonNotHistory  = "not_a_history_file"
-	// ReasonCorrupt: the file decrypts with its own key but is damaged: it fails quick_check, SQLite cannot read it as a
-	// database, or a rollback journal beside it is not one.
+	// ReasonCorrupt: the file is damaged and its own key is known: it fails quick_check, SQLite cannot read it as a database,
+	// a rollback journal beside it is not one, or its first sector does not decrypt while the rest of it does.
 	ReasonCorrupt = "integrity_check_failed"
 	// ReasonOpenFailed: the file or its directory could not be read or written (storage and I/O errors).
 	ReasonOpenFailed     = "open_failed"
@@ -46,19 +46,20 @@ const (
 	ReasonKeyMissing = "key_missing"
 	// ReasonKeyUnavailable: the key file cannot be read or unsealed (for example DPAPI refused it for this user).
 	ReasonKeyUnavailable = "key_unavailable"
-	// ReasonKeyMismatch: the unsealed key does not decrypt the history file, or the file is not an encrypted history. The
-	// preflight decides it before SQLite sees the key (preflight.go).
+	// ReasonKeyMismatch: a v0.7.0 history whose unsealed key, like every key derived here, decrypts no part of the file, or a
+	// file that is not an encrypted history. The preflight decides it before SQLite sees the key (preflight.go).
 	ReasonKeyMismatch = "key_mismatch"
-	// ReasonWALIntegrity: the history file decrypts with its key, but its write-ahead log does not; the log is kept as it is
-	// rather than handed to SQLite, which would drop it.
+	// ReasonWALIntegrity: the history file decrypts with its key, but its write-ahead log does not, or a log is left beside a
+	// history file that is missing or empty; the log is kept as it is rather than handed to SQLite, which would drop it.
 	ReasonWALIntegrity = "wal_integrity_failure"
 	// ReasonHardwareIdentity: the motherboard identity the history key derives from cannot be read, or names no usable
 	// identifier (keysource.go).
 	ReasonHardwareIdentity = "hardware_identity_unavailable"
 	// ReasonKeyMaterial: the protocol key the history key derives from is not in this build.
 	ReasonKeyMaterial = "key_material_unavailable"
-	// ReasonKeyVerification: no key derived on this computer with this build opens the history. It was made on another
-	// computer, before the motherboard identity changed, or with another protocol key.
+	// ReasonKeyVerification: no key derived on this computer with this build opens the history, and none decrypts any part
+	// of it: it was made on another computer, before the motherboard identity changed, or with another protocol key, whatever
+	// key record lies beside it.
 	ReasonKeyVerification = "key_verification_failed"
 	// ReasonFormatUnsupported: the history is of a format or a key derivation version this build does not know.
 	ReasonFormatUnsupported = "history_format_unsupported"

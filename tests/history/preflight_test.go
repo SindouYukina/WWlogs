@@ -341,7 +341,8 @@ func TestUnreadableHistoriesAreLeftAsTheyWere(t *testing.T) {
 			damage: func(t *testing.T, path string) { flipFirstSector(t, path+"-wal") },
 		},
 		{
-			name: "damaged database header", reason: ReasonKeyMismatch,
+			// The key still decrypts the log and the other pages: the first sector is damaged, the key is the history's.
+			name: "damaged database header", reason: ReasonCorrupt,
 			damage: func(t *testing.T, path string) { flipFirstSector(t, path) },
 		},
 		{

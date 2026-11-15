@@ -207,7 +207,8 @@ func TestLostOrDamagedRecordIsRecovered(t *testing.T) {
 			t.Fatalf("%s record was not written back as it was", name)
 		}
 	}
-	// A record whose check value is not the key's is authoritative: the history is refused, not reinterpreted.
+	// A record that names another key (one copied from another computer) does not lock the history out: the key that
+	// decrypts the history opens it, and the record is written again for it.
 	var record keyRecord
 	if err := json.Unmarshal(original, &record); err != nil {
 		t.Fatal(err)
@@ -215,13 +216,18 @@ func TestLostOrDamagedRecordIsRecovered(t *testing.T) {
 	record.KeyCheck = strings.Repeat("00", historyKeyCheck)
 	data, _ := json.Marshal(record)
 	writeFile(t, keyRecordPath(path), data)
-	before := historyDigests(t, filepath.Dir(path))
 	store, err := openWith(path, KeyInputs{})
-	if err == nil || store.Status().Reason != ReasonKeyVerification {
+	if err != nil {
 		t.Fatalf("a record of another key: %+v (%v)", store.Status(), err)
 	}
+	year, err := store.Year(context.Background(), 2026, time.UTC)
 	store.Close()
-	requireSameFiles(t, before, historyDigests(t, filepath.Dir(path)))
+	if err != nil || year.Total != 1 {
+		t.Fatalf("a record of another key: %+v (%v)", year, err)
+	}
+	if !bytes.Equal(readFile(t, keyRecordPath(path)), original) {
+		t.Fatal("the record of another key was not replaced by the history's own")
+	}
 }
 
 // TestUnknownRecordIsNeverRewritten: a record of a later derivation version or of another format means a history this build

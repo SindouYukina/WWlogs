@@ -12,12 +12,18 @@ import (
 // unlock decides which key opens the file and proves it against the file before SQLite sees it (preflight.go), so SQLite
 // only ever opens a history with its own key:
 //
-//   - a new or empty file gets a derived key (keyderive.go) and the record of it (keyformat.go), written first;
-//   - a file with a record is opened with the derived key whose check value the record names, for the source it names;
-//   - a file of WWlogs v0.7.0 (its DPAPI key file beside it, no record) is opened with that key;
-//   - a file with neither is tried with every derived key of this computer, so a lost record never locks a history out.
+//   - a new or empty file gets a derived key (keyderive.go) and the record of it (keyformat.go), written first; a log left
+//     beside it by a history that is gone refuses it instead;
+//   - an existing file is tried with the derived key its record names, then with the DPAPI key of WWlogs v0.7.0 when that
+//     key file sits beside it, then with every other key this computer derives. A record proves nothing alone: one copied
+//     from another computer, or a history put beside this computer's record, neither locks out a history this computer can
+//     open nor makes a foreign one look like this computer's. A key that opens a history whose record does not name it gets
+//     its record written again once the history is open (Store.open).
 //
-// Every refusal leaves every file as it was: nothing has been opened.
+// When no key opens the file, the keys are tried once more against the rest of it: a key that decrypts the rest proves the
+// first sector damaged (ReasonCorrupt); otherwise the file was made with a key this computer and build do not have
+// (ReasonKeyVerification, or ReasonKeyMismatch for a v0.7.0 history). Every refusal leaves every file as it was: nothing
+// has been opened.
 
 // readOnlyPreflightAttempts and readOnlyPreflightPause bound how often a read-only open reads a first sector again.
 const (
@@ -57,29 +63,20 @@ func (s *Store) unlock(kind fileKind, readOnly bool) error {
 		if readOnly {
 			return s.refuse(ReasonLocked, errors.New("the history another process records into holds nothing yet"))
 		}
+		orphaned, err := orphanedLogs(s.path)
+		if err != nil {
+			return s.refuse(ReasonOpenFailed, err)
+		}
+		if orphaned {
+			// SQLite would delete the log of a database with no pages; it is kept for the history it belongs to.
+			return s.refuse(ReasonWALIntegrity, errors.New("a write-ahead log or rollback journal is left beside a history file that is missing or empty"))
+		}
 		return s.unlockNew(record, state)
 	}
-	switch {
-	case state == recordUnsupported:
+	if state == recordUnsupported {
 		return s.refuse(ReasonFormatUnsupported, errors.New("the history is of a format or key derivation this build does not know"))
-	case state == recordValid:
-		before := s.status
-		err := s.unlockDerived(record, readOnly)
-		if err != nil && legacy {
-			// A v0.7.0 history beside a record that does not describe it (for example one restored from a backup) opens with
-			// its own key; the record keeps describing nothing until the history is migrated.
-			derived := s.status
-			s.status = before
-			if s.unlockLegacy(readOnly) == nil {
-				return nil
-			}
-			s.status = derived
-		}
-		return err
-	case legacy:
-		return s.unlockLegacy(readOnly)
 	}
-	return s.unlockBySector(state, readOnly)
+	return s.unlockExisting(record, state, legacy, readOnly)
 }
 
 // unlockNew derives the key of a new history and writes its record before the database exists, so a history is never
@@ -102,93 +99,109 @@ func (s *Store) unlockNew(record keyRecord, state recordState) error {
 	return nil
 }
 
-// unlockDerived opens a history with the derived key its record names.
-func (s *Store) unlockDerived(record keyRecord, readOnly bool) error {
-	keys, keyID, err := existingHistoryKeys(s.inputs, record.Source)
-	if err != nil {
-		return s.refuse(keyErrorReason(err), err)
-	}
-	defer wipeKeys(keys)
-	match := matchingKey(keys, record)
-	if match == nil {
-		detail := "no key this computer derives matches the history's key check"
-		if keyID != record.RSAKeyID {
-			detail += "; the history was made with another protocol key"
-		}
-		return s.refuse(ReasonKeyVerification, errors.New(detail))
-	}
-	outcome, err := s.preflightWith(match.key, readOnly)
-	switch {
-	case err != nil:
-		return s.refuse(ReasonOpenFailed, fmt.Errorf("check history key: %w", err))
-	case outcome == preflightKeyMismatch:
-		// The check value proves the key; a first sector that does not decrypt with it is damage.
-		return s.refuse(ReasonCorrupt, errors.New("the history's key check matches but its first sector does not decrypt"))
-	case outcome == preflightWALDamaged:
-		return s.refuse(ReasonWALIntegrity, errors.New("the write-ahead log beside the history does not decrypt with its key"))
-	case outcome == preflightJournalDamaged:
-		return s.refuse(ReasonCorrupt, errors.New("the rollback journal beside the history does not decrypt with its key"))
-	}
-	s.key, s.protection = append([]byte(nil), match.key...), keyProtectionDerived
-	return nil
+// keyCandidate is one key an existing history may have been written with. derived is nil for the DPAPI key of v0.7.0.
+type keyCandidate struct {
+	key     []byte
+	derived *derivedKey
 }
 
-// unlockLegacy opens a history of WWlogs v0.7.0 with its DPAPI-sealed key.
-func (s *Store) unlockLegacy(readOnly bool) error {
-	key, err := loadKey(s.path, s.provider)
-	if err != nil {
-		reason := ReasonKeyUnavailable
-		if errors.Is(err, errKeyMissing) {
-			reason = ReasonKeyMissing
+// unlockExisting opens an existing history with the first key that the preflight proves to be the file's (see the top of
+// this file for the order and the classification of a file no key opens).
+func (s *Store) unlockExisting(record keyRecord, state recordState, legacy, readOnly bool) error {
+	derived, keyID, derivedErr := existingHistoryKeys(s.inputs, sourceSystemUUID, sourceBaseboardSerial)
+	defer wipeKeys(derived)
+	var named *derivedKey
+	if state == recordValid {
+		named = matchingKey(derived, record)
+	}
+	var candidates []keyCandidate
+	if named != nil {
+		candidates = append(candidates, keyCandidate{key: named.key, derived: named})
+	}
+	var legacyKey []byte
+	var legacyErr error
+	if legacy {
+		if legacyKey, legacyErr = loadKey(s.path, s.provider); legacyErr == nil {
+			candidates = append(candidates, keyCandidate{key: legacyKey})
 		}
-		return s.refuse(reason, err)
 	}
-	outcome, err := s.preflightWith(key, readOnly)
-	if err != nil || outcome != preflightReady {
-		clear(key)
+	for i := range derived {
+		if &derived[i] != named {
+			candidates = append(candidates, keyCandidate{key: derived[i].key, derived: &derived[i]})
+		}
 	}
-	switch {
-	case err != nil:
-		return s.refuse(ReasonOpenFailed, fmt.Errorf("check history key: %w", err))
-	case outcome == preflightKeyMismatch:
-		return s.refuse(ReasonKeyMismatch, errors.New("the history key does not decrypt the history file"))
-	case outcome == preflightWALDamaged:
-		return s.refuse(ReasonWALIntegrity, errors.New("the write-ahead log beside the history does not decrypt with the history key"))
-	case outcome == preflightJournalDamaged:
-		return s.refuse(ReasonCorrupt, errors.New("the rollback journal beside the history does not decrypt with the history key"))
+	keepLegacy := false
+	defer func() {
+		if !keepLegacy {
+			clear(legacyKey)
+		}
+	}()
+	if len(candidates) == 0 {
+		if legacy && state != recordValid {
+			return s.refuse(legacyKeyReason(legacyErr), legacyErr)
+		}
+		return s.refuse(keyErrorReason(derivedErr), derivedErr)
 	}
-	s.key, s.protection = key, s.provider.ID()
-	return nil
-}
-
-// unlockBySector opens a derived history whose record is lost or damaged by trying every key this computer derives against
-// the file's first sector. A key that opens it gets its record written again once the history is open (Store.open).
-func (s *Store) unlockBySector(state recordState, readOnly bool) error {
-	keys, keyID, err := existingHistoryKeys(s.inputs, sourceSystemUUID, sourceBaseboardSerial)
-	if err != nil {
-		return s.refuse(keyErrorReason(err), err)
-	}
-	defer wipeKeys(keys)
-	for i := range keys {
-		outcome, err := s.preflightWith(keys[i].key, readOnly)
+	for _, candidate := range candidates {
+		outcome, err := s.preflightWith(candidate.key, readOnly)
 		switch {
 		case err != nil:
 			return s.refuse(ReasonOpenFailed, fmt.Errorf("check history key: %w", err))
 		case outcome == preflightKeyMismatch:
 			continue
 		case outcome == preflightWALDamaged:
-			return s.refuse(ReasonWALIntegrity, errors.New("the write-ahead log beside the history does not decrypt with its key"))
+			return s.refuse(ReasonWALIntegrity, errors.New("the write-ahead log beside the history does not decrypt with the history's key"))
 		case outcome == preflightJournalDamaged:
-			return s.refuse(ReasonCorrupt, errors.New("the rollback journal beside the history does not decrypt with its key"))
+			return s.refuse(ReasonCorrupt, errors.New("the rollback journal beside the history does not decrypt with the history's key"))
 		}
-		s.key, s.protection = append([]byte(nil), keys[i].key...), keyProtectionDerived
-		if !readOnly {
-			record := newKeyRecord(keys[i].source, keys[i].check, keyID)
-			s.repair, s.repairReplace = &record, state == recordDamaged
+		if candidate.derived == nil {
+			keepLegacy = true
+			s.key, s.protection = legacyKey, s.provider.ID()
+			return nil
+		}
+		s.key, s.protection = append([]byte(nil), candidate.key...), keyProtectionDerived
+		if candidate.derived != named && !readOnly {
+			repaired := newKeyRecord(candidate.derived.source, candidate.derived.check, keyID)
+			s.repair, s.repairReplace = &repaired, state != recordAbsent
 		}
 		return nil
 	}
+	for _, candidate := range candidates {
+		damaged, err := keyDecryptsStructure(s.path, candidate.key)
+		if err != nil {
+			return s.refuse(ReasonOpenFailed, fmt.Errorf("check history key: %w", err))
+		}
+		if damaged {
+			return s.refuse(ReasonCorrupt, errors.New("the history decrypts with its key except for its first sector, which is damaged"))
+		}
+	}
+	switch {
+	case derivedErr != nil && state == recordValid:
+		// The record names a derived key, and this computer could not derive one to try.
+		return s.refuse(keyErrorReason(derivedErr), derivedErr)
+	case state == recordValid:
+		detail := "the database does not decrypt with any key this computer derives, although its record names one"
+		if named == nil {
+			detail = "no key this computer derives matches the history's key check or decrypts the history"
+		}
+		if keyID != "" && keyID != record.RSAKeyID {
+			detail += "; the history was made with another protocol key"
+		}
+		return s.refuse(ReasonKeyVerification, errors.New(detail))
+	case legacy && legacyErr != nil:
+		return s.refuse(legacyKeyReason(legacyErr), legacyErr)
+	case legacy:
+		return s.refuse(ReasonKeyMismatch, errors.New("neither the history key file nor a key this computer derives decrypts the history file"))
+	}
 	return s.refuse(ReasonKeyVerification, errors.New("no key this computer derives decrypts the history, and no record names its key"))
+}
+
+// legacyKeyReason is the status reason of a DPAPI key file that could not be read or unsealed.
+func legacyKeyReason(err error) string {
+	if errors.Is(err, errKeyMissing) {
+		return ReasonKeyMissing
+	}
+	return ReasonKeyUnavailable
 }
 
 // preflightWith runs the preflight with key. A read-only open checks the database header only, and reads it again while the
