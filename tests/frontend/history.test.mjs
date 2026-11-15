@@ -175,8 +175,9 @@ test("the History header is one control row: indicator, year switch, then the vi
   assert.ok(at('data-field="history-return"') >= 0 && at('data-field="history-return"') < at("<HistoryIndicatorChip"))
   assert.ok(at("<HistoryIndicatorChip") < at("<YearSwitch") && at("<YearSwitch") < at('data-field="history-mode"'))
   // The year switch exists only with the calendar; outside it nothing holds its place, so the indicator sits beside the
-  // view switcher.
-  assert.match(row, /\{mode === "calendar" && !comparing && <YearSwitch /)
+  // view switcher. A history that cannot be opened has neither: only the indicator and the recovery prompt below.
+  assert.match(row, /\{mode === "calendar" && !comparing && !unavailable && <YearSwitch /)
+  assert.match(row, /\{!unavailable && <span className="ww-history-mode"/)
   const css = readFileSync(new URL("../../frontend/src/design/views.css", import.meta.url), "utf8").replace(/\r\n/g, "\n")
   const rule = selector => css.split("\n").find(line => line.startsWith(`${selector} {`)) ?? ""
   assert.match(rule(".ww-history-actions"), /display: flex; align-items: center;/)
