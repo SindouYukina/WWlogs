@@ -5,6 +5,8 @@ package capture
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
+	"time"
 )
 
 func summonSkillJSONL(identity entityIdentity) *combatEventSummonSkillJSONL {
@@ -238,6 +240,141 @@ func (p *processor) writeDamageEventJSONL(event combatEvent) {
 		}
 	}
 	p.writeEnvelopedEventJSONL(view, "p")
+}
+
+// writeDamageEventOutputs writes the development forms of one damage result after writeDamageEvent has recorded it in
+// the core: the overlap record, the event line, the console line, the event audit row and the research lines. A failed
+// console or audit write is counted (diagnostic_isolation.go); it no longer returns before the core counters, and a
+// console line that failed is not flushed, so it is counted once.
+func (p *processor) writeDamageEventOutputs(event *combatEvent, visible bool, sourceRelation, targetRelation playerRelation) {
+	if visible {
+		p.recordDamageForOverlap(*event)
+	}
+	p.writeDamageEventJSONL(*event)
+	consoleWritten := true
+	if visible {
+		normalOutput := event.formatNormalForSourceRelation(sourceRelation)
+		switch {
+		case sourceRelation == playerRelationLocal && targetRelation == playerRelationLocal:
+			normalOutput += " [PlayerTeamSide: BOTH]"
+		case sourceRelation == playerRelationLocal:
+			normalOutput += " [PlayerTeamSide: SOURCE]"
+		case targetRelation == playerRelationLocal:
+			normalOutput += " [PlayerTeamSide: TARGET]"
+		default:
+			normalOutput += " [PlayerTeamSide: UNCONFIRMED]"
+		}
+		if _, err := fmt.Fprintln(p.stdout, normalOutput); err != nil {
+			p.noteDiagnosticFailure("console", err)
+			consoleWritten = false
+		}
+	}
+	if p.audit != nil {
+		summonerID := "?"
+		if event.Source.Runtime.hasSummonerID {
+			summonerID = fmt.Sprintf("%d", event.Source.Runtime.summonerID)
+		}
+		playerEntityID := "?"
+		if event.Source.Runtime.hasPlayerEntityID {
+			playerEntityID = fmt.Sprintf("%d", event.Source.Runtime.playerEntityID)
+		}
+		monsterID := "?"
+		if event.Target.HasMonster {
+			monsterID = fmt.Sprintf("%d", event.Target.Monster.ID)
+		}
+		characterID := "?"
+		if event.CharacterID != 0 {
+			characterID = fmt.Sprintf("%d", event.CharacterID)
+		}
+		sourceEntityID := "?"
+		if event.HasSourceEntity {
+			sourceEntityID = fmt.Sprintf("%d", event.SourceEntityID)
+		}
+		targetEntityID := "?"
+		if event.HasTargetEntity {
+			targetEntityID = fmt.Sprintf("%d", event.TargetEntityID)
+		}
+		fields := []string{
+			formatTimestamp(event.Timestamp), fmt.Sprintf("%d", event.RPCID), sourceEntityID, targetEntityID,
+			string(event.Source.RuntimeStatus), event.Source.RuntimeProof,
+			string(event.Target.RuntimeStatus), event.Target.RuntimeProof, characterID,
+			event.CharacterName, string(event.CharacterStatus), event.CharacterProof,
+			fmt.Sprintf("%d", event.SkillID), event.SkillName, string(event.SkillStatus), event.SkillProof,
+			fmt.Sprintf("%d", event.SkillMessageID), formatOptionalUint(event.DamageID, event.HasDamageID), monsterID,
+			event.Target.Monster.Name, string(event.Target.MonsterStatus), event.Target.MonsterProof, summonerID,
+			formatOptionalUint(event.SummonerCharacter.CharacterID, event.SummonerCharacter.HasCharacterID),
+			event.SummonerCharacter.Character.Name, string(event.SummonerCharacter.Status), event.SummonerCharacter.Proof,
+			fmt.Sprint(event.SummonerCharacter.EntityIDs), playerEntityID,
+			fmt.Sprintf("%d", event.Damage),
+			formatOptionalUint(event.DamageSourceType, event.HasDamageSourceType), formatOptionalInt(event.BulletID, event.HasBulletID),
+			marshalRuntimeIdentity(event.Source.Runtime), marshalRuntimeIdentity(event.Target.Runtime),
+			formatOptionalInt(int64(event.ServerResultRaw), event.HasServerResult),
+			formatOptionalInt(int64(event.ChangeLifeRaw), event.HasChangeLife),
+			formatOptionalInt(int64(event.DamageCalculateType), event.HasCalculateType), event.EventTypeCandidate,
+			string(event.EventTypeStatus), event.EventTypeProof,
+			string(event.CharacterNameStatus), string(event.SkillNameStatus),
+		}
+		build, versionFields, versionCommands := p.clientVersion.auditFields()
+		fields = append(fields, build, versionFields, versionCommands)
+		for i := range fields {
+			fields[i] = strings.NewReplacer("\t", " ", "\r", " ", "\n", " ").Replace(fields[i])
+		}
+		if _, err := fmt.Fprintln(p.audit, strings.Join(fields, "\t")); err != nil {
+			p.noteDiagnosticFailure("event-audit", err)
+		}
+	}
+	if p.research {
+		fmt.Fprintf(p.diagnostic, "[DAMAGE] rpc=%d source_entity=%d target_entity=%d skill_id=%d damage_id=%d source_type=%s bullet_id=%s damage=%d\n", event.RPCID, event.SourceEntityID, event.TargetEntityID, event.SkillID, event.DamageID, optionalDamageSource(event.DamageSourceType, event.HasDamageSourceType), formatOptionalInt(event.BulletID, event.HasBulletID), event.Damage)
+		summonerID := "?"
+		if event.Source.Runtime.hasSummonerID {
+			summonerID = fmt.Sprintf("%d", event.Source.Runtime.summonerID)
+		}
+		playerEntityID := "?"
+		if event.Source.Runtime.hasPlayerEntityID {
+			playerEntityID = fmt.Sprintf("%d", event.Source.Runtime.playerEntityID)
+		}
+		fmt.Fprintf(p.diagnostic, "[ENTITY_RESOLVE] source_status=%s source_evidence=%q source_type=%d source_summoner_id=%s source_summoner_chain=%v source_summoner_character_id=%d source_summoner_character_name=%q source_summoner_character_status=%s source_summoner_evidence=%q source_player_entity_id=%s character_id=%d character_name=%q character_status=%s character_name_status=%s character_evidence=%q target_status=%s target_evidence=%q monster_id=%d monster_name=%q monster_status=%s monster_name_status=%s monster_evidence=%q\n",
+			event.Source.RuntimeStatus, event.Source.RuntimeProof, event.Source.Runtime.entityTypeCode, summonerID,
+			event.SummonerCharacter.EntityIDs, event.SummonerCharacter.CharacterID, event.SummonerCharacter.Character.Name, event.SummonerCharacter.Status, event.SummonerCharacter.Proof, playerEntityID,
+			event.CharacterID, event.CharacterName, event.CharacterStatus, event.CharacterNameStatus, event.CharacterProof,
+			event.Target.RuntimeStatus, event.Target.RuntimeProof, event.Target.Monster.ID, event.Target.Monster.Name, event.Target.MonsterStatus, event.Target.Monster.NameStatus, event.Target.MonsterProof)
+		fmt.Fprintf(p.diagnostic, "[SKILL_RESOLVE] skill_id=%d name=%q kind=%q status=%s name_status=%s master_locale=%q source=%q\n",
+			event.SkillID, event.SkillName, event.SkillNameKind, event.SkillStatus, event.SkillNameStatus,
+			masterLocale(p.masters), event.SkillProof)
+	}
+	if flusher, ok := p.stdout.(interface{ Flush() error }); ok && visible && consoleWritten {
+		if err := flusher.Flush(); err != nil {
+			p.noteDiagnosticFailure("console", err)
+		}
+	}
+}
+
+func formatOptionalUint(value uint64, present bool) string {
+	if !present {
+		return "?"
+	}
+	return fmt.Sprintf("%d", value)
+}
+
+func formatOptionalInt(value int64, present bool) string {
+	if !present {
+		return "?"
+	}
+	return fmt.Sprintf("%d", value)
+}
+
+func formatTimestamp(timestamp time.Time) string {
+	if timestamp.IsZero() {
+		return ""
+	}
+	return timestamp.UTC().Format(time.RFC3339Nano)
+}
+
+func masterLocale(masters *gameMaster) string {
+	if masters == nil {
+		return ""
+	}
+	return masters.locale
 }
 
 // writeEnvelopedEventJSONL writes one event line; a non-empty kind selects an auxiliary id namespace.

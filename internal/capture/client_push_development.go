@@ -116,6 +116,22 @@ func (p *processor) observeCombatActionRequest(frame gameFrame, request *decoded
 	}
 }
 
+// linkSkillRequest counts one damage result against the research record of its outbound skill request
+// (observeCombatActionRequest) and returns a copy for the event line. The core never reads the link.
+func (p *processor) linkSkillRequest(messageID uint64) *combatActionRequest {
+	if messageID == 0 {
+		return nil
+	}
+	key := combatActionRequestKey{sessionNumber: p.sessionNumber, messageID: messageID}
+	action, ok := p.combatActionRequests[key]
+	if !ok {
+		return nil
+	}
+	action.LinkedDamageEvents++
+	p.combatActionRequests[key] = action
+	return &action
+}
+
 func firstChildMessage(message *decodedMessage, name string) *decodedMessage {
 	if message == nil {
 		return nil
