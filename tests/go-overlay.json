@@ -303,6 +303,8 @@
     "internal/desktop/central_locales_test.go": "tests/desktop/locales_test.go",
     "tests/desktop/projection_test.go": "",
     "internal/desktop/central_projection_test.go": "tests/desktop/projection_test.go",
+    "tests/desktop/frontend_contract_test.go": "",
+    "internal/desktop/central_frontend_contract_test.go": "tests/desktop/frontend_contract_test.go",
     "tests/capture/first_encounter_replay_dev_test.go": "",
     "internal/capture/central_first_encounter_replay_dev_test.go": "tests/capture/first_encounter_replay_dev_test.go",
     "tests/capture/initial_player_test.go": "",
