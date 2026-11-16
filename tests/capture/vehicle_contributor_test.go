@@ -3,6 +3,7 @@ package capture
 import (
 	"database/sql"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -60,12 +61,6 @@ func TestResolveVehicleDamageContributorCandidateRequiresCorrelatedChain(t *test
 		"skill not listed for vehicle actor": func(_ *entityResolver, m *gameMaster, _ *combatEvent) {
 			m.actorSkills["motorcycle-actor"] = map[uint64]struct{}{10001010: {}}
 		},
-		"unlinked request source": func(_ *entityResolver, _ *gameMaster, e *combatEvent) {
-			e.SkillRequest.EntityID = 99
-		},
-		"mismatched request message": func(_ *entityResolver, _ *gameMaster, e *combatEvent) {
-			e.SkillRequest.MessageID = 99
-		},
 		"missing skill message id": func(_ *entityResolver, _ *gameMaster, e *combatEvent) {
 			e.SkillMessageID = 0
 		},
@@ -96,6 +91,31 @@ func TestResolveVehicleDamageContributorCandidateWithoutResolvedSkillRequest(t *
 	}
 	if candidate.Status != resolutionCorrelated || !strings.Contains(candidate.Evidence, "no matching outbound UseSkillRequest was resolved") {
 		t.Fatalf("missing request evidence was not kept explicit: %+v", candidate)
+	}
+}
+
+// The outbound skill request exists only with a research schema (-protocol-schema); it is not core evidence, so it
+// neither confirms nor vetoes the vehicle candidate (Phase 3A R03). Every request variant gives the result of no request.
+func TestVehicleContributorDoesNotDependOnTheResearchSkillRequest(t *testing.T) {
+	resolver, master, event := vehicleDamageContributorFixture()
+	event.SkillRequest = nil
+	want := resolveVehicleDamageContributorCandidate(resolver, master, event)
+	if want == nil {
+		t.Fatal("fixture chain did not resolve without a request")
+	}
+	for name, mutate := range map[string]func(*combatActionRequest){
+		"matching request":           func(*combatActionRequest) {},
+		"request of another entity":  func(r *combatActionRequest) { r.EntityID = 99 },
+		"request of another message": func(r *combatActionRequest) { r.MessageID = 99 },
+		"request of another kind":    func(r *combatActionRequest) { r.RequestType = "SkillRequest" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			r, m, e := vehicleDamageContributorFixture()
+			mutate(e.SkillRequest)
+			if got := resolveVehicleDamageContributorCandidate(r, m, e); !reflect.DeepEqual(got, want) {
+				t.Fatalf("candidate with a research request = %+v, want the candidate without one: %+v", got, want)
+			}
+		})
 	}
 }
 

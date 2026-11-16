@@ -31,14 +31,8 @@ func resolveVehicleDamageContributorCandidate(resolver *entityResolver, masters 
 	if event.SkillMessageID == 0 {
 		return nil
 	}
-	requestMatched := false
-	if request := event.SkillRequest; request != nil {
-		if request.SessionNumber != event.SessionNumber || request.MessageID != event.SkillMessageID ||
-			request.EntityID != event.SourceEntityID || request.SkillID != event.SkillID || request.RequestType != "UseSkillRequest" {
-			return nil
-		}
-		requestMatched = true
-	}
+	// The outbound UseSkillRequest is decoded only by the research schema decoder (-protocol-schema) and is not core
+	// evidence: the candidate is decided the same way with and without that research input, as in a public build.
 
 	motorcycle, status := resolver.resolve(source.followEntityID)
 	if status != resolutionVerified || !motorcycle.hasSummonerID || motorcycle.summonerID != event.SourceEntityID ||
@@ -58,9 +52,6 @@ func resolveVehicleDamageContributorCandidate(resolver *entityResolver, masters 
 		}
 	}
 	requestEvidence := "DamageContext.SkillMessageId is present, but no matching outbound UseSkillRequest was resolved; the candidate is correlated from the decoded SkillId and BulletId, verified runtime follower link, and static vehicle actor chain"
-	if requestMatched {
-		requestEvidence = "the outbound UseSkillRequest exactly matches DamageContext.SkillMessageId and the raw source entity"
-	}
 	return &damageContributorCandidate{
 		Name:             name,
 		Kind:             vehicleKindMotorcycle,

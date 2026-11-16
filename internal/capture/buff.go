@@ -2,7 +2,6 @@ package capture
 
 import (
 	"encoding/binary"
-	"encoding/json"
 	"fmt"
 	"math"
 	"time"
@@ -408,10 +407,8 @@ func (p *processor) handleBuffLifecycleMessage(frame gameFrame, body []byte) err
 	p.linkBuffLifecycleDefinition(&row)
 	p.linkBuffLifecycleGenericAndHandle(&row)
 	p.linkBuffLifecycleOwners(&row)
-	if p.buffLifecycle != nil {
-		if err := json.NewEncoder(p.buffLifecycle).Encode(row); err != nil {
-			return fmt.Errorf("write Buff lifecycle row: %w", err)
-		}
+	if p.buffLifecycle != nil { // the row becomes an interface value only when a sink exists (no cost without one)
+		p.writeDiagnosticRow(p.buffLifecycle, "buff-events", row)
 	}
 	p.observeEffectLifecycle(row)
 	p.writeStructuredEventJSONL(row)
@@ -464,8 +461,9 @@ func (p *processor) handleCombatReceivePackNotify(frame gameFrame, body []byte) 
 					p.census.observeCombatNotifyField(notification.number)
 				}
 				if p.combatNotifyAudit != nil && notification.number != fieldCombatNotifyDataCombatCommon {
+					// A failed audit row must not skip the rest of the frame (its damage and effect notifies).
 					if err := writeCombatNotifyAudit(p.combatNotifyAudit, frame, notification, commonEntityID, commonOriginator, commonMessageID, p.sessionNumber); err != nil {
-						return fmt.Errorf("write CombatNotifyData audit field %d: %w", notification.number, err)
+						p.noteDiagnosticFailure("combat-notify-audit", err)
 					}
 				}
 				if notification.number == fieldCombatNotifyDataDamageExecuteNotify && notification.wire == 2 {
@@ -535,9 +533,7 @@ func (p *processor) handleInnerBuffLifecycleMessage(frame gameFrame, innerFieldN
 	p.linkBuffLifecycleGenericAndHandle(&row)
 	p.linkBuffLifecycleOwners(&row)
 	if p.buffLifecycle != nil {
-		if err := json.NewEncoder(p.buffLifecycle).Encode(row); err != nil {
-			return fmt.Errorf("write Buff lifecycle row: %w", err)
-		}
+		p.writeDiagnosticRow(p.buffLifecycle, "buff-events", row)
 	}
 	p.observeBuffInterval(row)
 	p.observeEffectLifecycle(row)
@@ -857,11 +853,9 @@ func (p *processor) handleActiveResponse(frame gameFrame, body []byte) error {
 						row.EntityIDStatus = resolutionCorrelated
 					}
 					p.observeBuffSnapshot(row)
+					// A failed snapshot row must not skip the identity, FSM and part components of this response.
 					if p.buffSnapshots != nil {
-						encoder := json.NewEncoder(p.buffSnapshots)
-						if err := encoder.Encode(row); err != nil {
-							return fmt.Errorf("write Buff snapshot row: %w", err)
-						}
+						p.writeDiagnosticRow(p.buffSnapshots, "buff-snapshots", row)
 					}
 					p.writeStructuredEventJSONL(row)
 				}

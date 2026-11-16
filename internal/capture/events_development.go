@@ -253,11 +253,11 @@ func (p *processor) writeEnvelopedEventJSONL(event any, kind string) {
 	}
 	line, err := prependEnvelope(envelope, event)
 	if err != nil {
-		fmt.Fprintf(p.diagnostic, "combat_event_jsonl_encode_error=%v\n", err)
+		p.noteDiagnosticFailure("combat-events", err)
 		return
 	}
 	if _, err := p.combatEventsJSONL.Write(line); err != nil {
-		fmt.Fprintf(p.diagnostic, "combat_event_jsonl_write_error=%v\n", err)
+		p.noteDiagnosticFailure("combat-events", err)
 	}
 }
 

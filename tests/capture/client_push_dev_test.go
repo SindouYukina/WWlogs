@@ -133,14 +133,38 @@ func TestSkillRequestIsArchivedEvenWhenNoDamageIsObserved(t *testing.T) {
 	}
 }
 
-func TestRoleReportTracksLocalEntityWithoutOptionalClientPushOutput(t *testing.T) {
-	p := &processor{}
+// The research schema decode of a role report writes its research record only; the local role entity is the core
+// decoder's (observeLocalRoleReports), so a research input can never set or change it (Phase 3A R03).
+func TestResearchRoleReportDoesNotChangeTheLocalRoleEntity(t *testing.T) {
+	var out strings.Builder
+	p := newProcessor(nil, &strings.Builder{}, &strings.Builder{}, nil)
+	p.clientPushOut, p.frameOrdinal = &out, 1
 	role := decodedField{Number: fieldCombatPushDataClientCurrentRoleReportPush, Name: "ClientCurrentRoleReportPush", Kind: "class", Message: &decodedMessage{Fields: []decodedField{
 		{Number: fieldClientCurrentRoleReportPushCurrentRoleID, Name: "CurrentRoleId", Kind: "int32", Value: int32(1409)},
 		{Number: fieldClientCurrentRoleReportPushCurrentEntityID, Name: "CurrentEntityId", Kind: "int64", Value: int64(51522)},
 	}}}
 	p.archiveClientPushes(gameFrame{}, pushWrapper(role))
-	if p.playerRelevance == nil || !p.playerRelevance.isRoleEntity(51522) {
-		t.Fatal("normal processing did not retain the client-reported local entity when optional output was disabled")
+	if p.playerRelevance.isRoleEntity(51522) {
+		t.Fatal("the research decode set the core local role entity")
+	}
+	if p.stats.playerRoleReports != 0 {
+		t.Fatalf("the research decode counted a core role report: %+v", p.stats)
+	}
+	var row clientPushRecord
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &row); err != nil || row.EntityID == nil || *row.EntityID != 51522 {
+		t.Fatalf("research role record = %q (%v)", out.String(), err)
+	}
+}
+
+// With a research schema the same outbound request is decoded twice: once by the core (state, statistics), once for
+// research outputs. The core result equals the run without a schema.
+func TestRoleReportWithResearchSchemaKeepsTheCoreResult(t *testing.T) {
+	var out strings.Builder
+	p := newProcessor(nil, &strings.Builder{}, &strings.Builder{}, nil)
+	p.clientPushOut = &out
+	p.protocolSchema = &protocolSchema{}
+	p.archiveClientPushFrame(gameFrame{commandID: cmdCombatSendPackRequest, direction: "out"}, localRoleReportBody(1409, 51522))
+	if !p.playerRelevance.isRoleEntity(51522) || p.stats.playerRoleReports != 1 {
+		t.Fatalf("core role decoder did not run with a research schema: role=%v stats=%+v", p.playerRelevance.isRoleEntity(51522), p.stats)
 	}
 }

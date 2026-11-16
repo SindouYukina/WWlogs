@@ -17,11 +17,9 @@ func newPlayerRelevanceTestProcessor() (*processor, *bytes.Buffer, *bytes.Buffer
 	return p, &stdout, &jsonl
 }
 
+// observeTestLocalRole reports entityID as the current role through the core role decoder, as every build reads it.
 func observeTestLocalRole(p *processor, entityID uint64) {
-	p.observeRoleReport(gameFrame{}, &decodedMessage{Fields: []decodedField{
-		{Name: "CurrentRoleId", Value: int64(1409)},
-		{Name: "CurrentEntityId", Value: int64(entityID)},
-	}})
+	p.archiveClientPushFrame(gameFrame{commandID: cmdCombatSendPackRequest, direction: "out"}, localRoleReportBody(1409, entityID))
 }
 
 func TestPlayerRelevanceDoesNotFilterPlayerBuffSnapshots(t *testing.T) {

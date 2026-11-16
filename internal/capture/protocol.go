@@ -312,6 +312,9 @@ type processor struct {
 	// intervalPerProtocolSession starts a new statistics interval at every game handshake after the first, so one
 	// interval never mixes protocol sessions. Application hosts set it; the CLI keeps one interval per capture.
 	intervalPerProtocolSession bool
+
+	// diagnosticFailures counts failed diagnostic writes by sink (diagnostic_isolation.go); they never affect the core.
+	diagnosticFailures map[string]int
 }
 
 func newProcessor(rsaKey *staticRSA, stdout, diagnostic, audit io.Writer) *processor {

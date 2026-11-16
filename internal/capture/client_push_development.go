@@ -144,11 +144,10 @@ func (p *processor) observeRoleReport(frame gameFrame, message *decodedMessage) 
 		p.activeRoleID = role
 		p.hasActiveRole = true
 	}
+	// The role entity itself is tracked by the core decoder (observeLocalRoleReports), with its conflict check, for the
+	// same push; this research record only reports what the schema decoded.
 	if hasEntity {
 		record.EntityID = &entity
-		if entity > 0 {
-			p.observeLocalRoleEntity(uint64(entity))
-		}
 	}
 	p.writeClientPush(record)
 }

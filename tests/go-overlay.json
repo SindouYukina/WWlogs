@@ -39,6 +39,8 @@
     "internal/capture/central_client_effect_push_test.go": "tests/capture/client_effect_push_test.go",
     "tests/capture/client_push_dev_test.go": "",
     "internal/capture/central_client_push_dev_test.go": "tests/capture/client_push_dev_test.go",
+    "tests/capture/diagnostic_isolation_dev_test.go": "",
+    "internal/capture/central_diagnostic_isolation_dev_test.go": "tests/capture/diagnostic_isolation_dev_test.go",
     "tests/capture/client_push_test.go": "",
     "internal/capture/central_client_push_test.go": "tests/capture/client_push_test.go",
     "tests/capture/client_version_test.go": "",

@@ -2,7 +2,6 @@ package capture
 
 import (
 	"encoding/binary"
-	"encoding/json"
 	"fmt"
 	"math"
 )
@@ -285,10 +284,8 @@ func (p *processor) handleClientEffectRow(row buffLifecycleAuditRow) error {
 	p.linkServerBuffRequest(&row)
 	p.linkBuffLifecycleGenericAndHandle(&row)
 	p.linkBuffLifecycleOwners(&row)
-	if p.buffLifecycle != nil {
-		if err := json.NewEncoder(p.buffLifecycle).Encode(row); err != nil {
-			return fmt.Errorf("write Buff lifecycle row: %w", err)
-		}
+	if p.buffLifecycle != nil { // the row becomes an interface value only when a sink exists (no cost without one)
+		p.writeDiagnosticRow(p.buffLifecycle, "buff-events", row)
 	}
 	p.observeEffectLifecycle(row)
 	p.writeStructuredEventJSONL(row)

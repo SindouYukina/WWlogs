@@ -51,14 +51,15 @@ type combatActionRequestKey struct {
 
 const maxCombatActionRequests = 8192
 
-// archiveClientPushFrame tracks the self-reported role entity without an
-// optional schema, then decodes the full client-push output when a schema exists.
+// archiveClientPushFrame tracks the self-reported role entity with the core decoder in every build and run. An optional
+// research schema (-protocol-schema, Development) then decodes the same request again for research outputs only; that
+// decode never replaces the core decoder or changes core state, so a research input cannot change the statistics.
 func (p *processor) archiveClientPushFrame(frame gameFrame, plain []byte) {
 	if frame.commandID != cmdCombatSendPackRequest || frame.direction != "out" {
 		return
 	}
+	p.observeLocalRoleReports(plain)
 	if p.protocolSchema == nil {
-		p.observeLocalRoleReports(plain)
 		return
 	}
 	decoded, err := decodeSchemaMessage(p.protocolSchema, "CombatSendPackRequest", plain, 0)
