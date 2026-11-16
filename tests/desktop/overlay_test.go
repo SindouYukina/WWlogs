@@ -1,12 +1,19 @@
 package desktop
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+
+	"wwlogs/internal/capture"
+	"wwlogs/internal/service"
 )
 
 func inside(p OverlayPlacement, area application.Rect) bool {
@@ -99,6 +106,179 @@ func TestEditModeCannotBeLeftOnHiddenWindow(t *testing.T) {
 	applyOverlayChange(&prefs, editing, OverlayChange{Opacity: &opacity})
 	if prefs.Opacity != maxOverlayOpacity {
 		t.Fatalf("opacity not clamped: %d", prefs.Opacity)
+	}
+}
+
+func TestBlankOverlayNeverTakesTheMouse(t *testing.T) {
+	for _, c := range []struct {
+		clickThrough, editing, blank, ignore bool
+	}{
+		// Edit Mode takes the mouse so the window can be placed, with or without anything to draw.
+		{clickThrough: true, editing: true, blank: false, ignore: false},
+		{clickThrough: true, editing: true, blank: true, ignore: false},
+		{clickThrough: false, editing: true, blank: false, ignore: false},
+		{clickThrough: false, editing: true, blank: true, ignore: false},
+		// Outside Edit Mode the preference decides for a window that draws something.
+		{clickThrough: true, editing: false, blank: false, ignore: true},
+		{clickThrough: false, editing: false, blank: false, ignore: false},
+		// A window that draws nothing never takes a click, whatever the preference.
+		{clickThrough: true, editing: false, blank: true, ignore: true},
+		{clickThrough: false, editing: false, blank: true, ignore: true},
+	} {
+		if got := overlayIgnoresMouse(c.clickThrough, c.editing, c.blank); got != c.ignore {
+			t.Errorf("click-through %v, editing %v, blank %v: ignore %v, want %v", c.clickThrough, c.editing, c.blank, got, c.ignore)
+		}
+	}
+}
+
+func TestEveryOverlayMouseChangeUsesTheOneRule(t *testing.T) {
+	// The test runs in the package directory. A window call with its own condition would let a blank window take clicks.
+	files, err := filepath.Glob("*.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	for _, file := range files {
+		source, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		parts := strings.Split(string(source), "SetIgnoreMouseEvents(")
+		for _, rest := range parts[1:] {
+			calls++
+			if !strings.HasPrefix(rest, "overlayIgnoresMouse(") {
+				t.Errorf("%s: SetIgnoreMouseEvents(%.60s… does not use overlayIgnoresMouse", file, rest)
+			}
+		}
+	}
+	if calls < 2 {
+		t.Fatalf("found %d mouse changes; both applying preferences and following the content must set the mouse", calls)
+	}
+	// The production manager follows the capture's own publisher, the snapshots the Overlay windows draw.
+	app, err := os.ReadFile("app.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !regexp.MustCompile(`newOverlayManager\([^)]*captureService\.Publisher\(\)\.Next\)`).Match(app) {
+		t.Error("the Overlay manager is not given the capture publisher, so a blank Effects Overlay would take clicks")
+	}
+}
+
+// effectsView is a view whose Effects Overlay rows hold the given listed cells and cells beyond the engine's bound.
+func effectsView(buffs, buffsTruncated, debuffs, debuffsTruncated int) *capture.ViewSnapshot {
+	cells := func(n int) []capture.ViewEffect {
+		result := []capture.ViewEffect{}
+		for i := 0; i < n; i++ {
+			result = append(result, capture.ViewEffect{Key: string(rune('a' + i))})
+		}
+		return result
+	}
+	return &capture.ViewSnapshot{Effects: capture.ViewEffects{
+		Buffs:   capture.ViewEffectRow{Effects: cells(buffs), Truncated: buffsTruncated},
+		Debuffs: capture.ViewEffectRow{Effects: cells(debuffs), Truncated: debuffsTruncated},
+	}}
+}
+
+func TestEffectsBlankCountsBothRowsAndTheirOverflow(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		view  *capture.ViewSnapshot
+		blank bool
+	}{
+		{"no session yet", nil, true},
+		{"no effect", effectsView(0, 0, 0, 0), true},
+		{"one buff", effectsView(1, 0, 0, 0), false},
+		{"one debuff", effectsView(0, 0, 1, 0), false},
+		// Cells beyond the bound are drawn as a count, so they are content too.
+		{"only buffs beyond the bound", effectsView(0, 2, 0, 0), false},
+		{"only debuffs beyond the bound", effectsView(0, 0, 0, 3), false},
+	} {
+		if got := effectsBlank(c.view); got != c.blank {
+			t.Errorf("%s: blank %v, want %v", c.name, got, c.blank)
+		}
+	}
+	// Effects that are not display-eligible stay out of both rows; only the rows decide.
+	ineligible := effectsView(0, 0, 0, 0)
+	ineligible.Effects.Counts = capture.ViewEffectCounts{Tracked: 4, Active: 4, Local: 4, NonHUD: 4}
+	if !effectsBlank(ineligible) {
+		t.Error("an effect the engine does not show must not make the Overlay draw")
+	}
+}
+
+func TestEffectsOverlayFollowsPublishedSnapshots(t *testing.T) {
+	store := loadSettings(filepath.Join(t.TempDir(), "settings.json"), testLocaleCatalog())
+	// A combat as the publisher sees it: no session, then effects appear, change, disappear and appear again.
+	views := []*capture.ViewSnapshot{nil, effectsView(0, 0, 0, 0), effectsView(1, 0, 0, 0), effectsView(2, 0, 1, 0), effectsView(0, 0, 0, 0), effectsView(0, 0, 0, 1), effectsView(0, 0, 0, 0)}
+	want := []bool{true, true, false, false, true, false, true}
+	var manager *overlayManager
+	var blank []bool
+	calls := 0
+	next := func(_ context.Context, after uint64) (*service.Snapshot, error) {
+		calls++
+		// Each call must ask for the snapshot after the last one it received.
+		if after != uint64(calls-1) {
+			t.Errorf("call %d asked for the snapshot after %d", calls, after)
+			return nil, service.ErrPublisherClosed
+		}
+		if after > 0 {
+			blank = append(blank, manager.entries[overlayEffects].blank)
+		}
+		if after == uint64(len(views)) {
+			return nil, service.ErrPublisherClosed
+		}
+		return &service.Snapshot{Sequence: after + 1, View: views[after]}, nil
+	}
+	manager = newOverlayManager(nil, store, func() {}, func() bool { return false }, next)
+	manager.followEffects(context.Background(), next)
+	if len(blank) != len(want) {
+		t.Fatalf("followed %d snapshots, want %d", len(blank), len(want))
+	}
+	for i := range want {
+		if blank[i] != want[i] {
+			t.Errorf("snapshot %d: blank %v, want %v", i+1, blank[i], want[i])
+		}
+	}
+	if manager.entries[overlayCombat].blank {
+		t.Error("the Combat Overlay always draws; it must never be blank")
+	}
+}
+
+func TestEffectsOverlayFollowerEndsWithItsContextAndPublisher(t *testing.T) {
+	for _, end := range []string{"context", "publisher"} {
+		store := loadSettings(filepath.Join(t.TempDir(), "settings.json"), testLocaleCatalog())
+		publisher := service.NewPublisher(service.Status{})
+		manager := newOverlayManager(nil, store, func() {}, func() bool { return false }, publisher.Next)
+		ctx, cancel := context.WithCancel(context.Background())
+		done := make(chan struct{})
+		go func() {
+			manager.followEffects(ctx, publisher.Next)
+			close(done)
+		}()
+		// The initial snapshot has no view, so the Effects Overlay starts blank.
+		deadline := time.Now().Add(5 * time.Second)
+		for {
+			manager.mu.Lock()
+			blank := manager.entries[overlayEffects].blank
+			manager.mu.Unlock()
+			if blank {
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("%s: the initial snapshot did not make the Effects Overlay blank", end)
+			}
+			time.Sleep(time.Millisecond)
+		}
+		if end == "context" {
+			cancel()
+		} else {
+			publisher.Close()
+		}
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Fatalf("the follower did not end with its %s", end)
+		}
+		cancel()
 	}
 }
 

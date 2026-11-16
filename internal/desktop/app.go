@@ -216,7 +216,7 @@ func Run(options Options) error {
 			openShowcaseOverlays(app)
 		}
 	} else {
-		bridge.overlays = newOverlayManager(app, settings, bridge.shell.fire, shutdown.requested.Load)
+		bridge.overlays = newOverlayManager(app, settings, bridge.shell.fire, shutdown.requested.Load, captureService.Publisher().Next)
 		// Overlays are created on first use, so they are opened only after the application loop runs.
 		app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
 			go bridge.overlays.start(options.ShowOverlay)

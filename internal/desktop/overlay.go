@@ -9,6 +9,9 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
+
+	"wwlogs/internal/capture"
+	"wwlogs/internal/service"
 )
 
 // Overlay kinds are stable IDs shared with the frontend's ?surface= parameter and settings.json.
@@ -178,6 +181,26 @@ func placeOverlay(spec overlaySpec, saved *OverlayPlacement, screens []overlaySc
 	}
 }
 
+// overlayIgnoresMouse reports whether an Overlay window lets mouse input through. Edit Mode always takes the mouse, so the
+// window can be moved and resized. Otherwise the click-through preference decides, except that a blank window, one that
+// draws nothing, never takes a click: the user cannot see it.
+func overlayIgnoresMouse(clickThrough, editing, blank bool) bool {
+	return !editing && (clickThrough || blank)
+}
+
+// effectsBlank reports whether the Effects Overlay has nothing to draw for a view: both of the engine's rows are empty,
+// counting the cells beyond its bound. The frontend draws these same rows, so the window and its content agree.
+func effectsBlank(view *capture.ViewSnapshot) bool {
+	if view == nil {
+		return true
+	}
+	rows := view.Effects
+	return len(rows.Buffs.Effects)+rows.Buffs.Truncated+len(rows.Debuffs.Effects)+rows.Debuffs.Truncated == 0
+}
+
+// snapshotSource waits for the first published snapshot after a sequence, as service.Publisher.Next does.
+type snapshotSource func(ctx context.Context, after uint64) (*service.Snapshot, error)
+
 // applyOverlayChange updates persisted preferences for a request. Editing and visibility are linked so that Edit Mode
 // is never left on a hidden window. It returns the resulting editing state.
 func applyOverlayChange(prefs *OverlayPreferences, editing bool, change OverlayChange) bool {
@@ -216,7 +239,10 @@ type overlayEntry struct {
 	window  *application.WebviewWindow
 	ready   bool
 	editing bool
-	timer   *time.Timer
+	// blank is true while the Overlay has nothing to draw by the published snapshots; only the Effects Overlay follows
+	// them. A blank window outside Edit Mode lets the mouse through (overlayIgnoresMouse).
+	blank bool
+	timer *time.Timer
 	// hitWidth and hitHeight are the size the layered hit-test region was last refreshed for.
 	hitWidth, hitHeight int
 	// scale is the Overlay display scale (percent) the window's size was last laid out for; zero before the first layout.
@@ -234,10 +260,12 @@ type overlayEntry struct {
 // overlayManager owns both Overlay windows. operation serializes requests, which call into the UI thread, and must not be
 // taken by a Wails hook; mu guards entry fields and, apart from creating a window, is not held across a window call.
 type overlayManager struct {
-	app       *application.App
-	store     *settingsStore
-	notify    func()
-	shutting  func() bool
+	app      *application.App
+	store    *settingsStore
+	notify   func()
+	shutting func() bool
+	// snapshots are the published snapshots the Overlay windows draw.
+	snapshots snapshotSource
 	operation sync.Mutex
 	mu        sync.Mutex
 	entries   map[string]*overlayEntry
@@ -245,19 +273,23 @@ type overlayManager struct {
 	cancel    context.CancelFunc
 }
 
-func newOverlayManager(app *application.App, store *settingsStore, notify func(), shutting func() bool) *overlayManager {
+func newOverlayManager(app *application.App, store *settingsStore, notify func(), shutting func() bool, snapshots snapshotSource) *overlayManager {
 	entries := map[string]*overlayEntry{}
 	for kind, spec := range overlaySpecs {
 		entries[kind] = &overlayEntry{kind: kind, spec: spec}
 	}
-	return &overlayManager{app: app, store: store, notify: notify, shutting: shutting, entries: entries}
+	return &overlayManager{app: app, store: store, notify: notify, shutting: shutting, snapshots: snapshots, entries: entries}
 }
 
-// start opens the Overlays that were visible when the application last closed and watches for display changes.
+// start opens the Overlays that were visible when the application last closed, watches for display changes and follows
+// what the Effects Overlay has to draw.
 func (m *overlayManager) start(showAll bool) {
 	ctx, cancel := context.WithCancel(context.Background())
 	m.cancel = cancel
 	go m.watchDisplays(ctx)
+	if m.snapshots != nil {
+		go m.followEffects(ctx, m.snapshots)
+	}
 	for _, entry := range m.entries {
 		if showAll {
 			// A Development flag for one launch: held in memory, not a user request to rewrite settings now.
@@ -342,7 +374,7 @@ func (m *overlayManager) applyLocked(entry *overlayEntry) {
 	if entry.window == nil && prefs.Visible {
 		m.createLocked(entry)
 	}
-	window, ready, editing := entry.window, entry.ready, entry.editing
+	window, ready, editing, blank := entry.window, entry.ready, entry.editing, entry.blank
 	m.mu.Unlock()
 	// Before the runtime is ready the request stays in the preferences; onReady applies them.
 	if window == nil || !ready {
@@ -359,7 +391,7 @@ func (m *overlayManager) applyLocked(entry *overlayEntry) {
 		setOverlayTopmost(window, prefs.AlwaysOnTop)
 	}
 	m.rescaleLocked(entry, window, effectiveOverlayScale(prefs.Scale))
-	window.SetIgnoreMouseEvents(prefs.ClickThrough && !editing)
+	window.SetIgnoreMouseEvents(overlayIgnoresMouse(prefs.ClickThrough, editing, blank))
 	// Edge resizing is gated in the window runtime, not with SetResizable. Dropping the native resizable style more than
 	// doubled the GPU process's CPU for two live Overlays in repeated measurements, and a frameless window has no native
 	// edge to grab either way.
@@ -602,6 +634,51 @@ func (m *overlayManager) refit(screens []overlayScreen) {
 		if fitted := placeOverlay(entry.spec, &current, screens, overlayScale); toRect(fitted) != toRect(current) {
 			window.SetPhysicalBounds(toRect(fitted))
 		}
+	}
+}
+
+// followEffects keeps the Effects Overlay's blank state in step with the published snapshots, the same ones its window
+// draws, so an Overlay that shows nothing outside Edit Mode never takes a click either. It ends with the manager's context
+// or the publisher. A publish only compares one count here; the window is touched when the mouse rule changes.
+func (m *overlayManager) followEffects(ctx context.Context, next snapshotSource) {
+	var after uint64
+	for {
+		snapshot, err := next(ctx, after)
+		if err != nil || snapshot == nil {
+			return
+		}
+		after = snapshot.Sequence
+		m.setBlank(overlayEffects, effectsBlank(snapshot.View))
+	}
+}
+
+// setBlank records whether an Overlay has anything to draw and updates its window's mouse rule when that changes it.
+// followEffects is the only writer, so an unchanged state returns without waiting for a window request in progress.
+func (m *overlayManager) setBlank(kind string, blank bool) {
+	entry := m.entries[kind]
+	m.mu.Lock()
+	unchanged := m.closed || entry.blank == blank
+	m.mu.Unlock()
+	if unchanged {
+		return
+	}
+	m.operation.Lock()
+	defer m.operation.Unlock()
+	m.mu.Lock()
+	if m.closed || entry.blank == blank {
+		m.mu.Unlock()
+		return
+	}
+	previous := entry.blank
+	entry.blank = blank
+	window, ready, editing := entry.window, entry.ready, entry.editing
+	m.mu.Unlock()
+	if window == nil || !ready {
+		return
+	}
+	clickThrough := m.store.overlay(kind).ClickThrough
+	if overlayIgnoresMouse(clickThrough, editing, blank) != overlayIgnoresMouse(clickThrough, editing, previous) {
+		window.SetIgnoreMouseEvents(overlayIgnoresMouse(clickThrough, editing, blank))
 	}
 }
 
