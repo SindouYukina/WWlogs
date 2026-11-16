@@ -87,7 +87,8 @@ func TestDamageResponseWithoutSourceUsesUnknown(t *testing.T) {
 
 	p.handleOneDamageResult(7, response)
 
-	if stdout.Len() == 0 || p.stats.includedUnresolvedRelations != 1 || p.stats.suppressedUnrelatedEvents != 0 {
+	// The console line is a development output: the public build writes none, and both count the result as visible.
+	if (stdout.Len() != 0) != diagnosticConsole || p.stats.includedUnresolvedRelations != 1 || p.stats.suppressedUnrelatedEvents != 0 {
 		t.Fatalf("damage with missing actor was hidden without proof it was unrelated: stdout=%q stats=%+v", stdout.String(), p.stats)
 	}
 	if p.stats.missingAttackerEntityID != 1 {

@@ -331,3 +331,93 @@ func TestFailedCombatEventStreamIsCountedOnce(t *testing.T) {
 		t.Fatalf("failures = %v, console = %q", p.diagnosticFailures, console.String())
 	}
 }
+
+// flushFailingConsole accepts every write and refuses every flush, like a buffered console whose pipe has closed.
+type flushFailingConsole struct{ bytes.Buffer }
+
+func (*flushFailingConsole) Flush() error { return errors.New("injected console flush failure") }
+
+// failingBufferedConsole refuses writes after failAfter and every flush.
+type failingBufferedConsole struct{ failingDiagnosticWriter }
+
+func (*failingBufferedConsole) Flush() error { return errors.New("injected console flush failure") }
+
+// A console or event audit write that failed used to return before the counters of the damage result (printed results,
+// their sum, player-related events). Each failed line is counted once per sink; the counters and the damage statistics
+// stay those of the same input without outputs, and the research lines are written for every result.
+func TestFailedConsoleAndAuditWritesKeepTheDamageCounters(t *testing.T) {
+	items := [][]byte{
+		notifyData(testNotify{attacker: 100, target: 200, damageID: notifyTestDamage, damage: 300, changeLife: 300}),
+		notifyData(testNotify{attacker: 101, target: 201, damageID: notifyTestDamage, damage: 400, changeLife: 400}),
+		notifyData(testNotify{attacker: 100, target: 201, damageID: notifyTestDamage, damage: 500, changeLife: 500}),
+	}
+	base := newNotifyTestProcessor()
+	deliverNotifyFrame(t, base, 1, 41, items...)
+	if base.stats.printed != 3 || base.stats.matchedCombatResultAbs != 1200 || base.stats.playerRelatedEvents != 3 {
+		t.Fatalf("base counters: printed=%d sum=%d related=%d, want 3, 1200, 3", base.stats.printed, base.stats.matchedCombatResultAbs, base.stats.playerRelatedEvents)
+	}
+	for _, test := range []struct {
+		name        string
+		console     io.Writer
+		wantConsole int
+	}{
+		{"every console line fails", &failingDiagnosticWriter{}, 3},
+		{"the console fails after its first line", &failingDiagnosticWriter{failAfter: 1}, 2},
+		{"every console flush fails", &flushFailingConsole{}, 3},
+		{"a failed buffered line is not flushed again", &failingBufferedConsole{}, 3},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			failing := newNotifyTestProcessor()
+			var diagnostic bytes.Buffer
+			failing.stdout, failing.diagnostic = test.console, &diagnostic
+			failing.audit, failing.research = &failingDiagnosticWriter{failAfter: 1}, true
+			deliverNotifyFrame(t, failing, 1, 41, items...)
+
+			if got, want := coreDamageState(failing), coreDamageState(base); got != want {
+				t.Fatalf("core damage result changed by failing console and audit writes:\nfailing %s\nbase    %s", got, want)
+			}
+			if failing.diagnosticFailures["console"] != test.wantConsole || failing.diagnosticFailures["event-audit"] != 2 {
+				t.Fatalf("failures = %v, want console=%d event-audit=2", failing.diagnosticFailures, test.wantConsole)
+			}
+			text := diagnostic.String()
+			if strings.Count(text, "diagnostic_output_error sink=console") != 1 || strings.Count(text, "[DAMAGE] ") != 3 {
+				t.Fatalf("diagnostic stream = %q, want one console failure line and three research lines", text)
+			}
+			if failing.stats.parseErrors != 0 {
+				t.Fatalf("parse errors = %d, want 0", failing.stats.parseErrors)
+			}
+		})
+	}
+}
+
+// Outbound skill requests are a research record (Development, -protocol-schema). Linking a damage result to one counts
+// the link on the record and changes nothing in the core result.
+func TestSkillRequestLinkIsOnlyAResearchRecord(t *testing.T) {
+	run := func(withRequest bool) (*processor, combatEvent) {
+		p := newPairingTestProcessor()
+		if withRequest {
+			key := combatActionRequestKey{sessionNumber: p.sessionNumber, messageID: 9001}
+			p.combatActionRequests[key] = combatActionRequest{SessionNumber: p.sessionNumber, MessageID: 9001, EntityID: 100, SkillID: 1409001, RequestType: "UseSkillRequest"}
+		}
+		request := pendingDamageRequest{attackerEntityID: 100, hasAttackerEntityID: true, targetEntityID: 200, hasTargetEntityID: true,
+			damageID: notifyTestDamage, hasDamageID: true, skillID: 1409001, skillMessageID: 9001}
+		event := p.buildDamageEvent(7, request, 250, 250, true, 250)
+		p.writeDamageEvent(event)
+		return p, event
+	}
+	plain, plainEvent := run(false)
+	linked, linkedEvent := run(true)
+	if plainEvent.SkillRequest != nil || linkedEvent.SkillRequest == nil || linkedEvent.SkillRequest.LinkedDamageEvents != 1 {
+		t.Fatalf("skill request links: without record %+v, with record %+v", plainEvent.SkillRequest, linkedEvent.SkillRequest)
+	}
+	if got := linked.combatActionRequests[combatActionRequestKey{sessionNumber: linked.sessionNumber, messageID: 9001}].LinkedDamageEvents; got != 1 {
+		t.Fatalf("linked damage events on the record = %d, want 1", got)
+	}
+	plainEvent.SkillRequest, linkedEvent.SkillRequest = nil, nil
+	if got, want := withoutAllocationIDs(canonicalValue(linkedEvent)), withoutAllocationIDs(canonicalValue(plainEvent)); got != want {
+		t.Fatalf("damage event changed by the research link:\nlinked %s\nplain  %s", got, want)
+	}
+	if got, want := coreDamageState(linked), coreDamageState(plain); got != want {
+		t.Fatalf("core damage result changed by the research link:\nlinked %s\nplain  %s", got, want)
+	}
+}

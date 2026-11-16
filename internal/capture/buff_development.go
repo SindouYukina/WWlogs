@@ -24,15 +24,14 @@ func (p *processor) writeBuffLifecycleConsole(row buffLifecycleAuditRow) {
 	if fields := p.effectSemanticConsoleFields(row); fields != "" {
 		line += " " + fields
 	}
+	// The effect lines share the console sink with the damage lines (writeDamageEventOutputs) and its failure count.
 	if _, err := fmt.Fprintln(p.stdout, line); err != nil {
-		if p.diagnostic != nil {
-			fmt.Fprintf(p.diagnostic, "effect_event_stdout_error=%v\n", err)
-		}
+		p.noteDiagnosticFailure("console", err)
 		return
 	}
 	if flusher, ok := p.stdout.(interface{ Flush() error }); ok {
-		if err := flusher.Flush(); err != nil && p.diagnostic != nil {
-			fmt.Fprintf(p.diagnostic, "effect_event_stdout_flush_error=%v\n", err)
+		if err := flusher.Flush(); err != nil {
+			p.noteDiagnosticFailure("console", err)
 		}
 	}
 }

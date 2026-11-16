@@ -13,7 +13,12 @@ import (
 func (p *processor) writeStructuredEventJSONL(event any) {
 }
 
-func (p *processor) writeDamageEventJSONL(event combatEvent) {
+func (p *processor) writeDamageEventOutputs(event *combatEvent, visible bool, sourceRelation, targetRelation playerRelation) {
+}
+
+func (p *processor) linkSkillRequest(messageID uint64) *combatActionRequest {
+	var r0 *combatActionRequest
+	return r0
 }
 
 func (p *processor) writeBattleStateSignal(at time.Time, container string, signal playerBattleStateSignal, anchor string) {
@@ -51,26 +56,8 @@ func decodeSchemaMessage(schema *protocolSchema, typeName string, data []byte, d
 func (p *processor) archiveClientPushes(frame gameFrame, decoded *decodedMessage) {
 }
 
-func (p *processor) recordDamageForOverlap(event combatEvent) {
-}
-
 func (event combatEvent) jsonlView(masters *gameMaster) combatEventJSONL {
 	var r0 combatEventJSONL
-	return r0
-}
-
-func (event combatEvent) formatNormalForSourceRelation(sourceRelation playerRelation) string {
-	var r0 string
-	return r0
-}
-
-func marshalRuntimeIdentity(entity runtimeEntity) string {
-	var r0 string
-	return r0
-}
-
-func optionalDamageSource(value uint64, present bool) string {
-	var r0 string
 	return r0
 }
 
