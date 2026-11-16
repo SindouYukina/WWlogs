@@ -117,7 +117,9 @@ func (p *processor) observeCombatActionRequest(frame gameFrame, request *decoded
 }
 
 // linkSkillRequest counts one damage result against the research record of its outbound skill request
-// (observeCombatActionRequest) and returns a copy for the event line. The core never reads the link.
+// (observeCombatActionRequest) and returns a copy for the event line. The core never reads the link. The returned copy
+// is a separate variable so that only a found request is allocated: a returned &action would move every lookup to
+// the heap.
 func (p *processor) linkSkillRequest(messageID uint64) *combatActionRequest {
 	if messageID == 0 {
 		return nil
@@ -129,7 +131,8 @@ func (p *processor) linkSkillRequest(messageID uint64) *combatActionRequest {
 	}
 	action.LinkedDamageEvents++
 	p.combatActionRequests[key] = action
-	return &action
+	linked := action
+	return &linked
 }
 
 func firstChildMessage(message *decodedMessage, name string) *decodedMessage {
