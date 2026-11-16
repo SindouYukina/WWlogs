@@ -7,6 +7,12 @@ export function snapshotStale(snapshot:Snapshot|null, now:number):boolean {
   return !Number.isFinite(at) || now-at>5000
 }
 
+// The live clock (useClock) feeds only snapshotStale and effectRemaining, and both read it only while the service runs,
+// so the clock needs to tick only then.
+export function liveClockActive(snapshot:Snapshot|null):boolean {
+  return snapshot?.service.state==="running"
+}
+
 // The engine decides whether a countdown can be trusted (ViewEffect.showCountdown) and what it reads; this only adds the
 // frontend's own state: the connection, a stopped service and a snapshot too old to be current. It never extrapolates.
 export function effectRemaining(effect:Effect,snapshot:Snapshot|null,connection:Connection,now:number):number|undefined {

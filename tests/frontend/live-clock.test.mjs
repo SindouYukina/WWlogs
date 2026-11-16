@@ -1,11 +1,12 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { effectRemaining, snapshotStale } from "../../frontend/src/lib/effects.ts"
+import { readFileSync } from "node:fs"
+import { effectRemaining, liveClockActive, snapshotStale } from "../../frontend/src/lib/effects.ts"
 import { dataChip, isFrozen } from "../../frontend/src/lib/combat-data.ts"
 
 // The live wall clock (useClock, CombatData.now) feeds only the freshness checks. Every reader of it ignores it unless
-// the service is running, so the clock need not tick in any other state (Phase 3A R31). A reader that starts to depend
-// on the clock outside "running" fails here.
+// the service is running, so the clock ticks only then (Phase 3A R31). A reader that starts to depend on the clock
+// outside "running" fails here.
 
 const at = Date.parse("2026-11-16T12:00:00Z")
 const view = { health: { dataIntegrity: "INTACT", context: { state: "VALID" } }, encounters: { recent: [] }, effects: { status: "complete" } }
@@ -41,4 +42,14 @@ test("while the service runs, the clock turns an old snapshot stale and stops it
   assert.equal(dataChip(old).key, "stale")
   assert.equal(effectRemaining(effect, snapshot, "connected", fresh.now), 12)
   assert.equal(effectRemaining(effect, snapshot, "connected", old.now), undefined)
+})
+
+test("the clock runs exactly while the service runs", () => {
+  assert.equal(liveClockActive(null), false)
+  for (const state of ["stopped", "starting", "stopping", "error"]) assert.equal(liveClockActive(snapshotIn(state)), false, state)
+  assert.equal(liveClockActive(snapshotIn("running")), true)
+  const provider = readFileSync("frontend/src/lib/useLiveCombatData.ts", "utf8")
+  assert.match(provider, /useClock\(liveClockActive\(snapshot\)\)/)
+  assert.match(provider, /useEffect\(\(\) => \{\s*if \(!active\) return/)
+  assert.match(provider, /\}, \[active\]\)/)
 })
