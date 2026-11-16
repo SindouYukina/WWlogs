@@ -256,7 +256,20 @@ func passingEvidence(t *testing.T, in *readiness.Inputs) {
 	in.GoldenCoverage = writeJSON(t, filepath.Join(dir, "golden-coverage.json"), map[string]any{"gameVersion": "3.8", "captures": []any{
 		map[string]any{"name": "LIVE_20261113_224240", "sha256": "21f42752b3d03855febe0649389c1f9755e214a6ed51a5e6decc2d97a7036b21", "facts": map[string]int{"effects": 6, "completeness": 18}, "passed": true},
 	}, "absent": []string{}})
-	in.HistorySummary = writeJSON(t, filepath.Join(dir, "history-summary.json"), map[string]any{"captures": 1, "listedEncounters": 18, "versionedEncounters": 18})
+	in.HistorySummary = writeJSON(t, filepath.Join(dir, "history-summary.json"), historySummary(nil, nil))
+}
+
+// historySummary writes the History replay summary of the corpus capture as a complete passing run reports it (18 encounters,
+// 278 enemy instances, every one named), with the given unnamed enemies and scenes.
+func historySummary(unidentified, unresolved []map[string]any) map[string]any {
+	if unidentified == nil {
+		unidentified = []map[string]any{}
+	}
+	if unresolved == nil {
+		unresolved = []map[string]any{}
+	}
+	return map[string]any{"captures": 1, "listedEncounters": 18, "versionedEncounters": 18, "identification": map[string]any{
+		"enemyInstances": 278, "enemiesUnidentified": len(unidentified), "mainEnemies": 18, "scenesKnown": 18, "unidentified": unidentified, "unresolvedScenes": unresolved}}
 }
 
 func TestCurrentRepositoryHasNoStaticGap(t *testing.T) {
@@ -551,12 +564,60 @@ func contentInventory(t *testing.T, mutate func(inventory map[string]any)) strin
 		"playableRoles": column("SELECT CAST(id AS TEXT) FROM roleinfo WHERE role_type = 1"),
 		"hudBuffs": column(`SELECT DISTINCT b.owner_id FROM buff_gameplay_cue_ids b JOIN gameplaycue g ON g.id = CAST(CAST(b.value AS INTEGER) AS TEXT)
 			WHERE g.path_asset_id IS NOT NULL AND g.path_asset_id <> '' AND g.cue_type IN (2, 14, 24, 37)`),
-		"exclusions": []any{},
+		"prefabEntities": prefabEntitiesOf(t, db),
+		"exclusions":     []any{},
 	}
 	if mutate != nil {
 		mutate(inventory)
 	}
 	return writeJSON(t, filepath.Join(t.TempDir(), "client-content.json"), inventory)
+}
+
+// prefabEntitiesOf lists the prefab entities of the Master's prefab relations as the inventory lists the client's: every
+// template in ordinal order and every MonsterInfo of the entity.
+func prefabEntitiesOf(t *testing.T, db *sql.DB) []map[string]any {
+	t.Helper()
+	entities := map[string]map[string]any{}
+	var order []string
+	rows, err := db.Query("SELECT prefab_id, entity_id, template_id FROM prefab_entity_template_ref ORDER BY CAST(prefab_id AS INTEGER), CAST(entity_id AS INTEGER), ordinal")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var prefab, entity, template string
+		if err := rows.Scan(&prefab, &entity, &template); err != nil {
+			t.Fatal(err)
+		}
+		key := prefab + "/" + entity
+		if entities[key] == nil {
+			entities[key] = map[string]any{"prefab": prefab, "entity": entity, "blueprint": "", "templates": []string{}, "monsters": []string{}}
+			order = append(order, key)
+		}
+		entities[key]["templates"] = append(entities[key]["templates"].([]string), template)
+	}
+	rows.Close()
+	rows, err = db.Query("SELECT prefab_id, entity_id, monster_id FROM prefab_entity_monster ORDER BY CAST(prefab_id AS INTEGER), CAST(entity_id AS INTEGER), CAST(monster_id AS INTEGER)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var prefab, entity, monster string
+		if err := rows.Scan(&prefab, &entity, &monster); err != nil {
+			t.Fatal(err)
+		}
+		key := prefab + "/" + entity
+		if entities[key] == nil {
+			entities[key] = map[string]any{"prefab": prefab, "entity": entity, "blueprint": "", "templates": []string{}, "monsters": []string{}}
+			order = append(order, key)
+		}
+		entities[key]["monsters"] = append(entities[key]["monsters"].([]string), monster)
+	}
+	rows.Close()
+	out := make([]map[string]any, 0, len(order))
+	for _, key := range order {
+		out = append(out, entities[key])
+	}
+	return out
 }
 
 // addTableID adds an id to one table of a content inventory, as a row the client defines.
@@ -692,4 +753,123 @@ func TestGateFailsNegativeStatusSettlementGaps(t *testing.T) {
 		"InvokePeriod 99990067 names status Buff 10061000, which has no period",
 		"status Buff 10021000 of DamageId 1004 spreads on overflow but has no positive stack limit",
 		"status Buff 150721001 of DamageId 1005 lacks a settlement column")
+}
+
+// The clean control of content.prefab-entities: a client whose prefabs are exactly the Master's relations passes, every
+// entity counted.
+func TestGatePrefabEntitiesMatchTheMaster(t *testing.T) {
+	in := baseInputs(t)
+	in.ClientContent = contentInventory(t, nil)
+	report := run(t, in)
+	wantStatus(t, report, "content.prefab-entities", readiness.StatusPass)
+	if c := checkOf(t, report, "content.prefab-entities"); c.Coverage == nil || c.Coverage.Total < 5000 || c.Coverage.Passed != c.Coverage.Total {
+		t.Fatalf("coverage %+v, want every prefab entity of the Global 3.8 client", c.Coverage)
+	}
+}
+
+// Failure injection: the client spawns an enemy from a prefab entity the Master has no relation for (the Global 3.8 defect:
+// Tower of Adversity enemies showed no main enemy), a prefab entity whose template the Master names differently, and a Master
+// relation for an entity the client no longer defines.
+func TestGateFailsPrefabEntityGaps(t *testing.T) {
+	in := baseInputs(t)
+	in.ClientContent = contentInventory(t, func(inventory map[string]any) {
+		entities := inventory["prefabEntities"].([]map[string]any)
+		for _, entity := range entities {
+			if entity["prefab"] == "222850001" && entity["entity"] == "1850000" {
+				entity["templates"] = []string{"24000014"}
+			}
+		}
+		var kept []map[string]any
+		for _, entity := range entities {
+			if !(entity["prefab"] == "222700104" && entity["entity"] == "1700001") {
+				kept = append(kept, entity)
+			}
+		}
+		kept = append(kept, map[string]any{"prefab": "222850001", "entity": "1859999", "blueprint": "Monster_New", "templates": []string{"24000013"}, "monsters": []string{}})
+		inventory["prefabEntities"] = kept
+	})
+	report := run(t, in)
+	wantFail(t, report, "content.prefab-entities",
+		"prefab 222850001 entity 1859999 (Monster_New): the Master has no relation, so the product leaves this enemy unidentified",
+		"prefab 222850001 entity 1850000 (): the product names TemplateConfig [24000013], the client [24000014]",
+		"the Master relates prefab entity 222700104/1700001, which the client does not define")
+}
+
+// Failure injection: a Master without the prefab relations, loaded by the product, leaves every prefab entity of the client
+// unidentified; an inventory from before the prefab inventory keeps the check UNVERIFIED.
+func TestGateFailsMasterWithoutPrefabRelations(t *testing.T) {
+	root := repositoryRoot(t)
+	inventory := contentInventory(t, nil)
+	fixture := filepath.Join(t.TempDir(), "master_data.db")
+	copyFile(t, filepath.Join(root, "data", "master_data.db"), fixture)
+	db, err := sql.Open("sqlite", "file:"+filepath.ToSlash(fixture))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range []string{"DROP TABLE prefab_entity_template_ref", "DROP TABLE prefab_entity_monster"} {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	report := run(t, readiness.Inputs{Root: root, MasterPath: fixture, Locales: []string{"zh-TW"}, ClientContent: inventory})
+	// Findings are bounded; every failing entity is still a subject.
+	wantFail(t, report, "content.prefab-entities", "the Master has no relation, so the product leaves this enemy unidentified", "prefab entity 222850001/1850000")
+	if c := checkOf(t, report, "content.prefab-entities"); c.Coverage == nil || c.Coverage.Passed != 0 {
+		t.Fatalf("coverage %+v, want no prefab entity identified", c.Coverage)
+	}
+
+	in := baseInputs(t)
+	in.ClientContent = contentInventory(t, func(inventory map[string]any) { delete(inventory, "prefabEntities") })
+	wantStatus(t, run(t, in), "content.prefab-entities", readiness.StatusUnverified)
+}
+
+// Failure injection: the History replay of the corpus stored an enemy without identity, an enemy without a name in one
+// locale and an encounter whose scene has no kind of play; a recorded limit with its reason excuses only what it names, and a
+// summary from a collector without identification counts proves nothing.
+func TestGateFailsUnnamedHistoryContent(t *testing.T) {
+	root := repositoryRoot(t)
+	in := baseInputs(t)
+	in.HistorySummary = writeJSON(t, filepath.Join(t.TempDir(), "history-summary.json"), historySummary(
+		[]map[string]any{
+			{"capture": "LIVE_20261113_224240", "encounter": "1-2", "ordinal": 0, "missingLocales": []string{"zh-TW", "zh-CN", "en-US", "ja-JP", "ko-KR"}},
+			{"capture": "LIVE_20261113_224240", "encounter": "1-3", "ordinal": 1, "templateId": 24000013, "missingLocales": []string{"ko-KR"}},
+		},
+		[]map[string]any{{"capture": "LIVE_20261113_224240", "encounter": "1-14", "instanceId": 9102, "modeUnresolved": []string{"zh-TW", "zh-CN", "en-US", "ja-JP", "ko-KR"}}},
+	))
+	report := run(t, in)
+	wantFail(t, report, "content.history-identification",
+		"LIVE_20261113_224240 encounter 1-2 enemy 0 has no MonsterInfo or TemplateConfig identity",
+		"LIVE_20261113_224240 encounter 1-3 enemy 1 (monster 0, template 24000013) has no name in ko-KR",
+		"LIVE_20261113_224240 encounter 1-14: scene 9102 has no kind of play in zh-TW")
+
+	// The same summary with the scene's limit recorded: the enemies still fail, the scene does not.
+	registry := filepath.Join(t.TempDir(), "golden_registry.json")
+	data, err := os.ReadFile(filepath.Join(root, "tests", "capture", "golden_registry.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document map[string]any
+	if err := json.Unmarshal(data, &document); err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range document["captures"].([]any) {
+		capture := entry.(map[string]any)
+		if capture["name"] == "LIVE_20261113_224240" {
+			capture["identificationLimits"] = []any{map[string]any{"kind": "mode", "scene": 9102, "reason": "not an Adventure Guide category (fixture)"}}
+		}
+	}
+	in.GoldenRegistry = writeJSON(t, registry, document)
+	report = run(t, in)
+	c := checkOf(t, report, "content.history-identification")
+	findings := strings.Join(c.Findings, "\n")
+	if c.Status != readiness.StatusFail || strings.Contains(findings, "scene 9102") || !strings.Contains(findings, "encounter 1-2 enemy 0") {
+		t.Fatalf("a recorded mode limit must excuse only its scene: %s %v", c.Status, c.Findings)
+	}
+
+	in = baseInputs(t)
+	in.HistorySummary = writeJSON(t, filepath.Join(t.TempDir(), "history-summary.json"), map[string]any{"captures": 1, "listedEncounters": 18, "versionedEncounters": 18})
+	wantStatus(t, run(t, in), "content.history-identification", readiness.StatusUnverified)
 }
