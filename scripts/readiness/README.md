@@ -37,14 +37,17 @@ Inputs:
 | Source tree, `data/master_data.db`, `assets/manifest.json` and `assets/game/**` | tracked | always read |
 | `tests/capture/golden_registry.json` | tracked | the Golden captures the corpus requires for the current game version |
 | Research inputs file | private | `{"protocolSchema": "<client schema from protojs_schema.py>", "clientReferences": "<client reference inventory>", "clientContent": "<client content inventory>"}`; relative paths resolve from the repository root |
-| `-Evidence` directory | run evidence | `verify-results.json`, `golden-coverage.json`, `history-summary.json` from `verify.ps1 -EvidenceOut` |
+| `-Evidence` directory | run evidence | `verify-results.json`, `golden-coverage.json`, `history-summary.json` (with its `identification` counts) from `verify.ps1 -EvidenceOut` |
 | `-LiveAcceptance` | owner record | `{"gameVersion", "clientVersion", "buildNumber", "executableSha256", "date", "operator", "result", "checks"}` |
 
 The client content inventory (`work/version-update/tools/client_content_inventory.py`, owner-local) lists, from the
 client's own ConfigDB files and independently of the Master, every row id of the tables the Master keeps whole, how many
 rows the decoded snapshot holds, the playable roles and the buffs whose GameplayCue the HUD draws: `{"client", "resource",
-"tables": {"<table>": {"sourceRows", "decodedRows", "ids"}}, "playableRoles", "hudBuffs", "exclusions": [{"table", "id",
-"reason"}]}`.
+"tables": {"<table>": {"sourceRows", "decodedRows", "ids"}}, "playableRoles", "hudBuffs", "prefabEntities": [{"prefab", "entity",
+"blueprint", "templates", "monsters"}], "exclusions": [{"table", "id", "reason"}]}`. `prefabEntities` lists every entity of every
+client PrefabConfig with the TemplateConfig and MonsterInfo rows its BlueprintType names in the client's own tables (the
+client's lookup for an entity with EntityConfigType Prefab); an exclusion of one uses table `prefabentity` and id
+`<prefab>/<entity>`.
 
 The client reference inventory lists every pack path the current client references and the explicit exclusions (with
 reasons) of references the product never requests: `{"client", "resource", "paths": [...], "exclusions": [{"path",
@@ -76,6 +79,8 @@ reasons) of references the product never requests: `{"client", "resource", "path
 | `content.guide-categories` | content | static | Every Adventure Guide category the client's detection rows use is named in every locale | a new mode without a name |
 | `content.instance-modes` | content | static | Every category with an instance only it names resolves through `DisplayResolver.InstanceMode` | a new mode the resolver cannot place |
 | `content.unresolved-categories` | content | static, advisory | Categories the client data names only ambiguously | reported limitation, never a blocker |
+| `content.prefab-entities` | content | research | Every entity of every client prefab is identified by the product (`capture.MasterData.PrefabEntity`) with exactly the TemplateConfig rows and single MonsterInfo its BlueprintType names in the client, and the Master relates no prefab entity the client lacks | an enemy spawned from a prefab that the History cannot name (Global 3.8: the Master had no prefab relation, so Tower of Adversity and ShipTower main enemies showed "未識別"), a changed or conflicting mapping, a stale relation |
+| `content.history-identification` | content | evidence | Every enemy instance, main enemy, stage and kind of play the History replay of the corpus stored is named in every bundled Master locale with the History view's rules, unless `tests/capture/golden_registry.json` records its limit and reason (`identificationLimits`) | a new UNKNOWN the static checks cannot see: an ID the decoder no longer extracts, a resolver gap, a missing locale name |
 | `runtime.history-version-source` | runtime | static | No product or frontend source keeps a game version literal of its own | History or a view recording an old version |
 | `runtime.profile-parity` | runtime | evidence | Public and Development statistics, History and Master answers are equal (`verify.ps1`) | a profile split in core semantics |
 | `runtime.history-version-replay` | runtime | evidence | Every encounter the History replay stored carries the decoded version | stale History game versions |
@@ -99,7 +104,10 @@ History version literal with the protocol at 3.9 and a replay whose encounters l
 layer and a stray wire number in a source copy, and a client schema with one renumbered command; a required Golden
 capture absent, without facts, failed, or from another file; and client reference drift; client content the Master lacks (a new role, HUD status and rows), a Master HUD relation the client
 no longer draws, an inventory of another client, a partial extraction and an exclusion without a reason; and a HUD
-status's icon missing from a copy of the manifest. Clean controls of the same inputs pass. Nothing is written to the tracked Master, manifest or any user data.
+status's icon missing from a copy of the manifest; a client prefab entity the Master has no relation for, one whose template
+the Master names differently, a stale Master relation, and a Master copy without the prefab relations; a History replay
+summary with an enemy without identity, an enemy without a name in one locale and a scene without a kind of play (a recorded
+limit excuses only what it names), and a summary without identification counts. Clean controls of the same inputs pass. Nothing is written to the tracked Master, manifest or any user data.
 
 ## Troubleshooting
 
@@ -110,6 +118,8 @@ status's icon missing from a copy of the manifest. Clean controls of the same in
 | `effects.hud-classification` FAIL | the HUD rule in `internal/capture/effect_hud_cues.go` / `effect_display.go` no longer matches the client | compare with the client's `BuffItem*.js` and fix the shared Go rule, never per effect |
 | `content.instance-modes` FAIL | a new guide relation or category the resolver does not read | rebuild the game-mode tables and, with client evidence, extend `internal/capture/instance_display.go` |
 | `runtime.history-version-source` FAIL | a version literal outside `protocol_numbers.go` | take the version from `capture.CurrentGameVersion()` through the stored protocol session |
+| `content.prefab-entities` FAIL | the Master's prefab relations do not match the client's PrefabConfig | rebuild them with `work/compat-3.8/tools/prefab_identity.py` and apply incrementally with `apply_prefab_identity.py` (procedure S4) |
+| `content.history-identification` FAIL | a stored enemy, stage or kind of play of the corpus has no name | find which layer lost it (wire field not decoded, resolver, Master relation, locale text) before anything else; record a limit in the Golden registry only with client evidence that no source names it |
 | `verification.golden-coverage` FAIL | a required capture was not passed to `verify.ps1`, its file changed, or a fact failed | pass the corpus with `-PcapDirectory`; a changed file needs a new registry entry and independent facts |
 | any evidence check UNVERIFIED | `-Evidence` missing or from a run without `-PcapDirectory` | rerun `verify.ps1 -PcapDirectory logs -EvidenceOut <dir>` |
 | `master.loads` slow | each locale loads the full Master (about 10 s each on the development PC) | expected; results are remembered within one gate process |

@@ -180,6 +180,8 @@ func loadMasterDataFromDatabase(db *sql.DB, databasePath, hash, locale string) (
 			levelMonsters:   make(map[sceneLevelKey]uint64),
 			levelTemplates:  make(map[sceneLevelKey][]sceneTemplateCandidate),
 			templateCatalog: make(map[uint64]sceneTemplateCandidate),
+			prefabMonsters:  make(map[prefabEntityKey]uint64),
+			prefabTemplates: make(map[prefabEntityKey][]sceneTemplateCandidate),
 		},
 	}
 	if err := loadLocalizedDefinitions(db, locale, "roleinfo", "roleinfo_locale", &master.characters); err != nil {
@@ -1349,59 +1351,90 @@ func loadSQLiteScene(db *sql.DB, master *gameMaster) error {
 	}
 	rows.Close()
 
-	monsterTargets := make(map[sceneLevelKey]map[uint64]struct{})
-	rows, err = db.Query("SELECT map_id,entity_id,monster_id FROM map_entity_monster ORDER BY map_id,entity_id,monster_id")
-	if err != nil {
-		return fmt.Errorf("query scene monsters: %w", err)
+	levelKey := func(mapID, entityID uint64) sceneLevelKey { return sceneLevelKey{mapID: mapID, entityID: entityID} }
+	if err := loadMonsterRelation(db, master, "map_entity_monster", "map_id", levelKey, master.sceneIdentity.levelMonsters); err != nil {
+		return err
 	}
-	for rows.Next() {
-		var mapRaw, entityRaw, monsterRaw string
-		if err := rows.Scan(&mapRaw, &entityRaw, &monsterRaw); err != nil {
-			rows.Close()
-			return fmt.Errorf("read scene monster relation: %w", err)
-		}
-		mapID, err := parseMasterID(mapRaw, "map_entity_monster.map_id")
-		if err != nil {
-			rows.Close()
-			return err
-		}
-		entityID, err := parseMasterID(entityRaw, "map_entity_monster.entity_id")
-		if err != nil {
-			rows.Close()
-			return err
-		}
-		monsterID, err := parseMasterID(monsterRaw, "map_entity_monster.monster_id")
-		if err != nil {
-			rows.Close()
-			return err
-		}
-		if _, exists := master.monsters[monsterID]; !exists {
-			rows.Close()
-			return fmt.Errorf("scene relation references MonsterId %d absent from MonsterInfo", monsterID)
-		}
-		key := sceneLevelKey{mapID: mapID, entityID: entityID}
-		if monsterTargets[key] == nil {
-			monsterTargets[key] = make(map[uint64]struct{})
-		}
-		monsterTargets[key][monsterID] = struct{}{}
-	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		return fmt.Errorf("iterate scene monsters: %w", err)
-	}
-	rows.Close()
-	for key, targets := range monsterTargets {
-		if len(targets) == 1 {
-			for monsterID := range targets {
-				master.sceneIdentity.levelMonsters[key] = monsterID
-			}
-		}
-	}
-
 	if err := loadTemplateCatalog(db, master); err != nil {
 		return err
 	}
-	return loadTemplateRelations(db, master)
+	if err := loadTemplateRelations(db, master); err != nil {
+		return err
+	}
+	return loadPrefabRelations(db, master)
+}
+
+// loadPrefabRelations reads the relations of the entities of prefabs (prefab_entity_monster, prefab_entity_template_ref),
+// built from the client's PrefabConfig like the level relations from LevelEntityConfig. A Master without the tables knows
+// no prefab entity, so such an entity stays unidentified; a relation naming a row the Master lacks is refused like a broken
+// level relation.
+func loadPrefabRelations(db *sql.DB, master *gameMaster) error {
+	prefabKey := func(prefabID, entityID uint64) prefabEntityKey {
+		return prefabEntityKey{prefabID: prefabID, entityID: entityID}
+	}
+	if exists, err := masterTableExists(db, "prefab_entity_monster"); err != nil {
+		return err
+	} else if exists {
+		if err := loadMonsterRelation(db, master, "prefab_entity_monster", "prefab_id", prefabKey, master.sceneIdentity.prefabMonsters); err != nil {
+			return err
+		}
+	}
+	if exists, err := masterTableExists(db, "prefab_entity_template_ref"); err != nil {
+		return err
+	} else if exists {
+		if err := loadTemplateRelation(db, master, "prefab_entity_template_ref", "prefab_id", prefabKey, master.sceneIdentity.prefabTemplates); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// loadMonsterRelation reads a <scope>/entity -> MonsterInfo relation and keeps only the keys that name exactly one
+// MonsterInfo; a key with several stays unresolved. A MonsterId absent from MonsterInfo refuses the Master.
+func loadMonsterRelation[K comparable](db *sql.DB, master *gameMaster, table, scope string, key func(scope, entity uint64) K, target map[K]uint64) error {
+	rows, err := db.Query("SELECT " + scope + ",entity_id,monster_id FROM " + table + " ORDER BY " + scope + ",entity_id,monster_id")
+	if err != nil {
+		return fmt.Errorf("query %s: %w", table, err)
+	}
+	defer rows.Close()
+	monsterTargets := make(map[K]map[uint64]struct{})
+	for rows.Next() {
+		var scopeRaw, entityRaw, monsterRaw string
+		if err := rows.Scan(&scopeRaw, &entityRaw, &monsterRaw); err != nil {
+			return fmt.Errorf("read %s: %w", table, err)
+		}
+		scopeID, err := parseMasterID(scopeRaw, table+"."+scope)
+		if err != nil {
+			return err
+		}
+		entityID, err := parseMasterID(entityRaw, table+".entity_id")
+		if err != nil {
+			return err
+		}
+		monsterID, err := parseMasterID(monsterRaw, table+".monster_id")
+		if err != nil {
+			return err
+		}
+		if _, exists := master.monsters[monsterID]; !exists {
+			return fmt.Errorf("%s references MonsterId %d absent from MonsterInfo", table, monsterID)
+		}
+		k := key(scopeID, entityID)
+		if monsterTargets[k] == nil {
+			monsterTargets[k] = make(map[uint64]struct{})
+		}
+		monsterTargets[k][monsterID] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate %s: %w", table, err)
+	}
+	for k, targets := range monsterTargets {
+		if len(targets) == 1 {
+			for monsterID := range targets {
+				target[k] = monsterID
+			}
+		}
+	}
+	return nil
 }
 
 func loadTemplateCatalog(db *sql.DB, master *gameMaster) error {
@@ -1485,40 +1518,48 @@ func loadSQLiteTemplateDevLabels(db *sql.DB, master *gameMaster) error {
 	return nil
 }
 
+// loadTemplateRelations reads the level relation (map_entity_template_ref) into the level templates.
 func loadTemplateRelations(db *sql.DB, master *gameMaster) error {
-	rows, err := db.Query("SELECT map_id,entity_id,template_id FROM map_entity_template_ref ORDER BY map_id,entity_id,ordinal")
+	return loadTemplateRelation(db, master, "map_entity_template_ref", "map_id",
+		func(mapID, entityID uint64) sceneLevelKey { return sceneLevelKey{mapID: mapID, entityID: entityID} }, master.sceneIdentity.levelTemplates)
+}
+
+// loadTemplateRelation reads a <scope>/entity -> TemplateConfig relation in ordinal order. Every candidate is kept; the
+// resolver names an entity only when exactly one answers. A TemplateConfig id absent from the catalog refuses the Master.
+func loadTemplateRelation[K comparable](db *sql.DB, master *gameMaster, table, scope string, key func(scope, entity uint64) K, target map[K][]sceneTemplateCandidate) error {
+	rows, err := db.Query("SELECT " + scope + ",entity_id,template_id FROM " + table + " ORDER BY " + scope + ",entity_id,ordinal")
 	if err != nil {
-		return fmt.Errorf("query scene template relations: %w", err)
+		return fmt.Errorf("query %s: %w", table, err)
 	}
 	defer rows.Close()
-	// Almost every level entity has exactly one template, so entities of one template share one read-only slice instead of
-	// each holding a copy of the candidate. A second template on a key appends to a fresh slice, never to a shared one.
+	// Almost every entity has exactly one template, so entities of one template share one read-only slice instead of each
+	// holding a copy of the candidate. A second template on a key appends to a fresh slice, never to a shared one.
 	single := make(map[uint64][]sceneTemplateCandidate)
 	for rows.Next() {
-		var mapRaw, entityRaw, templateRaw string
-		if err := rows.Scan(&mapRaw, &entityRaw, &templateRaw); err != nil {
-			return fmt.Errorf("read scene template relation: %w", err)
+		var scopeRaw, entityRaw, templateRaw string
+		if err := rows.Scan(&scopeRaw, &entityRaw, &templateRaw); err != nil {
+			return fmt.Errorf("read %s: %w", table, err)
 		}
-		mapID, err := parseMasterID(mapRaw, "map_entity_template_ref.map_id")
+		scopeID, err := parseMasterID(scopeRaw, table+"."+scope)
 		if err != nil {
 			return err
 		}
-		entityID, err := parseMasterID(entityRaw, "map_entity_template_ref.entity_id")
+		entityID, err := parseMasterID(entityRaw, table+".entity_id")
 		if err != nil {
 			return err
 		}
-		templateID, err := parseMasterID(templateRaw, "map_entity_template_ref.template_id")
+		templateID, err := parseMasterID(templateRaw, table+".template_id")
 		if err != nil {
 			return err
 		}
 		candidate, exists := master.sceneIdentity.templateCatalog[templateID]
 		if !exists {
-			return fmt.Errorf("scene template relation references missing TemplateConfig Id %d", templateID)
+			return fmt.Errorf("%s references missing TemplateConfig Id %d", table, templateID)
 		}
-		key := sceneLevelKey{mapID: mapID, entityID: entityID}
-		existing, repeated := master.sceneIdentity.levelTemplates[key]
+		k := key(scopeID, entityID)
+		existing, repeated := target[k]
 		if repeated {
-			master.sceneIdentity.levelTemplates[key] = append(existing[:len(existing):len(existing)], candidate)
+			target[k] = append(existing[:len(existing):len(existing)], candidate)
 			continue
 		}
 		shared, known := single[templateID]
@@ -1526,7 +1567,7 @@ func loadTemplateRelations(db *sql.DB, master *gameMaster) error {
 			shared = []sceneTemplateCandidate{candidate}
 			single[templateID] = shared
 		}
-		master.sceneIdentity.levelTemplates[key] = shared
+		target[k] = shared
 	}
 	return rows.Err()
 }

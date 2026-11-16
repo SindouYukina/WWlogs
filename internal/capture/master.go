@@ -48,10 +48,20 @@ type sceneIdentityMaster struct {
 	levelMonsters   map[sceneLevelKey]uint64
 	levelTemplates  map[sceneLevelKey][]sceneTemplateCandidate
 	templateCatalog map[uint64]sceneTemplateCandidate
+	// prefabMonsters and prefabTemplates are the same relations for an entity of a prefab (EntityConfigType Prefab),
+	// keyed by PrefabConfig.Id and the entity's EntityData.Id inside it instead of by map and level entity.
+	prefabMonsters  map[prefabEntityKey]uint64
+	prefabTemplates map[prefabEntityKey][]sceneTemplateCandidate
 }
 
 type sceneLevelKey struct {
 	mapID    uint64
+	entityID uint64
+}
+
+// prefabEntityKey is one entity of a prefab: PrefabConfig.Id (EntityPb.PrefabId) and EntityData.Id (EntityPb.ConfigId).
+type prefabEntityKey struct {
+	prefabID uint64
 	entityID uint64
 }
 
@@ -160,6 +170,48 @@ func (m *gameMaster) sceneTemplates(instanceID, entityID uint64) ([]sceneTemplat
 	}
 	templates, ok := m.sceneIdentity.levelTemplates[sceneLevelKey{mapID: mapID, entityID: entityID}]
 	return templates, ok
+}
+
+// prefabMonster returns the MonsterInfo of an entity of a prefab when exactly one MonsterInfo shares its BlueprintType.
+func (m *gameMaster) prefabMonster(prefabID, entityID uint64) (uint64, bool) {
+	if m == nil || m.sceneIdentity == nil {
+		return 0, false
+	}
+	monsterID, ok := m.sceneIdentity.prefabMonsters[prefabEntityKey{prefabID: prefabID, entityID: entityID}]
+	return monsterID, ok
+}
+
+// prefabTemplates returns the TemplateConfig candidates of an entity of a prefab.
+func (m *gameMaster) prefabTemplates(prefabID, entityID uint64) ([]sceneTemplateCandidate, bool) {
+	if m == nil || m.sceneIdentity == nil {
+		return nil, false
+	}
+	templates, ok := m.sceneIdentity.prefabTemplates[prefabEntityKey{prefabID: prefabID, entityID: entityID}]
+	return templates, ok
+}
+
+// PrefabEntityIdentity is how the product identifies an entity of a prefab (EntityConfigType Prefab): every TemplateConfig
+// its relation names in the Master's order, and the MonsterInfo when exactly one shares its BlueprintType (0 otherwise). The
+// resolver names the entity only when exactly one template answers. The version readiness gate compares it with the
+// client's own PrefabConfig.
+type PrefabEntityIdentity struct {
+	TemplateIDs []uint64
+	MonsterID   uint64
+}
+
+// PrefabEntity returns the identity the product gives the entity entityID of prefab prefabID; ok is false when the Master
+// has no relation for it.
+func (m *MasterData) PrefabEntity(prefabID, entityID uint64) (PrefabEntityIdentity, bool) {
+	if m == nil {
+		return PrefabEntityIdentity{}, false
+	}
+	templates, hasTemplates := m.masters.prefabTemplates(prefabID, entityID)
+	monster, hasMonster := m.masters.prefabMonster(prefabID, entityID)
+	identity := PrefabEntityIdentity{MonsterID: monster}
+	for _, candidate := range templates {
+		identity.TemplateIDs = append(identity.TemplateIDs, candidate.TemplateID)
+	}
+	return identity, hasTemplates || hasMonster
 }
 
 // templateByID returns the TemplateConfig candidate whose id equals a runtime EntityPb.ConfigId.

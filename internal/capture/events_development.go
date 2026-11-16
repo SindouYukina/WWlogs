@@ -402,6 +402,7 @@ func marshalRuntimeIdentity(entity runtimeEntity) string {
 		EntityType:               optionalRuntimeID{entity.entityTypeCode, entity.hasEntityType},
 		ConfigID:                 optionalRuntimeID{entity.configID, entity.hasConfigID},
 		ConfigType:               optionalRuntimeID{entity.configType, entity.hasConfigType},
+		PrefabID:                 optionalRuntimeID{entity.prefabID, entity.hasPrefabID},
 		PlayerID:                 optionalRuntimeID{entity.playerID, entity.hasPlayerID},
 		OwnerID:                  optionalRuntimeID{entity.ownerID, entity.hasOwnerID},
 		OwnerIncID:               optionalRuntimeID{entity.ownerIncID, entity.hasOwnerIncID},

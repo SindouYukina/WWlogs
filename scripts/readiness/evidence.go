@@ -40,6 +40,8 @@ type goldenRegistry struct {
 		SHA256   string `json:"sha256"`
 		Required bool   `json:"required"`
 		Note     string `json:"note"`
+		// IdentificationLimits record why a stored enemy, stage or kind of play of the capture cannot be named.
+		IdentificationLimits []identificationLimit `json:"identificationLimits"`
 	} `json:"captures"`
 }
 
@@ -57,9 +59,10 @@ type goldenCoverage struct {
 
 // historySummary is the History replay collector's summary.json.
 type historySummary struct {
-	Captures            int `json:"captures"`
-	ListedEncounters    int `json:"listedEncounters"`
-	VersionedEncounters int `json:"versionedEncounters"`
+	Captures            int                    `json:"captures"`
+	ListedEncounters    int                    `json:"listedEncounters"`
+	VersionedEncounters int                    `json:"versionedEncounters"`
+	Identification      *historyIdentification `json:"identification"`
 }
 
 // liveAcceptance is the owner's Live acceptance record (PROCEDURE.md 5.3).
@@ -89,6 +92,7 @@ func (g *gate) runtimeChecks() {
 func (g *gate) evidenceChecks() {
 	parity := g.check("runtime.profile-parity", DomainRuntime, "Public and Development produce the same statistics, History and Master answers", KindEvidence, true)
 	replayVersion := g.check("runtime.history-version-replay", DomainRuntime, "Every encounter the History stored from the corpus carries the decoded game version", KindEvidence, true)
+	identification := g.check("content.history-identification", DomainContent, "Every enemy, main enemy, stage and kind of play the History stored from the corpus is named in every bundled Master locale, or its limit is recorded", KindEvidence, true)
 	embedded := g.check("assets.embedded-parity", DomainAssets, "Both desktop profiles embed every distinct manifest image", KindEvidence, true)
 	suite := g.check("verification.regression-suite", DomainVerification, "Every step of scripts/verify.ps1 ran and passed", KindEvidence, true)
 	golden := g.check("verification.golden-coverage", DomainVerification, "Every required Golden capture was executed with its facts and passed", KindEvidence, true)
@@ -153,17 +157,23 @@ func (g *gate) evidenceChecks() {
 	// History replay: the collector's summary.
 	if g.in.HistorySummary == "" {
 		replayVersion.unverified("no History replay summary was supplied (scripts/verify.ps1 -EvidenceOut with -PcapDirectory)")
+		identification.unverified("no History replay summary was supplied (scripts/verify.ps1 -EvidenceOut with -PcapDirectory)")
 	} else {
 		var summary historySummary
 		switch err := readJSON(g.in.HistorySummary, &summary); {
 		case err != nil:
 			replayVersion.unverified(fmt.Sprintf("the History replay summary cannot be read: %v", err))
+			identification.unverified(fmt.Sprintf("the History replay summary cannot be read: %v", err))
 		case summary.ListedEncounters == 0:
 			replayVersion.unverified("the History replay stored no encounter")
-		case summary.VersionedEncounters != summary.ListedEncounters:
-			replayVersion.fail("%d of %d stored encounters carry game version %s", summary.VersionedEncounters, summary.ListedEncounters, g.report.GameVersion)
+			identification.unverified("the History replay stored no encounter")
 		default:
-			replayVersion.Coverage = &Coverage{Passed: summary.VersionedEncounters, Total: summary.ListedEncounters, Denominator: "encounters stored by the History replay collector (Public profile)"}
+			if summary.VersionedEncounters != summary.ListedEncounters {
+				replayVersion.fail("%d of %d stored encounters carry game version %s", summary.VersionedEncounters, summary.ListedEncounters, g.report.GameVersion)
+			} else {
+				replayVersion.Coverage = &Coverage{Passed: summary.VersionedEncounters, Total: summary.ListedEncounters, Denominator: "encounters stored by the History replay collector (Public profile)"}
+			}
+			g.historyIdentificationCheck(identification, summary)
 		}
 	}
 

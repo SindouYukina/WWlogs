@@ -119,8 +119,9 @@ func (g *gate) masterChecks() {
 	// Advisory: content the client data itself cannot place is reported, never guessed and never a blocker.
 	unresolved := g.check("content.unresolved-categories", DomainContent, "Guide categories the client data names only ambiguously (reported limitation)", KindStatic, false)
 	content := g.check("master.client-content", DomainMaster, "Every row, playable role and HUD buff the current client defines is in the Master, read from the client's own ConfigDB and decoded snapshot", KindResearch, true)
+	prefabs := g.check("content.prefab-entities", DomainContent, "Every entity of the client's prefabs is identified by the product as the client's own PrefabConfig, TemplateConfig and MonsterInfo name it", KindResearch, true)
 	settlement := g.check("combat.negative-status-settlement", DomainCharacters, "Every negative-status DamageId (server-only FormulaType 9) is executed by status Buffs whose settlement the product reads (timed, on application, instant, spreading on overflow), and every InvokePeriod forces only timed statuses", KindStatic, true)
-	dependents := []*Check{loads, relations, names, art, trial, skillIcons, skillNames, hudClass, hudIcons, categories, modes, unresolved, content, settlement}
+	dependents := []*Check{loads, relations, names, art, trial, skillIcons, skillNames, hudClass, hudIcons, categories, modes, unresolved, content, prefabs, settlement}
 
 	hash, err := fileSHA256(g.in.MasterPath)
 	if err != nil {
@@ -230,6 +231,7 @@ func (g *gate) masterChecks() {
 	g.hudChecks(hudClass, hudIcons, m)
 	g.contentChecks(categories, modes, unresolved, m)
 	g.clientContentCheck(content, m)
+	g.prefabEntityCheck(prefabs, m)
 	g.negativeStatusCheck(settlement, m)
 }
 

@@ -185,6 +185,168 @@ type replaySummary struct {
 	EffectInstances      int            `json:"effectInstances"`
 	EffectKinds          map[string]int `json:"effectKinds"`
 	Analysis             analysisTally  `json:"analysis"`
+	Identification       identification `json:"identification"`
+}
+
+// identification counts what the History names of the stored encounters, with the rules of the desktop History view
+// (internal/desktop/history.go nameProjection): an enemy instance by its MonsterInfo link, else its TemplateConfig link,
+// and none when it reported conflicting identities; a known scene by InstanceStage and its kind of play by InstanceMode. A
+// name is checked in every bundled Master locale. The version readiness gate reads it (content.history-identification).
+type identification struct {
+	EnemyInstances      int            `json:"enemyInstances"`
+	EnemiesWithMonster  int            `json:"enemiesWithMonster"`
+	EnemiesWithTemplate int            `json:"enemiesWithTemplate"`
+	EnemiesConflicted   int            `json:"enemiesConflicted"`
+	EnemiesUnidentified int            `json:"enemiesUnidentified"`
+	EnemyNamesMissing   map[string]int `json:"enemyNamesMissing"`
+	MainEnemies         int            `json:"mainEnemies"`
+	MainEnemiesUnnamed  map[string]int `json:"mainEnemiesUnnamed"`
+	ScenesKnown         int            `json:"scenesKnown"`
+	StagesUnnamed       map[string]int `json:"stagesUnnamed"`
+	ModesUnresolved     map[string]int `json:"modesUnresolved"`
+	// Unidentified lists the stored enemy instances without an identity or without a name in some locale.
+	Unidentified []unidentifiedEnemy `json:"unidentified,omitempty"`
+	// UnresolvedScenes lists the known scenes without a stage name or a kind of play in some locale.
+	UnresolvedScenes []unresolvedScene `json:"unresolvedScenes,omitempty"`
+}
+
+// unidentifiedEnemy is one stored enemy instance the History cannot name: encounter is "<statistics interval>-<sequence>".
+type unidentifiedEnemy struct {
+	Capture        string   `json:"capture"`
+	Encounter      string   `json:"encounter"`
+	Ordinal        int      `json:"ordinal"`
+	MonsterID      uint64   `json:"monsterId,omitempty"`
+	TemplateID     uint64   `json:"templateId,omitempty"`
+	Conflict       bool     `json:"conflict,omitempty"`
+	MissingLocales []string `json:"missingLocales"`
+}
+
+// unresolvedScene is one stored encounter whose known scene has no stage name or no kind of play in some locale.
+type unresolvedScene struct {
+	Capture        string   `json:"capture"`
+	Encounter      string   `json:"encounter"`
+	InstanceID     uint64   `json:"instanceId"`
+	StageMissing   []string `json:"stageMissing,omitempty"`
+	ModeUnresolved []string `json:"modeUnresolved,omitempty"`
+}
+
+func (a *identification) add(b identification) {
+	a.EnemyInstances += b.EnemyInstances
+	a.EnemiesWithMonster += b.EnemiesWithMonster
+	a.EnemiesWithTemplate += b.EnemiesWithTemplate
+	a.EnemiesConflicted += b.EnemiesConflicted
+	a.EnemiesUnidentified += b.EnemiesUnidentified
+	a.MainEnemies += b.MainEnemies
+	a.ScenesKnown += b.ScenesKnown
+	for _, pair := range []struct{ to, from *map[string]int }{{&a.EnemyNamesMissing, &b.EnemyNamesMissing}, {&a.MainEnemiesUnnamed, &b.MainEnemiesUnnamed}, {&a.StagesUnnamed, &b.StagesUnnamed}, {&a.ModesUnresolved, &b.ModesUnresolved}} {
+		if *pair.to == nil {
+			*pair.to = map[string]int{}
+		}
+		for locale, n := range *pair.from {
+			(*pair.to)[locale] += n
+		}
+	}
+	a.Unidentified = append(a.Unidentified, b.Unidentified...)
+	a.UnresolvedScenes = append(a.UnresolvedScenes, b.UnresolvedScenes...)
+}
+
+// historyLocales are the bundled Master locales a History name must exist in.
+var historyLocales = []string{"zh-TW", "zh-CN", "en-US", "ja-JP", "ko-KR"}
+
+// enemyName names a stored enemy instance as the desktop History view does.
+func enemyName(t *testing.T, names *capture.DisplayResolver, enemy capture.EncounterEnemySnapshot, locale string) string {
+	t.Helper()
+	if enemy.IdentityConflict {
+		return ""
+	}
+	for _, link := range []struct {
+		kind string
+		id   uint64
+	}{{"monster", enemy.MonsterID}, {"template", enemy.TemplateID}} {
+		if link.id == 0 {
+			continue
+		}
+		name, err := names.Resolve(context.Background(), link.kind, link.id, locale)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if name.Name != "" {
+			return name.Name
+		}
+	}
+	return ""
+}
+
+// identify counts the identification of one stored encounter.
+func identify(t *testing.T, names *capture.DisplayResolver, captureName, key string, detail EncounterDetail, into *identification) {
+	t.Helper()
+	ctx := context.Background()
+	for _, counter := range []*map[string]int{&into.EnemyNamesMissing, &into.MainEnemiesUnnamed, &into.StagesUnnamed, &into.ModesUnresolved} {
+		if *counter == nil {
+			*counter = map[string]int{}
+		}
+	}
+	for _, enemy := range detail.Enemies {
+		into.EnemyInstances++
+		if enemy.MonsterID != 0 {
+			into.EnemiesWithMonster++
+		}
+		if enemy.TemplateID != 0 {
+			into.EnemiesWithTemplate++
+		}
+		if enemy.IdentityConflict {
+			into.EnemiesConflicted++
+		}
+		entry := unidentifiedEnemy{Capture: captureName, Encounter: key, Ordinal: enemy.Ordinal, MonsterID: enemy.MonsterID, TemplateID: enemy.TemplateID, Conflict: enemy.IdentityConflict}
+		if enemy.MonsterID == 0 && enemy.TemplateID == 0 {
+			into.EnemiesUnidentified++
+			entry.MissingLocales = historyLocales
+			into.Unidentified = append(into.Unidentified, entry)
+			continue
+		}
+		for _, locale := range historyLocales {
+			if enemyName(t, names, enemy, locale) == "" {
+				into.EnemyNamesMissing[locale]++
+				entry.MissingLocales = append(entry.MissingLocales, locale)
+			}
+		}
+		if len(entry.MissingLocales) > 0 {
+			into.Unidentified = append(into.Unidentified, entry)
+		}
+	}
+	if main := detail.Summary.MainEnemy; main != nil {
+		into.MainEnemies++
+		for _, locale := range historyLocales {
+			if enemyName(t, names, capture.EncounterEnemySnapshot{MonsterID: main.MonsterID, TemplateID: main.TemplateID, IdentityConflict: main.IdentityConflict}, locale) == "" {
+				into.MainEnemiesUnnamed[locale]++
+			}
+		}
+	}
+	if detail.Summary.Scene.Known {
+		into.ScenesKnown++
+		entry := unresolvedScene{Capture: captureName, Encounter: key, InstanceID: detail.Summary.Scene.InstanceID}
+		for _, locale := range historyLocales {
+			stage, err := names.InstanceStage(ctx, detail.Summary.Scene.InstanceID, locale)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if stage.Name == "" {
+				into.StagesUnnamed[locale]++
+				entry.StageMissing = append(entry.StageMissing, locale)
+			}
+			mode, err := names.InstanceMode(ctx, detail.Summary.Scene.InstanceID, locale)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if mode.Kind == "" {
+				into.ModesUnresolved[locale]++
+				entry.ModeUnresolved = append(entry.ModeUnresolved, locale)
+			}
+		}
+		if len(entry.StageMissing)+len(entry.ModeUnresolved) > 0 {
+			into.UnresolvedScenes = append(into.UnresolvedScenes, entry)
+		}
+	}
 }
 
 // analysisTally counts what the analysis checks covered; it holds no timing, so both profiles must report the same.
@@ -451,6 +613,7 @@ type replayTotals struct {
 	EffectInstances      int            `json:"effectInstances"`
 	EffectKinds          map[string]int `json:"effectKinds"`
 	Analysis             analysisTally  `json:"analysis"`
+	Identification       identification `json:"identification"`
 }
 
 func (t *replayTotals) add(s replaySummary) {
@@ -458,6 +621,7 @@ func (t *replayTotals) add(s replaySummary) {
 		t.EffectKinds = map[string]int{}
 	}
 	t.Analysis.add(s.Analysis)
+	t.Identification.add(s.Identification)
 	for kind, count := range s.EffectKinds {
 		t.EffectKinds[kind] += count
 	}
@@ -669,6 +833,7 @@ func replayIntoHistory(t *testing.T, store *Store, masters *capture.MasterData, 
 				summary.EnemiesWithMonster++
 			}
 		}
+		identify(t, masters.DisplayResolver(), item.name, key, detail, &summary.Identification)
 		if !reflect.DeepEqual(detail.Enemies, normalizeEnemies(engine.Enemies)) {
 			t.Fatalf("encounter %s enemies differ:\n got %+v\nwant %+v", key, detail.Enemies, engine.Enemies)
 		}
