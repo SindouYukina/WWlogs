@@ -83,18 +83,21 @@ function missingKeys() {
   return { missing, checked }
 }
 
-// Keys known to be missing ("file: key"), each with the change that adds it. An entry that resolves must be removed.
-const knownMissing = new Map([
-  ["src/views/HistoryAnalysis.tsx: analysis.effects.notStored", "Phase 3A R07: added by the v0.8.0 frontend targeted cleanup"],
-])
-
 test("every literal translation key of the frontend exists in English", () => {
   const { missing, checked } = missingKeys()
   assert.ok(checked > 500, `read ${checked} literal keys; the reader no longer finds the frontend's t() calls`)
-  const unexpected = [...new Set(missing.filter(m => !knownMissing.has(m.entry)).map(m => `${m.entry} (${m.namespaces})`))].sort()
-  assert.deepEqual(unexpected, [], `translation keys missing from the English resources:\n${unexpected.join("\n")}`)
-  const fixed = [...knownMissing.keys()].filter(entry => !missing.some(m => m.entry === entry))
-  assert.deepEqual(fixed, [], `listed as missing but resolved now; remove from knownMissing:\n${fixed.join("\n")}`)
+  const found = [...new Set(missing.map(m => `${m.entry} (${m.namespaces})`))].sort()
+  assert.deepEqual(found, [], `translation keys missing from the English resources:\n${found.join("\n")}`)
+})
+
+test("the History event list note for an encounter without listable effect events is translated in every locale (R07)", () => {
+  const note = locale => readJSON(join(frontend, "locales", locale, "history.json")).analysis.effects.notStored
+  const english = note("en")
+  for (const locale of manifest.supportedLocales) {
+    const text = note(locale)
+    assert.ok(typeof text === "string" && text.trim().length > 0, `${locale} has no text`)
+    if (locale !== "en") assert.notEqual(text, english, `${locale} shows the English text`)
+  }
 })
 
 test("the key reader follows namespaces, prefixes, plurals and whole objects", () => {
