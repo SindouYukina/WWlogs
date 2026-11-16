@@ -15,6 +15,21 @@ export function effectRemaining(effect:Effect,snapshot:Snapshot|null,connection:
   return Math.max(0,effect.remainingSeconds)
 }
 
+/**
+ * What the Effects Overlay window shows. Content and Edit Mode are separate inputs:
+ * - hidden: outside Edit Mode with no cell. Nothing is drawn, not even a background, and the host lets the mouse through.
+ * - visible: outside Edit Mode with cells. The rows are drawn as usual.
+ * - edit-preview: in Edit Mode. The rows are drawn when there are cells; otherwise a preview of the area they take, so the
+ *   window can be placed and sized while no effect is active.
+ * cells counts both of the engine's rows, including the cells beyond its bound that the strip shows as a count.
+ */
+export type EffectsOverlayMode = "hidden" | "visible" | "edit-preview"
+
+export function effectsOverlayMode(cells: number, editing: boolean): EffectsOverlayMode {
+  if (editing) return "edit-preview"
+  return cells > 0 ? "visible" : "hidden"
+}
+
 /** The measured sizes of a row, in CSS pixels. */
 export interface EffectStripLayout {
   width: number

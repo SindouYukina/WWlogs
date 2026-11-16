@@ -1,6 +1,6 @@
 {
   "drag": "Drag to move · resize from the edges",
-  "noEffects": "No relevant combat effects observed.",
+  "preview": "Effects appear here.",
   "omitted": "{{count}} more effects not shown",
   "rowBuffs": "Buffs and neutral statuses",
   "rowDebuffs": "Debuffs",

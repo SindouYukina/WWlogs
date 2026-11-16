@@ -1,6 +1,6 @@
 {
   "drag": "拖曳移動・從邊緣調整大小",
-  "noEffects": "尚未觀測到相關戰鬥效果。",
+  "preview": "效果會顯示在這裡。",
   "omitted": "另有 {{count}} 個效果未顯示",
   "rowBuffs": "增益與中性狀態",
   "rowDebuffs": "減益",

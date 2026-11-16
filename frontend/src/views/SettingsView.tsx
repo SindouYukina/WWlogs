@@ -206,6 +206,7 @@ function EffectsLegend() {
     <p className="ww-effects-legend-note">{t("effectsLegend.rows")}</p>
     <p className="ww-effects-legend-note">{t("effectsLegend.order")}</p>
     <p className="ww-effects-legend-note">{t("effectsLegend.onlyHud")}</p>
+    <p className="ww-effects-legend-note" data-field="effects-legend-empty">{t("effectsLegend.empty")}</p>
     <p className="ww-effects-legend-note">{t("effectsLegend.noNames")}</p>
   </SettingsSection>
 }

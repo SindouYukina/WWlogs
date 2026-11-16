@@ -112,8 +112,10 @@ body[data-view="overlay"][data-editing="true"] { --wails-draggable: drag; }
 .ww-overlay-surface[data-editing="true"]::after { content: ""; position: absolute; inset: 2px; border: 1px dashed var(--ww-accent-bright); border-radius: var(--ww-radius-md); pointer-events: none; }
 .ww-overlay-edit { position: absolute; inset-inline: var(--ww-space-2); bottom: var(--ww-space-2); z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: var(--ww-space-2); padding: var(--ww-space-1) var(--ww-space-1) var(--ww-space-1) var(--ww-space-2); border-radius: var(--ww-radius-md); background: var(--ww-surface-3); box-shadow: var(--ww-shadow-popover); font-size: var(--ww-text-2xs); color: var(--ww-text-2); }
 .ww-overlay-edit .ww-btn { flex: none; pointer-events: auto; --wails-draggable: no-drag; }
-/* The empty state covers exactly the area the BUFF and DEBUFF rows draw in, with its text in the middle of that area. */
-.ww-effects-empty { grid-row: 1 / -1; min-width: 0; display: flex; align-items: center; justify-content: center; padding: 0 var(--ww-space-3); background: var(--ww-surface-overlay); border-radius: var(--ww-radius-md); }
+/* Outside Edit Mode an Effects Overlay without cells draws nothing: no background, no text, no frame. */
+.ww-effects[data-mode="hidden"] { visibility: hidden; }
+/* The Edit Mode preview covers exactly the area the BUFF and DEBUFF rows draw in, with its text in the middle of that area. */
+.ww-effects-preview { grid-row: 1 / -1; min-width: 0; display: flex; align-items: center; justify-content: center; padding: 0 var(--ww-space-3); background: var(--ww-surface-overlay); border-radius: var(--ww-radius-md); }
 .ww-effects-legend { display: grid; gap: var(--ww-space-2); margin: 0; padding: var(--ww-space-2) 0; list-style: none; font-size: var(--ww-text-sm); color: var(--ww-text-2); }
 .ww-effects-legend li { display: grid; grid-template-columns: 84px minmax(0, 1fr); align-items: center; column-gap: var(--ww-space-3); }
 .ww-effects-legend-mark { display: flex; justify-content: center; }
