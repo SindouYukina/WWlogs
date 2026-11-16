@@ -243,6 +243,7 @@
       "stale": "{{n}} effects had passed the time the server stated before the encounter began and were never heard of again, so they are not listed.",
       "more": "{{n}} more rows exceed the display bound and are not listed.",
       "truncated": "This encounter holds more effect events than one analysis reads, so effects are not shown.",
+      "notStored": "This encounter has no effect events that can be listed, so the list shows damage and healing only.",
       "exactNote": "Every part of this range is confirmed by observed messages and there is no capture gap, so the coverage is exact.",
       "boundsNote": "Part of this range is not confirmed (stated time only, undetermined, an unconfirmed start or a capture gap), so only a lower bound and a possible upper bound are shown.",
       "moreIntervals": "{{n}} more intervals are not listed.",
