@@ -10,18 +10,14 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"runtime/metrics"
 	"strconv"
 	"testing"
 	"time"
-
-	"github.com/google/gopacket"
-	"github.com/google/gopacket/layers"
-	"github.com/google/gopacket/pcap"
 )
 
 // Development-profile, test-only measurement collectors for the capture pipeline. Both are skipped unless their
-// output variable is set and read only paths supplied through the environment.
+// output variable is set and read only paths supplied through the environment. The replay helpers they share with the
+// profile-independent TestReplayPipelineCollector are in pipeline_perf_test.go.
 //
 // TestReplayPerformanceCollector replays preloaded captures in three phases per round:
 //   decode:      packet decoding and direction only (gopacket), the cost before WWlogs code runs;
@@ -37,117 +33,6 @@ import (
 //
 // Environment: WWLOGS_PERF_OUT or WWLOGS_SOAK_OUT (output file), WWLOGS_PERF_PCAPS ("name|path" per line),
 // WWLOGS_PERF_MASTER_DB, WWLOGS_PERF_ROUNDS (default 3), WWLOGS_SOAK_DURATION (default 60m).
-
-type rawCapturePacket struct {
-	info gopacket.CaptureInfo
-	data []byte
-}
-
-type rawCapture struct {
-	name     string
-	link     layers.LinkType
-	packets  []rawCapturePacket
-	duration time.Duration
-}
-
-func loadRawCaptures(t *testing.T, listPath string) []rawCapture {
-	t.Helper()
-	var captures []rawCapture
-	for _, entry := range readSegmentDropList(t, listPath) {
-		handle, err := pcap.OpenOffline(entry.path)
-		if err != nil {
-			t.Fatalf("open %s: %v", entry.path, err)
-		}
-		if err := handle.SetBPFFilter(equivalenceFilter); err != nil {
-			t.Fatal(err)
-		}
-		capture := rawCapture{name: entry.name, link: handle.LinkType()}
-		for {
-			data, info, err := handle.ReadPacketData()
-			if err != nil {
-				break
-			}
-			capture.packets = append(capture.packets, rawCapturePacket{info: info, data: append([]byte(nil), data...)})
-		}
-		handle.Close()
-		if n := len(capture.packets); n > 1 {
-			capture.duration = capture.packets[n-1].info.Timestamp.Sub(capture.packets[0].info.Timestamp)
-		}
-		captures = append(captures, capture)
-	}
-	return captures
-}
-
-// cpuSeconds is the process CPU time the Go runtime has used: available time minus idle time.
-func cpuSeconds() float64 {
-	samples := []metrics.Sample{{Name: "/cpu/classes/total:cpu-seconds"}, {Name: "/cpu/classes/idle:cpu-seconds"}}
-	metrics.Read(samples)
-	if samples[0].Value.Kind() != metrics.KindFloat64 || samples[1].Value.Kind() != metrics.KindFloat64 {
-		return 0
-	}
-	return samples[0].Value.Float64() - samples[1].Value.Float64()
-}
-
-type phaseMeasure struct {
-	Packets       int     `json:"packets"`
-	WallSeconds   float64 `json:"wallSeconds"`
-	CPUSeconds    float64 `json:"cpuSeconds"`
-	PacketsPerSec float64 `json:"packetsPerSecond"`
-	NsPerPacket   float64 `json:"nsPerPacket"`
-	AllocsPerPkt  float64 `json:"allocsPerPacket"`
-	BytesPerPkt   float64 `json:"bytesPerPacket"`
-	GCCycles      uint32  `json:"gcCycles"`
-	GCPauseMs     float64 `json:"gcPauseMs"`
-	HeapInuseMB   float64 `json:"heapInuseMBAtEnd"`
-}
-
-func measurePhase(packets int, run func()) phaseMeasure {
-	runtime.GC()
-	var before, after runtime.MemStats
-	runtime.ReadMemStats(&before)
-	cpu := cpuSeconds()
-	started := time.Now()
-	run()
-	wall := time.Since(started)
-	cpuUsed := cpuSeconds() - cpu
-	runtime.ReadMemStats(&after)
-	m := phaseMeasure{Packets: packets, WallSeconds: wall.Seconds(), CPUSeconds: cpuUsed,
-		GCCycles: after.NumGC - before.NumGC, GCPauseMs: float64(after.PauseTotalNs-before.PauseTotalNs) / 1e6,
-		HeapInuseMB: float64(after.HeapInuse) / (1 << 20)}
-	if packets > 0 {
-		m.PacketsPerSec = float64(packets) / wall.Seconds()
-		m.NsPerPacket = float64(wall.Nanoseconds()) / float64(packets)
-		m.AllocsPerPkt = float64(after.Mallocs-before.Mallocs) / float64(packets)
-		m.BytesPerPkt = float64(after.TotalAlloc-before.TotalAlloc) / float64(packets)
-	}
-	return m
-}
-
-// decodeCapturePacket mirrors the executables: decode the packet, find UDP, decide the direction.
-func decodeCapturePacket(link layers.LinkType, raw rawCapturePacket) ([]byte, string, bool) {
-	packet := gopacket.NewPacket(raw.data, link, gopacket.Default)
-	udpLayer := packet.Layer(layers.LayerTypeUDP)
-	if udpLayer == nil {
-		return nil, "", false
-	}
-	udp := udpLayer.(*layers.UDP)
-	return udp.Payload, packetDirection(packet, "192.168.1.2", udp, 13100, 13120), true
-}
-
-func replayRawCapture(p *processor, capture rawCapture, rewrite func([]byte), offset time.Duration, streams map[string]*stream, stats *captureStats) {
-	for _, raw := range capture.packets {
-		payload, direction, ok := decodeCapturePacket(capture.link, raw)
-		if !ok {
-			continue
-		}
-		stats.udpPackets++
-		if rewrite != nil {
-			payload = append([]byte(nil), payload...)
-			rewrite(payload)
-		}
-		consumeDatagram(payload, direction, raw.info.Timestamp.Add(offset), streams, p, stats)
-	}
-}
 
 func TestReplayPerformanceCollector(t *testing.T) {
 	out := os.Getenv("WWLOGS_PERF_OUT")

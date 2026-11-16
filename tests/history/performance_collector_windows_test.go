@@ -27,6 +27,9 @@ import (
 // make (year, day, library, one encounter, its analysis) on a history fixture. It runs only with WWLOGS_HISTORY_PERF_OUT
 // set; WWLOGS_HISTORY_PERF_FIXTURE names a history directory to query (a copy is used), and WWLOGS_HISTORY_PERF_MASTER the
 // Master for the analysis. Times come from QueryPerformanceCounter: Go's clock is too coarse here for microsecond samples.
+// WWLOGS_HISTORY_PERF_QUERY_SCALE (default 1) multiplies the number of samples of every query, so a tail quantile has
+// enough samples to resolve it; WWLOGS_HISTORY_PERF_SAMPLES=1 also writes every sample to history-samples.json, so the
+// samples of several runs can be pooled.
 func TestHistoryPerformanceCollector(t *testing.T) {
 	out := os.Getenv("WWLOGS_HISTORY_PERF_OUT")
 	if os.Getenv("WWLOGS_HISTORY_PERF_COLD") != "" {
@@ -36,7 +39,16 @@ func TestHistoryPerformanceCollector(t *testing.T) {
 	if out == "" {
 		t.Skip("WWLOGS_HISTORY_PERF_OUT is not set")
 	}
-	report := map[string]any{"goVersion": runtime.Version(), "driver": driverVersion(), "gomaxprocs": runtime.GOMAXPROCS(0)}
+	scale := 1
+	if value := os.Getenv("WWLOGS_HISTORY_PERF_QUERY_SCALE"); value != "" {
+		parsed, err := strconv.Atoi(value)
+		if err != nil || parsed < 1 {
+			t.Fatalf("invalid WWLOGS_HISTORY_PERF_QUERY_SCALE %q", value)
+		}
+		scale = parsed
+	}
+	rawSamples := map[string][]float64{}
+	report := map[string]any{"goVersion": runtime.Version(), "driver": driverVersion(), "gomaxprocs": runtime.GOMAXPROCS(0), "querySampleScale": scale}
 	ctx := context.Background()
 
 	// Opening: a new history, then the same history again with 200 encounters in it.
@@ -69,6 +81,7 @@ func TestHistoryPerformanceCollector(t *testing.T) {
 	}
 	report["openNew"] = perfSummary(created)
 	report["openExisting"] = perfSummary(reopened)
+	rawSamples["openNew"], rawSamples["openExisting"] = created, reopened
 
 	// The first open of a new process, which pays every one-time cost (DPAPI service, firmware table, key parsing).
 	executable, err := os.Executable()
@@ -91,6 +104,7 @@ func TestHistoryPerformanceCollector(t *testing.T) {
 		}
 	}
 	report["openExistingColdProcess"] = perfSummary(cold)
+	rawSamples["openExistingColdProcess"] = cold
 
 	// Writing: the recorder's transactions (BEGIN IMMEDIATE, one insert per combat result, COMMIT) for a fixed time.
 	writePath := filepath.Join(t.TempDir(), "history", "combat-history.db")
@@ -128,7 +142,10 @@ func TestHistoryPerformanceCollector(t *testing.T) {
 	if _, err := writer.db.ExecContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
 		t.Fatal(err)
 	}
-	report["walCheckpoint"] = map[string]any{"walBytes": walBefore, "micros": perfSince(checkpointStarted)}
+	checkpointMicros := perfSince(checkpointStarted)
+	report["walCheckpoint"] = map[string]any{"walBytes": walBefore, "micros": checkpointMicros}
+	rawSamples["walCheckpoint"] = []float64{checkpointMicros}
+	rawSamples["write.commitMicros"] = commits
 	cpu := float64(filetimeTicks(cpuAfter.UserTime)+filetimeTicks(cpuAfter.KernelTime)-filetimeTicks(cpuBefore.UserTime)-filetimeTicks(cpuBefore.KernelTime)) / 1e7
 	writer.Close()
 	report["write"] = map[string]any{"seconds": elapsed, "commits": len(commits), "rows": rows, "rowsPerSecond": float64(rows) / elapsed,
@@ -166,27 +183,28 @@ func TestHistoryPerformanceCollector(t *testing.T) {
 				samples = append(samples, perfSince(started))
 			}
 			report["query."+name] = perfSummary(samples)
+			rawSamples["query."+name] = samples
 		}
 		first := library.Encounters[len(library.Encounters)-1].StartedAt
-		measure("year", 60, func(int) error { _, err := store.Year(ctx, first.Year(), time.UTC); return err })
-		measure("day", 60, func(int) error {
+		measure("year", 60*scale, func(int) error { _, err := store.Year(ctx, first.Year(), time.UTC); return err })
+		measure("day", 60*scale, func(int) error {
 			_, err := store.Day(ctx, first.UTC().Format("2006-01-02"), 0, MaxDayPage, time.UTC)
 			return err
 		})
-		measure("library", 60, func(int) error {
+		measure("library", 60*scale, func(int) error {
 			_, err := store.Library(ctx, LibraryQuery{Limit: MaxLibraryPage}, time.UTC)
 			return err
 		})
-		measure("encounter", 3*len(library.Encounters), func(i int) error {
+		measure("encounter", 3*len(library.Encounters)*scale, func(i int) error {
 			_, err := store.Encounter(ctx, library.Encounters[i%len(library.Encounters)].ID, time.UTC)
 			return err
 		})
-		measure("analysis", 2*len(library.Encounters), func(i int) error {
+		measure("analysis", 2*len(library.Encounters)*scale, func(i int) error {
 			_, err := store.Analysis(ctx, library.Encounters[i%len(library.Encounters)].ID, AnalysisQuery{Enemy: -1, Effects: "hud"}, masters)
 			return err
 		})
 		// A comparison loads every compared encounter's stored result and analysis.
-		measure("compare5", 30, func(i int) error {
+		measure("compare5", 30*scale, func(i int) error {
 			for j := 0; j < 5; j++ {
 				id := library.Encounters[(i+j)%len(library.Encounters)].ID
 				if _, err := store.Encounter(ctx, id, time.UTC); err != nil {
@@ -209,6 +227,12 @@ func TestHistoryPerformanceCollector(t *testing.T) {
 	data, _ := json.MarshalIndent(report, "", "  ")
 	if err := os.WriteFile(filepath.Join(out, "history-performance.json"), data, 0o600); err != nil {
 		t.Fatal(err)
+	}
+	if os.Getenv("WWLOGS_HISTORY_PERF_SAMPLES") != "" {
+		data, _ := json.Marshal(rawSamples)
+		if err := os.WriteFile(filepath.Join(out, "history-samples.json"), data, 0o600); err != nil {
+			t.Fatal(err)
+		}
 	}
 	t.Logf("%s", data)
 }
