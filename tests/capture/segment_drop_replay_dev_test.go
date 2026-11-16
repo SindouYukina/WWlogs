@@ -3,7 +3,6 @@
 package capture
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/binary"
 	"encoding/json"
@@ -14,7 +13,6 @@ import (
 	"reflect"
 	"sort"
 	"strconv"
-	"strings"
 	"testing"
 
 	"github.com/google/gopacket"
@@ -124,32 +122,6 @@ func TestSegmentDropReplayCollector(t *testing.T) {
 			}
 		})
 	}
-}
-
-func readSegmentDropList(t *testing.T, path string) []equivalencePCAP {
-	t.Helper()
-	file, err := os.Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer file.Close()
-	var pcaps []equivalencePCAP
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		name, path, found := strings.Cut(line, "|")
-		if !found {
-			t.Fatalf("malformed PCAP list line %q", line)
-		}
-		pcaps = append(pcaps, equivalencePCAP{name: name, path: path})
-	}
-	if len(pcaps) == 0 {
-		t.Fatal("PCAP list is empty")
-	}
-	return pcaps
 }
 
 type segmentDropRun struct {
