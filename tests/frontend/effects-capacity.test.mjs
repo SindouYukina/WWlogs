@@ -35,10 +35,13 @@ test("the drawn effects do not change while only time passes", () => {
   for (let tick = 0; tick < 50; tick++) assert.deepEqual(fitEffectStrip(list, 25, layout(300)), first)
 })
 
-test("the Edit Mode preview covers exactly the area both rows draw in, with its text in the middle", () => {
+test("the Edit Mode preview covers the visible part of both rows' area, with its text in the middle", () => {
   const panel = read("frontend/src/views/EffectsOverlayPanel.tsx")
   const views = read("frontend/src/design/views.css")
-  assert.match(views, /\.ww-effects-preview \{ grid-row: 1 \/ -1; min-width: 0; display: flex; align-items: center; justify-content: center;/)
+  // The Edit Mode bar shortens the strip, so the rows' box is capped at its height and the preview fills that box: the
+  // text stays centered on screen instead of in a box clipped at the bar.
+  assert.match(views, /\.ww-effects-rows:has\(> \.ww-effects-preview\) \{ position: relative; max-height: 100%; \}/)
+  assert.match(views, /\.ww-effects-preview \{ position: absolute; inset: 0; min-width: 0; display: flex; align-items: center; justify-content: center;/)
   assert.match(panel, /ww-effects-preview" data-field="effects-preview"><span className="ww-truncate">\{t\("preview"\)\}<\/span>/, "a long label shortens inside the block instead of widening it")
 })
 
