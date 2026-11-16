@@ -557,6 +557,7 @@ type runtimeIdentityAudit struct {
 	EntityType               optionalRuntimeID            `json:"entityType"`
 	ConfigID                 optionalRuntimeID            `json:"configId"`
 	ConfigType               optionalRuntimeID            `json:"configType"`
+	PrefabID                 optionalRuntimeID            `json:"prefabId"`
 	PlayerID                 optionalRuntimeID            `json:"playerId"`
 	OwnerID                  optionalRuntimeID            `json:"ownerId"`
 	OwnerIncID               optionalRuntimeID            `json:"ownerIncId"`

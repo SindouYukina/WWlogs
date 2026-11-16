@@ -39,6 +39,8 @@ type runtimeEntity struct {
 	hasConfigID               bool
 	configType                uint64
 	hasConfigType             bool
+	prefabID                  uint64 // EntityPb.PrefabId: with ConfigType Prefab (5), the PrefabConfig that holds ConfigId
+	hasPrefabID               bool
 	playerID                  uint64
 	hasPlayerID               bool
 	ownerID                   uint64
@@ -640,6 +642,34 @@ func resolveEntityIdentity(resolver *entityResolver, masters *gameMaster, entity
 			result.TemplateCandidates = []sceneTemplateCandidate{candidate}
 			result.TemplateStatus = resolutionCorrelated
 			result.TemplateProof = fmt.Sprintf("EntityPb.ConfigType=Template(4) in the protocol enum EntityConfigType -> EntityPb.ConfigId=%d is a TemplateConfig.Id; combat master locale %s, client/master compatibility unverified", entity.configID, masters.locale)
+		}
+	}
+	// EntityConfigType.Prefab (5): the entity is one entity of a prefab. The client reads PrefabConfig by EntityPb.PrefabId,
+	// takes the Entities entry whose EntityData.Id is EntityPb.ConfigId and finds its TemplateConfig by that entry's
+	// BlueprintType (CreateEntityData.InitPbEntityData -> CreatureModel.GetEntityPrefab -> GetEntityTemplate). Challenge
+	// stages such as the Tower of Adversity spawn their enemies this way; the entity carries the prefab itself, so no scene
+	// context is needed. The relations are static and versioned, so the identity is at most CORRELATED, and a key that the
+	// prefab relation answers with several rows stays unresolved.
+	if masters != nil && entity.hasConfigID && entity.hasConfigType && entity.configType == 5 && entity.hasPrefabID {
+		if !result.HasMonster && !entity.hasMonsterID {
+			if monsterID, ok := masters.prefabMonster(entity.prefabID, entity.configID); ok {
+				if monster, found := masters.monsters[monsterID]; found {
+					result.Monster = monster
+					result.HasMonster = true
+					result.MonsterStatus = resolutionCorrelated
+					result.MonsterProof = fmt.Sprintf("EntityPb.ConfigType=Prefab(5) + EntityPb.PrefabId=%d + EntityPb.ConfigId=%d -> PrefabConfig(PrefabId).Entities[EntityData.Id=ConfigId].BlueprintType -> MonsterInfo.MonsterEntityID -> MonsterInfo.Id=%d", entity.prefabID, entity.configID, monsterID)
+				}
+			}
+		}
+		if len(result.TemplateCandidates) == 0 {
+			if candidates, ok := masters.prefabTemplates(entity.prefabID, entity.configID); ok {
+				result.TemplateCandidates = candidates
+				result.TemplateStatus = resolutionUnknown
+				result.TemplateProof = fmt.Sprintf("EntityPb.ConfigType=Prefab(5) + EntityPb.PrefabId=%d + EntityPb.ConfigId=%d -> PrefabConfig(PrefabId).Entities[EntityData.Id=ConfigId].BlueprintType -> TemplateConfig candidates; combat master locale %s, client/master compatibility unverified", entity.prefabID, entity.configID, masters.locale)
+				if len(candidates) == 1 {
+					result.TemplateStatus = resolutionCorrelated
+				}
+			}
 		}
 	}
 	return result
@@ -1351,6 +1381,8 @@ func parseEntityPb(data []byte) (runtimeEntity, error) {
 			entity.configID, entity.hasConfigID = field.value, true
 		case fieldEntityPbConfigType: // EntityPb.ConfigType
 			entity.configType, entity.hasConfigType = field.value, true
+		case fieldEntityPbPrefabID: // EntityPb.PrefabId (CreateEntityData.Init: PrefabId)
+			entity.prefabID, entity.hasPrefabID = field.value, true
 		case fieldEntityPbEntityType: // EntityPb.EntityType
 			entity.entityTypeCode, entity.hasEntityType = field.value, true
 		case fieldEntityPbPlayerID: // EntityPb.PlayerId
@@ -1600,6 +1632,9 @@ func mergeRuntimeEntity(old, update runtimeEntity) runtimeEntity {
 	}
 	if !update.hasConfigType && old.hasConfigType {
 		update.configType, update.hasConfigType = old.configType, true
+	}
+	if !update.hasPrefabID && old.hasPrefabID {
+		update.prefabID, update.hasPrefabID = old.prefabID, true
 	}
 	if !update.hasPlayerID && old.hasPlayerID {
 		update.playerID, update.hasPlayerID = old.playerID, true

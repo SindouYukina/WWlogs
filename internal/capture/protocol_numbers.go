@@ -334,6 +334,7 @@ const (
 	fieldEntityPbEntityType   = 4  // c3s.zHn
 	fieldEntityPbPlayerID     = 10 // c3s.W5n
 	fieldEntityPbComponentPbs = 11 // c3s.zEs
+	fieldEntityPbPrefabID     = 17 // c3s.LEs
 	fieldEntityPbOwnerIncID   = 21 // c3s.JE_
 	fieldEntityPbRoleSkinID   = 23 // c3s.eI_
 
