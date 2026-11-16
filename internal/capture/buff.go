@@ -407,7 +407,9 @@ func (p *processor) handleBuffLifecycleMessage(frame gameFrame, body []byte) err
 	p.linkBuffLifecycleDefinition(&row)
 	p.linkBuffLifecycleGenericAndHandle(&row)
 	p.linkBuffLifecycleOwners(&row)
-	p.writeDiagnosticRow(p.buffLifecycle, "buff-events", row)
+	if p.buffLifecycle != nil { // the row becomes an interface value only when a sink exists (no cost without one)
+		p.writeDiagnosticRow(p.buffLifecycle, "buff-events", row)
+	}
 	p.observeEffectLifecycle(row)
 	p.writeStructuredEventJSONL(row)
 	p.writeBuffLifecycleConsole(row)
@@ -530,7 +532,9 @@ func (p *processor) handleInnerBuffLifecycleMessage(frame gameFrame, innerFieldN
 	p.linkBuffLifecycleDefinition(&row)
 	p.linkBuffLifecycleGenericAndHandle(&row)
 	p.linkBuffLifecycleOwners(&row)
-	p.writeDiagnosticRow(p.buffLifecycle, "buff-events", row)
+	if p.buffLifecycle != nil {
+		p.writeDiagnosticRow(p.buffLifecycle, "buff-events", row)
+	}
 	p.observeBuffInterval(row)
 	p.observeEffectLifecycle(row)
 	p.writeStructuredEventJSONL(row)
@@ -850,7 +854,9 @@ func (p *processor) handleActiveResponse(frame gameFrame, body []byte) error {
 					}
 					p.observeBuffSnapshot(row)
 					// A failed snapshot row must not skip the identity, FSM and part components of this response.
-					p.writeDiagnosticRow(p.buffSnapshots, "buff-snapshots", row)
+					if p.buffSnapshots != nil {
+						p.writeDiagnosticRow(p.buffSnapshots, "buff-snapshots", row)
+					}
 					p.writeStructuredEventJSONL(row)
 				}
 			}

@@ -12,7 +12,8 @@ import (
 // and reported; the message's effect, damage and identity processing continues unchanged, and the failure is never a
 // parse error. A public build has no diagnostic sinks (diagWriter cannot be set there), so none of this runs in it.
 
-// writeDiagnosticRow encodes one row to a diagnostic sink.
+// writeDiagnosticRow encodes one row to a diagnostic sink. Callers check the sink first: passing a row converts it to an
+// interface value, which allocates, and must not happen on the core path of a run without diagnostic outputs.
 func (p *processor) writeDiagnosticRow(sink diagWriter, name string, row any) {
 	if sink == nil {
 		return
