@@ -1018,6 +1018,9 @@ finished:
 		fmt.Fprintf(os.Stderr, "shield_reference errors=%d\n", processor.shieldRefErrors)
 	}
 	processor.printSummary(diagnosticTarget)
+	if line := processor.diagnosticFailureLine(); line != "" {
+		fmt.Fprintln(diagnosticTarget, line)
+	}
 	fmt.Fprintf(diagnosticTarget, "statistics_final %s\n", processor.currentStatisticsReport())
 	fmt.Fprintln(diagnosticTarget, transportHealthLine(streams, stats))
 	fmt.Fprintln(diagnosticTarget, rpcPairingLine(processor.rpcPairingSnapshot()))

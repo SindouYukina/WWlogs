@@ -110,6 +110,9 @@ func (d *sessionDiagnostics) finish(stopReason string, kernelDropped CaptureCoun
 		snapshot.Final = true
 		_ = writeLiveDiagnosticSnapshot(d.outputs["dps-effects.jsonl"], snapshot)
 		_ = d.processor.writeEffectState(d.outputs["effect-state-final.json"])
+		if line := d.processor.diagnosticFailureLine(); line != "" {
+			fmt.Fprintln(d.outputs["console.log"], line)
+		}
 	}
 	d.pipeline.finishCapture()
 	d.pipeline.close(diagnosticFlushTimeout)
