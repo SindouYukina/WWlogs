@@ -16,14 +16,14 @@ type Observer interface {
 	// BeginProtocolSession is the handshake of a new protocol session.
 	BeginProtocolSession()
 	WriteStructuredEventJSONL(event any)
-	WriteDamageEventOutputs(event *CombatEvent, visible bool, sourceRelation, targetRelation PlayerRelation)
+	WriteDamageEventOutputs(event CombatEvent, visible bool, sourceRelation, targetRelation PlayerRelation)
 	RecordBuffSnapshotDiagnostics(frame GameFrame, record RawBuffSnapshot, request PendingActiveRequest, matched bool)
 	ArchiveClientPushResearch(frame GameFrame, plain []byte)
 	WriteBattleStateSignal(at time.Time, container string, signal PlayerBattleStateSignal, anchor string)
 	WriteCombatEventRecord(record CombatEventRecord, assignment string)
 	FlushEncounterTransitions()
 	WriteBuffLifecycleConsole(row BuffLifecycleAuditRow)
-	WriteBuffLifecycleRow(row *BuffLifecycleAuditRow)
+	WriteBuffLifecycleRow(row BuffLifecycleAuditRow)
 	AuditCombatNotify(frame GameFrame, notification ProtoField, commonEntityID, commonOriginator, commonMessageID *uint64)
 	ObserveBuffInterval(row BuffLifecycleAuditRow)
 	ArchiveFrame(frame GameFrame)
@@ -56,7 +56,7 @@ func (p *Processor) Observe(observer Observer) {
 type SessionDiagnostics interface {
 	Attach(p *Processor)
 	Packet(info gopacket.CaptureInfo, data []byte)
-	ObserveEffectDisplay(p *Processor, now time.Time)
+	ObserveEffectDisplay(now time.Time)
 	Finish(stopReason string, kernelDropped CaptureCounter) string
 }
 

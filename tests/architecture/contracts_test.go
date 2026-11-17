@@ -544,9 +544,11 @@ func declarations(c *checkedPackage) map[string]declaration {
 
 // ---------------------------------------------------------------------------------------------------------------
 // Contract 6: the observation points are one-way. The interfaces through which the core hands its observation points
-// to the Development modules return nothing the core could decide with; the few results they return are reviewed
-// below with the reason they cannot change combat results. A new interface the core calls into Development code is
-// listed in observationInterfaces.
+// to the Development modules return nothing the core could decide with, and they receive values, not pointers: a
+// pointer would let the observer write the core value, and because the compiler cannot see through the interface call
+// it moves the value to the heap in every profile, Public included, where no observer runs. The few results and
+// pointers are reviewed below with the reason they cannot change combat results. A new interface the core calls into
+// Development code is listed in observationInterfaces.
 
 // observationInterfaces are the core interfaces the Development modules implement.
 var observationInterfaces = []string{"Observer", "CommandCensusObserver", "CensusFrameObserver", "SessionDiagnostics"}
@@ -558,8 +560,14 @@ var reviewedObservationResults = map[string]string{
 	"SessionDiagnostics.Finish":          "the summary text of the Development spool for the session result shown to the developer; no combat decision reads it",
 }
 
-func observationFindings(core *checkedPackage) (findings []string, reviewedSeen map[string]bool) {
-	reviewedSeen = map[string]bool{}
+// reviewedObservationPointers are the observation methods that receive a pointer.
+var reviewedObservationPointers = map[string]string{
+	"Observer.AuditCombatNotify": "the optional CombatCommon identifiers the decoder already holds on the heap; the audit only formats them",
+	"SessionDiagnostics.Attach":  "the session's processor the Development diagnostics attach their observer to; its two settings are reviewed in contract 7",
+}
+
+func observationFindings(core *checkedPackage) (findings []string, resultsSeen, pointersSeen map[string]bool) {
+	resultsSeen, pointersSeen = map[string]bool{}, map[string]bool{}
 	for _, name := range observationInterfaces {
 		typeName, ok := core.pkg.Scope().Lookup(name).(*types.TypeName)
 		if !ok {
@@ -573,19 +581,30 @@ func observationFindings(core *checkedPackage) (findings []string, reviewedSeen 
 		}
 		for i := 0; i < iface.NumMethods(); i++ {
 			method := iface.Method(i)
-			if method.Type().(*types.Signature).Results().Len() == 0 {
-				continue
-			}
+			signature := method.Type().(*types.Signature)
 			key := name + "." + method.Name()
-			if _, ok := reviewedObservationResults[key]; ok {
-				reviewedSeen[key] = true
-				continue
+			if signature.Results().Len() > 0 {
+				if _, ok := reviewedObservationResults[key]; ok {
+					resultsSeen[key] = true
+				} else {
+					findings = append(findings, fmt.Sprintf("%s: the observation method %s returns a value; an observation point returns nothing the core could decide with, or its value is reviewed", core.where(method.Pos()), key))
+				}
 			}
-			findings = append(findings, fmt.Sprintf("%s: the observation method %s returns a value; an observation point returns nothing the core could decide with, or its value is reviewed", core.where(method.Pos()), key))
+			for j := 0; j < signature.Params().Len(); j++ {
+				param := signature.Params().At(j)
+				if _, ok := param.Type().Underlying().(*types.Pointer); !ok {
+					continue
+				}
+				if _, ok := reviewedObservationPointers[key]; ok {
+					pointersSeen[key] = true
+					continue
+				}
+				findings = append(findings, fmt.Sprintf("%s: the observation method %s takes the pointer %s; an observation point receives values (a pointer lets the observer write the core value and moves it to the heap in every profile), or its pointer is reviewed", core.where(method.Pos()), key, param.Name()))
+			}
 		}
 	}
 	sort.Strings(findings)
-	return findings, reviewedSeen
+	return findings, resultsSeen, pointersSeen
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -1088,9 +1107,10 @@ func TestCoreHoldsNoDevelopmentImplementation(t *testing.T) {
 }
 
 func TestObservationPointsAreOneWay(t *testing.T) {
-	findings, reviewed := observationFindings(productCheck(t, publicProfile, corePackage))
+	findings, results, pointers := observationFindings(productCheck(t, publicProfile, corePackage))
 	reportFindings(t, "observation points", findings)
-	reportStaleEntries(t, "reviewedObservationResults", reviewedObservationResults, reviewed)
+	reportStaleEntries(t, "reviewedObservationResults", reviewedObservationResults, results)
+	reportStaleEntries(t, "reviewedObservationPointers", reviewedObservationPointers, pointers)
 }
 
 func TestDevelopmentCodeDoesNotWriteCoreState(t *testing.T) {

@@ -198,7 +198,7 @@ func (p *Processor) WriteDamageEvent(event CombatEvent) bool {
 		}
 	}
 	if p.observer != nil {
-		p.observer.WriteDamageEventOutputs(&event, visible, sourceRelation, targetRelation)
+		p.observer.WriteDamageEventOutputs(event, visible, sourceRelation, targetRelation)
 	}
 	if !visible {
 		p.Stats.SuppressedUnrelatedEvents++

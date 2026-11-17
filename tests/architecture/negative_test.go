@@ -181,14 +181,16 @@ func TestNegativeDevelopmentImplementationInTheCore(t *testing.T) {
 	requireNoFinding(t, "core declarations", real)
 }
 
-// An observation point starts returning a value the core could decide with (contract 6).
+// An observation point starts returning a value the core could decide with, or receiving a pointer to a core value
+// (contract 6).
 func TestNegativeObservationPointReturnsAValue(t *testing.T) {
 	core := loadRepository(t).check(t, publicProfile, corePackage, overrides(
-		realFileWith(t, "internal/capture/observer.go", "\tBeginProtocolSession()", "\tBeginProtocolSession()\n\tArchitectureProbeDecision() bool"),
+		realFileWith(t, "internal/capture/observer.go", "\tBeginProtocolSession()", "\tBeginProtocolSession()\n\tArchitectureProbeDecision() bool\n\tArchitectureProbeRow(row *BuffLifecycleAuditRow)"),
 	))
-	findings, _ := observationFindings(core)
+	findings, _, _ := observationFindings(core)
 	requireFinding(t, findings, "Observer.ArchitectureProbeDecision returns a value")
-	real, _ := observationFindings(productCheck(t, publicProfile, corePackage))
+	requireFinding(t, findings, "Observer.ArchitectureProbeRow takes the pointer row")
+	real, _, _ := observationFindings(productCheck(t, publicProfile, corePackage))
 	requireNoFinding(t, "observation points", real)
 }
 

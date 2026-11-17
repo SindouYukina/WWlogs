@@ -373,7 +373,7 @@ func (p *Processor) HandleBuffLifecycleMessage(frame GameFrame, body []byte) err
 	p.linkBuffLifecycleGenericAndHandle(&row)
 	p.linkBuffLifecycleOwners(&row)
 	if p.observer != nil {
-		p.observer.WriteBuffLifecycleRow(&row)
+		p.observer.WriteBuffLifecycleRow(row)
 	}
 	p.observeEffectLifecycle(row)
 	if p.observer != nil {
@@ -499,7 +499,7 @@ func (p *Processor) HandleInnerBuffLifecycleMessage(frame GameFrame, innerFieldN
 	p.linkBuffLifecycleGenericAndHandle(&row)
 	p.linkBuffLifecycleOwners(&row)
 	if p.observer != nil {
-		p.observer.WriteBuffLifecycleRow(&row)
+		p.observer.WriteBuffLifecycleRow(row)
 	}
 	if p.observer != nil {
 		p.observer.ObserveBuffInterval(row)

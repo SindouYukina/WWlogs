@@ -104,6 +104,10 @@ type processorDiagnostics struct {
 	pendingSummaryCredits     map[uint64][]pendingSummaryCredit
 	pendingSummaryCreditCount int
 
+	// messagePaths caches the research wire path of each inner Buff lifecycle message (buff.go withMessagePath),
+	// bounded by maxMessagePaths.
+	messagePaths map[messagePathKey]string
+
 	// Error counters of the research outputs, and the failed diagnostic writes by sink (diagnostic_isolation.go).
 	frameArchiveErrors  int
 	schemaDecodeErrors  int

@@ -101,7 +101,7 @@ func (d *sessionDiagnostics) Attach(core *capture.Processor) {
 }
 
 // ObserveEffectDisplay records why the Effects Overlay shows what it shows (effect_display_audit.go).
-func (d *sessionDiagnostics) ObserveEffectDisplay(_ *capture.Processor, now time.Time) {
+func (d *sessionDiagnostics) ObserveEffectDisplay(now time.Time) {
 	d.effectDisplay.observe(d.processor, now)
 }
 

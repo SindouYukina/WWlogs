@@ -44,7 +44,9 @@ the other product tests (`scripts/test.ps1`, `scripts/verify.ps1`).
 - **No Development implementation in the core**: every function, method and type of the core is used by the core or by
   a package outside the Development modules; the few observation entry points only Development calls are reviewed.
 - **One-way observation**: the interfaces the core calls into Development code (`Observer`, the census observers,
-  `SessionDiagnostics`) return nothing the core could decide with; the few results they return are reviewed.
+  `SessionDiagnostics`) return nothing the core could decide with and receive values, not pointers (a pointer would
+  let the observer write the core value and moves it to the heap even in Public); the few results and pointers they
+  have are reviewed.
 - **Development writes**: Development code changes core memory only as a local copy; through a pointer, slice or map it
   writes only its own data, apart from the reviewed configuration of an entry point.
 - **Core fields**: the core reads every field of the core `Processor`; Development state belongs in the Development

@@ -99,8 +99,8 @@ func (p *processor) diagnosticFailureLine() string {
 
 // WriteBuffLifecycleRow writes one decoded Buff lifecycle row to the Buff event output (-buff-event-out) before the core
 // observes it. The row becomes an interface value only when the sink exists, so a run without the output pays nothing.
-func (p *processor) WriteBuffLifecycleRow(row *capture.BuffLifecycleAuditRow) {
+func (p *processor) WriteBuffLifecycleRow(row capture.BuffLifecycleAuditRow) {
 	if p.dev.buffLifecycle != nil {
-		p.writeDiagnosticRow(p.dev.buffLifecycle, "buff-events", withMessagePath(*row))
+		p.writeDiagnosticRow(p.dev.buffLifecycle, "buff-events", p.withMessagePath(row))
 	}
 }

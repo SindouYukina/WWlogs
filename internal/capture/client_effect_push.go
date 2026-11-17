@@ -284,7 +284,7 @@ func (p *Processor) handleClientEffectRow(row BuffLifecycleAuditRow) error {
 	p.linkBuffLifecycleGenericAndHandle(&row)
 	p.linkBuffLifecycleOwners(&row)
 	if p.observer != nil {
-		p.observer.WriteBuffLifecycleRow(&row)
+		p.observer.WriteBuffLifecycleRow(row)
 	}
 	p.observeEffectLifecycle(row)
 	if p.observer != nil {

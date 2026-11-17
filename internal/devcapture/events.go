@@ -550,9 +550,14 @@ func optionalInt32(value int32, present bool) *int32 {
 	return &value
 }
 
+// WriteStructuredEventJSONL writes one core event row to the event output (-event-jsonl-out); a Buff lifecycle row
+// gets its research wire path first. Without the output nothing is built.
 func (p *processor) WriteStructuredEventJSONL(event any) {
+	if p.dev.combatEventsJSONL == nil {
+		return
+	}
 	if row, ok := event.(capture.BuffLifecycleAuditRow); ok {
-		event = withMessagePath(row)
+		event = p.withMessagePath(row)
 	}
 	p.writeEnvelopedEventJSONL(event, "")
 }
@@ -604,15 +609,15 @@ func (p *processor) writeDamageEventJSONL(event capture.CombatEvent, skillReques
 // the core: the research link to its outbound skill request, the overlap record, the event line, the console line, the
 // event audit row and the research lines. A failed console or audit write is counted (diagnostic_isolation.go); it never
 // returns before the core counters, and a console line that failed is not flushed, so it is counted once.
-func (p *processor) WriteDamageEventOutputs(event *capture.CombatEvent, visible bool, sourceRelation, targetRelation capture.PlayerRelation) {
+func (p *processor) WriteDamageEventOutputs(event capture.CombatEvent, visible bool, sourceRelation, targetRelation capture.PlayerRelation) {
 	skillRequest := p.linkSkillRequest(event.SkillMessageID)
 	if visible {
-		p.recordDamageForOverlap(*event)
+		p.recordDamageForOverlap(event)
 	}
-	p.writeDamageEventJSONL(*event, skillRequest)
+	p.writeDamageEventJSONL(event, skillRequest)
 	consoleWritten := true
 	if visible {
-		normalOutput := formatNormalForSourceRelation(*event, sourceRelation)
+		normalOutput := formatNormalForSourceRelation(event, sourceRelation)
 		switch {
 		case sourceRelation == capture.PlayerRelationLocal && targetRelation == capture.PlayerRelationLocal:
 			normalOutput += " [PlayerTeamSide: BOTH]"

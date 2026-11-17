@@ -290,16 +290,41 @@ func formatBuffLifecycleConsole(row capture.BuffLifecycleAuditRow, holderName, s
 // records only the raw facts: the outer command (CommandID) and the field of the inner message
 // (InnerMessageFieldNumber). A client report reaches the core inside CombatSendPackRequest pushes; every other inner
 // message, in CombatReceivePackNotify or nested in CombatSendPackResponse, has the notify path, as before the path
-// left the core.
-func withMessagePath(row capture.BuffLifecycleAuditRow) capture.BuffLifecycleAuditRow {
+// left the core. Each path is formatted once per processor (messagePaths), so a row costs no more than when the core
+// formatted it.
+func (p *processor) withMessagePath(row capture.BuffLifecycleAuditRow) capture.BuffLifecycleAuditRow {
 	if row.InnerMessageFieldNumber == nil {
 		return row
 	}
-	fieldNumber := *row.InnerMessageFieldNumber
-	if row.CommandID == capture.CmdCombatSendPackRequest {
-		row.MessagePath = fmt.Sprintf("CombatSendPackRequest.field%d(CombatSendData[]).field%d(CombatPushData).field%d", capture.FieldCombatSendPackRequestData, capture.FieldCombatSendDataPush, fieldNumber)
-	} else {
-		row.MessagePath = fmt.Sprintf("CombatReceivePackNotify.field%d(CombatReceiveData[]).field%d(CombatNotifyData).field%d", capture.FieldCombatReceivePackNotifyData, capture.FieldCombatReceiveDataCombatNotifyData, fieldNumber)
+	key := messagePathKey{clientPush: row.CommandID == capture.CmdCombatSendPackRequest, field: *row.InnerMessageFieldNumber}
+	if path, ok := p.dev.messagePaths[key]; ok {
+		row.MessagePath = path
+		return row
+	}
+	row.MessagePath = formatMessagePath(key)
+	if len(p.dev.messagePaths) < maxMessagePaths {
+		if p.dev.messagePaths == nil {
+			p.dev.messagePaths = make(map[messagePathKey]string)
+		}
+		p.dev.messagePaths[key] = row.MessagePath
 	}
 	return row
+}
+
+// messagePathKey holds the two raw facts a research wire path is made of: whether the inner message came in a client
+// push (CombatSendPackRequest) and its field number.
+type messagePathKey struct {
+	clientPush bool
+	field      uint64
+}
+
+// maxMessagePaths bounds messagePaths. The protocol has a few dozen inner messages; past the bound a path is formatted
+// for each row, as before the cache.
+const maxMessagePaths = 256
+
+func formatMessagePath(key messagePathKey) string {
+	if key.clientPush {
+		return fmt.Sprintf("CombatSendPackRequest.field%d(CombatSendData[]).field%d(CombatPushData).field%d", capture.FieldCombatSendPackRequestData, capture.FieldCombatSendDataPush, key.field)
+	}
+	return fmt.Sprintf("CombatReceivePackNotify.field%d(CombatReceiveData[]).field%d(CombatNotifyData).field%d", capture.FieldCombatReceivePackNotifyData, capture.FieldCombatReceiveDataCombatNotifyData, key.field)
 }

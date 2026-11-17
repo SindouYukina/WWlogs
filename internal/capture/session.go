@@ -352,7 +352,7 @@ func (s *Session) Run(ctx context.Context, publish func(ViewSnapshot)) (result S
 			}
 			publish(p.ViewSnapshot())
 			if s.diagnostics != nil {
-				s.diagnostics.ObserveEffectDisplay(p, now)
+				s.diagnostics.ObserveEffectDisplay(now)
 			}
 		}
 	}
