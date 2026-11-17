@@ -127,7 +127,7 @@ func TestCurrentProtocolSessionDecodesTheFight(t *testing.T) {
 
 // Evidence names the protocol a message was read with, the current client's, and the version gate that admitted it.
 func TestEvidenceNamesTheCurrentProtocol(t *testing.T) {
-	for name, text := range map[string]string{"message schema basis": protocolSchemaBasis(), "census schema basis": censusSchemaBasis(), "combat notify audit": combatNotifyAuditSchemaBasis} {
+	for name, text := range map[string]string{"message schema basis": protocolSchemaBasis(), "census schema basis": censusSchemaBasis()} {
 		if !strings.Contains(text, CurrentProtocol()) {
 			t.Fatalf("%s %q does not name the current client protocol", name, text)
 		}

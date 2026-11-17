@@ -4,6 +4,27 @@ package capture
 
 import "strings"
 
+const skillRefSchemaVersion = 1
+
+// skillRefRecord is one SkillId carried by a combat message with its namespace and actor-owner evidence.
+type skillRefRecord struct {
+	SchemaVersion  int              `json:"schemaVersion"`
+	FrameOrdinal   uint64           `json:"frameOrdinal"`
+	SessionNumber  int              `json:"sessionNumber"`
+	Timestamp      string           `json:"timestamp"`
+	Direction      string           `json:"direction"`
+	FieldPath      string           `json:"fieldPath"`
+	Holder         string           `json:"holder"`
+	SkillID        int64            `json:"skillId"`
+	SourceEntityID *int64           `json:"sourceEntityId,omitempty"`
+	SourceBasis    string           `json:"sourceBasis,omitempty"`
+	Status         resolutionStatus `json:"status"`
+	Namespace      string           `json:"namespace,omitempty"`
+	ActorBlueprint string           `json:"actorBlueprint,omitempty"`
+	DevLabelZhCn   string           `json:"devLabelZhCn,omitempty"`
+	Evidence       string           `json:"evidence"`
+}
+
 // resolveSkillRef validates a SkillId against an available source chain or a unique static owner.
 // The skill-derived echo link remains excluded because it cannot independently validate itself.
 func resolveSkillRef(masters *gameMaster, skillID uint64, source bulletSource) (resolutionStatus, string, string, string) {
