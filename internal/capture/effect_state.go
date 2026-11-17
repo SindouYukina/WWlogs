@@ -415,7 +415,7 @@ type effectInstance struct {
 type EffectTracker struct {
 	mu sync.RWMutex
 
-	captureSessionID     uint64
+	CaptureSessionID     uint64
 	statisticsIntervalID uint64
 
 	session          int
@@ -441,7 +441,7 @@ type EffectTracker struct {
 // NewEffectTracker creates an empty tracker bound to a capture session ID.
 func NewEffectTracker(captureSessionID uint64) *EffectTracker {
 	return &EffectTracker{
-		captureSessionID:     captureSessionID,
+		CaptureSessionID:     captureSessionID,
 		statisticsIntervalID: 1,
 		instances:            make(map[effectKey]*effectInstance),
 		tombstones:           make(map[effectKey]time.Time),
@@ -449,9 +449,9 @@ func NewEffectTracker(captureSessionID uint64) *EffectTracker {
 	}
 }
 
-// validEffectHandle reports whether a handle can identify an instance. The server
+// ValidEffectHandle reports whether a handle can identify an instance. The server
 // sends -2 (as uint64) with effects that have no duration lifecycle.
-func validEffectHandle(handle uint64) bool {
+func ValidEffectHandle(handle uint64) bool {
 	return int64(handle) >= 0
 }
 
@@ -535,7 +535,7 @@ func (t *EffectTracker) ObserveApply(event EffectApplyEvent) {
 	if !t.acceptSessionLocked(event.SessionNumber) {
 		return
 	}
-	if !validEffectHandle(event.HandleID) {
+	if !ValidEffectHandle(event.HandleID) {
 		t.counters.InstantApplies++
 		t.journalInstantLocked(event, evidence)
 		return
@@ -636,7 +636,7 @@ func (t *EffectTracker) ObserveUpdate(event EffectUpdateEvent) {
 	}
 	key := effectKey{event.SessionNumber, event.HolderEntityID, event.HolderGeneration, event.HandleID}
 	instance, active := t.instances[key]
-	if !active || !validEffectHandle(event.HandleID) {
+	if !active || !ValidEffectHandle(event.HandleID) {
 		if _, excluded := t.excluded[key]; excluded {
 			t.counters.ExcludedMessages++
 		} else if t.endedByHolderRemovalLocked(key) >= 0 {
@@ -699,7 +699,7 @@ func (t *EffectTracker) ObserveRemove(event EffectRemoveEvent) {
 			return
 		}
 		t.counters.RemovesWithoutInstance++
-		if validEffectHandle(event.HandleID) && !event.ObservedAt.IsZero() {
+		if ValidEffectHandle(event.HandleID) && !event.ObservedAt.IsZero() {
 			t.addTombstoneLocked(key, event.ObservedAt)
 		}
 		return
@@ -1095,7 +1095,7 @@ func secondsToDuration(seconds float64) time.Duration {
 
 func (t *EffectTracker) queryRejectionLocked(query CaptureQueryTime) string {
 	switch {
-	case query.CaptureSessionID == 0 || query.CaptureSessionID != t.captureSessionID:
+	case query.CaptureSessionID == 0 || query.CaptureSessionID != t.CaptureSessionID:
 		return effectReasonSessionMismatch
 	case query.Timestamp.IsZero():
 		return effectReasonQueryTimeUnavailable
@@ -1127,7 +1127,7 @@ func (t *EffectTracker) sortedInstancesLocked() []*effectInstance {
 
 func (t *EffectTracker) snapshotLocked(query CaptureQueryTime, rejection string) EffectSnapshot {
 	snapshot := EffectSnapshot{
-		CaptureSessionID: t.captureSessionID, StatisticsIntervalID: t.statisticsIntervalID,
+		CaptureSessionID: t.CaptureSessionID, StatisticsIntervalID: t.statisticsIntervalID,
 		Status: EffectSnapshotComplete, Counters: t.countersLocked(),
 		Effects:     make([]EffectInstanceSnapshot, 0, len(t.instances)),
 		RecentEnded: append([]EffectEndedSnapshot{}, t.ended...),
@@ -1157,7 +1157,7 @@ func (t *EffectTracker) instanceSnapshotLocked(instance *effectInstance, query C
 		SessionNumber: instance.key.session, HolderEntityID: instance.key.holder,
 		HolderGeneration: instance.key.generation, HandleID: instance.key.handle,
 		HolderRelation: instance.holderRelation, SourceRelation: instance.sourceRelation,
-		DefinitionStatus: string(resolutionUnknown), SemanticStatus: EffectSemanticDefinitionUnresolved,
+		DefinitionStatus: string(ResolutionUnknown), SemanticStatus: EffectSemanticDefinitionUnresolved,
 		Polarity: EffectPolarityUnclassified, Lifecycle: EffectLifecycleActive,
 		Origin: instance.origin, Evidence: instance.evidence, FirstObservedAt: instance.firstObservedAt, LastUpdatedAt: instance.lastUpdatedAt,
 	}
@@ -1169,7 +1169,7 @@ func (t *EffectTracker) instanceSnapshotLocked(instance *effectInstance, query C
 		id := instance.effectID
 		snapshot.EffectID = &id
 		if instance.definitionLinked {
-			snapshot.DefinitionStatus = string(resolutionCorrelated)
+			snapshot.DefinitionStatus = string(ResolutionCorrelated)
 			snapshot.SemanticStatus = EffectSemanticNameUnresolved
 			snapshot.Static = instance.static.clone()
 			if snapshot.Static != nil && snapshot.Static.Term != nil {

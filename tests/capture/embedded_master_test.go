@@ -13,9 +13,9 @@ import (
 )
 
 var (
-	benchmarkMasterSource      *gameMaster
-	benchmarkMasterRecord      masterRecord
-	benchmarkMasterDamage      damageMasterRecord
+	benchmarkMasterSource      *GameMaster
+	benchmarkMasterRecord      MasterRecord
+	benchmarkMasterDamage      DamageMasterRecord
 	benchmarkMasterText        string
 	benchmarkMasterFound       bool
 	benchmarkMasterDisplayName DisplayName
@@ -33,34 +33,34 @@ func TestEmbeddedMasterMatchesTrackedReadOnlyDatabase(t *testing.T) {
 		t.Fatal("embedded Master bytes differ from the tracked database")
 	}
 
-	embedded, err := loadGameMasterDatabase("", "zh-TW")
+	embedded, err := LoadGameMasterDatabase("", "zh-TW")
 	if err != nil {
 		t.Fatalf("load embedded Master through SQLite: %v", err)
 	}
-	external, err := loadGameMasterDatabase(sourcePath, "zh-TW")
+	external, err := LoadGameMasterDatabase(sourcePath, "zh-TW")
 	if err != nil {
 		t.Fatalf("load explicit read-only test override: %v", err)
 	}
-	if embedded.databasePath != "embedded" || embedded.manifest.SourceHash != wantHash {
-		t.Fatalf("embedded source identity = %q, %q; want embedded and %s", embedded.databasePath, embedded.manifest.SourceHash, wantHash)
+	if embedded.DatabasePath != "embedded" || embedded.Manifest.SourceHash != wantHash {
+		t.Fatalf("embedded source identity = %q, %q; want embedded and %s", embedded.DatabasePath, embedded.Manifest.SourceHash, wantHash)
 	}
-	if external.manifest.SourceHash != wantHash {
-		t.Fatalf("external override hash = %s, want %s", external.manifest.SourceHash, wantHash)
+	if external.Manifest.SourceHash != wantHash {
+		t.Fatalf("external override hash = %s, want %s", external.Manifest.SourceHash, wantHash)
 	}
-	if _, ok := embedded.characters[1409]; !ok {
+	if _, ok := embedded.Characters[1409]; !ok {
 		t.Fatal("embedded Master did not resolve known Character ID 1409")
 	}
-	if _, ok := embedded.monsters[310000010]; !ok {
+	if _, ok := embedded.Monsters[310000010]; !ok {
 		t.Fatal("embedded Master did not resolve known Monster ID 310000010")
 	}
-	if len(embedded.skills) == 0 || len(embedded.buffDefinitions) == 0 || len(embedded.commonBullets) == 0 || len(embedded.damage) == 0 {
-		t.Fatalf("embedded Master omitted a required lookup family: skills=%d buffs=%d bullets=%d damage=%d", len(embedded.skills), len(embedded.buffDefinitions), len(embedded.commonBullets), len(embedded.damage))
+	if len(embedded.Skills) == 0 || len(embedded.BuffDefinitions) == 0 || len(embedded.CommonBullets) == 0 || len(embedded.Damage) == 0 {
+		t.Fatalf("embedded Master omitted a required lookup family: skills=%d buffs=%d bullets=%d damage=%d", len(embedded.Skills), len(embedded.BuffDefinitions), len(embedded.CommonBullets), len(embedded.Damage))
 	}
-	if embedded.locale != external.locale || embedded.manifest != external.manifest {
-		t.Fatalf("embedded and external Master metadata differ: embedded=%+v external=%+v", embedded.manifest, external.manifest)
+	if embedded.Locale != external.Locale || embedded.Manifest != external.Manifest {
+		t.Fatalf("embedded and external Master metadata differ: embedded=%+v external=%+v", embedded.Manifest, external.Manifest)
 	}
 	// The paths intentionally differ; all Master lookup data and its schema-derived maps must match.
-	external.databasePath = embedded.databasePath
+	external.DatabasePath = embedded.DatabasePath
 	if !reflect.DeepEqual(embedded, external) {
 		t.Fatal("embedded SQLite queries and explicit file override produced different Master lookups")
 	}
@@ -101,8 +101,8 @@ func TestDesktopMasterAndDisplayResolverShareOneSQLiteConnection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("query localized name through shared SQLite connection: %v", err)
 	}
-	if resolved.Name == "" || resolved.Name != masters.masters.characters[1409].Name {
-		t.Fatalf("display lookup = %+v, loaded Master record = %+v", resolved, masters.masters.characters[1409])
+	if resolved.Name == "" || resolved.Name != masters.masters.Characters[1409].Name {
+		t.Fatalf("display lookup = %+v, loaded Master record = %+v", resolved, masters.masters.Characters[1409])
 	}
 	if got := display.db.Stats().OpenConnections; got != 1 {
 		t.Fatalf("Desktop Master has %d open SQLite connections, want exactly one", got)
@@ -150,7 +150,7 @@ func BenchmarkLoadMasterDatabase(b *testing.B) {
 		b.Run(source.name, func(b *testing.B) {
 			b.ReportAllocs()
 			for range b.N {
-				master, err := loadGameMasterDatabase(source.path, "zh-TW")
+				master, err := LoadGameMasterDatabase(source.path, "zh-TW")
 				if err != nil {
 					b.Fatal(err)
 				}
@@ -161,43 +161,43 @@ func BenchmarkLoadMasterDatabase(b *testing.B) {
 }
 
 func BenchmarkMasterMapLookups(b *testing.B) {
-	master, err := loadGameMasterDatabase("", "zh-TW")
+	master, err := LoadGameMasterDatabase("", "zh-TW")
 	if err != nil {
 		b.Fatal(err)
 	}
 	characterID := uint64(1409)
-	skillID := minimumMasterID(master.skills)
-	buffID := minimumMasterID(master.buffDefinitions)
-	bulletID := minimumMasterID(master.commonBullets)
-	damageID := minimumMasterID(master.damage)
+	skillID := minimumMasterID(master.Skills)
+	buffID := minimumMasterID(master.BuffDefinitions)
+	bulletID := minimumMasterID(master.CommonBullets)
+	damageID := minimumMasterID(master.Damage)
 	b.Run("character", func(b *testing.B) {
 		b.ReportAllocs()
 		for range b.N {
-			benchmarkMasterRecord, benchmarkMasterFound = master.characters[characterID]
+			benchmarkMasterRecord, benchmarkMasterFound = master.Characters[characterID]
 		}
 	})
 	b.Run("skill", func(b *testing.B) {
 		b.ReportAllocs()
 		for range b.N {
-			benchmarkMasterRecord, benchmarkMasterFound = master.skills[skillID]
+			benchmarkMasterRecord, benchmarkMasterFound = master.Skills[skillID]
 		}
 	})
 	b.Run("buff", func(b *testing.B) {
 		b.ReportAllocs()
 		for range b.N {
-			_, benchmarkMasterFound = master.buffDefinitions[buffID]
+			_, benchmarkMasterFound = master.BuffDefinitions[buffID]
 		}
 	})
 	b.Run("bullet", func(b *testing.B) {
 		b.ReportAllocs()
 		for range b.N {
-			benchmarkMasterText, benchmarkMasterFound = master.commonBullets[bulletID]
+			benchmarkMasterText, benchmarkMasterFound = master.CommonBullets[bulletID]
 		}
 	})
 	b.Run("damage", func(b *testing.B) {
 		b.ReportAllocs()
 		for range b.N {
-			benchmarkMasterDamage, benchmarkMasterFound = master.damage[damageID]
+			benchmarkMasterDamage, benchmarkMasterFound = master.Damage[damageID]
 		}
 	})
 }

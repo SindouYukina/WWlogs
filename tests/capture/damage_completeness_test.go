@@ -7,10 +7,10 @@ func completenessRole(id uint64, damage int64, events uint64) RoleDamageSnapshot
 }
 
 func TestDamageCompletenessKeepsTheFactsIndependent(t *testing.T) {
-	vehicle := &VehicleDamageSnapshot{Kind: vehicleKindMotorcycle, DamageDealt: 400, OutgoingEvents: 4}
+	vehicle := &VehicleDamageSnapshot{Kind: VehicleKindMotorcycle, DamageDealt: 400, OutgoingEvents: 4}
 	noSkillRole := completenessRole(1, 600, 6)
 	noSkillRole.UnassignedSkill = UnassignedSkillTotals{DamageDealt: 50, OutgoingEvents: 2, MissingSkillEvents: 2}
-	noSkillVehicle := &VehicleDamageSnapshot{Kind: vehicleKindMotorcycle, DamageDealt: 400, OutgoingEvents: 4, UnassignedSkill: UnassignedSkillTotals{DamageDealt: 30, OutgoingEvents: 1, MissingSkillEvents: 1}}
+	noSkillVehicle := &VehicleDamageSnapshot{Kind: VehicleKindMotorcycle, DamageDealt: 400, OutgoingEvents: 4, UnassignedSkill: UnassignedSkillTotals{DamageDealt: 30, OutgoingEvents: 1, MissingSkillEvents: 1}}
 	cases := []struct {
 		name  string
 		scope damageScope

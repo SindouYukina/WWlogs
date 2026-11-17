@@ -10,9 +10,9 @@ import (
 // decoder's field table, not a captured game packet.
 
 func effectPackBody(commonEntityID uint64, innerField uint64, payload []byte) []byte {
-	notify := appendBytesField(nil, fieldCombatNotifyDataCombatCommon, appendVarintField(nil, fieldCombatCommonEntityID, commonEntityID)) // CombatCommon.EntityId
+	notify := appendBytesField(nil, FieldCombatNotifyDataCombatCommon, appendVarintField(nil, FieldCombatCommonEntityID, commonEntityID)) // CombatCommon.EntityId
 	notify = appendBytesField(notify, innerField, payload)
-	return appendBytesField(nil, fieldCombatReceivePackNotifyData, appendBytesField(nil, fieldCombatReceiveDataCombatNotifyData, notify))
+	return appendBytesField(nil, FieldCombatReceivePackNotifyData, appendBytesField(nil, FieldCombatReceiveDataCombatNotifyData, notify))
 }
 
 func effectFloatField(dst []byte, number uint64, value float32) []byte {
@@ -20,75 +20,58 @@ func effectFloatField(dst []byte, number uint64, value float32) []byte {
 }
 
 func effectApplyPayload(handle, effectID, target, instigator uint64, stack uint64, duration, remaining float32) []byte {
-	payload := appendVarintField(nil, fieldApplyGameplayEffectNotifyHandle, handle)
-	payload = appendVarintField(payload, fieldApplyGameplayEffectNotifyID, effectID)
-	payload = appendVarintField(payload, fieldApplyGameplayEffectNotifyEntityID, target)
-	payload = appendVarintField(payload, fieldApplyGameplayEffectNotifyInstigatorID, instigator)
-	payload = appendVarintField(payload, fieldApplyGameplayEffectNotifyStackCount, stack)
-	payload = effectFloatField(payload, fieldApplyGameplayEffectNotifyDuration, duration)
-	return effectFloatField(payload, fieldApplyGameplayEffectNotifyLeftDuration, remaining)
-}
-
-func effectStackPayload(handle, stack uint64, duration, remaining float32) []byte {
-	payload := appendVarintField(nil, fieldBuffStackCountNotifyHandleID, handle)
-	payload = appendVarintField(payload, fieldBuffStackCountNotifyNewStackCount, stack)
-	payload = effectFloatField(payload, fieldBuffStackCountNotifyDuration, duration)
-	return effectFloatField(payload, fieldBuffStackCountNotifyLeftDuration, remaining)
-}
-
-func effectDurationPayload(handle uint64, duration, remaining float32) []byte {
-	payload := appendVarintField(nil, fieldBuffDurationNotifyHandleID, handle)
-	payload = effectFloatField(payload, fieldBuffDurationNotifyDuration, duration)
-	return effectFloatField(payload, fieldBuffDurationNotifyLeftDuration, remaining)
+	payload := appendVarintField(nil, FieldApplyGameplayEffectNotifyHandle, handle)
+	payload = appendVarintField(payload, FieldApplyGameplayEffectNotifyID, effectID)
+	payload = appendVarintField(payload, FieldApplyGameplayEffectNotifyEntityID, target)
+	payload = appendVarintField(payload, FieldApplyGameplayEffectNotifyInstigatorID, instigator)
+	payload = appendVarintField(payload, FieldApplyGameplayEffectNotifyStackCount, stack)
+	payload = effectFloatField(payload, FieldApplyGameplayEffectNotifyDuration, duration)
+	return effectFloatField(payload, FieldApplyGameplayEffectNotifyLeftDuration, remaining)
 }
 
 func effectRemovePayload(handle, target, instigator uint64) []byte {
-	payload := appendVarintField(nil, fieldRemoveGameplayEffectNotifyHandle, handle)
-	payload = appendVarintField(payload, fieldRemoveGameplayEffectNotifyEntityID, target)
-	return appendVarintField(payload, fieldRemoveGameplayEffectNotifyInstigatorID, instigator)
+	payload := appendVarintField(nil, FieldRemoveGameplayEffectNotifyHandle, handle)
+	payload = appendVarintField(payload, FieldRemoveGameplayEffectNotifyEntityID, target)
+	return appendVarintField(payload, FieldRemoveGameplayEffectNotifyInstigatorID, instigator)
 }
 
-func deliverEffectMessage(t *testing.T, p *processor, seconds float64, body []byte) {
+func deliverEffectMessage(t *testing.T, p *Processor, seconds float64, body []byte) {
 	t.Helper()
-	frame := gameFrame{commandID: cmdCombatReceivePackNotify, direction: "in", timestamp: effectAt(seconds)}
-	if err := p.handleCombatReceivePackNotify(frame, body); err != nil {
+	frame := GameFrame{CommandID: CmdCombatReceivePackNotify, Direction: "in", Timestamp: effectAt(seconds)}
+	if err := p.HandleCombatReceivePackNotify(frame, body); err != nil {
 		t.Fatalf("handle CombatReceivePackNotify: %v", err)
 	}
 }
 
-func effectQueryFor(p *processor, seconds float64) CaptureQueryTime {
-	return CaptureQueryTime{CaptureSessionID: p.effects.captureSessionID, Timestamp: effectAt(seconds)}
-}
-
 func TestEffectFeedWithoutTrackerDoesNotPanic(t *testing.T) {
-	p := &processor{sessionNumber: 1, entities: newEntityResolver()}
-	frame := gameFrame{commandID: cmdCombatReceivePackNotify, direction: "in", timestamp: time.Unix(1, 0)}
-	if err := p.handleCombatReceivePackNotify(frame, effectPackBody(200, fieldCombatNotifyDataApplyGameplayEffectNotify, effectApplyPayload(1, 42, 200, 100, 1, 5, 5))); err != nil {
+	p := &Processor{SessionNumber: 1, Entities: NewEntityResolver()}
+	frame := GameFrame{CommandID: CmdCombatReceivePackNotify, Direction: "in", Timestamp: time.Unix(1, 0)}
+	if err := p.HandleCombatReceivePackNotify(frame, effectPackBody(200, FieldCombatNotifyDataApplyGameplayEffectNotify, effectApplyPayload(1, 42, 200, 100, 1, 5, 5))); err != nil {
 		t.Fatalf("handle without tracker: %v", err)
 	}
-	if got := p.effectSnapshotAtLastFrame(); len(got.Effects) != 0 {
+	if got := p.EffectSnapshotAtLastFrame(); len(got.Effects) != 0 {
 		t.Fatalf("snapshot without tracker = %+v", got)
 	}
 }
 
 func effectSnapshotResponse(handle, buffID, instigator, stack uint64, duration, remaining float32) []byte {
-	record := appendVarintField(nil, fieldFightBuffInformationHandleID, handle)
-	record = appendVarintField(record, fieldFightBuffInformationBuffID, buffID)
-	record = appendVarintField(record, fieldFightBuffInformationStackCount, stack)
-	record = appendVarintField(record, fieldFightBuffInformationInstigatorID, instigator)
-	record = effectFloatField(record, fieldFightBuffInformationDuration, duration)
-	record = effectFloatField(record, fieldFightBuffInformationLeftDuration, remaining)
-	components := appendBytesField(nil, fieldEntityComponentPbFightBuffComponent, appendBytesField(nil, fieldFightBuffComponentPbFightBuffInfos, record))
-	return appendBytesField(nil, fieldEntityActiveResponseComponentPbs, components)
+	record := appendVarintField(nil, FieldFightBuffInformationHandleID, handle)
+	record = appendVarintField(record, FieldFightBuffInformationBuffID, buffID)
+	record = appendVarintField(record, FieldFightBuffInformationStackCount, stack)
+	record = appendVarintField(record, FieldFightBuffInformationInstigatorID, instigator)
+	record = effectFloatField(record, FieldFightBuffInformationDuration, duration)
+	record = effectFloatField(record, FieldFightBuffInformationLeftDuration, remaining)
+	components := appendBytesField(nil, FieldEntityComponentPbFightBuffComponent, appendBytesField(nil, FieldFightBuffComponentPbFightBuffInfos, record))
+	return appendBytesField(nil, FieldEntityActiveResponseComponentPbs, components)
 }
 
-func deliverEffectSnapshot(t *testing.T, p *processor, token uint16, holder uint64, seconds float64, response []byte) {
+func deliverEffectSnapshot(t *testing.T, p *Processor, token uint16, holder uint64, seconds float64, response []byte) {
 	t.Helper()
-	if err := p.handleActiveRequest(token, appendVarintField(nil, fieldEntityActiveRequestEntityID, holder)); err != nil {
+	if err := p.HandleActiveRequest(token, appendVarintField(nil, FieldEntityActiveRequestEntityID, holder)); err != nil {
 		t.Fatal(err)
 	}
-	frame := gameFrame{commandID: cmdEntityActiveResponse, direction: "in", token: token, timestamp: effectAt(seconds)}
-	if err := p.handleActiveResponse(frame, response); err != nil {
+	frame := GameFrame{CommandID: CmdEntityActiveResponse, Direction: "in", Token: token, Timestamp: effectAt(seconds)}
+	if err := p.HandleActiveResponse(frame, response); err != nil {
 		t.Fatal(err)
 	}
 }

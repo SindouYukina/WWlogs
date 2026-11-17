@@ -7,174 +7,158 @@ import (
 	"sort"
 )
 
-type resolutionStatus string
+type ResolutionStatus string
 
-// entityTypeMonster follows the EntityPb.EntityType enum of the client protocol.
-const entityTypeMonster uint64 = 2
+// EntityTypeMonster follows the EntityPb.EntityType enum of the client protocol.
+const EntityTypeMonster uint64 = 2
 
-// entityTypePlayerEntity is EntityPb.EntityType Proto_PlayerEntity: the one entity per player that the client registers
+// EntityTypePlayerEntity is EntityPb.EntityType Proto_PlayerEntity: the one entity per player that the client registers
 // with FormationDataController and whose cues the HUD shows on the current role (PlayerGameplayCueComponent).
-const entityTypePlayerEntity uint64 = 11
+const EntityTypePlayerEntity uint64 = 11
 
 const (
-	resolutionVerified   resolutionStatus = "VERIFIED"
-	resolutionCorrelated resolutionStatus = "CORRELATED"
-	resolutionHypothesis resolutionStatus = "HYPOTHESIS"
-	resolutionUnknown    resolutionStatus = "UNKNOWN"
-	// resolutionNotApplicable marks a role that the event structurally does not have, as
+	ResolutionVerified   ResolutionStatus = "VERIFIED"
+	ResolutionCorrelated ResolutionStatus = "CORRELATED"
+	resolutionHypothesis ResolutionStatus = "HYPOTHESIS"
+	ResolutionUnknown    ResolutionStatus = "UNKNOWN"
+	// ResolutionNotApplicable marks a role that the event structurally does not have, as
 	// opposed to a role that exists but could not be resolved.
-	resolutionNotApplicable resolutionStatus = "NOT_APPLICABLE"
+	ResolutionNotApplicable ResolutionStatus = "NOT_APPLICABLE"
 )
 
-// runtimeEntity keeps the network entity identity separate from its static
+// RuntimeEntity keeps the network entity identity separate from its static
 // character/monster identity. Zero-valued optional IDs are never treated as
 // resolved values; their presence flags carry that distinction.
-type runtimeEntity struct {
-	entityID                  uint64
-	sceneInstanceID           uint64
-	hasSceneInstanceID        bool
-	entityTypeCode            uint64
-	hasEntityType             bool
-	configID                  uint64
-	hasConfigID               bool
-	configType                uint64
-	hasConfigType             bool
-	prefabID                  uint64 // EntityPb.PrefabId: with ConfigType Prefab (5), the PrefabConfig that holds ConfigId
-	hasPrefabID               bool
-	playerID                  uint64
-	hasPlayerID               bool
-	ownerID                   uint64
-	hasOwnerID                bool
-	ownerIncID                uint64
-	hasOwnerIncID             bool
-	summonerID                uint64
-	hasSummonerID             bool
-	summonerPlayerID          uint64
-	hasSummonerPlayerID       bool
-	summonConfigID            uint64
-	hasSummonConfigID         bool
-	summonSkillID             uint64
-	hasSummonSkillID          bool
-	summonType                uint64
-	hasSummonType             bool
-	sceneSummonerID           uint64
-	hasSceneSummonerID        bool
-	sceneSummonConfigID       uint64
-	hasSceneSummonConfigID    bool
-	sceneSummonSkillID        uint64
-	hasSceneSummonSkillID     bool
-	playerEntityID            uint64
-	hasPlayerEntityID         bool
-	followerSummonConfigID    uint64
-	hasFollowerSummonConfigID bool
-	// fsmHashCode is EntityFsmComponentPb.HashCode, the version of the state-machine config the entity runs.
-	fsmHashCode    int64
-	hasFsmHashCode bool
-	// fsmCommonHashCode is EntityFsmComponentPb.CommonHashCode, the version of the shared common state machine.
-	fsmCommonHashCode         int64
-	hasFsmCommonHashCode      bool
-	phantomRoleEntityID       uint64
-	hasPhantomRoleEntityID    bool
-	concomitantVisionIDs      []uint64
-	concomitantCustomIDs      []uint64
-	weakVisionEntityID        uint64
-	hasWeakVisionEntityID     bool
-	followEntityID            uint64
-	hasFollowEntityID         bool
-	playerFollowers           []runtimePlayerFollower
-	hasPartComponent          bool
-	partInformation           map[int32]runtimePartInformation
-	partComponentSource       string
-	monsterID                 uint64
-	hasMonsterID              bool
-	monsterCaptureEntityID    uint64
-	hasMonsterCaptureEntityID bool
-	templateID                uint64
-	hasTemplateID             bool
-	roleSkinID                uint64
-	hasRoleSkinID             bool
-	roleID                    uint64
-	hasRoleID                 bool
-	roleConflict              bool
-	roleSourceFieldPath       string
-	sourceMessageID           uint16
-	sourceFieldPath           string
-	componentSourceMessageID  uint16
-	componentSourceFieldPath  string
+type RuntimeEntity struct {
+	EntityID                  uint64
+	SceneInstanceID           uint64
+	HasSceneInstanceID        bool
+	EntityTypeCode            uint64
+	HasEntityType             bool
+	ConfigID                  uint64
+	HasConfigID               bool
+	ConfigType                uint64
+	HasConfigType             bool
+	PrefabID                  uint64 // EntityPb.PrefabId: with ConfigType Prefab (5), the PrefabConfig that holds ConfigId
+	HasPrefabID               bool
+	PlayerID                  uint64
+	HasPlayerID               bool
+	OwnerID                   uint64
+	HasOwnerID                bool
+	OwnerIncID                uint64
+	HasOwnerIncID             bool
+	SummonerID                uint64
+	HasSummonerID             bool
+	SummonerPlayerID          uint64
+	HasSummonerPlayerID       bool
+	SummonConfigID            uint64
+	HasSummonConfigID         bool
+	SummonSkillID             uint64
+	HasSummonSkillID          bool
+	SummonType                uint64
+	HasSummonType             bool
+	SceneSummonerID           uint64
+	HasSceneSummonerID        bool
+	SceneSummonConfigID       uint64
+	HasSceneSummonConfigID    bool
+	SceneSummonSkillID        uint64
+	HasSceneSummonSkillID     bool
+	PlayerEntityID            uint64
+	HasPlayerEntityID         bool
+	FollowerSummonConfigID    uint64
+	HasFollowerSummonConfigID bool
+	// FSMHashCode is EntityFsmComponentPb.HashCode, the version of the state-machine config the entity runs.
+	FSMHashCode    int64
+	HasFsmHashCode bool
+	// FSMCommonHashCode is EntityFsmComponentPb.CommonHashCode, the version of the shared common state machine.
+	FSMCommonHashCode         int64
+	HasFsmCommonHashCode      bool
+	PhantomRoleEntityID       uint64
+	HasPhantomRoleEntityID    bool
+	ConcomitantVisionIDs      []uint64
+	ConcomitantCustomIDs      []uint64
+	WeakVisionEntityID        uint64
+	HasWeakVisionEntityID     bool
+	FollowEntityID            uint64
+	HasFollowEntityID         bool
+	PlayerFollowers           []runtimePlayerFollower
+	HasPartComponent          bool
+	PartInformation           map[int32]RuntimePartInformation
+	PartComponentSource       string
+	MonsterID                 uint64
+	HasMonsterID              bool
+	MonsterCaptureEntityID    uint64
+	HasMonsterCaptureEntityID bool
+	TemplateID                uint64
+	HasTemplateID             bool
+	RoleSkinID                uint64
+	HasRoleSkinID             bool
+	RoleID                    uint64
+	HasRoleID                 bool
+	RoleConflict              bool
+	RoleSourceFieldPath       string
+	SourceMessageID           uint16
+	SourceFieldPath           string
+	ComponentSourceMessageID  uint16
+	ComponentSourceFieldPath  string
 	lastSeenSequence          uint64
 }
 
 type runtimePlayerFollower struct {
-	typeID    uint64
-	hasType   bool
-	entityID  uint64
-	hasEntity bool
+	TypeID    uint64
+	HasType   bool
+	EntityID  uint64
+	HasEntity bool
 }
 
-type runtimePartInformation struct {
-	partID       int32
+type RuntimePartInformation struct {
+	PartID       int32
 	hasPartID    bool
-	partTag      int32
-	hasPartTag   bool
-	lifeMax      float32
-	hasLifeMax   bool
-	activated    bool
-	hasActivated bool
-	conflicted   bool
+	PartTag      int32
+	HasPartTag   bool
+	LifeMax      float32
+	HasLifeMax   bool
+	Activated    bool
+	HasActivated bool
+	Conflicted   bool
 }
-
-type runtimePartReference struct {
-	partID          int32
-	status          partReferenceStatus
-	information     *runtimePartInformation
-	informationFrom string
-	evidence        string
-}
-
-type partReferenceStatus string
-
-const (
-	partReferenceCorrelated partReferenceStatus = "CORRELATED"
-	partReferenceNoPart     partReferenceStatus = "NO_PART"
-	partReferenceUnknown    partReferenceStatus = "UNKNOWN"
-)
 
 const maxRuntimeComponentEntityRefs = 256
 const maxRuntimePartInformationRows = 256
 
-type entityResolver struct {
-	entities           map[uint64]runtimeEntity
+type EntityResolver struct {
+	Entities           map[uint64]RuntimeEntity
 	sequence           uint64
 	limit              int
 	sceneInstanceID    uint64
 	hasSceneInstanceID bool
-	// sceneCombatEntityID is SceneInformation.SceneEntityId of the current scene: the entity the server names as attacker
+	// SceneCombatEntityID is SceneInformation.SceneEntityId of the current scene: the entity the server names as attacker
 	// of the negative-status damage it executes (damage_notify.go).
-	sceneCombatEntityID    uint64
-	hasSceneCombatEntityID bool
+	SceneCombatEntityID    uint64
+	HasSceneCombatEntityID bool
 	// lifecycles outlives runtime entries: a removed entity keeps its record so
 	// that REMOVED is distinguishable from never observed. See lifecycle.go.
 	lifecycles        map[uint64]entityLifecycle
 	lifecycleSequence uint64
 }
 
-type entityIdentity struct {
-	Runtime            runtimeEntity
-	RuntimeStatus      resolutionStatus
+type EntityIdentity struct {
+	Runtime            RuntimeEntity
+	RuntimeStatus      ResolutionStatus
 	RuntimeProof       string
-	Lifecycle          entityLifecycleView
-	Character          masterRecord
+	Lifecycle          EntityLifecycleView
+	Character          MasterRecord
 	HasCharacter       bool
-	CharacterStatus    resolutionStatus
+	CharacterStatus    ResolutionStatus
 	CharacterProof     string
 	RoleSkin           *roleSkinResolution
 	SummonSkill        *summonSkillResolution
-	Monster            masterRecord
+	Monster            MasterRecord
 	HasMonster         bool
-	MonsterStatus      resolutionStatus
+	MonsterStatus      ResolutionStatus
 	MonsterProof       string
-	TemplateCandidates []sceneTemplateCandidate
-	TemplateStatus     resolutionStatus
+	TemplateCandidates []SceneTemplateCandidate
+	TemplateStatus     ResolutionStatus
 	TemplateProof      string
 }
 
@@ -183,7 +167,7 @@ type entityIdentity struct {
 type roleSkinResolution struct {
 	SkinID       uint64
 	MasterRoleID uint64
-	Status       resolutionStatus
+	Status       ResolutionStatus
 	Proof        string
 }
 
@@ -191,12 +175,12 @@ type roleSkinResolution struct {
 // result is CORRELATED when the entity also carries a RoleId or Proto_Character
 // ConfigId that equals the row's RoleId, and UNKNOWN (with the reason) when the
 // row is absent or names a different role.
-func resolveRoleSkin(masters *gameMaster, entity runtimeEntity, characterID uint64) *roleSkinResolution {
-	if masters == nil || !entity.hasRoleSkinID {
+func resolveRoleSkin(masters *GameMaster, entity RuntimeEntity, characterID uint64) *roleSkinResolution {
+	if masters == nil || !entity.HasRoleSkinID {
 		return nil
 	}
-	result := &roleSkinResolution{SkinID: entity.roleSkinID, Status: resolutionUnknown}
-	roleID, ok := masters.roleSkinRole(entity.roleSkinID)
+	result := &roleSkinResolution{SkinID: entity.RoleSkinID, Status: ResolutionUnknown}
+	roleID, ok := masters.roleSkinRole(entity.RoleSkinID)
 	if !ok {
 		result.Proof = "RoleSkinId has no RoleSkin row in the loaded master"
 		return result
@@ -204,10 +188,10 @@ func resolveRoleSkin(masters *gameMaster, entity runtimeEntity, characterID uint
 	result.MasterRoleID = roleID
 	switch {
 	case characterID == 0:
-		result.Status = resolutionCorrelated
+		result.Status = ResolutionCorrelated
 		result.Proof = fmt.Sprintf("EntityPb.RoleSkinId(%d) -> RoleSkin.Id -> RoleSkin.RoleId; the entity carries no RoleId to cross-check; client build observed, master compatibility unverified", fieldEntityPbRoleSkinID)
 	case characterID == roleID:
-		result.Status = resolutionCorrelated
+		result.Status = ResolutionCorrelated
 		result.Proof = fmt.Sprintf("EntityPb.RoleSkinId(%d) -> RoleSkin.Id -> RoleSkin.RoleId=%d equals the same entity's own RoleId; client build observed, master compatibility unverified", fieldEntityPbRoleSkinID, roleID)
 	default:
 		result.Proof = fmt.Sprintf("CONFLICT: RoleSkin.RoleId=%d differs from the same entity's own RoleId=%d", roleID, characterID)
@@ -223,39 +207,39 @@ type summonSkillResolution struct {
 	SummonType    uint64
 	HasSummonType bool
 	Namespace     string
-	Status        resolutionStatus
+	Status        ResolutionStatus
 	Proof         string
 	// DevLabel is the developer note of the Vision row the key resolves to; never an official name.
-	DevLabel *combatEventLabelTextJSONL
+	DevLabel *CombatEventLabelTextJSONL
 }
 
 const (
-	summonTypeConcomitantVision     = 1
-	summonTypeConcomitantMotorcycle = 5
+	SummonTypeConcomitantVision     = 1
+	SummonTypeConcomitantMotorcycle = 5
 )
 
-func resolveSummonSkill(masters *gameMaster, entity runtimeEntity) *summonSkillResolution {
-	if masters == nil || !entity.hasSummonSkillID {
+func ResolveSummonSkill(masters *GameMaster, entity RuntimeEntity) *summonSkillResolution {
+	if masters == nil || !entity.HasSummonSkillID {
 		return nil
 	}
-	result := &summonSkillResolution{SummonSkillID: entity.summonSkillID, SummonType: entity.summonType, HasSummonType: entity.hasSummonType, Status: resolutionUnknown}
+	result := &summonSkillResolution{SummonSkillID: entity.SummonSkillID, SummonType: entity.SummonType, HasSummonType: entity.HasSummonType, Status: ResolutionUnknown}
 	switch {
-	case !entity.hasSummonType:
+	case !entity.HasSummonType:
 		result.Proof = "SummonSkillId present without SummonerComponent.Type; namespace not selected"
-	case entity.summonType != summonTypeConcomitantVision && entity.summonType != summonTypeConcomitantMotorcycle:
-		result.Proof = fmt.Sprintf("SummonerComponent.Type=%d is not mapped; no static SummonSkillId namespace is established for it", entity.summonType)
-	case entity.summonType == summonTypeConcomitantVision && !masters.hasConcomitantVisionSummonSkill(entity.summonSkillID):
+	case entity.SummonType != SummonTypeConcomitantVision && entity.SummonType != SummonTypeConcomitantMotorcycle:
+		result.Proof = fmt.Sprintf("SummonerComponent.Type=%d is not mapped; no static SummonSkillId namespace is established for it", entity.SummonType)
+	case entity.SummonType == SummonTypeConcomitantVision && !masters.hasConcomitantVisionSummonSkill(entity.SummonSkillID):
 		result.Proof = "ConcomitantVision SummonSkillId has no unique row in the normalized PhantomSkill-to-Vision crosswalk"
-	case entity.summonType == summonTypeConcomitantMotorcycle && !masters.hasVision(entity.summonSkillID):
+	case entity.SummonType == SummonTypeConcomitantMotorcycle && !masters.hasVision(entity.SummonSkillID):
 		result.Proof = "ConcomitantMotorcycle SummonSkillId has no DT_Vision row in the loaded master"
 	default:
 		result.Namespace = "Vision.Id"
-		result.DevLabel = masters.visionDevLabels[entity.summonSkillID]
-		if entity.summonType == summonTypeConcomitantVision {
-			result.Status = resolutionVerified
+		result.DevLabel = masters.VisionDevLabels[entity.SummonSkillID]
+		if entity.SummonType == SummonTypeConcomitantVision {
+			result.Status = ResolutionVerified
 			result.Proof = "SummonerComponent.Type=ConcomitantVision selects the normalized summon_skill_vision_ref crosswalk from the unique PhantomSkill.PhantomSkillId key to Vision.Id; saved same-entity SkillId references and verified damage requests validate this Type 1 mapping for multiple distinct keys"
 		} else {
-			result.Status = resolutionCorrelated
+			result.Status = ResolutionCorrelated
 			result.Proof = "SummonerComponent.Type=ConcomitantMotorcycle and a matching DT_Vision.Id identify a candidate; the Type 5 field consumer is not established"
 		}
 	}
@@ -265,13 +249,13 @@ func resolveSummonSkill(masters *gameMaster, entity runtimeEntity) *summonSkillR
 // skillLabel is the developer label (Simplified Chinese, not an official localized name) of a SkillInfo row.
 type skillLabel struct {
 	Label    string
-	Status   resolutionStatus
+	Status   ResolutionStatus
 	Evidence string
 }
 
-// resolveSkillLabel returns the SkillInfo developer label for a skill id. A key whose rows carry
+// ResolveSkillLabel returns the SkillInfo developer label for a skill id. A key whose rows carry
 // different labels in different SkillInfo tables is ambiguous and stays unknown.
-func resolveSkillLabel(masters *gameMaster, skillID uint64) *skillLabel {
+func ResolveSkillLabel(masters *GameMaster, skillID uint64) *skillLabel {
 	if masters == nil || skillID == 0 || skillID == ^uint64(0) {
 		return nil
 	}
@@ -281,185 +265,34 @@ func resolveSkillLabel(masters *gameMaster, skillID uint64) *skillLabel {
 		return nil
 	case 1:
 		for label := range labels {
-			return &skillLabel{Label: label, Status: resolutionCorrelated,
+			return &skillLabel{Label: label, Status: ResolutionCorrelated,
 				Evidence: "DamageContext.SkillId is a SkillInfo row key (DT_SkillInfo family) whose developer label is identical in every table that holds it; the label is a zh-CN developer note, not an official localized name; client build observed, master compatibility unverified"}
 		}
 	}
-	return &skillLabel{Status: resolutionUnknown, Evidence: fmt.Sprintf("SkillId has %d different developer labels across SkillInfo tables; the owning table is not selected", len(labels))}
+	return &skillLabel{Status: ResolutionUnknown, Evidence: fmt.Sprintf("SkillId has %d different developer labels across SkillInfo tables; the owning table is not selected", len(labels))}
 }
 
-// bulletResolution records which static bullet row-key namespace a BulletId belongs to.
-// BulletId alone does not name a table: it is a row key in one of several DataTable
-// families, and the same number can recur across actors. It is translated only when
-// the source chain leads to exactly one actor (or the key belongs to exactly one family).
-type bulletResolution struct {
-	BulletID       uint64
-	Namespace      string
-	ActorBlueprint string
-	Via            string
-	DevLabelZh     string
-	// DevLabel is the localized developer note of the CommonBulletData row; never an official name.
-	DevLabel *combatEventLabelTextJSONL
-	// RowDamageID is the DamageId written in the matched CDT_CommonBulletData row (0 when none).
-	RowDamageID uint64
-	Status      resolutionStatus
-	Proof       string
-}
-
-// bulletSource is what an event knows about the entity that fired a bullet.
-type bulletSource struct {
-	RoleSkinID          uint64
-	HasRoleSkin         bool
-	BlueprintTypes      []string
-	FollowerSummonCfgID uint64
-	HasFollower         bool
-	SkillID             uint64
-	// VisionSummonCfgs are SummonCfg ids of live ConcomitantVision entities summoned by the source entity.
-	VisionSummonCfgs []uint64
-	// OwnSummonCfgID is the source entity's own SummonerComponent.SummonCfgId, set when the source is itself a summon.
-	OwnSummonCfgID    uint64
-	HasOwnSummonCfgID bool
-}
-
-type bulletChain struct {
-	via   string
-	actor string
-}
-
-// newBulletSource collects what an entity identity knows about a bullet's origin.
-func newBulletSource(identity entityIdentity, skillID uint64, visionSummonCfgs []uint64) bulletSource {
-	source := bulletSource{SkillID: skillID, VisionSummonCfgs: visionSummonCfgs}
-	source.RoleSkinID, source.HasRoleSkin = identity.Runtime.roleSkinID, identity.Runtime.hasRoleSkinID
-	source.OwnSummonCfgID, source.HasOwnSummonCfgID = identity.Runtime.summonConfigID, identity.Runtime.hasSummonConfigID
-	source.FollowerSummonCfgID, source.HasFollower = identity.Runtime.followerSummonConfigID, identity.Runtime.hasFollowerSummonConfigID
-	for _, candidate := range identity.TemplateCandidates {
-		source.BlueprintTypes = append(source.BlueprintTypes, candidate.BlueprintType)
-	}
-	return source
-}
-
-func (m *gameMaster) actorOfModel(model uint64) (string, bool) {
-	actor, ok := m.modelActor[model]
+func (m *GameMaster) ActorOfModel(model uint64) (string, bool) {
+	actor, ok := m.ModelActor[model]
 	return actor, ok
 }
 
-func (m *gameMaster) actorOfBlueprint(blueprint string) (string, bool) {
-	model, ok := m.blueprintModel[blueprint]
+func (m *GameMaster) ActorOfBlueprint(blueprint string) (string, bool) {
+	model, ok := m.BlueprintModel[blueprint]
 	if !ok {
 		return "", false
 	}
-	return m.actorOfModel(model)
+	return m.ActorOfModel(model)
 }
 
-func (m *gameMaster) bulletChains(source bulletSource) []bulletChain {
-	var chains []bulletChain
-	if source.HasRoleSkin {
-		if mesh, ok := m.roleSkinMesh[source.RoleSkinID]; ok {
-			if actor, ok := m.actorOfModel(mesh); ok {
-				chains = append(chains, bulletChain{"EntityPb.RoleSkinId -> RoleSkin.MeshId -> ModelConfigPreload.ActorClassPath", actor})
-			}
-		}
-	}
-	for _, blueprint := range source.BlueprintTypes {
-		if actor, ok := m.actorOfBlueprint(blueprint); ok {
-			chains = append(chains, bulletChain{"scene TemplateConfig.BlueprintType -> BlueprintConfig.ModelId -> ModelConfigPreload.ActorClassPath", actor})
-		}
-	}
-	if source.HasOwnSummonCfgID {
-		if blueprint, ok := m.summonBlueprint[source.OwnSummonCfgID]; ok {
-			if actor, ok := m.actorOfBlueprint(blueprint); ok {
-				chains = append(chains, bulletChain{"source entity SummonerComponent.SummonCfgId -> SummonCfg.BlueprintType -> BlueprintConfig.ModelId -> ModelConfigPreload.ActorClassPath", actor})
-			}
-		}
-	}
-	if source.HasFollower {
-		if blueprint, ok := m.summonBlueprint[source.FollowerSummonCfgID]; ok {
-			if actor, ok := m.actorOfBlueprint(blueprint); ok {
-				chains = append(chains, bulletChain{"FollowerSummonConfigId -> SummonCfg.BlueprintType -> BlueprintConfig.ModelId -> ModelConfigPreload.ActorClassPath", actor})
-			}
-		}
-	}
-	for _, cfg := range source.VisionSummonCfgs {
-		if blueprint, ok := m.summonBlueprint[cfg]; ok {
-			if actor, ok := m.actorOfBlueprint(blueprint); ok {
-				chains = append(chains, bulletChain{"ConcomitantVision SummonerComponent(SummonerId=source entity).SummonCfgId -> SummonCfg.BlueprintType -> BlueprintConfig.ModelId -> ModelConfigPreload.ActorClassPath", actor})
-			}
-		}
-	}
-	for _, vision := range m.visionCast[source.SkillID] {
-		if blueprint, ok := m.summonBlueprint[vision]; ok {
-			if actor, ok := m.actorOfBlueprint(blueprint); ok {
-				chains = append(chains, bulletChain{"DamageContext.SkillId -> Vision.BirthCastSkillId -> SummonCfg(Vision.Id).BlueprintType -> BlueprintConfig.ModelId -> ModelConfigPreload.ActorClassPath", actor})
-			}
-		}
-	}
-	return chains
-}
-
-func resolveBullet(masters *gameMaster, bulletID uint64, source bulletSource) *bulletResolution {
-	if masters == nil {
-		return nil
-	}
-	result := &bulletResolution{BulletID: bulletID, Status: resolutionUnknown}
-	label, inCommon := masters.commonBullets[bulletID]
-	_, inPreload := masters.preloadBullets[bulletID]
-	chains := masters.bulletChains(source)
-	if len(chains) == 0 && source.SkillID != 0 {
-		if actor, ok := masters.uniqueActorForSkill(source.SkillID); ok {
-			if _, listed := masters.actorBullets[actor][bulletID]; listed {
-				chains = append(chains, bulletChain{
-					via:   "same combat reference SkillId -> unique EntitySkillPreload actor asset; BulletId -> that actor's BulletPreload.BulletId",
-					actor: actor,
-				})
-			}
-		}
-	}
-	matched := make(map[string]string)
-	for _, chain := range chains {
-		if _, ok := masters.actorBullets[chain.actor][bulletID]; ok {
-			if _, seen := matched[chain.actor]; !seen {
-				matched[chain.actor] = chain.via
-			}
-		}
-	}
-	switch {
-	case len(matched) > 1:
-		result.Proof = fmt.Sprintf("BulletId is held by %d distinct source-chain actors; the serving actor is not determined", len(matched))
-	case len(matched) == 1 && inCommon:
-		result.Proof = "BulletId is held by the source actor and by CDT_CommonBulletData; the table that served this bullet is not determined"
-	case len(matched) == 1:
-		for actor, via := range matched {
-			result.Namespace = "BulletPreload.ActorBlueprint"
-			result.ActorBlueprint = masters.assetPath[actor]
-			result.Via = via
-			result.Status = resolutionCorrelated
-			result.Proof = via + "; the actor's BulletPreload rows in the combat master list this BulletId; client build observed, master compatibility unverified"
-		}
-	case inCommon && inPreload:
-		result.Proof = "BulletId is a row key in both CDT_CommonBulletData and BulletPreload and no source-chain actor holds it; the serving table is not determined"
-	case inCommon:
-		result.Namespace = "CDT_CommonBulletData.RowKey"
-		result.DevLabelZh = label
-		result.DevLabel = masters.commonBulletDevLabels[bulletID]
-		result.RowDamageID = masters.commonBulletDamage[bulletID]
-		result.Status = resolutionCorrelated
-		result.Proof = "BulletId is a row key of CDT_CommonBulletData and of no actor-level BulletPreload family; the loader that serves this common table in normal combat is unproven, client build observed, master compatibility unverified"
-	case inPreload:
-		result.Proof = fmt.Sprintf("BulletId matches an actor-level BulletPreload row key but none of the %d source-chain actors holds it; only a numeric match is recorded", len(chains))
-	default:
-		result.Proof = "BulletId has no row in the loaded bullet definitions"
-	}
-	return result
-}
-
-type summonerCharacterIdentity struct {
+type SummonerCharacterIdentity struct {
 	EntityIDs      []uint64
 	CharacterID    uint64
 	HasCharacterID bool
-	Character      masterRecord
+	Character      MasterRecord
 	HasCharacter   bool
-	Status         resolutionStatus
-	NameStatus     resolutionStatus
+	Status         ResolutionStatus
+	NameStatus     ResolutionStatus
 	Proof          string
 }
 
@@ -485,8 +318,8 @@ func (r *sourceRoleResolver) reset() {
 	r.sequence = 0
 }
 
-func (r *sourceRoleResolver) observe(sourceID uint64, skill masterRecord) {
-	if sourceID == 0 || skill.ID == 0 || skill.RoleID == 0 || skill.Status != string(resolutionVerified) || skill.NameKind != "SkillName" {
+func (r *sourceRoleResolver) Observe(sourceID uint64, skill MasterRecord) {
+	if sourceID == 0 || skill.ID == 0 || skill.RoleID == 0 || skill.Status != string(ResolutionVerified) || skill.NameKind != "SkillName" {
 		return
 	}
 	r.sequence++
@@ -502,7 +335,7 @@ func (r *sourceRoleResolver) observe(sourceID uint64, skill masterRecord) {
 	r.evictIfNeeded()
 }
 
-func (r *sourceRoleResolver) correlatedRole(sourceID uint64) (uint64, bool) {
+func (r *sourceRoleResolver) CorrelatedRole(sourceID uint64) (uint64, bool) {
 	evidence, ok := r.bySource[sourceID]
 	if !ok || evidence.conflict || len(evidence.skillIDs) < 2 {
 		return 0, false
@@ -530,16 +363,16 @@ func (r *sourceRoleResolver) evictIfNeeded() {
 	}
 }
 
-// visionSummonConfigs returns the sorted SummonCfg ids of ConcomitantVision entities whose
+// VisionSummonConfigs returns the sorted SummonCfg ids of ConcomitantVision entities whose
 // SummonerComponent names summonerEntityID as the summoner.
-func (r *entityResolver) visionSummonConfigs(summonerEntityID uint64) []uint64 {
+func (r *EntityResolver) VisionSummonConfigs(summonerEntityID uint64) []uint64 {
 	if r == nil || summonerEntityID == 0 {
 		return nil
 	}
 	seen := make(map[uint64]struct{})
-	for _, entity := range r.entities {
-		if entity.hasSummonerID && entity.summonerID == summonerEntityID && entity.hasSummonType && entity.summonType == summonTypeConcomitantVision && entity.hasSummonConfigID {
-			seen[entity.summonConfigID] = struct{}{}
+	for _, entity := range r.Entities {
+		if entity.HasSummonerID && entity.SummonerID == summonerEntityID && entity.HasSummonType && entity.SummonType == SummonTypeConcomitantVision && entity.HasSummonConfigID {
+			seen[entity.SummonConfigID] = struct{}{}
 		}
 	}
 	configs := make([]uint64, 0, len(seen))
@@ -550,98 +383,98 @@ func (r *entityResolver) visionSummonConfigs(summonerEntityID uint64) []uint64 {
 	return configs
 }
 
-func resolveEntityIdentity(resolver *entityResolver, masters *gameMaster, entityID uint64) entityIdentity {
-	entity, runtimeStatus := resolver.resolve(entityID)
-	result := entityIdentity{Runtime: entity, RuntimeStatus: runtimeStatus, RuntimeProof: entityProof(entity), CharacterStatus: resolutionUnknown, MonsterStatus: resolutionUnknown, Lifecycle: resolver.lifecycleView(entityID)}
+func ResolveEntityIdentity(resolver *EntityResolver, masters *GameMaster, entityID uint64) EntityIdentity {
+	entity, runtimeStatus := resolver.Resolve(entityID)
+	result := EntityIdentity{Runtime: entity, RuntimeStatus: runtimeStatus, RuntimeProof: entityProof(entity), CharacterStatus: ResolutionUnknown, MonsterStatus: ResolutionUnknown, Lifecycle: resolver.lifecycleView(entityID)}
 	characterID, characterProof, characterFromConfig, conflict := runtimeCharacterCandidate(entity)
 	if conflict {
-		result.CharacterProof = fmt.Sprintf("conflicting character IDs: scene RoleId=%d, EntityPb.ConfigId=%d with ConfigType=Proto_Character", entity.roleID, entity.configID)
+		result.CharacterProof = fmt.Sprintf("conflicting character IDs: scene RoleId=%d, EntityPb.ConfigId=%d with ConfigType=Proto_Character", entity.RoleID, entity.ConfigID)
 		return result
 	}
 	if characterID != 0 {
 		result.CharacterProof = characterProof
 		if masters != nil {
-			if character, ok := masters.characters[characterID]; ok {
+			if character, ok := masters.Characters[characterID]; ok {
 				result.Character = character
 				result.HasCharacter = true
-				result.CharacterStatus = resolutionStatus(character.Status)
+				result.CharacterStatus = ResolutionStatus(character.Status)
 				result.CharacterProof = characterProof
-				if characterFromConfig && entity.sourceMessageID != 0 && result.CharacterStatus == resolutionVerified {
+				if characterFromConfig && entity.SourceMessageID != 0 && result.CharacterStatus == ResolutionVerified {
 					// The client build is recorded, but its compatibility with this
 					// versioned master has not been established.
-					result.CharacterStatus = resolutionCorrelated
+					result.CharacterStatus = ResolutionCorrelated
 				}
 			}
 		}
 	}
 	result.RoleSkin = resolveRoleSkin(masters, entity, characterID)
-	result.SummonSkill = resolveSummonSkill(masters, entity)
-	if characterID == 0 && !result.HasCharacter && !entity.roleConflict && masters != nil && entity.hasRoleSkinID {
-		if character, ok := masters.characterBySkin(entity.roleSkinID); ok {
+	result.SummonSkill = ResolveSummonSkill(masters, entity)
+	if characterID == 0 && !result.HasCharacter && !entity.RoleConflict && masters != nil && entity.HasRoleSkinID {
+		if character, ok := masters.characterBySkin(entity.RoleSkinID); ok {
 			result.Character = character
 			result.HasCharacter = true
-			result.CharacterStatus = resolutionStatus(character.Status)
+			result.CharacterStatus = ResolutionStatus(character.Status)
 			result.CharacterProof = fmt.Sprintf("EntityPb.RoleSkinId(%d) -> RoleInfo.SkinId -> RoleInfo.Id; client build observed, master compatibility unverified", fieldEntityPbRoleSkinID)
-			if result.CharacterStatus == resolutionVerified {
+			if result.CharacterStatus == ResolutionVerified {
 				// Keep the versioned skin join correlated until compatibility is checked.
-				result.CharacterStatus = resolutionCorrelated
+				result.CharacterStatus = ResolutionCorrelated
 			}
 		}
 	}
-	if masters != nil && entity.hasMonsterID {
-		if monster, ok := masters.monsters[entity.monsterID]; ok {
+	if masters != nil && entity.HasMonsterID {
+		if monster, ok := masters.Monsters[entity.MonsterID]; ok {
 			result.Monster = monster
 			result.HasMonster = true
-			result.MonsterStatus = resolutionStatus(monster.Status)
+			result.MonsterStatus = ResolutionStatus(monster.Status)
 			// The field path is the current client protocol's, but the observed client
 			// build has not been matched to this versioned master.
-			if result.MonsterStatus == resolutionVerified {
-				result.MonsterStatus = resolutionCorrelated
+			if result.MonsterStatus == ResolutionVerified {
+				result.MonsterStatus = ResolutionCorrelated
 			}
 			result.MonsterProof = "MonsterCaptureComponentPb.MonsterId (" + CurrentProtocol() + ") -> MonsterInfo.Id in the combat master; client build observed, master compatibility unverified"
 		}
 	}
-	if masters != nil && !entity.hasMonsterID && entity.hasConfigID && entity.hasConfigType && entity.configType == 1 &&
-		entity.sourceMessageID == cmdJoinSceneNotify && entity.hasSceneInstanceID {
-		if monsterID, ok := masters.sceneMonster(entity.sceneInstanceID, entity.configID); ok {
-			if monster, found := masters.monsters[monsterID]; found {
+	if masters != nil && !entity.HasMonsterID && entity.HasConfigID && entity.HasConfigType && entity.ConfigType == 1 &&
+		entity.SourceMessageID == CmdJoinSceneNotify && entity.HasSceneInstanceID {
+		if monsterID, ok := masters.sceneMonster(entity.SceneInstanceID, entity.ConfigID); ok {
+			if monster, found := masters.Monsters[monsterID]; found {
 				result.Monster = monster
 				result.HasMonster = true
 				// Keep this versioned static crosswalk correlated until client/master
 				// compatibility is established.
-				result.MonsterStatus = resolutionCorrelated
-				result.MonsterProof = fmt.Sprintf("JoinSceneNotify.SceneInfo.InstanceId=%d -> InstanceDungeon.MapConfigId; EntityPb.ConfigId=%d + ConfigType=Proto_Level(1) -> LevelEntityConfig(MapId, EntityId).BlueprintType -> MonsterInfo.MonsterEntityID -> MonsterInfo.Id=%d", entity.sceneInstanceID, entity.configID, monsterID)
+				result.MonsterStatus = ResolutionCorrelated
+				result.MonsterProof = fmt.Sprintf("JoinSceneNotify.SceneInfo.InstanceId=%d -> InstanceDungeon.MapConfigId; EntityPb.ConfigId=%d + ConfigType=Proto_Level(1) -> LevelEntityConfig(MapId, EntityId).BlueprintType -> MonsterInfo.MonsterEntityID -> MonsterInfo.Id=%d", entity.SceneInstanceID, entity.ConfigID, monsterID)
 			}
 		}
 	}
-	sceneInstanceID, hasSceneInstanceID := entity.sceneInstanceID, entity.hasSceneInstanceID
+	sceneInstanceID, hasSceneInstanceID := entity.SceneInstanceID, entity.HasSceneInstanceID
 	sceneContextSource := "entity-scoped JoinSceneNotify context"
 	if !hasSceneInstanceID && resolver != nil && resolver.hasSceneInstanceID &&
-		(entity.sourceMessageID == cmdJoinSceneNotify || entity.sourceMessageID == cmdEntityAddNotify) {
+		(entity.SourceMessageID == CmdJoinSceneNotify || entity.SourceMessageID == CmdEntityAddNotify) {
 		sceneInstanceID, hasSceneInstanceID = resolver.sceneInstanceID, true
 		sceneContextSource = "current session JoinSceneNotify context"
 	}
-	if masters != nil && entity.hasConfigID && entity.hasConfigType && entity.configType == 1 &&
-		(entity.sourceMessageID == cmdJoinSceneNotify || entity.sourceMessageID == cmdEntityAddNotify) && hasSceneInstanceID {
-		if candidates, ok := masters.sceneTemplates(sceneInstanceID, entity.configID); ok {
+	if masters != nil && entity.HasConfigID && entity.HasConfigType && entity.ConfigType == 1 &&
+		(entity.SourceMessageID == CmdJoinSceneNotify || entity.SourceMessageID == CmdEntityAddNotify) && hasSceneInstanceID {
+		if candidates, ok := masters.sceneTemplates(sceneInstanceID, entity.ConfigID); ok {
 			result.TemplateCandidates = candidates
-			result.TemplateStatus = resolutionUnknown
+			result.TemplateStatus = ResolutionUnknown
 			result.TemplateProof = fmt.Sprintf(
 				"%s (InstanceId=%d) -> InstanceDungeon.MapConfigId; runtime EntityPb.ConfigId=%d + ConfigType=Proto_Level(1) -> LevelEntityConfig(MapId, EntityId).BlueprintType -> TemplateConfig candidates; combat master locale %s, client/master compatibility unverified",
-				sceneContextSource, sceneInstanceID, entity.configID, masters.locale,
+				sceneContextSource, sceneInstanceID, entity.ConfigID, masters.Locale,
 			)
 			if len(candidates) == 1 {
-				result.TemplateStatus = resolutionCorrelated
+				result.TemplateStatus = ResolutionCorrelated
 			}
 		}
 	}
 	// EntityConfigType.Template (4): the entity was spawned from a template, so ConfigId is a TemplateConfig id and no
 	// scene context is needed. This is how dynamically spawned bosses (for example Matrix challenge bosses) are named.
-	if masters != nil && entity.hasConfigID && entity.hasConfigType && entity.configType == 4 && len(result.TemplateCandidates) == 0 {
-		if candidate, ok := masters.templateByID(entity.configID); ok {
-			result.TemplateCandidates = []sceneTemplateCandidate{candidate}
-			result.TemplateStatus = resolutionCorrelated
-			result.TemplateProof = fmt.Sprintf("EntityPb.ConfigType=Template(4) in the protocol enum EntityConfigType -> EntityPb.ConfigId=%d is a TemplateConfig.Id; combat master locale %s, client/master compatibility unverified", entity.configID, masters.locale)
+	if masters != nil && entity.HasConfigID && entity.HasConfigType && entity.ConfigType == 4 && len(result.TemplateCandidates) == 0 {
+		if candidate, ok := masters.templateByID(entity.ConfigID); ok {
+			result.TemplateCandidates = []SceneTemplateCandidate{candidate}
+			result.TemplateStatus = ResolutionCorrelated
+			result.TemplateProof = fmt.Sprintf("EntityPb.ConfigType=Template(4) in the protocol enum EntityConfigType -> EntityPb.ConfigId=%d is a TemplateConfig.Id; combat master locale %s, client/master compatibility unverified", entity.ConfigID, masters.Locale)
 		}
 	}
 	// EntityConfigType.Prefab (5): the entity is one entity of a prefab. The client reads PrefabConfig by EntityPb.PrefabId,
@@ -650,24 +483,24 @@ func resolveEntityIdentity(resolver *entityResolver, masters *gameMaster, entity
 	// stages such as the Tower of Adversity spawn their enemies this way; the entity carries the prefab itself, so no scene
 	// context is needed. The relations are static and versioned, so the identity is at most CORRELATED, and a key that the
 	// prefab relation answers with several rows stays unresolved.
-	if masters != nil && entity.hasConfigID && entity.hasConfigType && entity.configType == 5 && entity.hasPrefabID {
-		if !result.HasMonster && !entity.hasMonsterID {
-			if monsterID, ok := masters.prefabMonster(entity.prefabID, entity.configID); ok {
-				if monster, found := masters.monsters[monsterID]; found {
+	if masters != nil && entity.HasConfigID && entity.HasConfigType && entity.ConfigType == 5 && entity.HasPrefabID {
+		if !result.HasMonster && !entity.HasMonsterID {
+			if monsterID, ok := masters.prefabMonster(entity.PrefabID, entity.ConfigID); ok {
+				if monster, found := masters.Monsters[monsterID]; found {
 					result.Monster = monster
 					result.HasMonster = true
-					result.MonsterStatus = resolutionCorrelated
-					result.MonsterProof = fmt.Sprintf("EntityPb.ConfigType=Prefab(5) + EntityPb.PrefabId=%d + EntityPb.ConfigId=%d -> PrefabConfig(PrefabId).Entities[EntityData.Id=ConfigId].BlueprintType -> MonsterInfo.MonsterEntityID -> MonsterInfo.Id=%d", entity.prefabID, entity.configID, monsterID)
+					result.MonsterStatus = ResolutionCorrelated
+					result.MonsterProof = fmt.Sprintf("EntityPb.ConfigType=Prefab(5) + EntityPb.PrefabId=%d + EntityPb.ConfigId=%d -> PrefabConfig(PrefabId).Entities[EntityData.Id=ConfigId].BlueprintType -> MonsterInfo.MonsterEntityID -> MonsterInfo.Id=%d", entity.PrefabID, entity.ConfigID, monsterID)
 				}
 			}
 		}
 		if len(result.TemplateCandidates) == 0 {
-			if candidates, ok := masters.prefabTemplates(entity.prefabID, entity.configID); ok {
+			if candidates, ok := masters.prefabTemplates(entity.PrefabID, entity.ConfigID); ok {
 				result.TemplateCandidates = candidates
-				result.TemplateStatus = resolutionUnknown
-				result.TemplateProof = fmt.Sprintf("EntityPb.ConfigType=Prefab(5) + EntityPb.PrefabId=%d + EntityPb.ConfigId=%d -> PrefabConfig(PrefabId).Entities[EntityData.Id=ConfigId].BlueprintType -> TemplateConfig candidates; combat master locale %s, client/master compatibility unverified", entity.prefabID, entity.configID, masters.locale)
+				result.TemplateStatus = ResolutionUnknown
+				result.TemplateProof = fmt.Sprintf("EntityPb.ConfigType=Prefab(5) + EntityPb.PrefabId=%d + EntityPb.ConfigId=%d -> PrefabConfig(PrefabId).Entities[EntityData.Id=ConfigId].BlueprintType -> TemplateConfig candidates; combat master locale %s, client/master compatibility unverified", entity.PrefabID, entity.ConfigID, masters.Locale)
 				if len(candidates) == 1 {
-					result.TemplateStatus = resolutionCorrelated
+					result.TemplateStatus = ResolutionCorrelated
 				}
 			}
 		}
@@ -675,34 +508,34 @@ func resolveEntityIdentity(resolver *entityResolver, masters *gameMaster, entity
 	return result
 }
 
-func runtimeCharacterCandidate(entity runtimeEntity) (characterID uint64, proof string, fromConfig, conflict bool) {
-	if entity.hasRoleID && !entity.roleConflict {
-		characterID = entity.roleID
-		proof = entity.roleSourceFieldPath + " -> " + entity.sourceFieldPath
-		if entity.roleSourceFieldPath == "" || entity.sourceFieldPath == "" {
+func runtimeCharacterCandidate(entity RuntimeEntity) (characterID uint64, proof string, fromConfig, conflict bool) {
+	if entity.HasRoleID && !entity.RoleConflict {
+		characterID = entity.RoleID
+		proof = entity.RoleSourceFieldPath + " -> " + entity.SourceFieldPath
+		if entity.RoleSourceFieldPath == "" || entity.SourceFieldPath == "" {
 			proof = "scene role mapping -> runtime EntityId"
 		}
 	}
 	// The client protocol's EntityConfigType defines Proto_Character as enum value 3.
 	// SetPbDataByProtocol assigns EntityData.PbDataId to RoleId only in this branch.
-	if entity.hasConfigType && entity.configType == 3 && entity.hasConfigID {
-		if characterID != 0 && characterID != entity.configID {
+	if entity.HasConfigType && entity.ConfigType == 3 && entity.HasConfigID {
+		if characterID != 0 && characterID != entity.ConfigID {
 			return 0, "", false, true
 		}
 		if characterID == 0 {
-			characterID = entity.configID
-			proof = fmt.Sprintf("EntityPb.ConfigId(field %d) + ConfigType(field %d)=Proto_Character(3) -> CreateEntityData.Init.PbDataId -> CreatureDataComponent.SetPbDataByProtocol.SetRoleId", fieldEntityPbConfigID, fieldEntityPbConfigType)
+			characterID = entity.ConfigID
+			proof = fmt.Sprintf("EntityPb.ConfigId(field %d) + ConfigType(field %d)=Proto_Character(3) -> CreateEntityData.Init.PbDataId -> CreatureDataComponent.SetPbDataByProtocol.SetRoleId", FieldEntityPbConfigID, FieldEntityPbConfigType)
 			fromConfig = true
 		}
 	}
 	return characterID, proof, fromConfig, false
 }
 
-func hasPlayerSceneRoleMapping(entity runtimeEntity) bool {
-	if !entity.hasPlayerID || entity.playerID == 0 || !entity.hasRoleID || entity.roleID == 0 || entity.roleConflict {
+func HasPlayerSceneRoleMapping(entity RuntimeEntity) bool {
+	if !entity.HasPlayerID || entity.PlayerID == 0 || !entity.HasRoleID || entity.RoleID == 0 || entity.RoleConflict {
 		return false
 	}
-	switch entity.roleSourceFieldPath {
+	switch entity.RoleSourceFieldPath {
 	case "JoinSceneNotify.SceneInfo.PlayerInfos[].PlayerSceneGroupData[].FightRoleInfos[].RoleId",
 		"UpdateSceneGroupDataNotify.PlayerSceneGroupDataList[].PlayerSceneGroupData[].FightRoleInfos[].RoleId":
 		return true
@@ -713,16 +546,16 @@ func hasPlayerSceneRoleMapping(entity runtimeEntity) bool {
 
 const maxSummonerEntityDepth = 8
 
-func resolveSummonerCharacter(resolver *entityResolver, masters *gameMaster, source runtimeEntity) summonerCharacterIdentity {
-	result := summonerCharacterIdentity{Status: resolutionUnknown, NameStatus: resolutionUnknown}
-	if resolver == nil || !source.hasSummonerID || source.summonerID == 0 {
+func ResolveSummonerCharacter(resolver *EntityResolver, masters *GameMaster, source RuntimeEntity) SummonerCharacterIdentity {
+	result := SummonerCharacterIdentity{Status: ResolutionUnknown, NameStatus: ResolutionUnknown}
+	if resolver == nil || !source.HasSummonerID || source.SummonerID == 0 {
 		return result
 	}
 	seen := make(map[uint64]struct{}, maxSummonerEntityDepth+1)
-	if source.entityID != 0 {
-		seen[source.entityID] = struct{}{}
+	if source.EntityID != 0 {
+		seen[source.EntityID] = struct{}{}
 	}
-	currentID := source.summonerID
+	currentID := source.SummonerID
 	for depth := 0; depth < maxSummonerEntityDepth; depth++ {
 		if _, duplicate := seen[currentID]; duplicate {
 			result.Proof = fmt.Sprintf("summoner entity cycle detected along %v -> %d", result.EntityIDs, currentID)
@@ -730,8 +563,8 @@ func resolveSummonerCharacter(resolver *entityResolver, masters *gameMaster, sou
 		}
 		seen[currentID] = struct{}{}
 		result.EntityIDs = append(result.EntityIDs, currentID)
-		parent, status := resolver.resolve(currentID)
-		if status == resolutionUnknown {
+		parent, status := resolver.Resolve(currentID)
+		if status == ResolutionUnknown {
 			result.Proof = fmt.Sprintf("SummonerComponent.SummonerId -> CreatureModel.GetEntity(CreatureDataId); unresolved entity chain %v", result.EntityIDs)
 			return result
 		}
@@ -747,118 +580,118 @@ func resolveSummonerCharacter(resolver *entityResolver, masters *gameMaster, sou
 			if masters == nil {
 				return result
 			}
-			character, ok := masters.characters[characterID]
+			character, ok := masters.Characters[characterID]
 			if !ok {
 				result.Proof += "; Character master missing"
 				return result
 			}
 			result.Character = character
 			result.HasCharacter = true
-			result.Status = resolutionStatus(character.Status)
+			result.Status = ResolutionStatus(character.Status)
 			if result.Status == "" {
-				result.Status = resolutionUnknown
+				result.Status = ResolutionUnknown
 			}
-			if result.Status == resolutionVerified {
+			if result.Status == ResolutionVerified {
 				// Keep the derived relation correlated until client/master compatibility
 				// is established.
-				result.Status = resolutionCorrelated
+				result.Status = ResolutionCorrelated
 			}
-			result.NameStatus = resolutionStatus(character.NameStatus)
+			result.NameStatus = ResolutionStatus(character.NameStatus)
 			if result.NameStatus == "" {
-				result.NameStatus = resolutionUnknown
+				result.NameStatus = ResolutionUnknown
 			}
 			return result
 		}
-		if !parent.hasSummonerID || parent.summonerID == 0 {
+		if !parent.HasSummonerID || parent.SummonerID == 0 {
 			result.Proof = fmt.Sprintf("summoner entity chain %v has no direct Character RoleId", result.EntityIDs)
 			return result
 		}
-		currentID = parent.summonerID
+		currentID = parent.SummonerID
 	}
 	result.Proof = fmt.Sprintf("summoner entity chain exceeded max depth %d: %v", maxSummonerEntityDepth, result.EntityIDs)
 	return result
 }
 
-func entityProof(entity runtimeEntity) string {
-	if entity.sourceFieldPath != "" {
-		return entity.sourceFieldPath
+func entityProof(entity RuntimeEntity) string {
+	if entity.SourceFieldPath != "" {
+		return entity.SourceFieldPath
 	}
-	switch entity.sourceMessageID {
-	case cmdEntityAddNotify:
+	switch entity.SourceMessageID {
+	case CmdEntityAddNotify:
 		return "EntityAddNotify.EntityPb.Id"
-	case cmdUpdateSceneGroupDataNotify:
+	case CmdUpdateSceneGroupDataNotify:
 		return "UpdateSceneGroupDataNotify.PlayerSceneGroupDataList[].PlayerSceneGroupData[].FightRoleInfos[].EntityId"
-	case cmdEntityActiveRequest:
+	case CmdEntityActiveRequest:
 		return "EntityActiveRequest.EntityId; observed only"
 	default:
 		return ""
 	}
 }
 
-func newEntityResolver() *entityResolver {
-	return &entityResolver{entities: make(map[uint64]runtimeEntity), limit: 8192, lifecycles: make(map[uint64]entityLifecycle)}
+func NewEntityResolver() *EntityResolver {
+	return &EntityResolver{Entities: make(map[uint64]RuntimeEntity), limit: 8192, lifecycles: make(map[uint64]entityLifecycle)}
 }
 
-func (r *entityResolver) reset() {
-	r.entities = make(map[uint64]runtimeEntity)
+func (r *EntityResolver) reset() {
+	r.Entities = make(map[uint64]RuntimeEntity)
 	r.sequence = 0
 	r.sceneInstanceID, r.hasSceneInstanceID = 0, false
-	r.sceneCombatEntityID, r.hasSceneCombatEntityID = 0, false
+	r.SceneCombatEntityID, r.HasSceneCombatEntityID = 0, false
 	r.lifecycles = make(map[uint64]entityLifecycle)
 	r.lifecycleSequence = 0
 }
 
-func (r *entityResolver) observeActiveRequest(body []byte) error {
-	fields, err := parseProtoFields(body)
+func (r *EntityResolver) observeActiveRequest(body []byte) error {
+	fields, err := ParseProtoFields(body)
 	if err != nil {
 		return fmt.Errorf("parse EntityActiveRequest: %w", err)
 	}
 	for _, field := range fields {
-		if field.number != fieldEntityActiveRequestEntityID || field.wire != 0 || field.value == 0 {
+		if field.Number != FieldEntityActiveRequestEntityID || field.Wire != 0 || field.Value == 0 {
 			continue
 		}
 		r.sequence++
-		entity := r.entities[field.value]
-		entity.entityID = field.value
-		if entity.sourceMessageID != cmdEntityAddNotify {
-			entity.sourceMessageID = cmdEntityActiveRequest
+		entity := r.Entities[field.Value]
+		entity.EntityID = field.Value
+		if entity.SourceMessageID != CmdEntityAddNotify {
+			entity.SourceMessageID = CmdEntityActiveRequest
 		}
 		entity.lastSeenSequence = r.sequence
-		r.entities[field.value] = entity
+		r.Entities[field.Value] = entity
 		r.evictIfNeeded()
 	}
 	return nil
 }
 
-func (r *entityResolver) applyEntityAddNotify(body []byte) (int, error) {
-	fields, err := parseProtoFields(body)
+func (r *EntityResolver) ApplyEntityAddNotify(body []byte) (int, error) {
+	fields, err := ParseProtoFields(body)
 	if err != nil {
 		return 0, fmt.Errorf("parse EntityAddNotify: %w", err)
 	}
 	added := 0
 	for _, field := range fields {
-		if field.number != fieldEntityAddNotifyEntityPbs || field.wire != 2 {
+		if field.Number != FieldEntityAddNotifyEntityPbs || field.Wire != 2 {
 			continue
 		}
-		entity, err := parseEntityPb(field.data)
+		entity, err := parseEntityPb(field.Data)
 		if err != nil {
 			return added, err
 		}
-		if entity.entityID == 0 {
+		if entity.EntityID == 0 {
 			continue
 		}
-		if entity.hasPartComponent {
-			entity.partComponentSource = "EntityAddNotify.EntityPbs[].ComponentPbs.PartComponent.PartLifeInfos[]"
+		if entity.HasPartComponent {
+			entity.PartComponentSource = "EntityAddNotify.EntityPbs[].ComponentPbs.PartComponent.PartLifeInfos[]"
 		}
 		r.sequence++
-		if previous, ok := r.entities[entity.entityID]; ok {
+		if previous, ok := r.Entities[entity.EntityID]; ok {
 			entity = mergeRuntimeEntity(previous, entity)
 		}
-		entity.sourceMessageID = cmdEntityAddNotify
-		entity.sourceFieldPath = "EntityAddNotify.EntityPb.Id"
+		entity.SourceMessageID = CmdEntityAddNotify
+		entity.SourceFieldPath = "EntityAddNotify.EntityPb.Id"
 		entity.lastSeenSequence = r.sequence
-		r.entities[entity.entityID] = entity
-		r.observeLifecycleAdd(entity)
+		r.Entities[entity.EntityID] = entity
+		r.ObserveLifecycleAdd(entity)
 		r.evictIfNeeded()
 		added++
 	}
@@ -867,15 +700,15 @@ func (r *entityResolver) applyEntityAddNotify(body []byte) (int, error) {
 
 // applyJoinSceneNotify replaces stale entity observations with the new scene
 // snapshot. Owner, owner-incarnation, and summoner IDs remain distinct.
-func (r *entityResolver) applyJoinSceneNotify(body []byte) (int, error) {
-	fields, err := parseProtoFields(body)
+func (r *EntityResolver) applyJoinSceneNotify(body []byte) (int, error) {
+	fields, err := ParseProtoFields(body)
 	if err != nil {
 		return 0, fmt.Errorf("parse JoinSceneNotify: %w", err)
 	}
 	var sceneInfo []byte
 	for _, field := range fields {
-		if field.number == fieldJoinSceneNotifySceneInfo && field.wire == 2 {
-			sceneInfo = field.data
+		if field.Number == FieldJoinSceneNotifySceneInfo && field.Wire == 2 {
+			sceneInfo = field.Data
 			break
 		}
 	}
@@ -886,177 +719,177 @@ func (r *entityResolver) applyJoinSceneNotify(body []byte) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	sceneFields, err := parseProtoFields(sceneInfo)
+	sceneFields, err := ParseProtoFields(sceneInfo)
 	if err != nil {
 		return 0, fmt.Errorf("parse SceneInformation: %w", err)
 	}
 	var instanceID, sceneEntityID uint64
 	var hasInstanceID, hasSceneEntityID bool
 	for _, field := range sceneFields {
-		if field.wire != 0 {
+		if field.Wire != 0 {
 			continue
 		}
-		switch field.number {
+		switch field.Number {
 		case fieldSceneInformationInstanceID:
-			instanceID, hasInstanceID = field.value, field.value != 0
+			instanceID, hasInstanceID = field.Value, field.Value != 0
 		case fieldSceneInformationSceneEntityID:
-			sceneEntityID, hasSceneEntityID = field.value, field.value != 0
+			sceneEntityID, hasSceneEntityID = field.Value, field.Value != 0
 		}
 	}
 
-	r.entities = make(map[uint64]runtimeEntity)
+	r.Entities = make(map[uint64]RuntimeEntity)
 	r.sceneInstanceID, r.hasSceneInstanceID = instanceID, hasInstanceID
-	r.sceneCombatEntityID, r.hasSceneCombatEntityID = sceneEntityID, hasSceneEntityID
+	r.SceneCombatEntityID, r.HasSceneCombatEntityID = sceneEntityID, hasSceneEntityID
 	snapshotIDs := make([]uint64, 0, len(entities))
 	for _, entity := range entities {
-		if entity.entityID == 0 {
+		if entity.EntityID == 0 {
 			continue
 		}
-		if entity.hasPartComponent {
-			entity.partComponentSource = "JoinSceneNotify.SceneInfo entity snapshot.ComponentPbs.PartComponent.PartLifeInfos[]"
+		if entity.HasPartComponent {
+			entity.PartComponentSource = "JoinSceneNotify.SceneInfo entity snapshot.ComponentPbs.PartComponent.PartLifeInfos[]"
 		}
-		if previous, ok := r.entities[entity.entityID]; ok {
+		if previous, ok := r.Entities[entity.EntityID]; ok {
 			entity = mergeRuntimeEntity(previous, entity)
 		}
-		entity.sceneInstanceID, entity.hasSceneInstanceID = instanceID, hasInstanceID
+		entity.SceneInstanceID, entity.HasSceneInstanceID = instanceID, hasInstanceID
 		r.sequence++
-		entity.sourceMessageID = cmdJoinSceneNotify
+		entity.SourceMessageID = CmdJoinSceneNotify
 		entity.lastSeenSequence = r.sequence
-		r.entities[entity.entityID] = entity
-		snapshotIDs = append(snapshotIDs, entity.entityID)
+		r.Entities[entity.EntityID] = entity
+		snapshotIDs = append(snapshotIDs, entity.EntityID)
 		r.evictIfNeeded()
 	}
 	r.observeLifecycleSnapshot(snapshotIDs)
-	return len(r.entities), nil
+	return len(r.Entities), nil
 }
 
 // applyUpdateSceneGroupDataNotify adds the direct role-to-entity mapping carried
 // by the client protocol's UpdateSceneGroupDataNotify. Other entity metadata
 // already observed for the same ID is retained, and conflicting RoleIds remain
 // unresolved through mergeRuntimeEntity.
-func (r *entityResolver) applyUpdateSceneGroupDataNotify(body []byte) (int, error) {
-	fields, err := parseProtoFields(body)
+func (r *EntityResolver) applyUpdateSceneGroupDataNotify(body []byte) (int, error) {
+	fields, err := ParseProtoFields(body)
 	if err != nil {
 		return 0, fmt.Errorf("parse UpdateSceneGroupDataNotify: %w", err)
 	}
-	updates := make([]runtimeEntity, 0)
+	updates := make([]RuntimeEntity, 0)
 	for _, field := range fields {
-		if field.number != fieldUpdateSceneGroupDataNotifyPlayerSceneGroupDataList || field.wire != 2 { // UpdateSceneGroupDataNotify.PlayerSceneGroupDataList[]
+		if field.Number != fieldUpdateSceneGroupDataNotifyPlayerSceneGroupDataList || field.Wire != 2 { // UpdateSceneGroupDataNotify.PlayerSceneGroupDataList[]
 			continue
 		}
-		playerFields, err := parseProtoFields(field.data)
+		playerFields, err := ParseProtoFields(field.Data)
 		if err != nil {
 			return 0, fmt.Errorf("parse PlayerSceneGroupDataList: %w", err)
 		}
 		var playerID uint64
 		for _, playerField := range playerFields {
-			if playerField.number == fieldPlayerSceneGroupDataListPlayerID && playerField.wire == 0 {
-				playerID = playerField.value
+			if playerField.Number == fieldPlayerSceneGroupDataListPlayerID && playerField.Wire == 0 {
+				playerID = playerField.Value
 				break
 			}
 		}
 		for _, playerField := range playerFields {
-			if playerField.number != fieldPlayerSceneGroupDataListPlayerSceneGroupData || playerField.wire != 2 { // PlayerSceneGroupDataList.PlayerSceneGroupData[]
+			if playerField.Number != fieldPlayerSceneGroupDataListPlayerSceneGroupData || playerField.Wire != 2 { // PlayerSceneGroupDataList.PlayerSceneGroupData[]
 				continue
 			}
-			groupFields, err := parseProtoFields(playerField.data)
+			groupFields, err := ParseProtoFields(playerField.Data)
 			if err != nil {
 				return 0, fmt.Errorf("parse PlayerSceneGroupData: %w", err)
 			}
 			for _, groupField := range groupFields {
-				if groupField.number != fieldPlayerSceneGroupDataFightRoleInfos || groupField.wire != 2 { // PlayerSceneGroupData.FightRoleInfos[]
+				if groupField.Number != FieldPlayerSceneGroupDataFightRoleInfos || groupField.Wire != 2 { // PlayerSceneGroupData.FightRoleInfos[]
 					continue
 				}
-				roleFields, err := parseProtoFields(groupField.data)
+				roleFields, err := ParseProtoFields(groupField.Data)
 				if err != nil {
 					return 0, fmt.Errorf("parse SceneRoleInformation: %w", err)
 				}
-				var entity runtimeEntity
-				entity.playerID, entity.hasPlayerID = playerID, playerID != 0
-				entity.roleSourceFieldPath = "UpdateSceneGroupDataNotify.PlayerSceneGroupDataList[].PlayerSceneGroupData[].FightRoleInfos[].RoleId"
+				var entity RuntimeEntity
+				entity.PlayerID, entity.HasPlayerID = playerID, playerID != 0
+				entity.RoleSourceFieldPath = "UpdateSceneGroupDataNotify.PlayerSceneGroupDataList[].PlayerSceneGroupData[].FightRoleInfos[].RoleId"
 				for _, roleField := range roleFields {
-					if roleField.wire != 0 {
+					if roleField.Wire != 0 {
 						continue
 					}
-					switch roleField.number {
-					case fieldSceneRoleInformationRoleID: // SceneRoleInformation.RoleId
-						entity.roleID, entity.hasRoleID = roleField.value, roleField.value != 0
-					case fieldSceneRoleInformationEntityID: // SceneRoleInformation.EntityId
-						entity.entityID = roleField.value
+					switch roleField.Number {
+					case FieldSceneRoleInformationRoleID: // SceneRoleInformation.RoleId
+						entity.RoleID, entity.HasRoleID = roleField.Value, roleField.Value != 0
+					case FieldSceneRoleInformationEntityID: // SceneRoleInformation.EntityId
+						entity.EntityID = roleField.Value
 					}
 				}
-				if entity.entityID == 0 || !entity.hasRoleID {
+				if entity.EntityID == 0 || !entity.HasRoleID {
 					continue
 				}
-				entity.sourceMessageID = cmdUpdateSceneGroupDataNotify
-				entity.sourceFieldPath = "UpdateSceneGroupDataNotify.PlayerSceneGroupDataList[].PlayerSceneGroupData[].FightRoleInfos[].EntityId"
+				entity.SourceMessageID = CmdUpdateSceneGroupDataNotify
+				entity.SourceFieldPath = "UpdateSceneGroupDataNotify.PlayerSceneGroupDataList[].PlayerSceneGroupData[].FightRoleInfos[].EntityId"
 				updates = append(updates, entity)
 			}
 		}
 	}
 	for _, entity := range updates {
 		r.sequence++
-		if previous, ok := r.entities[entity.entityID]; ok {
+		if previous, ok := r.Entities[entity.EntityID]; ok {
 			entity = mergeRuntimeEntity(previous, entity)
 			// Preserve the stronger entity-lifecycle source while retaining the
 			// role mapping and its separate provenance.
-			if previous.sourceMessageID == cmdEntityAddNotify || previous.sourceMessageID == cmdJoinSceneNotify {
-				entity.sourceMessageID = previous.sourceMessageID
-				entity.sourceFieldPath = previous.sourceFieldPath
+			if previous.SourceMessageID == CmdEntityAddNotify || previous.SourceMessageID == CmdJoinSceneNotify {
+				entity.SourceMessageID = previous.SourceMessageID
+				entity.SourceFieldPath = previous.SourceFieldPath
 			}
 		}
 		entity.lastSeenSequence = r.sequence
-		r.entities[entity.entityID] = entity
+		r.Entities[entity.EntityID] = entity
 		r.evictIfNeeded()
 	}
 	return len(updates), nil
 }
 
-func parseSceneEntitySnapshot(sceneInfo []byte) ([]runtimeEntity, error) {
-	fields, err := parseProtoFields(sceneInfo)
+func parseSceneEntitySnapshot(sceneInfo []byte) ([]RuntimeEntity, error) {
+	fields, err := ParseProtoFields(sceneInfo)
 	if err != nil {
 		return nil, fmt.Errorf("parse SceneInformation: %w", err)
 	}
-	entities := make([]runtimeEntity, 0)
+	entities := make([]RuntimeEntity, 0)
 	for _, field := range fields {
-		if field.wire != 2 {
+		if field.Wire != 2 {
 			continue
 		}
-		switch field.number {
-		case fieldSceneInformationPlayerInfos: // SceneInformation.PlayerInfos[]
-			roleEntities, err := parseScenePlayerRoleEntities(field.data)
+		switch field.Number {
+		case FieldSceneInformationPlayerInfos: // SceneInformation.PlayerInfos[]
+			roleEntities, err := parseScenePlayerRoleEntities(field.Data)
 			if err != nil {
 				return nil, err
 			}
 			entities = append(entities, roleEntities...)
 		case fieldSceneInformationDynamicEntityList: // SceneInformation.DynamicEntityList[]
-			entity, err := parseDynamicEntityInformation(field.data, "JoinSceneNotify.SceneInfo.DynamicEntityList.Id")
+			entity, err := parseDynamicEntityInformation(field.Data, "JoinSceneNotify.SceneInfo.DynamicEntityList.Id")
 			if err != nil {
 				return nil, err
 			}
 			entities = append(entities, entity)
 		case fieldSceneInformationAoiData: // SceneInformation.AoiData
-			aoiFields, err := parseProtoFields(field.data)
+			aoiFields, err := ParseProtoFields(field.Data)
 			if err != nil {
 				return nil, fmt.Errorf("parse PlayerSceneAoiData: %w", err)
 			}
 			for _, aoiField := range aoiFields {
-				if aoiField.wire != 2 {
+				if aoiField.Wire != 2 {
 					continue
 				}
-				switch aoiField.number {
+				switch aoiField.Number {
 				case fieldPlayerSceneAoiDataDynamicEntityList: // PlayerSceneAoiData.DynamicEntityList[]
-					entity, err := parseDynamicEntityInformation(aoiField.data, "JoinSceneNotify.SceneInfo.AoiData.DynamicEntityList.Id")
+					entity, err := parseDynamicEntityInformation(aoiField.Data, "JoinSceneNotify.SceneInfo.AoiData.DynamicEntityList.Id")
 					if err != nil {
 						return nil, err
 					}
 					entities = append(entities, entity)
-				case fieldPlayerSceneAoiDataEntities: // PlayerSceneAoiData.Entities[]: EntityPb
-					entity, err := parseEntityPb(aoiField.data)
+				case FieldPlayerSceneAoiDataEntities: // PlayerSceneAoiData.Entities[]: EntityPb
+					entity, err := parseEntityPb(aoiField.Data)
 					if err != nil {
 						return nil, fmt.Errorf("parse JoinSceneNotify AoiData EntityPb: %w", err)
 					}
-					entity.sourceFieldPath = "JoinSceneNotify.SceneInfo.AoiData.Entities.EntityPb.Id"
+					entity.SourceFieldPath = "JoinSceneNotify.SceneInfo.AoiData.Entities.EntityPb.Id"
 					entities = append(entities, entity)
 				}
 			}
@@ -1065,51 +898,51 @@ func parseSceneEntitySnapshot(sceneInfo []byte) ([]runtimeEntity, error) {
 	return entities, nil
 }
 
-func parseScenePlayerRoleEntities(data []byte) ([]runtimeEntity, error) {
-	fields, err := parseProtoFields(data)
+func parseScenePlayerRoleEntities(data []byte) ([]RuntimeEntity, error) {
+	fields, err := ParseProtoFields(data)
 	if err != nil {
 		return nil, fmt.Errorf("parse ScenePlayerInformation: %w", err)
 	}
 	var playerID uint64
 	for _, field := range fields {
-		if field.number == fieldScenePlayerInformationPlayerID && field.wire == 0 {
-			playerID = field.value
+		if field.Number == FieldScenePlayerInformationPlayerID && field.Wire == 0 {
+			playerID = field.Value
 			break
 		}
 	}
-	entities := make([]runtimeEntity, 0)
+	entities := make([]RuntimeEntity, 0)
 	for _, field := range fields {
-		if field.number != fieldScenePlayerInformationPlayerSceneGroupData || field.wire != 2 { // ScenePlayerInformation.PlayerSceneGroupData[]
+		if field.Number != FieldScenePlayerInformationPlayerSceneGroupData || field.Wire != 2 { // ScenePlayerInformation.PlayerSceneGroupData[]
 			continue
 		}
-		groups, err := parseProtoFields(field.data)
+		groups, err := ParseProtoFields(field.Data)
 		if err != nil {
 			return nil, fmt.Errorf("parse PlayerSceneGroupData: %w", err)
 		}
 		for _, groupField := range groups {
-			if groupField.number != fieldPlayerSceneGroupDataFightRoleInfos || groupField.wire != 2 { // PlayerSceneGroupData.FightRoleInfos[]
+			if groupField.Number != FieldPlayerSceneGroupDataFightRoleInfos || groupField.Wire != 2 { // PlayerSceneGroupData.FightRoleInfos[]
 				continue
 			}
-			roleFields, err := parseProtoFields(groupField.data)
+			roleFields, err := ParseProtoFields(groupField.Data)
 			if err != nil {
 				return nil, fmt.Errorf("parse SceneRoleInformation: %w", err)
 			}
-			var entity runtimeEntity
-			entity.playerID, entity.hasPlayerID = playerID, playerID != 0
-			entity.roleSourceFieldPath = "JoinSceneNotify.SceneInfo.PlayerInfos[].PlayerSceneGroupData[].FightRoleInfos[].RoleId"
+			var entity RuntimeEntity
+			entity.PlayerID, entity.HasPlayerID = playerID, playerID != 0
+			entity.RoleSourceFieldPath = "JoinSceneNotify.SceneInfo.PlayerInfos[].PlayerSceneGroupData[].FightRoleInfos[].RoleId"
 			for _, roleField := range roleFields {
-				if roleField.wire != 0 {
+				if roleField.Wire != 0 {
 					continue
 				}
-				switch roleField.number {
-				case fieldSceneRoleInformationRoleID: // SceneRoleInformation.RoleId
-					entity.roleID, entity.hasRoleID = roleField.value, roleField.value != 0
-				case fieldSceneRoleInformationEntityID: // SceneRoleInformation.EntityId; same client CreatureDataId namespace
-					entity.entityID = roleField.value
+				switch roleField.Number {
+				case FieldSceneRoleInformationRoleID: // SceneRoleInformation.RoleId
+					entity.RoleID, entity.HasRoleID = roleField.Value, roleField.Value != 0
+				case FieldSceneRoleInformationEntityID: // SceneRoleInformation.EntityId; same client CreatureDataId namespace
+					entity.EntityID = roleField.Value
 				}
 			}
-			if entity.entityID != 0 && entity.hasRoleID {
-				entity.sourceFieldPath = "JoinSceneNotify.SceneInfo.PlayerInfos[].PlayerSceneGroupData[].FightRoleInfos[].EntityId"
+			if entity.EntityID != 0 && entity.HasRoleID {
+				entity.SourceFieldPath = "JoinSceneNotify.SceneInfo.PlayerInfos[].PlayerSceneGroupData[].FightRoleInfos[].EntityId"
 				entities = append(entities, entity)
 			}
 		}
@@ -1117,62 +950,62 @@ func parseScenePlayerRoleEntities(data []byte) ([]runtimeEntity, error) {
 	return entities, nil
 }
 
-func parseDynamicEntityInformation(data []byte, sourceFieldPath string) (runtimeEntity, error) {
-	fields, err := parseProtoFields(data)
+func parseDynamicEntityInformation(data []byte, sourceFieldPath string) (RuntimeEntity, error) {
+	fields, err := ParseProtoFields(data)
 	if err != nil {
-		return runtimeEntity{}, fmt.Errorf("parse DynamicEntityInformation: %w", err)
+		return RuntimeEntity{}, fmt.Errorf("parse DynamicEntityInformation: %w", err)
 	}
-	var entity runtimeEntity
-	entity.sourceFieldPath = sourceFieldPath
+	var entity RuntimeEntity
+	entity.SourceFieldPath = sourceFieldPath
 	for _, field := range fields {
-		if field.wire == 0 {
-			switch field.number {
+		if field.Wire == 0 {
+			switch field.Number {
 			case fieldDynamicEntityInformationID:
-				entity.entityID = field.value
+				entity.EntityID = field.Value
 			case fieldDynamicEntityInformationEntityType:
-				entity.entityTypeCode, entity.hasEntityType = field.value, true
+				entity.EntityTypeCode, entity.HasEntityType = field.Value, true
 			case fieldDynamicEntityInformationConfigID:
-				entity.configID, entity.hasConfigID = field.value, true
+				entity.ConfigID, entity.HasConfigID = field.Value, true
 			case fieldDynamicEntityInformationPlayerID:
-				entity.playerID, entity.hasPlayerID = field.value, true
+				entity.PlayerID, entity.HasPlayerID = field.Value, true
 			case fieldDynamicEntityInformationOwnerID:
-				entity.ownerID, entity.hasOwnerID = field.value, true
+				entity.OwnerID, entity.HasOwnerID = field.Value, true
 			}
 			continue
 		}
-		if field.wire != 2 {
+		if field.Wire != 2 {
 			continue
 		}
-		switch field.number {
+		switch field.Number {
 		case fieldDynamicEntityInformationSummonInfo: // DynamicEntityInformation.SummonInfo
-			if err := applySummonInfo(&entity, field.data); err != nil {
-				return runtimeEntity{}, err
+			if err := applySummonInfo(&entity, field.Data); err != nil {
+				return RuntimeEntity{}, err
 			}
 		case fieldDynamicEntityInformationComponentPbs: // DynamicEntityInformation.ComponentPbs[]
-			if err := applyEntityComponent(&entity, field.data); err != nil {
-				return runtimeEntity{}, err
+			if err := applyEntityComponent(&entity, field.Data); err != nil {
+				return RuntimeEntity{}, err
 			}
 		}
 	}
 	return entity, nil
 }
 
-func applySummonInfo(entity *runtimeEntity, data []byte) error {
-	fields, err := parseProtoFields(data)
+func applySummonInfo(entity *RuntimeEntity, data []byte) error {
+	fields, err := ParseProtoFields(data)
 	if err != nil {
 		return fmt.Errorf("parse SummonInfo: %w", err)
 	}
 	for _, field := range fields {
-		if field.wire != 0 {
+		if field.Wire != 0 {
 			continue
 		}
-		switch field.number {
+		switch field.Number {
 		case fieldSummonInfoSummonCfgID:
-			entity.sceneSummonConfigID, entity.hasSceneSummonConfigID = field.value, true
+			entity.SceneSummonConfigID, entity.HasSceneSummonConfigID = field.Value, true
 		case fieldSummonInfoSummonerID:
-			entity.sceneSummonerID, entity.hasSceneSummonerID = field.value, true
+			entity.SceneSummonerID, entity.HasSceneSummonerID = field.Value, true
 		case fieldSummonInfoSummonSkillID:
-			entity.sceneSummonSkillID, entity.hasSceneSummonSkillID = field.value, true
+			entity.SceneSummonSkillID, entity.HasSceneSummonSkillID = field.Value, true
 		}
 	}
 	return nil
@@ -1181,14 +1014,14 @@ func applySummonInfo(entity *runtimeEntity, data []byte) error {
 // entityRemoveNotifyIDs returns the entities an EntityRemoveNotify removes. On a malformed EntityRemoveInfo it returns
 // the IDs read before it together with the error.
 func entityRemoveNotifyIDs(body []byte) ([]uint64, error) {
-	fields, err := parseProtoFields(body)
+	fields, err := ParseProtoFields(body)
 	if err != nil {
 		return nil, fmt.Errorf("parse EntityRemoveNotify: %w", err)
 	}
 	remove := false
 	for _, field := range fields {
-		if field.number == fieldEntityRemoveNotifyIsRemove && field.wire == 0 {
-			remove = field.value != 0
+		if field.Number == FieldEntityRemoveNotifyIsRemove && field.Wire == 0 {
+			remove = field.Value != 0
 		}
 	}
 	if !remove {
@@ -1196,29 +1029,29 @@ func entityRemoveNotifyIDs(body []byte) ([]uint64, error) {
 	}
 	ids := make([]uint64, 0)
 	for _, field := range fields {
-		if field.number != fieldEntityRemoveNotifyRemoveInfos || field.wire != 2 {
+		if field.Number != FieldEntityRemoveNotifyRemoveInfos || field.Wire != 2 {
 			continue
 		}
-		info, err := parseProtoFields(field.data)
+		info, err := ParseProtoFields(field.Data)
 		if err != nil {
 			return ids, fmt.Errorf("parse EntityRemoveInfo: %w", err)
 		}
 		for _, value := range info {
-			if value.number == fieldEntityRemoveInfoEntityID && value.wire == 0 && value.value != 0 {
-				ids = append(ids, value.value)
+			if value.Number == FieldEntityRemoveInfoEntityID && value.Wire == 0 && value.Value != 0 {
+				ids = append(ids, value.Value)
 			}
 		}
 	}
 	return ids, nil
 }
 
-func (r *entityResolver) applyEntityRemoveNotify(body []byte) (int, []uint64, error) {
+func (r *EntityResolver) ApplyEntityRemoveNotify(body []byte) (int, []uint64, error) {
 	removedIDs, err := entityRemoveNotifyIDs(body)
 	removed := 0
 	for _, id := range removedIDs {
 		r.observeLifecycleRemove(id)
-		if _, ok := r.entities[id]; ok {
-			delete(r.entities, id)
+		if _, ok := r.Entities[id]; ok {
+			delete(r.Entities, id)
 			removed++
 		}
 	}
@@ -1227,16 +1060,16 @@ func (r *entityResolver) applyEntityRemoveNotify(body []byte) (int, []uint64, er
 
 // activeResponseComponentPath is the provenance of components read from an EntityActiveResponse matched to its request.
 var activeResponseComponentPath = fmt.Sprintf("EntityActiveRequest frame token match + field%d EntityId -> EntityActiveResponse.field%d ComponentPbs",
-	fieldEntityActiveRequestEntityID, fieldEntityActiveResponseComponentPbs)
+	FieldEntityActiveRequestEntityID, FieldEntityActiveResponseComponentPbs)
 
-func (r *entityResolver) applyActiveResponseIdentityComponents(entityID uint64, components []protoField) (int, error) {
-	update := runtimeEntity{entityID: entityID}
+func (r *EntityResolver) applyActiveResponseIdentityComponents(entityID uint64, components []ProtoField) (int, error) {
+	update := RuntimeEntity{EntityID: entityID}
 	observed := 0
 	for _, component := range components {
-		if component.wire != 2 || !isRuntimeIdentityComponent(component.number) {
+		if component.Wire != 2 || !isRuntimeIdentityComponent(component.Number) {
 			continue
 		}
-		if err := applyEntityComponentPayload(&update, component.number, component.data); err != nil {
+		if err := applyEntityComponentPayload(&update, component.Number, component.Data); err != nil {
 			return observed, err
 		}
 		observed++
@@ -1244,51 +1077,51 @@ func (r *entityResolver) applyActiveResponseIdentityComponents(entityID uint64, 
 	if observed == 0 || entityID == 0 {
 		return observed, nil
 	}
-	previous, exists := r.entities[entityID]
+	previous, exists := r.Entities[entityID]
 	if !exists {
 		return observed, nil
 	}
-	update.componentSourceMessageID = cmdEntityActiveResponse
-	update.componentSourceFieldPath = activeResponseComponentPath
+	update.ComponentSourceMessageID = CmdEntityActiveResponse
+	update.ComponentSourceFieldPath = activeResponseComponentPath
 	update = mergeRuntimeEntity(previous, update)
 	r.sequence++
 	update.lastSeenSequence = r.sequence
-	r.entities[entityID] = update
+	r.Entities[entityID] = update
 	r.evictIfNeeded()
 	return observed, nil
 }
 
 // applyActiveResponseFsmComponents records the state-machine hashes of an entity from an EntityActiveResponse. It changes
 // only those two fields: the entity's identity and its component provenance stay as they were.
-func (r *entityResolver) applyActiveResponseFsmComponents(entityID uint64, components []protoField) error {
-	previous, exists := r.entities[entityID]
+func (r *EntityResolver) applyActiveResponseFsmComponents(entityID uint64, components []ProtoField) error {
+	previous, exists := r.Entities[entityID]
 	if !exists || entityID == 0 {
 		return nil
 	}
-	update := runtimeEntity{entityID: entityID}
+	update := RuntimeEntity{EntityID: entityID}
 	for _, component := range components {
-		if err := applyEntityComponentPayload(&update, fieldEntityComponentPbEntityFsmComponentPb, component.data); err != nil {
+		if err := applyEntityComponentPayload(&update, fieldEntityComponentPbEntityFsmComponentPb, component.Data); err != nil {
 			return err
 		}
 	}
-	if update.hasFsmHashCode {
-		previous.fsmHashCode, previous.hasFsmHashCode = update.fsmHashCode, true
+	if update.HasFsmHashCode {
+		previous.FSMHashCode, previous.HasFsmHashCode = update.FSMHashCode, true
 	}
-	if update.hasFsmCommonHashCode {
-		previous.fsmCommonHashCode, previous.hasFsmCommonHashCode = update.fsmCommonHashCode, true
+	if update.HasFsmCommonHashCode {
+		previous.FSMCommonHashCode, previous.HasFsmCommonHashCode = update.FSMCommonHashCode, true
 	}
-	r.entities[entityID] = previous
+	r.Entities[entityID] = previous
 	return nil
 }
 
-func (r *entityResolver) applyActiveResponsePartComponents(entityID uint64, components []protoField) (int, error) {
-	update := runtimeEntity{entityID: entityID}
+func (r *EntityResolver) applyActiveResponsePartComponents(entityID uint64, components []ProtoField) (int, error) {
+	update := RuntimeEntity{EntityID: entityID}
 	observed := 0
 	for _, component := range components {
-		if component.number != fieldEntityComponentPbPartComponent || component.wire != 2 {
+		if component.Number != FieldEntityComponentPbPartComponent || component.Wire != 2 {
 			continue
 		}
-		if err := applyEntityComponentPayload(&update, component.number, component.data); err != nil {
+		if err := applyEntityComponentPayload(&update, component.Number, component.Data); err != nil {
 			return observed, err
 		}
 		observed++
@@ -1296,485 +1129,453 @@ func (r *entityResolver) applyActiveResponsePartComponents(entityID uint64, comp
 	if observed == 0 || entityID == 0 {
 		return observed, nil
 	}
-	previous, exists := r.entities[entityID]
+	previous, exists := r.Entities[entityID]
 	if !exists {
 		return observed, nil
 	}
-	update.partComponentSource = activeResponseComponentPath + ".PartComponent.PartLifeInfos[]"
+	update.PartComponentSource = activeResponseComponentPath + ".PartComponent.PartLifeInfos[]"
 	update = mergeRuntimeEntity(previous, update)
 	r.sequence++
 	update.lastSeenSequence = r.sequence
-	r.entities[entityID] = update
+	r.Entities[entityID] = update
 	r.evictIfNeeded()
 	return observed, nil
 }
 
-func (r *entityResolver) invalidatePartComponents() {
-	for entityID, entity := range r.entities {
-		entity.hasPartComponent = false
-		entity.partInformation = nil
-		entity.partComponentSource = ""
-		r.entities[entityID] = entity
+func (r *EntityResolver) invalidatePartComponents() {
+	for entityID, entity := range r.Entities {
+		entity.HasPartComponent = false
+		entity.PartInformation = nil
+		entity.PartComponentSource = ""
+		r.Entities[entityID] = entity
 	}
-}
-
-func (r *entityResolver) resolvePartReference(entityID uint64, partID int32) runtimePartReference {
-	result := runtimePartReference{partID: partID, status: partReferenceUnknown}
-	if partID == -1 {
-		result.status = partReferenceNoPart
-		result.evidence = "DamageExecuteRequest.PartId=-1 is the observed no-part sentinel; raw value preserved and no PartInformation lookup attempted"
-		return result
-	}
-	if partID <= 0 {
-		result.evidence = "Non-positive DamageExecuteRequest.PartId is preserved without assigning a PartInformation row"
-		return result
-	}
-	entity, ok := r.entities[entityID]
-	if !ok || !entity.hasPartComponent {
-		result.evidence = "No current PartComponent observation is available for the exact target entity in this session"
-		return result
-	}
-	information, ok := entity.partInformation[partID]
-	if !ok {
-		result.evidence = "Current target PartComponent has no PartLifeInfos row with this exact PartId"
-		return result
-	}
-	if information.conflicted {
-		result.evidence = "Current target PartComponent has conflicting PartLifeInfos rows for this PartId"
-		return result
-	}
-	result.status = partReferenceCorrelated
-	result.information = &information
-	result.informationFrom = entity.partComponentSource
-	result.evidence = "DamageExecuteRequest.PartId exactly matches PartComponent.PartLifeInfos.PartId observed for the same TargetEntityId before this request; this is a session-scoped runtime relation, not a static Master key"
-	return result
 }
 
 func isRuntimeIdentityComponent(componentNumber uint64) bool {
 	switch componentNumber {
-	case fieldEntityComponentPbSummonerComponent, fieldEntityComponentPbMonsterCaptureComponent, fieldEntityComponentPbConcomitantsComponentPb, fieldEntityComponentPbPlayerFollowerSelfComponentPb, fieldEntityComponentPbPlayerFollowersComponentPb, fieldEntityComponentPbFollowEntityComponentPb:
+	case FieldEntityComponentPbSummonerComponent, FieldEntityComponentPbMonsterCaptureComponent, fieldEntityComponentPbConcomitantsComponentPb, fieldEntityComponentPbPlayerFollowerSelfComponentPb, fieldEntityComponentPbPlayerFollowersComponentPb, fieldEntityComponentPbFollowEntityComponentPb:
 		return true
 	default:
 		return false
 	}
 }
 
-func parseEntityPb(data []byte) (runtimeEntity, error) {
-	fields, err := parseProtoFields(data)
+func parseEntityPb(data []byte) (RuntimeEntity, error) {
+	fields, err := ParseProtoFields(data)
 	if err != nil {
-		return runtimeEntity{}, fmt.Errorf("parse EntityPb: %w", err)
+		return RuntimeEntity{}, fmt.Errorf("parse EntityPb: %w", err)
 	}
-	var entity runtimeEntity
+	var entity RuntimeEntity
 	for _, field := range fields {
-		if field.wire != 0 {
-			if field.number == fieldEntityPbComponentPbs && field.wire == 2 {
-				if err := applyEntityComponent(&entity, field.data); err != nil {
-					return runtimeEntity{}, err
+		if field.Wire != 0 {
+			if field.Number == FieldEntityPbComponentPbs && field.Wire == 2 {
+				if err := applyEntityComponent(&entity, field.Data); err != nil {
+					return RuntimeEntity{}, err
 				}
 			}
 			continue
 		}
-		switch field.number {
-		case fieldEntityPbID: // EntityPb.Id
-			entity.entityID = field.value
-		case fieldEntityPbConfigID: // EntityPb.ConfigId
-			entity.configID, entity.hasConfigID = field.value, true
-		case fieldEntityPbConfigType: // EntityPb.ConfigType
-			entity.configType, entity.hasConfigType = field.value, true
+		switch field.Number {
+		case FieldEntityPbID: // EntityPb.Id
+			entity.EntityID = field.Value
+		case FieldEntityPbConfigID: // EntityPb.ConfigId
+			entity.ConfigID, entity.HasConfigID = field.Value, true
+		case FieldEntityPbConfigType: // EntityPb.ConfigType
+			entity.ConfigType, entity.HasConfigType = field.Value, true
 		case fieldEntityPbPrefabID: // EntityPb.PrefabId (CreateEntityData.Init: PrefabId)
-			entity.prefabID, entity.hasPrefabID = field.value, true
+			entity.PrefabID, entity.HasPrefabID = field.Value, true
 		case fieldEntityPbEntityType: // EntityPb.EntityType
-			entity.entityTypeCode, entity.hasEntityType = field.value, true
+			entity.EntityTypeCode, entity.HasEntityType = field.Value, true
 		case fieldEntityPbPlayerID: // EntityPb.PlayerId
-			entity.playerID, entity.hasPlayerID = field.value, true
+			entity.PlayerID, entity.HasPlayerID = field.Value, true
 		case fieldEntityPbOwnerIncID: // EntityPb.OwnerIncId is not EntityPb.Id or DynamicEntityInformation.OwnerId.
-			entity.ownerIncID, entity.hasOwnerIncID = field.value, true
+			entity.OwnerIncID, entity.HasOwnerIncID = field.Value, true
 		case fieldEntityPbRoleSkinID: // EntityPb.RoleSkinId is a skin reference, not CharacterId.
-			entity.roleSkinID, entity.hasRoleSkinID = field.value, true
+			entity.RoleSkinID, entity.HasRoleSkinID = field.Value, true
 		}
 	}
 	return entity, nil
 }
 
-func applyEntityComponent(entity *runtimeEntity, data []byte) error {
-	components, err := parseProtoFields(data)
+func applyEntityComponent(entity *RuntimeEntity, data []byte) error {
+	components, err := ParseProtoFields(data)
 	if err != nil {
 		return fmt.Errorf("parse EntityComponentPb: %w", err)
 	}
 	for _, component := range components {
-		if component.wire != 2 {
+		if component.Wire != 2 {
 			continue
 		}
-		if err := applyEntityComponentPayload(entity, component.number, component.data); err != nil {
+		if err := applyEntityComponentPayload(entity, component.Number, component.Data); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func applyEntityComponentPayload(entity *runtimeEntity, componentNumber uint64, data []byte) error {
+func applyEntityComponentPayload(entity *RuntimeEntity, componentNumber uint64, data []byte) error {
 	switch componentNumber {
-	case fieldEntityComponentPbSummonerComponent: // SummonerComponentPb
-		fields, err := parseProtoFields(data)
+	case FieldEntityComponentPbSummonerComponent: // SummonerComponentPb
+		fields, err := ParseProtoFields(data)
 		if err != nil {
 			return fmt.Errorf("parse SummonerComponentPb: %w", err)
 		}
 		for _, field := range fields {
-			if field.wire != 0 {
+			if field.Wire != 0 {
 				continue
 			}
-			switch field.number {
-			case fieldSummonerComponentPbSummonerID:
-				entity.summonerID, entity.hasSummonerID = field.value, true
-			case fieldSummonerComponentPbSummonCfgID:
-				entity.summonConfigID, entity.hasSummonConfigID = field.value, true
+			switch field.Number {
+			case FieldSummonerComponentPbSummonerID:
+				entity.SummonerID, entity.HasSummonerID = field.Value, true
+			case FieldSummonerComponentPbSummonCfgID:
+				entity.SummonConfigID, entity.HasSummonConfigID = field.Value, true
 			case fieldSummonerComponentPbSummonSkillID:
-				entity.summonSkillID, entity.hasSummonSkillID = field.value, true
+				entity.SummonSkillID, entity.HasSummonSkillID = field.Value, true
 			case fieldSummonerComponentPbPlayerID:
-				entity.summonerPlayerID, entity.hasSummonerPlayerID = field.value, true
-			case fieldSummonerComponentPbType:
-				entity.summonType, entity.hasSummonType = field.value, true
+				entity.SummonerPlayerID, entity.HasSummonerPlayerID = field.Value, true
+			case FieldSummonerComponentPbType:
+				entity.SummonType, entity.HasSummonType = field.Value, true
 			}
 		}
 	case fieldEntityComponentPbEntityFsmComponentPb: // EntityFsmComponentPb
-		fields, err := parseProtoFields(data)
+		fields, err := ParseProtoFields(data)
 		if err != nil {
 			return fmt.Errorf("parse EntityFsmComponentPb: %w", err)
 		}
 		for _, field := range fields {
-			if field.number == fieldEntityFsmComponentPbCommonHashCode && field.wire == 0 { // CommonHashCode (int32)
-				entity.fsmCommonHashCode, entity.hasFsmCommonHashCode = int64(int32(uint32(field.value))), true
+			if field.Number == fieldEntityFsmComponentPbCommonHashCode && field.Wire == 0 { // CommonHashCode (int32)
+				entity.FSMCommonHashCode, entity.HasFsmCommonHashCode = int64(int32(uint32(field.Value))), true
 			}
-			if field.number == fieldEntityFsmComponentPbHashCode && field.wire == 0 { // HashCode (int32)
-				entity.fsmHashCode, entity.hasFsmHashCode = int64(int32(uint32(field.value))), true
+			if field.Number == fieldEntityFsmComponentPbHashCode && field.Wire == 0 { // HashCode (int32)
+				entity.FSMHashCode, entity.HasFsmHashCode = int64(int32(uint32(field.Value))), true
 			}
 		}
-	case fieldEntityComponentPbPartComponent: // PartComponentPb
+	case FieldEntityComponentPbPartComponent: // PartComponentPb
 		information, err := parseRuntimePartInformation(data)
 		if err != nil {
 			return err
 		}
-		entity.hasPartComponent = true
-		entity.partInformation = information
-	case fieldEntityComponentPbMonsterCaptureComponent: // MonsterCaptureComponentPb
-		fields, err := parseProtoFields(data)
+		entity.HasPartComponent = true
+		entity.PartInformation = information
+	case FieldEntityComponentPbMonsterCaptureComponent: // MonsterCaptureComponentPb
+		fields, err := ParseProtoFields(data)
 		if err != nil {
 			return fmt.Errorf("parse MonsterCaptureComponentPb: %w", err)
 		}
 		for _, field := range fields {
-			if field.wire != 0 {
+			if field.Wire != 0 {
 				continue
 			}
-			switch field.number {
-			case fieldMonsterCaptureComponentPbTemplateID:
-				entity.templateID, entity.hasTemplateID = field.value, true
+			switch field.Number {
+			case FieldMonsterCaptureComponentPbTemplateID:
+				entity.TemplateID, entity.HasTemplateID = field.Value, true
 			case fieldMonsterCaptureComponentPbEntityID:
-				entity.monsterCaptureEntityID, entity.hasMonsterCaptureEntityID = field.value, true
-			case fieldMonsterCaptureComponentPbMonsterID:
-				entity.monsterID, entity.hasMonsterID = field.value, true
+				entity.MonsterCaptureEntityID, entity.HasMonsterCaptureEntityID = field.Value, true
+			case FieldMonsterCaptureComponentPbMonsterID:
+				entity.MonsterID, entity.HasMonsterID = field.Value, true
 			}
 		}
 	case fieldEntityComponentPbPlayerFollowerSelfComponentPb: // PlayerFollowerSelfComponentPb
-		fields, err := parseProtoFields(data)
+		fields, err := ParseProtoFields(data)
 		if err != nil {
 			return fmt.Errorf("parse PlayerFollowerSelfComponentPb: %w", err)
 		}
 		for _, field := range fields {
-			if field.wire != 0 {
+			if field.Wire != 0 {
 				continue
 			}
-			switch field.number {
+			switch field.Number {
 			case fieldPlayerFollowerSelfComponentPbPlayerEntityID:
-				entity.playerEntityID, entity.hasPlayerEntityID = field.value, true
+				entity.PlayerEntityID, entity.HasPlayerEntityID = field.Value, true
 			case fieldPlayerFollowerSelfComponentPbSummonConfigID:
-				entity.followerSummonConfigID, entity.hasFollowerSummonConfigID = field.value, true
+				entity.FollowerSummonConfigID, entity.HasFollowerSummonConfigID = field.Value, true
 			}
 		}
 	case fieldEntityComponentPbConcomitantsComponentPb: // ConcomitantsComponentPb
-		fields, err := parseProtoFields(data)
+		fields, err := ParseProtoFields(data)
 		if err != nil {
 			return fmt.Errorf("parse ConcomitantsComponentPb: %w", err)
 		}
 		for _, field := range fields {
-			if field.wire != 0 {
+			if field.Wire != 0 {
 				continue
 			}
-			switch field.number {
+			switch field.Number {
 			case fieldConcomitantsComponentPbVisionEntityIDs: // VisionEntityIds[]
-				if len(entity.concomitantVisionIDs) >= maxRuntimeComponentEntityRefs {
+				if len(entity.ConcomitantVisionIDs) >= maxRuntimeComponentEntityRefs {
 					return fmt.Errorf("ConcomitantsComponentPb.VisionEntityIds exceeds limit %d", maxRuntimeComponentEntityRefs)
 				}
-				entity.concomitantVisionIDs = append(entity.concomitantVisionIDs, field.value)
+				entity.ConcomitantVisionIDs = append(entity.ConcomitantVisionIDs, field.Value)
 			case fieldConcomitantsComponentPbCustomEntityIDs: // CustomEntityIds[]
-				if len(entity.concomitantCustomIDs) >= maxRuntimeComponentEntityRefs {
+				if len(entity.ConcomitantCustomIDs) >= maxRuntimeComponentEntityRefs {
 					return fmt.Errorf("ConcomitantsComponentPb.CustomEntityIds exceeds limit %d", maxRuntimeComponentEntityRefs)
 				}
-				entity.concomitantCustomIDs = append(entity.concomitantCustomIDs, field.value)
+				entity.ConcomitantCustomIDs = append(entity.ConcomitantCustomIDs, field.Value)
 			case fieldConcomitantsComponentPbPhantomRoleEid: // PhantomRoleEid
-				entity.phantomRoleEntityID, entity.hasPhantomRoleEntityID = field.value, true
+				entity.PhantomRoleEntityID, entity.HasPhantomRoleEntityID = field.Value, true
 			case fieldConcomitantsComponentPbWeakVisionEid: // WeakVisionEid
-				entity.weakVisionEntityID, entity.hasWeakVisionEntityID = field.value, true
+				entity.WeakVisionEntityID, entity.HasWeakVisionEntityID = field.Value, true
 			}
 		}
 	case fieldEntityComponentPbPlayerFollowersComponentPb: // PlayerFollowersComponentPb
-		fields, err := parseProtoFields(data)
+		fields, err := ParseProtoFields(data)
 		if err != nil {
 			return fmt.Errorf("parse PlayerFollowersComponentPb: %w", err)
 		}
 		for _, field := range fields {
-			if field.number != fieldPlayerFollowersComponentPbListPlayerFollowerPb || field.wire != 2 {
+			if field.Number != fieldPlayerFollowersComponentPbListPlayerFollowerPb || field.Wire != 2 {
 				continue
 			}
-			if len(entity.playerFollowers) >= maxRuntimeComponentEntityRefs {
+			if len(entity.PlayerFollowers) >= maxRuntimeComponentEntityRefs {
 				return fmt.Errorf("PlayerFollowersComponentPb.ListPlayerFollowerPb exceeds limit %d", maxRuntimeComponentEntityRefs)
 			}
-			followerFields, err := parseProtoFields(field.data)
+			followerFields, err := ParseProtoFields(field.Data)
 			if err != nil {
 				return fmt.Errorf("parse PlayerFollowerPb: %w", err)
 			}
 			var follower runtimePlayerFollower
 			for _, followerField := range followerFields {
-				if followerField.wire != 0 {
+				if followerField.Wire != 0 {
 					continue
 				}
-				switch followerField.number {
-				case fieldPlayerFollowerPbType: // Type
-					follower.typeID, follower.hasType = followerField.value, true
-				case fieldPlayerFollowerPbEntityID: // EntityId
-					follower.entityID, follower.hasEntity = followerField.value, true
+				switch followerField.Number {
+				case FieldPlayerFollowerPbType: // Type
+					follower.TypeID, follower.HasType = followerField.Value, true
+				case FieldPlayerFollowerPbEntityID: // EntityId
+					follower.EntityID, follower.HasEntity = followerField.Value, true
 				}
 			}
-			entity.playerFollowers = append(entity.playerFollowers, follower)
+			entity.PlayerFollowers = append(entity.PlayerFollowers, follower)
 		}
 	case fieldEntityComponentPbFollowEntityComponentPb: // FollowEntityComponentPb
-		fields, err := parseProtoFields(data)
+		fields, err := ParseProtoFields(data)
 		if err != nil {
 			return fmt.Errorf("parse FollowEntityComponentPb: %w", err)
 		}
 		for _, field := range fields {
-			if field.number == fieldFollowEntityComponentPbEntityID && field.wire == 0 {
-				entity.followEntityID, entity.hasFollowEntityID = field.value, true
+			if field.Number == fieldFollowEntityComponentPbEntityID && field.Wire == 0 {
+				entity.FollowEntityID, entity.HasFollowEntityID = field.Value, true
 			}
 		}
 	}
 	return nil
 }
 
-func parseRuntimePartInformation(data []byte) (map[int32]runtimePartInformation, error) {
-	fields, err := parseProtoFields(data)
+func parseRuntimePartInformation(data []byte) (map[int32]RuntimePartInformation, error) {
+	fields, err := ParseProtoFields(data)
 	if err != nil {
 		return nil, fmt.Errorf("parse PartComponentPb: %w", err)
 	}
-	parts := make(map[int32]runtimePartInformation)
+	parts := make(map[int32]RuntimePartInformation)
 	rowsSeen := 0
 	for _, field := range fields {
-		if field.number != fieldPartComponentPbPartLifeInfos || field.wire != 2 { // PartComponentPb.PartLifeInfos[]
+		if field.Number != FieldPartComponentPbPartLifeInfos || field.Wire != 2 { // PartComponentPb.PartLifeInfos[]
 			continue
 		}
 		rowsSeen++
 		if rowsSeen > maxRuntimePartInformationRows {
 			return nil, fmt.Errorf("PartComponentPb.PartLifeInfos exceeds limit %d", maxRuntimePartInformationRows)
 		}
-		rowFields, err := parseProtoFields(field.data)
+		rowFields, err := ParseProtoFields(field.Data)
 		if err != nil {
 			return nil, fmt.Errorf("parse PartInformation: %w", err)
 		}
-		var information runtimePartInformation
+		var information RuntimePartInformation
 		for _, rowField := range rowFields {
 			switch {
-			case rowField.number == fieldPartInformationPartID && rowField.wire == 0: // PartInformation.PartId
-				information.partID = int32(uint32(rowField.value))
+			case rowField.Number == FieldPartInformationPartID && rowField.Wire == 0: // PartInformation.PartId
+				information.PartID = int32(uint32(rowField.Value))
 				information.hasPartID = true
-			case rowField.number == fieldPartInformationLifeMax && rowField.wire == 5: // PartInformation.LifeMax
-				information.lifeMax = math.Float32frombits(binary.LittleEndian.Uint32(rowField.data))
-				if math.IsNaN(float64(information.lifeMax)) || math.IsInf(float64(information.lifeMax), 0) {
+			case rowField.Number == FieldPartInformationLifeMax && rowField.Wire == 5: // PartInformation.LifeMax
+				information.LifeMax = math.Float32frombits(binary.LittleEndian.Uint32(rowField.Data))
+				if math.IsNaN(float64(information.LifeMax)) || math.IsInf(float64(information.LifeMax), 0) {
 					return nil, fmt.Errorf("PartInformation.LifeMax is not finite")
 				}
-				information.hasLifeMax = true
-			case rowField.number == fieldPartInformationActivated && rowField.wire == 0: // PartInformation.Activated
-				information.activated = rowField.value != 0
-				information.hasActivated = true
-			case rowField.number == fieldPartInformationPartTag && rowField.wire == 0: // PartInformation.PartTag
-				information.partTag = int32(uint32(rowField.value))
-				information.hasPartTag = true
+				information.HasLifeMax = true
+			case rowField.Number == FieldPartInformationActivated && rowField.Wire == 0: // PartInformation.Activated
+				information.Activated = rowField.Value != 0
+				information.HasActivated = true
+			case rowField.Number == FieldPartInformationPartTag && rowField.Wire == 0: // PartInformation.PartTag
+				information.PartTag = int32(uint32(rowField.Value))
+				information.HasPartTag = true
 			}
 		}
 		if !information.hasPartID {
 			continue
 		}
-		if previous, exists := parts[information.partID]; exists {
+		if previous, exists := parts[information.PartID]; exists {
 			if previous != information {
-				previous.conflicted = true
-				parts[information.partID] = previous
+				previous.Conflicted = true
+				parts[information.PartID] = previous
 			}
 			continue
 		}
-		parts[information.partID] = information
+		parts[information.PartID] = information
 	}
 	return parts, nil
 }
 
-func mergeRuntimeEntity(old, update runtimeEntity) runtimeEntity {
-	if update.entityID == 0 {
-		update.entityID = old.entityID
+func mergeRuntimeEntity(old, update RuntimeEntity) RuntimeEntity {
+	if update.EntityID == 0 {
+		update.EntityID = old.EntityID
 	}
-	if !update.hasSceneInstanceID && old.hasSceneInstanceID {
-		update.sceneInstanceID, update.hasSceneInstanceID = old.sceneInstanceID, true
+	if !update.HasSceneInstanceID && old.HasSceneInstanceID {
+		update.SceneInstanceID, update.HasSceneInstanceID = old.SceneInstanceID, true
 	}
-	if update.sourceMessageID == 0 {
-		update.sourceMessageID = old.sourceMessageID
+	if update.SourceMessageID == 0 {
+		update.SourceMessageID = old.SourceMessageID
 	}
-	if !update.hasEntityType && old.hasEntityType {
-		update.entityTypeCode, update.hasEntityType = old.entityTypeCode, true
+	if !update.HasEntityType && old.HasEntityType {
+		update.EntityTypeCode, update.HasEntityType = old.EntityTypeCode, true
 	}
-	if !update.hasConfigID && old.hasConfigID {
-		update.configID, update.hasConfigID = old.configID, true
+	if !update.HasConfigID && old.HasConfigID {
+		update.ConfigID, update.HasConfigID = old.ConfigID, true
 	}
-	if !update.hasConfigType && old.hasConfigType {
-		update.configType, update.hasConfigType = old.configType, true
+	if !update.HasConfigType && old.HasConfigType {
+		update.ConfigType, update.HasConfigType = old.ConfigType, true
 	}
-	if !update.hasPrefabID && old.hasPrefabID {
-		update.prefabID, update.hasPrefabID = old.prefabID, true
+	if !update.HasPrefabID && old.HasPrefabID {
+		update.PrefabID, update.HasPrefabID = old.PrefabID, true
 	}
-	if !update.hasPlayerID && old.hasPlayerID {
-		update.playerID, update.hasPlayerID = old.playerID, true
+	if !update.HasPlayerID && old.HasPlayerID {
+		update.PlayerID, update.HasPlayerID = old.PlayerID, true
 	}
-	if !update.hasOwnerID && old.hasOwnerID {
-		update.ownerID, update.hasOwnerID = old.ownerID, true
+	if !update.HasOwnerID && old.HasOwnerID {
+		update.OwnerID, update.HasOwnerID = old.OwnerID, true
 	}
-	if !update.hasOwnerIncID && old.hasOwnerIncID {
-		update.ownerIncID, update.hasOwnerIncID = old.ownerIncID, true
+	if !update.HasOwnerIncID && old.HasOwnerIncID {
+		update.OwnerIncID, update.HasOwnerIncID = old.OwnerIncID, true
 	}
-	if !update.hasSummonerID && old.hasSummonerID {
-		update.summonerID, update.hasSummonerID = old.summonerID, true
+	if !update.HasSummonerID && old.HasSummonerID {
+		update.SummonerID, update.HasSummonerID = old.SummonerID, true
 	}
-	if !update.hasSummonerPlayerID && old.hasSummonerPlayerID {
-		update.summonerPlayerID, update.hasSummonerPlayerID = old.summonerPlayerID, true
+	if !update.HasSummonerPlayerID && old.HasSummonerPlayerID {
+		update.SummonerPlayerID, update.HasSummonerPlayerID = old.SummonerPlayerID, true
 	}
-	if !update.hasSummonConfigID && old.hasSummonConfigID {
-		update.summonConfigID, update.hasSummonConfigID = old.summonConfigID, true
+	if !update.HasSummonConfigID && old.HasSummonConfigID {
+		update.SummonConfigID, update.HasSummonConfigID = old.SummonConfigID, true
 	}
-	if !update.hasSummonSkillID && old.hasSummonSkillID {
-		update.summonSkillID, update.hasSummonSkillID = old.summonSkillID, true
+	if !update.HasSummonSkillID && old.HasSummonSkillID {
+		update.SummonSkillID, update.HasSummonSkillID = old.SummonSkillID, true
 	}
-	if !update.hasSummonType && old.hasSummonType {
-		update.summonType, update.hasSummonType = old.summonType, true
+	if !update.HasSummonType && old.HasSummonType {
+		update.SummonType, update.HasSummonType = old.SummonType, true
 	}
-	if !update.hasSceneSummonerID && old.hasSceneSummonerID {
-		update.sceneSummonerID, update.hasSceneSummonerID = old.sceneSummonerID, true
+	if !update.HasSceneSummonerID && old.HasSceneSummonerID {
+		update.SceneSummonerID, update.HasSceneSummonerID = old.SceneSummonerID, true
 	}
-	if !update.hasSceneSummonConfigID && old.hasSceneSummonConfigID {
-		update.sceneSummonConfigID, update.hasSceneSummonConfigID = old.sceneSummonConfigID, true
+	if !update.HasSceneSummonConfigID && old.HasSceneSummonConfigID {
+		update.SceneSummonConfigID, update.HasSceneSummonConfigID = old.SceneSummonConfigID, true
 	}
-	if !update.hasSceneSummonSkillID && old.hasSceneSummonSkillID {
-		update.sceneSummonSkillID, update.hasSceneSummonSkillID = old.sceneSummonSkillID, true
+	if !update.HasSceneSummonSkillID && old.HasSceneSummonSkillID {
+		update.SceneSummonSkillID, update.HasSceneSummonSkillID = old.SceneSummonSkillID, true
 	}
-	if !update.hasPlayerEntityID && old.hasPlayerEntityID {
-		update.playerEntityID, update.hasPlayerEntityID = old.playerEntityID, true
+	if !update.HasPlayerEntityID && old.HasPlayerEntityID {
+		update.PlayerEntityID, update.HasPlayerEntityID = old.PlayerEntityID, true
 	}
-	if !update.hasFollowerSummonConfigID && old.hasFollowerSummonConfigID {
-		update.followerSummonConfigID, update.hasFollowerSummonConfigID = old.followerSummonConfigID, true
+	if !update.HasFollowerSummonConfigID && old.HasFollowerSummonConfigID {
+		update.FollowerSummonConfigID, update.HasFollowerSummonConfigID = old.FollowerSummonConfigID, true
 	}
-	if !update.hasFsmCommonHashCode && old.hasFsmCommonHashCode {
-		update.fsmCommonHashCode, update.hasFsmCommonHashCode = old.fsmCommonHashCode, true
+	if !update.HasFsmCommonHashCode && old.HasFsmCommonHashCode {
+		update.FSMCommonHashCode, update.HasFsmCommonHashCode = old.FSMCommonHashCode, true
 	}
-	if !update.hasFsmHashCode && old.hasFsmHashCode {
-		update.fsmHashCode, update.hasFsmHashCode = old.fsmHashCode, true
+	if !update.HasFsmHashCode && old.HasFsmHashCode {
+		update.FSMHashCode, update.HasFsmHashCode = old.FSMHashCode, true
 	}
-	if !update.hasPhantomRoleEntityID && old.hasPhantomRoleEntityID {
-		update.phantomRoleEntityID, update.hasPhantomRoleEntityID = old.phantomRoleEntityID, true
+	if !update.HasPhantomRoleEntityID && old.HasPhantomRoleEntityID {
+		update.PhantomRoleEntityID, update.HasPhantomRoleEntityID = old.PhantomRoleEntityID, true
 	}
-	if len(update.concomitantVisionIDs) == 0 && len(old.concomitantVisionIDs) > 0 {
-		update.concomitantVisionIDs = append([]uint64(nil), old.concomitantVisionIDs...)
+	if len(update.ConcomitantVisionIDs) == 0 && len(old.ConcomitantVisionIDs) > 0 {
+		update.ConcomitantVisionIDs = append([]uint64(nil), old.ConcomitantVisionIDs...)
 	}
-	if len(update.concomitantCustomIDs) == 0 && len(old.concomitantCustomIDs) > 0 {
-		update.concomitantCustomIDs = append([]uint64(nil), old.concomitantCustomIDs...)
+	if len(update.ConcomitantCustomIDs) == 0 && len(old.ConcomitantCustomIDs) > 0 {
+		update.ConcomitantCustomIDs = append([]uint64(nil), old.ConcomitantCustomIDs...)
 	}
-	if !update.hasWeakVisionEntityID && old.hasWeakVisionEntityID {
-		update.weakVisionEntityID, update.hasWeakVisionEntityID = old.weakVisionEntityID, true
+	if !update.HasWeakVisionEntityID && old.HasWeakVisionEntityID {
+		update.WeakVisionEntityID, update.HasWeakVisionEntityID = old.WeakVisionEntityID, true
 	}
-	if !update.hasFollowEntityID && old.hasFollowEntityID {
-		update.followEntityID, update.hasFollowEntityID = old.followEntityID, true
+	if !update.HasFollowEntityID && old.HasFollowEntityID {
+		update.FollowEntityID, update.HasFollowEntityID = old.FollowEntityID, true
 	}
-	if len(update.playerFollowers) == 0 && len(old.playerFollowers) > 0 {
-		update.playerFollowers = append([]runtimePlayerFollower(nil), old.playerFollowers...)
+	if len(update.PlayerFollowers) == 0 && len(old.PlayerFollowers) > 0 {
+		update.PlayerFollowers = append([]runtimePlayerFollower(nil), old.PlayerFollowers...)
 	}
-	if !update.hasPartComponent && old.hasPartComponent {
-		update.hasPartComponent = true
-		update.partInformation = old.partInformation
-		update.partComponentSource = old.partComponentSource
+	if !update.HasPartComponent && old.HasPartComponent {
+		update.HasPartComponent = true
+		update.PartInformation = old.PartInformation
+		update.PartComponentSource = old.PartComponentSource
 	}
-	if !update.hasMonsterID && old.hasMonsterID {
-		update.monsterID, update.hasMonsterID = old.monsterID, true
+	if !update.HasMonsterID && old.HasMonsterID {
+		update.MonsterID, update.HasMonsterID = old.MonsterID, true
 	}
-	if !update.hasMonsterCaptureEntityID && old.hasMonsterCaptureEntityID {
-		update.monsterCaptureEntityID, update.hasMonsterCaptureEntityID = old.monsterCaptureEntityID, true
+	if !update.HasMonsterCaptureEntityID && old.HasMonsterCaptureEntityID {
+		update.MonsterCaptureEntityID, update.HasMonsterCaptureEntityID = old.MonsterCaptureEntityID, true
 	}
-	if !update.hasTemplateID && old.hasTemplateID {
-		update.templateID, update.hasTemplateID = old.templateID, true
+	if !update.HasTemplateID && old.HasTemplateID {
+		update.TemplateID, update.HasTemplateID = old.TemplateID, true
 	}
-	if !update.hasRoleSkinID && old.hasRoleSkinID {
-		update.roleSkinID, update.hasRoleSkinID = old.roleSkinID, true
+	if !update.HasRoleSkinID && old.HasRoleSkinID {
+		update.RoleSkinID, update.HasRoleSkinID = old.RoleSkinID, true
 	}
-	if old.roleConflict {
-		update.roleConflict = true
-		update.roleID, update.hasRoleID = 0, false
-	} else if update.hasRoleID && old.hasRoleID && update.roleID != old.roleID {
-		update.roleConflict = true
-		update.roleID, update.hasRoleID = 0, false
-	} else if !update.hasRoleID && old.hasRoleID {
-		update.roleID, update.hasRoleID = old.roleID, true
+	if old.RoleConflict {
+		update.RoleConflict = true
+		update.RoleID, update.HasRoleID = 0, false
+	} else if update.HasRoleID && old.HasRoleID && update.RoleID != old.RoleID {
+		update.RoleConflict = true
+		update.RoleID, update.HasRoleID = 0, false
+	} else if !update.HasRoleID && old.HasRoleID {
+		update.RoleID, update.HasRoleID = old.RoleID, true
 	}
-	if update.roleSourceFieldPath == "" {
-		update.roleSourceFieldPath = old.roleSourceFieldPath
+	if update.RoleSourceFieldPath == "" {
+		update.RoleSourceFieldPath = old.RoleSourceFieldPath
 	}
-	if update.componentSourceMessageID == 0 {
-		update.componentSourceMessageID = old.componentSourceMessageID
+	if update.ComponentSourceMessageID == 0 {
+		update.ComponentSourceMessageID = old.ComponentSourceMessageID
 	}
-	if update.componentSourceFieldPath == "" {
-		update.componentSourceFieldPath = old.componentSourceFieldPath
+	if update.ComponentSourceFieldPath == "" {
+		update.ComponentSourceFieldPath = old.ComponentSourceFieldPath
 	}
-	if update.sourceFieldPath == "" {
-		update.sourceFieldPath = old.sourceFieldPath
+	if update.SourceFieldPath == "" {
+		update.SourceFieldPath = old.SourceFieldPath
 	}
 	return update
 }
 
-func (r *entityResolver) resolve(entityID uint64) (runtimeEntity, resolutionStatus) {
-	entity, ok := r.entities[entityID]
+func (r *EntityResolver) Resolve(entityID uint64) (RuntimeEntity, ResolutionStatus) {
+	entity, ok := r.Entities[entityID]
 	if !ok {
-		return runtimeEntity{entityID: entityID}, resolutionUnknown
+		return RuntimeEntity{EntityID: entityID}, ResolutionUnknown
 	}
-	if entity.sourceMessageID == cmdEntityAddNotify {
-		return entity, resolutionVerified
+	if entity.SourceMessageID == CmdEntityAddNotify {
+		return entity, ResolutionVerified
 	}
-	if entity.sourceMessageID == cmdJoinSceneNotify {
-		return entity, resolutionVerified
+	if entity.SourceMessageID == CmdJoinSceneNotify {
+		return entity, ResolutionVerified
 	}
-	if entity.sourceMessageID == cmdUpdateSceneGroupDataNotify {
-		return entity, resolutionVerified
+	if entity.SourceMessageID == CmdUpdateSceneGroupDataNotify {
+		return entity, ResolutionVerified
 	}
-	if entity.sourceMessageID == cmdEntityActiveRequest {
-		return entity, resolutionCorrelated
+	if entity.SourceMessageID == CmdEntityActiveRequest {
+		return entity, ResolutionCorrelated
 	}
-	if entity.sourceMessageID == cmdEntityActiveResponse {
-		return entity, resolutionCorrelated
+	if entity.SourceMessageID == CmdEntityActiveResponse {
+		return entity, ResolutionCorrelated
 	}
-	return entity, resolutionUnknown
+	return entity, ResolutionUnknown
 }
 
-func (r *entityResolver) evictIfNeeded() {
-	if r.limit <= 0 || len(r.entities) <= r.limit {
+func (r *EntityResolver) evictIfNeeded() {
+	if r.limit <= 0 || len(r.Entities) <= r.limit {
 		return
 	}
 	var oldestID, oldestSequence uint64
 	first := true
-	for id, entity := range r.entities {
+	for id, entity := range r.Entities {
 		if first || entity.lastSeenSequence < oldestSequence {
 			oldestID, oldestSequence, first = id, entity.lastSeenSequence, false
 		}
 	}
 	if !first {
-		delete(r.entities, oldestID)
+		delete(r.Entities, oldestID)
 	}
 }

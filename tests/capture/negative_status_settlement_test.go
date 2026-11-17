@@ -33,62 +33,62 @@ const (
 
 // newSettlementTestProcessor is the credit test processor with a third local role, the statuses without a period and the
 // settlement of every status Buff the tests use.
-func newSettlementTestProcessor() *processor {
+func newSettlementTestProcessor() *Processor {
 	p := newCreditTestProcessor()
 	addTestPlayerRoleGroupEntity(p, 102, 77, 1608)
-	p.observeLocalRoleEntity(102)
+	p.ObserveLocalRoleEntity(102)
 	hash := strings.Repeat("a", 64)
 	for _, damageID := range []uint64{settleGlacio, settleFusion, settleHavoc, settleGlacioNew} {
-		p.masters.damage[damageID] = damageMasterRecord{ID: damageID, CalculateType: 0, SourceHash: hash, SourceTable: "damage"}
-		p.masters.abnormalDamageIDs[damageID] = struct{}{}
+		p.Masters.Damage[damageID] = DamageMasterRecord{ID: damageID, CalculateType: 0, SourceHash: hash, SourceTable: "damage"}
+		p.Masters.AbnormalDamageIDs[damageID] = struct{}{}
 	}
-	p.masters.negativeStatusExecutors[settleGlacioBuff] = settleGlacio
-	p.masters.negativeStatusExecutors[settleFusionBuff] = settleFusion
-	p.masters.negativeStatusExecutors[settleHavocBuff] = settleHavoc
-	p.masters.negativeStatusExecutors[settleGlacioNewBf] = settleGlacioNew
-	p.masters.negativeStatusSettlements = map[uint64]negativeStatusSettlement{
-		notifyTestAeroBuff:    {known: true, periodic: true, executesOnCreation: true},
-		notifyTestAeroBuff2:   {known: true, periodic: true, executesOnCreation: true},
-		notifyTestSpectroBuff: {known: true, periodic: true},
-		settleGlacioBuff:      {known: true, executesOnCreation: true, clearsOnOverflow: true},
-		settleFusionBuff:      {known: true, executesOnCreation: true, clearsOnOverflow: true},
-		settleHavocBuff:       {known: true, executesOnCreation: true},
-		settleGlacioNewBf:     {known: true, executesOnCreation: true},
+	p.Masters.NegativeStatusExecutors[settleGlacioBuff] = settleGlacio
+	p.Masters.NegativeStatusExecutors[settleFusionBuff] = settleFusion
+	p.Masters.NegativeStatusExecutors[settleHavocBuff] = settleHavoc
+	p.Masters.NegativeStatusExecutors[settleGlacioNewBf] = settleGlacioNew
+	p.Masters.NegativeStatusSettlements = map[uint64]NegativeStatusSettlementRule{
+		notifyTestAeroBuff:    {Known: true, Periodic: true, ExecutesOnCreation: true},
+		notifyTestAeroBuff2:   {Known: true, Periodic: true, ExecutesOnCreation: true},
+		notifyTestSpectroBuff: {Known: true, Periodic: true},
+		settleGlacioBuff:      {Known: true, ExecutesOnCreation: true, ClearsOnOverflow: true},
+		settleFusionBuff:      {Known: true, ExecutesOnCreation: true, ClearsOnOverflow: true},
+		settleHavocBuff:       {Known: true, ExecutesOnCreation: true},
+		settleGlacioNewBf:     {Known: true, ExecutesOnCreation: true},
 	}
 	return p
 }
 
 // statusApplyItem is the server's ApplyGameplayEffectNotify of a status instance (positive handle) on target.
 func statusApplyItem(target, handle, buff, instigator, stack uint64) []byte {
-	payload := appendVarintField(nil, fieldApplyGameplayEffectNotifyHandle, handle)
-	payload = appendVarintField(payload, fieldApplyGameplayEffectNotifyID, buff)
-	payload = appendVarintField(payload, fieldApplyGameplayEffectNotifyEntityID, target)
+	payload := appendVarintField(nil, FieldApplyGameplayEffectNotifyHandle, handle)
+	payload = appendVarintField(payload, FieldApplyGameplayEffectNotifyID, buff)
+	payload = appendVarintField(payload, FieldApplyGameplayEffectNotifyEntityID, target)
 	if instigator != 0 {
-		payload = appendVarintField(payload, fieldApplyGameplayEffectNotifyInstigatorID, instigator)
+		payload = appendVarintField(payload, FieldApplyGameplayEffectNotifyInstigatorID, instigator)
 	}
-	payload = appendVarintField(payload, fieldApplyGameplayEffectNotifyStackCount, stack)
-	notify := appendBytesField(nil, fieldCombatNotifyDataCombatCommon, appendVarintField(nil, fieldCombatCommonEntityID, target))
-	notify = appendBytesField(notify, fieldCombatNotifyDataApplyGameplayEffectNotify, payload)
-	return appendBytesField(nil, fieldCombatReceiveDataCombatNotifyData, notify)
+	payload = appendVarintField(payload, FieldApplyGameplayEffectNotifyStackCount, stack)
+	notify := appendBytesField(nil, FieldCombatNotifyDataCombatCommon, appendVarintField(nil, FieldCombatCommonEntityID, target))
+	notify = appendBytesField(notify, FieldCombatNotifyDataApplyGameplayEffectNotify, payload)
+	return appendBytesField(nil, FieldCombatReceiveDataCombatNotifyData, notify)
 }
 
 // statusStackItem is the server's BuffStackCountNotify of one stack application by instigator.
 func statusStackItem(target, handle, stack, instigator uint64) []byte {
-	payload := appendVarintField(nil, fieldBuffStackCountNotifyHandleID, handle)
-	payload = appendVarintField(payload, fieldBuffStackCountNotifyNewStackCount, stack)
-	payload = appendVarintField(payload, fieldBuffStackCountNotifyInstigatorID, instigator)
-	notify := appendBytesField(nil, fieldCombatNotifyDataCombatCommon, appendVarintField(nil, fieldCombatCommonEntityID, target))
-	notify = appendBytesField(notify, fieldCombatNotifyDataBuffStackCountNotify, payload)
-	return appendBytesField(nil, fieldCombatReceiveDataCombatNotifyData, notify)
+	payload := appendVarintField(nil, FieldBuffStackCountNotifyHandleID, handle)
+	payload = appendVarintField(payload, FieldBuffStackCountNotifyNewStackCount, stack)
+	payload = appendVarintField(payload, FieldBuffStackCountNotifyInstigatorID, instigator)
+	notify := appendBytesField(nil, FieldCombatNotifyDataCombatCommon, appendVarintField(nil, FieldCombatCommonEntityID, target))
+	notify = appendBytesField(notify, FieldCombatNotifyDataBuffStackCountNotify, payload)
+	return appendBytesField(nil, FieldCombatReceiveDataCombatNotifyData, notify)
 }
 
 // statusRemoveItem is the server's RemoveGameplayEffectNotify of a status instance.
 func statusRemoveItem(target, handle uint64) []byte {
-	payload := appendVarintField(nil, fieldRemoveGameplayEffectNotifyHandle, handle)
-	payload = appendVarintField(payload, fieldRemoveGameplayEffectNotifyEntityID, target)
-	notify := appendBytesField(nil, fieldCombatNotifyDataCombatCommon, appendVarintField(nil, fieldCombatCommonEntityID, target))
-	notify = appendBytesField(notify, fieldCombatNotifyDataRemoveGameplayEffectNotify, payload)
-	return appendBytesField(nil, fieldCombatReceiveDataCombatNotifyData, notify)
+	payload := appendVarintField(nil, FieldRemoveGameplayEffectNotifyHandle, handle)
+	payload = appendVarintField(payload, FieldRemoveGameplayEffectNotifyEntityID, target)
+	notify := appendBytesField(nil, FieldCombatNotifyDataCombatCommon, appendVarintField(nil, FieldCombatCommonEntityID, target))
+	notify = appendBytesField(notify, FieldCombatNotifyDataRemoveGameplayEffectNotify, payload)
+	return appendBytesField(nil, FieldCombatReceiveDataCombatNotifyData, notify)
 }
 
 func statusTick(target, damageID uint64, damage int32) []byte {
@@ -96,27 +96,27 @@ func statusTick(target, damageID uint64, damage int32) []byte {
 }
 
 // deliverServerFrame hands one standalone server frame through the server-sequence check first, as handleFrame does.
-func deliverServerFrame(t *testing.T, p *processor, seconds float64, sequence uint32, items ...[]byte) {
+func deliverServerFrame(t *testing.T, p *Processor, seconds float64, sequence uint32, items ...[]byte) {
 	t.Helper()
 	pairingFrame(p, seconds)
-	frame := gameFrame{direction: "in", commandID: cmdCombatReceivePackNotify, sequence: sequence, timestamp: pairingAt(seconds)}
+	frame := GameFrame{Direction: "in", CommandID: CmdCombatReceivePackNotify, Sequence: sequence, Timestamp: pairingAt(seconds)}
 	p.observeServerSequence(frame)
-	if err := p.handleCombatReceivePacks(frame, receivePackBody(items...)); err != nil {
+	if err := p.HandleCombatReceivePacks(frame, receivePackBody(items...)); err != nil {
 		t.Fatal(err)
 	}
 }
 
 // statusRow returns the status row of DamageId credited to role, zero when the role has none.
-func statusRow(t *testing.T, p *processor, roleID, damageID uint64) StatusDamageSnapshot {
+func statusRow(t *testing.T, p *Processor, roleID, damageID uint64) StatusDamageSnapshot {
 	t.Helper()
-	_, row := creditOf(t, p.damageStatistics.Snapshot(), roleID, damageID)
+	_, row := creditOf(t, p.DamageStatistics.Snapshot(), roleID, damageID)
 	return row
 }
 
 // assertUnassignedStatus checks that damage of the local team stays credited to no role.
-func assertUnassignedStatus(t *testing.T, p *processor, want int64) {
+func assertUnassignedStatus(t *testing.T, p *Processor, want int64) {
 	t.Helper()
-	snapshot := p.damageStatistics.Snapshot()
+	snapshot := p.DamageStatistics.Snapshot()
 	if snapshot.UnassignedRole.NegativeStatusDamage != want {
 		t.Fatalf("unassigned negative-status damage %d, want %d (roles %+v)", snapshot.UnassignedRole.NegativeStatusDamage, want, snapshot.Roles)
 	}
@@ -135,8 +135,8 @@ func TestInvokePeriodBeforeTheStatusExistsForcesNothing(t *testing.T) {
 	if row := statusRow(t, p, 1505, notifyTestAero); row.DamageDealt != 0 {
 		t.Fatalf("role 1505 status %+v; an InvokePeriod that found no status forced nothing", row)
 	}
-	if p.notifyStats.statusTriggersForcingNothing != 1 || p.notifyStats.creditedTrigger != 0 {
-		t.Fatalf("notify stats %+v", p.notifyStats)
+	if p.NotifyStats.StatusTriggersForcingNothing != 1 || p.NotifyStats.CreditedTrigger != 0 {
+		t.Fatalf("notify stats %+v", p.NotifyStats)
 	}
 	assertUnassignedStatus(t, p, 0)
 }
@@ -170,7 +170,7 @@ func TestNegativeStatusCreditFollowsOwnerAndTrigger(t *testing.T) {
 				items = append(items, triggerData(200, notifyTestInvokeAero, c.trigger))
 			}
 			deliverNotifyFrame(t, p, 2, 4, append(items, aeroTick(200, 900))...)
-			snapshot := p.damageStatistics.Snapshot()
+			snapshot := p.DamageStatistics.Snapshot()
 			var credited int64
 			for _, role := range snapshot.Roles {
 				for _, row := range role.Statuses {
@@ -200,7 +200,7 @@ func TestNegativeStatusCreditFollowsOwnerAndTrigger(t *testing.T) {
 // Swapping the entities of A and B swaps the credits: nothing in the rule depends on a role id, the active role or a
 // fixed entity.
 func TestNegativeStatusCreditFollowsTheEntitiesWhenTheyAreSwapped(t *testing.T) {
-	run := func(owner, forcer uint64) (ownerRole, forcerRole StatusDamageSnapshot, p *processor) {
+	run := func(owner, forcer uint64) (ownerRole, forcerRole StatusDamageSnapshot, p *Processor) {
 		p = newSettlementTestProcessor()
 		deliverNotifyFrame(t, p, 0.5, 2, statusApplyItem(200, 7, notifyTestAeroBuff, owner, 1))
 		deliverNotifyFrame(t, p, 0.55, 3, aeroTick(200, 111))
@@ -285,8 +285,8 @@ func TestMissingServerFramesKeepTheOwnerFromTakingAPossiblyForcedResult(t *testi
 		t.Fatalf("role 1409 status %+v; the result right after the gap is not proven the owner's", row)
 	}
 	assertUnassignedStatus(t, p, 900)
-	if p.serverSequence.total != 1 {
-		t.Fatalf("server sequence gaps %d, want 1", p.serverSequence.total)
+	if p.ServerSequence.Total != 1 {
+		t.Fatalf("server sequence gaps %d, want 1", p.ServerSequence.Total)
 	}
 
 	complete := newSettlementTestProcessor()
@@ -320,7 +320,7 @@ func TestInvokePeriodOfAnEarlierSessionForcesNothing(t *testing.T) {
 	p := newSettlementTestProcessor()
 	deliverNotifyFrame(t, p, 0.5, 2, statusApplyItem(200, 7, notifyTestAeroBuff, 100, 1))
 	deliverNotifyFrame(t, p, 1, 3, triggerData(200, notifyTestInvokeAero, 101))
-	p.sessionNumber++ // reconnect: a new protocol session
+	p.SessionNumber++ // reconnect: a new protocol session
 	deliverNotifyFrame(t, p, 1.05, 4, statusApplyItem(200, 7, notifyTestAeroBuff, 100, 1))
 	deliverNotifyFrame(t, p, 1.08, 5, aeroTick(200, 400))
 	if row := statusRow(t, p, 1505, notifyTestAero); row.DamageDealt != 0 {
@@ -380,8 +380,8 @@ func TestStackingByAnotherRoleDependsOnTheSettlement(t *testing.T) {
 		t.Fatalf("role 1505 Glacio Chafe %+v; B's application is the only one in the third result's moment", row)
 	}
 	assertUnassignedStatus(t, applied, 0)
-	if applied.notifyStats.settledByApplication != 3 {
-		t.Fatalf("notify stats %+v", applied.notifyStats)
+	if applied.NotifyStats.SettledByApplication != 3 {
+		t.Fatalf("notify stats %+v", applied.NotifyStats)
 	}
 }
 
@@ -389,7 +389,7 @@ func TestStackingByAnotherRoleDependsOnTheSettlement(t *testing.T) {
 // report the removal before the burst. The burst is still the local team's damage, credited to the role whose
 // application overflowed the instance (a stack report that keeps the count at the limit), whoever applied the rest.
 func TestOverflowBurstAfterItsInstanceWasRemoved(t *testing.T) {
-	burst := func(overflowBy uint64) *processor {
+	burst := func(overflowBy uint64) *Processor {
 		p := newSettlementTestProcessor()
 		deliverNotifyFrame(t, p, 0.5, 2, statusApplyItem(200, 8, settleFusionBuff, 100, 9))
 		deliverNotifyFrame(t, p, 1, 3, statusStackItem(200, 8, 10, 100))
@@ -401,11 +401,11 @@ func TestOverflowBurstAfterItsInstanceWasRemoved(t *testing.T) {
 	if row := statusRow(t, single, 1409, settleFusion); row.DamageDealt != 5000 {
 		t.Fatalf("role 1409 Fusion Burst %+v; A applied every stack, so the burst is A's", row)
 	}
-	if got := single.damageStatistics.Snapshot().DamageDealt; got != 5000 {
+	if got := single.DamageStatistics.Snapshot().DamageDealt; got != 5000 {
 		t.Fatalf("dealt %d; the burst after the instance's removal is the team's damage", got)
 	}
 	other := burst(101)
-	if got := other.damageStatistics.Snapshot().DamageDealt; got != 5000 {
+	if got := other.DamageStatistics.Snapshot().DamageDealt; got != 5000 {
 		t.Fatalf("dealt %d; the burst is the team's damage whoever caused it", got)
 	}
 	if row := statusRow(t, other, 1505, settleFusion); row != (StatusDamageSnapshot{DamageID: settleFusion, DamageDealt: 5000, OutgoingEvents: 1, TriggerEvents: 1, TriggerDamage: 5000}) {
@@ -416,7 +416,7 @@ func TestOverflowBurstAfterItsInstanceWasRemoved(t *testing.T) {
 	late := newSettlementTestProcessor()
 	deliverNotifyFrame(t, late, 0.5, 2, statusApplyItem(200, 8, settleFusionBuff, 100, 9), statusRemoveItem(200, 8))
 	deliverNotifyFrame(t, late, 1.5, 3, statusTick(200, settleFusion, 5000))
-	if got := late.damageStatistics.Snapshot(); got.DamageDealt != 0 {
+	if got := late.DamageStatistics.Snapshot(); got.DamageDealt != 0 {
 		t.Fatalf("dealt %d; a status removed 1 s earlier is no evidence", got.DamageDealt)
 	}
 }
@@ -427,11 +427,11 @@ func TestANonDamageStatusIsNeverDamage(t *testing.T) {
 	p := newSettlementTestProcessor()
 	deliverNotifyFrame(t, p, 0.5, 2, statusApplyItem(200, 8, settleHavocBuff, 100, 3))
 	deliverNotifyFrame(t, p, 1, 3, aeroTick(200, 900)) // an Aero Erosion result with no Aero Erosion on the target
-	if snapshot := p.damageStatistics.Snapshot(); snapshot.DamageDealt != 0 || snapshot.UnassignedRole.NegativeStatusDamage != 0 {
+	if snapshot := p.DamageStatistics.Snapshot(); snapshot.DamageDealt != 0 || snapshot.UnassignedRole.NegativeStatusDamage != 0 {
 		t.Fatalf("dealt %d unassigned %+v; Havoc Bane does not execute Aero Erosion", snapshot.DamageDealt, snapshot.UnassignedRole)
 	}
-	if p.notifyStats.negativeStatusLocal != 0 {
-		t.Fatalf("notify stats %+v", p.notifyStats)
+	if p.NotifyStats.NegativeStatusLocal != 0 {
+		t.Fatalf("notify stats %+v", p.NotifyStats)
 	}
 }
 
@@ -465,7 +465,7 @@ func TestForcedExecutionNextToAnotherOwnersInstance(t *testing.T) {
 func TestResultBeforeItsStatusInstanceIsNotCredited(t *testing.T) {
 	p := newSettlementTestProcessor()
 	deliverNotifyFrame(t, p, 1, 2, aeroTick(200, 400), statusApplyItem(200, 7, notifyTestAeroBuff, 100, 1))
-	if snapshot := p.damageStatistics.Snapshot(); snapshot.DamageDealt != 0 || len(snapshot.Roles) != 0 {
+	if snapshot := p.DamageStatistics.Snapshot(); snapshot.DamageDealt != 0 || len(snapshot.Roles) != 0 {
 		t.Fatalf("dealt %d roles %+v; without a status instance at the result nothing is the team's", snapshot.DamageDealt, snapshot.Roles)
 	}
 }
@@ -497,7 +497,7 @@ func TestLoadGameMasterDatabaseReadsNegativeStatusSettlement(t *testing.T) {
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
-	master, err := loadGameMasterDatabase(path, "zh-TW")
+	master, err := LoadGameMasterDatabase(path, "zh-TW")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -512,10 +512,10 @@ func TestLoadGameMasterDatabaseReadsNegativeStatusSettlement(t *testing.T) {
 	if !master.negativeStatusExecutes(10041000, 1001) || !master.negativeStatusExecutes(10011100, 1007) || master.negativeStatusExecutes(10021000, 1004) {
 		t.Fatal("status executors are the Buffs whose extra effect is a negative-status DamageId")
 	}
-	if got := master.negativeStatusSettlementOf(10041000); got != (negativeStatusSettlement{known: true, periodic: true, executesOnCreation: true}) {
+	if got := master.negativeStatusSettlementOf(10041000); got != (NegativeStatusSettlementRule{Known: true, Periodic: true, ExecutesOnCreation: true}) {
 		t.Fatalf("Aero Erosion settlement %+v", got)
 	}
-	if got := master.negativeStatusSettlementOf(10011100); got != (negativeStatusSettlement{known: true, executesOnCreation: true}) {
+	if got := master.negativeStatusSettlementOf(10011100); got != (NegativeStatusSettlementRule{Known: true, ExecutesOnCreation: true}) {
 		t.Fatalf("Glacio Chafe variant settlement %+v", got)
 	}
 	if got := master.invokePeriodStatuses(1409303001); len(got) != 2 || got[0] != 10011100 || got[1] != 10041000 {

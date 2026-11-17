@@ -50,10 +50,40 @@ var (
 	bothProfiles       = []buildProfile{publicProfile, developmentProfile}
 )
 
-// analyzedPackages are type-checked from source: the product packages that contain profile-specific files.
-// fileKinds checks every product package; a new package with profile-specific files must be added here, and
-// TestProfileFilesAreAnalyzed fails until it is.
-var analyzedPackages = []string{"internal/buildinfo", "internal/capture", "internal/desktop"}
+// corePackage is the shared combat core: one implementation for both build profiles, with no profile-specific file.
+const corePackage = "internal/capture"
+
+// compositionBoundaries are the build composition boundaries (AGENTS.md section 5.4): the only product packages that
+// may hold profile-specific files. Their profile files choose what each profile links and its build identity; they
+// hold no logic (contract 3).
+var compositionBoundaries = []string{"cmd/capture", "cmd/desktop", "internal/buildinfo"}
+
+// developmentModules are the Development-only capability packages: ordinary packages without a profile constraint,
+// linked only by the Development composition (contract 4). A new Development capability goes into one of them, or into a
+// new one added here.
+var developmentModules = []string{"internal/devcapture", "internal/devdesktop"}
+
+// developmentDependencies are the other packages only Development capabilities need: the writer of the Development
+// PCAP and the version resource reader of the Development capture command line.
+var developmentDependencies = []string{"github.com/google/gopacket/pcapgo", modulePath + "/internal/versioninfo"}
+
+func isCompositionBoundary(rel string) bool {
+	for _, boundary := range compositionBoundaries {
+		if rel == boundary {
+			return true
+		}
+	}
+	return false
+}
+
+func isDevelopmentModule(rel string) bool {
+	for _, module := range developmentModules {
+		if rel == module {
+			return true
+		}
+	}
+	return false
+}
 
 // fileKind is the profile a product file belongs to, decided by its build constraint, never by its name.
 type fileKind int
@@ -76,6 +106,7 @@ type listedPackage struct {
 	Export         string
 	GoFiles        []string
 	CgoFiles       []string
+	Imports        []string
 	IgnoredGoFiles []string
 	ImportMap      map[string]string
 	Error          *struct{ Err string }
@@ -242,7 +273,7 @@ func (r *repository) executableDependencies(t testing.TB, profile buildProfile, 
 	return dependencies
 }
 
-// exportListing lists the analyzed packages and all their dependencies with export data for one profile.
+// exportListing lists every product package and its dependencies with export data for one profile.
 func (r *repository) exportListing(t testing.TB, profile buildProfile) map[string]*listedPackage {
 	t.Helper()
 	r.mu.Lock()
@@ -250,11 +281,9 @@ func (r *repository) exportListing(t testing.TB, profile buildProfile) map[strin
 	if listing, ok := r.listings[profile.name]; ok {
 		return listing
 	}
-	patterns := make([]string, len(analyzedPackages))
-	for i, rel := range analyzedPackages {
-		patterns[i] = "./" + rel
-	}
-	listed, err := r.goList(profile, "", []string{"-deps", "-export"}, patterns...)
+	// Every product package with its dependencies: the contracts read the core, the boundaries, the Development
+	// modules and every package that uses the core.
+	listed, err := r.goList(profile, "", []string{"-deps", "-export"}, "./cmd/...", "./internal/...")
 	if err != nil {
 		t.Fatal(err)
 	}

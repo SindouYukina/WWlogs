@@ -12,39 +12,39 @@ import (
 // (CreateEntityData.Init: PrefabId = EntityData.LEs; InitPbEntityData -> CreatureModel.GetEntityPrefab).
 
 func TestEntityPbReadsThePrefabID(t *testing.T) {
-	data := appendVarintField(nil, fieldEntityPbID, 13056)
-	data = appendVarintField(data, fieldEntityPbConfigID, 1850002)
-	data = appendVarintField(data, fieldEntityPbConfigType, 5)
+	data := appendVarintField(nil, FieldEntityPbID, 13056)
+	data = appendVarintField(data, FieldEntityPbConfigID, 1850002)
+	data = appendVarintField(data, FieldEntityPbConfigType, 5)
 	data = appendVarintField(data, fieldEntityPbEntityType, 2)
 	data = appendVarintField(data, fieldEntityPbPrefabID, 222850001)
 	entity, err := parseEntityPb(data)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !entity.hasPrefabID || entity.prefabID != 222850001 || entity.configID != 1850002 || entity.configType != 5 {
+	if !entity.HasPrefabID || entity.PrefabID != 222850001 || entity.ConfigID != 1850002 || entity.ConfigType != 5 {
 		t.Fatalf("EntityPb.PrefabId was not read: %+v", entity)
 	}
-	without, err := parseEntityPb(appendVarintField(appendVarintField(nil, fieldEntityPbID, 13057), fieldEntityPbConfigType, 5))
+	without, err := parseEntityPb(appendVarintField(appendVarintField(nil, FieldEntityPbID, 13057), FieldEntityPbConfigType, 5))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if without.hasPrefabID {
+	if without.HasPrefabID {
 		t.Fatalf("an absent PrefabId must stay absent, never 0 as a value: %+v", without)
 	}
 	// A later update of the same entity without the field keeps the prefab it was spawned from.
-	if merged := mergeRuntimeEntity(entity, runtimeEntity{entityID: 13056}); !merged.hasPrefabID || merged.prefabID != 222850001 {
+	if merged := mergeRuntimeEntity(entity, RuntimeEntity{EntityID: 13056}); !merged.HasPrefabID || merged.PrefabID != 222850001 {
 		t.Fatalf("a merge dropped the PrefabId: %+v", merged)
 	}
 }
 
-func prefabTestMaster() *gameMaster {
-	predator := sceneTemplateCandidate{TemplateID: 24000013, Name: "Glacio Predator", NameStatus: "VERIFIED"}
-	other := sceneTemplateCandidate{TemplateID: 24000014, Name: "Other", NameStatus: "VERIFIED"}
-	return &gameMaster{locale: "en-US",
-		monsters: map[uint64]masterRecord{310000040: {ID: 310000040, Name: "Glacio Predator", Status: "VERIFIED"}},
-		sceneIdentity: &sceneIdentityMaster{
+func prefabTestMaster() *GameMaster {
+	predator := SceneTemplateCandidate{TemplateID: 24000013, Name: "Glacio Predator", NameStatus: "VERIFIED"}
+	other := SceneTemplateCandidate{TemplateID: 24000014, Name: "Other", NameStatus: "VERIFIED"}
+	return &GameMaster{Locale: "en-US",
+		Monsters: map[uint64]MasterRecord{310000040: {ID: 310000040, Name: "Glacio Predator", Status: "VERIFIED"}},
+		SceneIdentity: &SceneIdentityMaster{
 			prefabMonsters: map[prefabEntityKey]uint64{{prefabID: 222850001, entityID: 1850000}: 310000040},
-			prefabTemplates: map[prefabEntityKey][]sceneTemplateCandidate{
+			prefabTemplates: map[prefabEntityKey][]SceneTemplateCandidate{
 				{prefabID: 222850001, entityID: 1850000}: {predator},
 				// A relation that answers with two templates is a conflict: it names neither.
 				{prefabID: 222850001, entityID: 1850001}: {predator, other},
@@ -53,38 +53,38 @@ func prefabTestMaster() *gameMaster {
 }
 
 func TestPrefabConfigTypeNamesEntitiesSpawnedFromPrefabs(t *testing.T) {
-	resolver := newEntityResolver()
-	prefab := func(id, config, prefabID uint64, hasPrefab bool, configType uint64) runtimeEntity {
-		return runtimeEntity{entityID: id, configID: config, hasConfigID: true, configType: configType, hasConfigType: true, prefabID: prefabID, hasPrefabID: hasPrefab,
-			entityTypeCode: entityTypeMonster, hasEntityType: true, sourceMessageID: cmdEntityAddNotify}
+	resolver := NewEntityResolver()
+	prefab := func(id, config, prefabID uint64, hasPrefab bool, configType uint64) RuntimeEntity {
+		return RuntimeEntity{EntityID: id, ConfigID: config, HasConfigID: true, ConfigType: configType, HasConfigType: true, PrefabID: prefabID, HasPrefabID: hasPrefab,
+			EntityTypeCode: EntityTypeMonster, HasEntityType: true, SourceMessageID: CmdEntityAddNotify}
 	}
-	resolver.entities[500] = prefab(500, 1850000, 222850001, true, 5)
-	resolver.entities[501] = prefab(501, 1850001, 222850001, true, 5) // two templates in the relation
-	resolver.entities[502] = prefab(502, 1850000, 0, false, 5)        // no PrefabId on the wire
-	resolver.entities[503] = prefab(503, 1850099, 222850001, true, 5) // the Master has no row for this entity
-	resolver.entities[504] = prefab(504, 1850000, 222850001, true, 1) // a Level entity is never named through a prefab
+	resolver.Entities[500] = prefab(500, 1850000, 222850001, true, 5)
+	resolver.Entities[501] = prefab(501, 1850001, 222850001, true, 5) // two templates in the relation
+	resolver.Entities[502] = prefab(502, 1850000, 0, false, 5)        // no PrefabId on the wire
+	resolver.Entities[503] = prefab(503, 1850099, 222850001, true, 5) // the Master has no row for this entity
+	resolver.Entities[504] = prefab(504, 1850000, 222850001, true, 1) // a Level entity is never named through a prefab
 	masters := prefabTestMaster()
 
-	named := resolveEntityIdentity(resolver, masters, 500)
-	if len(named.TemplateCandidates) != 1 || named.TemplateCandidates[0].TemplateID != 24000013 || named.TemplateStatus != resolutionCorrelated {
+	named := ResolveEntityIdentity(resolver, masters, 500)
+	if len(named.TemplateCandidates) != 1 || named.TemplateCandidates[0].TemplateID != 24000013 || named.TemplateStatus != ResolutionCorrelated {
 		t.Fatalf("a Prefab(5) entity must resolve to the TemplateConfig of its prefab entry: %+v", named)
 	}
-	if !named.HasMonster || named.Monster.ID != 310000040 || named.MonsterStatus != resolutionCorrelated || !strings.Contains(named.MonsterProof, "PrefabId=222850001") {
+	if !named.HasMonster || named.Monster.ID != 310000040 || named.MonsterStatus != ResolutionCorrelated || !strings.Contains(named.MonsterProof, "PrefabId=222850001") {
 		t.Fatalf("a Prefab(5) entity with one MonsterInfo of its BlueprintType must name it, CORRELATED: %+v", named)
 	}
 	if actor := combatActorTypeOf(named); actor.MonsterID != 310000040 || actor.TemplateID != 24000013 || actor.MonsterStatus != "CORRELATED" || actor.TemplateStatus != "CORRELATED" {
 		t.Fatalf("the History enemy type must keep both links: %+v", actor)
 	}
 
-	conflict := resolveEntityIdentity(resolver, masters, 501)
-	if len(conflict.TemplateCandidates) != 2 || conflict.TemplateStatus != resolutionUnknown || conflict.HasMonster {
+	conflict := ResolveEntityIdentity(resolver, masters, 501)
+	if len(conflict.TemplateCandidates) != 2 || conflict.TemplateStatus != ResolutionUnknown || conflict.HasMonster {
 		t.Fatalf("two templates for one prefab entity must stay unresolved: %+v", conflict)
 	}
 	if actor := combatActorTypeOf(conflict); actor.TemplateID != 0 || actor.MonsterID != 0 {
 		t.Fatalf("an unresolved prefab entity must not reach the History with a guessed type: %+v", actor)
 	}
 	for _, id := range []uint64{502, 503, 504} {
-		identity := resolveEntityIdentity(resolver, masters, id)
+		identity := ResolveEntityIdentity(resolver, masters, id)
 		if len(identity.TemplateCandidates) != 0 || identity.HasMonster {
 			t.Fatalf("entity %d must stay unidentified: %+v", id, identity)
 		}
@@ -96,11 +96,11 @@ func TestPrefabConfigTypeNamesEntitiesSpawnedFromPrefabs(t *testing.T) {
 
 func TestPrefabRelationsLoadFromTheMaster(t *testing.T) {
 	plain := buildMasterDatabaseFixture(t)
-	master, err := loadGameMasterDatabase(plain, "zh-TW")
+	master, err := LoadGameMasterDatabase(plain, "zh-TW")
 	if err != nil {
 		t.Fatalf("a Master without prefab relations must still load: %v", err)
 	}
-	if len(master.sceneIdentity.prefabTemplates) != 0 || len(master.sceneIdentity.prefabMonsters) != 0 {
+	if len(master.SceneIdentity.prefabTemplates) != 0 || len(master.SceneIdentity.prefabMonsters) != 0 {
 		t.Fatal("a Master without the tables knows no prefab entity")
 	}
 	withRelations := func(t *testing.T, extra ...string) string {
@@ -124,7 +124,7 @@ func TestPrefabRelationsLoadFromTheMaster(t *testing.T) {
 		}
 		return path
 	}
-	master, err = loadGameMasterDatabase(withRelations(t), "zh-TW")
+	master, err = LoadGameMasterDatabase(withRelations(t), "zh-TW")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,10 +141,10 @@ func TestPrefabRelationsLoadFromTheMaster(t *testing.T) {
 		t.Fatalf("every candidate is kept in ordinal order: %+v", got)
 	}
 	// A relation naming a row the Master does not hold refuses the Master, like a broken level relation.
-	if _, err := loadGameMasterDatabase(withRelations(t, "INSERT INTO prefab_entity_template_ref VALUES('222850001','1850002',0,'99999999')"), "zh-TW"); err == nil || !strings.Contains(err.Error(), "prefab_entity_template_ref") {
+	if _, err := LoadGameMasterDatabase(withRelations(t, "INSERT INTO prefab_entity_template_ref VALUES('222850001','1850002',0,'99999999')"), "zh-TW"); err == nil || !strings.Contains(err.Error(), "prefab_entity_template_ref") {
 		t.Fatalf("a dangling template must refuse the Master: %v", err)
 	}
-	if _, err := loadGameMasterDatabase(withRelations(t, "INSERT INTO prefab_entity_monster VALUES('222850001','1850003','99999999')"), "zh-TW"); err == nil || !strings.Contains(err.Error(), "prefab_entity_monster") {
+	if _, err := LoadGameMasterDatabase(withRelations(t, "INSERT INTO prefab_entity_monster VALUES('222850001','1850003','99999999')"), "zh-TW"); err == nil || !strings.Contains(err.Error(), "prefab_entity_monster") {
 		t.Fatalf("a dangling MonsterInfo must refuse the Master: %v", err)
 	}
 }

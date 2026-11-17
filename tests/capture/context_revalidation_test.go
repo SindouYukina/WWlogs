@@ -2,7 +2,7 @@ package capture
 
 import "testing"
 
-func localOutgoingEvent(p *processor, rpcID uint64, amount int64) combatEvent {
+func localOutgoingEvent(p *Processor, rpcID uint64, amount int64) CombatEvent {
 	event := testDamageEvent(p, 100, 200)
 	event.EventTypeCandidate = "DAMAGE_CANDIDATE"
 	event.Damage = amount
@@ -12,14 +12,14 @@ func localOutgoingEvent(p *processor, rpcID uint64, amount int64) combatEvent {
 
 func TestSuspectAttributionKeepsUnreferencedEntityUnattributed(t *testing.T) {
 	p := newPairingTestProcessor()
-	p.context.invalidate("in", pairingAt(1), "test_gap")
+	p.Context.invalidate("in", pairingAt(1), "test_gap")
 	pairingFrame(p, 2)
-	p.writeDamageEvent(localOutgoingEvent(p, 1, 100))
-	got := p.damageStatistics.Snapshot()
+	p.WriteDamageEvent(localOutgoingEvent(p, 1, 100))
+	got := p.DamageStatistics.Snapshot()
 	if got.DamageDealt != 0 || got.UnattributedOutgoingDamage != 100 {
 		t.Fatalf("an unreferenced local entity was kept local while attribution is suspect: %+v", got)
 	}
-	if context := p.context.snapshot(); context.DowngradedEvents != 1 || context.RevalidatedEvents != 0 {
+	if context := p.Context.Snapshot(); context.DowngradedEvents != 1 || context.RevalidatedEvents != 0 {
 		t.Fatalf("context counters = %+v", context)
 	}
 }
@@ -27,22 +27,22 @@ func TestSuspectAttributionKeepsUnreferencedEntityUnattributed(t *testing.T) {
 func TestClientReferenceAfterLossRevalidatesThatEntityOnly(t *testing.T) {
 	p := newPairingTestProcessor()
 	addTestPlayerRoleGroupEntity(p, 101, 77, 1508)
-	p.observeLocalRoleEntity(101)
-	p.context.invalidate("in", pairingAt(1), "test_gap")
+	p.ObserveLocalRoleEntity(101)
+	p.Context.invalidate("in", pairingAt(1), "test_gap")
 	// The client names entity 100 in its own request after the loss began.
 	sendDamageRequest(p, 2, 5)
-	if context := p.context.snapshot(); context.ClientReferencedEntities != 2 {
+	if context := p.Context.Snapshot(); context.ClientReferencedEntities != 2 {
 		t.Fatalf("client references = %d, want attacker and target", context.ClientReferencedEntities)
 	}
-	p.writeDamageEvent(localOutgoingEvent(p, 6, 100))
+	p.WriteDamageEvent(localOutgoingEvent(p, 6, 100))
 	other := testDamageEvent(p, 101, 200)
 	other.EventTypeCandidate, other.Damage, other.RPCID = "DAMAGE_CANDIDATE", 40, 7
-	p.writeDamageEvent(other)
-	got := p.damageStatistics.Snapshot()
+	p.WriteDamageEvent(other)
+	got := p.DamageStatistics.Snapshot()
 	if got.DamageDealt != 100 || got.UnattributedOutgoingDamage != 40 {
 		t.Fatalf("revalidation must cover exactly the referenced entity: %+v", got)
 	}
-	context := p.context.snapshot()
+	context := p.Context.Snapshot()
 	if context.RevalidatedEvents != 1 || context.DowngradedEvents != 1 || context.State != ContextSuspect {
 		t.Fatalf("context = %+v; per-entity revalidation must not clear the global suspect state", context)
 	}
@@ -51,47 +51,47 @@ func TestClientReferenceAfterLossRevalidatesThatEntityOnly(t *testing.T) {
 func TestReferenceBeforeLossDoesNotRevalidate(t *testing.T) {
 	p := newPairingTestProcessor()
 	sendDamageRequest(p, 1, 5) // attribution is valid: nothing is recorded
-	p.context.invalidate("in", pairingAt(2), "test_gap")
+	p.Context.invalidate("in", pairingAt(2), "test_gap")
 	pairingFrame(p, 3)
-	p.writeDamageEvent(localOutgoingEvent(p, 6, 100))
-	if got := p.damageStatistics.Snapshot(); got.DamageDealt != 0 || got.UnattributedOutgoingDamage != 100 {
+	p.WriteDamageEvent(localOutgoingEvent(p, 6, 100))
+	if got := p.DamageStatistics.Snapshot(); got.DamageDealt != 0 || got.UnattributedOutgoingDamage != 100 {
 		t.Fatalf("a reference made before the loss revalidated the entity: %+v", got)
 	}
 
 	// A reference during one loss is not evidence about the next loss.
 	sendDamageRequest(p, 4, 7)
-	p.context.invalidate("in", pairingAt(5), "test_gap_2")
+	p.Context.invalidate("in", pairingAt(5), "test_gap_2")
 	pairingFrame(p, 6)
-	p.writeDamageEvent(localOutgoingEvent(p, 8, 100))
-	if got := p.damageStatistics.Snapshot(); got.DamageDealt != 0 || got.UnattributedOutgoingDamage != 200 {
+	p.WriteDamageEvent(localOutgoingEvent(p, 8, 100))
+	if got := p.DamageStatistics.Snapshot(); got.DamageDealt != 0 || got.UnattributedOutgoingDamage != 200 {
 		t.Fatalf("a reference from an earlier loss survived a new loss: %+v", got)
 	}
 }
 
 func TestSceneJoinClearsClientReferences(t *testing.T) {
 	p := newPairingTestProcessor()
-	p.context.invalidate("in", pairingAt(1), "test_gap")
+	p.Context.invalidate("in", pairingAt(1), "test_gap")
 	sendDamageRequest(p, 2, 5)
-	p.context.ongoingInbound = 1 // the loss is still open, so the scene join cannot revalidate attribution
-	p.context.resetForScene(pairingAt(3), contextBasisSceneJoin)
-	if context := p.context.snapshot(); context.ClientReferencedEntities != 0 || !p.context.attribution.suspect {
+	p.Context.ongoingInbound = 1 // the loss is still open, so the scene join cannot revalidate attribution
+	p.Context.resetForScene(pairingAt(3), contextBasisSceneJoin)
+	if context := p.Context.Snapshot(); context.ClientReferencedEntities != 0 || !p.Context.attribution.suspect {
 		t.Fatalf("scene join kept references or cleared suspicion: %+v", context)
 	}
 	pairingFrame(p, 4)
-	p.writeDamageEvent(localOutgoingEvent(p, 6, 100))
-	if got := p.damageStatistics.Snapshot(); got.DamageDealt != 0 {
+	p.WriteDamageEvent(localOutgoingEvent(p, 6, 100))
+	if got := p.DamageStatistics.Snapshot(); got.DamageDealt != 0 {
 		t.Fatalf("a reference to a previous scene's entity revalidated it: %+v", got)
 	}
 }
 
 func TestClientReferenceRevalidatesIncomingTarget(t *testing.T) {
 	p := newPairingTestProcessor()
-	p.context.invalidate("in", pairingAt(1), "test_gap")
+	p.Context.invalidate("in", pairingAt(1), "test_gap")
 	sendDamageRequest(p, 2, 5) // names 100 as attacker
 	incoming := testDamageEvent(p, 200, 100)
 	incoming.EventTypeCandidate, incoming.Damage, incoming.RPCID = "DAMAGE_CANDIDATE", 70, 9
-	p.writeDamageEvent(incoming)
-	if got := p.damageStatistics.Snapshot(); got.DamageTaken != 70 || got.UnattributedIncomingDamage != 0 {
+	p.WriteDamageEvent(incoming)
+	if got := p.DamageStatistics.Snapshot(); got.DamageTaken != 70 || got.UnattributedIncomingDamage != 0 {
 		t.Fatalf("incoming damage to a referenced local entity = %+v", got)
 	}
 }

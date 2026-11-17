@@ -32,8 +32,11 @@ type SessionConfig struct {
 	// PublishInterval is the initial minimum wall time between published snapshots; zero selects
 	// DefaultPublishInterval. SetPublishInterval changes it while the session runs. It never affects packet handling.
 	PublishInterval time.Duration
-	// Diagnostics writes the Development diagnostic PCAP for a live session. Public builds reject it.
-	Diagnostics bool
+	// Diagnostics records the Development diagnostics (PCAP, spool) of a live session with OpenDiagnostics, which the
+	// Development build composition supplies (wwlogs/internal/devdesktop); a request without it is refused, so a Public
+	// build cannot record them.
+	Diagnostics     bool
+	OpenDiagnostics SessionDiagnosticsOpener
 	// History receives the session's Combat History journal (history_journal.go); nil keeps no history. It never affects
 	// statistics or snapshots, and never holds up a live capture; a replay reads its file only as fast as the sink accepts
 	// the journal (HistorySink).
@@ -96,7 +99,7 @@ type SessionResult struct {
 
 // MasterData is a loaded, read-only Master database shared by sessions.
 type MasterData struct {
-	masters *gameMaster
+	masters *GameMaster
 	display *DisplayResolver
 }
 
@@ -135,7 +138,7 @@ func (m *MasterData) SHA256() string {
 	if m == nil || m.masters == nil {
 		return ""
 	}
-	return m.masters.manifest.SourceHash
+	return m.masters.Manifest.SourceHash
 }
 
 // Close releases the read-only Master database shared by this data set and its display resolver.
@@ -150,8 +153,8 @@ func (m *MasterData) Close() error {
 type Session struct {
 	cfg         SessionConfig
 	handle      *pcap.Handle
-	processor   *processor
-	diagnostics *sessionDiagnostics
+	processor   *Processor
+	diagnostics SessionDiagnostics // nil without Development diagnostics
 	info        SessionInfo
 	used        bool
 	// publishInterval is read by the Run goroutine before every publish decision and written by SetPublishInterval.
@@ -189,18 +192,18 @@ func OpenSession(cfg SessionConfig, masters *MasterData) (*Session, error) {
 	if cfg.Diagnostics && !live {
 		return nil, errors.New("development diagnostics apply to live capture only")
 	}
-	key, err := loadEmbeddedPrivateKey()
+	key, err := LoadEmbeddedPrivateKey()
 	if err != nil {
 		return nil, fmt.Errorf("load embedded key: %w", err)
 	}
 	session := &Session{cfg: cfg, info: SessionInfo{LocalIPv4: cfg.LocalIPv4, Diagnostics: cfg.Diagnostics}}
 	session.publishInterval.Store(int64(cfg.PublishInterval))
 	if live {
-		device, err := findDeviceByIP(cfg.LocalIPv4)
+		device, err := FindDeviceByIP(cfg.LocalIPv4)
 		if err != nil {
 			return nil, fmt.Errorf("find Npcap adapter: %w", err)
 		}
-		handle, applied, err := openLiveCapture(device, defaultLiveCaptureConfig())
+		handle, applied, err := OpenLiveCapture(device, DefaultLiveCaptureConfig())
 		if err != nil {
 			return nil, fmt.Errorf("open Npcap adapter: %w", err)
 		}
@@ -216,28 +219,36 @@ func OpenSession(cfg SessionConfig, masters *MasterData) (*Session, error) {
 		session.handle.Close()
 		return nil, fmt.Errorf("set capture filter: %w", err)
 	}
-	session.diagnostics, err = openSessionDiagnostics(cfg.Diagnostics, session.handle.LinkType())
-	if err != nil {
-		var setupError *diagnosticSetupError
-		if !errors.As(err, &setupError) {
+	if cfg.Diagnostics {
+		if cfg.OpenDiagnostics == nil {
 			session.handle.Close()
-			return nil, err
+			return nil, errors.New("development diagnostics are not available in this build")
 		}
-		session.info.Diagnostics = false
-		session.info.DiagnosticsWarning = "Development diagnostics are unavailable; this session cannot be replayed."
-		session.diagnostics, _ = openSessionDiagnostics(false, session.handle.LinkType())
+		session.diagnostics, err = cfg.OpenDiagnostics(session.handle.LinkType())
+		if err != nil {
+			var setupError *DiagnosticSetupError
+			if !errors.As(err, &setupError) {
+				session.handle.Close()
+				return nil, err
+			}
+			session.info.Diagnostics = false
+			session.info.DiagnosticsWarning = "Development diagnostics are unavailable; this session cannot be replayed."
+			session.diagnostics = nil
+		}
 	}
-	p := newProcessor(key, io.Discard, io.Discard, nil)
-	p.masters = masters.masters
+	p := NewProcessor(key, io.Discard)
+	p.Masters = masters.masters
 	// A host shows one protocol session at a time: a new game handshake starts a new statistics interval.
-	p.intervalPerProtocolSession = true
-	p.observeCaptureSource(live)
-	session.diagnostics.attach(p)
+	p.IntervalPerProtocolSession = true
+	p.ObserveCaptureSource(live)
+	if session.diagnostics != nil {
+		session.diagnostics.Attach(p)
+	}
 	if cfg.History != nil {
-		p.damageStatistics.ConfigureHistory(cfg.History.Level(), !cfg.HistoryPaused)
+		p.DamageStatistics.ConfigureHistory(cfg.History.Level(), !cfg.HistoryPaused)
 	}
 	session.processor = p
-	session.info.CaptureSessionID = p.damageStatistics.Snapshot().CaptureSessionID
+	session.info.CaptureSessionID = p.DamageStatistics.Snapshot().CaptureSessionID
 	return session, nil
 }
 
@@ -260,7 +271,7 @@ func (s *Session) SetHistoryRecording(on bool) {
 	if s == nil || s.processor == nil || s.cfg.History == nil {
 		return
 	}
-	s.processor.damageStatistics.SetHistoryRecording(on)
+	s.processor.DamageStatistics.SetHistoryRecording(on)
 }
 
 // HistoryRecording reports the session's recording state; a session without history reports none.
@@ -268,7 +279,7 @@ func (s *Session) HistoryRecording() HistoryRecordingState {
 	if s == nil || s.processor == nil || s.cfg.History == nil {
 		return HistoryRecordingState{}
 	}
-	return s.processor.damageStatistics.HistoryRecording()
+	return s.processor.DamageStatistics.HistoryRecording()
 }
 
 // Close releases a session that will not be run. Run releases its own resources.
@@ -277,7 +288,9 @@ func (s *Session) Close() {
 		return
 	}
 	s.used = true
-	s.diagnostics.finish(StopReasonRequested, CaptureCounter{})
+	if s.diagnostics != nil {
+		s.diagnostics.Finish(StopReasonRequested, CaptureCounter{})
+	}
 	s.handle.Close()
 }
 
@@ -291,16 +304,18 @@ func (s *Session) Run(ctx context.Context, publish func(ViewSnapshot)) (result S
 	s.used = true
 	p, handle := s.processor, s.handle
 	live := s.info.Source == SourceLive
-	streams := make(map[string]*stream)
-	stats := captureStats{}
+	streams := make(map[string]*Stream)
+	stats := CaptureStats{}
 	result.StopReason = StopReasonReplayEnd
 	defer func() {
 		// A decoder panic must not take down the host: report it and still release every resource.
 		if recovered := recover(); recovered != nil {
 			result.StopReason, err = StopReasonError, fmt.Errorf("capture session failed: %v", recovered)
 		}
-		result.UDPPackets = stats.udpPackets
-		result.DiagnosticsSummary = s.diagnostics.finish(result.StopReason, p.captureLayerHealth().KernelDropped)
+		result.UDPPackets = stats.UDPPackets
+		if s.diagnostics != nil {
+			result.DiagnosticsSummary = s.diagnostics.Finish(result.StopReason, p.CaptureLayerHealth().KernelDropped)
+		}
 		handle.Close()
 	}()
 
@@ -315,9 +330,9 @@ func (s *Session) Run(ctx context.Context, publish func(ViewSnapshot)) (result S
 		}
 		if now := time.Now(); now.Sub(lastCheckpoint) >= historyCheckpointInterval {
 			lastCheckpoint = now
-			p.damageStatistics.CheckpointHistory()
+			p.DamageStatistics.CheckpointHistory()
 		}
-		entries, dropped := p.damageStatistics.TakeHistory()
+		entries, dropped := p.DamageStatistics.TakeHistory()
 		if len(entries) == 0 && dropped == 0 {
 			return true
 		}
@@ -333,10 +348,12 @@ func (s *Session) Run(ctx context.Context, publish func(ViewSnapshot)) (result S
 		if publish != nil && (lastPublish.IsZero() || now.Sub(lastPublish) >= time.Duration(s.publishInterval.Load())) {
 			lastPublish = now
 			if live {
-				p.viewClockLead, p.viewClockStalled = viewClock.read(now, p.currentFrameTime)
+				p.ViewClockLead, p.ViewClockStalled = viewClock.read(now, p.CurrentFrameTime)
 			}
-			publish(p.viewSnapshot())
-			s.diagnostics.observeEffectDisplay(p, now)
+			publish(p.ViewSnapshot())
+			if s.diagnostics != nil {
+				s.diagnostics.ObserveEffectDisplay(now)
+			}
 		}
 	}
 	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
@@ -357,7 +374,7 @@ loop:
 			switch {
 			case readErr == pcap.NextErrorTimeoutExpired:
 				failingSince = time.Time{}
-				p.sampleCaptureStats(handle, time.Now(), false)
+				p.SampleCaptureStats(handle, time.Now(), false)
 				if live {
 					p.sessionHealth.observeClock(time.Now())
 				}
@@ -391,38 +408,40 @@ loop:
 				break loop
 			}
 		}
-		s.diagnostics.packet(packet.Metadata().CaptureInfo, packet.Data())
+		if s.diagnostics != nil {
+			s.diagnostics.Packet(packet.Metadata().CaptureInfo, packet.Data())
+		}
 		receivedAt := time.Now()
-		p.observePacketRead()
-		p.sampleCaptureStats(handle, receivedAt, false)
+		p.ObservePacketRead()
+		p.SampleCaptureStats(handle, receivedAt, false)
 		udpLayer := packet.Layer(layers.LayerTypeUDP)
 		if udpLayer == nil {
 			continue
 		}
 		udp := udpLayer.(*layers.UDP)
-		stats.udpPackets++
-		direction := packetDirection(packet, s.cfg.LocalIPv4, udp, s.cfg.MinPort, s.cfg.MaxPort)
-		consumeDatagram(udp.Payload, direction, capturedAt, streams, p, &stats)
+		stats.UDPPackets++
+		direction := PacketDirection(packet, s.cfg.LocalIPv4, udp, s.cfg.MinPort, s.cfg.MaxPort)
+		ConsumeDatagram(udp.Payload, direction, capturedAt, streams, p, &stats)
 		if !handOffHistory() {
 			result.StopReason = StopReasonRequested
 			break loop
 		}
 		if live {
-			viewClock.observeFrame(p.currentFrameTime, receivedAt)
-			p.observePacketTiming(capturedAt, receivedAt, time.Now())
+			viewClock.observeFrame(p.CurrentFrameTime, receivedAt)
+			p.ObservePacketTiming(capturedAt, receivedAt, time.Now())
 			p.sessionHealth.observeClock(time.Now())
 		} else {
 			p.sessionHealth.observeClock(capturedAt)
 		}
 		maybePublish(time.Now())
 	}
-	finishTransport(streams, p, &stats)
-	p.sampleCaptureStats(handle, time.Now(), true)
-	p.finishCapture()
+	FinishTransport(streams, p, &stats)
+	p.SampleCaptureStats(handle, time.Now(), true)
+	p.FinishCapture()
 	handOffHistory()
 	if publish != nil {
-		p.viewClockLead, p.viewClockStalled = 0, false
-		final := p.viewSnapshot()
+		p.ViewClockLead, p.ViewClockStalled = 0, false
+		final := p.ViewSnapshot()
 		final.Final = true
 		publish(final)
 	}

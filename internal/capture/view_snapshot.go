@@ -339,28 +339,28 @@ type ViewEffect struct {
 	ShowCountdown bool `json:"showCountdown,omitempty"`
 }
 
-// viewSnapshot builds the UI view at the newest capture time. It runs on the capture goroutine.
-func (p *processor) viewSnapshot() ViewSnapshot {
-	statistics := p.damageStatisticsSnapshot()
-	observedAt := p.currentFrameTime
+// ViewSnapshot builds the UI view at the newest capture time. It runs on the capture goroutine.
+func (p *Processor) ViewSnapshot() ViewSnapshot {
+	statistics := p.DamageStatisticsSnapshot()
+	observedAt := p.CurrentFrameTime
 	if !observedAt.IsZero() {
-		statistics = p.damageStatisticsSnapshotAt(CaptureQueryTime{CaptureSessionID: statistics.CaptureSessionID, Timestamp: observedAt})
+		statistics = p.DamageStatisticsSnapshotAt(CaptureQueryTime{CaptureSessionID: statistics.CaptureSessionID, Timestamp: observedAt})
 	}
-	capture := p.captureLayerHealth()
-	pairing := p.rpcPairingSnapshot()
+	capture := p.CaptureLayerHealth()
+	pairing := p.RPCPairingSnapshot()
 	view := ViewSnapshot{
 		SchemaVersion:        ViewSnapshotSchemaVersion,
 		CaptureSessionID:     statistics.CaptureSessionID,
 		StatisticsIntervalID: statistics.StatisticsIntervalID,
-		ProtocolSession:      p.sessionNumber,
+		ProtocolSession:      p.SessionNumber,
 		CaptureObservedAt:    observedAt,
 		Health: ViewHealth{
 			Capture: ViewCaptureHealth{
 				Source: capture.Source, PacketsRead: capture.PacketsRead, KernelReceived: capture.KernelReceived,
 				KernelDropped: capture.KernelDropped, ApplicationDropped: capture.ApplicationDropped, DeliveryDelay: capture.DeliveryDelay, DiagnosticDropped: capture.DiagnosticDropped,
 			},
-			Transport:     cloneTransportHealth(p.transportHealthSnapshot()),
-			Context:       cloneContextValidity(p.context.snapshot()),
+			Transport:     cloneTransportHealth(p.TransportHealthSnapshot()),
+			Context:       cloneContextValidity(p.Context.Snapshot()),
 			Session:       p.sessionHealthSnapshot(),
 			DataIntegrity: statistics.Integrity.Status,
 			RPCPairing: ViewRPCPairing{
@@ -393,8 +393,8 @@ func (p *processor) viewSnapshot() ViewSnapshot {
 		Effects:             p.viewEffects(),
 	}
 	rankViewContributors(view.Roles, view.Vehicle, nil)
-	if p.damageStatistics != nil {
-		view.Timeline = p.damageStatistics.TimelineAt(CaptureQueryTime{CaptureSessionID: statistics.CaptureSessionID, Timestamp: observedAt}, maxViewTimelinePoints)
+	if p.DamageStatistics != nil {
+		view.Timeline = p.DamageStatistics.TimelineAt(CaptureQueryTime{CaptureSessionID: statistics.CaptureSessionID, Timestamp: observedAt}, maxViewTimelinePoints)
 	}
 	return view
 }
@@ -421,7 +421,7 @@ func cloneContextValidity(context ContextValiditySnapshot) ContextValiditySnapsh
 	return context
 }
 
-func (p *processor) viewEncounters(encounters EncounterTrackerSnapshot) ViewEncounters {
+func (p *Processor) viewEncounters(encounters EncounterTrackerSnapshot) ViewEncounters {
 	view := ViewEncounters{
 		State: encounters.State, BattleState: encounters.BattleState, Recent: []ViewEncounter{},
 		CompletedTotal: encounters.CompletedDropped + uint64(len(encounters.Completed)),
@@ -440,14 +440,14 @@ func (p *processor) viewEncounters(encounters EncounterTrackerSnapshot) ViewEnco
 	return view
 }
 
-func (p *processor) viewEncounter(encounter EncounterSnapshot) ViewEncounter {
-	return projectEncounter(p.masters, encounter, p.currentFrameTime)
+func (p *Processor) viewEncounter(encounter EncounterSnapshot) ViewEncounter {
+	return projectEncounter(p.Masters, encounter, p.CurrentFrameTime)
 }
 
 // ProjectEncounter builds the view of a finished encounter with the same projection the live view uses: Master names, the
 // skill split, contributor ranks and per-row DPS. Combat History uses it to show a stored encounter exactly as it was shown.
 func (m *MasterData) ProjectEncounter(encounter EncounterSnapshot) ViewEncounter {
-	var masters *gameMaster
+	var masters *GameMaster
 	if m != nil {
 		masters = m.masters
 	}
@@ -455,7 +455,7 @@ func (m *MasterData) ProjectEncounter(encounter EncounterSnapshot) ViewEncounter
 }
 
 // projectEncounter projects one encounter. now is the capture time an open encounter's elapsed time is measured to.
-func projectEncounter(masters *gameMaster, encounter EncounterSnapshot, now time.Time) ViewEncounter {
+func projectEncounter(masters *GameMaster, encounter EncounterSnapshot, now time.Time) ViewEncounter {
 	view := ViewEncounter{
 		EncounterID: encounter.EncounterID, Sequence: encounter.Sequence, ProtocolSession: encounter.ProtocolSession,
 		State: encounter.State, Outcome: encounter.Outcome, StartedAt: encounter.StartedAt, StartBasis: encounter.StartBasis,
@@ -533,11 +533,11 @@ func unassignedRoleShare(unassigned UnassignedRoleTotals, total int64) *float64 
 	return &share
 }
 
-func (p *processor) viewRoles(roles []RoleDamageSnapshot, total int64) []ViewRole {
-	return projectRoles(p.masters, roles, total)
+func (p *Processor) viewRoles(roles []RoleDamageSnapshot, total int64) []ViewRole {
+	return projectRoles(p.Masters, roles, total)
 }
 
-func projectRoles(masters *gameMaster, roles []RoleDamageSnapshot, total int64) []ViewRole {
+func projectRoles(masters *GameMaster, roles []RoleDamageSnapshot, total int64) []ViewRole {
 	view := make([]ViewRole, 0, len(roles))
 	for _, role := range roles {
 		name, status := roleDisplayName(masters, role.RoleID)
@@ -558,11 +558,11 @@ func projectRoles(masters *gameMaster, roles []RoleDamageSnapshot, total int64) 
 
 // viewSkills projects a contributor's skill split. Shares use the contributor's own confirmed damage, never the team's.
 // roleID is zero for the vehicle, which has no skill group.
-func (p *processor) viewSkills(roleID uint64, skills []SkillDamageSnapshot, unassigned UnassignedSkillTotals, total int64) ([]ViewSkill, ViewUnassignedSkill) {
-	return projectSkills(p.masters, roleID, skills, unassigned, total)
+func (p *Processor) viewSkills(roleID uint64, skills []SkillDamageSnapshot, unassigned UnassignedSkillTotals, total int64) ([]ViewSkill, ViewUnassignedSkill) {
+	return projectSkills(p.Masters, roleID, skills, unassigned, total)
 }
 
-func projectSkills(masters *gameMaster, roleID uint64, skills []SkillDamageSnapshot, unassigned UnassignedSkillTotals, total int64) ([]ViewSkill, ViewUnassignedSkill) {
+func projectSkills(masters *GameMaster, roleID uint64, skills []SkillDamageSnapshot, unassigned UnassignedSkillTotals, total int64) ([]ViewSkill, ViewUnassignedSkill) {
 	share := func(amount int64) *float64 {
 		if total <= 0 {
 			return nil
@@ -572,36 +572,36 @@ func projectSkills(masters *gameMaster, roleID uint64, skills []SkillDamageSnaps
 	}
 	view := make([]ViewSkill, 0, len(skills))
 	// A trial role names its rows through its parent role's skills (staticRoleID).
-	staticRole := masters.staticRoleID(roleID)
+	staticRole := masters.StaticRoleID(roleID)
 	for _, skill := range skills {
-		name, status, source, sourceID := masters.skillRowName(staticRole, skill)
+		name, status, source, sourceID := masters.SkillRowName(staticRole, skill)
 		iconKind, iconID := masters.skillRowIcon(skill, source, sourceID)
 		view = append(view, ViewSkill{
 			SkillID: skill.SkillID, Name: name, NameStatus: status, NameSource: source, SourceID: sourceID, IconKind: iconKind, IconID: iconID,
-			ShowSkillID: status != string(resolutionVerified),
+			ShowSkillID: status != string(ResolutionVerified),
 			DamageDealt: skill.DamageDealt, DamageShare: share(skill.DamageDealt), OutgoingEvents: skill.OutgoingEvents,
 		})
 	}
 	row := ViewUnassignedSkill{UnassignedSkillTotals: unassigned, DamageShare: share(unassigned.DamageDealt)}
 	source, reason := masters.unassignedSkillName(staticRole, unassigned)
 	if source.name != "" {
-		row.Name, row.NameStatus, row.NameSource, row.SourceID, row.IconKind, row.IconID = source.name, skillNameStatusDerived, source.source, source.sourceID, source.iconKind, source.iconID
+		row.Name, row.NameStatus, row.NameSource, row.SourceID, row.IconKind, row.IconID = source.name, SkillNameStatusDerived, source.source, source.sourceID, source.iconKind, source.iconID
 	}
 	row.UnnamedReason = reason
 	return view, row
 }
 
 // projectStatuses names the status rows of a role. Shares use the role's own confirmed damage, never the team's.
-func projectStatuses(masters *gameMaster, statuses []StatusDamageSnapshot, total int64) []ViewStatus {
+func projectStatuses(masters *GameMaster, statuses []StatusDamageSnapshot, total int64) []ViewStatus {
 	if len(statuses) == 0 {
 		return nil
 	}
 	view := make([]ViewStatus, 0, len(statuses))
 	for _, status := range statuses {
-		row := ViewStatus{DamageID: status.DamageID, NameStatus: string(resolutionUnknown), DamageDealt: status.DamageDealt, OutgoingEvents: status.OutgoingEvents,
+		row := ViewStatus{DamageID: status.DamageID, NameStatus: string(ResolutionUnknown), DamageDealt: status.DamageDealt, OutgoingEvents: status.OutgoingEvents,
 			TriggerEvents: status.TriggerEvents, TriggerDamage: status.TriggerDamage}
 		if term, ok := masters.negativeStatusTerm(status.DamageID); ok {
-			row.Name, row.NameStatus, row.TermID, row.IconKind, row.IconID = term.name, string(resolutionCorrelated), term.termID, statusIconKind, term.iconBuff
+			row.Name, row.NameStatus, row.TermID, row.IconKind, row.IconID = term.name, string(ResolutionCorrelated), term.termID, statusIconKind, term.iconBuff
 		}
 		if total > 0 {
 			share := float64(status.DamageDealt) / float64(total)
@@ -614,58 +614,58 @@ func projectStatuses(masters *gameMaster, statuses []StatusDamageSnapshot, total
 
 // roleDisplayName returns the Master name of a RoleId. A name is shown only when Master marks it verified; anything
 // else stays UNKNOWN rather than a plausible guess.
-func (p *processor) roleDisplayName(roleID uint64) (string, string) {
-	return roleDisplayName(p.masters, roleID)
+func (p *Processor) roleDisplayName(roleID uint64) (string, string) {
+	return roleDisplayName(p.Masters, roleID)
 }
 
-func roleDisplayName(masters *gameMaster, roleID uint64) (string, string) {
+func roleDisplayName(masters *GameMaster, roleID uint64) (string, string) {
 	if masters == nil {
-		return "", string(resolutionUnknown)
+		return "", string(ResolutionUnknown)
 	}
-	character, ok := masters.characters[masters.staticRoleID(roleID)]
-	if !ok || character.Name == "" || character.NameStatus != string(resolutionVerified) {
-		return "", string(resolutionUnknown)
+	character, ok := masters.Characters[masters.StaticRoleID(roleID)]
+	if !ok || character.Name == "" || character.NameStatus != string(ResolutionVerified) {
+		return "", string(ResolutionUnknown)
 	}
 	return character.Name, character.NameStatus
 }
 
-func (p *processor) viewEffects() ViewEffects {
-	if p.effects == nil {
+func (p *Processor) viewEffects() ViewEffects {
+	if p.Effects == nil {
 		return ViewEffects{Status: EffectSnapshotComplete, Active: []ViewEffect{}}
 	}
-	snapshot := p.effectSnapshotAfterLastFrame(p.viewClockLead)
+	snapshot := p.EffectSnapshotAfterLastFrame(p.ViewClockLead)
 	// Only display-eligible instances are listed; the bound applies to the display set alone, so an eligible instance is
 	// never pushed out by one that would not have been shown. Instances the strip cannot tell apart share one cell
 	// (effectDisplayCells). Cells are ordered by when they end, so the bound keeps the soonest. The order only decides which
 	// cells fit; it never removes one from the display set.
-	view := ViewEffects{Status: snapshot.Status, Reason: snapshot.Reason, Active: []ViewEffect{}, Buffs: ViewEffectRow{Effects: []ViewEffect{}}, Debuffs: ViewEffectRow{Effects: []ViewEffect{}}, ClockStalled: p.viewClockStalled}
+	view := ViewEffects{Status: snapshot.Status, Reason: snapshot.Reason, Active: []ViewEffect{}, Buffs: ViewEffectRow{Effects: []ViewEffect{}}, Debuffs: ViewEffectRow{Effects: []ViewEffect{}}, ClockStalled: p.ViewClockStalled}
 	eligible := make([]EffectInstanceSnapshot, 0, len(snapshot.Effects))
 	for _, effect := range snapshot.Effects {
-		display := effectDisplayFor(effect)
-		view.Counts.add(display.Eligibility)
+		display := EffectDisplayFor(effect)
+		view.Counts.Add(display.Eligibility)
 		if display.Eligibility == EffectDisplayEligible {
 			eligible = append(eligible, effect)
 		}
 	}
-	cells := effectDisplayCells(eligible)
+	cells := EffectDisplayCells(eligible)
 	sortEffectCells(cells)
 	view.Counts.Cells = len(cells)
-	countdowns := snapshot.Status == EffectSnapshotComplete && !p.viewClockStalled && p.context.snapshot().State == ContextValid
+	countdowns := snapshot.Status == EffectSnapshotComplete && !p.ViewClockStalled && p.Context.Snapshot().State == ContextValid
 	for _, cell := range cells {
 		row := &view.Buffs
-		if effectPolarityFor(cell.representative) == EffectPolarityDebuff {
+		if effectPolarityFor(cell.Representative) == EffectPolarityDebuff {
 			row = &view.Debuffs
 		}
 		if len(view.Active) == maxViewEffects {
-			view.Counts.Truncated += cell.instances()
+			view.Counts.Truncated += cell.Instances()
 			view.Counts.TruncatedCells++
 			row.Truncated++
 			continue
 		}
-		view.Counts.Listed += cell.instances()
+		view.Counts.Listed += cell.Instances()
 		view.Counts.ListedCells++
 		projected := p.viewEffectCell(cell)
-		projected.ShowCountdown = countdowns && effectCellCountsDown(cell.earliest)
+		projected.ShowCountdown = countdowns && effectCellCountsDown(cell.Earliest)
 		view.Active = append(view.Active, projected)
 		row.Effects = append(row.Effects, projected)
 	}
@@ -678,7 +678,7 @@ func (p *processor) viewEffects() ViewEffects {
 		// An ended instance carries the decision it had while active, so a consumer can tell which ended rows it showed.
 		whileActive := ended.EffectInstanceSnapshot
 		whileActive.Lifecycle = EffectLifecycleActive
-		effect.Display = effectDisplayFor(whileActive)
+		effect.Display = EffectDisplayFor(whileActive)
 		// An ended holder's ID may already have been reused. Do not resolve its past role from current entities.
 		effect.HolderRoleID = nil
 		at := ended.EndedAt
@@ -691,38 +691,38 @@ func (p *processor) viewEffects() ViewEffects {
 // viewEffectCell projects one Effects Overlay cell. Every member agrees on its stack count (effectCellIdentity), so the
 // count is never a sum across holders. The countdown is the earliest member's, so a cell never reads later than its first
 // end and it sorts where its first end belongs.
-func (p *processor) viewEffectCell(cell effectDisplayCell) ViewEffect {
-	view := p.viewEffect(cell.representative)
-	view.Display = effectDisplayFor(cell.representative)
-	view.Instances = cell.instances()
-	view.RemainingStatus, view.RemainingSeconds = cell.earliest.RemainingStatus, cloneFloat64(cell.earliest.RemainingSeconds)
+func (p *Processor) viewEffectCell(cell EffectDisplayCell) ViewEffect {
+	view := p.viewEffect(cell.Representative)
+	view.Display = EffectDisplayFor(cell.Representative)
+	view.Instances = cell.Instances()
+	view.RemainingStatus, view.RemainingSeconds = cell.Earliest.RemainingStatus, CloneFloat64(cell.Earliest.RemainingSeconds)
 	view.ExpectedExpiry = nil
-	if cell.earliest.ExpectedExpiry != nil {
-		expiry := *cell.earliest.ExpectedExpiry
+	if cell.Earliest.ExpectedExpiry != nil {
+		expiry := *cell.Earliest.ExpectedExpiry
 		view.ExpectedExpiry = &expiry
 	}
-	if cell.instances() > 1 {
+	if cell.Instances() > 1 {
 		view.HolderRoleID = nil
 	}
 	return view
 }
 
-func (p *processor) viewEffect(effect EffectInstanceSnapshot) ViewEffect {
+func (p *Processor) viewEffect(effect EffectInstanceSnapshot) ViewEffect {
 	view := ViewEffect{
-		Key:              effectViewKey(effect),
-		EffectID:         cloneUint64(effect.EffectID),
+		Key:              EffectViewKey(effect),
+		EffectID:         CloneUint64(effect.EffectID),
 		HolderRelation:   effect.HolderRelation,
 		SourceRelation:   effect.SourceRelation,
 		Polarity:         effect.Polarity,
 		CombatClass:      effect.CombatClass,
 		Kind:             effect.Kind,
-		StackCount:       cloneUint64(effect.StackCount),
+		StackCount:       CloneUint64(effect.StackCount),
 		Lifecycle:        effect.Lifecycle,
 		FirstObservedAt:  effect.FirstObservedAt,
 		LastUpdatedAt:    effect.LastUpdatedAt,
-		DurationSeconds:  cloneFloat64(effect.ServerDurationSeconds),
+		DurationSeconds:  CloneFloat64(effect.ServerDurationSeconds),
 		RemainingStatus:  effect.RemainingStatus,
-		RemainingSeconds: cloneFloat64(effect.RemainingSeconds),
+		RemainingSeconds: CloneFloat64(effect.RemainingSeconds),
 		Stale:            effect.StaleSinceTransportLoss,
 		Evidence:         effect.Evidence,
 	}
@@ -744,7 +744,7 @@ func (p *processor) viewEffect(effect EffectInstanceSnapshot) ViewEffect {
 		view.TermID = &id
 	}
 	if effect.HolderRelation == EffectRelationLocalRole || effect.HolderRelation == EffectRelationLocalOwned {
-		if role := p.localRoleForEntity(effect.HolderEntityID, entityIdentity{}); role != nil {
+		if role := p.localRoleForEntity(effect.HolderEntityID, EntityIdentity{}); role != nil {
 			roleID := role.RoleID
 			view.HolderRoleID = &roleID
 		}
@@ -752,8 +752,8 @@ func (p *processor) viewEffect(effect EffectInstanceSnapshot) ViewEffect {
 	return view
 }
 
-// effectViewKey hashes the tracker's instance identity so the UI can key list rows without seeing it.
-func effectViewKey(effect EffectInstanceSnapshot) string {
+// EffectViewKey hashes the tracker's instance identity so the UI can key list rows without seeing it.
+func EffectViewKey(effect EffectInstanceSnapshot) string {
 	hash := fnv.New64a()
 	for _, value := range []uint64{uint64(effect.SessionNumber), effect.HolderEntityID, effect.HolderGeneration, effect.HandleID} {
 		var buffer [8]byte
@@ -765,7 +765,7 @@ func effectViewKey(effect EffectInstanceSnapshot) string {
 	return strconv.FormatUint(hash.Sum64(), 36)
 }
 
-func cloneUint64(value *uint64) *uint64 {
+func CloneUint64(value *uint64) *uint64 {
 	if value == nil {
 		return nil
 	}
@@ -773,7 +773,7 @@ func cloneUint64(value *uint64) *uint64 {
 	return &copied
 }
 
-func cloneFloat64(value *float64) *float64 {
+func CloneFloat64(value *float64) *float64 {
 	if value == nil {
 		return nil
 	}
@@ -793,11 +793,11 @@ type ViewVehicle struct {
 	UnassignedSkill ViewUnassignedSkill `json:"unassignedSkill"`
 }
 
-func (p *processor) viewVehicle(vehicle *VehicleDamageSnapshot, total int64) *ViewVehicle {
-	return projectVehicle(p.masters, vehicle, total)
+func (p *Processor) viewVehicle(vehicle *VehicleDamageSnapshot, total int64) *ViewVehicle {
+	return projectVehicle(p.Masters, vehicle, total)
 }
 
-func projectVehicle(masters *gameMaster, vehicle *VehicleDamageSnapshot, total int64) *ViewVehicle {
+func projectVehicle(masters *GameMaster, vehicle *VehicleDamageSnapshot, total int64) *ViewVehicle {
 	if vehicle == nil {
 		return nil
 	}

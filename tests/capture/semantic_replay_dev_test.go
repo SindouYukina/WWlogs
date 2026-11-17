@@ -1,5 +1,3 @@
-//go:build wwdev
-
 package capture
 
 import (
@@ -537,11 +535,11 @@ func TestSemanticReplayCollector(t *testing.T) {
 		t.Skip("WWLOGS_SEMANTIC_REPLAY_PCAPS is not set")
 	}
 	pcaps := readReplayPCAPList(t, list)
-	key, err := loadEmbeddedPrivateKey()
+	key, err := LoadEmbeddedPrivateKey()
 	if err != nil {
 		t.Fatal(err)
 	}
-	masters, err := loadGameMasterDatabase(os.Getenv("WWLOGS_SEMANTIC_REPLAY_MASTER_DB"), "zh-TW")
+	masters, err := LoadGameMasterDatabase(os.Getenv("WWLOGS_SEMANTIC_REPLAY_MASTER_DB"), "zh-TW")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -566,20 +564,20 @@ func TestSemanticReplayCollector(t *testing.T) {
 			seen := map[uint64]*semanticEffectSeen{}
 			last := time.Time{}
 			var rowsErr error
-			p, _ := equivalenceReplay(t, inputs, masters, key, capture.path, nil, func(index int, p *processor) {
-				if p.currentFrameTime.IsZero() || (!last.IsZero() && p.currentFrameTime.Sub(last) < 250*time.Millisecond) {
+			p, _ := equivalenceReplay(t, inputs, masters, key, capture.path, nil, func(index int, p *Processor) {
+				if p.CurrentFrameTime.IsZero() || (!last.IsZero() && p.CurrentFrameTime.Sub(last) < 250*time.Millisecond) {
 					return
 				}
-				last = p.currentFrameTime
-				if err := semanticCheckRanking(p.viewSnapshot()); err != nil && rowsErr == nil {
-					rowsErr = fmt.Errorf("ranking at %s: %w", p.currentFrameTime.UTC().Format(time.RFC3339Nano), err)
+				last = p.CurrentFrameTime
+				if err := semanticCheckRanking(p.ViewSnapshot()); err != nil && rowsErr == nil {
+					rowsErr = fmt.Errorf("ranking at %s: %w", p.CurrentFrameTime.UTC().Format(time.RFC3339Nano), err)
 				}
 				view := p.viewEffects()
-				if err := view.Counts.accountingError(len(view.Active)); err != nil && rowsErr == nil {
+				if err := view.Counts.AccountingError(len(view.Active)); err != nil && rowsErr == nil {
 					rowsErr = err
 				}
 				if err := semanticCheckRows(view); err != nil && rowsErr == nil {
-					rowsErr = fmt.Errorf("at %s: %w", p.currentFrameTime.UTC().Format(time.RFC3339Nano), err)
+					rowsErr = fmt.Errorf("at %s: %w", p.CurrentFrameTime.UTC().Format(time.RFC3339Nano), err)
 				}
 				record := func(row ViewEffectRow, polarity EffectPolarity) {
 					for _, effect := range row.Effects {
@@ -600,7 +598,7 @@ func TestSemanticReplayCollector(t *testing.T) {
 				record(view.Buffs, EffectPolarityBuff)
 				record(view.Debuffs, EffectPolarityDebuff)
 			})
-			p.finishCapture()
+			p.FinishCapture()
 			if rowsErr != nil {
 				t.Fatal(rowsErr)
 			}
@@ -630,7 +628,7 @@ func TestSemanticReplayCollector(t *testing.T) {
 					t.Errorf("effect %d = %+v, want row %s polarity %s target %s max stack %d", fact.effectID, *got, fact.row, polarity, fact.target, fact.maxStack)
 				}
 			}
-			statistics := p.damageStatisticsSnapshot()
+			statistics := p.DamageStatisticsSnapshot()
 			if got := intervalDamageCompleteness(statistics); !got.Conserved {
 				t.Errorf("interval damage is not conserved: %+v", got)
 			}
@@ -684,7 +682,7 @@ func TestSemanticReplayCollector(t *testing.T) {
 					t.Errorf("encounter %d negative-status credit = %d (role %d: %d), forced %d, want %d forced %d", fact.sequence, status, negativeStatusRole, credited, statusTrigger, fact.status, fact.statusTrigger)
 				}
 			}
-			view := p.viewSnapshot()
+			view := p.ViewSnapshot()
 			if err := semanticCheckRanking(view); err != nil {
 				t.Errorf("final ranking: %v", err)
 			}

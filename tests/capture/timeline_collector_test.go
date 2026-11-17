@@ -56,11 +56,11 @@ func TestStateTimelineCollector(t *testing.T) {
 		}
 		holders[id] = true
 	}
-	key, err := loadEmbeddedPrivateKey()
+	key, err := LoadEmbeddedPrivateKey()
 	if err != nil {
 		t.Fatalf("embedded key payload is unavailable (build the test binary with scripts/embed-key.go -test-binary): %v", err)
 	}
-	masters, err := loadGameMasterDatabase(masterPath, "zh-TW")
+	masters, err := LoadGameMasterDatabase(masterPath, "zh-TW")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,10 +71,10 @@ func TestStateTimelineCollector(t *testing.T) {
 	defer file.Close()
 	encoder := json.NewEncoder(file)
 	var next time.Time
-	write := func(p *processor) {
-		damage := p.damageStatisticsSnapshot()
-		damage = p.damageStatisticsSnapshotAt(CaptureQueryTime{CaptureSessionID: damage.CaptureSessionID, Timestamp: p.currentFrameTime})
-		effects := p.effectSnapshotAtLastFrame()
+	write := func(p *Processor) {
+		damage := p.DamageStatisticsSnapshot()
+		damage = p.DamageStatisticsSnapshotAt(CaptureQueryTime{CaptureSessionID: damage.CaptureSessionID, Timestamp: p.CurrentFrameTime})
+		effects := p.EffectSnapshotAtLastFrame()
 		if len(holders) > 0 {
 			kept := effects.Effects[:0]
 			for _, effect := range effects.Effects {
@@ -89,20 +89,20 @@ func TestStateTimelineCollector(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	p, _ := equivalenceReplay(t, inputs, masters, key, path, nil, func(_ int, p *processor) {
-		if p.currentFrameTime.IsZero() || p.sessionNumber == 0 {
+	p, _ := equivalenceReplay(t, inputs, masters, key, path, nil, func(_ int, p *Processor) {
+		if p.CurrentFrameTime.IsZero() || p.SessionNumber == 0 {
 			return
 		}
 		if next.IsZero() {
-			next = p.currentFrameTime.Truncate(interval)
+			next = p.CurrentFrameTime.Truncate(interval)
 		}
-		if p.currentFrameTime.Before(next) {
+		if p.CurrentFrameTime.Before(next) {
 			return
 		}
 		write(p)
-		next = p.currentFrameTime.Truncate(interval).Add(interval)
+		next = p.CurrentFrameTime.Truncate(interval).Add(interval)
 	})
-	if !p.currentFrameTime.IsZero() {
+	if !p.CurrentFrameTime.IsZero() {
 		write(p)
 	}
 }

@@ -23,9 +23,9 @@ func assertEncountersDoNotOverlap(t *testing.T, snapshot DamageStatisticsSnapsho
 }
 
 func finishedEncounterThenSignalMode(statistics *DamageStatistics) {
-	statistics.observeBattleState(true, encounterAt(1), 1)
+	statistics.ObserveBattleState(true, encounterAt(1), 1)
 	outgoing(statistics, 100, 5)
-	statistics.observeBattleState(false, encounterAt(10), 1)
+	statistics.ObserveBattleState(false, encounterAt(10), 1)
 	statistics.observeCaptureTime(encounterAt(11.2))
 }
 
@@ -37,7 +37,7 @@ func TestPreRollLateEventCannotReachIntoPreviousEncounter(t *testing.T) {
 	if assignment := statistics.addCombatEvent(late); assignment != encounterAssignmentOutside {
 		t.Fatalf("a late event inside the finished encounter's span must stay outside, got %q", assignment)
 	}
-	statistics.observeBattleState(true, encounterAt(11.5), 1)
+	statistics.ObserveBattleState(true, encounterAt(11.5), 1)
 	outgoing(statistics, 60, 12)
 	snapshot := statistics.Snapshot()
 	current := snapshot.Encounters.Current
@@ -52,7 +52,7 @@ func TestPreRollLateEventCannotReachIntoPreviousEncounter(t *testing.T) {
 func TestPreRollOutOfOrderEventAfterOpenCannotOverlap(t *testing.T) {
 	statistics := NewDamageStatistics()
 	finishedEncounterThenSignalMode(statistics)
-	statistics.observeBattleState(true, encounterAt(11.5), 1)
+	statistics.ObserveBattleState(true, encounterAt(11.5), 1)
 	outgoing(statistics, 60, 12)
 	// Out of order: within the 2 s pre-roll of the new start, but inside the previous encounter.
 	statistics.addCombatEvent(testEncounterRecord(CombatFlowLocalOutgoing, 25, 9.8))
@@ -70,10 +70,10 @@ func TestPreRollOutOfOrderEventAfterOpenCannotOverlap(t *testing.T) {
 
 func TestPreRollEventDuringEndingCandidateBeforeStartRespectsWindow(t *testing.T) {
 	statistics := NewDamageStatistics()
-	statistics.observeBattleState(false, encounterAt(0), 1)
-	statistics.observeBattleState(true, encounterAt(10), 1)
+	statistics.ObserveBattleState(false, encounterAt(0), 1)
+	statistics.ObserveBattleState(true, encounterAt(10), 1)
 	outgoing(statistics, 100, 11)
-	statistics.observeBattleState(false, encounterAt(15), 1)
+	statistics.ObserveBattleState(false, encounterAt(15), 1)
 	// Delivered while the encounter is an ending candidate, but stamped long before it started.
 	if assignment := statistics.addCombatEvent(testEncounterRecord(CombatFlowLocalOutgoing, 30, 5)); assignment != encounterAssignmentOutside {
 		t.Fatalf("an event older than the pre-roll window must stay outside even during the grace period, got %q", assignment)
@@ -88,11 +88,11 @@ func TestPreRollEventDuringEndingCandidateBeforeStartRespectsWindow(t *testing.T
 
 func TestPreRollWaveFlickerJoinsTheSameEncounter(t *testing.T) {
 	statistics := NewDamageStatistics()
-	statistics.observeBattleState(true, encounterAt(1), 1)
+	statistics.ObserveBattleState(true, encounterAt(1), 1)
 	outgoing(statistics, 100, 5)
-	statistics.observeBattleState(false, encounterAt(10), 1)
+	statistics.ObserveBattleState(false, encounterAt(10), 1)
 	outgoing(statistics, 30, 10.1)
-	statistics.observeBattleState(true, encounterAt(10.3), 1)
+	statistics.ObserveBattleState(true, encounterAt(10.3), 1)
 	outgoing(statistics, 70, 11)
 	snapshot := statistics.Snapshot()
 	if snapshot.Encounters.Current == nil || snapshot.Encounters.Current.Totals.DamageDealt != 200 || len(snapshot.Encounters.Completed) != 0 ||
@@ -103,12 +103,12 @@ func TestPreRollWaveFlickerJoinsTheSameEncounter(t *testing.T) {
 
 func TestPreRollSameTimestampAndUnknownEvents(t *testing.T) {
 	statistics := NewDamageStatistics()
-	statistics.observeBattleState(false, encounterAt(0), 1)
+	statistics.ObserveBattleState(false, encounterAt(0), 1)
 	for i := 0; i < 3; i++ {
 		outgoing(statistics, 10, 20)
 	}
 	statistics.addCombatEvent(testEncounterRecord(CombatFlowUnattributedOutgoing, 999, 19.5))
-	statistics.observeBattleState(true, encounterAt(20.2), 1)
+	statistics.ObserveBattleState(true, encounterAt(20.2), 1)
 	snapshot := statistics.Snapshot()
 	current := snapshot.Encounters.Current
 	if current == nil || !current.StartedAt.Equal(encounterAt(20)) || current.Totals.DamageDealt != 30 || current.Totals.OutgoingEvents != 3 ||
@@ -120,13 +120,13 @@ func TestPreRollSameTimestampAndUnknownEvents(t *testing.T) {
 
 func TestPreRollDuplicateResponseCountsOnce(t *testing.T) {
 	statistics := NewDamageStatistics()
-	statistics.observeBattleState(false, encounterAt(0), 1)
+	statistics.ObserveBattleState(false, encounterAt(0), 1)
 	record := testEncounterRecord(CombatFlowLocalOutgoing, 50, 20)
 	statistics.addCombatEvent(record)
-	if assignment := statistics.addCombatEvent(record); assignment != statisticsAssignmentDuplicate {
+	if assignment := statistics.addCombatEvent(record); assignment != StatisticsAssignmentDuplicate {
 		t.Fatalf("a repeated response in the pre-roll window must be rejected, got %q", assignment)
 	}
-	statistics.observeBattleState(true, encounterAt(20.1), 1)
+	statistics.ObserveBattleState(true, encounterAt(20.1), 1)
 	snapshot := statistics.Snapshot()
 	if snapshot.Encounters.Current.Totals.DamageDealt != 50 || snapshot.DamageDealt != 50 || snapshot.DuplicateEvents != 1 {
 		t.Fatalf("a pre-roll event must enter the encounter once: %+v", snapshot)
@@ -135,10 +135,10 @@ func TestPreRollDuplicateResponseCountsOnce(t *testing.T) {
 
 func TestPreRollDoesNotCrossProtocolSessions(t *testing.T) {
 	statistics := NewDamageStatistics()
-	statistics.observeBattleState(false, encounterAt(0), 1)
+	statistics.ObserveBattleState(false, encounterAt(0), 1)
 	outgoing(statistics, 50, 20)
 	statistics.observeSessionChange(encounterAt(20.5))
-	statistics.observeBattleState(true, encounterAt(21), 2)
+	statistics.ObserveBattleState(true, encounterAt(21), 2)
 	snapshot := statistics.Snapshot()
 	if snapshot.Encounters.Current == nil || snapshot.Encounters.Current.Totals.DamageDealt != 0 ||
 		snapshot.Encounters.OutsideEncounters.DamageDealt != 50 || !snapshot.Encounters.Current.StartedAt.Equal(encounterAt(21)) {
@@ -148,13 +148,13 @@ func TestPreRollDoesNotCrossProtocolSessions(t *testing.T) {
 
 func TestPreRollDoesNotCrossReset(t *testing.T) {
 	statistics := NewDamageStatistics()
-	statistics.observeBattleState(false, encounterAt(0), 1)
+	statistics.ObserveBattleState(false, encounterAt(0), 1)
 	outgoing(statistics, 50, 20)
 	statistics.observeCaptureTime(encounterAt(20.4))
 	statistics.Reset()
 	// Delivered after the reset but stamped before it.
 	statistics.addCombatEvent(testEncounterRecord(CombatFlowLocalOutgoing, 9, 20.3))
-	statistics.observeBattleState(true, encounterAt(21), 1)
+	statistics.ObserveBattleState(true, encounterAt(21), 1)
 	outgoing(statistics, 40, 21.5)
 	snapshot := statistics.Snapshot()
 	if snapshot.Encounters.Current == nil || snapshot.Encounters.Current.Totals.DamageDealt != 40 ||
@@ -166,10 +166,10 @@ func TestPreRollDoesNotCrossReset(t *testing.T) {
 
 func TestPreRollStartTimestampsStayDistinct(t *testing.T) {
 	statistics := NewDamageStatistics()
-	statistics.observeBattleState(false, encounterAt(0), 1)
+	statistics.ObserveBattleState(false, encounterAt(0), 1)
 	statistics.addCombatEvent(testEncounterRecord(CombatFlowLocalIncoming, 5, 29.9))
 	outgoing(statistics, 100, 30.1)
-	statistics.observeBattleState(true, encounterAt(30.3), 1)
+	statistics.ObserveBattleState(true, encounterAt(30.3), 1)
 	outgoing(statistics, 100, 32.9)
 	current := statistics.Snapshot().Encounters.Current
 	// Server battle-state start, first included confirmed activity, and the effective start are reported separately.
@@ -182,7 +182,7 @@ func TestPreRollStartTimestampsStayDistinct(t *testing.T) {
 // The owner's reference example: 100,000 damage, no further hits, the encounter still ACTIVE.
 func TestLiveEncounterDPSDecaysWithoutDamage(t *testing.T) {
 	statistics := NewDamageStatistics()
-	statistics.observeBattleState(true, encounterAt(0), 1)
+	statistics.ObserveBattleState(true, encounterAt(0), 1)
 	outgoing(statistics, 100000, 2)
 	session := statistics.Snapshot().CaptureSessionID
 	for _, step := range []struct {
@@ -204,16 +204,16 @@ func TestLiveEncounterDPSDecaysWithoutDamage(t *testing.T) {
 
 func TestConsoleLineDecaysWithHeartbeatFrames(t *testing.T) {
 	p := newEncounterTestProcessor()
-	p.damageStatistics.observeBattleState(true, encounterAt(0), 1)
-	p.damageStatistics.addCombatEvent(testEncounterRecord(CombatFlowLocalOutgoing, 100000, 2))
+	p.DamageStatistics.ObserveBattleState(true, encounterAt(0), 1)
+	p.DamageStatistics.addCombatEvent(testEncounterRecord(CombatFlowLocalOutgoing, 100000, 2))
 	for _, step := range []struct {
 		seconds float64
 		want    string
 	}{{5, "encounter_dps=20000.0"}, {10, "encounter_dps=10000.0"}, {20, "encounter_dps=5000.0"}} {
 		// handleFrame sets both values for every decoded frame, including non-combat heartbeats.
-		p.currentFrameTime = encounterAt(step.seconds)
+		p.CurrentFrameTime = encounterAt(step.seconds)
 		p.observeEncounterClock(encounterAt(step.seconds))
-		if line := p.currentStatisticsReport().String(); !containsAll(line, step.want, "encounter_state=ACTIVE", "encounter_confidence=live") {
+		if line := p.CurrentStatisticsReport().String(); !containsAll(line, step.want, "encounter_state=ACTIVE", "encounter_confidence=live") {
 			t.Fatalf("at %vs the console line %q lacks %q", step.seconds, line, step.want)
 		}
 	}
@@ -237,9 +237,9 @@ func containsAll(text string, parts ...string) bool {
 
 func TestFinishedEncounterDPSIsFixed(t *testing.T) {
 	statistics := NewDamageStatistics()
-	statistics.observeBattleState(true, encounterAt(0), 1)
+	statistics.ObserveBattleState(true, encounterAt(0), 1)
 	outgoing(statistics, 1000, 2)
-	statistics.observeBattleState(false, encounterAt(10), 1)
+	statistics.ObserveBattleState(false, encounterAt(10), 1)
 	statistics.observeCaptureTime(encounterAt(12))
 	first := requireOneCompleted(t, statistics.Snapshot()).EncounterDPS
 	statistics.observeCaptureTime(encounterAt(500))
@@ -252,7 +252,7 @@ func TestFinishedEncounterDPSIsFixed(t *testing.T) {
 
 func TestIncompleteDPSIsNotFinal(t *testing.T) {
 	statistics := NewDamageStatistics()
-	statistics.observeBattleState(true, encounterAt(0), 1)
+	statistics.ObserveBattleState(true, encounterAt(0), 1)
 	outgoing(statistics, 1000, 2)
 	statistics.observeCaptureTime(encounterAt(10))
 	statistics.finishCapture()
@@ -264,11 +264,11 @@ func TestIncompleteDPSIsNotFinal(t *testing.T) {
 
 func TestEncountersDoNotShareTimeState(t *testing.T) {
 	statistics := NewDamageStatistics()
-	statistics.observeBattleState(true, encounterAt(0), 1)
+	statistics.ObserveBattleState(true, encounterAt(0), 1)
 	outgoing(statistics, 1000, 2)
-	statistics.observeBattleState(false, encounterAt(10), 1)
+	statistics.ObserveBattleState(false, encounterAt(10), 1)
 	statistics.observeCaptureTime(encounterAt(12))
-	statistics.observeBattleState(true, encounterAt(50), 1)
+	statistics.ObserveBattleState(true, encounterAt(50), 1)
 	outgoing(statistics, 600, 51)
 	statistics.observeCaptureTime(encounterAt(56))
 	snapshot := statistics.Snapshot()
@@ -277,7 +277,7 @@ func TestEncountersDoNotShareTimeState(t *testing.T) {
 		t.Fatalf("each encounter must use its own start and end: %+v", snapshot.Encounters)
 	}
 	statistics.Reset()
-	statistics.observeBattleState(true, encounterAt(60), 1)
+	statistics.ObserveBattleState(true, encounterAt(60), 1)
 	outgoing(statistics, 50, 61)
 	statistics.observeCaptureTime(encounterAt(65))
 	if dps := statistics.Snapshot().EncounterDPS; dps.Value != 10 || dps.Duration != 5*time.Second {
@@ -287,7 +287,7 @@ func TestEncountersDoNotShareTimeState(t *testing.T) {
 
 func TestLiveEncounterDPSIgnoresBackwardTime(t *testing.T) {
 	statistics := NewDamageStatistics()
-	statistics.observeBattleState(true, encounterAt(0), 1)
+	statistics.ObserveBattleState(true, encounterAt(0), 1)
 	outgoing(statistics, 1000, 9)
 	statistics.observeCaptureTime(encounterAt(10))
 	// A multi-fragment frame keeps its first fragment's time, and a host clock step can move backwards.
@@ -303,7 +303,7 @@ func TestLiveEncounterDPSIgnoresBackwardTime(t *testing.T) {
 	}
 
 	empty := NewDamageStatistics()
-	empty.observeBattleState(true, encounterAt(3), 1)
+	empty.ObserveBattleState(true, encounterAt(3), 1)
 	outgoing(empty, 10, 3)
 	if dps := empty.Snapshot().EncounterDPS; dps.Status != DPSStatusInvalidDuration || dps.Value != 0 {
 		t.Fatalf("a zero-length live encounter must not produce a value: %+v", dps)

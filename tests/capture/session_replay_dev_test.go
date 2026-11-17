@@ -1,5 +1,3 @@
-//go:build wwdev
-
 package capture
 
 import (
@@ -119,7 +117,7 @@ func TestSessionReplayCollector(t *testing.T) {
 	if master == "" || listPath == "" {
 		t.Fatal("WWLOGS_SESSION_REPLAY_MASTER_DB and WWLOGS_SESSION_REPLAY_PCAPS are required")
 	}
-	key, err := loadEmbeddedPrivateKey()
+	key, err := LoadEmbeddedPrivateKey()
 	if err != nil {
 		t.Fatalf("embedded key payload is required: %v", err)
 	}
@@ -135,18 +133,18 @@ func TestSessionReplayCollector(t *testing.T) {
 	for _, capture := range readSegmentDropList(t, listPath) {
 		t.Run(capture.name, func(t *testing.T) {
 			cli, _ := equivalenceReplay(t, inputs, masters.masters, key, capture.path, nil, nil)
-			cli.finishCapture()
-			_, cliTotals := engineTotals(cli.damageStatistics)
+			cli.FinishCapture()
+			_, cliTotals := engineTotals(cli.DamageStatistics)
 
 			last := map[uint64]intervalTotals{}
-			host, _ := equivalenceReplay(t, inputs, masters.masters, key, capture.path, func(p *processor) {
-				p.intervalPerProtocolSession = true
-			}, func(_ int, p *processor) {
-				id, totals := engineTotals(p.damageStatistics)
+			host, _ := equivalenceReplay(t, inputs, masters.masters, key, capture.path, func(p *Processor) {
+				p.IntervalPerProtocolSession = true
+			}, func(_ int, p *Processor) {
+				id, totals := engineTotals(p.DamageStatistics)
 				last[id] = totals
 			})
-			host.finishCapture()
-			id, totals := engineTotals(host.damageStatistics)
+			host.FinishCapture()
+			id, totals := engineTotals(host.DamageStatistics)
 			last[id] = totals
 			var sum intervalTotals
 			for _, totals := range last {
@@ -155,7 +153,7 @@ func TestSessionReplayCollector(t *testing.T) {
 			if sum != cliTotals {
 				t.Errorf("host intervals do not add up to the CLI interval: host=%+v cli=%+v", sum, cliTotals)
 			}
-			hostFinal := host.viewSnapshot()
+			hostFinal := host.ViewSnapshot()
 			hostFinal.Final = true
 
 			// The update interval only decides when views are built; the final view must not depend on it.
@@ -196,11 +194,11 @@ func TestSessionReplayCollector(t *testing.T) {
 			}
 			byInterval["switching"] = len(runSession("switching", sessionReplayIntervals[0], true))
 			final := views[len(views)-1]
-			if host.sessionNumber <= 1 && viewTotals(final) != cliTotals {
+			if host.SessionNumber <= 1 && viewTotals(final) != cliTotals {
 				t.Errorf("single protocol session: session totals %+v differ from the CLI %+v", viewTotals(final), cliTotals)
 			}
 			summary := sessionReplaySummary{
-				Name: capture.name, ProtocolSessions: host.sessionNumber, Intervals: len(last), CLI: cliTotals, HostIntervalsSum: sum,
+				Name: capture.name, ProtocolSessions: host.SessionNumber, Intervals: len(last), CLI: cliTotals, HostIntervalsSum: sum,
 				SessionFinal: viewTotals(final), Snapshots: len(views), SnapshotsByInterval: byInterval, FinalIntegrity: string(final.Health.DataIntegrity),
 				FinalEncounterDPS: string(final.Statistics.EncounterDPS.Status), Encounters: final.Encounters.CompletedTotal,
 			}

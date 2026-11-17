@@ -11,7 +11,7 @@ import (
 
 func timelineBenchStatistics(b testing.TB, seconds int) *DamageStatistics {
 	statistics := NewDamageStatistics()
-	statistics.observeBattleState(true, encounterAt(0), 1)
+	statistics.ObserveBattleState(true, encounterAt(0), 1)
 	for i := 0; i < seconds; i++ {
 		for hit := 0; hit < 4; hit++ {
 			roleOutgoing(statistics, uint64(1102+hit), 100, float64(i)+float64(hit)*0.2)
@@ -22,7 +22,7 @@ func timelineBenchStatistics(b testing.TB, seconds int) *DamageStatistics {
 
 func BenchmarkTimelineDamageUpdate(b *testing.B) {
 	statistics := NewDamageStatistics()
-	statistics.observeBattleState(true, encounterAt(0), 1)
+	statistics.ObserveBattleState(true, encounterAt(0), 1)
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

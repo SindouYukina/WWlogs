@@ -34,14 +34,14 @@ type statisticsReport struct {
 	KernelDrops CaptureCounter
 }
 
-// currentStatisticsReport reads the statistics at the last observed capture frame time. Rolling windows
+// CurrentStatisticsReport reads the statistics at the last observed capture frame time. Rolling windows
 // are evaluated on the capture clock, which is the only clock their events were stamped with.
-func (p *processor) currentStatisticsReport() statisticsReport {
-	damage := p.damageStatisticsSnapshot()
-	if observedAt := p.currentFrameTime; !observedAt.IsZero() {
-		damage = p.damageStatisticsSnapshotAt(CaptureQueryTime{CaptureSessionID: damage.CaptureSessionID, Timestamp: observedAt})
+func (p *Processor) CurrentStatisticsReport() statisticsReport {
+	damage := p.DamageStatisticsSnapshot()
+	if observedAt := p.CurrentFrameTime; !observedAt.IsZero() {
+		damage = p.DamageStatisticsSnapshotAt(CaptureQueryTime{CaptureSessionID: damage.CaptureSessionID, Timestamp: observedAt})
 	}
-	effects := p.effectSnapshotAtLastFrame()
+	effects := p.EffectSnapshotAtLastFrame()
 	trust := p.dataIntegritySnapshot(damage)
 	encounterIntegrity := "none"
 	if damage.Encounters.Current != nil {

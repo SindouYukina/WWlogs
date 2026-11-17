@@ -28,58 +28,58 @@ type testNotify struct {
 
 // notifyData is one CombatReceiveData item: CombatNotifyData{CombatCommon{EntityId: target}, DamageExecuteNotify}.
 func notifyData(n testNotify) []byte {
-	common := appendVarintField(nil, fieldCombatCommonEntityID, n.target)
-	efn := appendVarintField(nil, fieldDamageExecuteNotifyAttackerEntityID, n.attacker)
-	efn = appendVarintField(efn, fieldDamageExecuteNotifyTargetEntityID, n.target)
-	efn = appendVarintField(efn, fieldDamageExecuteNotifyDamageID, n.damageID)
-	efn = appendVarintField(efn, fieldDamageExecuteNotifyDamage, uint64(uint32(n.damage)))
+	common := appendVarintField(nil, FieldCombatCommonEntityID, n.target)
+	efn := appendVarintField(nil, FieldDamageExecuteNotifyAttackerEntityID, n.attacker)
+	efn = appendVarintField(efn, FieldDamageExecuteNotifyTargetEntityID, n.target)
+	efn = appendVarintField(efn, FieldDamageExecuteNotifyDamageID, n.damageID)
+	efn = appendVarintField(efn, FieldDamageExecuteNotifyDamage, uint64(uint32(n.damage)))
 	if n.changeLife != 0 {
-		efn = appendVarintField(efn, fieldDamageExecuteNotifyChangeLife, uint64(uint32(n.changeLife)))
+		efn = appendVarintField(efn, FieldDamageExecuteNotifyChangeLife, uint64(uint32(n.changeLife)))
 	}
 	if n.immune != 0 {
-		efn = appendVarintField(efn, fieldDamageExecuteNotifyImmuneType, uint64(n.immune))
+		efn = appendVarintField(efn, FieldDamageExecuteNotifyImmuneType, uint64(n.immune))
 	}
-	notify := appendBytesField(nil, fieldCombatNotifyDataCombatCommon, common)
-	notify = appendBytesField(notify, fieldCombatNotifyDataDamageExecuteNotify, efn)
-	return appendBytesField(nil, fieldCombatReceiveDataCombatNotifyData, notify)
+	notify := appendBytesField(nil, FieldCombatNotifyDataCombatCommon, common)
+	notify = appendBytesField(notify, FieldCombatNotifyDataDamageExecuteNotify, efn)
+	return appendBytesField(nil, FieldCombatReceiveDataCombatNotifyData, notify)
 }
 
 // deliverNotifyFrame hands one standalone CombatReceivePackNotify frame with the given server sequence.
-func deliverNotifyFrame(t *testing.T, p *processor, seconds float64, sequence uint32, items ...[]byte) {
+func deliverNotifyFrame(t *testing.T, p *Processor, seconds float64, sequence uint32, items ...[]byte) {
 	t.Helper()
 	pairingFrame(p, seconds)
-	frame := gameFrame{direction: "in", commandID: cmdCombatReceivePackNotify, sequence: sequence, timestamp: pairingAt(seconds)}
-	if err := p.handleCombatReceivePacks(frame, receivePackBody(items...)); err != nil {
+	frame := GameFrame{Direction: "in", CommandID: CmdCombatReceivePackNotify, Sequence: sequence, Timestamp: pairingAt(seconds)}
+	if err := p.HandleCombatReceivePacks(frame, receivePackBody(items...)); err != nil {
 		t.Fatal(err)
 	}
 }
 
 // newNotifyTestProcessor is the pairing processor (local role 100 of player 77, monster 200) with a second local role
 // 101, a second monster 201, the scene's combat entity, a single-player scene and the Master rows the tests use.
-func newNotifyTestProcessor() *processor {
+func newNotifyTestProcessor() *Processor {
 	p := newPairingTestProcessor()
 	addTestPlayerRoleGroupEntity(p, 101, 77, 1505)
-	p.observeLocalRoleEntity(101)
-	addTestRuntimeEntity(p, 201, func(entity *runtimeEntity) {
-		entity.entityTypeCode, entity.hasEntityType = entityTypeMonster, true
-		entity.monsterID, entity.hasMonsterID = 9002, true
+	p.ObserveLocalRoleEntity(101)
+	addTestRuntimeEntity(p, 201, func(entity *RuntimeEntity) {
+		entity.EntityTypeCode, entity.HasEntityType = EntityTypeMonster, true
+		entity.MonsterID, entity.HasMonsterID = 9002, true
 	})
-	p.entities.sceneCombatEntityID, p.entities.hasSceneCombatEntityID = notifyTestScene, true
-	p.scenePlayerIDs = []uint64{77}
+	p.Entities.SceneCombatEntityID, p.Entities.HasSceneCombatEntityID = notifyTestScene, true
+	p.ScenePlayerIDs = []uint64{77}
 	hash := strings.Repeat("a", 64)
-	p.masters.damage[notifyTestHeal] = damageMasterRecord{ID: notifyTestHeal, CalculateType: 1, SourceHash: hash, SourceTable: "damage"}
-	p.masters.damage[notifyTestHPLoss] = damageMasterRecord{ID: notifyTestHPLoss, CalculateType: 2, SourceHash: hash, SourceTable: "damage"}
-	p.masters.damage[notifyTestAero] = damageMasterRecord{ID: notifyTestAero, CalculateType: 0, SourceHash: hash, SourceTable: "damage"}
-	p.masters.abnormalDamageIDs = map[uint64]struct{}{notifyTestAero: {}}
-	p.masters.negativeStatusExecutors = map[uint64]uint64{notifyTestAeroBuff: notifyTestAero}
+	p.Masters.Damage[notifyTestHeal] = DamageMasterRecord{ID: notifyTestHeal, CalculateType: 1, SourceHash: hash, SourceTable: "damage"}
+	p.Masters.Damage[notifyTestHPLoss] = DamageMasterRecord{ID: notifyTestHPLoss, CalculateType: 2, SourceHash: hash, SourceTable: "damage"}
+	p.Masters.Damage[notifyTestAero] = DamageMasterRecord{ID: notifyTestAero, CalculateType: 0, SourceHash: hash, SourceTable: "damage"}
+	p.Masters.AbnormalDamageIDs = map[uint64]struct{}{notifyTestAero: {}}
+	p.Masters.NegativeStatusExecutors = map[uint64]uint64{notifyTestAeroBuff: notifyTestAero}
 	return p
 }
 
 // applyStatus puts a live status instance on holder, applied by source with the given relation.
-func applyStatus(p *processor, seconds float64, holder, handle, effectID, source uint64, relation EffectEntityRelation) {
+func applyStatus(p *Processor, seconds float64, holder, handle, effectID, source uint64, relation EffectEntityRelation) {
 	duration := 30.0
-	p.effects.ObserveApply(EffectApplyEvent{
-		SessionNumber: p.sessionNumber, HolderEntityID: holder, HolderGeneration: p.effectHolderGeneration(holder), HandleID: handle,
+	p.Effects.ObserveApply(EffectApplyEvent{
+		SessionNumber: p.SessionNumber, HolderEntityID: holder, HolderGeneration: p.effectHolderGeneration(holder), HandleID: handle,
 		EffectID: effectID, HasEffectID: true, SourceEntityID: source, HasSource: true,
 		HolderRelation: EffectRelationNonPlayer, SourceRelation: relation, DurationSeconds: &duration, ObservedAt: pairingAt(seconds),
 	})
@@ -91,15 +91,15 @@ func TestNotifiedLocalRoleDamageCountsOnceLikeAResponse(t *testing.T) {
 	deliverNotifyFrame(t, p, 1, 41, push)
 	// The same server frame delivered again (a retransmission the transport let through, a resumed reader): same key.
 	deliverNotifyFrame(t, p, 1.1, 41, push)
-	snapshot := p.damageStatistics.Snapshot()
+	snapshot := p.DamageStatistics.Snapshot()
 	if snapshot.DamageDealt != 500 || snapshot.OutgoingEvents != 1 || snapshot.DuplicateEvents != 1 {
 		t.Fatalf("dealt %d in %d events, duplicates %d; want 500 once and one duplicate", snapshot.DamageDealt, snapshot.OutgoingEvents, snapshot.DuplicateEvents)
 	}
 	if len(snapshot.Roles) != 1 || snapshot.Roles[0].RoleID != 1409 || snapshot.Roles[0].DamageDealt != 500 || snapshot.UnassignedRole.DamageDealt != 0 {
 		t.Fatalf("roles %+v unassigned %+v; the notified hit must be credited to its server-named attacker role", snapshot.Roles, snapshot.UnassignedRole)
 	}
-	if p.notifyStats.notifies != 2 || p.notifyStats.keyless != 0 {
-		t.Fatalf("notify stats %+v", p.notifyStats)
+	if p.NotifyStats.Notifies != 2 || p.NotifyStats.Keyless != 0 {
+		t.Fatalf("notify stats %+v", p.NotifyStats)
 	}
 }
 
@@ -110,7 +110,7 @@ func TestNotifiedResultEqualToAResponseIsNotADuplicate(t *testing.T) {
 	sendDamageRequestFrom(p, 1, 1, 100, 200)
 	deliverReceivePack(t, p, 1.1, inStandaloneNotify, damageResponseData(1, 800),
 		notifyData(testNotify{attacker: 100, target: 200, damageID: notifyTestDamage, damage: 800, changeLife: 800}))
-	snapshot := p.damageStatistics.Snapshot()
+	snapshot := p.DamageStatistics.Snapshot()
 	if snapshot.DamageDealt != 1600 || snapshot.OutgoingEvents != 2 || snapshot.DuplicateEvents != 0 {
 		t.Fatalf("dealt %d in %d events, duplicates %d; want both results", snapshot.DamageDealt, snapshot.OutgoingEvents, snapshot.DuplicateEvents)
 	}
@@ -121,24 +121,24 @@ func TestNotifiedResultsInOneFrameAndAcrossSessionsKeepTheirOwnKeys(t *testing.T
 	first := notifyData(testNotify{attacker: 100, target: 200, damageID: notifyTestDamage, damage: 300, changeLife: 300})
 	second := notifyData(testNotify{attacker: 101, target: 201, damageID: notifyTestDamage, damage: 300, changeLife: 300})
 	deliverNotifyFrame(t, p, 1, 7, first, second, first) // a repeated item inside one frame is a second server result
-	if got := p.damageStatistics.Snapshot(); got.DamageDealt != 900 || got.OutgoingEvents != 3 {
+	if got := p.DamageStatistics.Snapshot(); got.DamageDealt != 900 || got.OutgoingEvents != 3 {
 		t.Fatalf("one frame: dealt %d in %d events, want 900 in 3", got.DamageDealt, got.OutgoingEvents)
 	}
 	// A reconnect starts a new protocol session whose server sequence starts over: the same frame sequence is a new key.
-	p.sessionNumber++
+	p.SessionNumber++
 	deliverNotifyFrame(t, p, 2, 7, first)
-	if got := p.damageStatistics.Snapshot(); got.DamageDealt != 1200 || got.DuplicateEvents != 0 {
+	if got := p.DamageStatistics.Snapshot(); got.DamageDealt != 1200 || got.DuplicateEvents != 0 {
 		t.Fatalf("after a new protocol session: dealt %d, duplicates %d", got.DamageDealt, got.DuplicateEvents)
 	}
 }
 
 func TestNotifiedKeysNeverMeetResponseKeys(t *testing.T) {
 	p := newNotifyTestProcessor()
-	key := notifyEventKey(1, 0) // 65536: also a RequestId continued past one wrap
+	key := NotifyEventKey(1, 0) // 65536: also a RequestId continued past one wrap
 	sendDamageRequestFrom(p, 1, key, 100, 200)
 	deliverReceivePack(t, p, 1.1, inStandaloneNotify, damageResponseData(key, 100))
 	deliverNotifyFrame(t, p, 1.2, 1, notifyData(testNotify{attacker: 100, target: 200, damageID: notifyTestDamage, damage: 100, changeLife: 100}))
-	if got := p.damageStatistics.Snapshot(); got.DamageDealt != 200 || got.DuplicateEvents != 0 {
+	if got := p.DamageStatistics.Snapshot(); got.DamageDealt != 200 || got.DuplicateEvents != 0 {
 		t.Fatalf("dealt %d, duplicates %d; a notification and a response never share a key", got.DamageDealt, got.DuplicateEvents)
 	}
 }
@@ -147,22 +147,22 @@ func TestNotifiedNegativeStatusDamageNeedsLocalStatusEvidence(t *testing.T) {
 	aero := testNotify{attacker: notifyTestScene, target: 200, damageID: notifyTestAero, damage: 700, changeLife: 700}
 	cases := []struct {
 		name  string
-		setup func(p *processor)
+		setup func(p *Processor)
 	}{
-		{"no live status on the target", func(p *processor) {}},
-		{"status applied by an enemy", func(p *processor) { applyStatus(p, 0.5, 200, 1, notifyTestAeroBuff, 201, EffectRelationNonPlayer) }},
-		{"status of unknown source next to a local one", func(p *processor) {
+		{"no live status on the target", func(p *Processor) {}},
+		{"status applied by an enemy", func(p *Processor) { applyStatus(p, 0.5, 200, 1, notifyTestAeroBuff, 201, EffectRelationNonPlayer) }},
+		{"status of unknown source next to a local one", func(p *Processor) {
 			applyStatus(p, 0.5, 200, 1, notifyTestAeroBuff, 100, EffectRelationLocalRole)
 			applyStatus(p, 0.6, 200, 2, notifyTestAeroBuff, 555, EffectRelationUnknown)
 		}},
-		{"another player in the scene", func(p *processor) {
+		{"another player in the scene", func(p *Processor) {
 			applyStatus(p, 0.5, 200, 1, notifyTestAeroBuff, 100, EffectRelationLocalRole)
-			p.scenePlayerIDs = []uint64{77, 88}
+			p.ScenePlayerIDs = []uint64{77, 88}
 		}},
-		{"status on another enemy", func(p *processor) { applyStatus(p, 0.5, 201, 1, notifyTestAeroBuff, 100, EffectRelationLocalRole) }},
-		{"attacker is not the scene's combat entity", func(p *processor) {
+		{"status on another enemy", func(p *Processor) { applyStatus(p, 0.5, 201, 1, notifyTestAeroBuff, 100, EffectRelationLocalRole) }},
+		{"attacker is not the scene's combat entity", func(p *Processor) {
 			applyStatus(p, 0.5, 200, 1, notifyTestAeroBuff, 100, EffectRelationLocalRole)
-			p.entities.sceneCombatEntityID = 901
+			p.Entities.SceneCombatEntityID = 901
 		}},
 	}
 	for _, c := range cases {
@@ -170,12 +170,12 @@ func TestNotifiedNegativeStatusDamageNeedsLocalStatusEvidence(t *testing.T) {
 			p := newNotifyTestProcessor()
 			c.setup(p)
 			deliverNotifyFrame(t, p, 1, 3, notifyData(aero))
-			snapshot := p.damageStatistics.Snapshot()
+			snapshot := p.DamageStatistics.Snapshot()
 			if snapshot.DamageDealt != 0 || snapshot.UnassignedRole.NegativeStatusDamage != 0 {
 				t.Fatalf("dealt %d, unassigned %+v; without local status evidence the damage is not the local team's", snapshot.DamageDealt, snapshot.UnassignedRole)
 			}
-			if p.notifyStats.negativeStatus != 1 || p.notifyStats.negativeStatusLocal != 0 {
-				t.Fatalf("notify stats %+v", p.notifyStats)
+			if p.NotifyStats.NegativeStatus != 1 || p.NotifyStats.NegativeStatusLocal != 0 {
+				t.Fatalf("notify stats %+v", p.NotifyStats)
 			}
 		})
 	}
@@ -184,13 +184,13 @@ func TestNotifiedNegativeStatusDamageNeedsLocalStatusEvidence(t *testing.T) {
 func TestNotifiedNegativeStatusOfAnExpiredStatusIsNotCredited(t *testing.T) {
 	p := newNotifyTestProcessor()
 	duration := 3.0
-	p.effects.ObserveApply(EffectApplyEvent{
-		SessionNumber: p.sessionNumber, HolderEntityID: 200, HandleID: 1, EffectID: notifyTestAeroBuff, HasEffectID: true,
+	p.Effects.ObserveApply(EffectApplyEvent{
+		SessionNumber: p.SessionNumber, HolderEntityID: 200, HandleID: 1, EffectID: notifyTestAeroBuff, HasEffectID: true,
 		SourceEntityID: 100, HasSource: true, HolderRelation: EffectRelationNonPlayer, SourceRelation: EffectRelationLocalRole,
 		DurationSeconds: &duration, ObservedAt: pairingAt(1),
 	})
 	deliverNotifyFrame(t, p, 10, 3, notifyData(testNotify{attacker: notifyTestScene, target: 200, damageID: notifyTestAero, damage: 700, changeLife: 700}))
-	if got := p.damageStatistics.Snapshot(); got.DamageDealt != 0 {
+	if got := p.DamageStatistics.Snapshot(); got.DamageDealt != 0 {
 		t.Fatalf("dealt %d from a status that ended 6 s earlier", got.DamageDealt)
 	}
 }
@@ -198,7 +198,7 @@ func TestNotifiedNegativeStatusOfAnExpiredStatusIsNotCredited(t *testing.T) {
 func TestNotifiedHitOnTheLocalTeamFromTheSceneIsDamageTaken(t *testing.T) {
 	p := newNotifyTestProcessor()
 	deliverNotifyFrame(t, p, 1, 5, notifyData(testNotify{attacker: notifyTestScene, target: 100, damageID: notifyTestAero, damage: 2085, changeLife: 2085}))
-	snapshot := p.damageStatistics.Snapshot()
+	snapshot := p.DamageStatistics.Snapshot()
 	if snapshot.DamageTaken != 2085 || snapshot.IncomingEvents != 1 || snapshot.DamageDealt != 0 {
 		t.Fatalf("taken %d in %d, dealt %d; the scene entity is a non-player source", snapshot.DamageTaken, snapshot.IncomingEvents, snapshot.DamageDealt)
 	}
@@ -214,7 +214,7 @@ func TestNotifiedTeamInternalResultsFollowTheResponseRules(t *testing.T) {
 	deliverNotifyFrame(t, p, 1, 9,
 		notifyData(testNotify{attacker: 101, target: 101, damageID: notifyTestHPLoss, damage: 23764, changeLife: 23764}),
 		notifyData(testNotify{attacker: 101, target: 100, damageID: notifyTestHeal, damage: -23764, changeLife: -15334}))
-	snapshot := p.damageStatistics.Snapshot()
+	snapshot := p.DamageStatistics.Snapshot()
 	if snapshot.DamageTaken != 0 || snapshot.DamageDealt != 0 {
 		t.Fatalf("taken %d dealt %d; an HP loss the team causes itself is neither", snapshot.DamageTaken, snapshot.DamageDealt)
 	}
@@ -229,12 +229,12 @@ func TestNotifiedResultsWithoutAnAmountAreNotCounted(t *testing.T) {
 		notifyData(testNotify{attacker: 100, target: 200, damageID: notifyTestDamage, damage: 0}),
 		notifyData(testNotify{attacker: 100, target: 200, damageID: notifyTestDamage, damage: 400, changeLife: 400, immune: 1}),
 		notifyData(testNotify{attacker: 200, target: 201, damageID: notifyTestHeal, damage: -471620, changeLife: -471620}))
-	snapshot := p.damageStatistics.Snapshot()
+	snapshot := p.DamageStatistics.Snapshot()
 	if snapshot.DamageDealt != 0 || snapshot.DamageTaken != 0 || snapshot.Healing.Events != 0 {
 		t.Fatalf("snapshot %+v; zero, immune and enemy-internal results count nothing", snapshot)
 	}
-	if p.notifyStats.noAmount != 2 {
-		t.Fatalf("notify stats %+v; want two results without an amount", p.notifyStats)
+	if p.NotifyStats.NoAmount != 2 {
+		t.Fatalf("notify stats %+v; want two results without an amount", p.NotifyStats)
 	}
 }
 
@@ -242,14 +242,14 @@ func TestNotifiedResultsWithoutAnAmountAreNotCounted(t *testing.T) {
 // and a notified hit whose attacker no message named stays of unknown ownership, outside the totals.
 func TestNotifiedSummonAndUnknownAttackersFollowTheResponseRules(t *testing.T) {
 	p := newNotifyTestProcessor()
-	addTestRuntimeEntity(p, 300, func(entity *runtimeEntity) {
-		entity.summonerID, entity.hasSummonerID = 100, true
-		entity.summonConfigID, entity.hasSummonConfigID = 77001, true
+	addTestRuntimeEntity(p, 300, func(entity *RuntimeEntity) {
+		entity.SummonerID, entity.HasSummonerID = 100, true
+		entity.SummonConfigID, entity.HasSummonConfigID = 77001, true
 	})
 	deliverNotifyFrame(t, p, 1, 13,
 		notifyData(testNotify{attacker: 300, target: 200, damageID: notifyTestDamage, damage: 640, changeLife: 640}),
 		notifyData(testNotify{attacker: 999, target: 200, damageID: notifyTestDamage, damage: 90, changeLife: 90}))
-	snapshot := p.damageStatistics.Snapshot()
+	snapshot := p.DamageStatistics.Snapshot()
 	if snapshot.DamageDealt != 640 || len(snapshot.Roles) != 1 || snapshot.Roles[0].SummonDamage != 640 || snapshot.Roles[0].RoleID != 1409 {
 		t.Fatalf("dealt %d roles %+v; the summon's hit belongs to role 1409 as summon damage", snapshot.DamageDealt, snapshot.Roles)
 	}
@@ -273,14 +273,14 @@ const (
 )
 
 // newCreditTestProcessor adds the Master rows of the InvokePeriod Buffs and a second negative status.
-func newCreditTestProcessor() *processor {
+func newCreditTestProcessor() *Processor {
 	p := newNotifyTestProcessor()
 	hash := strings.Repeat("a", 64)
-	p.masters.damage[notifyTestSpectro] = damageMasterRecord{ID: notifyTestSpectro, CalculateType: 0, SourceHash: hash, SourceTable: "damage"}
-	p.masters.abnormalDamageIDs[notifyTestSpectro] = struct{}{}
-	p.masters.negativeStatusExecutors[notifyTestSpectroBuff] = notifyTestSpectro
-	p.masters.negativeStatusExecutors[notifyTestAeroBuff2] = notifyTestAero
-	p.masters.invokePeriodTargets = map[uint64][]uint64{
+	p.Masters.Damage[notifyTestSpectro] = DamageMasterRecord{ID: notifyTestSpectro, CalculateType: 0, SourceHash: hash, SourceTable: "damage"}
+	p.Masters.AbnormalDamageIDs[notifyTestSpectro] = struct{}{}
+	p.Masters.NegativeStatusExecutors[notifyTestSpectroBuff] = notifyTestSpectro
+	p.Masters.NegativeStatusExecutors[notifyTestAeroBuff2] = notifyTestAero
+	p.Masters.InvokePeriodTargets = map[uint64][]uint64{
 		notifyTestInvokeAero: {notifyTestAeroBuff},
 		notifyTestInvokeBoth: {notifyTestAeroBuff, notifyTestSpectroBuff},
 	}
@@ -289,14 +289,14 @@ func newCreditTestProcessor() *processor {
 
 // triggerData is one CombatReceiveData item: the server's instant ApplyGameplayEffectNotify (handle -2) of a Buff on target.
 func triggerData(target, buff, instigator uint64) []byte {
-	payload := appendVarintField(nil, fieldApplyGameplayEffectNotifyHandle, uint64(0xFFFFFFFFFFFFFFFE)) // int32 -2
-	payload = appendVarintField(payload, fieldApplyGameplayEffectNotifyID, buff)
-	payload = appendVarintField(payload, fieldApplyGameplayEffectNotifyEntityID, target)
-	payload = appendVarintField(payload, fieldApplyGameplayEffectNotifyInstigatorID, instigator)
-	payload = appendVarintField(payload, fieldApplyGameplayEffectNotifyStackCount, 1)
-	notify := appendBytesField(nil, fieldCombatNotifyDataCombatCommon, appendVarintField(nil, fieldCombatCommonEntityID, target))
-	notify = appendBytesField(notify, fieldCombatNotifyDataApplyGameplayEffectNotify, payload)
-	return appendBytesField(nil, fieldCombatReceiveDataCombatNotifyData, notify)
+	payload := appendVarintField(nil, FieldApplyGameplayEffectNotifyHandle, uint64(0xFFFFFFFFFFFFFFFE)) // int32 -2
+	payload = appendVarintField(payload, FieldApplyGameplayEffectNotifyID, buff)
+	payload = appendVarintField(payload, FieldApplyGameplayEffectNotifyEntityID, target)
+	payload = appendVarintField(payload, FieldApplyGameplayEffectNotifyInstigatorID, instigator)
+	payload = appendVarintField(payload, FieldApplyGameplayEffectNotifyStackCount, 1)
+	notify := appendBytesField(nil, FieldCombatNotifyDataCombatCommon, appendVarintField(nil, FieldCombatCommonEntityID, target))
+	notify = appendBytesField(notify, FieldCombatNotifyDataApplyGameplayEffectNotify, payload)
+	return appendBytesField(nil, FieldCombatReceiveDataCombatNotifyData, notify)
 }
 
 func aeroTick(target uint64, damage int32) []byte {
@@ -324,7 +324,7 @@ func TestNotifiedNegativeStatusIsCreditedToTheRoleOwningTheStatus(t *testing.T) 
 	p := newCreditTestProcessor()
 	applyStatus(p, 0.5, 200, 1, notifyTestAeroBuff, 100, EffectRelationLocalRole)
 	deliverNotifyFrame(t, p, 1, 3, aeroTick(200, 1200))
-	snapshot := p.damageStatistics.Snapshot()
+	snapshot := p.DamageStatistics.Snapshot()
 	role, row := creditOf(t, snapshot, 1409, notifyTestAero)
 	if snapshot.DamageDealt != 1200 || snapshot.UnassignedRole.DamageDealt != 0 || snapshot.UnassignedRole.NegativeStatusDamage != 0 {
 		t.Fatalf("dealt %d unassigned %+v; the status owner's tick is the team's damage and a role's", snapshot.DamageDealt, snapshot.UnassignedRole)
@@ -338,8 +338,8 @@ func TestNotifiedNegativeStatusIsCreditedToTheRoleOwningTheStatus(t *testing.T) 
 	if !completeness.Conserved || !completeness.RoleAttributionComplete || !completeness.SkillBreakdownComplete {
 		t.Fatalf("completeness %+v", completeness)
 	}
-	if p.notifyStats.creditedOwner != 1 || p.notifyStats.creditedTrigger != 0 || p.notifyStats.uncredited != 0 {
-		t.Fatalf("notify stats %+v", p.notifyStats)
+	if p.NotifyStats.CreditedOwner != 1 || p.NotifyStats.CreditedTrigger != 0 || p.NotifyStats.Uncredited != 0 {
+		t.Fatalf("notify stats %+v", p.NotifyStats)
 	}
 }
 
@@ -350,7 +350,7 @@ func TestNotifiedNegativeStatusForcedByAnotherRoleIsCreditedToTheTrigger(t *test
 	applyStatus(p, 0.5, 200, 1, notifyTestAeroBuff, 100, EffectRelationLocalRole)
 	deliverNotifyFrame(t, p, 1, 3, triggerData(200, notifyTestInvokeAero, 101), aeroTick(200, 900))
 	deliverNotifyFrame(t, p, 4, 4, aeroTick(200, 400))
-	snapshot := p.damageStatistics.Snapshot()
+	snapshot := p.DamageStatistics.Snapshot()
 	_, forced := creditOf(t, snapshot, 1505, notifyTestAero)
 	_, own := creditOf(t, snapshot, 1409, notifyTestAero)
 	if forced != (StatusDamageSnapshot{DamageID: notifyTestAero, DamageDealt: 900, OutgoingEvents: 1, TriggerEvents: 1, TriggerDamage: 900}) {
@@ -375,7 +375,7 @@ func TestNegativeStatusTriggerCarriesIntoTheNextPackOnly(t *testing.T) {
 	deliverNotifyFrame(t, p, 1.1, 4, aeroTick(200, 900))
 	deliverNotifyFrame(t, p, 2, 5, triggerData(200, notifyTestInvokeAero, 101))
 	deliverNotifyFrame(t, p, 2.2, 6, aeroTick(200, 300))
-	snapshot := p.damageStatistics.Snapshot()
+	snapshot := p.DamageStatistics.Snapshot()
 	if _, forced := creditOf(t, snapshot, 1505, notifyTestAero); forced.DamageDealt != 900 || forced.TriggerEvents != 1 {
 		t.Fatalf("role 1505 status %+v; a result in the next pack within the window is the forced one", forced)
 	}
@@ -395,7 +395,7 @@ func TestNegativeStatusTriggerForcesEachNamedInstanceOnce(t *testing.T) {
 	applyStatus(p, 0.5, 200, 2, notifyTestSpectroBuff, 100, EffectRelationLocalRole)
 	spectro := notifyData(testNotify{attacker: notifyTestScene, target: 200, damageID: notifyTestSpectro, damage: 250, changeLife: 250})
 	deliverNotifyFrame(t, p, 1, 3, triggerData(200, notifyTestInvokeBoth, 101), aeroTick(200, 900), spectro, aeroTick(200, 500))
-	snapshot := p.damageStatistics.Snapshot()
+	snapshot := p.DamageStatistics.Snapshot()
 	role, aero := creditOf(t, snapshot, 1505, notifyTestAero)
 	_, spectroRow := creditOf(t, snapshot, 1505, notifyTestSpectro)
 	if aero.DamageDealt != 900 || aero.TriggerEvents != 1 || spectroRow.DamageDealt != 250 || spectroRow.TriggerEvents != 1 || role.StatusDamage != 1150 {
@@ -413,7 +413,7 @@ func TestNegativeStatusTriggerIsUsedByAResultWithoutAnAmount(t *testing.T) {
 	applyStatus(p, 0.5, 200, 1, notifyTestAeroBuff, 100, EffectRelationLocalRole)
 	deliverNotifyFrame(t, p, 1, 3, triggerData(200, notifyTestInvokeAero, 101), aeroTick(200, 0))
 	deliverNotifyFrame(t, p, 1.05, 4, aeroTick(200, 600))
-	snapshot := p.damageStatistics.Snapshot()
+	snapshot := p.DamageStatistics.Snapshot()
 	if _, own := creditOf(t, snapshot, 1409, notifyTestAero); own.DamageDealt != 600 {
 		t.Fatalf("role 1409 status %+v; the zero result used the trigger", own)
 	}
@@ -426,15 +426,15 @@ func TestNegativeStatusTriggerIsUsedByAResultWithoutAnAmount(t *testing.T) {
 func TestNegativeStatusWithoutOneLocalCreditStaysUnassigned(t *testing.T) {
 	cases := []struct {
 		name  string
-		setup func(p *processor) [][]byte
+		setup func(p *Processor) [][]byte
 		want  string
 	}{
-		{"two live statuses of different owners", func(p *processor) [][]byte {
+		{"two live statuses of different owners", func(p *Processor) [][]byte {
 			applyStatus(p, 0.5, 200, 1, notifyTestAeroBuff, 100, EffectRelationLocalRole)
 			applyStatus(p, 0.6, 200, 2, notifyTestAeroBuff2, 101, EffectRelationLocalRole)
 			return [][]byte{aeroTick(200, 700)}
 		}, "the live status instances on the target have different owners"},
-		{"a trigger of an enemy", func(p *processor) [][]byte {
+		{"a trigger of an enemy", func(p *Processor) [][]byte {
 			applyStatus(p, 0.5, 200, 1, notifyTestAeroBuff, 100, EffectRelationLocalRole)
 			return [][]byte{triggerData(200, notifyTestInvokeAero, 201), aeroTick(200, 700)}
 		}, "the credited entity is no local role or summon of one"},
@@ -443,7 +443,7 @@ func TestNegativeStatusWithoutOneLocalCreditStaysUnassigned(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			p := newCreditTestProcessor()
 			deliverNotifyFrame(t, p, 1, 3, c.setup(p)...)
-			snapshot := p.damageStatistics.Snapshot()
+			snapshot := p.DamageStatistics.Snapshot()
 			if snapshot.DamageDealt != 700 || snapshot.UnassignedRole.NegativeStatusDamage != 700 || snapshot.UnassignedRole.DamageDealt != 700 {
 				t.Fatalf("dealt %d unassigned %+v; the tick is the team's and no role's", snapshot.DamageDealt, snapshot.UnassignedRole)
 			}
@@ -455,8 +455,8 @@ func TestNegativeStatusWithoutOneLocalCreditStaysUnassigned(t *testing.T) {
 			if completeness := intervalDamageCompleteness(snapshot); completeness.RoleAttributionComplete || !completeness.Conserved {
 				t.Fatalf("completeness %+v; unassigned negative-status damage is an attribution gap", completeness)
 			}
-			if p.notifyStats.uncredited != 1 {
-				t.Fatalf("notify stats %+v", p.notifyStats)
+			if p.NotifyStats.Uncredited != 1 {
+				t.Fatalf("notify stats %+v", p.NotifyStats)
 			}
 		})
 	}
@@ -470,7 +470,7 @@ func TestNegativeStatusTriggerNamesTheInstanceAmongDifferentOwners(t *testing.T)
 	applyStatus(p, 0.5, 200, 1, notifyTestAeroBuff, 100, EffectRelationLocalRole)
 	applyStatus(p, 0.6, 200, 2, notifyTestAeroBuff2, 101, EffectRelationLocalRole)
 	deliverNotifyFrame(t, p, 1, 3, triggerData(200, notifyTestInvokeAero, 100), aeroTick(200, 800))
-	snapshot := p.damageStatistics.Snapshot()
+	snapshot := p.DamageStatistics.Snapshot()
 	if _, row := creditOf(t, snapshot, 1409, notifyTestAero); row.DamageDealt != 0 || snapshot.UnassignedRole.NegativeStatusDamage != 800 {
 		t.Fatalf("role 1409 status %+v unassigned %+v", row, snapshot.UnassignedRole)
 	}
@@ -481,25 +481,25 @@ func TestNegativeStatusTriggerOfAnotherStatusIsNotUsed(t *testing.T) {
 	p := newCreditTestProcessor()
 	applyStatus(p, 0.5, 200, 1, notifyTestAeroBuff, 100, EffectRelationLocalRole)
 	deliverNotifyFrame(t, p, 1, 3, triggerData(200, notifyTestInvokeOther, 101), triggerData(201, notifyTestInvokeAero, 101), aeroTick(200, 500))
-	snapshot := p.damageStatistics.Snapshot()
+	snapshot := p.DamageStatistics.Snapshot()
 	if _, own := creditOf(t, snapshot, 1409, notifyTestAero); own.DamageDealt != 500 || own.TriggerEvents != 0 {
 		t.Fatalf("role 1409 status %+v; neither trigger forces this status on this target", own)
 	}
-	if p.notifyStats.statusTriggers != 1 {
-		t.Fatalf("notify stats %+v; only the InvokePeriod that names a negative status is remembered", p.notifyStats)
+	if p.NotifyStats.StatusTriggers != 1 {
+		t.Fatalf("notify stats %+v; only the InvokePeriod that names a negative status is remembered", p.NotifyStats)
 	}
 }
 
 // A status a summon applied is its owning role's, as the summon's own hits are, but as status damage, not summon damage.
 func TestNegativeStatusOfASummonIsCreditedToItsRole(t *testing.T) {
 	p := newCreditTestProcessor()
-	addTestRuntimeEntity(p, 300, func(entity *runtimeEntity) {
-		entity.summonerID, entity.hasSummonerID = 100, true
-		entity.summonConfigID, entity.hasSummonConfigID = 77001, true
+	addTestRuntimeEntity(p, 300, func(entity *RuntimeEntity) {
+		entity.SummonerID, entity.HasSummonerID = 100, true
+		entity.SummonConfigID, entity.HasSummonConfigID = 77001, true
 	})
 	applyStatus(p, 0.5, 200, 1, notifyTestAeroBuff, 300, EffectRelationLocalOwned)
 	deliverNotifyFrame(t, p, 1, 3, aeroTick(200, 650))
-	snapshot := p.damageStatistics.Snapshot()
+	snapshot := p.DamageStatistics.Snapshot()
 	role, row := creditOf(t, snapshot, 1409, notifyTestAero)
 	if row.DamageDealt != 650 || role.StatusDamage != 650 || role.SummonDamage != 0 || role.DirectDamage != 0 {
 		t.Fatalf("role %+v; the summon's status is role 1409's status damage", role)
@@ -515,7 +515,7 @@ func TestNegativeStatusTickWhileAnotherRoleFightsStaysWithItsOwner(t *testing.T)
 		notifyData(testNotify{attacker: 101, target: 200, damageID: notifyTestDamage, damage: 2000, changeLife: 2000}), aeroTick(200, 450))
 	deliverNotifyFrame(t, p, 4, 4, notifyData(testNotify{attacker: 101, target: 200, damageID: notifyTestDamage, damage: 2000, changeLife: 2000}))
 	deliverNotifyFrame(t, p, 4.01, 5, aeroTick(200, 450))
-	snapshot := p.damageStatistics.Snapshot()
+	snapshot := p.DamageStatistics.Snapshot()
 	if _, own := creditOf(t, snapshot, 1409, notifyTestAero); own.DamageDealt != 900 || own.OutgoingEvents != 2 {
 		t.Fatalf("role 1409 status %+v; the owner keeps its ticks", own)
 	}

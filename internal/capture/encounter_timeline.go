@@ -349,7 +349,7 @@ type completedTimeline struct {
 
 // timelineEnd is the end the timeline of an unfinished encounter is evaluated at: the same end as its Encounter DPS.
 func (t *encounterTracker) timelineEnd(record *encounterRecord, query time.Time) time.Time {
-	if record.state == EncounterActive {
+	if record.State == EncounterActive {
 		if query.Before(t.highWater) {
 			query = t.highWater
 		}
@@ -363,8 +363,8 @@ func (t *encounterTracker) focusTimeline(query time.Time, maxPoints int) *Encoun
 	if query.IsZero() {
 		query = t.highWater
 	}
-	if t.current != nil {
-		snapshot := t.current.timeline.render(t.encounterID(t.current.sequence), t.current.startAt, t.timelineEnd(t.current, query), true, maxPoints)
+	if t.Current != nil {
+		snapshot := t.Current.timeline.render(t.encounterID(t.Current.sequence), t.Current.startAt, t.timelineEnd(t.Current, query), true, maxPoints)
 		return &snapshot
 	}
 	if n := len(t.completedTimelines); n > 0 {
@@ -384,8 +384,8 @@ func (t *encounterTracker) allTimelines(query time.Time) []EncounterTimelineSnap
 	for _, done := range t.completedTimelines {
 		out = append(out, done.timeline.render(done.encounterID, done.start, done.end, false, 0))
 	}
-	if t.current != nil {
-		out = append(out, t.current.timeline.render(t.encounterID(t.current.sequence), t.current.startAt, t.timelineEnd(t.current, query), true, 0))
+	if t.Current != nil {
+		out = append(out, t.Current.timeline.render(t.encounterID(t.Current.sequence), t.Current.startAt, t.timelineEnd(t.Current, query), true, 0))
 	}
 	return out
 }
@@ -400,20 +400,20 @@ func (s *DamageStatistics) TimelineAt(query CaptureQueryTime, maxPoints int) *En
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	at := time.Time{}
-	if query.CaptureSessionID == s.captureSessionID {
+	if query.CaptureSessionID == s.CaptureSessionID {
 		at = query.Timestamp
 	}
-	return s.encounters.focusTimeline(at, maxPoints)
+	return s.Encounters.focusTimeline(at, maxPoints)
 }
 
-// encounterTimelines returns every retained encounter's timeline at full resolution, for regression collectors.
-func (s *DamageStatistics) encounterTimelines() []EncounterTimelineSnapshot {
+// EncounterTimelines returns every retained encounter's timeline at full resolution, for regression collectors.
+func (s *DamageStatistics) EncounterTimelines() []EncounterTimelineSnapshot {
 	if s == nil {
 		return nil
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.encounters.allTimelines(time.Time{})
+	return s.Encounters.allTimelines(time.Time{})
 }
 
 // StoredTimeline is an encounter timeline's stored intervals as Combat History keeps them: per contributor, the confirmed

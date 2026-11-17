@@ -12,103 +12,103 @@ const currentProtocolClient = "Global 3.8.9"
 
 // Commands of Global 3.8.9; each comment is the client's minified message name.
 const (
-	cmdLoginRequest                            = 103   // fss
-	cmdProtoKeyResponse                        = 112   // Lss
-	cmdCheckClientPush                         = 116   // Roa
-	cmdAtomicProcessAddBuffResponse            = 15504 // Rxf
-	cmdRemoveBuffByServerIDS2cRequestNotify    = 15505 // rpm
-	cmdRemoveBuffByIDS2cResponsePush           = 15939 // N4n
-	cmdOrderApplyBuffResponse                  = 15979 // uzn
-	cmdRemoveGameplayEffectRequest             = 15998 // x3n
-	cmdActivateBuffPush                        = 16028 // pe_
-	cmdRemoveBuffS2cResponsePush               = 16300 // O4n
-	cmdBuffStackCountResponse                  = 16438 // fzn
-	cmdSimpleCombatEntityAttributeUpdateNotify = 16636 // ecC
+	CmdLoginRequest                            = 103   // fss
+	CmdProtoKeyResponse                        = 112   // Lss
+	CmdCheckClientPush                         = 116   // Roa
+	CmdAtomicProcessAddBuffResponse            = 15504 // Rxf
+	CmdRemoveBuffByServerIDS2cRequestNotify    = 15505 // rpm
+	CmdRemoveBuffByIDS2cResponsePush           = 15939 // N4n
+	CmdOrderApplyBuffResponse                  = 15979 // uzn
+	CmdRemoveGameplayEffectRequest             = 15998 // x3n
+	CmdActivateBuffPush                        = 16028 // pe_
+	CmdRemoveBuffS2cResponsePush               = 16300 // O4n
+	CmdBuffStackCountResponse                  = 16438 // fzn
+	CmdSimpleCombatEntityAttributeUpdateNotify = 16636 // ecC
 	cmdTimeStopPush                            = 16707 // GCs
-	cmdUpdatePlayersFightRolesInfoNotify       = 16745 // Ous
-	cmdApplyBuffS2cResponsePush                = 17435 // G4n
-	cmdApplyGameplayEffectPush                 = 17445 // ie_
-	cmdApplyBuffS2cRequestNotify               = 17614 // d3n
-	cmdOrderRemoveBuffResponse                 = 17733 // czn
-	cmdBuffStackCountPush                      = 17747 // Re_
-	cmdEntityRemoveNotify                      = 17927 // oes
-	cmdRemoveGameplayEffectNotify              = 18172 // IFn
-	cmdSimpleCombatEntityBuffUpdateNotify      = 18273 // Zju
-	cmdEntityRemoveDynamicInteractNotify       = 18312 // Bes
-	cmdBuffEffectExecutePush                   = 18599 // Vzd
-	cmdDamageExecuteRequest                    = 18654 // U3n
-	cmdMovePackagePush                         = 18855 // Yus
-	cmdEntityBuffProducerRequest               = 18892 // _es
-	cmdEntityBuffProducerResponse              = 18914 // ues
-	cmdActivateBuffResponse                    = 19166 // dzn
-	cmdAddSysBuffNotify                        = 19225 // Hcs
-	cmdAtomicProcessRemoveBuffRequest          = 19269 // hMg
-	cmdBuffStackCountNotify                    = 19317 // i3n
-	cmdBuffEffectExecuteRequest                = 19635 // Czn
-	cmdEntityActiveResponse                    = 19734 // fes
-	cmdOrderApplyBuffNotify                    = 19792 // HFn
-	cmdEntityCommonTagNotify                   = 20031 // Lcs
-	cmdBuffEffectResponse                      = 20053 // Ezn
-	cmdOrderRemoveBuffByTagsRequest            = 20210 // Y3n
-	cmdEntityAddNotify                         = 20302 // res
-	cmdOrderRemoveBuffByTagsResponse           = 20335 // mzn
-	cmdJoinSceneNotify                         = 20597 // Kus
-	cmdUpdatePlayerAllFightRoleNotify          = 20791 // Gus
-	cmdOrderRemoveBuffNotify                   = 20935 // jFn
-	cmdOrderApplyBuffRequest                   = 21297 // Q3n
-	cmdCombatSendPackResponse                  = 21536 // CombatMessage.aZn
-	cmdTransformBuffStackNotify                = 21805 // x9f
-	cmdBasicInfoNotify                         = 21993 // hYn
-	cmdUpdateSceneGroupDataNotify              = 22332 // Hgs
-	cmdBuffEffectRequest                       = 22402 // I4n
-	cmdEntityBuffProducerOperateResponse       = 22978 // des
-	cmdRemoveSysBuffNotify                     = 23366 // Wcs
-	cmdOrderRemoveBuffByTagsNotify             = 23871 // KFn
-	cmdApplyGameplayEffectResponse             = 23904 // lzn
-	cmdUpdateSysBuffNotify                     = 23927 // jcs
-	cmdBuffStackCountRequest                   = 24150 // u4n
-	cmdSimpleCombatEntitySyncAttributePush     = 24434 // pGd
-	cmdBuffDurationNotify                      = 24676 // W7l
-	cmdAtomicProcessRemoveBuffResponse         = 24883 // lMg
-	cmdRefreshBuffDurationPush                 = 24982 // GG1
-	cmdEntityBuffProducerOperateRequest        = 25261 // ces
-	cmdRemoveBuffByIDS2cRequestNotify          = 25284 // M3n
-	cmdChangePlayerFightRoleNotify             = 25527 // Nus
-	cmdApplyGameplayEffectNotify               = 26040 // yFn
-	cmdEntityActiveRequest                     = 26157 // ges
-	cmdPlayerLivingStatesNotify                = 26412 // w7s
-	cmdCombatSendPackRequest                   = 26497 // CombatMessage.sZn
-	cmdBuffEffectPush                          = 26677 // Ge_
-	cmdOrderRemoveBuffRequest                  = 26903 // X3n
-	cmdApplyGameplayEffectRequest              = 26992 // R3n
-	cmdEntityStateReadyNotify                  = 27022 // Les
-	cmdPlayerFollowerNotify                    = 27250 // Summon.eJs
-	cmdActivateBuffRequest                     = 27416 // $3n
-	cmdAtomicProcessAddBuffRequest             = 27678 // wxf
+	CmdUpdatePlayersFightRolesInfoNotify       = 16745 // Ous
+	CmdApplyBuffS2cResponsePush                = 17435 // G4n
+	CmdApplyGameplayEffectPush                 = 17445 // ie_
+	CmdApplyBuffS2cRequestNotify               = 17614 // d3n
+	CmdOrderRemoveBuffResponse                 = 17733 // czn
+	CmdBuffStackCountPush                      = 17747 // Re_
+	CmdEntityRemoveNotify                      = 17927 // oes
+	CmdRemoveGameplayEffectNotify              = 18172 // IFn
+	CmdSimpleCombatEntityBuffUpdateNotify      = 18273 // Zju
+	CmdEntityRemoveDynamicInteractNotify       = 18312 // Bes
+	CmdBuffEffectExecutePush                   = 18599 // Vzd
+	CmdDamageExecuteRequest                    = 18654 // U3n
+	CmdMovePackagePush                         = 18855 // Yus
+	CmdEntityBuffProducerRequest               = 18892 // _es
+	CmdEntityBuffProducerResponse              = 18914 // ues
+	CmdActivateBuffResponse                    = 19166 // dzn
+	CmdAddSysBuffNotify                        = 19225 // Hcs
+	CmdAtomicProcessRemoveBuffRequest          = 19269 // hMg
+	CmdBuffStackCountNotify                    = 19317 // i3n
+	CmdBuffEffectExecuteRequest                = 19635 // Czn
+	CmdEntityActiveResponse                    = 19734 // fes
+	CmdOrderApplyBuffNotify                    = 19792 // HFn
+	CmdEntityCommonTagNotify                   = 20031 // Lcs
+	CmdBuffEffectResponse                      = 20053 // Ezn
+	CmdOrderRemoveBuffByTagsRequest            = 20210 // Y3n
+	CmdEntityAddNotify                         = 20302 // res
+	CmdOrderRemoveBuffByTagsResponse           = 20335 // mzn
+	CmdJoinSceneNotify                         = 20597 // Kus
+	CmdUpdatePlayerAllFightRoleNotify          = 20791 // Gus
+	CmdOrderRemoveBuffNotify                   = 20935 // jFn
+	CmdOrderApplyBuffRequest                   = 21297 // Q3n
+	CmdCombatSendPackResponse                  = 21536 // CombatMessage.aZn
+	CmdTransformBuffStackNotify                = 21805 // x9f
+	CmdBasicInfoNotify                         = 21993 // hYn
+	CmdUpdateSceneGroupDataNotify              = 22332 // Hgs
+	CmdBuffEffectRequest                       = 22402 // I4n
+	CmdEntityBuffProducerOperateResponse       = 22978 // des
+	CmdRemoveSysBuffNotify                     = 23366 // Wcs
+	CmdOrderRemoveBuffByTagsNotify             = 23871 // KFn
+	CmdApplyGameplayEffectResponse             = 23904 // lzn
+	CmdUpdateSysBuffNotify                     = 23927 // jcs
+	CmdBuffStackCountRequest                   = 24150 // u4n
+	CmdSimpleCombatEntitySyncAttributePush     = 24434 // pGd
+	CmdBuffDurationNotify                      = 24676 // W7l
+	CmdAtomicProcessRemoveBuffResponse         = 24883 // lMg
+	CmdRefreshBuffDurationPush                 = 24982 // GG1
+	CmdEntityBuffProducerOperateRequest        = 25261 // ces
+	CmdRemoveBuffByIDS2cRequestNotify          = 25284 // M3n
+	CmdChangePlayerFightRoleNotify             = 25527 // Nus
+	CmdApplyGameplayEffectNotify               = 26040 // yFn
+	CmdEntityActiveRequest                     = 26157 // ges
+	CmdPlayerLivingStatesNotify                = 26412 // w7s
+	CmdCombatSendPackRequest                   = 26497 // CombatMessage.sZn
+	CmdBuffEffectPush                          = 26677 // Ge_
+	CmdOrderRemoveBuffRequest                  = 26903 // X3n
+	CmdApplyGameplayEffectRequest              = 26992 // R3n
+	CmdEntityStateReadyNotify                  = 27022 // Les
+	CmdPlayerFollowerNotify                    = 27250 // Summon.eJs
+	CmdActivateBuffRequest                     = 27416 // $3n
+	CmdAtomicProcessAddBuffRequest             = 27678 // wxf
 	cmdUpdateTimerInfoNotify                   = 27863 // AJn
-	cmdBuffEffectExecuteResponse               = 27923 // gzn
+	CmdBuffEffectExecuteResponse               = 27923 // gzn
 	cmdTimeCheckResponse                       = 28031 // QCs
-	cmdRemoveBuffS2cRequestNotify              = 28392 // C3n
+	CmdRemoveBuffS2cRequestNotify              = 28392 // C3n
 	cmdTimeCheckRequest                        = 28799 // WCs
-	cmdUpdatePlayerSingleFightRoleNotify       = 28925 // kus
-	cmdSimpleCombatEntityBuffLayerCountNotify  = 29187 // J0d
-	cmdRemoveGameplayEffectPush                = 29542 // re_
-	cmdPhantomAttrRecommendResponse            = 29590 // Yv_
-	cmdActivateBuffNotify                      = 29719 // WFn
-	cmdRemoveGameplayEffectResponse            = 29948 // _zn
-	cmdCombatReceivePackNotify                 = 29973 // CombatMessage.hZn
+	CmdUpdatePlayerSingleFightRoleNotify       = 28925 // kus
+	CmdSimpleCombatEntityBuffLayerCountNotify  = 29187 // J0d
+	CmdRemoveGameplayEffectPush                = 29542 // re_
+	CmdPhantomAttrRecommendResponse            = 29590 // Yv_
+	CmdActivateBuffNotify                      = 29719 // WFn
+	CmdRemoveGameplayEffectResponse            = 29948 // _zn
+	CmdCombatReceivePackNotify                 = 29973 // CombatMessage.hZn
 )
 
 // Fields of Global 3.8.9, by message; each comment is the client's minified message and property name.
 const (
 	// ActivateBuffNotify (WFn)
-	fieldActivateBuffNotifyOn     = 2 // WFn.qjn
-	fieldActivateBuffNotifyHandle = 7 // WFn.uVn
+	FieldActivateBuffNotifyOn     = 2 // WFn.qjn
+	FieldActivateBuffNotifyHandle = 7 // WFn.uVn
 
 	// ApplyBuffS2cRequestNotify (d3n)
-	fieldApplyBuffS2cRequestNotifyInstigatorID = 3  // d3n.Rjn
+	FieldApplyBuffS2cRequestNotifyInstigatorID = 3  // d3n.Rjn
 	fieldApplyBuffS2cRequestNotifyReason       = 4  // d3n.x9n
-	fieldApplyBuffS2cRequestNotifyID           = 5  // d3n.s5n
+	FieldApplyBuffS2cRequestNotifyID           = 5  // d3n.s5n
 	fieldApplyBuffS2cRequestNotifyIsIterable   = 6  // d3n.Pjn
 	fieldApplyBuffS2cRequestNotifyLevel        = 7  // d3n.F6n
 	fieldApplyBuffS2cRequestNotifyDuration     = 9  // d3n.n5n
@@ -122,130 +122,132 @@ const (
 	fieldApplyBuffS2cResponsePushErrorCode = 13 // G4n.Q4n
 
 	// ApplyGameplayEffectNotify (yFn)
-	fieldApplyGameplayEffectNotifyDuration     = 1  // yFn.n5n
+	FieldApplyGameplayEffectNotifyDuration     = 1  // yFn.n5n
 	fieldApplyGameplayEffectNotifyServerID     = 2  // yFn.wjn
-	fieldApplyGameplayEffectNotifyLeftDuration = 3  // yFn.QEs
+	FieldApplyGameplayEffectNotifyLeftDuration = 3  // yFn.QEs
 	fieldApplyGameplayEffectNotifyApplyType    = 4  // yFn.xjn
-	fieldApplyGameplayEffectNotifyHandle       = 6  // yFn.uVn
+	FieldApplyGameplayEffectNotifyHandle       = 6  // yFn.uVn
 	fieldApplyGameplayEffectNotifyIsActive     = 7  // yFn.WHn
-	fieldApplyGameplayEffectNotifyInstigatorID = 9  // yFn.Rjn
-	fieldApplyGameplayEffectNotifyStackCount   = 10 // yFn.Bjn
+	FieldApplyGameplayEffectNotifyInstigatorID = 9  // yFn.Rjn
+	FieldApplyGameplayEffectNotifyStackCount   = 10 // yFn.Bjn
 	fieldApplyGameplayEffectNotifyLevel        = 11 // yFn.F6n
-	fieldApplyGameplayEffectNotifyConfBuffID   = 12 // yFn.tcp
-	fieldApplyGameplayEffectNotifyID           = 13 // yFn.s5n
-	fieldApplyGameplayEffectNotifyEntityID     = 14 // yFn.F4n
+	FieldApplyGameplayEffectNotifyConfBuffID   = 12 // yFn.tcp
+	FieldApplyGameplayEffectNotifyID           = 13 // yFn.s5n
+	FieldApplyGameplayEffectNotifyEntityID     = 14 // yFn.F4n
 
 	// ApplyGameplayEffectPush (ie_)
-	fieldApplyGameplayEffectPushReason       = 1  // ie_.x9n
+	FieldApplyGameplayEffectPushReason       = 1  // ie_.x9n
 	fieldApplyGameplayEffectPushServerID     = 3  // ie_.wjn
 	fieldApplyGameplayEffectPushIsActive     = 4  // ie_.WHn
 	fieldApplyGameplayEffectPushApplyType    = 6  // ie_.xjn
 	fieldApplyGameplayEffectPushLevel        = 7  // ie_.F6n
-	fieldApplyGameplayEffectPushHandle       = 8  // ie_.uVn
-	fieldApplyGameplayEffectPushInstigatorID = 10 // ie_.Rjn
-	fieldApplyGameplayEffectPushDuration     = 11 // ie_.n5n
-	fieldApplyGameplayEffectPushStackCount   = 12 // ie_.Bjn
+	FieldApplyGameplayEffectPushHandle       = 8  // ie_.uVn
+	FieldApplyGameplayEffectPushInstigatorID = 10 // ie_.Rjn
+	FieldApplyGameplayEffectPushDuration     = 11 // ie_.n5n
+	FieldApplyGameplayEffectPushStackCount   = 12 // ie_.Bjn
 	fieldApplyGameplayEffectPushConfBuffID   = 14 // ie_.tcp
-	fieldApplyGameplayEffectPushID           = 15 // ie_.s5n
+	FieldApplyGameplayEffectPushID           = 15 // ie_.s5n
 
 	// AttributeChangedNotify (OFn)
-	fieldAttributeChangedNotifyAttributes = 6 // OFn.GSs
+	FieldAttributeChangedNotifyAttributes = 6 // OFn.GSs
 
 	// BasicInfoNotify (hYn)
-	fieldBasicInfoNotifyID = 4 // hYn.s5n
+	FieldBasicInfoNotifyID = 4 // hYn.s5n
 
 	// BuffDurationNotify (W7l)
-	fieldBuffDurationNotifyLeftDuration = 6  // W7l.QEs
-	fieldBuffDurationNotifyHandleID     = 8  // W7l.cVn
-	fieldBuffDurationNotifyDuration     = 13 // W7l.n5n
+	FieldBuffDurationNotifyLeftDuration = 6  // W7l.QEs
+	FieldBuffDurationNotifyHandleID     = 8  // W7l.cVn
+	FieldBuffDurationNotifyDuration     = 13 // W7l.n5n
 
 	// BuffStackCountNotify (i3n)
-	fieldBuffStackCountNotifyLeftDuration       = 2  // i3n.QEs
-	fieldBuffStackCountNotifyHandleID           = 5  // i3n.cVn
-	fieldBuffStackCountNotifyNewStackCount      = 6  // i3n.Gjn
+	FieldBuffStackCountNotifyLeftDuration       = 2  // i3n.QEs
+	FieldBuffStackCountNotifyHandleID           = 5  // i3n.cVn
+	FieldBuffStackCountNotifyNewStackCount      = 6  // i3n.Gjn
 	fieldBuffStackCountNotifyNotRefreshDuration = 7  // i3n.$L1
-	fieldBuffStackCountNotifyInstigatorID       = 10 // i3n.Rjn
-	fieldBuffStackCountNotifyDuration           = 13 // i3n.n5n
+	FieldBuffStackCountNotifyInstigatorID       = 10 // i3n.Rjn
+	FieldBuffStackCountNotifyDuration           = 13 // i3n.n5n
 	fieldBuffStackCountNotifyNotRefreshPeriod   = 15 // i3n.WL1
 
 	// BuffStackCountPush (Re_)
 	fieldBuffStackCountPushNotRefreshPeriod   = 1  // Re_.WL1
 	fieldBuffStackCountPushIsPrematureRemoval = 2  // Re_.Ojn
-	fieldBuffStackCountPushNotRefreshDuration = 3  // Re_.$L1
-	fieldBuffStackCountPushDuration           = 5  // Re_.n5n
+	FieldBuffStackCountPushNotRefreshDuration = 3  // Re_.$L1
+	FieldBuffStackCountPushDuration           = 5  // Re_.n5n
 	fieldBuffStackCountPushReason             = 7  // Re_.x9n
-	fieldBuffStackCountPushNewStackCount      = 8  // Re_.Gjn
-	fieldBuffStackCountPushHandleID           = 9  // Re_.cVn
-	fieldBuffStackCountPushInstigatorID       = 10 // Re_.Rjn
+	FieldBuffStackCountPushNewStackCount      = 8  // Re_.Gjn
+	FieldBuffStackCountPushHandleID           = 9  // Re_.cVn
+	FieldBuffStackCountPushInstigatorID       = 10 // Re_.Rjn
 
 	// ChangeStateNotify (e3n)
-	fieldChangeStateNotifyToState   = 4  // e3n.z4n
-	fieldChangeStateNotifyFromState = 7  // e3n.J4n
-	fieldChangeStateNotifyFsmID     = 12 // e3n.$4n
+	FieldChangeStateNotifyToState   = 4  // e3n.z4n
+	FieldChangeStateNotifyFromState = 7  // e3n.J4n
+	FieldChangeStateNotifyFsmID     = 12 // e3n.$4n
 
 	// ClientBasicInfo (Z9n)
-	fieldClientBasicInfoClientVersion = 19 // Z9n.cjf
+	FieldClientBasicInfoClientVersion = 19 // Z9n.cjf
 
 	// ClientCurrentRoleReportPush (Xe_)
-	fieldClientCurrentRoleReportPushCurrentEntityID = 10 // Xe_.JHn
+	FieldClientCurrentRoleReportPushCurrentRoleID   = 4  // Xe_.YHn
+	FieldClientCurrentRoleReportPushCurrentEntityID = 10 // Xe_.JHn
 
 	// CombatCommon (K8n)
-	fieldCombatCommonPreMessageID = 1 // K8n.X8n
-	fieldCombatCommonMessageID    = 2 // K8n.$8n
+	FieldCombatCommonPreMessageID = 1 // K8n.X8n
+	FieldCombatCommonMessageID    = 2 // K8n.$8n
 	fieldCombatCommonOriginator   = 3 // K8n.Y8n
 	fieldCombatCommonTimeStamp    = 4 // K8n.J8n
-	fieldCombatCommonEntityID     = 5 // K8n.F4n
+	FieldCombatCommonEntityID     = 5 // K8n.F4n
 
 	// CombatNotifyData (CombatMessage.KLs)
-	fieldCombatNotifyDataCombatCommon                   = 1  // CombatMessage.KLs.K8n
-	fieldCombatNotifyDataDamageExecuteNotify            = 4  // CombatMessage.KLs.EFn
-	fieldCombatNotifyDataApplyGameplayEffectNotify      = 5  // CombatMessage.KLs.yFn
-	fieldCombatNotifyDataRemoveGameplayEffectNotify     = 6  // CombatMessage.KLs.IFn
-	fieldCombatNotifyDataAttributeChangedNotify         = 22 // CombatMessage.KLs.OFn
-	fieldCombatNotifyDataActivateBuffNotify             = 29 // CombatMessage.KLs.WFn
-	fieldCombatNotifyDataChangeStateNotify              = 38 // CombatMessage.KLs.e3n
-	fieldCombatNotifyDataBuffStackCountNotify           = 41 // CombatMessage.KLs.i3n
-	fieldCombatNotifyDataApplyBuffS2CRequestNotify      = 53 // CombatMessage.KLs.d3n
+	FieldCombatNotifyDataCombatCommon                   = 1  // CombatMessage.KLs.K8n
+	FieldCombatNotifyDataDamageExecuteNotify            = 4  // CombatMessage.KLs.EFn
+	FieldCombatNotifyDataApplyGameplayEffectNotify      = 5  // CombatMessage.KLs.yFn
+	FieldCombatNotifyDataRemoveGameplayEffectNotify     = 6  // CombatMessage.KLs.IFn
+	FieldCombatNotifyDataAttributeChangedNotify         = 22 // CombatMessage.KLs.OFn
+	FieldCombatNotifyDataActivateBuffNotify             = 29 // CombatMessage.KLs.WFn
+	FieldCombatNotifyDataChangeStateNotify              = 38 // CombatMessage.KLs.e3n
+	FieldCombatNotifyDataBuffStackCountNotify           = 41 // CombatMessage.KLs.i3n
+	FieldCombatNotifyDataApplyBuffS2CRequestNotify      = 53 // CombatMessage.KLs.d3n
 	fieldCombatNotifyDataRemoveBuffS2CRequestNotify     = 54 // CombatMessage.KLs.C3n
-	fieldCombatNotifyDataRecoverPropChangedNotify       = 58 // CombatMessage.KLs.v3n
-	fieldCombatNotifyDataRemoveBuffByIDS2CRequestNotify = 59 // CombatMessage.KLs.M3n
-	fieldCombatNotifyDataPlayerBattleStateChangeNotify  = 62 // CombatMessage.KLs.y3n
-	fieldCombatNotifyDataBuffDurationNotify             = 73 // CombatMessage.KLs.W7l
+	FieldCombatNotifyDataRecoverPropChangedNotify       = 58 // CombatMessage.KLs.v3n
+	FieldCombatNotifyDataRemoveBuffByIDS2CRequestNotify = 59 // CombatMessage.KLs.M3n
+	FieldCombatNotifyDataPlayerBattleStateChangeNotify  = 62 // CombatMessage.KLs.y3n
+	FieldCombatNotifyDataBuffDurationNotify             = 73 // CombatMessage.KLs.W7l
 
 	// CombatPushData (CombatMessage.OFs)
-	fieldCombatPushDataCombatCommon                  = 1  // CombatMessage.OFs.K8n
+	FieldCombatPushDataCombatCommon                  = 1  // CombatMessage.OFs.K8n
 	fieldCombatPushDataApplyBuffS2CResponsePush      = 4  // CombatMessage.OFs.G4n
 	fieldCombatPushDataRemoveBuffByIDS2CResponsePush = 6  // CombatMessage.OFs.N4n
-	fieldCombatPushDataApplyGameplayEffectPush       = 9  // CombatMessage.OFs.ie_
-	fieldCombatPushDataRemoveGameplayEffectPush      = 10 // CombatMessage.OFs.re_
-	fieldCombatPushDataBuffStackCountPush            = 37 // CombatMessage.OFs.Re_
+	FieldCombatPushDataApplyGameplayEffectPush       = 9  // CombatMessage.OFs.ie_
+	FieldCombatPushDataRemoveGameplayEffectPush      = 10 // CombatMessage.OFs.re_
+	FieldCombatPushDataEndSkillPush                  = 12 // CombatMessage.OFs.ne_
+	FieldCombatPushDataBuffStackCountPush            = 37 // CombatMessage.OFs.Re_
 	fieldCombatPushDataRTimeStopPush                 = 47 // CombatMessage.OFs.Fe_
-	fieldCombatPushDataClientCurrentRoleReportPush   = 56 // CombatMessage.OFs.Xe_
+	FieldCombatPushDataClientCurrentRoleReportPush   = 56 // CombatMessage.OFs.Xe_
 
 	// CombatReceiveData (CombatMessage.$Fs)
-	fieldCombatReceiveDataCombatNotifyData   = 2 // CombatMessage.$Fs.KLs
-	fieldCombatReceiveDataCombatResponseData = 3 // CombatMessage.$Fs.QLs
+	FieldCombatReceiveDataCombatNotifyData   = 2 // CombatMessage.$Fs.KLs
+	FieldCombatReceiveDataCombatResponseData = 3 // CombatMessage.$Fs.QLs
 
 	// CombatReceivePackNotify (CombatMessage.hZn)
-	fieldCombatReceivePackNotifyData = 4 // CombatMessage.hZn.R5n
+	FieldCombatReceivePackNotifyData = 4 // CombatMessage.hZn.R5n
 
 	// CombatRequestData (CombatMessage.FFs)
-	fieldCombatRequestDataRequestID            = 2 // CombatMessage.FFs.W8n
-	fieldCombatRequestDataDamageExecuteRequest = 5 // CombatMessage.FFs.U3n
+	FieldCombatRequestDataRequestID            = 2 // CombatMessage.FFs.W8n
+	FieldCombatRequestDataDamageExecuteRequest = 5 // CombatMessage.FFs.U3n
 
 	// CombatResponseData (CombatMessage.QLs)
-	fieldCombatResponseDataRequestID             = 2 // CombatMessage.QLs.W8n
-	fieldCombatResponseDataDamageExecuteResponse = 5 // CombatMessage.QLs.lis
+	FieldCombatResponseDataRequestID             = 2 // CombatMessage.QLs.W8n
+	FieldCombatResponseDataDamageExecuteResponse = 5 // CombatMessage.QLs.lis
 
 	// CombatSendData (CombatMessage.VFs)
-	fieldCombatSendDataPush    = 2 // CombatMessage.VFs.Q8n
-	fieldCombatSendDataRequest = 3 // CombatMessage.VFs.x5n
+	FieldCombatSendDataPush    = 2 // CombatMessage.VFs.Q8n
+	FieldCombatSendDataRequest = 3 // CombatMessage.VFs.x5n
 
 	// CombatSendPackRequest (CombatMessage.sZn)
-	fieldCombatSendPackRequestData = 11 // CombatMessage.sZn.R5n
+	FieldCombatSendPackRequestData = 11 // CombatMessage.sZn.R5n
 
 	// CombatSendPackResponse (CombatMessage.aZn)
-	fieldCombatSendPackResponseReceivePackNotify = 1 // CombatMessage.aZn.XLs
+	FieldCombatSendPackResponseReceivePackNotify = 1 // CombatMessage.aZn.XLs
 
 	// ConcomitantsComponentPb (Dys)
 	fieldConcomitantsComponentPbVisionEntityIDs = 1 // Dys.wzm
@@ -254,42 +256,46 @@ const (
 	fieldConcomitantsComponentPbWeakVisionEid   = 4 // Dys.Vnm
 
 	// DamageContext (Njn)
-	fieldDamageContextSourceType     = 1 // Njn.Vjn
-	fieldDamageContextBulletID       = 2 // Njn.Mjn
-	fieldDamageContextBulletTags     = 3 // Njn.Hjn
-	fieldDamageContextSkillID        = 4 // Njn.r5n
-	fieldDamageContextSkillMessageID = 5 // Njn.ptc
+	FieldDamageContextSourceType     = 1 // Njn.Vjn
+	FieldDamageContextBulletID       = 2 // Njn.Mjn
+	FieldDamageContextBulletTags     = 3 // Njn.Hjn
+	FieldDamageContextSkillID        = 4 // Njn.r5n
+	FieldDamageContextSkillMessageID = 5 // Njn.ptc
 
 	// DamageExecuteNotify (EFn)
-	fieldDamageExecuteNotifyChangeLife        = 1  // EFn.jQ_
-	fieldDamageExecuteNotifyTargetEntityID    = 2  // EFn.TVn
-	fieldDamageExecuteNotifyIsCrit            = 3  // EFn.sAs
-	fieldDamageExecuteNotifyElementType       = 4  // EFn.wHn
-	fieldDamageExecuteNotifyDamageContext     = 5  // EFn.Njn
-	fieldDamageExecuteNotifyShieldCoverDamage = 6  // EFn.hAs
-	fieldDamageExecuteNotifyDamage            = 7  // EFn.nAs
-	fieldDamageExecuteNotifyKillerEntityID    = 8  // EFn.GUp
-	fieldDamageExecuteNotifyChangeWeakness    = 9  // EFn.ekf
-	fieldDamageExecuteNotifyAttackerEntityID  = 10 // EFn.kjn
-	fieldDamageExecuteNotifyPartID            = 11 // EFn.jjn
-	fieldDamageExecuteNotifyDamageID          = 12 // EFn.Fjn
-	fieldDamageExecuteNotifySkillLevel        = 13 // EFn.Wjn
-	fieldDamageExecuteNotifyKilledTarget      = 14 // EFn.aAs
-	fieldDamageExecuteNotifyImmuneType        = 15 // EFn.lAs
+	FieldDamageExecuteNotifyChangeLife        = 1  // EFn.jQ_
+	FieldDamageExecuteNotifyTargetEntityID    = 2  // EFn.TVn
+	FieldDamageExecuteNotifyIsCrit            = 3  // EFn.sAs
+	FieldDamageExecuteNotifyElementType       = 4  // EFn.wHn
+	FieldDamageExecuteNotifyDamageContext     = 5  // EFn.Njn
+	FieldDamageExecuteNotifyShieldCoverDamage = 6  // EFn.hAs
+	FieldDamageExecuteNotifyDamage            = 7  // EFn.nAs
+	FieldDamageExecuteNotifyKillerEntityID    = 8  // EFn.GUp
+	FieldDamageExecuteNotifyChangeWeakness    = 9  // EFn.ekf
+	FieldDamageExecuteNotifyAttackerEntityID  = 10 // EFn.kjn
+	FieldDamageExecuteNotifyPartID            = 11 // EFn.jjn
+	FieldDamageExecuteNotifyDamageID          = 12 // EFn.Fjn
+	FieldDamageExecuteNotifySkillLevel        = 13 // EFn.Wjn
+	FieldDamageExecuteNotifyKilledTarget      = 14 // EFn.aAs
+	FieldDamageExecuteNotifyImmuneType        = 15 // EFn.lAs
 
 	// DamageExecuteRequest (U3n)
-	fieldDamageExecuteRequestTargetEntityID   = 1  // U3n.TVn
+	FieldDamageExecuteRequestTargetEntityID   = 1  // U3n.TVn
 	fieldDamageExecuteRequestDamageContext    = 2  // U3n.Njn
-	fieldDamageExecuteRequestAttackerEntityID = 5  // U3n.kjn
+	FieldDamageExecuteRequestAttackerEntityID = 5  // U3n.kjn
 	fieldDamageExecuteRequestSkillLevel       = 7  // U3n.Wjn
-	fieldDamageExecuteRequestPartID           = 10 // U3n.jjn
-	fieldDamageExecuteRequestDamageID         = 14 // U3n.Fjn
+	FieldDamageExecuteRequestPartID           = 10 // U3n.jjn
+	FieldDamageExecuteRequestDamageID         = 14 // U3n.Fjn
 
 	// DamageExecuteResponse (lis)
-	fieldDamageExecuteResponseErrorCode  = 5 // lis.Q4n
-	fieldDamageExecuteResponseChangeLife = 6 // lis.jQ_
-	fieldDamageExecuteResponseImmuneType = 7 // lis.lAs
-	fieldDamageExecuteResponseDamage     = 9 // lis.nAs
+	FieldDamageExecuteResponseIsCrit     = 3 // lis.sAs
+	FieldDamageExecuteResponseErrorCode  = 5 // lis.Q4n
+	FieldDamageExecuteResponseChangeLife = 6 // lis.jQ_
+	FieldDamageExecuteResponseImmuneType = 7 // lis.lAs
+	FieldDamageExecuteResponseDamage     = 9 // lis.nAs
+
+	// DependenceComponentPb (iI_)
+	FieldDependenceComponentPbDependenceEntityIDs = 1 // iI_.MI_
 
 	// DynamicEntityInformation (HFs)
 	fieldDynamicEntityInformationID           = 1  // HFs.s5n
@@ -300,26 +306,31 @@ const (
 	fieldDynamicEntityInformationSummonInfo   = 31 // HFs.DKn
 	fieldDynamicEntityInformationComponentPbs = 32 // HFs.zEs
 
+	// EndSkillPush (ne_)
+	FieldEndSkillPushUseSkillInfo = 10 // ne_.dVn
+
 	// EntityActiveRequest (ges)
-	fieldEntityActiveRequestEntityID = 1 // ges.F4n
+	FieldEntityActiveRequestEntityID = 1 // ges.F4n
 
 	// EntityActiveResponse (fes)
-	fieldEntityActiveResponseComponentPbs = 13 // fes.zEs
+	FieldEntityActiveResponseComponentPbs = 13 // fes.zEs
 
 	// EntityAddNotify (res)
-	fieldEntityAddNotifyEntityPbs = 1 // res.zIs
+	FieldEntityAddNotifyEntityPbs = 1 // res.zIs
+	FieldEntityAddNotifyIsAdd     = 9 // res.lWn
 
 	// EntityCommonTagNotify (Lcs)
-	fieldEntityCommonTagNotifyID = 13 // Lcs.s5n
+	FieldEntityCommonTagNotifyID = 13 // Lcs.s5n
 
 	// EntityComponentPb (m3s)
-	fieldEntityComponentPbSummonerComponent             = 4  // m3s.lys
-	fieldEntityComponentPbPartComponent                 = 5  // m3s._ys
-	fieldEntityComponentPbFightBuffComponent            = 15 // m3s.vys
-	fieldEntityComponentPbMonsterCaptureComponent       = 18 // m3s.Sys
+	FieldEntityComponentPbSummonerComponent             = 4  // m3s.lys
+	FieldEntityComponentPbPartComponent                 = 5  // m3s._ys
+	FieldEntityComponentPbFightBuffComponent            = 15 // m3s.vys
+	FieldEntityComponentPbMonsterCaptureComponent       = 18 // m3s.Sys
 	fieldEntityComponentPbConcomitantsComponentPb       = 25 // m3s.Dys
 	fieldEntityComponentPbEntityFsmComponentPb          = 28 // m3s.Uys
 	fieldEntityComponentPbPlayerFollowerSelfComponentPb = 42 // m3s.tI_
+	FieldEntityComponentPbDependenceComponentPb         = 50 // m3s.iI_
 	fieldEntityComponentPbPlayerFollowersComponentPb    = 53 // m3s.nI_
 	fieldEntityComponentPbFollowEntityComponentPb       = 85 // m3s.o8m
 
@@ -328,95 +339,98 @@ const (
 	fieldEntityFsmComponentPbCommonHashCode = 3 // Uys.VTs
 
 	// EntityPb (c3s)
-	fieldEntityPbID           = 1  // c3s.s5n
-	fieldEntityPbConfigID     = 2  // c3s.v9n
-	fieldEntityPbConfigType   = 3  // c3s.ZHn
+	FieldEntityPbID           = 1  // c3s.s5n
+	FieldEntityPbConfigID     = 2  // c3s.v9n
+	FieldEntityPbConfigType   = 3  // c3s.ZHn
 	fieldEntityPbEntityType   = 4  // c3s.zHn
 	fieldEntityPbPlayerID     = 10 // c3s.W5n
-	fieldEntityPbComponentPbs = 11 // c3s.zEs
+	FieldEntityPbComponentPbs = 11 // c3s.zEs
 	fieldEntityPbPrefabID     = 17 // c3s.LEs
 	fieldEntityPbOwnerIncID   = 21 // c3s.JE_
 	fieldEntityPbRoleSkinID   = 23 // c3s.eI_
 
 	// EntityRemoveDynamicInteractNotify (Bes)
-	fieldEntityRemoveDynamicInteractNotifyEntityID = 12 // Bes.F4n
+	FieldEntityRemoveDynamicInteractNotifyEntityID = 12 // Bes.F4n
 
 	// EntityRemoveInfo (Yks)
-	fieldEntityRemoveInfoEntityID = 1 // Yks.F4n
+	FieldEntityRemoveInfoEntityID = 1 // Yks.F4n
 
 	// EntityRemoveNotify (oes)
-	fieldEntityRemoveNotifyIsRemove    = 10 // oes.eTs
-	fieldEntityRemoveNotifyRemoveInfos = 14 // oes.ZIs
+	FieldEntityRemoveNotifyIsRemove    = 10 // oes.eTs
+	FieldEntityRemoveNotifyRemoveInfos = 14 // oes.ZIs
 
 	// EntityStateReadyNotify (Les)
-	fieldEntityStateReadyNotifyEntityID = 15 // Les.F4n
+	FieldEntityStateReadyNotifyEntityID = 15 // Les.F4n
 
 	// FightBuffComponentPb (xAs)
-	fieldFightBuffComponentPbFightBuffInfos = 1 // xAs.SIs
+	FieldFightBuffComponentPbFightBuffInfos = 1 // xAs.SIs
+
+	// FightBuffEffectContext (u3s)
+	FieldFightBuffEffectContextLeftCooldown = 1 // u3s.BTs
 
 	// FightBuffInformation (_3s)
-	fieldFightBuffInformationHandleID     = 1  // _3s.cVn
-	fieldFightBuffInformationBuffID       = 2  // _3s.b6n
-	fieldFightBuffInformationLevel        = 3  // _3s.F6n
-	fieldFightBuffInformationStackCount   = 4  // _3s.Bjn
-	fieldFightBuffInformationInstigatorID = 5  // _3s.Rjn
-	fieldFightBuffInformationEntityID     = 6  // _3s.F4n
-	fieldFightBuffInformationApplyType    = 7  // _3s.xjn
-	fieldFightBuffInformationDuration     = 8  // _3s.n5n
-	fieldFightBuffInformationLeftDuration = 9  // _3s.QEs
-	fieldFightBuffInformationContext      = 10 // _3s.XEs
-	fieldFightBuffInformationIsActive     = 11 // _3s.WHn
+	FieldFightBuffInformationHandleID     = 1  // _3s.cVn
+	FieldFightBuffInformationBuffID       = 2  // _3s.b6n
+	FieldFightBuffInformationLevel        = 3  // _3s.F6n
+	FieldFightBuffInformationStackCount   = 4  // _3s.Bjn
+	FieldFightBuffInformationInstigatorID = 5  // _3s.Rjn
+	FieldFightBuffInformationEntityID     = 6  // _3s.F4n
+	FieldFightBuffInformationApplyType    = 7  // _3s.xjn
+	FieldFightBuffInformationDuration     = 8  // _3s.n5n
+	FieldFightBuffInformationLeftDuration = 9  // _3s.QEs
+	FieldFightBuffInformationContext      = 10 // _3s.XEs
+	FieldFightBuffInformationIsActive     = 11 // _3s.WHn
 	fieldFightBuffInformationServerID     = 12 // _3s.wjn
 	fieldFightBuffInformationMessageID    = 13 // _3s.$8n
-	fieldFightBuffInformationConfBuffID   = 14 // _3s.tcp
+	FieldFightBuffInformationConfBuffID   = 14 // _3s.tcp
 
 	// FollowEntityComponentPb (o8m)
 	fieldFollowEntityComponentPbEntityID = 1 // o8m.F4n
 
 	// GameplayAttributeData ($ks)
-	fieldGameplayAttributeDataBaseValue     = 1 // $ks.eSs
-	fieldGameplayAttributeDataCurrentValue  = 2 // $ks.y6n
-	fieldGameplayAttributeDataAttributeType = 3 // $ks.tSs
+	FieldGameplayAttributeDataBaseValue     = 1 // $ks.eSs
+	FieldGameplayAttributeDataCurrentValue  = 2 // $ks.y6n
+	FieldGameplayAttributeDataAttributeType = 3 // $ks.tSs
 
 	// JoinSceneNotify (Kus)
-	fieldJoinSceneNotifySceneInfo = 11 // Kus.$Rs
+	FieldJoinSceneNotifySceneInfo = 11 // Kus.$Rs
 
 	// LoginRequest (fss)
-	fieldLoginRequestClientBasicInfo = 8 // fss.Z9n
+	FieldLoginRequestClientBasicInfo = 8 // fss.Z9n
 
 	// MonsterCaptureComponentPb (T3s)
-	fieldMonsterCaptureComponentPbTemplateID = 1 // T3s.IIs
+	FieldMonsterCaptureComponentPbTemplateID = 1 // T3s.IIs
 	fieldMonsterCaptureComponentPbEntityID   = 2 // T3s.F4n
-	fieldMonsterCaptureComponentPbMonsterID  = 3 // T3s.TIs
+	FieldMonsterCaptureComponentPbMonsterID  = 3 // T3s.TIs
 
 	// MovePackagePush (Yus)
-	fieldMovePackagePushMovingEntities = 5  // Yus.WRs
-	fieldMovePackagePushSceneOwnerID   = 13 // Yus.uhh
+	FieldMovePackagePushMovingEntities = 5  // Yus.WRs
+	FieldMovePackagePushSceneOwnerID   = 13 // Yus.uhh
 
 	// MovingEntityData (r4s)
-	fieldMovingEntityDataEntityID   = 1 // r4s.F4n
-	fieldMovingEntityDataOriginator = 2 // r4s.Y8n
+	FieldMovingEntityDataEntityID   = 1 // r4s.F4n
+	FieldMovingEntityDataOriginator = 2 // r4s.Y8n
 
 	// PartComponentPb (BAs)
-	fieldPartComponentPbPartLifeInfos = 1 // BAs.PTs
+	FieldPartComponentPbPartLifeInfos = 1 // BAs.PTs
 
 	// PartInformation (lFs)
-	fieldPartInformationPartID    = 1 // lFs.jjn
-	fieldPartInformationLifeMax   = 3 // lFs.l5n
-	fieldPartInformationActivated = 4 // lFs._5n
-	fieldPartInformationPartTag   = 5 // lFs.WWn
+	FieldPartInformationPartID    = 1 // lFs.jjn
+	FieldPartInformationLifeMax   = 3 // lFs.l5n
+	FieldPartInformationActivated = 4 // lFs._5n
+	FieldPartInformationPartTag   = 5 // lFs.WWn
 
 	// PlayerBattleStateChangeNotify (y3n)
-	fieldPlayerBattleStateChangeNotifyPlayerID = 3  // y3n.W5n
-	fieldPlayerBattleStateChangeNotifyInBattle = 14 // y3n.iWn
+	FieldPlayerBattleStateChangeNotifyPlayerID = 3  // y3n.W5n
+	FieldPlayerBattleStateChangeNotifyInBattle = 14 // y3n.iWn
 
 	// PlayerFollowerNotify (Summon.eJs)
-	fieldPlayerFollowerNotifyListPlayerFollowerPb = 3 // Summon.eJs.OI_
-	fieldPlayerFollowerNotifyPlayerID             = 6 // Summon.eJs.W5n
+	FieldPlayerFollowerNotifyListPlayerFollowerPb = 3 // Summon.eJs.OI_
+	FieldPlayerFollowerNotifyPlayerID             = 6 // Summon.eJs.W5n
 
 	// PlayerFollowerPb (Summon.STs)
-	fieldPlayerFollowerPbType     = 1 // Summon.STs.h5n
-	fieldPlayerFollowerPbEntityID = 2 // Summon.STs.F4n
+	FieldPlayerFollowerPbType     = 1 // Summon.STs.h5n
+	FieldPlayerFollowerPbEntityID = 2 // Summon.STs.F4n
 
 	// PlayerFollowerSelfComponentPb (Summon.tI_)
 	fieldPlayerFollowerSelfComponentPbPlayerEntityID = 1 // Summon.tI_.xIs
@@ -427,35 +441,35 @@ const (
 
 	// PlayerSceneAoiData (JFs)
 	fieldPlayerSceneAoiDataDynamicEntityList = 1 // JFs.LRs
-	fieldPlayerSceneAoiDataEntities          = 3 // JFs.gDs
+	FieldPlayerSceneAoiDataEntities          = 3 // JFs.gDs
 
 	// PlayerSceneGroupData (ERs)
-	fieldPlayerSceneGroupDataFightRoleInfos = 2 // ERs.gRs
+	FieldPlayerSceneGroupDataFightRoleInfos = 2 // ERs.gRs
 
 	// PlayerSceneGroupDataList (yRs)
 	fieldPlayerSceneGroupDataListPlayerID             = 1 // yRs.W5n
 	fieldPlayerSceneGroupDataListPlayerSceneGroupData = 2 // yRs.ERs
 
 	// ProtoKeyResponse (Lss)
-	fieldProtoKeyResponseType = 2 // Lss.h5n
-	fieldProtoKeyResponseKey  = 3 // Lss.Z4n
+	FieldProtoKeyResponseType = 2 // Lss.h5n
+	FieldProtoKeyResponseKey  = 3 // Lss.Z4n
 
 	// RTimeStopPush (Fe_)
 	fieldRTimeStopPushDuration = 1  // Fe_.n5n
 	fieldRTimeStopPushDilation = 12 // Fe_.A6n
 
 	// RecoverAttr (N4s)
-	fieldRecoverAttrAttrID       = 1 // N4s.E6n
-	fieldRecoverAttrRatio        = 2 // N4s.L6n
-	fieldRecoverAttrMaxValue     = 4 // N4s.I6n
-	fieldRecoverAttrCurrentValue = 5 // N4s.y6n
+	FieldRecoverAttrAttrID       = 1 // N4s.E6n
+	FieldRecoverAttrRatio        = 2 // N4s.L6n
+	FieldRecoverAttrMaxValue     = 4 // N4s.I6n
+	FieldRecoverAttrCurrentValue = 5 // N4s.y6n
 
 	// RecoverPropChangedNotify (v3n)
-	fieldRecoverPropChangedNotifyAttributes = 14 // v3n.GSs
+	FieldRecoverPropChangedNotifyAttributes = 14 // v3n.GSs
 
 	// RemoveBuffByIdS2cRequestNotify (M3n)
-	fieldRemoveBuffByIDS2cRequestNotifyInstigatorID = 4  // M3n.Rjn
-	fieldRemoveBuffByIDS2cRequestNotifyBuffID       = 8  // M3n.b6n
+	FieldRemoveBuffByIDS2cRequestNotifyInstigatorID = 4  // M3n.Rjn
+	FieldRemoveBuffByIDS2cRequestNotifyBuffID       = 8  // M3n.b6n
 	fieldRemoveBuffByIDS2cRequestNotifyReason       = 13 // M3n.x9n
 	fieldRemoveBuffByIDS2cRequestNotifyStackCount   = 14 // M3n.Bjn
 
@@ -469,31 +483,31 @@ const (
 	fieldRemoveBuffS2cRequestNotifyInstigatorID = 15 // C3n.Rjn
 
 	// RemoveGameplayEffectNotify (IFn)
-	fieldRemoveGameplayEffectNotifyHandle       = 1  // IFn.uVn
-	fieldRemoveGameplayEffectNotifyInstigatorID = 7  // IFn.Rjn
-	fieldRemoveGameplayEffectNotifyEntityID     = 10 // IFn.F4n
+	FieldRemoveGameplayEffectNotifyHandle       = 1  // IFn.uVn
+	FieldRemoveGameplayEffectNotifyInstigatorID = 7  // IFn.Rjn
+	FieldRemoveGameplayEffectNotifyEntityID     = 10 // IFn.F4n
 
 	// RemoveGameplayEffectPush (re_)
-	fieldRemoveGameplayEffectPushIsPrematureRemoval = 1  // re_.Ojn
+	FieldRemoveGameplayEffectPushIsPrematureRemoval = 1  // re_.Ojn
 	fieldRemoveGameplayEffectPushReason             = 5  // re_.x9n
-	fieldRemoveGameplayEffectPushHandle             = 8  // re_.uVn
+	FieldRemoveGameplayEffectPushHandle             = 8  // re_.uVn
 	fieldRemoveGameplayEffectPushInstigatorID       = 10 // re_.Rjn
-	fieldRemoveGameplayEffectPushEntityID           = 14 // re_.F4n
+	FieldRemoveGameplayEffectPushEntityID           = 14 // re_.F4n
 
 	// SceneInformation (YFs)
 	fieldSceneInformationInstanceID        = 2  // YFs.d5n
-	fieldSceneInformationPlayerInfos       = 4  // YFs.TRs
+	FieldSceneInformationPlayerInfos       = 4  // YFs.TRs
 	fieldSceneInformationDynamicEntityList = 5  // YFs.LRs
 	fieldSceneInformationAoiData           = 11 // YFs.RRs
 	fieldSceneInformationSceneEntityID     = 24 // YFs.tla
 
 	// ScenePlayerInformation (WFs)
-	fieldScenePlayerInformationPlayerID             = 1  // WFs.W5n
-	fieldScenePlayerInformationPlayerSceneGroupData = 11 // WFs.ERs
+	FieldScenePlayerInformationPlayerID             = 1  // WFs.W5n
+	FieldScenePlayerInformationPlayerSceneGroupData = 11 // WFs.ERs
 
 	// SceneRoleInformation (KFs)
-	fieldSceneRoleInformationRoleID   = 1 // KFs.Q6n
-	fieldSceneRoleInformationEntityID = 2 // KFs.F4n
+	FieldSceneRoleInformationRoleID   = 1 // KFs.Q6n
+	FieldSceneRoleInformationEntityID = 2 // KFs.F4n
 
 	// SimpleCombatEntityBuffLayerCountNotify (J0d)
 	fieldSimpleCombatEntityBuffLayerCountNotifyLayerCount = 1 // J0d.Z0d
@@ -503,7 +517,7 @@ const (
 	// SimpleCombatEntityBuffUpdateNotify (Zju)
 	fieldSimpleCombatEntityBuffUpdateNotifyIsBuffAdd = 3  // Zju.t9u
 	fieldSimpleCombatEntityBuffUpdateNotifyBuffID    = 11 // Zju.b6n
-	fieldSimpleCombatEntityBuffUpdateNotifyEntityID  = 15 // Zju.F4n
+	FieldSimpleCombatEntityBuffUpdateNotifyEntityID  = 15 // Zju.F4n
 
 	// SummonInfo (DKn)
 	fieldSummonInfoSummonCfgID   = 1 // DKn.dIs
@@ -511,11 +525,11 @@ const (
 	fieldSummonInfoSummonSkillID = 3 // DKn.mIs
 
 	// SummonerComponentPb (Summon.p3s)
-	fieldSummonerComponentPbSummonerID    = 1 // Summon.p3s.YWn
-	fieldSummonerComponentPbSummonCfgID   = 2 // Summon.p3s.dIs
+	FieldSummonerComponentPbSummonerID    = 1 // Summon.p3s.YWn
+	FieldSummonerComponentPbSummonCfgID   = 2 // Summon.p3s.dIs
 	fieldSummonerComponentPbSummonSkillID = 3 // Summon.p3s.mIs
 	fieldSummonerComponentPbPlayerID      = 4 // Summon.p3s.W5n
-	fieldSummonerComponentPbType          = 5 // Summon.p3s.h5n
+	FieldSummonerComponentPbType          = 5 // Summon.p3s.h5n
 
 	// TimeCheckRequest (WCs)
 	fieldTimeCheckRequestFlowTimeDilation = 7  // WCs.U6n
@@ -526,4 +540,8 @@ const (
 
 	// UpdateSceneGroupDataNotify (Hgs)
 	fieldUpdateSceneGroupDataNotifyPlayerSceneGroupDataList = 12 // Hgs.yRs
+
+	// UseSkillInformation (W3s)
+	FieldUseSkillInformationSkillID   = 3 // W3s.r5n
+	FieldUseSkillInformationTimeStamp = 7 // W3s.J8n
 )

@@ -98,7 +98,7 @@ func classifyEffectKind(class EffectCombatClass, basis string, static *EffectSta
 	if basis == effectCombatBasisTerm {
 		return EffectKindElementAilment, effectKindBasisTerm
 	}
-	if class == EffectCombatClassCombat && strings.HasPrefix(basis, effectCombatBasisAttribute) {
+	if class == EffectCombatClassCombat && strings.HasPrefix(basis, EffectCombatBasisAttribute) {
 		if static == nil || len(static.HUDCueTypes) == 0 {
 			if segment := tagSegmentMatch(tags, func(s string) bool { return internalStateTagSegments[s] || strings.Contains(s, "镜头") }); segment != "" {
 				return EffectKindInternalState, effectKindBasisInternalTag + segment
@@ -156,7 +156,7 @@ const (
 // Display bases name why an instance is non-HUD or unresolved, for the development diagnostics.
 const (
 	effectDisplayBasisNoDefinition     = "definition_missing"
-	effectDisplayBasisNoCue            = "no_hud_cue"
+	EffectDisplayBasisNoCue            = "no_hud_cue"
 	effectDisplayBasisSummonHolder     = "holder_is_not_a_hud_surface"
 	effectDisplayBasisDirectionUnknown = "hud_cue_direction_unknown"
 	effectDisplayBasisHolderUnresolved = "holder_unresolved"
@@ -164,9 +164,9 @@ const (
 )
 
 const (
-	// effectDisplayExpiryGrace is how long an instance past its expected expiry stays shown while a refresh or a REMOVE
+	// EffectDisplayExpiryGrace is how long an instance past its expected expiry stays shown while a refresh or a REMOVE
 	// may still be on the way. It only affects what is listed; the tracker keeps the instance for effectOverdueRetention.
-	effectDisplayExpiryGrace = 2 * time.Second
+	EffectDisplayExpiryGrace = 2 * time.Second
 	// effectCellExpiryTolerance bounds how far apart the expected expiries of one cell may lie, measured from its earliest
 	// member. It absorbs instances the game updates in one tick; 12,685 of 12,699 sampled multi-instance cells have no
 	// spread at all.
@@ -202,7 +202,7 @@ func effectHUDDecision(effect EffectInstanceSnapshot, target EffectDisplayTarget
 		return EffectDisplayHUDUnresolved, effectDisplayBasisNoDefinition
 	}
 	if len(static.HUDCueTypes) == 0 {
-		return EffectDisplayNonHUD, effectDisplayBasisNoCue
+		return EffectDisplayNonHUD, EffectDisplayBasisNoCue
 	}
 	switch target {
 	case EffectTargetTeam:
@@ -224,10 +224,10 @@ func effectHUDDecision(effect EffectInstanceSnapshot, target EffectDisplayTarget
 	return EffectDisplayEligible, ""
 }
 
-// effectDisplayFor decides whether an instance is listed. The order of the checks fixes which reason an instance is
+// EffectDisplayFor decides whether an instance is listed. The order of the checks fixes which reason an instance is
 // counted under: an ended estimate first, then the local relation, then the HUD rule, then whether a status the game
 // draws is already past its time.
-func effectDisplayFor(effect EffectInstanceSnapshot) EffectDisplay {
+func EffectDisplayFor(effect EffectInstanceSnapshot) EffectDisplay {
 	if effect.Lifecycle != EffectLifecycleActive {
 		return EffectDisplay{Eligibility: EffectDisplayEstimatedExpired}
 	}
@@ -245,22 +245,22 @@ func effectDisplayFor(effect EffectInstanceSnapshot) EffectDisplay {
 	if eligibility, basis := effectHUDDecision(effect, target); eligibility != EffectDisplayEligible {
 		return EffectDisplay{Eligibility: eligibility, Target: target, Basis: basis}
 	}
-	if effect.OverdueSeconds != nil && *effect.OverdueSeconds > effectDisplayExpiryGrace.Seconds() {
+	if effect.OverdueSeconds != nil && *effect.OverdueSeconds > EffectDisplayExpiryGrace.Seconds() {
 		return EffectDisplay{Eligibility: EffectDisplayPredictedExpired, Target: target}
 	}
 	return EffectDisplay{Eligibility: EffectDisplayEligible, Target: target}
 }
 
-// effectDisplayCell is one cell of the Effects Overlay: the eligible instances the strip cannot tell apart. The strip
+// EffectDisplayCell is one cell of the Effects Overlay: the eligible instances the strip cannot tell apart. The strip
 // shows no holder, so the same effect copied onto three team members would otherwise read as identical cells. Instances
 // are never merged in the tracker.
 //
 // representative gives the cell its stable identity and definition; earliest gives its countdown, so the cell never reads
 // later than its first member's end.
-type effectDisplayCell struct {
-	representative EffectInstanceSnapshot
-	earliest       EffectInstanceSnapshot
-	members        []EffectInstanceSnapshot
+type EffectDisplayCell struct {
+	Representative EffectInstanceSnapshot
+	Earliest       EffectInstanceSnapshot
+	Members        []EffectInstanceSnapshot
 }
 
 // effectCellIdentity is what every instance of a cell must share, because the strip draws one of each: one icon and kind,
@@ -284,7 +284,7 @@ func effectDurationMs(effect EffectInstanceSnapshot) int64 {
 }
 
 func effectCellIdentityOf(effect EffectInstanceSnapshot) effectCellIdentity {
-	identity := effectCellIdentity{target: effectDisplayFor(effect).Target, kind: effect.Kind, stack: effectStackOf(effect), durationMs: effectDurationMs(effect), stale: effect.StaleSinceTransportLoss}
+	identity := effectCellIdentity{target: EffectDisplayFor(effect).Target, kind: effect.Kind, stack: effectStackOf(effect), durationMs: effectDurationMs(effect), stale: effect.StaleSinceTransportLoss}
 	if effect.EffectID != nil {
 		identity.effectID = *effect.EffectID
 	}
@@ -307,8 +307,8 @@ func (a effectCellIdentity) less(b effectCellIdentity) bool {
 	return !a.stale && b.stale
 }
 
-// instances returns how many tracker instances the cell stands for.
-func (c effectDisplayCell) instances() int { return len(c.members) }
+// Instances returns how many tracker instances the cell stands for.
+func (c EffectDisplayCell) Instances() int { return len(c.Members) }
 
 // effectReliableExpiry is the moment a cell shows its member ends, when its time is one the engine stands behind.
 func effectReliableExpiry(effect EffectInstanceSnapshot) (time.Time, bool) {
@@ -327,17 +327,17 @@ func effectCellCountsDown(effect EffectInstanceSnapshot) bool {
 // sortEffectCells orders cells for display: soonest to end first, cells without a reliable time last, and the instance
 // key breaks every tie. The expiry only moves when the engine reports a new time, so time passing never reorders cells,
 // and cells that end together never trade places.
-func sortEffectCells(cells []effectDisplayCell) {
+func sortEffectCells(cells []EffectDisplayCell) {
 	sort.SliceStable(cells, func(i, j int) bool {
-		expiryI, timedI := effectReliableExpiry(cells[i].earliest)
-		expiryJ, timedJ := effectReliableExpiry(cells[j].earliest)
+		expiryI, timedI := effectReliableExpiry(cells[i].Earliest)
+		expiryJ, timedJ := effectReliableExpiry(cells[j].Earliest)
 		if timedI != timedJ {
 			return timedI
 		}
 		if timedI && !expiryI.Equal(expiryJ) {
 			return expiryI.Before(expiryJ)
 		}
-		return effectViewKey(cells[i].representative) < effectViewKey(cells[j].representative)
+		return EffectViewKey(cells[i].Representative) < EffectViewKey(cells[j].Representative)
 	})
 }
 
@@ -380,7 +380,7 @@ func sortForCells(effects []EffectInstanceSnapshot) {
 		if timedI && !expiryI.Equal(expiryJ) {
 			return expiryI.Before(expiryJ)
 		}
-		return effectViewKey(effects[i]) < effectViewKey(effects[j])
+		return EffectViewKey(effects[i]) < EffectViewKey(effects[j])
 	})
 }
 
@@ -393,20 +393,20 @@ func effectEndsBefore(a, b EffectInstanceSnapshot) bool {
 	if timedA && !expiryA.Equal(expiryB) {
 		return expiryA.Before(expiryB)
 	}
-	return effectViewKey(a) < effectViewKey(b)
+	return EffectViewKey(a) < EffectViewKey(b)
 }
 
-func newEffectDisplayCell(members []EffectInstanceSnapshot) effectDisplayCell {
+func newEffectDisplayCell(members []EffectInstanceSnapshot) EffectDisplayCell {
 	representative, earliest := members[0], members[0]
 	for _, member := range members[1:] {
-		if effectViewKey(member) < effectViewKey(representative) {
+		if EffectViewKey(member) < EffectViewKey(representative) {
 			representative = member
 		}
 		if effectEndsBefore(member, earliest) {
 			earliest = member
 		}
 	}
-	return effectDisplayCell{representative: representative, earliest: earliest, members: members}
+	return EffectDisplayCell{Representative: representative, Earliest: earliest, Members: members}
 }
 
 // effectCellRuns splits instances of one identity into cells. A cell ends within the tolerance of its earliest member and
@@ -434,12 +434,12 @@ func effectCellRuns(instances []EffectInstanceSnapshot) [][]EffectInstanceSnapsh
 	return runs
 }
 
-// effectDisplayCells groups eligible instances into cells. Instances of one identity on different holders that end
+// EffectDisplayCells groups eligible instances into cells. Instances of one identity on different holders that end
 // together become one cell. The result is deterministic for a given input and independent of the input order.
-func effectDisplayCells(eligible []EffectInstanceSnapshot) []effectDisplayCell {
+func EffectDisplayCells(eligible []EffectInstanceSnapshot) []EffectDisplayCell {
 	groups := make(map[effectCellIdentity][]EffectInstanceSnapshot, len(eligible))
 	var identities []effectCellIdentity
-	cells := make([]effectDisplayCell, 0, len(eligible))
+	cells := make([]EffectDisplayCell, 0, len(eligible))
 	for _, effect := range eligible {
 		if effect.EffectID == nil {
 			cells = append(cells, newEffectDisplayCell([]EffectInstanceSnapshot{effect}))
@@ -504,7 +504,7 @@ type ViewEffectCounts struct {
 	TruncatedCells   int `json:"truncatedCells"`
 }
 
-func (c *ViewEffectCounts) add(eligibility EffectDisplayEligibility) {
+func (c *ViewEffectCounts) Add(eligibility EffectDisplayEligibility) {
 	c.Tracked++
 	switch eligibility {
 	case EffectDisplayEstimatedExpired:
@@ -529,8 +529,8 @@ func (c *ViewEffectCounts) add(eligibility EffectDisplayEligibility) {
 	}
 }
 
-// accountingError reports a count that breaks the partition, or a listed cell count that differs from the list.
-func (c ViewEffectCounts) accountingError(listedCells int) error {
+// AccountingError reports a count that breaks the partition, or a listed cell count that differs from the list.
+func (c ViewEffectCounts) AccountingError(listedCells int) error {
 	switch {
 	case c.Tracked != c.Active+c.EstimatedExpired:
 		return fmt.Errorf("tracked %d != active %d + estimated expired %d", c.Tracked, c.Active, c.EstimatedExpired)

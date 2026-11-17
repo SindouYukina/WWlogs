@@ -171,17 +171,17 @@ func (t *EffectTracker) statusInstanceInfo(key effectKey) (statusInstanceInfo, b
 
 // statusSpreadsOnOverflow reports a status Buff whose settlement can reach enemies other than its holder: it has no
 // period and its overflow clears the instance (the settlement of Fusion Burst).
-func (m *gameMaster) statusSpreadsOnOverflow(effectID uint64) bool {
+func (m *GameMaster) statusSpreadsOnOverflow(effectID uint64) bool {
 	settlement := m.negativeStatusSettlementOf(effectID)
-	return !settlement.periodic && settlement.clearsOnOverflow
+	return !settlement.Periodic && settlement.ClearsOnOverflow
 }
 
 // damageSpreadsOnOverflow reports a negative-status DamageId executed by a status Buff that spreads on overflow.
-func (m *gameMaster) damageSpreadsOnOverflow(damageID uint64) bool {
+func (m *GameMaster) damageSpreadsOnOverflow(damageID uint64) bool {
 	if m == nil {
 		return false
 	}
-	for effectID, executed := range m.negativeStatusExecutors {
+	for effectID, executed := range m.NegativeStatusExecutors {
 		if executed == damageID && m.statusSpreadsOnOverflow(effectID) {
 			return true
 		}
@@ -191,20 +191,20 @@ func (m *gameMaster) damageSpreadsOnOverflow(damageID uint64) bool {
 
 // atOrAboveStackLimit reports a count at or above the Buff's stack limit in the Master, the lowest limit an instance can
 // have (a stack-limit modifier only raises it). False without a positive limit.
-func (m *gameMaster) atOrAboveStackLimit(effectID, stack uint64) bool {
+func (m *GameMaster) atOrAboveStackLimit(effectID, stack uint64) bool {
 	if m == nil {
 		return false
 	}
 	static, ok := m.buffStatic(effectID)
-	return ok && static.hasStackLimit && static.stackLimit > 0 && stack >= static.stackLimit
+	return ok && static.HasStackLimit && static.StackLimit > 0 && stack >= static.StackLimit
 }
 
 // observeStatusCause records what one server lifecycle row says about a negative-status instance, before the effect
 // tracker takes the row: the applications and removals of a status without a period, and the instances the tracker leaves
 // out. knownHolderRelation and sourceRelation are the relations observeEffectLifecycle computed on apply; a nil
 // knownHolderRelation is resolved only for a status instance.
-func (p *processor) observeStatusCause(row buffLifecycleAuditRow, holder uint64, knownHolderRelation *EffectEntityRelation, sourceRelation EffectEntityRelation) {
-	if p == nil || p.masters == nil || row.HandleID == nil || !validEffectHandle(*row.HandleID) {
+func (p *Processor) observeStatusCause(row BuffLifecycleAuditRow, holder uint64, knownHolderRelation *EffectEntityRelation, sourceRelation EffectEntityRelation) {
+	if p == nil || p.Masters == nil || row.HandleID == nil || !ValidEffectHandle(*row.HandleID) {
 		return
 	}
 	key := effectKey{row.SessionNumber, holder, p.effectHolderGeneration(holder), *row.HandleID}
@@ -212,7 +212,7 @@ func (p *processor) observeStatusCause(row buffLifecycleAuditRow, holder uint64,
 		if knownHolderRelation != nil {
 			return *knownHolderRelation == EffectRelationNonPlayer
 		}
-		return p.effectEntityRelation(holder) == EffectRelationNonPlayer
+		return p.EffectEntityRelation(holder) == EffectRelationNonPlayer
 	}
 	switch row.EventKind {
 	case "GAMEPLAY_EFFECT_APPLY":
@@ -220,7 +220,7 @@ func (p *processor) observeStatusCause(row buffLifecycleAuditRow, holder uint64,
 			return
 		}
 		effectID := *row.ID
-		if _, executes := p.masters.negativeStatusExecutorDamage(effectID); !executes {
+		if _, executes := p.Masters.negativeStatusExecutorDamage(effectID); !executes {
 			return
 		}
 		var stack uint64 = 1
@@ -237,7 +237,7 @@ func (p *processor) observeStatusCause(row buffLifecycleAuditRow, holder uint64,
 				status.expires = row.Timestamp.Add(secondsToDuration(float64(*row.DurationSeconds)))
 			}
 			p.excludedStatuses.put(key, status)
-			p.notifyStats.excludedStatusInstances++
+			p.NotifyStats.ExcludedStatusInstances++
 			p.addStatusCause(statusCause{key: key, effectID: effectID, at: row.Timestamp, kind: statusCauseCreated, stack: stack,
 				holderEnemy: true, enemy: true, excluded: true}, row.InstigatorID)
 			return
@@ -249,7 +249,7 @@ func (p *processor) observeStatusCause(row buffLifecycleAuditRow, holder uint64,
 		case EffectRelationNonPlayer:
 			cause.enemy = true
 		}
-		if info, tracked := p.effects.statusInstanceInfo(key); tracked && info.effectID == effectID && info.hasStack {
+		if info, tracked := p.Effects.statusInstanceInfo(key); tracked && info.effectID == effectID && info.hasStack {
 			// A repeated APPLY of a live handle is a further application to the same instance.
 			cause.kind = applicationKind(info.stack, stack)
 			if cause.kind == 0 {
@@ -273,18 +273,18 @@ func (p *processor) observeStatusCause(row buffLifecycleAuditRow, holder uint64,
 			}
 			return
 		}
-		info, tracked := p.effects.statusInstanceInfo(key)
+		info, tracked := p.Effects.statusInstanceInfo(key)
 		if !tracked || !info.hasStack {
 			return
 		}
-		if _, executes := p.masters.negativeStatusExecutorDamage(info.effectID); !executes {
+		if _, executes := p.Masters.negativeStatusExecutorDamage(info.effectID); !executes {
 			return
 		}
 		kind := applicationKind(info.stack, next)
 		if kind == 0 {
 			return
 		}
-		if p.masters.negativeStatusSettlementOf(info.effectID).periodic {
+		if p.Masters.negativeStatusSettlementOf(info.effectID).Periodic {
 			return
 		}
 		p.addStatusCause(statusCause{key: key, effectID: info.effectID, at: row.Timestamp, kind: kind, stack: next,
@@ -295,14 +295,14 @@ func (p *processor) observeStatusCause(row buffLifecycleAuditRow, holder uint64,
 			p.addStatusCause(statusCause{key: key, effectID: excluded.effectID, at: row.Timestamp, kind: statusCauseRemoved, stack: excluded.stack, holderEnemy: true, enemy: true, excluded: true}, nil)
 			return
 		}
-		info, tracked := p.effects.statusInstanceInfo(key)
+		info, tracked := p.Effects.statusInstanceInfo(key)
 		if !tracked {
 			return
 		}
-		if _, executes := p.masters.negativeStatusExecutorDamage(info.effectID); !executes {
+		if _, executes := p.Masters.negativeStatusExecutorDamage(info.effectID); !executes {
 			return
 		}
-		if p.masters.negativeStatusSettlementOf(info.effectID).periodic {
+		if p.Masters.negativeStatusSettlementOf(info.effectID).Periodic {
 			return
 		}
 		p.addStatusCause(statusCause{key: key, effectID: info.effectID, at: row.Timestamp, kind: statusCauseRemoved, stack: info.stack,
@@ -324,8 +324,8 @@ func applicationKind(before, after uint64) statusCauseKind {
 }
 
 // addStatusCause keeps a cause of a status without a period; the causes of a timed status settle nothing.
-func (p *processor) addStatusCause(cause statusCause, instigator *uint64) {
-	if p.masters.negativeStatusSettlementOf(cause.effectID).periodic {
+func (p *Processor) addStatusCause(cause statusCause, instigator *uint64) {
+	if p.Masters.negativeStatusSettlementOf(cause.effectID).Periodic {
 		return
 	}
 	if instigator != nil && *instigator != 0 {
@@ -336,10 +336,10 @@ func (p *processor) addStatusCause(cause statusCause, instigator *uint64) {
 
 // excludedStatusExecutes reports an excluded instance on target that can have executed a result of damageID at at: alive,
 // or removed by the server at most statusEndedCarry before.
-func (p *processor) excludedStatusExecutes(target, damageID uint64, at time.Time) bool {
+func (p *Processor) excludedStatusExecutes(target, damageID uint64, at time.Time) bool {
 	generation := p.effectHolderGeneration(target)
 	for key, status := range p.excludedStatuses.byKey {
-		if key.session != p.sessionNumber || key.holder != target || key.generation != generation || !p.masters.negativeStatusExecutes(status.effectID, damageID) {
+		if key.session != p.SessionNumber || key.holder != target || key.generation != generation || !p.Masters.negativeStatusExecutes(status.effectID, damageID) {
 			continue
 		}
 		if !status.removedAt.IsZero() && at.Sub(status.removedAt) > statusEndedCarry {
@@ -368,21 +368,21 @@ type spreadCandidate struct {
 
 // spreadCandidates lists the instances on enemies other than target whose overflow, at most statusTriggerCarry before at,
 // can have spread a result of damageID onto target, ordered by their first report.
-func (p *processor) spreadCandidates(target, damageID uint64, at time.Time) []spreadCandidate {
-	if p == nil || !p.masters.damageSpreadsOnOverflow(damageID) {
+func (p *Processor) spreadCandidates(target, damageID uint64, at time.Time) []spreadCandidate {
+	if p == nil || !p.Masters.damageSpreadsOnOverflow(damageID) {
 		return nil
 	}
 	var found []spreadCandidate
 	index := map[effectKey]int{}
 	for _, cause := range p.statusCauses.entries {
-		if cause.key.session != p.sessionNumber || cause.key.holder == target || !cause.holderEnemy || cause.at.After(at) || at.Sub(cause.at) > statusTriggerCarry {
+		if cause.key.session != p.SessionNumber || cause.key.holder == target || !cause.holderEnemy || cause.at.After(at) || at.Sub(cause.at) > statusTriggerCarry {
 			continue
 		}
-		if !p.masters.negativeStatusExecutes(cause.effectID, damageID) || !p.masters.statusSpreadsOnOverflow(cause.effectID) {
+		if !p.Masters.negativeStatusExecutes(cause.effectID, damageID) || !p.Masters.statusSpreadsOnOverflow(cause.effectID) {
 			continue
 		}
 		atLimit := cause.kind == statusCauseAtLimit
-		removedAtLimit := cause.kind == statusCauseRemoved && p.masters.atOrAboveStackLimit(cause.effectID, cause.stack)
+		removedAtLimit := cause.kind == statusCauseRemoved && p.Masters.atOrAboveStackLimit(cause.effectID, cause.stack)
 		if !atLimit && !removedAtLimit {
 			continue
 		}
@@ -420,9 +420,9 @@ func (p *processor) spreadCandidates(target, damageID uint64, at time.Time) []sp
 //   - otherwise the instigators of its applications in the moment;
 //   - otherwise, when no application of the moment explains the result, every applier of the instance, provided no server
 //     frame is missing since its creation (one may have carried another applier's application).
-func (p *processor) appliedSettlementActors(candidate statusCandidate, at time.Time) statusActors {
+func (p *Processor) appliedSettlementActors(candidate statusCandidate, at time.Time) statusActors {
 	actors := statusActors{entities: map[uint64]struct{}{}, applied: true}
-	settlement := p.masters.negativeStatusSettlementOf(candidate.effectID)
+	settlement := p.Masters.negativeStatusSettlementOf(candidate.effectID)
 	var atLimit, applied []statusCause
 	removedAtLimit := false
 	for _, cause := range p.statusCauses.entries {
@@ -435,7 +435,7 @@ func (p *processor) appliedSettlementActors(candidate statusCandidate, at time.T
 		case statusCauseCreated, statusCauseStacked:
 			applied = append(applied, cause)
 		case statusCauseRemoved:
-			if settlement.clearsOnOverflow && p.masters.atOrAboveStackLimit(cause.effectID, cause.stack) {
+			if settlement.ClearsOnOverflow && p.Masters.atOrAboveStackLimit(cause.effectID, cause.stack) {
 				removedAtLimit = true
 			}
 		}

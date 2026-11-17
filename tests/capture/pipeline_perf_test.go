@@ -161,21 +161,21 @@ func decodeCapturePacket(link layers.LinkType, raw rawCapturePacket) ([]byte, st
 		return nil, "", false
 	}
 	udp := udpLayer.(*layers.UDP)
-	return udp.Payload, packetDirection(packet, "192.168.1.2", udp, 13100, 13120), true
+	return udp.Payload, PacketDirection(packet, "192.168.1.2", udp, 13100, 13120), true
 }
 
-func replayRawCapture(p *processor, capture rawCapture, rewrite func([]byte), offset time.Duration, streams map[string]*stream, stats *captureStats) {
+func replayRawCapture(p *Processor, capture rawCapture, rewrite func([]byte), offset time.Duration, streams map[string]*Stream, stats *CaptureStats) {
 	for _, raw := range capture.packets {
 		payload, direction, ok := decodeCapturePacket(capture.link, raw)
 		if !ok {
 			continue
 		}
-		stats.udpPackets++
+		stats.UDPPackets++
 		if rewrite != nil {
 			payload = append([]byte(nil), payload...)
 			rewrite(payload)
 		}
-		consumeDatagram(payload, direction, raw.info.Timestamp.Add(offset), streams, p, stats)
+		ConsumeDatagram(payload, direction, raw.info.Timestamp.Add(offset), streams, p, stats)
 	}
 }
 
@@ -219,11 +219,11 @@ func TestReplayPipelineCollector(t *testing.T) {
 		rounds = parsed
 	}
 	captures := loadRawCaptures(t, os.Getenv("WWLOGS_PERF_PCAPS"))
-	key, err := loadEmbeddedPrivateKey()
+	key, err := LoadEmbeddedPrivateKey()
 	if err != nil {
 		t.Fatalf("embedded key payload is required: %v", err)
 	}
-	masters, err := loadGameMasterDatabase(os.Getenv("WWLOGS_PERF_MASTER_DB"), "zh-TW")
+	masters, err := LoadGameMasterDatabase(os.Getenv("WWLOGS_PERF_MASTER_DB"), "zh-TW")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -247,13 +247,13 @@ func TestReplayPipelineCollector(t *testing.T) {
 		counts := map[string]uint64{}
 		phases["pipeline"] = append(phases["pipeline"], measurePhase(total, func() {
 			for _, capture := range captures {
-				p := newProcessor(key, io.Discard, io.Discard, nil)
-				p.masters = masters
-				streams, stats := make(map[string]*stream), captureStats{}
+				p := NewProcessor(key, io.Discard)
+				p.Masters = masters
+				streams, stats := make(map[string]*Stream), CaptureStats{}
 				replayRawCapture(p, capture, nil, 0, streams, &stats)
-				finishTransport(streams, p, &stats)
-				p.finishCapture()
-				report := p.currentStatisticsReport()
+				FinishTransport(streams, p, &stats)
+				p.FinishCapture()
+				report := p.CurrentStatisticsReport()
 				_ = report.String()
 				counts["combatEvents"] += report.OutgoingEvents + report.IncomingEvents
 				counts["effectApplies"] += report.EffectApplies
@@ -278,28 +278,28 @@ func TestReplayPipelineCollector(t *testing.T) {
 
 // measurePipelineLatency replays every capture once with each datagram timed, building and encoding a view snapshot every
 // 250 ms of capture time as the publisher does.
-func measurePipelineLatency(t *testing.T, captures []rawCapture, key *staticRSA, masters *gameMaster) map[string]any {
+func measurePipelineLatency(t *testing.T, captures []rawCapture, key *StaticRSA, masters *GameMaster) map[string]any {
 	t.Helper()
 	runtime.GC()
 	var datagrams, snapshots, snapshotBytes []float64
 	for _, capture := range captures {
-		p := newProcessor(key, io.Discard, io.Discard, nil)
-		p.masters = masters
-		streams, stats := make(map[string]*stream), captureStats{}
+		p := NewProcessor(key, io.Discard)
+		p.Masters = masters
+		streams, stats := make(map[string]*Stream), CaptureStats{}
 		var nextSnapshot time.Time
 		for _, raw := range capture.packets {
 			payload, direction, ok := decodeCapturePacket(capture.link, raw)
 			if !ok {
 				continue
 			}
-			stats.udpPackets++
+			stats.UDPPackets++
 			started := qpcNow()
-			consumeDatagram(payload, direction, raw.info.Timestamp, streams, p, &stats)
+			ConsumeDatagram(payload, direction, raw.info.Timestamp, streams, p, &stats)
 			datagrams = append(datagrams, qpcMicrosSince(started))
 			if !raw.info.Timestamp.Before(nextSnapshot) {
 				nextSnapshot = raw.info.Timestamp.Add(250 * time.Millisecond)
 				started = qpcNow()
-				data, err := json.Marshal(p.viewSnapshot())
+				data, err := json.Marshal(p.ViewSnapshot())
 				snapshots = append(snapshots, qpcMicrosSince(started))
 				if err != nil {
 					t.Fatal(err)
@@ -307,8 +307,8 @@ func measurePipelineLatency(t *testing.T, captures []rawCapture, key *staticRSA,
 				snapshotBytes = append(snapshotBytes, float64(len(data)))
 			}
 		}
-		finishTransport(streams, p, &stats)
-		p.finishCapture()
+		FinishTransport(streams, p, &stats)
+		p.FinishCapture()
 	}
 	return map[string]any{"datagramMicros": perfDistribution(datagrams), "snapshotMicros": perfDistribution(snapshots),
 		"snapshotBytes": perfDistribution(snapshotBytes)}

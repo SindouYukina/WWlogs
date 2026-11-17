@@ -31,14 +31,14 @@ func elementOfAttribute(attribute uint64) (uint64, bool) {
 
 // effectElementFor returns the element a definition states and the evidence for it. A glossary term decides first, then
 // a modifier of an element-specific attribute. It says what element the effect concerns, not who benefits from it.
-func effectElementFor(termID uint64, hasTerm bool, static buffStaticParameters) (uint64, string) {
+func effectElementFor(termID uint64, hasTerm bool, static BuffStaticParameters) (uint64, string) {
 	if hasTerm {
 		if element, known := termElements[termID]; known {
 			return element, effectElementBasisTerm
 		}
 	}
-	if static.hasAttribute && static.hasModifier {
-		if element, known := elementOfAttribute(static.attribute); known {
+	if static.HasAttribute && static.HasModifier {
+		if element, known := elementOfAttribute(static.Attribute); known {
 			return element, effectElementBasisAttribute
 		}
 	}

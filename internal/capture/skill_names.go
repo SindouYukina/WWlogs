@@ -66,8 +66,8 @@ const (
 	skillNameSourceTuneBreak  = "tune_break"
 	skillNameSourceEcho       = "echo"
 	skillNameSourceDamageType = "damage_type"
-	// skillNameStatusDerived marks a name taken from a related record (see the file comment).
-	skillNameStatusDerived = "DERIVED"
+	// SkillNameStatusDerived marks a name taken from a related record (see the file comment).
+	SkillNameStatusDerived = "DERIVED"
 )
 
 // Asset kinds a skill row may request. They are the host's route names (internal/desktop/preview.go).
@@ -163,51 +163,51 @@ func newSkillNameMaster() *skillNameMaster {
 		uiSkillTypes: map[uint64]int64{}, skillGenres: map[uint64]int64{}, ambiguousEchoVisions: map[uint64]map[uint64]struct{}{}}
 }
 
-// skillRowName names one skill row. roleID is zero for a vehicle, which has no skill group; damage_list and tune_break
+// SkillRowName names one skill row. roleID is zero for a vehicle, which has no skill group; damage_list and tune_break
 // never apply to it. status is VERIFIED for an official name, DERIVED for a related record's name, UNKNOWN otherwise.
-func (m *gameMaster) skillRowName(roleID uint64, skill SkillDamageSnapshot) (name, status, source string, sourceID uint64) {
+func (m *GameMaster) SkillRowName(roleID uint64, skill SkillDamageSnapshot) (name, status, source string, sourceID uint64) {
 	if m == nil {
-		return "", string(resolutionUnknown), "", 0
+		return "", string(ResolutionUnknown), "", 0
 	}
-	if record, ok := m.damageSkill(skill.SkillID); ok && record.Name != "" && record.NameStatus == string(resolutionVerified) {
+	if record, ok := m.DamageSkill(skill.SkillID); ok && record.Name != "" && record.NameStatus == string(ResolutionVerified) {
 		return record.Name, record.NameStatus, skillNameSourceOfficial, 0
 	}
 	names := m.skillNames
 	if names == nil {
-		return "", string(resolutionUnknown), "", 0
+		return "", string(ResolutionUnknown), "", 0
 	}
 	if uiSkill, ok := names.damageListSkill(roleID, skill); ok {
 		if text := names.uiSkillNames[uiSkill]; text != "" {
-			return text, skillNameStatusDerived, skillNameSourceDamageList, uiSkill
+			return text, SkillNameStatusDerived, skillNameSourceDamageList, uiSkill
 		}
 	}
 	if uiSkill, ok := names.skillTypeSkill(roleID, skill); ok {
 		if text := names.uiSkillNames[uiSkill]; text != "" {
-			return text, skillNameStatusDerived, skillNameSourceSkillType, uiSkill
+			return text, SkillNameStatusDerived, skillNameSourceSkillType, uiSkill
 		}
 	}
 	if uiSkill, ok := names.tuneBreakSkill(roleID, skill); ok {
 		if text := names.uiSkillNames[uiSkill]; text != "" {
-			return text, skillNameStatusDerived, skillNameSourceTuneBreak, uiSkill
+			return text, SkillNameStatusDerived, skillNameSourceTuneBreak, uiSkill
 		}
 	}
 	if item, ok := names.echoItems[skill.SkillID]; ok {
 		if text := names.echoNames[item]; text != "" {
-			return text, skillNameStatusDerived, skillNameSourceEcho, item
+			return text, SkillNameStatusDerived, skillNameSourceEcho, item
 		}
 	}
 	if item, ok := names.runtimeEchoItem(skill); ok {
 		if text := names.echoNames[item]; text != "" {
-			return text, skillNameStatusDerived, skillNameSourceEcho, item
+			return text, SkillNameStatusDerived, skillNameSourceEcho, item
 		}
 	}
-	return "", string(resolutionUnknown), "", 0
+	return "", string(ResolutionUnknown), "", 0
 }
 
 // skillRowIcon returns the asset a row should show. An official row and an unnamed row ask by SkillId; a row named through
 // a related record shows that record's image. A row may have a name and no icon, and the other way round: the host answers
 // 404 for an ID it has no image for, and the row then draws none.
-func (m *gameMaster) skillRowIcon(skill SkillDamageSnapshot, source string, sourceID uint64) (kind string, id uint64) {
+func (m *GameMaster) skillRowIcon(skill SkillDamageSnapshot, source string, sourceID uint64) (kind string, id uint64) {
 	switch source {
 	case skillNameSourceDamageList, skillNameSourceSkillType, skillNameSourceTuneBreak:
 		return skillIconKindSkillConfig, sourceID
@@ -236,7 +236,7 @@ type unassignedSkillSource struct {
 
 // unassignedSkillName decides whether a contributor's hits without a SkillId have a reliable source (see the file comment).
 // roleID is zero for a vehicle. When there is no name it returns the reason, which is empty only for an empty bucket.
-func (m *gameMaster) unassignedSkillName(roleID uint64, unassigned UnassignedSkillTotals) (unassignedSkillSource, string) {
+func (m *GameMaster) unassignedSkillName(roleID uint64, unassigned UnassignedSkillTotals) (unassignedSkillSource, string) {
 	switch {
 	case unassigned.OutgoingEvents == 0:
 		return unassignedSkillSource{}, ""
@@ -470,7 +470,7 @@ func (m *skillNameMaster) tuneBreakSkill(roleID uint64, skill SkillDamageSnapsho
 
 // loadSQLiteSkillNameSources reads the relations of the file comment. Every table is optional; a Master without them
 // names nothing beyond the official SkillDescription rows.
-func loadSQLiteSkillNameSources(db *sql.DB, locale string, master *gameMaster) error {
+func loadSQLiteSkillNameSources(db *sql.DB, locale string, master *GameMaster) error {
 	names := newSkillNameMaster()
 	master.skillNames = names
 	exists := func(tables ...string) (bool, error) {

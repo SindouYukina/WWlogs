@@ -5,29 +5,14 @@ import (
 	"time"
 )
 
-type combatEventCreditJSONL struct {
-	CharacterID *uint64          `json:"characterId,omitempty"`
-	Name        string           `json:"name,omitempty"`
-	Status      resolutionStatus `json:"status"`
-	NameStatus  resolutionStatus `json:"nameStatus"`
-	Evidence    string           `json:"evidence,omitempty"`
-}
-
-type combatEventLabelTextJSONL struct {
+type CombatEventLabelTextJSONL struct {
 	Locale   string `json:"locale"`
 	Text     string `json:"text"`
 	Kind     string `json:"kind"`
 	Evidence string `json:"evidence,omitempty"`
 }
 
-type combatEventElementJSONL struct {
-	ID       int32            `json:"id"`
-	Name     string           `json:"name,omitempty"`
-	Status   resolutionStatus `json:"status"`
-	Evidence string           `json:"evidence,omitempty"`
-}
-
-type combatEvent struct {
+type CombatEvent struct {
 	Timestamp     time.Time
 	SessionNumber int
 	// RPCID is the RequestId on the wire; RequestEpoch the wraps of the client's RequestId counter before the request.
@@ -38,25 +23,25 @@ type combatEvent struct {
 	HasSourceEntity   bool
 	TargetEntityID    uint64
 	HasTargetEntity   bool
-	Source            entityIdentity
-	Target            entityIdentity
-	SummonerCharacter summonerCharacterIdentity
+	Source            EntityIdentity
+	Target            EntityIdentity
+	SummonerCharacter SummonerCharacterIdentity
 	// SourceVisionSummonCfgs lists SummonCfg ids of ConcomitantVision entities whose SummonerComponent names the source entity.
 	SourceVisionSummonCfgs []uint64
 	CharacterID            uint64
 	CharacterName          string
-	CharacterNameStatus    resolutionStatus
-	CharacterStatus        resolutionStatus
+	CharacterNameStatus    ResolutionStatus
+	CharacterStatus        ResolutionStatus
 	CharacterProof         string
 	SkillID                uint64
 	SkillMessageID         uint64
 	SkillName              string
-	SkillNameStatus        resolutionStatus
+	SkillNameStatus        ResolutionStatus
 	SkillNameKind          string
 	// SkillDevLabel is the developer-label text of a skill that has no official name (master locale, zh-CN fallback).
 	SkillDevLabel              string
 	SkillDevLabelKind          string
-	SkillStatus                resolutionStatus
+	SkillStatus                ResolutionStatus
 	SkillProof                 string
 	HasDamageID                bool
 	DamageSourceType           uint64
@@ -71,97 +56,97 @@ type combatEvent struct {
 	DamageCalculateType        int32
 	HasCalculateType           bool
 	EventTypeCandidate         string
-	EventTypeStatus            resolutionStatus
+	EventTypeStatus            ResolutionStatus
 	EventTypeProof             string
-	DamageContributorCandidate *damageContributorCandidate
+	DamageContributorCandidate *DamageContributorCandidate
 	// Notify is set on a result read from a server-executed DamageExecuteNotify (damage_notify.go); nil for a response.
-	Notify *notifiedResult
+	Notify *NotifiedResult
 }
 
-func (p *processor) buildDamageEvent(rpcID uint64, request pendingDamageRequest, resultRaw, changeLifeRaw int32, hasChangeLife bool, damage int64) combatEvent {
-	event := combatEvent{
-		Timestamp:           p.currentFrameTime,
-		SessionNumber:       p.sessionNumber,
+func (p *Processor) BuildDamageEvent(rpcID uint64, request PendingDamageRequest, resultRaw, changeLifeRaw int32, hasChangeLife bool, damage int64) CombatEvent {
+	event := CombatEvent{
+		Timestamp:           p.CurrentFrameTime,
+		SessionNumber:       p.SessionNumber,
 		RPCID:               rpcID,
 		RequestEpoch:        request.requestEpoch,
-		DamageID:            request.damageID,
-		SourceEntityID:      request.attackerEntityID,
-		HasSourceEntity:     request.hasAttackerEntityID && request.attackerEntityID != 0,
-		TargetEntityID:      request.targetEntityID,
-		HasTargetEntity:     request.hasTargetEntityID && request.targetEntityID != 0,
-		Source:              resolveEntityIdentity(p.entities, p.masters, request.attackerEntityID),
-		Target:              resolveEntityIdentity(p.entities, p.masters, request.targetEntityID),
-		SkillID:             request.skillID,
-		SkillMessageID:      request.skillMessageID,
-		HasDamageID:         request.hasDamageID,
-		DamageSourceType:    request.damageSourceType,
-		HasDamageSourceType: request.hasDamageSourceType,
-		BulletID:            request.bulletID,
-		HasBulletID:         request.hasBulletID,
+		DamageID:            request.DamageID,
+		SourceEntityID:      request.AttackerEntityID,
+		HasSourceEntity:     request.HasAttackerEntityID && request.AttackerEntityID != 0,
+		TargetEntityID:      request.TargetEntityID,
+		HasTargetEntity:     request.HasTargetEntityID && request.TargetEntityID != 0,
+		Source:              ResolveEntityIdentity(p.Entities, p.Masters, request.AttackerEntityID),
+		Target:              ResolveEntityIdentity(p.Entities, p.Masters, request.TargetEntityID),
+		SkillID:             request.SkillID,
+		SkillMessageID:      request.SkillMessageID,
+		HasDamageID:         request.HasDamageID,
+		DamageSourceType:    request.DamageSourceType,
+		HasDamageSourceType: request.HasDamageSourceType,
+		BulletID:            request.BulletID,
+		HasBulletID:         request.HasBulletID,
 		Damage:              damage,
 		ServerResultRaw:     resultRaw,
 		HasServerResult:     true,
 		ChangeLifeRaw:       changeLifeRaw,
 		HasChangeLife:       hasChangeLife,
-		CharacterStatus:     resolutionUnknown,
-		CharacterNameStatus: resolutionUnknown,
-		SkillStatus:         resolutionUnknown,
-		SkillNameStatus:     resolutionUnknown,
-		EventTypeStatus:     resolutionUnknown,
+		CharacterStatus:     ResolutionUnknown,
+		CharacterNameStatus: ResolutionUnknown,
+		SkillStatus:         ResolutionUnknown,
+		SkillNameStatus:     ResolutionUnknown,
+		EventTypeStatus:     ResolutionUnknown,
 	}
-	event.SummonerCharacter = resolveSummonerCharacter(p.entities, p.masters, event.Source.Runtime)
-	event.SourceVisionSummonCfgs = p.entities.visionSummonConfigs(request.attackerEntityID)
-	event.resolveEventType(p.masters)
-	if event.Source.HasCharacter && (event.Source.CharacterStatus == resolutionVerified || event.Source.CharacterStatus == resolutionCorrelated) {
+	event.SummonerCharacter = ResolveSummonerCharacter(p.Entities, p.Masters, event.Source.Runtime)
+	event.SourceVisionSummonCfgs = p.Entities.VisionSummonConfigs(request.AttackerEntityID)
+	event.ResolveEventType(p.Masters)
+	if event.Source.HasCharacter && (event.Source.CharacterStatus == ResolutionVerified || event.Source.CharacterStatus == ResolutionCorrelated) {
 		event.CharacterID = event.Source.Character.ID
-		event.CharacterNameStatus = resolutionStatus(event.Source.Character.NameStatus)
-		if event.CharacterNameStatus == resolutionVerified || event.CharacterNameStatus == resolutionCorrelated {
+		event.CharacterNameStatus = ResolutionStatus(event.Source.Character.NameStatus)
+		if event.CharacterNameStatus == ResolutionVerified || event.CharacterNameStatus == ResolutionCorrelated {
 			event.CharacterName = event.Source.Character.Name
 		}
 		event.CharacterStatus = event.Source.CharacterStatus
 		event.CharacterProof = event.Source.CharacterProof
-	} else if p.masters != nil {
-		if roleID, ok := p.sourceRoles.correlatedRole(request.attackerEntityID); ok {
-			if character, exists := p.masters.characters[roleID]; exists {
+	} else if p.Masters != nil {
+		if roleID, ok := p.SourceRoles.CorrelatedRole(request.AttackerEntityID); ok {
+			if character, exists := p.Masters.Characters[roleID]; exists {
 				event.CharacterID = character.ID
-				event.CharacterNameStatus = resolutionStatus(character.NameStatus)
-				if event.CharacterNameStatus == resolutionVerified || event.CharacterNameStatus == resolutionCorrelated {
+				event.CharacterNameStatus = ResolutionStatus(character.NameStatus)
+				if event.CharacterNameStatus == ResolutionVerified || event.CharacterNameStatus == ResolutionCorrelated {
 					event.CharacterName = character.Name
 				}
-				event.CharacterStatus = resolutionCorrelated
+				event.CharacterStatus = ResolutionCorrelated
 				event.CharacterProof = "2+ distinct DamageContext.SkillId values for this source map to RoleId through SkillDescription -> Skill"
 			}
 		}
 	}
-	if label := resolveSkillLabelText(p.masters, request.skillID); label != nil {
+	if label := ResolveSkillLabelText(p.Masters, request.SkillID); label != nil {
 		event.SkillDevLabel, event.SkillDevLabelKind = label.Text, label.Kind
 	}
-	if p.masters != nil {
-		if skill, ok := p.masters.damageSkill(request.skillID); ok {
-			event.SkillStatus = resolutionStatus(skill.Status)
-			event.SkillNameStatus = resolutionStatus(skill.NameStatus)
-			if event.SkillNameStatus == resolutionVerified || event.SkillNameStatus == resolutionCorrelated {
+	if p.Masters != nil {
+		if skill, ok := p.Masters.DamageSkill(request.SkillID); ok {
+			event.SkillStatus = ResolutionStatus(skill.Status)
+			event.SkillNameStatus = ResolutionStatus(skill.NameStatus)
+			if event.SkillNameStatus == ResolutionVerified || event.SkillNameStatus == ResolutionCorrelated {
 				event.SkillName = skill.Name
 				event.SkillNameKind = skill.NameKind
 			}
 			event.SkillProof = skill.SourceTable
 		}
 	}
-	event.DamageContributorCandidate = resolveVehicleDamageContributorCandidate(p.entities, p.masters, event)
+	event.DamageContributorCandidate = ResolveVehicleDamageContributorCandidate(p.Entities, p.Masters, event)
 	return event
 }
 
-func (event *combatEvent) resolveEventType(masters *gameMaster) {
+func (event *CombatEvent) ResolveEventType(masters *GameMaster) {
 	if masters == nil || !event.HasDamageID {
 		return
 	}
-	record, ok := masters.damage[event.DamageID]
+	record, ok := masters.Damage[event.DamageID]
 	if !ok {
 		return
 	}
 	event.DamageCalculateType = record.CalculateType
 	event.HasCalculateType = true
-	event.EventTypeStatus = resolutionCorrelated
+	event.EventTypeStatus = ResolutionCorrelated
 	source := fmt.Sprintf("%s CalculateType=%d (combat master SQLite SHA-256 %s)", record.SourceTable, record.CalculateType, record.SourceHash)
 	switch record.CalculateType {
 	case 0:
@@ -176,11 +161,11 @@ func (event *combatEvent) resolveEventType(masters *gameMaster) {
 	}
 }
 
-// writeDamageEvent records one damage result in the core statistics, hands it to the development outputs and returns
+// WriteDamageEvent records one damage result in the core statistics, hands it to the development outputs and returns
 // whether the event passes the normal player-relevance filter. The outputs cannot stop the counters that follow them.
-func (p *processor) writeDamageEvent(event combatEvent) bool {
-	sourceRelation, targetRelation, visible := p.playerRelevantDamageEvent(event)
-	if record, ok := normalizeCombatEvent(event, sourceRelation, targetRelation); ok && p.damageStatistics != nil {
+func (p *Processor) WriteDamageEvent(event CombatEvent) bool {
+	sourceRelation, targetRelation, visible := p.PlayerRelevantDamageEvent(event)
+	if record, ok := normalizeCombatEvent(event, sourceRelation, targetRelation); ok && p.DamageStatistics != nil {
 		record = p.gateAttribution(record)
 		record.SourceActor, record.TargetActor = combatActorTypeOf(event.Source), combatActorTypeOf(event.Target)
 		switch record.Flow {
@@ -192,7 +177,7 @@ func (p *processor) writeDamageEvent(event combatEvent) bool {
 				credit := *event.Notify.Credit
 				record.SourceRole = &credit
 			}
-			if candidate := event.DamageContributorCandidate; candidate != nil && candidate.Kind == vehicleKindMotorcycle && candidate.ActorType == "Vehicle" && candidate.EntityType == "BattleVehicle" && candidate.Status == resolutionCorrelated {
+			if candidate := event.DamageContributorCandidate; candidate != nil && candidate.Kind == VehicleKindMotorcycle && candidate.ActorType == "Vehicle" && candidate.EntityType == "BattleVehicle" && candidate.Status == ResolutionCorrelated {
 				record.VehicleKind = candidate.Kind
 			}
 		case CombatFlowLocalIncoming:
@@ -204,21 +189,27 @@ func (p *processor) writeDamageEvent(event combatEvent) bool {
 				record.TargetRole = p.localRoleForEntity(event.TargetEntityID, event.Target)
 			}
 		}
-		assignment := p.damageStatistics.addCombatEvent(record)
-		p.writeCombatEventRecord(record, assignment)
-		p.flushEncounterTransitions()
+		assignment := p.DamageStatistics.addCombatEvent(record)
+		if p.observer != nil {
+			p.observer.WriteCombatEventRecord(record, assignment)
+		}
+		if p.observer != nil {
+			p.observer.FlushEncounterTransitions()
+		}
 	}
-	p.writeDamageEventOutputs(&event, visible, sourceRelation, targetRelation)
+	if p.observer != nil {
+		p.observer.WriteDamageEventOutputs(event, visible, sourceRelation, targetRelation)
+	}
 	if !visible {
-		p.stats.suppressedUnrelatedEvents++
+		p.Stats.SuppressedUnrelatedEvents++
 		return false
 	}
-	if sourceRelation == playerRelationLocal || targetRelation == playerRelationLocal {
-		p.stats.playerRelatedEvents++
+	if sourceRelation == PlayerRelationLocal || targetRelation == PlayerRelationLocal {
+		p.Stats.PlayerRelatedEvents++
 	} else {
-		p.stats.includedUnresolvedRelations++
+		p.Stats.IncludedUnresolvedRelations++
 	}
-	p.stats.printed++
-	p.stats.matchedCombatResultAbs += event.Damage
+	p.Stats.Printed++
+	p.Stats.MatchedCombatResultAbs += event.Damage
 	return true
 }

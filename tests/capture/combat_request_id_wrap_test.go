@@ -13,17 +13,17 @@ import (
 // combatRequestBody is a CombatSendPackRequest with one RequestData that is no damage request; it only advances the
 // client's RequestId counter.
 func combatRequestBody(rpcID uint64) []byte {
-	request := appendVarintField(nil, fieldCombatRequestDataRequestID, rpcID)
-	return appendBytesField(nil, fieldCombatSendPackRequestData, appendBytesField(nil, fieldCombatSendDataRequest, request))
+	request := appendVarintField(nil, FieldCombatRequestDataRequestID, rpcID)
+	return appendBytesField(nil, FieldCombatSendPackRequestData, appendBytesField(nil, FieldCombatSendDataRequest, request))
 }
 
-func sendCombatRequest(p *processor, seconds float64, rpcID uint64) {
+func sendCombatRequest(p *Processor, seconds float64, rpcID uint64) {
 	pairingFrame(p, seconds)
-	p.handleDamageRequests(gameFrame{direction: "out", commandID: cmdCombatSendPackRequest, timestamp: pairingAt(seconds)}, combatRequestBody(rpcID))
+	p.HandleDamageRequests(GameFrame{Direction: "out", CommandID: CmdCombatSendPackRequest, Timestamp: pairingAt(seconds)}, combatRequestBody(rpcID))
 }
 
 // wrapCounter sends the last RequestIds before the wrap, then the first ones after it, as the client does.
-func wrapCounter(p *processor, seconds float64) {
+func wrapCounter(p *Processor, seconds float64) {
 	sendCombatRequest(p, seconds, 32766)
 	sendCombatRequest(p, seconds, 32767)
 	sendCombatRequest(p, seconds, 0) // proto3 omits the 0, as on the wire
@@ -32,19 +32,19 @@ func wrapCounter(p *processor, seconds float64) {
 
 // damageRequestWithoutID is a damage request whose RequestId is the proto3 default 0, so the field is absent.
 func damageRequestWithoutID(attackerID, targetID uint64) []byte {
-	u3n := appendVarintField(nil, fieldDamageExecuteRequestDamageID, 70010001)
-	u3n = appendVarintField(u3n, fieldDamageExecuteRequestTargetEntityID, targetID)
-	u3n = appendVarintField(u3n, fieldDamageExecuteRequestAttackerEntityID, attackerID)
-	request := appendBytesField(nil, fieldCombatRequestDataDamageExecuteRequest, u3n)
-	return appendBytesField(nil, fieldCombatSendPackRequestData, appendBytesField(nil, fieldCombatSendDataRequest, request))
+	u3n := appendVarintField(nil, FieldDamageExecuteRequestDamageID, 70010001)
+	u3n = appendVarintField(u3n, FieldDamageExecuteRequestTargetEntityID, targetID)
+	u3n = appendVarintField(u3n, FieldDamageExecuteRequestAttackerEntityID, attackerID)
+	request := appendBytesField(nil, FieldCombatRequestDataDamageExecuteRequest, u3n)
+	return appendBytesField(nil, FieldCombatSendPackRequestData, appendBytesField(nil, FieldCombatSendDataRequest, request))
 }
 
 // damageResponseWithoutID answers it: CombatResponseData without RequestId.
 func damageResponseWithoutID(amount int32) []byte {
-	lis := appendVarintField(nil, fieldDamageExecuteResponseDamage, uint64(uint32(amount)))
-	response := appendBytesField(nil, fieldCombatResponseDataDamageExecuteResponse, lis)
-	item := appendBytesField(nil, fieldCombatReceiveDataCombatResponseData, response)
-	return appendBytesField(nil, fieldCombatSendPackResponseReceivePackNotify, appendBytesField(nil, fieldCombatReceivePackNotifyData, item))
+	lis := appendVarintField(nil, FieldDamageExecuteResponseDamage, uint64(uint32(amount)))
+	response := appendBytesField(nil, FieldCombatResponseDataDamageExecuteResponse, lis)
+	item := appendBytesField(nil, FieldCombatReceiveDataCombatResponseData, response)
+	return appendBytesField(nil, FieldCombatSendPackResponseReceivePackNotify, appendBytesField(nil, FieldCombatReceivePackNotifyData, item))
 }
 
 func TestCombatRequestCounterEpochs(t *testing.T) {
@@ -70,10 +70,10 @@ func TestReusedRequestIDAfterWrapCountsBothResults(t *testing.T) {
 	wrapCounter(p, 600)
 	sendDamageRequest(p, 600.5, 7)
 	sendDamageResponse(p, 600.6, 7, 250)
-	if got := p.damageStatistics.Snapshot(); got.DamageDealt != 350 || got.OutgoingEvents != 2 || got.DuplicateEvents != 0 {
+	if got := p.DamageStatistics.Snapshot(); got.DamageDealt != 350 || got.OutgoingEvents != 2 || got.DuplicateEvents != 0 {
 		t.Fatalf("statistics = %+v", got)
 	}
-	pairing := p.rpcPairingSnapshot()
+	pairing := p.RPCPairingSnapshot()
 	if pairing.Paired != 2 || pairing.ConflictingResponses != 0 || pairing.DuplicateResponses != 0 || pairing.PendingRequests != 0 || pairing.ReusedRequestIDs != 1 {
 		t.Fatalf("pairing = %+v", pairing)
 	}
@@ -88,10 +88,10 @@ func TestReusedRequestIDResponseBeforeItsRequest(t *testing.T) {
 	wrapCounter(p, 600)
 	sendDamageResponse(p, 600.5, 9, 400)
 	sendDamageRequest(p, 600.9, 9)
-	if got := p.damageStatistics.Snapshot(); got.DamageDealt != 700 || got.OutgoingEvents != 2 {
+	if got := p.DamageStatistics.Snapshot(); got.DamageDealt != 700 || got.OutgoingEvents != 2 {
 		t.Fatalf("statistics = %+v", got)
 	}
-	pairing := p.rpcPairingSnapshot()
+	pairing := p.RPCPairingSnapshot()
 	if pairing.Paired != 2 || pairing.PairedOutOfOrder != 1 || pairing.ConflictingResponses != 0 || pairing.ReusedRequestIDs != 1 || pairing.HeldResponses != 0 {
 		t.Fatalf("pairing = %+v", pairing)
 	}
@@ -104,10 +104,10 @@ func TestCopyWithinWindowStaysOneResult(t *testing.T) {
 	sendDamageResponse(p, 1.1, 11, 500)
 	sendDamageResponse(p, 1.2, 11, 500)
 	sendDamageResponse(p, 1.3, 11, 501)
-	if got := p.damageStatistics.Snapshot(); got.DamageDealt != 500 || got.OutgoingEvents != 1 {
+	if got := p.DamageStatistics.Snapshot(); got.DamageDealt != 500 || got.OutgoingEvents != 1 {
 		t.Fatalf("statistics = %+v", got)
 	}
-	if pairing := p.rpcPairingSnapshot(); pairing.DuplicateResponses != 1 || pairing.ConflictingResponses != 1 || pairing.ReusedRequestIDs != 0 {
+	if pairing := p.RPCPairingSnapshot(); pairing.DuplicateResponses != 1 || pairing.ConflictingResponses != 1 || pairing.ReusedRequestIDs != 0 {
 		t.Fatalf("pairing = %+v", pairing)
 	}
 }
@@ -120,10 +120,10 @@ func TestLateResponseOfACompletedRequestIDWithoutRequest(t *testing.T) {
 	sendDamageResponse(p, 1.1, 12, 500)
 	sendDamageResponse(p, 600, 12, 900)
 	sendCombatRequest(p, 600+damageResponseHoldWindow.Seconds()+1, 40)
-	if got := p.damageStatistics.Snapshot(); got.DamageDealt != 500 || got.OutgoingEvents != 1 {
+	if got := p.DamageStatistics.Snapshot(); got.DamageDealt != 500 || got.OutgoingEvents != 1 {
 		t.Fatalf("statistics = %+v", got)
 	}
-	if pairing := p.rpcPairingSnapshot(); pairing.UnpairedExpired != 1 || pairing.ConflictingResponses != 0 || pairing.HeldResponses != 0 {
+	if pairing := p.RPCPairingSnapshot(); pairing.UnpairedExpired != 1 || pairing.ConflictingResponses != 0 || pairing.HeldResponses != 0 {
 		t.Fatalf("pairing = %+v", pairing)
 	}
 }
@@ -134,15 +134,15 @@ func TestRequestIDZeroAfterWrapIsPaired(t *testing.T) {
 	sendCombatRequest(p, 1, 32766)
 	sendCombatRequest(p, 1, 32767)
 	pairingFrame(p, 1.5)
-	p.handleDamageRequests(gameFrame{direction: "out", commandID: cmdCombatSendPackRequest, timestamp: pairingAt(1.5)}, damageRequestWithoutID(100, 200))
+	p.HandleDamageRequests(GameFrame{Direction: "out", CommandID: CmdCombatSendPackRequest, Timestamp: pairingAt(1.5)}, damageRequestWithoutID(100, 200))
 	pairingFrame(p, 1.6)
-	if err := p.handleCombatReceivePacks(gameFrame{direction: "in", commandID: cmdCombatSendPackResponse, timestamp: pairingAt(1.6)}, damageResponseWithoutID(640)); err != nil {
+	if err := p.HandleCombatReceivePacks(GameFrame{Direction: "in", CommandID: CmdCombatSendPackResponse, Timestamp: pairingAt(1.6)}, damageResponseWithoutID(640)); err != nil {
 		t.Fatal(err)
 	}
-	if got := p.damageStatistics.Snapshot(); got.DamageDealt != 640 || got.OutgoingEvents != 1 {
+	if got := p.DamageStatistics.Snapshot(); got.DamageDealt != 640 || got.OutgoingEvents != 1 {
 		t.Fatalf("statistics = %+v", got)
 	}
-	if pairing := p.rpcPairingSnapshot(); pairing.Paired != 1 || pairing.PendingRequests != 0 {
+	if pairing := p.RPCPairingSnapshot(); pairing.Paired != 1 || pairing.PendingRequests != 0 {
 		t.Fatalf("pairing = %+v", pairing)
 	}
 }
@@ -155,10 +155,10 @@ func TestUnansweredRequestIsSupersededByReuse(t *testing.T) {
 	wrapCounter(p, 600)
 	sendDamageRequest(p, 600.5, 13)
 	sendDamageResponse(p, 600.6, 13, 80)
-	if got := p.damageStatistics.Snapshot(); got.DamageDealt != 80 || got.OutgoingEvents != 1 {
+	if got := p.DamageStatistics.Snapshot(); got.DamageDealt != 80 || got.OutgoingEvents != 1 {
 		t.Fatalf("statistics = %+v", got)
 	}
-	if pairing := p.rpcPairingSnapshot(); pairing.SupersededRequests != 1 || pairing.Paired != 1 || pairing.PendingRequests != 0 {
+	if pairing := p.RPCPairingSnapshot(); pairing.SupersededRequests != 1 || pairing.Paired != 1 || pairing.PendingRequests != 0 {
 		t.Fatalf("pairing = %+v", pairing)
 	}
 }
@@ -166,16 +166,16 @@ func TestUnansweredRequestIsSupersededByReuse(t *testing.T) {
 // The normalized record of each result carries a key of its own: the first use keeps its RequestId, the reuse the
 // RequestId continued past the wrap, so a statistics owner or a history never takes the second for a repeat.
 func TestReusedRequestIDResultsKeepDistinctKeys(t *testing.T) {
-	event := combatEvent{
+	event := CombatEvent{
 		SessionNumber: 1, RPCID: 21, SourceEntityID: 100, HasSourceEntity: true, TargetEntityID: 200, HasTargetEntity: true,
 		EventTypeCandidate: "DAMAGE_CANDIDATE", Damage: 10, Timestamp: pairingAt(1), DamageID: 70010001,
 	}
-	first, ok := normalizeCombatEvent(event, playerRelationLocal, playerRelationUnrelated)
+	first, ok := normalizeCombatEvent(event, PlayerRelationLocal, PlayerRelationUnrelated)
 	if !ok || first.Key != (CombatEventKey{ProtocolSession: 1, RPCID: 21}) {
 		t.Fatalf("first use: ok=%v key=%+v", ok, first.Key)
 	}
 	event.RequestEpoch = 1
-	reused, ok := normalizeCombatEvent(event, playerRelationLocal, playerRelationUnrelated)
+	reused, ok := normalizeCombatEvent(event, PlayerRelationLocal, PlayerRelationUnrelated)
 	if !ok || reused.Key != (CombatEventKey{ProtocolSession: 1, RPCID: 32768 + 21}) {
 		t.Fatalf("reuse: ok=%v key=%+v", ok, reused.Key)
 	}
@@ -183,12 +183,12 @@ func TestReusedRequestIDResultsKeepDistinctKeys(t *testing.T) {
 
 // journaledKeys starts the event journal of a pairing test processor and returns the keys of the results the statistics
 // accept while run runs, in acceptance order.
-func journaledKeys(t *testing.T, p *processor, run func()) []uint64 {
+func journaledKeys(t *testing.T, p *Processor, run func()) []uint64 {
 	t.Helper()
-	p.damageStatistics.EnableHistory(HistoryEvents)
-	takeSpan(t, p.damageStatistics)
+	p.DamageStatistics.EnableHistory(HistoryEvents)
+	takeSpan(t, p.DamageStatistics)
 	run()
-	entries, dropped := p.damageStatistics.TakeHistory()
+	entries, dropped := p.DamageStatistics.TakeHistory()
 	if dropped != 0 {
 		t.Fatalf("the journal refused %d entries", dropped)
 	}
@@ -214,13 +214,13 @@ func TestRequestIDReusedAcrossTwoWrapsKeepsEveryResult(t *testing.T) {
 		sendDamageRequest(p, 1200.5, 7)
 		sendDamageResponse(p, 1200.6, 7, 400)
 	})
-	if got := p.damageStatistics.Snapshot(); got.DamageDealt != 700 || got.OutgoingEvents != 3 || got.DuplicateEvents != 0 {
+	if got := p.DamageStatistics.Snapshot(); got.DamageDealt != 700 || got.OutgoingEvents != 3 || got.DuplicateEvents != 0 {
 		t.Fatalf("statistics = %+v", got)
 	}
 	if want := []uint64{7, combatRequestIDSpace + 7, 2*combatRequestIDSpace + 7}; !slicesEqual(keys, want) {
 		t.Fatalf("keys = %v, want %v", keys, want)
 	}
-	if pairing := p.rpcPairingSnapshot(); pairing.Paired != 3 || pairing.ReusedRequestIDs != 2 || pairing.ConflictingResponses != 0 || pairing.PendingRequests != 0 {
+	if pairing := p.RPCPairingSnapshot(); pairing.Paired != 3 || pairing.ReusedRequestIDs != 2 || pairing.ConflictingResponses != 0 || pairing.PendingRequests != 0 {
 		t.Fatalf("pairing = %+v", pairing)
 	}
 }
@@ -241,7 +241,7 @@ func TestResponseDelayedAcrossTheWrapKeepsItsRequestEpoch(t *testing.T) {
 	if want := []uint64{32767, combatRequestIDSpace + 2}; !slicesEqual(keys, want) {
 		t.Fatalf("keys = %v, want %v", keys, want)
 	}
-	if got := p.damageStatistics.Snapshot(); got.DamageDealt != 350 || got.OutgoingEvents != 2 {
+	if got := p.DamageStatistics.Snapshot(); got.DamageDealt != 350 || got.OutgoingEvents != 2 {
 		t.Fatalf("statistics = %+v", got)
 	}
 }
@@ -260,7 +260,7 @@ func TestResponsesAroundTheWrapPairOutOfOrder(t *testing.T) {
 	if want := []uint64{combatRequestIDSpace + 1, 32767, combatRequestIDSpace}; !slicesEqual(keys, want) {
 		t.Fatalf("keys = %v, want %v", keys, want)
 	}
-	if got := p.damageStatistics.Snapshot(); got.DamageDealt != 66 || got.OutgoingEvents != 3 {
+	if got := p.DamageStatistics.Snapshot(); got.DamageDealt != 66 || got.OutgoingEvents != 3 {
 		t.Fatalf("statistics = %+v", got)
 	}
 }
@@ -275,10 +275,10 @@ func TestCopyOfAReusedResultAfterTheWrapStaysOne(t *testing.T) {
 	sendDamageResponse(p, 600.6, 8, 250)
 	sendDamageResponse(p, 600.7, 8, 250)
 	sendDamageResponse(p, 600.8, 8, 251)
-	if got := p.damageStatistics.Snapshot(); got.DamageDealt != 350 || got.OutgoingEvents != 2 {
+	if got := p.DamageStatistics.Snapshot(); got.DamageDealt != 350 || got.OutgoingEvents != 2 {
 		t.Fatalf("statistics = %+v", got)
 	}
-	if pairing := p.rpcPairingSnapshot(); pairing.DuplicateResponses != 1 || pairing.ConflictingResponses != 1 || pairing.ReusedRequestIDs != 1 {
+	if pairing := p.RPCPairingSnapshot(); pairing.DuplicateResponses != 1 || pairing.ConflictingResponses != 1 || pairing.ReusedRequestIDs != 1 {
 		t.Fatalf("pairing = %+v", pairing)
 	}
 }

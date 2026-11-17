@@ -1,7 +1,6 @@
 package capture
 
 import (
-	"encoding/json"
 	"fmt"
 	"regexp"
 	"sort"
@@ -13,7 +12,7 @@ import (
 
 var clientVersionPattern = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+(?:[-+._][0-9A-Za-z][0-9A-Za-z._+-]{0,63})?$`)
 
-type clientVersionReport struct {
+type ClientVersionReport struct {
 	SessionNumber       int       `json:"sessionNumber"`
 	FirstObservedAt     time.Time `json:"firstObservedAt"`
 	ClientBuild         string    `json:"clientBuild,omitempty"`
@@ -22,16 +21,16 @@ type clientVersionReport struct {
 }
 
 func extractCheckClientVersions(data []byte) ([]string, error) {
-	fields, err := parseProtoFields(data)
+	fields, err := ParseProtoFields(data)
 	if err != nil {
 		return nil, fmt.Errorf("parse CheckClientPush: %w", err)
 	}
 	versions := make([]string, 0, 3)
 	for _, field := range fields {
-		if field.wire != 2 {
+		if field.Wire != 2 {
 			continue
 		}
-		value := string(field.data)
+		value := string(field.Data)
 		if clientVersionPattern.MatchString(value) {
 			versions = append(versions, value)
 		}
@@ -43,30 +42,30 @@ func extractCheckClientVersions(data []byte) ([]string, error) {
 }
 
 func extractLoginRequestBuild(data []byte) (string, error) {
-	fields, err := parseProtoFields(data)
+	fields, err := ParseProtoFields(data)
 	if err != nil {
 		return "", fmt.Errorf("parse LoginRequest: %w", err)
 	}
 	basicInfoSeen := false
 	versionShape := "absent"
 	for _, field := range fields {
-		if field.number != fieldLoginRequestClientBasicInfo || field.wire != 2 {
+		if field.Number != FieldLoginRequestClientBasicInfo || field.Wire != 2 {
 			continue
 		}
 		basicInfoSeen = true
-		nested, err := parseProtoFields(field.data)
+		nested, err := ParseProtoFields(field.Data)
 		if err != nil {
 			return "", fmt.Errorf("parse LoginRequest.ClientBasicInfo: %w", err)
 		}
 		for _, value := range nested {
-			if value.number != fieldClientBasicInfoClientVersion || value.wire != 2 {
-				if value.number == fieldClientBasicInfoClientVersion {
-					versionShape = fmt.Sprintf("wire=%d", value.wire)
+			if value.Number != FieldClientBasicInfoClientVersion || value.Wire != 2 {
+				if value.Number == FieldClientBasicInfoClientVersion {
+					versionShape = fmt.Sprintf("wire=%d", value.Wire)
 				}
 				continue
 			}
-			build := string(value.data)
-			if !utf8.Valid(value.data) || strings.TrimSpace(build) == "" {
+			build := string(value.Data)
+			if !utf8.Valid(value.Data) || strings.TrimSpace(build) == "" {
 				return "", fmt.Errorf("LoginRequest.ClientBasicInfo.ClientVersion is not a non-empty UTF-8 version string")
 			}
 			for _, r := range build {
@@ -80,20 +79,20 @@ func extractLoginRequestBuild(data []byte) (string, error) {
 	return "", fmt.Errorf("LoginRequest.ClientBasicInfo.ClientVersion is absent or invalid (ClientBasicInfo=%t ClientVersion=%s)", basicInfoSeen, versionShape)
 }
 
-func (p *processor) observeClientVersion(commandID uint16, data []byte) error {
-	if p.sessionNumber == 0 {
+func (p *Processor) observeClientVersion(commandID uint16, data []byte) error {
+	if p.SessionNumber == 0 {
 		return nil
 	}
 	var build string
 	var versions []string
 	switch commandID {
-	case cmdLoginRequest:
+	case CmdLoginRequest:
 		parsed, err := extractLoginRequestBuild(data)
 		if err != nil {
 			return err
 		}
 		build = parsed
-	case cmdCheckClientPush:
+	case CmdCheckClientPush:
 		parsed, err := extractCheckClientVersions(data)
 		if err != nil {
 			return err
@@ -103,20 +102,20 @@ func (p *processor) observeClientVersion(commandID uint16, data []byte) error {
 		return fmt.Errorf("unsupported version command %d", commandID)
 	}
 	// The session's own report decides whether it is decoded (protocol_session.go); the census report below keeps the first.
-	before := p.protocol.state
+	before := p.Protocol.State
 	if build != "" {
-		p.protocol.observeVersion(gameVersionOf(build))
+		p.Protocol.ObserveVersion(gameVersionOf(build))
 	} else {
-		p.protocol.observeVersion(gameVersionOf(versions[0]))
+		p.Protocol.ObserveVersion(gameVersionOf(versions[0]))
 	}
-	if before == protocolPending && p.protocol.state == protocolCurrent {
+	if before == ProtocolPending && p.Protocol.State == ProtocolCurrent {
 		// From here on the session is decoded; Combat History records which game version everything of it came from.
-		p.damageStatistics.confirmProtocolSession(p.sessionNumber, p.protocol.gameVersion)
+		p.DamageStatistics.confirmProtocolSession(p.SessionNumber, p.Protocol.gameVersion)
 	}
-	if p.clientVersion == nil {
-		p.clientVersion = &clientVersionReport{SessionNumber: p.sessionNumber, FirstObservedAt: p.currentFrameTime}
+	if p.ClientVersion == nil {
+		p.ClientVersion = &ClientVersionReport{SessionNumber: p.SessionNumber, FirstObservedAt: p.CurrentFrameTime}
 	}
-	report := p.clientVersion
+	report := p.ClientVersion
 	if build != "" && report.ClientBuild == "" {
 		report.ClientBuild = build
 	}
@@ -131,16 +130,4 @@ func (p *processor) observeClientVersion(commandID uint16, data []byte) error {
 	report.SourceCommands = append(report.SourceCommands, commandID)
 	sort.Slice(report.SourceCommands, func(i, j int) bool { return report.SourceCommands[i] < report.SourceCommands[j] })
 	return nil
-}
-
-func (report *clientVersionReport) auditFields() (build, versions, commands string) {
-	if report == nil {
-		return "", "", ""
-	}
-	encoded, _ := json.Marshal(report.CheckClientVersions)
-	commandIDs := make([]string, 0, len(report.SourceCommands))
-	for _, commandID := range report.SourceCommands {
-		commandIDs = append(commandIDs, fmt.Sprint(commandID))
-	}
-	return report.ClientBuild, string(encoded), strings.Join(commandIDs, ",")
 }
