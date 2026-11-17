@@ -28,9 +28,6 @@ func (p *processor) writeCombatEventRecord(record CombatEventRecord, assignment 
 func (p *processor) flushEncounterTransitions() {
 }
 
-func (p *processor) writeEncounterFinal() {
-}
-
 func (p *processor) writeBuffLifecycleConsole(row buffLifecycleAuditRow) {
 }
 
@@ -41,11 +38,6 @@ func (p *processor) auditCombatNotify(frame gameFrame, notification protoField, 
 }
 
 func (p *processor) observeBuffInterval(row buffLifecycleAuditRow) {
-}
-
-func (event combatEvent) jsonlView(masters *gameMaster) combatEventJSONL {
-	var r0 combatEventJSONL
-	return r0
 }
 
 func (p *processor) archiveFrame(frame gameFrame) {

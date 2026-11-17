@@ -169,3 +169,11 @@ func TestCombatNotifyAuditRejectsMalformedNestedPayload(t *testing.T) {
 		t.Fatal("expected malformed nested payload to fail")
 	}
 }
+
+// The CombatNotifyData audit rows name the protocol their fields were read with, the current client's
+// (TestEvidenceNamesTheCurrentProtocol checks the evidence of both profiles).
+func TestCombatNotifyAuditEvidenceNamesTheCurrentProtocol(t *testing.T) {
+	if !strings.Contains(combatNotifyAuditSchemaBasis, CurrentProtocol()) {
+		t.Fatalf("combat notify audit %q does not name the current client protocol", combatNotifyAuditSchemaBasis)
+	}
+}
