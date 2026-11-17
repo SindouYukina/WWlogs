@@ -36,14 +36,14 @@ func (m *gameMaster) resolveRoleConfigRole(rawRoleID uint64) (roleConfigRoleReso
 
 // archiveRoleConfigRecords writes one result per RoleConfigInfo in a decoded notify.
 func (p *processor) archiveRoleConfigRecords(frame gameFrame, decoded *decodedMessage) {
-	if p == nil || p.roleConfigOut == nil || decoded == nil || decoded.Type != "RoleConfigInfoNotify" {
+	if p == nil || p.dev.roleConfigOut == nil || decoded == nil || decoded.Type != "RoleConfigInfoNotify" {
 		return
 	}
 	for index, config := range childMessages(decoded, "RoleConfigs") {
 		roleID, hasRoleID := scalarValue(config, "RoleId")
 		record := roleConfigRecord{
 			SchemaVersion:           roleConfigRecordSchemaVersion,
-			FrameOrdinal:            p.frameOrdinal - 1,
+			FrameOrdinal:            p.dev.frameOrdinal - 1,
 			SessionNumber:           p.sessionNumber,
 			Direction:               frame.direction,
 			CommandID:               frame.commandID,
@@ -77,11 +77,11 @@ func (p *processor) archiveRoleConfigRecords(frame gameFrame, decoded *decodedMe
 		}
 		line, err := json.Marshal(record)
 		if err != nil {
-			p.roleConfigErrors++
+			p.dev.roleConfigErrors++
 			continue
 		}
-		if _, err := p.roleConfigOut.Write(append(line, '\n')); err != nil {
-			p.roleConfigErrors++
+		if _, err := p.dev.roleConfigOut.Write(append(line, '\n')); err != nil {
+			p.dev.roleConfigErrors++
 		}
 	}
 }

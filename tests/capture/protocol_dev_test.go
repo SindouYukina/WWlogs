@@ -13,7 +13,7 @@ import (
 func TestDamageResponseKeepsUnresolvedEntityVisible(t *testing.T) {
 	var stdout, diagnostic, jsonl bytes.Buffer
 	p := newProcessor(nil, &stdout, &diagnostic, nil)
-	p.combatEventsJSONL = &jsonl
+	p.dev.combatEventsJSONL = &jsonl
 	p.pending[42] = pendingDamageRequest{attackerEntityID: 25320, hasAttackerEntityID: true, damageID: 70010001, hasDamageID: true, damageSourceType: 1, hasDamageSourceType: true, bulletID: -1, hasBulletID: true}
 	response := appendVarintField(nil, fieldDamageExecuteResponseErrorCode, 0)      // success
 	response = appendVarintField(response, fieldDamageExecuteResponseImmuneType, 0) // not immune
@@ -73,7 +73,7 @@ func TestDamageResponsePreservesRawResultsAndMarksHealingOnlyAsCandidate(t *test
 func TestCombatEventJSONLPreservesRawIDsAndUnknownResolution(t *testing.T) {
 	var stdout, diagnostic, jsonl bytes.Buffer
 	p := newProcessor(nil, &stdout, &diagnostic, nil)
-	p.combatEventsJSONL = &jsonl
+	p.dev.combatEventsJSONL = &jsonl
 	event := combatEvent{
 		Timestamp: time.Date(2026, 10, 27, 1, 2, 3, 4000, time.UTC), SessionNumber: 3, RPCID: 91,
 		SourceEntityID: 30298, HasSourceEntity: true, TargetEntityID: 30802, HasTargetEntity: true,

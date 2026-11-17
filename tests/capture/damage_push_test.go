@@ -21,7 +21,7 @@ func TestDamagePushRecordsPushedDamageWithObservedIdentifiers(t *testing.T) {
 	decoded := &decodedMessage{Type: "CombatReceivePackNotify", Fields: []decodedField{data}}
 
 	var out strings.Builder
-	p := &processor{damagePushOut: &out, frameOrdinal: 4, sessionNumber: 1}
+	p := &processor{sessionNumber: 1, dev: processorDiagnostics{damagePushOut: &out, frameOrdinal: 4}}
 	p.archiveDamagePushes(gameFrame{}, decoded)
 
 	var record damagePushRecord

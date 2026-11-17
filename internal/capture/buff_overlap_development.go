@@ -16,42 +16,42 @@ func (p *processor) observeBuffInterval(row buffLifecycleAuditRow) {
 		return
 	}
 	if row.TargetStatus != resolutionCorrelated && row.TargetStatus != resolutionVerified {
-		p.buffOverlapSkipped++
+		p.dev.buffOverlapSkipped++
 		return
 	}
 	if row.TargetEntityID == nil || row.HandleID == nil {
-		p.buffOverlapSkipped++
+		p.dev.buffOverlapSkipped++
 		return
 	}
 	key := overlapKey{session: row.SessionNumber, target: *row.TargetEntityID, handle: *row.HandleID}
-	if p.buffIntervalOpen == nil {
-		p.buffIntervalOpen = make(map[overlapKey]*buffInterval)
+	if p.dev.buffIntervalOpen == nil {
+		p.dev.buffIntervalOpen = make(map[overlapKey]*buffInterval)
 	}
 	switch row.EventKind {
 	case "GAMEPLAY_EFFECT_APPLY":
-		if _, open := p.buffIntervalOpen[key]; open {
-			p.buffDuplicateApplies++
+		if _, open := p.dev.buffIntervalOpen[key]; open {
+			p.dev.buffDuplicateApplies++
 			return
 		}
-		if len(p.buffIntervals) >= maxBuffIntervals {
-			p.buffIntervalOverflow++
+		if len(p.dev.buffIntervals) >= maxBuffIntervals {
+			p.dev.buffIntervalOverflow++
 			return
 		}
 		interval := &buffInterval{key: key, start: row.Timestamp}
 		if row.BuffID != nil {
 			interval.buffID, interval.hasBuffID = *row.BuffID, true
 		}
-		p.buffIntervals = append(p.buffIntervals, interval)
-		p.buffIntervalOpen[key] = interval
+		p.dev.buffIntervals = append(p.dev.buffIntervals, interval)
+		p.dev.buffIntervalOpen[key] = interval
 	case "GAMEPLAY_EFFECT_REMOVE":
-		interval, open := p.buffIntervalOpen[key]
+		interval, open := p.dev.buffIntervalOpen[key]
 		if !open {
-			p.buffUnmatchedRemoves++
+			p.dev.buffUnmatchedRemoves++
 			return
 		}
 		interval.end = row.Timestamp
 		interval.closed = true
-		delete(p.buffIntervalOpen, key)
+		delete(p.dev.buffIntervalOpen, key)
 	}
 }
 
@@ -61,11 +61,11 @@ func (p *processor) recordDamageForOverlap(event combatEvent) {
 	if event.Target.Runtime.entityID == 0 {
 		return
 	}
-	if len(p.damageOverlap) >= maxOverlapDamageRecord {
-		p.damageOverlapOverflow++
+	if len(p.dev.damageOverlap) >= maxOverlapDamageRecord {
+		p.dev.damageOverlapOverflow++
 		return
 	}
-	p.damageOverlap = append(p.damageOverlap, damageOverlapRecord{
+	p.dev.damageOverlap = append(p.dev.damageOverlap, damageOverlapRecord{
 		session:   event.SessionNumber,
 		rpcID:     event.RPCID,
 		timestamp: event.Timestamp,
@@ -79,7 +79,7 @@ func (p *processor) recordDamageForOverlap(event combatEvent) {
 // from "not recorded".
 func (p *processor) writeBuffOverlap(w io.Writer) error {
 	const precision = "PACKET_OBSERVED_TIME"
-	for _, record := range p.damageOverlap {
+	for _, record := range p.dev.damageOverlap {
 		row := overlapRowJSONL{
 			SchemaVersion:  1,
 			SessionNumber:  record.session,
@@ -90,7 +90,7 @@ func (p *processor) writeBuffOverlap(w io.Writer) error {
 			Precision:      precision,
 			ActiveBuffs:    []activeBuffJSONL{},
 		}
-		for _, interval := range p.buffIntervals {
+		for _, interval := range p.dev.buffIntervals {
 			if interval.key.session != record.session || interval.key.target != record.target {
 				continue
 			}

@@ -250,7 +250,7 @@ func (p *processor) writeDamageEventJSONL(event combatEvent, skillRequest *comba
 
 // writeDamageEventOutputs writes the development forms of one damage result after writeDamageEvent has recorded it in
 // the core: the research link to its outbound skill request, the overlap record, the event line, the console line, the
-// event audit row and the research lines. A failed console or audit write is counted (diagnostic_isolation.go); it never
+// event audit row and the research lines. A failed console or audit write is counted (diagnostic_isolation_development.go); it never
 // returns before the core counters, and a console line that failed is not flushed, so it is counted once.
 func (p *processor) writeDamageEventOutputs(event *combatEvent, visible bool, sourceRelation, targetRelation playerRelation) {
 	skillRequest := p.linkSkillRequest(event.SkillMessageID)
@@ -271,12 +271,12 @@ func (p *processor) writeDamageEventOutputs(event *combatEvent, visible bool, so
 		default:
 			normalOutput += " [PlayerTeamSide: UNCONFIRMED]"
 		}
-		if _, err := fmt.Fprintln(p.stdout, normalOutput); err != nil {
+		if _, err := fmt.Fprintln(p.dev.stdout, normalOutput); err != nil {
 			p.noteDiagnosticFailure("console", err)
 			consoleWritten = false
 		}
 	}
-	if p.audit != nil {
+	if p.dev.audit != nil {
 		summonerID := "?"
 		if event.Source.Runtime.hasSummonerID {
 			summonerID = fmt.Sprintf("%d", event.Source.Runtime.summonerID)
@@ -326,11 +326,11 @@ func (p *processor) writeDamageEventOutputs(event *combatEvent, visible bool, so
 		for i := range fields {
 			fields[i] = strings.NewReplacer("\t", " ", "\r", " ", "\n", " ").Replace(fields[i])
 		}
-		if _, err := fmt.Fprintln(p.audit, strings.Join(fields, "\t")); err != nil {
+		if _, err := fmt.Fprintln(p.dev.audit, strings.Join(fields, "\t")); err != nil {
 			p.noteDiagnosticFailure("event-audit", err)
 		}
 	}
-	if p.research {
+	if p.dev.research {
 		fmt.Fprintf(p.diagnostic, "[DAMAGE] rpc=%d source_entity=%d target_entity=%d skill_id=%d damage_id=%d source_type=%s bullet_id=%s damage=%d\n", event.RPCID, event.SourceEntityID, event.TargetEntityID, event.SkillID, event.DamageID, optionalDamageSource(event.DamageSourceType, event.HasDamageSourceType), formatOptionalInt(event.BulletID, event.HasBulletID), event.Damage)
 		summonerID := "?"
 		if event.Source.Runtime.hasSummonerID {
@@ -349,7 +349,7 @@ func (p *processor) writeDamageEventOutputs(event *combatEvent, visible bool, so
 			event.SkillID, event.SkillName, event.SkillNameKind, event.SkillStatus, event.SkillNameStatus,
 			masterLocale(p.masters), event.SkillProof)
 	}
-	if flusher, ok := p.stdout.(interface{ Flush() error }); ok && visible && consoleWritten {
+	if flusher, ok := p.dev.stdout.(interface{ Flush() error }); ok && visible && consoleWritten {
 		if err := flusher.Flush(); err != nil {
 			p.noteDiagnosticFailure("console", err)
 		}
@@ -386,7 +386,7 @@ func masterLocale(masters *gameMaster) string {
 
 // writeEnvelopedEventJSONL writes one event line; a non-empty kind selects an auxiliary id namespace.
 func (p *processor) writeEnvelopedEventJSONL(event any, kind string) {
-	if p.combatEventsJSONL == nil {
+	if p.dev.combatEventsJSONL == nil {
 		return
 	}
 	envelope := eventEnvelope{}
@@ -400,7 +400,7 @@ func (p *processor) writeEnvelopedEventJSONL(event any, kind string) {
 		p.noteDiagnosticFailure("combat-events", err)
 		return
 	}
-	if _, err := p.combatEventsJSONL.Write(line); err != nil {
+	if _, err := p.dev.combatEventsJSONL.Write(line); err != nil {
 		p.noteDiagnosticFailure("combat-events", err)
 	}
 }
@@ -612,7 +612,7 @@ func (p *processor) writeNoAmountEvent(rpcID uint64, request pendingDamageReques
 	view := event.jsonlView(p.masters)
 	// A no-amount hit is not a damage event: its line shows the outbound skill request it answers, without counting a link.
 	if request.skillMessageID != 0 {
-		if action, ok := p.combatActionRequests[combatActionRequestKey{sessionNumber: p.sessionNumber, messageID: request.skillMessageID}]; ok {
+		if action, ok := p.dev.combatActionRequests[combatActionRequestKey{sessionNumber: p.sessionNumber, messageID: request.skillMessageID}]; ok {
 			view.Skill.Request = skillRequestJSONL(&action)
 		}
 	}

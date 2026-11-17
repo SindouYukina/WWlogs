@@ -14,8 +14,8 @@ func TestPartReferenceOutputLinksRequestToCurrentTargetPart(t *testing.T) {
 	var output, diagnostic bytes.Buffer
 	p := newProcessor(nil, &bytes.Buffer{}, &diagnostic, nil)
 	p.sessionNumber = 3
-	p.frameOrdinal = 45
-	p.partRefOut = &output
+	p.dev.frameOrdinal = 45
+	p.dev.partRefOut = &output
 	if _, err := p.entities.applyEntityAddNotify(entityAddWithPartComponent(902, partComponentWire(partInformationWire(2, 28046.3, true, 17)))); err != nil {
 		t.Fatal(err)
 	}

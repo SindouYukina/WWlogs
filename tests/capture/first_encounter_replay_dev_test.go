@@ -70,7 +70,7 @@ func TestInitialAttributionReplayMatrix(t *testing.T) {
 	for _, item := range inputs.pcaps {
 		t.Run(item.name, func(t *testing.T) {
 			sink := newEquivalenceHashSink()
-			p, packets := equivalenceReplay(t, inputs, masters, key, item.path, func(p *processor) { p.combatEventsJSONL = firstEncounterEventSink{sink} }, nil)
+			p, packets := equivalenceReplay(t, inputs, masters, key, item.path, func(p *processor) { p.dev.combatEventsJSONL = firstEncounterEventSink{sink} }, nil)
 			p.finishCapture()
 			statistics := p.damageStatisticsSnapshot()
 			assertEncounterTotalsConserved(t, statistics)
@@ -184,8 +184,8 @@ func TestFirstEncounterReplayTrace(t *testing.T) {
 	}
 	p, _ := equivalenceReplay(t, equivalenceInputs{localIP: "192.168.1.2"}, masters, key, path, func(p *processor) {
 		p.intervalPerProtocolSession = true
-		p.protocolSchema = schema
-		p.schemaDecodeOut = firstEncounterSchemaSink{observe: func(id uint64) {
+		p.dev.protocolSchema = schema
+		p.dev.schemaDecodeOut = firstEncounterSchemaSink{observe: func(id uint64) {
 			basicID = id
 			basicAt = p.currentFrameTime.Format(encounterReplayTimeLayout)
 			basicBeforeDamage = p.stats.damageRequests == 0

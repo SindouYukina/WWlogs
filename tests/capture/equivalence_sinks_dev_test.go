@@ -13,8 +13,8 @@ func attachEquivalenceSinks(p *processor) *equivalenceSinkSet {
 		"buffLifecycle":     newEquivalenceHashSink(),
 		"buffSnapshots":     newEquivalenceHashSink(),
 	}}
-	p.combatEventsJSONL = set.sinks["combatEventsJSONL"]
-	p.buffLifecycle = set.sinks["buffLifecycle"]
-	p.buffSnapshots = set.sinks["buffSnapshots"]
+	p.dev.combatEventsJSONL = set.sinks["combatEventsJSONL"]
+	p.dev.buffLifecycle = set.sinks["buffLifecycle"]
+	p.dev.buffSnapshots = set.sinks["buffSnapshots"]
 	return set
 }

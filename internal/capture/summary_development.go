@@ -63,12 +63,12 @@ func writeVehicleContributors(w io.Writer, summary *encounterSummary) error {
 }
 
 func (p *processor) observeEncounterSummary(event combatEvent) {
-	if p.encounterSummary == nil {
+	if p.dev.encounterSummary == nil {
 		return
 	}
 	sourceRelation, targetRelation, _ := p.playerRelevantDamageEvent(event)
-	if p.encounterSummaries == nil {
-		p.encounterSummaries = make(map[encounterSummaryKey]*encounterSummary)
+	if p.dev.encounterSummaries == nil {
+		p.dev.encounterSummaries = make(map[encounterSummaryKey]*encounterSummary)
 	}
 	key := encounterSummaryKey{session: event.SessionNumber}
 	sourceScene, sourceHasScene := event.Source.Runtime.sceneInstanceID, event.Source.Runtime.hasSceneInstanceID
@@ -81,10 +81,10 @@ func (p *processor) observeEncounterSummary(event combatEvent) {
 	case targetHasScene:
 		key.sceneInstance, key.hasScene = targetScene, true
 	}
-	if _, exists := p.encounterSummaries[key]; !exists && len(p.encounterSummaries) >= maxEncounterSummaryGroups {
+	if _, exists := p.dev.encounterSummaries[key]; !exists && len(p.dev.encounterSummaries) >= maxEncounterSummaryGroups {
 		key = encounterSummaryKey{overflow: true}
 	}
-	summary := p.encounterSummaries[key]
+	summary := p.dev.encounterSummaries[key]
 	if summary == nil {
 		summary = &encounterSummary{
 			key: key, characters: make(map[uint64]*characterSummary),
@@ -95,7 +95,7 @@ func (p *processor) observeEncounterSummary(event combatEvent) {
 			uncreditedEvents:       make(map[uncreditedEventKey]*uncreditedEventSummary),
 			classificationEvidence: make(map[string]struct{}),
 		}
-		p.encounterSummaries[key] = summary
+		p.dev.encounterSummaries[key] = summary
 	}
 	if summary.startedAt.IsZero() || (!event.Timestamp.IsZero() && event.Timestamp.Before(summary.startedAt)) {
 		summary.startedAt = event.Timestamp
@@ -138,12 +138,12 @@ func (p *processor) observeEncounterSummary(event combatEvent) {
 		summary.unknownCreditAbs += event.Damage
 		addUncreditedEvent(summary, event)
 		if event.HasSourceEntity && event.SourceEntityID != 0 {
-			if p.pendingSummaryCreditCount < maxPendingSummaryCreditEvents {
-				if p.pendingSummaryCredits == nil {
-					p.pendingSummaryCredits = make(map[uint64][]pendingSummaryCredit)
+			if p.dev.pendingSummaryCreditCount < maxPendingSummaryCreditEvents {
+				if p.dev.pendingSummaryCredits == nil {
+					p.dev.pendingSummaryCredits = make(map[uint64][]pendingSummaryCredit)
 				}
-				p.pendingSummaryCredits[event.SourceEntityID] = append(p.pendingSummaryCredits[event.SourceEntityID], pendingSummaryCredit{key: key, event: event})
-				p.pendingSummaryCreditCount++
+				p.dev.pendingSummaryCredits[event.SourceEntityID] = append(p.dev.pendingSummaryCredits[event.SourceEntityID], pendingSummaryCredit{key: key, event: event})
+				p.dev.pendingSummaryCreditCount++
 			} else {
 				summary.identityBackfillEventsOmitted++
 			}
@@ -251,11 +251,11 @@ func makeUncreditedEventKey(event combatEvent) uncreditedEventKey {
 }
 
 func (p *processor) observeBuffSnapshot(row buffSnapshotAuditRow) {
-	if p.encounterSummary == nil {
+	if p.dev.encounterSummary == nil {
 		return
 	}
-	if p.encounterSummaries == nil {
-		p.encounterSummaries = make(map[encounterSummaryKey]*encounterSummary)
+	if p.dev.encounterSummaries == nil {
+		p.dev.encounterSummaries = make(map[encounterSummaryKey]*encounterSummary)
 	}
 	key := encounterSummaryKey{session: row.SessionNumber}
 	observation := buffObservationKey{hasBuffID: row.Buff.HasID, buffID: row.Buff.ID}
@@ -266,10 +266,10 @@ func (p *processor) observeBuffSnapshot(row buffSnapshotAuditRow) {
 			key.sceneInstance, key.hasScene = entity.sceneInstanceID, true
 		}
 	}
-	if _, exists := p.encounterSummaries[key]; !exists && len(p.encounterSummaries) >= maxEncounterSummaryGroups {
+	if _, exists := p.dev.encounterSummaries[key]; !exists && len(p.dev.encounterSummaries) >= maxEncounterSummaryGroups {
 		key = encounterSummaryKey{overflow: true}
 	}
-	summary := p.encounterSummaries[key]
+	summary := p.dev.encounterSummaries[key]
 	if summary == nil {
 		summary = &encounterSummary{
 			key: key, characters: make(map[uint64]*characterSummary),
@@ -279,7 +279,7 @@ func (p *processor) observeBuffSnapshot(row buffSnapshotAuditRow) {
 			buffObservations:       make(map[buffObservationKey]int),
 			classificationEvidence: make(map[string]struct{}),
 		}
-		p.encounterSummaries[key] = summary
+		p.dev.encounterSummaries[key] = summary
 	}
 	if _, exists := summary.buffObservations[observation]; !exists && len(summary.buffObservations) >= maxSummaryBuffObservations {
 		summary.buffObservationsOmitted++
@@ -403,14 +403,14 @@ func (p *processor) backfillEncounterSummary(sourceID, roleID uint64) {
 	if !ok {
 		return
 	}
-	pending := p.pendingSummaryCredits[sourceID]
+	pending := p.dev.pendingSummaryCredits[sourceID]
 	if len(pending) == 0 {
 		return
 	}
-	delete(p.pendingSummaryCredits, sourceID)
-	p.pendingSummaryCreditCount -= len(pending)
+	delete(p.dev.pendingSummaryCredits, sourceID)
+	p.dev.pendingSummaryCreditCount -= len(pending)
 	for _, item := range pending {
-		summary := p.encounterSummaries[item.key]
+		summary := p.dev.encounterSummaries[item.key]
 		if summary == nil || summary.unknownCredit <= 0 {
 			continue
 		}
@@ -429,11 +429,11 @@ func (p *processor) backfillEncounterSummary(sourceID, roleID uint64) {
 }
 
 func (p *processor) backfillAvailableSummaryCredits() {
-	if p.pendingSummaryCredits == nil {
+	if p.dev.pendingSummaryCredits == nil {
 		return
 	}
-	sourceIDs := make([]uint64, 0, len(p.pendingSummaryCredits))
-	for sourceID := range p.pendingSummaryCredits {
+	sourceIDs := make([]uint64, 0, len(p.dev.pendingSummaryCredits))
+	for sourceID := range p.dev.pendingSummaryCredits {
 		sourceIDs = append(sourceIDs, sourceID)
 	}
 	for _, sourceID := range sourceIDs {
@@ -444,16 +444,16 @@ func (p *processor) backfillAvailableSummaryCredits() {
 }
 
 func (p *processor) removePendingSummaryCredits(sourceID uint64) {
-	if p.pendingSummaryCredits == nil {
+	if p.dev.pendingSummaryCredits == nil {
 		return
 	}
-	p.pendingSummaryCreditCount -= len(p.pendingSummaryCredits[sourceID])
-	delete(p.pendingSummaryCredits, sourceID)
+	p.dev.pendingSummaryCreditCount -= len(p.dev.pendingSummaryCredits[sourceID])
+	delete(p.dev.pendingSummaryCredits, sourceID)
 }
 
 func (p *processor) resetPendingSummaryCredits() {
-	p.pendingSummaryCredits = nil
-	p.pendingSummaryCreditCount = 0
+	p.dev.pendingSummaryCredits = nil
+	p.dev.pendingSummaryCreditCount = 0
 }
 
 func isCreditedCharacterStatus(status resolutionStatus) bool {
@@ -486,11 +486,11 @@ func addBossCandidate(summary *encounterSummary, identity entityIdentity) {
 }
 
 func (p *processor) writeEncounterSummary() error {
-	if p.encounterSummary == nil {
+	if p.dev.encounterSummary == nil {
 		return nil
 	}
 	p.backfillAvailableSummaryCredits()
-	if _, err := fmt.Fprintln(p.encounterSummary, "# Combat Attribution Summary"); err != nil {
+	if _, err := fmt.Fprintln(p.dev.encounterSummary, "# Combat Attribution Summary"); err != nil {
 		return err
 	}
 	if p.masters != nil {
@@ -498,15 +498,15 @@ func (p *processor) writeEncounterSummary() error {
 		if p.masters.databasePath != "embedded" {
 			source += ": " + filepath.Base(p.masters.databasePath)
 		}
-		if _, err := fmt.Fprintf(p.encounterSummary, "\nCombat master: %s (Global, %s, SHA-256 %s)\n", source, p.masters.locale, p.masters.manifest.SourceHash); err != nil {
+		if _, err := fmt.Fprintf(p.dev.encounterSummary, "\nCombat master: %s (Global, %s, SHA-256 %s)\n", source, p.masters.locale, p.masters.manifest.SourceHash); err != nil {
 			return err
 		}
 	}
-	if _, err := fmt.Fprintln(p.encounterSummary, "\nAmounts are absolute CombatResult values. Damage and healing categories are master-based candidates. Healing is not verified as effective HP recovery, and overheal is unknown. Buff snapshot observations are listed separately from combat credit; no Echo or summon attribution is inferred here."); err != nil {
+	if _, err := fmt.Fprintln(p.dev.encounterSummary, "\nAmounts are absolute CombatResult values. Damage and healing categories are master-based candidates. Healing is not verified as effective HP recovery, and overheal is unknown. Buff snapshot observations are listed separately from combat credit; no Echo or summon attribution is inferred here."); err != nil {
 		return err
 	}
-	keys := make([]encounterSummaryKey, 0, len(p.encounterSummaries))
-	for key := range p.encounterSummaries {
+	keys := make([]encounterSummaryKey, 0, len(p.dev.encounterSummaries))
+	for key := range p.dev.encounterSummaries {
 		keys = append(keys, key)
 	}
 	sort.Slice(keys, func(i, j int) bool {
@@ -528,20 +528,20 @@ func (p *processor) writeEncounterSummary() error {
 		return !keys[i].overflow && keys[j].overflow
 	})
 	if len(keys) == 0 {
-		if _, err := fmt.Fprintln(p.encounterSummary, "\nNo matched combat events were observed."); err != nil {
+		if _, err := fmt.Fprintln(p.dev.encounterSummary, "\nNo matched combat events were observed."); err != nil {
 			return err
 		}
 	} else {
 		for _, key := range keys {
-			if err := writeOneEncounterSummary(p.encounterSummary, p.encounterSummaries[key]); err != nil {
+			if err := writeOneEncounterSummary(p.dev.encounterSummary, p.dev.encounterSummaries[key]); err != nil {
 				return err
 			}
 		}
 	}
-	if err := writeCombatActionRequests(p.encounterSummary, p); err != nil {
+	if err := writeCombatActionRequests(p.dev.encounterSummary, p); err != nil {
 		return err
 	}
-	return writeTimerObservations(p.encounterSummary, p.timerObservations)
+	return writeTimerObservations(p.dev.encounterSummary, p.dev.timerObservations)
 }
 
 func writeTimerObservations(w io.Writer, observations []timerObservation) error {
@@ -586,8 +586,8 @@ func writeCombatActionRequests(w io.Writer, p *processor) error {
 	if _, err := fmt.Fprintln(w, "\n## Outbound skill requests"); err != nil {
 		return err
 	}
-	keys := make([]combatActionRequestKey, 0, len(p.combatActionRequests))
-	for key := range p.combatActionRequests {
+	keys := make([]combatActionRequestKey, 0, len(p.dev.combatActionRequests))
+	for key := range p.dev.combatActionRequests {
 		keys = append(keys, key)
 	}
 	sort.Slice(keys, func(i, j int) bool {
@@ -598,7 +598,7 @@ func writeCombatActionRequests(w io.Writer, p *processor) error {
 	})
 	linked, unlinked := 0, 0
 	for _, key := range keys {
-		if p.combatActionRequests[key].LinkedDamageEvents > 0 {
+		if p.dev.combatActionRequests[key].LinkedDamageEvents > 0 {
 			linked++
 		} else {
 			unlinked++
@@ -612,7 +612,7 @@ func writeCombatActionRequests(w io.Writer, p *processor) error {
 		return err
 	}
 	for _, key := range keys {
-		action := p.combatActionRequests[key]
+		action := p.dev.combatActionRequests[key]
 		status := "NO_CORRELATED_DAMAGE_RESULT"
 		if action.LinkedDamageEvents > 0 {
 			status = "LINKED_TO_SERVER_DAMAGE_RESULT"

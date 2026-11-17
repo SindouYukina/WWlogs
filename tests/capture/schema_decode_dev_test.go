@@ -14,13 +14,13 @@ func TestSchemaDecodeExcludesLoginIdentifiers(t *testing.T) {
 		"LoginRequest": {Fields: []schemaField{{Number: 2, Name: "Account", schemaType: schemaType{Kind: "string"}}}},
 	}}
 	var out strings.Builder
-	p := &processor{protocolSchema: schema, schemaDecodeOut: &out}
+	p := &processor{dev: processorDiagnostics{protocolSchema: schema, schemaDecodeOut: &out}}
 	p.archiveSchemaDecode(gameFrame{commandID: 103, direction: "out", body: []byte{0x12, 0x03, 'a', 'b', 'c'}}, []byte{0x12, 0x03, 'a', 'b', 'c'})
 	if out.Len() != 0 {
 		t.Fatalf("command 103 wrote %d bytes of schema output", out.Len())
 	}
-	if p.schemaDecodeSkipped != 1 {
-		t.Fatalf("skipped = %d, want 1", p.schemaDecodeSkipped)
+	if p.dev.schemaDecodeSkipped != 1 {
+		t.Fatalf("skipped = %d, want 1", p.dev.schemaDecodeSkipped)
 	}
 }
 
@@ -42,7 +42,7 @@ func TestSchemaMessageForUsesEnumWhenCensusHasNoName(t *testing.T) {
 		Messages: map[string]schemaMessage{"PbRolePropsNotify": {}},
 		Enums:    map[string]schemaEnum{"EMessageId": {Members: map[string]int64{"PbRolePropsNotify": 28533}}},
 	}
-	p := &processor{protocolSchema: schema}
+	p := &processor{dev: processorDiagnostics{protocolSchema: schema}}
 	name, ok := p.schemaMessageFor(28533)
 	if !ok || name != "PbRolePropsNotify" {
 		t.Fatalf("schemaMessageFor(28533) = %q, %v", name, ok)

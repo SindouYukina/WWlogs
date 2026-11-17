@@ -49,9 +49,9 @@ var fightBuffSnapshotPath = fmt.Sprintf("EntityActiveResponse.field%d(ComponentP
 // recordBuffSnapshotDiagnostics writes the research row of one Buff record of an EntityActiveResponse (the Buff snapshot
 // output, the event line and the encounter summary) after the core has read it (observeEffectSnapshot). The row exists
 // only when one of those outputs does. A failed row must not skip the identity, FSM and part components of the same
-// response, so it is counted (diagnostic_isolation.go) and the response handler continues.
+// response, so it is counted (diagnostic_isolation_development.go) and the response handler continues.
 func (p *processor) recordBuffSnapshotDiagnostics(frame gameFrame, record rawBuffSnapshot, request pendingActiveRequest, matched bool) {
-	if p.buffSnapshots == nil && p.combatEventsJSONL == nil && p.encounterSummary == nil {
+	if p.dev.buffSnapshots == nil && p.dev.combatEventsJSONL == nil && p.dev.encounterSummary == nil {
 		return
 	}
 	row := buffSnapshotAuditRow{
@@ -90,17 +90,17 @@ func (p *processor) recordBuffSnapshotDiagnostics(frame gameFrame, record rawBuf
 		row.EntityIDStatus = resolutionCorrelated
 	}
 	p.observeBuffSnapshot(row)
-	if p.buffSnapshots != nil {
-		p.writeDiagnosticRow(p.buffSnapshots, "buff-snapshots", row)
+	if p.dev.buffSnapshots != nil {
+		p.writeDiagnosticRow(p.dev.buffSnapshots, "buff-snapshots", row)
 	}
 	p.writeStructuredEventJSONL(row)
 }
 
 func (p *processor) writeBuffLifecycleConsole(row buffLifecycleAuditRow) {
-	if p == nil || !p.showEffectEvents || p.stdout == nil {
+	if p == nil || !p.dev.showEffectEvents || p.dev.stdout == nil {
 		return
 	}
-	if !p.showAllEffectEvents && !combatConsoleVisible(row) {
+	if !p.dev.showAllEffectEvents && !combatConsoleVisible(row) {
 		return
 	}
 	if holder, ok := lifecycleEntity(&row); ok {
@@ -114,11 +114,11 @@ func (p *processor) writeBuffLifecycleConsole(row buffLifecycleAuditRow) {
 		line += " " + fields
 	}
 	// The effect lines share the console sink with the damage lines (writeDamageEventOutputs) and its failure count.
-	if _, err := fmt.Fprintln(p.stdout, line); err != nil {
+	if _, err := fmt.Fprintln(p.dev.stdout, line); err != nil {
 		p.noteDiagnosticFailure("console", err)
 		return
 	}
-	if flusher, ok := p.stdout.(interface{ Flush() error }); ok {
+	if flusher, ok := p.dev.stdout.(interface{ Flush() error }); ok {
 		if err := flusher.Flush(); err != nil {
 			p.noteDiagnosticFailure("console", err)
 		}

@@ -30,10 +30,12 @@ func TestSummonOwnersWriteSummonerAndDependenceFacts(t *testing.T) {
 
 	var out strings.Builder
 	p := &processor{
-		protocolSchema: &protocolSchema{Enums: map[string]schemaEnum{"ESummonType": {Members: map[string]int64{"ConcomitantVision": 1}}}},
-		summonOwnerOut: &out,
-		frameOrdinal:   2,
-		sessionNumber:  1,
+		sessionNumber: 1,
+		dev: processorDiagnostics{
+			protocolSchema: &protocolSchema{Enums: map[string]schemaEnum{"ESummonType": {Members: map[string]int64{"ConcomitantVision": 1}}}},
+			summonOwnerOut: &out,
+			frameOrdinal:   2,
+		},
 	}
 	p.archiveSummonOwners(gameFrame{}, "JoinSceneNotify", decoded)
 

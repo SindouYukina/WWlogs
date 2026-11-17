@@ -47,24 +47,24 @@ func (m *gameMaster) resolveAttribute(schema *protocolSchema, attributeType int6
 
 // archiveCombatState writes every attribute change, recovery value and state transition of one decoded CombatReceivePackNotify.
 func (p *processor) archiveCombatState(frame gameFrame, decoded *decodedMessage) {
-	if p.combatStateOut == nil || decoded == nil {
+	if p.dev.combatStateOut == nil || decoded == nil {
 		return
 	}
 	order := 0
 	emit := func(record combatStateRecord) {
 		record.SchemaVersion = combatStateSchemaVersion
-		record.FrameOrdinal = p.frameOrdinal - 1
+		record.FrameOrdinal = p.dev.frameOrdinal - 1
 		record.SessionNumber = p.sessionNumber
 		record.Timestamp = formatTimestamp(frame.timestamp)
 		record.EventOrderInMsg = order
 		order++
 		line, err := json.Marshal(record)
 		if err != nil {
-			p.combatStateErrors++
+			p.dev.combatStateErrors++
 			return
 		}
-		if _, err := p.combatStateOut.Write(append(line, '\n')); err != nil {
-			p.combatStateErrors++
+		if _, err := p.dev.combatStateOut.Write(append(line, '\n')); err != nil {
+			p.dev.combatStateErrors++
 		}
 	}
 	for _, data := range childMessages(decoded, "Data") {
@@ -79,7 +79,7 @@ func (p *processor) archiveCombatState(frame gameFrame, decoded *decodedMessage)
 					if !ok {
 						continue
 					}
-					resolved := p.masters.resolveAttribute(p.protocolSchema, typeValue, "EAttributeType")
+					resolved := p.masters.resolveAttribute(p.dev.protocolSchema, typeValue, "EAttributeType")
 					resolved.BaseValue, resolved.CurrentValue = optionalScalar(attribute, "BaseValue"), optionalScalar(attribute, "CurrentValue")
 					emit(combatStateRecord{Kind: "ATTRIBUTE_CHANGED", EntityID: entityID, Attribute: &resolved})
 				}
@@ -90,7 +90,7 @@ func (p *processor) archiveCombatState(frame gameFrame, decoded *decodedMessage)
 					if !ok {
 						continue
 					}
-					resolved := p.masters.resolveAttribute(p.protocolSchema, typeValue, "EAttributeType")
+					resolved := p.masters.resolveAttribute(p.dev.protocolSchema, typeValue, "EAttributeType")
 					resolved.CurrentValue, resolved.MaxValue, resolved.Ratio = optionalScalar(attribute, "CurrentValue"), optionalScalar(attribute, "MaxValue"), optionalScalar(attribute, "Ratio")
 					emit(combatStateRecord{Kind: "RECOVER_PROP_CHANGED", EntityID: entityID, Attribute: &resolved})
 				}
@@ -102,8 +102,8 @@ func (p *processor) archiveCombatState(frame gameFrame, decoded *decodedMessage)
 						continue
 					}
 					resolved := combatStateAttribute{Type: typeValue, Status: resolutionUnknown, Evidence: "Squad attribute ids are a separate enum (ESquadAttributeType) with no PropertyIndex name; protocol name only"}
-					if p.protocolSchema != nil {
-						if name, known := p.protocolSchema.enumName("ESquadAttributeType", typeValue); known {
+					if p.dev.protocolSchema != nil {
+						if name, known := p.dev.protocolSchema.enumName("ESquadAttributeType", typeValue); known {
 							resolved.ProtocolName = name
 						}
 					}
@@ -171,18 +171,18 @@ func (p *processor) archiveCombatState(frame gameFrame, decoded *decodedMessage)
 
 // archiveCombatStateFrame decodes a combat frame for the combat-state output when that output is enabled.
 func (p *processor) archiveCombatStateFrame(frame gameFrame, plain []byte) {
-	if p.combatStateOut == nil || p.protocolSchema == nil || (frame.commandID != cmdCombatReceivePackNotify && frame.commandID != cmdCombatSendPackResponse) {
+	if p.dev.combatStateOut == nil || p.dev.protocolSchema == nil || (frame.commandID != cmdCombatReceivePackNotify && frame.commandID != cmdCombatSendPackResponse) {
 		return
 	}
 	payloads, err := receivePackNotifyBodies(frame.commandID, plain)
 	if err != nil {
-		p.combatStateErrors++
+		p.dev.combatStateErrors++
 		return
 	}
 	for _, payload := range payloads {
-		decoded, err := decodeSchemaMessage(p.protocolSchema, "CombatReceivePackNotify", payload, 0)
+		decoded, err := decodeSchemaMessage(p.dev.protocolSchema, "CombatReceivePackNotify", payload, 0)
 		if err != nil {
-			p.combatStateErrors++
+			p.dev.combatStateErrors++
 			continue
 		}
 		p.archiveCombatState(frame, decoded)

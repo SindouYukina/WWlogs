@@ -22,7 +22,14 @@ func TestDamageRPCSchemaExtractsResponsePayloadByRPCID(t *testing.T) {
 	body := appendBytesField(nil, fieldCombatSendPackResponseReceivePackNotify, wrapped)
 
 	var out strings.Builder
-	p := &processor{protocolSchema: schema, schemaDecodeOut: &out, frameOrdinal: 1, sessionNumber: 2}
+	p := &processor{
+		sessionNumber: 2,
+		dev: processorDiagnostics{
+			protocolSchema:  schema,
+			schemaDecodeOut: &out,
+			frameOrdinal:    1,
+		},
+	}
 	p.archiveDamageRPCSchema(gameFrame{commandID: cmdCombatSendPackResponse, direction: "in"}, body)
 	var record damageRPCSchemaRecord
 	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &record); err != nil {

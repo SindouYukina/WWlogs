@@ -79,7 +79,7 @@ func (p *processor) walkSkillReferences(frame gameFrame, message *decodedMessage
 func (p *processor) writeSkillReference(frame gameFrame, message, parent *decodedMessage, fieldPath string, skillID int64, common *decodedMessage, direction string) {
 	record := skillRefRecord{
 		SchemaVersion: skillRefSchemaVersion,
-		FrameOrdinal:  p.frameOrdinal - 1,
+		FrameOrdinal:  p.dev.frameOrdinal - 1,
 		SessionNumber: p.sessionNumber,
 		Timestamp:     formatTimestamp(frame.timestamp),
 		Direction:     direction,
@@ -113,10 +113,10 @@ func (p *processor) writeSkillReference(frame gameFrame, message, parent *decode
 	}
 	line, err := json.Marshal(record)
 	if err != nil {
-		p.skillRefErrors++
+		p.dev.skillRefErrors++
 		return
 	}
-	if _, err := p.skillRefOut.Write(append(line, '\n')); err != nil {
-		p.skillRefErrors++
+	if _, err := p.dev.skillRefOut.Write(append(line, '\n')); err != nil {
+		p.dev.skillRefErrors++
 	}
 }

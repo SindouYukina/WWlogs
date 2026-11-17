@@ -40,7 +40,7 @@ func TestArchiveRecordsOrderDigestsAndNoKeyMaterial(t *testing.T) {
 	key := bytes.Repeat([]byte{0xA5}, 32)
 	body := []byte("ciphertext-bytes-that-are-not-plaintext")
 	var out bytes.Buffer
-	p := &processor{session: key, frameArchive: &out, sessionNumber: 2}
+	p := &processor{session: key, sessionNumber: 2, dev: processorDiagnostics{frameArchive: &out}}
 	stamp := time.Date(2026, 10, 28, 1, 2, 3, 4, time.UTC)
 
 	p.handleFrame(gameFrame{commandID: 1651, direction: "in", sequence: 7, token: 9, body: nil, timestamp: stamp})
@@ -71,9 +71,9 @@ func TestArchiveRecordsOrderDigestsAndNoKeyMaterial(t *testing.T) {
 }
 
 func TestArchiveCountsWriteErrorsWithoutPanicking(t *testing.T) {
-	p := &processor{frameArchive: failingWriter{}}
+	p := &processor{dev: processorDiagnostics{frameArchive: failingWriter{}}}
 	p.archiveFrame(gameFrame{commandID: 1651, direction: "in", body: []byte{1}})
-	if p.frameArchiveErrors != 1 || p.frameOrdinal != 1 {
-		t.Fatalf("errors=%d ordinal=%d, want 1 and 1", p.frameArchiveErrors, p.frameOrdinal)
+	if p.dev.frameArchiveErrors != 1 || p.dev.frameOrdinal != 1 {
+		t.Fatalf("errors=%d ordinal=%d, want 1 and 1", p.dev.frameArchiveErrors, p.dev.frameOrdinal)
 	}
 }

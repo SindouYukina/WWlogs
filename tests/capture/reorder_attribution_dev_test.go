@@ -151,8 +151,8 @@ func replayReorder(t *testing.T, masters *gameMaster, key *staticRSA, packets []
 	var records, frames bytes.Buffer
 	p := newProcessor(key, io.Discard, io.Discard, nil)
 	p.masters = masters
-	p.encounterOut = &records
-	p.frameArchive = &frames
+	p.dev.encounterOut = &records
+	p.dev.frameArchive = &frames
 	streams := make(map[string]*stream)
 	stats := captureStats{}
 	run := reorderRun{records: make(map[string]reorderRecord), frames: make([][]reorderFrame, len(packets))}

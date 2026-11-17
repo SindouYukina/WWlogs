@@ -11,7 +11,14 @@ import (
 
 func TestHPStateKeepsLifeAndLifeMaxOnly(t *testing.T) {
 	var out strings.Builder
-	p := &processor{protocolSchema: hpTestSchema(), hpStateOut: &out, frameOrdinal: 1, sessionNumber: 2}
+	p := &processor{
+		sessionNumber: 2,
+		dev: processorDiagnostics{
+			protocolSchema: hpTestSchema(),
+			hpStateOut:     &out,
+			frameOrdinal:   1,
+		},
+	}
 	frame := gameFrame{commandID: cmdCombatReceivePackNotify, timestamp: time.Date(2026, 10, 28, 9, 44, 28, 0, time.UTC)}
 	decoded := wrapData(notifyWithEntity(52082,
 		attributeMessage(3, 484076, false),
@@ -38,7 +45,7 @@ func TestHPStateKeepsLifeAndLifeMaxOnly(t *testing.T) {
 
 func TestHPStateSkipsNotifyWithoutEntity(t *testing.T) {
 	var out strings.Builder
-	p := &processor{protocolSchema: hpTestSchema(), hpStateOut: &out}
+	p := &processor{dev: processorDiagnostics{protocolSchema: hpTestSchema(), hpStateOut: &out}}
 	notify := decodedField{Number: fieldCombatReceiveDataCombatNotifyData, Name: "CombatNotifyData", Kind: "class", Message: &decodedMessage{Type: "CombatNotifyData", Fields: []decodedField{
 		{Number: fieldCombatNotifyDataAttributeChangedNotify, Name: "AttributeChangedNotify", Kind: "class", Message: &decodedMessage{Fields: []decodedField{attributeMessage(3, 10, true)}}},
 	}}}

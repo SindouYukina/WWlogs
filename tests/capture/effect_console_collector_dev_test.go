@@ -49,7 +49,7 @@ func TestEffectConsoleCollector(t *testing.T) {
 		}
 		writer := bufio.NewWriter(file)
 		equivalenceReplay(t, equivalenceInputs{localIP: "192.168.1.2"}, masters, key, path, func(p *processor) {
-			p.stdout, p.showEffectEvents, p.showAllEffectEvents = writer, true, mode.all
+			p.dev.stdout, p.dev.showEffectEvents, p.dev.showAllEffectEvents = writer, true, mode.all
 		}, nil)
 		if err := writer.Flush(); err != nil {
 			t.Fatal(err)

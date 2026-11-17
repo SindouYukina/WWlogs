@@ -11,7 +11,7 @@ import (
 func TestResponseWithoutAmountBecomesItsOwnEventAndNeverCountsAsDamage(t *testing.T) {
 	var stdout, diagnostic, jsonl bytes.Buffer
 	p := newProcessor(nil, &stdout, &diagnostic, nil)
-	p.combatEventsJSONL = &jsonl
+	p.dev.combatEventsJSONL = &jsonl
 	p.masters = &gameMaster{damage: map[uint64]damageMasterRecord{70010001: {ID: 70010001, CalculateType: 0, SourceTable: "damage.id"}}}
 	p.pending[5] = pendingDamageRequest{attackerEntityID: 100, hasAttackerEntityID: true, targetEntityID: 200, hasTargetEntityID: true, damageID: 70010001, hasDamageID: true}
 	p.pending[6] = pendingDamageRequest{damageID: 70010001, hasDamageID: true}

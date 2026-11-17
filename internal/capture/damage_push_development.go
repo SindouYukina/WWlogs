@@ -10,7 +10,7 @@ import (
 // CombatReceivePackNotify. It reads the schema tree only and does not change the
 // typed damage results.
 func (p *processor) archiveDamagePushes(frame gameFrame, decoded *decodedMessage) {
-	if p.damagePushOut == nil || decoded == nil {
+	if p.dev.damagePushOut == nil || decoded == nil {
 		return
 	}
 	for _, data := range childMessages(decoded, "Data") {
@@ -18,7 +18,7 @@ func (p *processor) archiveDamagePushes(frame gameFrame, decoded *decodedMessage
 			for _, push := range childMessages(notify, "DamageExecuteNotify") {
 				record := damagePushRecord{
 					SchemaVersion: damagePushSchemaVersion,
-					FrameOrdinal:  p.frameOrdinal - 1,
+					FrameOrdinal:  p.dev.frameOrdinal - 1,
 					SessionNumber: p.sessionNumber,
 					Timestamp:     formatTimestamp(frame.timestamp),
 					Stream:        "DAMAGE_EXECUTE_NOTIFY_PUSH",
@@ -45,11 +45,11 @@ func (p *processor) archiveDamagePushes(frame gameFrame, decoded *decodedMessage
 				record.KilledTarget = killed != 0
 				line, err := json.Marshal(record)
 				if err != nil {
-					p.damagePushErrors++
+					p.dev.damagePushErrors++
 					continue
 				}
-				if _, err := p.damagePushOut.Write(append(line, '\n')); err != nil {
-					p.damagePushErrors++
+				if _, err := p.dev.damagePushOut.Write(append(line, '\n')); err != nil {
+					p.dev.damagePushErrors++
 				}
 			}
 		}
@@ -59,18 +59,18 @@ func (p *processor) archiveDamagePushes(frame gameFrame, decoded *decodedMessage
 // archiveDamagePushFrame decodes a combat frame for the push stream when the output
 // is enabled. It shares the plaintext with the other schema observers.
 func (p *processor) archiveDamagePushFrame(frame gameFrame, plain []byte) {
-	if p.damagePushOut == nil || p.protocolSchema == nil || (frame.commandID != cmdCombatReceivePackNotify && frame.commandID != cmdCombatSendPackResponse) {
+	if p.dev.damagePushOut == nil || p.dev.protocolSchema == nil || (frame.commandID != cmdCombatReceivePackNotify && frame.commandID != cmdCombatSendPackResponse) {
 		return
 	}
 	payloads, err := receivePackNotifyBodies(frame.commandID, plain)
 	if err != nil {
-		p.damagePushErrors++
+		p.dev.damagePushErrors++
 		return
 	}
 	for _, payload := range payloads {
-		decoded, err := decodeSchemaMessage(p.protocolSchema, "CombatReceivePackNotify", payload, 0)
+		decoded, err := decodeSchemaMessage(p.dev.protocolSchema, "CombatReceivePackNotify", payload, 0)
 		if err != nil {
-			p.damagePushErrors++
+			p.dev.damagePushErrors++
 			continue
 		}
 		p.archiveDamagePushes(frame, decoded)

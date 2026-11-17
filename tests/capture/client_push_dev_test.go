@@ -11,7 +11,7 @@ import (
 
 func TestClientPushRecordsRoleSwitchAndActiveRoleOnSkill(t *testing.T) {
 	var out strings.Builder
-	p := &processor{clientPushOut: &out, frameOrdinal: 1, sessionNumber: 1}
+	p := &processor{sessionNumber: 1, dev: processorDiagnostics{clientPushOut: &out, frameOrdinal: 1}}
 	frame := gameFrame{commandID: cmdCombatSendPackRequest, timestamp: time.Date(2026, 10, 28, 0, 36, 5, 0, time.UTC)}
 
 	role := decodedField{Number: fieldCombatPushDataClientCurrentRoleReportPush, Name: "ClientCurrentRoleReportPush", Kind: "class", Message: &decodedMessage{Fields: []decodedField{
@@ -52,7 +52,7 @@ func TestClientPushRecordsRoleSwitchAndActiveRoleOnSkill(t *testing.T) {
 
 func TestClientPushSkillBeforeAnyRoleReportHasNoActiveRole(t *testing.T) {
 	var out strings.Builder
-	p := &processor{clientPushOut: &out, frameOrdinal: 1}
+	p := &processor{dev: processorDiagnostics{clientPushOut: &out, frameOrdinal: 1}}
 	skill := decodedField{Number: fieldCombatPushDataEndSkillPush, Name: "EndSkillPush", Kind: "class", Message: &decodedMessage{Fields: []decodedField{
 		{Number: fieldEndSkillPushUseSkillInfo, Name: "UseSkillInfo", Kind: "class", Message: &decodedMessage{Fields: []decodedField{
 			{Number: fieldUseSkillInformationSkillID, Name: "SkillId", Kind: "int32", Value: int32(100001)},
@@ -69,7 +69,9 @@ func TestClientPushSkillBeforeAnyRoleReportHasNoActiveRole(t *testing.T) {
 }
 
 func TestCombatActionRequestCapturedWithoutClientPushOutput(t *testing.T) {
-	p := &processor{combatActionRequests: make(map[combatActionRequestKey]combatActionRequest)}
+	p := &processor{
+		dev: processorDiagnostics{combatActionRequests: make(map[combatActionRequestKey]combatActionRequest)},
+	}
 	info := &decodedMessage{Fields: []decodedField{
 		{Name: "SkillId", Value: int64(280026010)},
 		{Name: "TargetId", Value: int64(28288)},
@@ -83,13 +85,13 @@ func TestCombatActionRequestCapturedWithoutClientPushOutput(t *testing.T) {
 	}}
 	p.observeCombatActionRequest(gameFrame{timestamp: time.Date(2026, 10, 28, 4, 58, 26, 0, time.UTC)}, request)
 
-	got, ok := p.combatActionRequests[combatActionRequestKey{sessionNumber: 0, messageID: 1152921504606850898}]
+	got, ok := p.dev.combatActionRequests[combatActionRequestKey{sessionNumber: 0, messageID: 1152921504606850898}]
 	if !ok || got.SkillID != 280026010 || got.EntityID != 27736 || got.TargetID != 28288 || got.RequestType != "UseSkillRequest" {
 		t.Fatalf("captured action = %+v, present=%v", got, ok)
 	}
 
 	// A damage result with this SkillMessageId links the exact outbound action (writeDamageEventOutputs).
-	link := (&processor{combatActionRequests: p.combatActionRequests}).linkSkillRequest(got.MessageID)
+	link := (&processor{dev: processorDiagnostics{combatActionRequests: p.dev.combatActionRequests}}).linkSkillRequest(got.MessageID)
 	if link == nil || link.SkillID != got.SkillID || link.LinkedDamageEvents != 1 {
 		t.Fatalf("damage request did not link exact outbound action: %+v", link)
 	}
@@ -97,7 +99,14 @@ func TestCombatActionRequestCapturedWithoutClientPushOutput(t *testing.T) {
 
 func TestSkillRequestIsArchivedEvenWhenNoDamageIsObserved(t *testing.T) {
 	var out strings.Builder
-	p := &processor{clientPushOut: &out, combatActionRequests: make(map[combatActionRequestKey]combatActionRequest), frameOrdinal: 1, sessionNumber: 1}
+	p := &processor{
+		sessionNumber: 1,
+		dev: processorDiagnostics{
+			clientPushOut:        &out,
+			combatActionRequests: make(map[combatActionRequestKey]combatActionRequest),
+			frameOrdinal:         1,
+		},
+	}
 	info := &decodedMessage{Fields: []decodedField{
 		{Name: "SkillId", Value: int64(7001001)},
 		{Name: "TargetId", Value: int64(28288)},
@@ -124,12 +133,12 @@ func TestSkillRequestIsArchivedEvenWhenNoDamageIsObserved(t *testing.T) {
 		t.Fatalf("request evidence = %q", row.Evidence)
 	}
 	key := combatActionRequestKey{sessionNumber: 1, messageID: 9001}
-	action := p.combatActionRequests[key]
+	action := p.dev.combatActionRequests[key]
 	action.LinkedDamageEvents = 1
-	p.combatActionRequests[key] = action
+	p.dev.combatActionRequests[key] = action
 	p.observeCombatActionRequest(gameFrame{}, request)
-	if p.combatActionRequests[key].LinkedDamageEvents != 1 || strings.Count(strings.TrimSpace(out.String()), "\n") != 0 {
-		t.Fatalf("duplicate request changed the action link count or emitted a duplicate row: %+v", p.combatActionRequests[key])
+	if p.dev.combatActionRequests[key].LinkedDamageEvents != 1 || strings.Count(strings.TrimSpace(out.String()), "\n") != 0 {
+		t.Fatalf("duplicate request changed the action link count or emitted a duplicate row: %+v", p.dev.combatActionRequests[key])
 	}
 }
 
@@ -138,7 +147,7 @@ func TestSkillRequestIsArchivedEvenWhenNoDamageIsObserved(t *testing.T) {
 func TestResearchRoleReportDoesNotChangeTheLocalRoleEntity(t *testing.T) {
 	var out strings.Builder
 	p := newProcessor(nil, &strings.Builder{}, &strings.Builder{}, nil)
-	p.clientPushOut, p.frameOrdinal = &out, 1
+	p.dev.clientPushOut, p.dev.frameOrdinal = &out, 1
 	role := decodedField{Number: fieldCombatPushDataClientCurrentRoleReportPush, Name: "ClientCurrentRoleReportPush", Kind: "class", Message: &decodedMessage{Fields: []decodedField{
 		{Number: fieldClientCurrentRoleReportPushCurrentRoleID, Name: "CurrentRoleId", Kind: "int32", Value: int32(1409)},
 		{Number: fieldClientCurrentRoleReportPushCurrentEntityID, Name: "CurrentEntityId", Kind: "int64", Value: int64(51522)},
@@ -161,10 +170,41 @@ func TestResearchRoleReportDoesNotChangeTheLocalRoleEntity(t *testing.T) {
 func TestRoleReportWithResearchSchemaKeepsTheCoreResult(t *testing.T) {
 	var out strings.Builder
 	p := newProcessor(nil, &strings.Builder{}, &strings.Builder{}, nil)
-	p.clientPushOut = &out
-	p.protocolSchema = &protocolSchema{}
+	p.dev.clientPushOut = &out
+	p.dev.protocolSchema = &protocolSchema{}
 	p.observeClientPushFrame(gameFrame{commandID: cmdCombatSendPackRequest, direction: "out"}, localRoleReportBody(1409, 51522))
 	if !p.playerRelevance.isRoleEntity(51522) || p.stats.playerRoleReports != 1 {
 		t.Fatalf("core role decoder did not run with a research schema: role=%v stats=%+v", p.playerRelevance.isRoleEntity(51522), p.stats)
+	}
+}
+
+// A research protocol schema must not replace the core role decoder (Phase 3A R03): the role report is read, counted
+// and conflict-checked the same way with and without one.
+func TestProtocolSchemaKeepsTheCoreRoleDecoder(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		entityIDs []uint64
+		wantRole  bool
+	}{
+		{"one reported entity", []uint64{51522}, true},
+		{"conflicting reported entities", []uint64{51522, 51523}, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			run := func(schema *protocolSchema) *processor {
+				p := newProcessor(nil, &strings.Builder{}, &strings.Builder{}, nil)
+				p.dev.protocolSchema = schema
+				p.observeClientPushFrame(gameFrame{commandID: cmdCombatSendPackRequest, direction: "out"}, localRoleReportBody(1409, test.entityIDs...))
+				return p
+			}
+			plain, research := run(nil), run(&protocolSchema{})
+			for name, p := range map[string]*processor{"without schema": plain, "with schema": research} {
+				if got := p.playerRelevance.isRoleEntity(51522); got != test.wantRole {
+					t.Fatalf("%s: local role entity = %v, want %v", name, got, test.wantRole)
+				}
+			}
+			if plain.stats != research.stats {
+				t.Fatalf("core statistics differ with a research schema:\nwithout %+v\nwith    %+v", plain.stats, research.stats)
+			}
+		})
 	}
 }

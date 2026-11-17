@@ -373,9 +373,7 @@ func (p *processor) handleBuffLifecycleMessage(frame gameFrame, body []byte) err
 	p.linkBuffLifecycleDefinition(&row)
 	p.linkBuffLifecycleGenericAndHandle(&row)
 	p.linkBuffLifecycleOwners(&row)
-	if p.buffLifecycle != nil { // the row becomes an interface value only when a sink exists (no cost without one)
-		p.writeDiagnosticRow(p.buffLifecycle, "buff-events", row)
-	}
+	p.writeBuffLifecycleRow(&row)
 	p.observeEffectLifecycle(row)
 	p.writeStructuredEventJSONL(row)
 	p.writeBuffLifecycleConsole(row)
@@ -426,12 +424,7 @@ func (p *processor) handleCombatReceivePackNotify(frame gameFrame, body []byte) 
 				if p.census != nil {
 					p.census.observeCombatNotifyField(notification.number)
 				}
-				if p.combatNotifyAudit != nil && notification.number != fieldCombatNotifyDataCombatCommon {
-					// A failed audit row must not skip the rest of the frame (its damage and effect notifies).
-					if err := writeCombatNotifyAudit(p.combatNotifyAudit, frame, notification, commonEntityID, commonOriginator, commonMessageID, p.sessionNumber); err != nil {
-						p.noteDiagnosticFailure("combat-notify-audit", err)
-					}
-				}
+				p.auditCombatNotify(frame, notification, commonEntityID, commonOriginator, commonMessageID)
 				if notification.number == fieldCombatNotifyDataDamageExecuteNotify && notification.wire == 2 {
 					p.handleDamageExecuteNotify(frame, notification.data, p.frameNotifyOrdinal)
 					p.frameNotifyOrdinal++
@@ -498,9 +491,7 @@ func (p *processor) handleInnerBuffLifecycleMessage(frame gameFrame, innerFieldN
 	p.linkBuffLifecycleDefinition(&row)
 	p.linkBuffLifecycleGenericAndHandle(&row)
 	p.linkBuffLifecycleOwners(&row)
-	if p.buffLifecycle != nil {
-		p.writeDiagnosticRow(p.buffLifecycle, "buff-events", row)
-	}
+	p.writeBuffLifecycleRow(&row)
 	p.observeBuffInterval(row)
 	p.observeEffectLifecycle(row)
 	p.writeStructuredEventJSONL(row)

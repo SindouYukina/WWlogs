@@ -2,10 +2,7 @@
 
 package capture
 
-import (
-	"io"
-	"time"
-)
+import "time"
 
 // Public builds have no diagnostic outputs. Each function below is implemented in a wwdev file
 // and is a no-op here so that shared code can call it unconditionally.
@@ -37,9 +34,10 @@ func (p *processor) writeEncounterFinal() {
 func (p *processor) writeBuffLifecycleConsole(row buffLifecycleAuditRow) {
 }
 
-func writeCombatNotifyAudit(w io.Writer, frame gameFrame, notification protoField, commonEntityID, commonOriginator, commonMessageID *uint64, sessionNumber int) error {
-	var r0 error
-	return r0
+func (p *processor) writeBuffLifecycleRow(row *buffLifecycleAuditRow) {
+}
+
+func (p *processor) auditCombatNotify(frame gameFrame, notification protoField, commonEntityID, commonOriginator, commonMessageID *uint64) {
 }
 
 func (p *processor) observeBuffInterval(row buffLifecycleAuditRow) {

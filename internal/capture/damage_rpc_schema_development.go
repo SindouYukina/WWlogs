@@ -69,7 +69,7 @@ func damageRPCPayloads(commandID uint16, body []byte) ([]damageRPCItem, error) {
 // read-only with respect to the typed pipeline and does nothing without a schema
 // and an output writer.
 func (p *processor) archiveDamageRPCSchema(frame gameFrame, plain []byte) {
-	if p.protocolSchema == nil || p.schemaDecodeOut == nil {
+	if p.dev.protocolSchema == nil || p.dev.schemaDecodeOut == nil {
 		return
 	}
 	var message string
@@ -83,18 +83,18 @@ func (p *processor) archiveDamageRPCSchema(frame gameFrame, plain []byte) {
 	}
 	items, err := damageRPCPayloads(frame.commandID, plain)
 	if err != nil {
-		p.schemaDecodeErrors++
+		p.dev.schemaDecodeErrors++
 		return
 	}
 	for _, item := range items {
-		decoded, err := decodeSchemaMessage(p.protocolSchema, message, item.Payload, 0)
+		decoded, err := decodeSchemaMessage(p.dev.protocolSchema, message, item.Payload, 0)
 		if err != nil {
-			p.schemaDecodeErrors++
+			p.dev.schemaDecodeErrors++
 			continue
 		}
 		record := damageRPCSchemaRecord{
 			SchemaVersion: schemaDecodeSchemaVersion,
-			FrameOrdinal:  p.frameOrdinal - 1,
+			FrameOrdinal:  p.dev.frameOrdinal - 1,
 			SessionNumber: p.sessionNumber,
 			Direction:     frame.direction,
 			CommandID:     frame.commandID,
@@ -104,11 +104,11 @@ func (p *processor) archiveDamageRPCSchema(frame gameFrame, plain []byte) {
 		}
 		line, err := json.Marshal(record)
 		if err != nil {
-			p.schemaDecodeErrors++
+			p.dev.schemaDecodeErrors++
 			continue
 		}
-		if _, err := p.schemaDecodeOut.Write(append(line, '\n')); err != nil {
-			p.schemaDecodeErrors++
+		if _, err := p.dev.schemaDecodeOut.Write(append(line, '\n')); err != nil {
+			p.dev.schemaDecodeErrors++
 		}
 	}
 }

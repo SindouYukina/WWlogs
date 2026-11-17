@@ -16,7 +16,7 @@ func TestClientEffectReportsPrintLabelledConsoleLines(t *testing.T) {
 		buffStatics:     map[uint64]buffStaticParameters{1505701002: {attribute: 11, hasAttribute: true, hasModifier: true}},
 	}
 	var stdout bytes.Buffer
-	p.stdout, p.showEffectEvents = &stdout, true
+	p.dev.stdout, p.dev.showEffectEvents = &stdout, true
 	common := testCombatCommon{entityID: 100}
 	deliverClientPush(t, p, 0, clientPushBody(common, fieldCombatPushDataApplyGameplayEffectPush, clientApplyPayload(268436729, 1505701002, 102, 1, 1.1)))
 	deliverClientPush(t, p, 0.9, clientPushBody(common, fieldCombatPushDataBuffStackCountPush, clientStackPayload(268436729, 102, 1, 1.1, false)))
@@ -46,7 +46,7 @@ func TestClientEffectReportsPrintLabelledConsoleLines(t *testing.T) {
 func TestClientEffectReportJSONLKeepsServerRowsUnchanged(t *testing.T) {
 	p := newClientEffectTestProcessor()
 	var lifecycle bytes.Buffer
-	p.buffLifecycle = &lifecycle
+	p.dev.buffLifecycle = &lifecycle
 	deliverEffectMessage(t, p, 0, effectPackBody(200, fieldCombatNotifyDataApplyGameplayEffectNotify, effectApplyPayload(1, 42, 200, 100, 1, 30, 30)))
 	deliverClientPush(t, p, 1, clientPushBody(testCombatCommon{entityID: 100, messageID: 9}, fieldCombatPushDataApplyGameplayEffectPush, clientApplyPayload(268436729, 1505701002, 102, 1, 1.1)))
 	lines := strings.Split(strings.TrimSpace(lifecycle.String()), "\n")
@@ -71,7 +71,7 @@ func TestDefaultEffectConsoleShowsOnlyCombatLifecycleOfTheLocalTeam(t *testing.T
 		p := newClientEffectTestProcessor()
 		p.masters = classifiedTestMaster()
 		var stdout bytes.Buffer
-		p.stdout, p.showEffectEvents, p.showAllEffectEvents = &stdout, true, all
+		p.dev.stdout, p.dev.showEffectEvents, p.dev.showAllEffectEvents = &stdout, true, all
 		common := testCombatCommon{entityID: 100}
 		deliverClientPush(t, p, 0, clientPushBody(common, fieldCombatPushDataApplyGameplayEffectPush, clientApplyPayload(268436801, 12, 100, 1, 12)))           // combat
 		deliverClientPush(t, p, 0, clientPushBody(common, fieldCombatPushDataApplyGameplayEffectPush, clientApplyPayload(268436802, 13, 100, 1, 10)))           // non-combat
@@ -112,7 +112,7 @@ func TestEffectConsoleReevaluatesTheTeamWhenTheLocalAnchorArrivesLater(t *testin
 	p.sessionNumber = 1
 	p.masters = classifiedTestMaster()
 	var stdout bytes.Buffer
-	p.stdout, p.showEffectEvents = &stdout, true
+	p.dev.stdout, p.dev.showEffectEvents = &stdout, true
 	addTestPlayerRoleGroupEntity(p, 100, 7, 1312)
 	// No local role report yet: the holder's relation is unknown and the apply stays off the console.
 	deliverClientPush(t, p, 0, clientPushBody(testCombatCommon{entityID: 100}, fieldCombatPushDataApplyGameplayEffectPush, clientApplyPayload(268436801, 12, 100, 1, 12)))
@@ -134,7 +134,7 @@ func TestEffectConsoleNamesVerifiedCharacters(t *testing.T) {
 		1505: {ID: 1505, Name: "Source Role", Status: string(resolutionVerified), NameStatus: string(resolutionUnknown)},
 	}
 	var stdout bytes.Buffer
-	p.stdout, p.showEffectEvents = &stdout, true
+	p.dev.stdout, p.dev.showEffectEvents = &stdout, true
 	deliverClientPush(t, p, 0, clientPushBody(testCombatCommon{entityID: 100}, fieldCombatPushDataApplyGameplayEffectPush, clientApplyPayload(268436801, 12, 102, 1, 12)))
 	line := stdout.String()
 	if !strings.Contains(line, "holder=100 holderStatus=CORRELATED holderName=Holder Role") {

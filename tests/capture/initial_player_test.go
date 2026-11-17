@@ -74,7 +74,8 @@ func initialProcessorWithBuild(t *testing.T, build string) (*processor, *rsa.Pri
 		t.Fatal(err)
 	}
 	p := newPairingTestProcessor()
-	p.stdout, p.diagnostic = io.Discard, io.Discard
+	discardConsole(p)
+	p.diagnostic = io.Discard
 	p.rsa = &staticRSA{e: key.E, n: key.N, d: key.D}
 	p.intervalPerProtocolSession = true
 	initialHandshakeWithBuild(t, p, key, pairingAt(0), build)

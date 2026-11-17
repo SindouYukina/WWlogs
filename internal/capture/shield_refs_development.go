@@ -31,7 +31,7 @@ func (p *processor) walkShieldReferences(frame gameFrame, message *decodedMessag
 func (p *processor) writeShieldReference(frame gameFrame, message *decodedMessage, path string, index int, direction string) {
 	record := shieldConfigRefRecord{
 		SchemaVersion:          shieldRefSchemaVersion,
-		FrameOrdinal:           p.frameOrdinal - 1,
+		FrameOrdinal:           p.dev.frameOrdinal - 1,
 		SessionNumber:          p.sessionNumber,
 		Timestamp:              formatTimestamp(frame.timestamp),
 		FrameToken:             frame.token,
@@ -64,10 +64,10 @@ func (p *processor) writeShieldReference(frame gameFrame, message *decodedMessag
 	}
 	line, err := json.Marshal(record)
 	if err != nil {
-		p.shieldRefErrors++
+		p.dev.shieldRefErrors++
 		return
 	}
-	if _, err := p.shieldRefOut.Write(append(line, '\n')); err != nil {
-		p.shieldRefErrors++
+	if _, err := p.dev.shieldRefOut.Write(append(line, '\n')); err != nil {
+		p.dev.shieldRefErrors++
 	}
 }

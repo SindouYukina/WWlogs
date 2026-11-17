@@ -279,8 +279,8 @@ func encounterReplayOnce(t *testing.T, inputs equivalenceInputs, masters *gameMa
 	var lastFrame time.Time
 	var maxGap time.Duration
 	p, stats := equivalenceReplay(t, inputs, masters, key, capture.path, func(p *processor) {
-		p.encounterOut = &diagnostics
-		p.combatEventsJSONL = &rawEvents
+		p.dev.encounterOut = &diagnostics
+		p.dev.combatEventsJSONL = &rawEvents
 		p.damageStatistics.recordEncounterTransitions(true)
 	}, func(index int, p *processor) {
 		if frame := p.currentFrameTime; frame.After(lastFrame) {

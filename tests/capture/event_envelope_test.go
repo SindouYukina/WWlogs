@@ -9,13 +9,13 @@ import (
 
 func TestEventEnvelopeOrderResetsEachFrame(t *testing.T) {
 	p := &processor{sessionNumber: 2}
-	p.frameOrdinal = 5 // archiveFrame has already consumed frame 4
+	p.dev.frameOrdinal = 5 // archiveFrame has already consumed frame 4
 	first := p.nextEventEnvelope()
 	second := p.nextEventEnvelope()
 	if first.EventID != "s2-f4-e0" || second.EventID != "s2-f4-e1" {
 		t.Fatalf("ids = %q, %q; want s2-f4-e0, s2-f4-e1", first.EventID, second.EventID)
 	}
-	p.frameOrdinal = 6
+	p.dev.frameOrdinal = 6
 	next := p.nextEventEnvelope()
 	if next.EventID != "s2-f5-e0" || next.EmitFrameOrdinal != 5 || next.EmitOrderInFrame != 0 {
 		t.Fatalf("next frame envelope = %+v", next)

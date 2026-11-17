@@ -126,7 +126,7 @@ func TestFailedBuffLifecycleRowsDoNotSkipEffectUpdates(t *testing.T) {
 	failing := newClientEffectTestProcessor()
 	var console bytes.Buffer
 	failing.diagnostic = &console
-	failing.buffLifecycle = &failingDiagnosticWriter{}
+	failing.dev.buffLifecycle = &failingDiagnosticWriter{}
 	deliver(failing)
 
 	if got, want := coreEffectState(failing), coreEffectState(base); got != want {
@@ -136,8 +136,8 @@ func TestFailedBuffLifecycleRowsDoNotSkipEffectUpdates(t *testing.T) {
 	if len(base.effects.Snapshot().Effects) != 2 || failing.stats.parseErrors != 0 {
 		t.Fatalf("effects = %d, parse errors = %d; want 2 effects and no parse error", len(base.effects.Snapshot().Effects), failing.stats.parseErrors)
 	}
-	if failing.diagnosticFailures["buff-events"] != 3 || strings.Count(console.String(), "diagnostic_output_error sink=buff-events") != 1 {
-		t.Fatalf("failures = %v, console = %q; want 3 counted and one reported line", failing.diagnosticFailures, console.String())
+	if failing.dev.diagnosticFailures["buff-events"] != 3 || strings.Count(console.String(), "diagnostic_output_error sink=buff-events") != 1 {
+		t.Fatalf("failures = %v, console = %q; want 3 counted and one reported line", failing.dev.diagnosticFailures, console.String())
 	}
 	if line := failing.diagnosticFailureLine(); line != "diagnostic_output_errors buff-events=3" {
 		t.Fatalf("summary line = %q", line)
@@ -161,14 +161,14 @@ func TestUnencodableDiagnosticRowDoesNotSkipTheCoreUpdate(t *testing.T) {
 	deliver(base)
 	written := newClientEffectTestProcessor()
 	var lifecycle bytes.Buffer
-	written.buffLifecycle = &lifecycle
+	written.dev.buffLifecycle = &lifecycle
 	deliver(written)
 
 	if got, want := coreEffectState(written), coreEffectState(base); got != want {
 		t.Fatalf("core effect result changed by an unencodable diagnostic row:\nwith rows %s\nbase      %s", got, want)
 	}
-	if written.stats.parseErrors != 0 || written.diagnosticFailures["buff-events"] != 2 {
-		t.Fatalf("parse errors = %d, failures = %v; want none and 2", written.stats.parseErrors, written.diagnosticFailures)
+	if written.stats.parseErrors != 0 || written.dev.diagnosticFailures["buff-events"] != 2 {
+		t.Fatalf("parse errors = %d, failures = %v; want none and 2", written.stats.parseErrors, written.dev.diagnosticFailures)
 	}
 	if rows := strings.Count(lifecycle.String(), "\n"); rows != 1 {
 		t.Fatalf("lifecycle rows = %d, want only the encodable apply row", rows)
@@ -186,7 +186,7 @@ func TestFailedCombatNotifyAuditDoesNotSkipTheRestOfTheFrame(t *testing.T) {
 			base := newNotifyTestProcessor()
 			deliverNotifyFrame(t, base, 1, 41, items...)
 			audited := newNotifyTestProcessor()
-			audited.combatNotifyAudit = &failingDiagnosticWriter{failAfter: failAfter}
+			audited.dev.combatNotifyAudit = &failingDiagnosticWriter{failAfter: failAfter}
 			deliverNotifyFrame(t, audited, 1, 41, items...)
 
 			if got, want := coreDamageState(audited), coreDamageState(base); got != want {
@@ -195,8 +195,8 @@ func TestFailedCombatNotifyAuditDoesNotSkipTheRestOfTheFrame(t *testing.T) {
 			if want := base.damageStatistics.Snapshot(); want.DamageDealt != 1200 || want.OutgoingEvents != 3 {
 				t.Fatalf("base damage = %d in %d events, want 1200 in 3", want.DamageDealt, want.OutgoingEvents)
 			}
-			if audited.diagnosticFailures["combat-notify-audit"] != 3-failAfter {
-				t.Fatalf("audit failures = %v, want %d", audited.diagnosticFailures, 3-failAfter)
+			if audited.dev.diagnosticFailures["combat-notify-audit"] != 3-failAfter {
+				t.Fatalf("audit failures = %v, want %d", audited.dev.diagnosticFailures, 3-failAfter)
 			}
 		})
 	}
@@ -219,14 +219,14 @@ func TestMalformedInnerNotifyAuditKeepsTheCoreOutcome(t *testing.T) {
 	deliverNotifyFrame(t, base, 1, 41, malformed, following)
 	audited := newNotifyTestProcessor()
 	var audit bytes.Buffer
-	audited.combatNotifyAudit = &audit
+	audited.dev.combatNotifyAudit = &audit
 	deliverNotifyFrame(t, audited, 1, 41, malformed, following)
 
 	if got, want := coreDamageState(audited), coreDamageState(base); got != want {
 		t.Fatalf("core outcome changed by an audit decode failure:\naudited %s\nbase    %s", got, want)
 	}
-	if audited.diagnosticFailures["combat-notify-audit"] != 1 || !strings.Contains(audit.String(), `"innerFieldNumber"`) {
-		t.Fatalf("audit failures = %v, audit = %q; want the malformed row counted and the following row written", audited.diagnosticFailures, audit.String())
+	if audited.dev.diagnosticFailures["combat-notify-audit"] != 1 || !strings.Contains(audit.String(), `"innerFieldNumber"`) {
+		t.Fatalf("audit failures = %v, audit = %q; want the malformed row counted and the following row written", audited.dev.diagnosticFailures, audit.String())
 	}
 }
 
@@ -240,7 +240,7 @@ func TestFailedBuffSnapshotRowKeepsTheResponseComponents(t *testing.T) {
 	base := newClientEffectTestProcessor()
 	deliverEffectSnapshot(t, base, 9, 8801, 0, response)
 	failing := newClientEffectTestProcessor()
-	failing.buffSnapshots = &failingDiagnosticWriter{}
+	failing.dev.buffSnapshots = &failingDiagnosticWriter{}
 	deliverEffectSnapshot(t, failing, 9, 8801, 0, response)
 
 	if got, want := coreEffectState(failing), coreEffectState(base); got != want {
@@ -250,8 +250,8 @@ func TestFailedBuffSnapshotRowKeepsTheResponseComponents(t *testing.T) {
 	if !entity.hasMonsterID || entity.monsterID != 456789 || failing.stats.activeResponseIdentityComponents != 1 {
 		t.Fatalf("identity component of the response was skipped: entity=%+v stats=%+v", entity, failing.stats)
 	}
-	if failing.diagnosticFailures["buff-snapshots"] != 1 || failing.stats.parseErrors != 0 {
-		t.Fatalf("failures = %v, parse errors = %d", failing.diagnosticFailures, failing.stats.parseErrors)
+	if failing.dev.diagnosticFailures["buff-snapshots"] != 1 || failing.stats.parseErrors != 0 {
+		t.Fatalf("failures = %v, parse errors = %d", failing.dev.diagnosticFailures, failing.stats.parseErrors)
 	}
 }
 
@@ -287,14 +287,14 @@ func TestDiagnosticFailureReplayCollector(t *testing.T) {
 		p := newProcessor(key, io.Discard, io.Discard, nil)
 		p.masters = masters
 		if fail {
-			p.combatEventsJSONL, p.buffLifecycle = &failingDiagnosticWriter{}, &failingDiagnosticWriter{}
-			p.buffSnapshots, p.combatNotifyAudit = &failingDiagnosticWriter{}, &failingDiagnosticWriter{}
+			p.dev.combatEventsJSONL, p.dev.buffLifecycle = &failingDiagnosticWriter{}, &failingDiagnosticWriter{}
+			p.dev.buffSnapshots, p.dev.combatNotifyAudit = &failingDiagnosticWriter{}, &failingDiagnosticWriter{}
 		}
 		streams, stats := make(map[string]*stream), captureStats{}
 		replayRawCapture(p, capture, nil, 0, streams, &stats)
 		finishTransport(streams, p, &stats)
 		p.finishCapture()
-		return volatile.ReplaceAllString(p.currentStatisticsReport().String(), "$1=*"), p.diagnosticFailures, p.stats.parseErrors
+		return volatile.ReplaceAllString(p.currentStatisticsReport().String(), "$1=*"), p.dev.diagnosticFailures, p.stats.parseErrors
 	}
 	var results []captureResult
 	for _, capture := range captures {
@@ -320,15 +320,15 @@ func TestFailedCombatEventStreamIsCountedOnce(t *testing.T) {
 	p := newNotifyTestProcessor()
 	var console bytes.Buffer
 	p.diagnostic = &console
-	p.combatEventsJSONL = &failingDiagnosticWriter{}
+	p.dev.combatEventsJSONL = &failingDiagnosticWriter{}
 	deliverNotifyFrame(t, p, 1, 41,
 		notifyData(testNotify{attacker: 100, target: 200, damageID: notifyTestDamage, damage: 300, changeLife: 300}),
 		notifyData(testNotify{attacker: 101, target: 201, damageID: notifyTestDamage, damage: 400, changeLife: 400}))
 	if got := p.damageStatistics.Snapshot(); got.DamageDealt != 700 || got.OutgoingEvents != 2 {
 		t.Fatalf("damage = %d in %d events, want 700 in 2", got.DamageDealt, got.OutgoingEvents)
 	}
-	if p.diagnosticFailures["combat-events"] < 2 || strings.Count(console.String(), "diagnostic_output_error sink=combat-events") != 1 {
-		t.Fatalf("failures = %v, console = %q", p.diagnosticFailures, console.String())
+	if p.dev.diagnosticFailures["combat-events"] < 2 || strings.Count(console.String(), "diagnostic_output_error sink=combat-events") != 1 {
+		t.Fatalf("failures = %v, console = %q", p.dev.diagnosticFailures, console.String())
 	}
 }
 
@@ -369,15 +369,15 @@ func TestFailedConsoleAndAuditWritesKeepTheDamageCounters(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			failing := newNotifyTestProcessor()
 			var diagnostic bytes.Buffer
-			failing.stdout, failing.diagnostic = test.console, &diagnostic
-			failing.audit, failing.research = &failingDiagnosticWriter{failAfter: 1}, true
+			failing.dev.stdout, failing.diagnostic = test.console, &diagnostic
+			failing.dev.audit, failing.dev.research = &failingDiagnosticWriter{failAfter: 1}, true
 			deliverNotifyFrame(t, failing, 1, 41, items...)
 
 			if got, want := coreDamageState(failing), coreDamageState(base); got != want {
 				t.Fatalf("core damage result changed by failing console and audit writes:\nfailing %s\nbase    %s", got, want)
 			}
-			if failing.diagnosticFailures["console"] != test.wantConsole || failing.diagnosticFailures["event-audit"] != 2 {
-				t.Fatalf("failures = %v, want console=%d event-audit=2", failing.diagnosticFailures, test.wantConsole)
+			if failing.dev.diagnosticFailures["console"] != test.wantConsole || failing.dev.diagnosticFailures["event-audit"] != 2 {
+				t.Fatalf("failures = %v, want console=%d event-audit=2", failing.dev.diagnosticFailures, test.wantConsole)
 			}
 			text := diagnostic.String()
 			if strings.Count(text, "diagnostic_output_error sink=console") != 1 || strings.Count(text, "[DAMAGE] ") != 3 {
@@ -397,10 +397,10 @@ func TestSkillRequestLinkIsOnlyAResearchRecord(t *testing.T) {
 	run := func(withRequest bool) (*processor, combatEvent, string) {
 		p := newPairingTestProcessor()
 		var events strings.Builder
-		p.combatEventsJSONL = &events
+		p.dev.combatEventsJSONL = &events
 		if withRequest {
 			key := combatActionRequestKey{sessionNumber: p.sessionNumber, messageID: 9001}
-			p.combatActionRequests[key] = combatActionRequest{SessionNumber: p.sessionNumber, MessageID: 9001, EntityID: 100, SkillID: 1409001, RequestType: "UseSkillRequest"}
+			p.dev.combatActionRequests[key] = combatActionRequest{SessionNumber: p.sessionNumber, MessageID: 9001, EntityID: 100, SkillID: 1409001, RequestType: "UseSkillRequest"}
 		}
 		request := pendingDamageRequest{attackerEntityID: 100, hasAttackerEntityID: true, targetEntityID: 200, hasTargetEntityID: true,
 			damageID: notifyTestDamage, hasDamageID: true, skillID: 1409001, skillMessageID: 9001}
@@ -413,7 +413,7 @@ func TestSkillRequestLinkIsOnlyAResearchRecord(t *testing.T) {
 	if strings.Contains(plainLine, `"request":`) || !strings.Contains(linkedLine, `"request":{`) || !strings.Contains(linkedLine, `"linkedDamageEvents":1`) {
 		t.Fatalf("event lines: without record %s\nwith record %s", plainLine, linkedLine)
 	}
-	if got := linked.combatActionRequests[combatActionRequestKey{sessionNumber: linked.sessionNumber, messageID: 9001}].LinkedDamageEvents; got != 1 {
+	if got := linked.dev.combatActionRequests[combatActionRequestKey{sessionNumber: linked.sessionNumber, messageID: 9001}].LinkedDamageEvents; got != 1 {
 		t.Fatalf("linked damage events on the record = %d, want 1", got)
 	}
 	if got, want := withoutAllocationIDs(canonicalValue(linkedEvent)), withoutAllocationIDs(canonicalValue(plainEvent)); got != want {

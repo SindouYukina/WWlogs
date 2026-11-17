@@ -44,17 +44,17 @@ type encounterFinalLine struct {
 }
 
 func (p *processor) writeEncounterLine(value any) {
-	if p.encounterOut == nil {
+	if p.dev.encounterOut == nil {
 		return
 	}
 	line, err := json.Marshal(value)
 	if err == nil {
 		line = append(line, '\n')
-		_, err = p.encounterOut.Write(line)
+		_, err = p.dev.encounterOut.Write(line)
 	}
 	if err != nil {
 		fmt.Fprintf(p.diagnostic, "encounter_diagnostic_disabled error=%v\n", err)
-		p.encounterOut = nil
+		p.dev.encounterOut = nil
 		if p.damageStatistics != nil {
 			p.damageStatistics.recordEncounterTransitions(false)
 		}
@@ -75,7 +75,7 @@ func (p *processor) writeCombatEventRecord(record CombatEventRecord, assignment 
 }
 
 func (p *processor) flushEncounterTransitions() {
-	if p.encounterOut == nil || p.damageStatistics == nil {
+	if p.dev.encounterOut == nil || p.damageStatistics == nil {
 		return
 	}
 	for _, transition := range p.damageStatistics.takeEncounterTransitions() {
@@ -87,7 +87,7 @@ func (p *processor) flushEncounterTransitions() {
 
 // writeEncounterFinal writes the closing encounter view after finishCapture.
 func (p *processor) writeEncounterFinal() {
-	if p.encounterOut == nil || p.damageStatistics == nil {
+	if p.dev.encounterOut == nil || p.damageStatistics == nil {
 		return
 	}
 	p.writeEncounterLine(encounterFinalLine{

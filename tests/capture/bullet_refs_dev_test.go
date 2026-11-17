@@ -65,7 +65,15 @@ func TestBulletReferenceKeepsThePrimaryRawSourceWhenResolverCannotResolveIt(t *t
 	}
 	entities := newEntityResolver()
 	entities.entities[11] = runtimeEntity{entityID: 11, roleSkinID: 9001, hasRoleSkinID: true}
-	processor := &processor{bulletRefOut: &out, masters: masters, entities: entities, sessionNumber: 1, frameOrdinal: 2}
+	processor := &processor{
+		masters:       masters,
+		entities:      entities,
+		sessionNumber: 1,
+		dev: processorDiagnostics{
+			bulletRefOut: &out,
+			frameOrdinal: 2,
+		},
+	}
 	message := &decodedMessage{Type: "CreateBulletPush", Fields: []decodedField{
 		scalarField("BulletId", 111),
 		scalarField("OwnerEntityId", 22),
@@ -86,7 +94,13 @@ func TestBulletReferenceKeepsThePrimaryRawSourceWhenResolverCannotResolveIt(t *t
 
 func TestWalkBulletReferencesFindsNestedBulletIdsWithoutAMaster(t *testing.T) {
 	var out bytes.Buffer
-	p := &processor{bulletRefOut: &out, entities: newEntityResolver(), frameOrdinal: 1}
+	p := &processor{
+		entities: newEntityResolver(),
+		dev: processorDiagnostics{
+			bulletRefOut: &out,
+			frameOrdinal: 1,
+		},
+	}
 	request := &decodedMessage{Type: "DamageExecuteRequest", Fields: []decodedField{
 		scalarField("AttackerEntityId", 44),
 		messageField("DamageContext", &decodedMessage{Type: "DamageContext", Fields: []decodedField{scalarField("BulletId", 210002005), scalarField("SkillId", 230006)}}),
@@ -107,7 +121,14 @@ func TestWalkBulletReferencesFindsNestedBulletIdsWithoutAMaster(t *testing.T) {
 
 func TestInterruptSkillBulletIdIsResolvedAsABulletHandle(t *testing.T) {
 	var out bytes.Buffer
-	p := &processor{bulletRefOut: &out, entities: newEntityResolver(), frameOrdinal: 1, sessionNumber: 1}
+	p := &processor{
+		entities:      newEntityResolver(),
+		sessionNumber: 1,
+		dev: processorDiagnostics{
+			bulletRefOut: &out,
+			frameOrdinal: 1,
+		},
+	}
 	handle := func(id int64) decodedField {
 		return messageField("Handle", &decodedMessage{Type: "ActiveBulletHandle", Fields: []decodedField{scalarField("PlayerId", 7), scalarField("HandleId", id)}})
 	}
@@ -146,8 +167,15 @@ func TestInterruptSkillBulletIdIsResolvedAsABulletHandle(t *testing.T) {
 	if r := interrupts[2]; r.ResolvedBulletID != nil || r.Status != resolutionUnknown || !strings.Contains(r.Evidence, "not the HandleId") {
 		t.Fatalf("an unknown handle must stay unresolved and say it is not a row key: %+v", r)
 	}
-	p2 := &processor{bulletRefOut: &out, entities: newEntityResolver(), frameOrdinal: 1, sessionNumber: 2}
-	if _, ok := p2.bulletHandles[bulletHandleKey{2, 11272193}]; ok {
+	p2 := &processor{
+		entities:      newEntityResolver(),
+		sessionNumber: 2,
+		dev: processorDiagnostics{
+			bulletRefOut: &out,
+			frameOrdinal: 1,
+		},
+	}
+	if _, ok := p2.dev.bulletHandles[bulletHandleKey{2, 11272193}]; ok {
 		t.Fatal("handles must be scoped to the session")
 	}
 }

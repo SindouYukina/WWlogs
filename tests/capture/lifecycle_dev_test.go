@@ -19,7 +19,7 @@ func TestCombatEventJSONLExposesRawAndNormalizedLifecycle(t *testing.T) {
 
 	var jsonl bytes.Buffer
 	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
-	p.combatEventsJSONL = &jsonl
+	p.dev.combatEventsJSONL = &jsonl
 	event := combatEvent{
 		SessionNumber: 1, RPCID: 5, DamageID: 1001, HasDamageID: true,
 		SourceEntityID: 8001, HasSourceEntity: true, TargetEntityID: 8002, HasTargetEntity: true,

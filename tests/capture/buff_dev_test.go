@@ -113,8 +113,8 @@ func TestFormatBuffLifecycleConsoleMarksApplyRequestUnconfirmed(t *testing.T) {
 func TestEntityActiveResponseDecodesBuffSnapshotWithCorrelatedEntity(t *testing.T) {
 	var output, eventStream bytes.Buffer
 	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
-	p.buffSnapshots = &output
-	p.combatEventsJSONL = &eventStream
+	p.dev.buffSnapshots = &output
+	p.dev.combatEventsJSONL = &eventStream
 	p.masters = &gameMaster{buffDefinitions: map[uint64]struct{}{70001: {}}}
 	p.sessionNumber = 5
 	const token = 42
@@ -193,7 +193,7 @@ func TestEntityActiveResponseDecodesBuffSnapshotWithCorrelatedEntity(t *testing.
 func TestEntityActiveResponseDoesNotSubstituteConfBuffIDForMissingDefinition(t *testing.T) {
 	var output bytes.Buffer
 	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
-	p.buffSnapshots = &output
+	p.dev.buffSnapshots = &output
 	p.masters = &gameMaster{buffDefinitions: map[uint64]struct{}{70002: {}}}
 	buffRecord := appendVarintField(nil, fieldFightBuffInformationBuffID, 1312010090)
 	buffRecord = appendVarintField(buffRecord, fieldFightBuffInformationConfBuffID, 70002)
@@ -219,7 +219,7 @@ func TestEntityActiveResponseDoesNotSubstituteConfBuffIDForMissingDefinition(t *
 func TestEntityActiveResponseWithoutMatchingRequestKeepsEntityUnknown(t *testing.T) {
 	var output bytes.Buffer
 	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
-	p.buffSnapshots = &output
+	p.dev.buffSnapshots = &output
 	buffRecord := appendVarintField(nil, fieldFightBuffInformationBuffID, 70001)
 	response := appendBytesField(nil, fieldEntityActiveResponseComponentPbs, appendBytesField(nil, fieldEntityComponentPbFightBuffComponent, appendBytesField(nil, fieldFightBuffComponentPbFightBuffInfos, buffRecord)))
 	if err := p.handleActiveResponse(gameFrame{commandID: cmdEntityActiveResponse, direction: "in", token: 7}, response); err != nil {
@@ -240,7 +240,7 @@ func TestEntityActiveResponseWithoutMatchingRequestKeepsEntityUnknown(t *testing
 func TestEntityActiveResponseAddsBuffObservationToEncounterSummary(t *testing.T) {
 	var summary bytes.Buffer
 	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
-	p.encounterSummary = &summary
+	p.dev.encounterSummary = &summary
 	p.sessionNumber = 3
 	const token = 17
 	if err := p.handleActiveRequest(token, appendVarintField(nil, fieldEntityActiveRequestEntityID, 8801)); err != nil {
@@ -264,7 +264,7 @@ func TestEntityActiveResponseAddsBuffObservationToEncounterSummary(t *testing.T)
 func TestCombatReceivePackNotifyDecodesInnerBuffApply(t *testing.T) {
 	var lifecycle bytes.Buffer
 	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
-	p.buffLifecycle = &lifecycle
+	p.dev.buffLifecycle = &lifecycle
 	p.census = newCommandCensus()
 	p.sessionNumber = 4
 
@@ -301,7 +301,7 @@ func TestCombatReceivePackNotifyDecodesInnerBuffApply(t *testing.T) {
 func TestCombatSendPackResponseProcessesNestedBuffApply(t *testing.T) {
 	var lifecycle bytes.Buffer
 	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
-	p.buffLifecycle = &lifecycle
+	p.dev.buffLifecycle = &lifecycle
 	p.census = newCommandCensus()
 	p.sessionNumber = 4
 
@@ -340,7 +340,6 @@ func TestCombatReceivePackNotifyCarriesCombatCommonContextWithBuffRequest(t *tes
 	var lifecycle bytes.Buffer
 	p := &processor{
 		sessionNumber: 5,
-		buffLifecycle: &lifecycle,
 		census:        newCommandCensus(),
 		entities: &entityResolver{entities: map[uint64]runtimeEntity{
 			8801: {
@@ -351,6 +350,7 @@ func TestCombatReceivePackNotifyCarriesCombatCommonContextWithBuffRequest(t *tes
 		masters: &gameMaster{characters: map[uint64]masterRecord{
 			771: {ID: 771, Name: "Candidate", Status: string(resolutionVerified), NameStatus: string(resolutionVerified)},
 		}},
+		dev: processorDiagnostics{buffLifecycle: &lifecycle},
 	}
 	request := appendVarintField(appendVarintField(nil, fieldApplyBuffS2cRequestNotifyID, 71001), fieldApplyBuffS2cRequestNotifyInstigatorID, 8801)
 	notify := appendBytesField(nil, fieldCombatNotifyDataCombatCommon, appendVarintField(appendVarintField(nil, fieldCombatCommonMessageID, 17), fieldCombatCommonEntityID, 303))
@@ -402,13 +402,13 @@ func TestGameplayEffectApplyCorrelatesProviderOnlyWithMatchingGroundTruthContext
 		var lifecycle bytes.Buffer
 		p := &processor{
 			sessionNumber: 7,
-			buffLifecycle: &lifecycle,
 			entities: &entityResolver{entities: map[uint64]runtimeEntity{
 				8801: {entityID: 8801, roleID: 771, hasRoleID: true, sourceMessageID: cmdUpdateSceneGroupDataNotify, sourceFieldPath: "scene role map"},
 			}},
 			masters: &gameMaster{characters: map[uint64]masterRecord{
 				771: {ID: 771, Name: "Cartethyia", Status: string(resolutionVerified), NameStatus: string(resolutionVerified)},
 			}},
+			dev: processorDiagnostics{buffLifecycle: &lifecycle},
 		}
 		return p, &lifecycle
 	}
@@ -491,8 +491,8 @@ func TestGameplayEffectApplyCorrelatesProviderOnlyWithMatchingGroundTruthContext
 func TestBuffLifecycleOutputRetainsUnknownFieldsAndRejectsWireMismatch(t *testing.T) {
 	var output, eventStream bytes.Buffer
 	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
-	p.buffLifecycle = &output
-	p.combatEventsJSONL = &eventStream
+	p.dev.buffLifecycle = &output
+	p.dev.combatEventsJSONL = &eventStream
 	p.sessionNumber = 2
 	body := appendVarintField(nil, fieldRemoveGameplayEffectNotifyEntityID, 8801)
 	body = appendVarintField(body, 99, 1)
@@ -527,8 +527,8 @@ func TestBuffLifecycleDefinitionLookupUsesOnlyTypedBuffID(t *testing.T) {
 		var lifecycle, eventStream bytes.Buffer
 		p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
 		p.masters = master
-		p.buffLifecycle = &lifecycle
-		p.combatEventsJSONL = &eventStream
+		p.dev.buffLifecycle = &lifecycle
+		p.dev.combatEventsJSONL = &eventStream
 		if err := p.handleBuffLifecycleMessage(gameFrame{commandID: commandID, direction: "in"}, body); err != nil {
 			t.Fatal(err)
 		}
@@ -581,7 +581,7 @@ func TestWriteBuffLifecycleConsoleEmitsBuffEvent(t *testing.T) {
 	p := newProcessor(nil, &stdout, &diagnostic, nil)
 	// The row has no combat classification, so only the diagnostic console prints it; the default
 	// combat policy is covered by TestDefaultEffectConsoleShowsOnlyCombatLifecycleOfTheLocalTeam.
-	p.showEffectEvents, p.showAllEffectEvents = true, true
+	p.dev.showEffectEvents, p.dev.showAllEffectEvents = true, true
 	buffID := uint64(70001)
 	p.writeBuffLifecycleConsole(buffLifecycleAuditRow{
 		EventKind: "GAMEPLAY_EFFECT_REMOVE", BuffID: &buffID, BuffDefinitionStatus: resolutionUnknown,

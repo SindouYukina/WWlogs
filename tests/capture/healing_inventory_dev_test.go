@@ -163,11 +163,11 @@ func inventoryHealing(t *testing.T, masters *gameMaster, key *staticRSA, schema 
 	var records, events, hp bytes.Buffer
 	p := newProcessor(key, io.Discard, io.Discard, nil)
 	p.masters = masters
-	p.encounterOut = &records
-	p.combatEventsJSONL = &events
+	p.dev.encounterOut = &records
+	p.dev.combatEventsJSONL = &events
 	if schema != nil {
-		p.protocolSchema = schema
-		p.hpStateOut = &hp
+		p.dev.protocolSchema = schema
+		p.dev.hpStateOut = &hp
 	}
 	streams := make(map[string]*stream)
 	stats := captureStats{}

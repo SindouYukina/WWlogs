@@ -174,8 +174,8 @@ func perfDiagnosticFiles(t *testing.T, directory string, p *processor) ([]*os.Fi
 	events, buffEvents, buffSnapshots, archive, encounters, console := open("combat-events.jsonl"), open("buff-events.jsonl"),
 		open("buff-snapshots.jsonl"), open("frames.jsonl"), open("encounters.jsonl"), open("console.log")
 	consoleWriter := bufio.NewWriter(console)
-	p.combatEventsJSONL, p.buffLifecycle, p.buffSnapshots = events, buffEvents, buffSnapshots
-	p.frameArchive, p.encounterOut, p.stdout = archive, encounters, consoleWriter
+	p.dev.combatEventsJSONL, p.dev.buffLifecycle, p.dev.buffSnapshots = events, buffEvents, buffSnapshots
+	p.dev.frameArchive, p.dev.encounterOut, p.dev.stdout = archive, encounters, consoleWriter
 	p.damageStatistics.recordEncounterTransitions(true)
 	finish := perfWrapDiagnostics(p, consoleWriter)
 	return []*os.File{events, buffEvents, buffSnapshots, archive, encounters, console}, func() {
