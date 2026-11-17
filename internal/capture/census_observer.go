@@ -9,26 +9,26 @@ import "time"
 // index of the observation, which the parser hands back with the next valid frame boundary.
 type commandCensusObserver interface {
 	Malformed(reason string, timestamp time.Time, offset int, declaredLength uint16, available int)
-	FailedCRC(observation crcFailureObservation) int
-	SetNextValidFrame(index int, next frameBoundaryObservation)
-	ObserveFrame(frame gameFrame, session int) censusFrameObserver
+	FailedCRC(observation CRCFailureObservation) int
+	SetNextValidFrame(index int, next FrameBoundaryObservation)
+	ObserveFrame(frame GameFrame, session int) CensusFrameObserver
 	ObserveSession(session int)
 	ObserveInnerEntry(name string)
 	ObserveCombatNotifyField(fieldNumber uint64)
 }
 
-// censusFrameObserver is the census entry of one frame's command: how far the dispatcher got with the frame. A frame
+// CensusFrameObserver is the census entry of one frame's command: how far the dispatcher got with the frame. A frame
 // that no decoder reads is the census's to inspect (InspectUndecoded); the core never decrypts it.
-type censusFrameObserver interface {
+type CensusFrameObserver interface {
 	Fail(reason string)
 	Decrypted()
 	Decoded()
 	DescribeCurrentProtocol()
 	ObserveKnownBodyWire(plain []byte)
-	InspectUndecoded(frame gameFrame, decodable bool)
+	InspectUndecoded(frame GameFrame, decodable bool)
 }
 
-type crcFailureObservation struct {
+type CRCFailureObservation struct {
 	Direction      string                    `json:"direction"`
 	Timestamp      time.Time                 `json:"timestamp"`
 	Offset         int                       `json:"applicationOffset"`
@@ -42,10 +42,10 @@ type crcFailureObservation struct {
 	ReceivedCRC    uint32                    `json:"receivedCRC32"`
 	ComputedCRC    uint32                    `json:"computedCRC32"`
 	RemainingBytes int                       `json:"remainingApplicationBytes"`
-	PreviousValid  *frameBoundaryObservation `json:"previousValidFrame,omitempty"`
+	PreviousValid  *FrameBoundaryObservation `json:"previousValidFrame,omitempty"`
 }
 
-type frameBoundaryObservation struct {
+type FrameBoundaryObservation struct {
 	Offset      int    `json:"applicationOffset"`
 	MessageType byte   `json:"messageType"`
 	Sequence    uint32 `json:"sequence"`

@@ -86,11 +86,11 @@ func TestTransportPerturbationCollector(t *testing.T) {
 		t.Fatal("WWLOGS_PERTURBATION_MASTER_DB and WWLOGS_PERTURBATION_PCAPS are required")
 	}
 	pcaps := readReplayPCAPList(t, listPath)
-	key, err := loadEmbeddedPrivateKey()
+	key, err := LoadEmbeddedPrivateKey()
 	if err != nil {
 		t.Fatalf("embedded key payload is required: %v", err)
 	}
-	masters, err := loadGameMasterDatabase(master, "zh-TW")
+	masters, err := LoadGameMasterDatabase(master, "zh-TW")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +136,7 @@ func readPerturbationPackets(t *testing.T, path string) []perturbationPacket {
 		udp := udpLayer.(*layers.UDP)
 		packets = append(packets, perturbationPacket{
 			payload:   append([]byte(nil), udp.Payload...),
-			direction: packetDirection(packet, "192.168.1.2", udp, 13100, 13120),
+			direction: PacketDirection(packet, "192.168.1.2", udp, 13100, 13120),
 			at:        packet.Metadata().CaptureInfo.Timestamp,
 		})
 	}
@@ -144,8 +144,8 @@ func readPerturbationPackets(t *testing.T, path string) []perturbationPacket {
 }
 
 type perturbationRun struct {
-	p          *processor
-	stats      captureStats
+	p          *Processor
+	stats      CaptureStats
 	statistics DamageStatisticsSnapshot
 	timelines  []EncounterTimelineSnapshot
 	views      int
@@ -153,36 +153,36 @@ type perturbationRun struct {
 
 // replayPerturbation feeds packets through the product datagram entry point and publishes a view every 37 datagrams,
 // as the host does, checking the effect count partition each time.
-func replayPerturbation(t *testing.T, masters *gameMaster, key *staticRSA, packets []perturbationPacket) perturbationRun {
+func replayPerturbation(t *testing.T, masters *GameMaster, key *StaticRSA, packets []perturbationPacket) perturbationRun {
 	t.Helper()
-	p := newProcessor(key, io.Discard, io.Discard, nil)
-	p.masters = masters
-	streams := make(map[string]*stream)
-	stats := captureStats{}
+	p := NewProcessor(key, io.Discard, io.Discard, nil)
+	p.Masters = masters
+	streams := make(map[string]*Stream)
+	stats := CaptureStats{}
 	run := perturbationRun{p: p}
 	check := func() {
-		view := p.viewSnapshot()
-		if err := view.Effects.Counts.accountingError(len(view.Effects.Active)); err != nil {
-			t.Fatalf("effect view counts after %d datagrams: %v", stats.udpPackets, err)
+		view := p.ViewSnapshot()
+		if err := view.Effects.Counts.AccountingError(len(view.Effects.Active)); err != nil {
+			t.Fatalf("effect view counts after %d datagrams: %v", stats.UDPPackets, err)
 		}
 		run.views++
 	}
 	for i, packet := range packets {
-		stats.udpPackets++
-		consumeDatagram(packet.payload, packet.direction, packet.at, streams, p, &stats)
+		stats.UDPPackets++
+		ConsumeDatagram(packet.payload, packet.direction, packet.at, streams, p, &stats)
 		if i%37 == 0 {
 			check()
 		}
 	}
-	finishTransport(streams, p, &stats)
-	p.finishCapture()
+	FinishTransport(streams, p, &stats)
+	p.FinishCapture()
 	check()
 	run.stats = stats
 	// Capture-session numbers are process-local; normalize them so that runs compare.
 	normalizer := newEquivalenceNormalizer(p)
-	run.statistics = normalizer.damage(p.damageStatisticsSnapshot())
+	run.statistics = normalizer.damage(p.DamageStatisticsSnapshot())
 	normalizeEncounterIDs(&run.statistics, normalizer.base)
-	run.timelines = p.damageStatistics.encounterTimelines()
+	run.timelines = p.DamageStatistics.EncounterTimelines()
 	for i := range run.timelines {
 		if _, rest, found := strings.Cut(run.timelines[i].EncounterID, "-"); found {
 			run.timelines[i].EncounterID = "1-" + rest
@@ -197,15 +197,15 @@ func perturbationSummary(name string, datagrams int, run perturbationRun) pertur
 		Case: name, Datagrams: datagrams, DamageDealt: s.DamageDealt, DamageTaken: s.DamageTaken,
 		OutgoingEvents: s.OutgoingEvents, IncomingEvents: s.IncomingEvents, DuplicateEvents: s.DuplicateEvents,
 		Encounters: len(s.Encounters.Completed), OpenAtEnd: s.Encounters.Current != nil, Integrity: string(s.Integrity.Status),
-		TransportState: string(run.p.transportHealthSnapshot().State), KCPDuplicates: run.stats.kcpDuplicates,
-		GapsSkipped: run.stats.kcpGapsSkipped, Handshakes: run.p.sessionNumber, ViewsChecked: run.views,
+		TransportState: string(run.p.TransportHealthSnapshot().State), KCPDuplicates: run.stats.KCPDuplicates,
+		GapsSkipped: run.stats.KCPGapsSkipped, Handshakes: run.p.SessionNumber, ViewsChecked: run.views,
 	}
 	for _, encounter := range s.Encounters.Completed {
 		if encounter.Outcome == EncounterOutcomeConfirmed {
 			result.ConfirmedEnds++
 		}
 	}
-	view := run.p.viewSnapshot()
+	view := run.p.ViewSnapshot()
 	result.EffectsTracked, result.EffectsEligible = view.Effects.Counts.Tracked, view.Effects.Counts.Eligible
 	return result
 }
@@ -254,7 +254,7 @@ func totalsOf(t *testing.T, s DamageStatisticsSnapshot) perturbationTotals {
 	}
 }
 
-func runPerturbations(t *testing.T, masters *gameMaster, key *staticRSA, packets []perturbationPacket) []perturbationResult {
+func runPerturbations(t *testing.T, masters *GameMaster, key *StaticRSA, packets []perturbationPacket) []perturbationResult {
 	t.Helper()
 	baseline := replayPerturbation(t, masters, key, packets)
 	assertPerturbationInvariants(t, "baseline", baseline)
@@ -353,7 +353,7 @@ func runPerturbations(t *testing.T, masters *gameMaster, key *staticRSA, packets
 		assertPerturbationInvariants(t, name, run)
 		result = perturbationSummary(name, len(packets)-start, run)
 		// Data after a handshake inside the remaining datagrams is legitimately decodable; without one nothing is.
-		if run.p.sessionNumber == 0 && (run.statistics.OutgoingEvents != 0 || run.statistics.IncomingEvents != 0 || result.EffectsTracked != 0) {
+		if run.p.SessionNumber == 0 && (run.statistics.OutgoingEvents != 0 || run.statistics.IncomingEvents != 0 || result.EffectsTracked != 0) {
 			t.Errorf("%s decoded combat data without a session handshake: %+v", name, result)
 		}
 		if run.statistics.DamageDealt > baseline.statistics.DamageDealt {

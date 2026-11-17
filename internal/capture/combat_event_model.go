@@ -111,11 +111,11 @@ type CombatEventRecord struct {
 // HistorySequence is the record's place in its capture session's Combat History journal; zero when it was not journaled.
 func (r CombatEventRecord) HistorySequence() uint64 { return r.historySequence }
 
-func (r playerRelation) String() string {
+func (r PlayerRelation) String() string {
 	switch r {
-	case playerRelationLocal:
+	case PlayerRelationLocal:
 		return "LOCAL"
-	case playerRelationUnrelated:
+	case PlayerRelationUnrelated:
 		return "UNRELATED"
 	default:
 		return "UNKNOWN"
@@ -124,23 +124,23 @@ func (r playerRelation) String() string {
 
 // classifyCombatFlow maps the endpoint relations to a flow. The mapping preserves the v0.3 statistics rules:
 // only LOCAL->UNRELATED and UNRELATED->LOCAL are confirmed; any UNKNOWN endpoint stays isolated.
-func classifyCombatFlow(source, target playerRelation) CombatFlow {
+func classifyCombatFlow(source, target PlayerRelation) CombatFlow {
 	switch {
-	case source == playerRelationLocal && target == playerRelationUnrelated:
+	case source == PlayerRelationLocal && target == PlayerRelationUnrelated:
 		return CombatFlowLocalOutgoing
-	case source == playerRelationUnrelated && target == playerRelationLocal:
+	case source == PlayerRelationUnrelated && target == PlayerRelationLocal:
 		return CombatFlowLocalIncoming
-	case source == playerRelationLocal && target == playerRelationUnknown:
+	case source == PlayerRelationLocal && target == PlayerRelationUnknown:
 		return CombatFlowUnattributedOutgoing
-	case source == playerRelationUnknown && target == playerRelationLocal:
+	case source == PlayerRelationUnknown && target == PlayerRelationLocal:
 		return CombatFlowUnattributedIncoming
-	case source == playerRelationUnknown && target == playerRelationUnrelated:
+	case source == PlayerRelationUnknown && target == PlayerRelationUnrelated:
 		return CombatFlowUnattributedOutgoing
-	case source == playerRelationUnrelated && target == playerRelationUnknown:
+	case source == PlayerRelationUnrelated && target == PlayerRelationUnknown:
 		return CombatFlowUnattributedIncoming
-	case source == playerRelationLocal && target == playerRelationLocal:
+	case source == PlayerRelationLocal && target == PlayerRelationLocal:
 		return CombatFlowLocalInternal
-	case source == playerRelationUnrelated && target == playerRelationUnrelated:
+	case source == PlayerRelationUnrelated && target == PlayerRelationUnrelated:
 		return CombatFlowExcluded
 	default:
 		return CombatFlowUnresolved
@@ -161,7 +161,7 @@ func (f CombatFlow) confidence() AttributionConfidence {
 // normalizeCombatEvent builds the statistics record for a decoded damage-RPC result or a notified result
 // (damage_notify.go). It returns false for results that cannot enter statistics: a non-positive amount or a missing
 // endpoint, which keeps the v0.3 admission rule.
-func normalizeCombatEvent(event combatEvent, source, target playerRelation) (CombatEventRecord, bool) {
+func normalizeCombatEvent(event CombatEvent, source, target PlayerRelation) (CombatEventRecord, bool) {
 	if event.Damage <= 0 || !event.HasSourceEntity || event.SourceEntityID == 0 || !event.HasTargetEntity || event.TargetEntityID == 0 {
 		return CombatEventRecord{}, false
 	}

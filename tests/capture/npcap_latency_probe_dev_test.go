@@ -162,13 +162,13 @@ func runLatencyProbe(t *testing.T, config latencyProbeConfig, rate, maxSize int,
 	const device = `\Device\NPF_Loopback`
 	const port = 13199
 	var handle *pcap.Handle
-	var applied liveCaptureApplied
+	var applied LiveCaptureApplied
 	var err error
 	if config.OpenLive {
-		handle, err = pcap.OpenLive(device, liveCaptureSnapLen, false, config.Config.ReadTimeout)
-		applied = liveCaptureApplied{ReadTimeout: config.Config.ReadTimeout}
+		handle, err = pcap.OpenLive(device, LiveCaptureSnapLen, false, config.Config.ReadTimeout)
+		applied = LiveCaptureApplied{ReadTimeout: config.Config.ReadTimeout}
 	} else {
-		handle, applied, err = openLiveCapture(device, config.Config)
+		handle, applied, err = OpenLiveCapture(device, config.Config)
 	}
 	if err != nil {
 		t.Fatalf("%s: open loopback capture: %v", config.Name, err)

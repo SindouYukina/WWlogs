@@ -194,8 +194,8 @@ func (t *encounterTracker) beginLoss(id uint64, direction string, from time.Time
 	}
 	t.losses[id] = &statisticsLoss{id: id, direction: direction, from: from}
 	t.lossOrder = append(t.lossOrder, id)
-	if t.current != nil && (t.current.state == EncounterActive || from.Before(t.current.endAt)) {
-		t.current.integrity.addLoss(id)
+	if t.Current != nil && (t.Current.State == EncounterActive || from.Before(t.Current.endAt)) {
+		t.Current.integrity.addLoss(id)
 	}
 	for i := range t.completed {
 		if from.Before(t.completed[i].EndedAt) {
@@ -223,8 +223,8 @@ func (t *encounterTracker) endLoss(id uint64, to time.Time) {
 		return
 	}
 	loss.to, loss.ended = to, true
-	if t.current != nil && !t.current.startAt.Before(to) {
-		t.current.integrity.removeLoss(id)
+	if t.Current != nil && !t.Current.startAt.Before(to) {
+		t.Current.integrity.removeLoss(id)
 	}
 	for i := range t.completed {
 		if !t.completed[i].StartedAt.Before(to) {
@@ -308,9 +308,9 @@ func (s *DamageStatistics) beginTransportLoss(id uint64, direction string, from 
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.encounters.beginLoss(id, direction, from)
+	s.Encounters.beginLoss(id, direction, from)
 	s.history.add(HistoryEntry{Kind: HistoryLossBegan, Loss: &HistoryLoss{ID: id, Direction: direction, From: from}})
-	s.encounters.journalCompletedIntegrity()
+	s.Encounters.journalCompletedIntegrity()
 }
 
 func (s *DamageStatistics) endTransportLoss(id uint64, to time.Time) {
@@ -319,9 +319,9 @@ func (s *DamageStatistics) endTransportLoss(id uint64, to time.Time) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.encounters.endLoss(id, to)
+	s.Encounters.endLoss(id, to)
 	s.history.add(HistoryEntry{Kind: HistoryLossEnded, Loss: &HistoryLoss{ID: id, To: to}})
-	s.encounters.journalCompletedIntegrity()
+	s.Encounters.journalCompletedIntegrity()
 }
 
 func (s *DamageStatistics) failTransportLoss(id uint64) {
@@ -330,9 +330,9 @@ func (s *DamageStatistics) failTransportLoss(id uint64) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.encounters.failLoss(id)
+	s.Encounters.failLoss(id)
 	s.history.add(HistoryEntry{Kind: HistoryLossFailed, Loss: &HistoryLoss{ID: id}})
-	s.encounters.journalCompletedIntegrity()
+	s.Encounters.journalCompletedIntegrity()
 }
 
 // setTransportGap records that a stream's data after since is delayed behind a gap; a zero since clears it.
@@ -343,13 +343,13 @@ func (s *DamageStatistics) setTransportGap(streamKey string, since time.Time) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if since.IsZero() {
-		delete(s.encounters.openGaps, streamKey)
+		delete(s.Encounters.openGaps, streamKey)
 		return
 	}
-	if s.encounters.openGaps == nil {
-		s.encounters.openGaps = make(map[string]time.Time)
+	if s.Encounters.openGaps == nil {
+		s.Encounters.openGaps = make(map[string]time.Time)
 	}
-	s.encounters.openGaps[streamKey] = since
+	s.Encounters.openGaps[streamKey] = since
 }
 
 // setBattleStateUnverified records whether the battle state may be stale after an inbound loss. An encounter that
@@ -360,12 +360,12 @@ func (s *DamageStatistics) setBattleStateUnverified(unverified bool) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.encounters.battleStateUnverified = unverified
+	s.Encounters.battleStateUnverified = unverified
 }
 
 // windowIntegrityLocked reports why a capture-time window (start, end] may be missing events, or "".
 func (s *DamageStatistics) windowIntegrityLocked(start, end time.Time) string {
-	t := s.encounters
+	t := s.Encounters
 	for _, id := range t.lossOrder {
 		if loss, ok := t.losses[id]; ok && loss.overlaps(start, end) {
 			return "transport_loss_in_window"

@@ -11,26 +11,26 @@ import "fmt"
 // the bodies of both containers from receivePackNotifyBodies and reads them alike; which container carried a response
 // is packaging, not part of the result.
 
-// receivePackNotifyBodies returns the CombatReceivePackNotify bodies of one frame: the body itself for a standalone
+// ReceivePackNotifyBodies returns the CombatReceivePackNotify bodies of one frame: the body itself for a standalone
 // notify, every ReceivePackNotify field of a CombatSendPackResponse, and nothing for other commands.
-func receivePackNotifyBodies(commandID uint16, body []byte) ([][]byte, error) {
+func ReceivePackNotifyBodies(commandID uint16, body []byte) ([][]byte, error) {
 	switch commandID {
-	case cmdCombatReceivePackNotify:
+	case CmdCombatReceivePackNotify:
 		return [][]byte{body}, nil
-	case cmdCombatSendPackResponse:
-		fields, err := parseProtoFields(body)
+	case CmdCombatSendPackResponse:
+		fields, err := ParseProtoFields(body)
 		if err != nil {
 			return nil, fmt.Errorf("parse CombatSendPackResponse: %w", err)
 		}
 		var payloads [][]byte
 		for _, field := range fields {
-			if field.number != fieldCombatSendPackResponseReceivePackNotify {
+			if field.Number != FieldCombatSendPackResponseReceivePackNotify {
 				continue
 			}
-			if field.wire != 2 {
-				return nil, fmt.Errorf("parse CombatSendPackResponse.ReceivePackNotify: unexpected wire type %d", field.wire)
+			if field.Wire != 2 {
+				return nil, fmt.Errorf("parse CombatSendPackResponse.ReceivePackNotify: unexpected wire type %d", field.Wire)
 			}
-			payloads = append(payloads, field.data)
+			payloads = append(payloads, field.Data)
 		}
 		return payloads, nil
 	default:
@@ -41,34 +41,34 @@ func receivePackNotifyBodies(commandID uint16, body []byte) ([][]byte, error) {
 // combatDamageResponse is one DamageExecuteResponse of a CombatReceivePackNotify, with the RequestId of the client request
 // it answers.
 type combatDamageResponse struct {
-	rpcID   uint64
-	payload []byte
+	RPCID   uint64
+	Payload []byte
 }
 
-// receivePackDamageResponses returns the DamageExecuteResponses one CombatReceivePackNotify body carries in
+// ReceivePackDamageResponses returns the DamageExecuteResponses one CombatReceivePackNotify body carries in
 // Data[].CombatResponseData, in wire order, and how many nested messages it skipped as malformed. An item without a
 // RequestId or without a DamageExecuteResponse answers another kind of combat request and is not returned.
-func receivePackDamageResponses(body []byte) ([]combatDamageResponse, int) {
-	batches, err := parseProtoFields(body)
+func ReceivePackDamageResponses(body []byte) ([]combatDamageResponse, int) {
+	batches, err := ParseProtoFields(body)
 	if err != nil {
 		return nil, 1
 	}
 	var responses []combatDamageResponse
 	malformed := 0
 	for _, batch := range batches {
-		if batch.number != fieldCombatReceivePackNotifyData || batch.wire != 2 { // CombatReceivePackNotify.Data
+		if batch.Number != FieldCombatReceivePackNotifyData || batch.Wire != 2 { // CombatReceivePackNotify.Data
 			continue
 		}
-		items, err := parseProtoFields(batch.data)
+		items, err := ParseProtoFields(batch.Data)
 		if err != nil {
 			malformed++
 			continue
 		}
 		for _, item := range items {
-			if item.number != fieldCombatReceiveDataCombatResponseData || item.wire != 2 { // CombatReceiveData.CombatResponseData
+			if item.Number != FieldCombatReceiveDataCombatResponseData || item.Wire != 2 { // CombatReceiveData.CombatResponseData
 				continue
 			}
-			fields, err := parseProtoFields(item.data)
+			fields, err := ParseProtoFields(item.Data)
 			if err != nil {
 				malformed++
 				continue
@@ -76,14 +76,14 @@ func receivePackDamageResponses(body []byte) ([]combatDamageResponse, int) {
 			// An absent RequestId is the proto3 default 0: the client's counter sends it once per wrap (combatRequestIDSpace).
 			var response combatDamageResponse
 			for _, field := range fields {
-				if field.number == fieldCombatResponseDataRequestID && field.wire == 0 {
-					response.rpcID = field.value
+				if field.Number == FieldCombatResponseDataRequestID && field.Wire == 0 {
+					response.RPCID = field.Value
 				}
-				if field.number == fieldCombatResponseDataDamageExecuteResponse && field.wire == 2 {
-					response.payload = field.data
+				if field.Number == FieldCombatResponseDataDamageExecuteResponse && field.Wire == 2 {
+					response.Payload = field.Data
 				}
 			}
-			if response.payload != nil {
+			if response.Payload != nil {
 				responses = append(responses, response)
 			}
 		}
@@ -91,34 +91,34 @@ func receivePackDamageResponses(body []byte) ([]combatDamageResponse, int) {
 	return responses, malformed
 }
 
-// handleCombatReceivePacks reads the CombatReceivePackNotify bodies of one frame of either container: first every damage
+// HandleCombatReceivePacks reads the CombatReceivePackNotify bodies of one frame of either container: first every damage
 // response of every body, then every notification, so a frame is read in the same order whichever container the server
 // used. A response is paired and deduplicated by its RequestId alone (handleOneDamageResult), never by its container; a
 // server-executed DamageExecuteNotify by the frame's sequence and its position among the frame's notifications
 // (damage_notify.go).
-func (p *processor) handleCombatReceivePacks(frame gameFrame, plain []byte) error {
-	bodies, err := receivePackNotifyBodies(frame.commandID, plain)
+func (p *Processor) HandleCombatReceivePacks(frame GameFrame, plain []byte) error {
+	bodies, err := ReceivePackNotifyBodies(frame.CommandID, plain)
 	if err != nil {
 		return err
 	}
 	p.expireHeldResponses()
 	p.frameNotifyOrdinal = 0
 	for _, body := range bodies {
-		responses, malformed := receivePackDamageResponses(body)
-		p.stats.parseErrors += malformed
+		responses, malformed := ReceivePackDamageResponses(body)
+		p.Stats.ParseErrors += malformed
 		for _, response := range responses {
-			p.stats.candidateResponses++
-			if frame.commandID == cmdCombatReceivePackNotify {
-				p.stats.standaloneNotifyResponses++
+			p.Stats.CandidateResponses++
+			if frame.CommandID == CmdCombatReceivePackNotify {
+				p.Stats.standaloneNotifyResponses++
 			}
-			if p.census != nil {
-				p.census.ObserveInnerEntry("Server->Client DamageExecuteResponse")
+			if p.Census != nil {
+				p.Census.ObserveInnerEntry("Server->Client DamageExecuteResponse")
 			}
-			p.handleOneDamageResult(response.rpcID, response.payload)
+			p.HandleOneDamageResult(response.RPCID, response.Payload)
 		}
 	}
 	for _, body := range bodies {
-		if err := p.handleCombatReceivePackNotify(frame, body); err != nil {
+		if err := p.HandleCombatReceivePackNotify(frame, body); err != nil {
 			return err
 		}
 	}

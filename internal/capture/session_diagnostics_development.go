@@ -26,14 +26,14 @@ type sessionDiagnostics struct {
 	outputs       map[string]io.Writer
 	files         map[*asyncDiagnosticWriter]*os.File
 	release       func()
-	processor     *processor
+	processor     *Processor
 	effectDisplay *effectDisplayAuditWriter
 }
 
 func openSessionDiagnostics(requested bool, link layers.LinkType) (*sessionDiagnostics, error) {
 	d, err := openDevelopmentSessionDiagnostics(requested, link)
 	if err != nil {
-		return nil, &diagnosticSetupError{err: err}
+		return nil, &DiagnosticSetupError{Err: err}
 	}
 	return d, nil
 }
@@ -64,7 +64,7 @@ func openDevelopmentSessionDiagnostics(requested bool, link layers.LinkType) (*s
 	for _, name := range []string{"console.log", "combat-events.jsonl", "buff-events.jsonl", "buff-snapshots.jsonl", "encounter-events.jsonl", "dps-effects.jsonl", "effect-display.jsonl", "effect-state-final.json"} {
 		file, err := os.OpenFile(filepath.Join(bundle.directory, name), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 		if err != nil {
-			d.finish(StopReasonError, CaptureCounter{})
+			d.Finish(StopReasonError, CaptureCounter{})
 			return nil, fmt.Errorf("create diagnostic output: %w", err)
 		}
 		target := &budgetedDiagnosticWriter{target: file, budget: budget}
@@ -75,32 +75,32 @@ func openDevelopmentSessionDiagnostics(requested bool, link layers.LinkType) (*s
 	return d, nil
 }
 
-func (d *sessionDiagnostics) attach(p *processor) {
+func (d *sessionDiagnostics) Attach(p *Processor) {
 	if d.pipeline != nil {
-		p.captureLayer.diagnosticDropCount = d.pipeline.droppedRecords
+		p.CaptureLayer.DiagnosticDropCount = d.pipeline.droppedRecords
 		d.processor = p
-		p.dev.stdout, p.diagnostic = d.outputs["console.log"], d.outputs["console.log"]
-		p.dev.combatEventsJSONL = d.outputs["combat-events.jsonl"]
-		p.dev.buffLifecycle, p.dev.buffSnapshots = d.outputs["buff-events.jsonl"], d.outputs["buff-snapshots.jsonl"]
-		p.dev.encounterOut = d.outputs["encounter-events.jsonl"]
+		p.Dev.stdout, p.Diagnostic = d.outputs["console.log"], d.outputs["console.log"]
+		p.Dev.combatEventsJSONL = d.outputs["combat-events.jsonl"]
+		p.Dev.buffLifecycle, p.Dev.buffSnapshots = d.outputs["buff-events.jsonl"], d.outputs["buff-snapshots.jsonl"]
+		p.Dev.encounterOut = d.outputs["encounter-events.jsonl"]
 		d.effectDisplay = &effectDisplayAuditWriter{target: d.outputs["effect-display.jsonl"]}
 	}
 }
 
-// observeEffectDisplay records why the Effects Overlay shows what it shows (effect_display_audit_development.go).
-func (d *sessionDiagnostics) observeEffectDisplay(p *processor, now time.Time) {
+// ObserveEffectDisplay records why the Effects Overlay shows what it shows (effect_display_audit_development.go).
+func (d *sessionDiagnostics) ObserveEffectDisplay(p *Processor, now time.Time) {
 	d.effectDisplay.observe(p, now)
 }
 
-func (d *sessionDiagnostics) packet(info gopacket.CaptureInfo, data []byte) {
+func (d *sessionDiagnostics) Packet(info gopacket.CaptureInfo, data []byte) {
 	if d.pcap != nil {
 		d.pcap.writePacket(info, data)
 	}
 }
 
-// finish drains and closes the writers within the shared deadline and finalizes the PCAP integrity record. It runs
+// Finish drains and closes the writers within the shared deadline and finalizes the PCAP integrity record. It runs
 // once; later calls return an empty summary.
-func (d *sessionDiagnostics) finish(stopReason string, kernelDropped CaptureCounter) string {
+func (d *sessionDiagnostics) Finish(stopReason string, kernelDropped CaptureCounter) string {
 	if d.finished {
 		return ""
 	}

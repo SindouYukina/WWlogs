@@ -6,12 +6,12 @@ import (
 )
 
 // newEffectViewProcessor returns a processor whose view reads its own tracker.
-func newEffectViewProcessor() *processor {
-	return newProcessor(nil, io.Discard, io.Discard, nil)
+func newEffectViewProcessor() *Processor {
+	return NewProcessor(nil, io.Discard, io.Discard, nil)
 }
 
-func effectViewAt(p *processor, seconds float64) ViewEffects {
-	p.currentFrameTime = effectAt(seconds)
+func effectViewAt(p *Processor, seconds float64) ViewEffects {
+	p.CurrentFrameTime = effectAt(seconds)
 	return p.viewEffects()
 }
 
@@ -39,7 +39,7 @@ func displayApply(handle, effectID uint64, seconds float64, mutate func(*EffectA
 
 func requireEffectCounts(t *testing.T, view ViewEffects, want ViewEffectCounts) {
 	t.Helper()
-	if err := view.Counts.accountingError(len(view.Active)); err != nil {
+	if err := view.Counts.AccountingError(len(view.Active)); err != nil {
 		t.Fatalf("counts %+v: %v", view.Counts, err)
 	}
 	if view.Counts != want {
@@ -108,7 +108,7 @@ func TestEffectDisplayDecision(t *testing.T) {
 		{"debuff a monster put on the player entity", active(EffectRelationLocalPlayer, EffectRelationNonPlayer, debuff), EffectDisplay{EffectDisplayEligible, EffectTargetTeam, ""}},
 		{"debuff the team put on a monster", active(EffectRelationNonPlayer, EffectRelationLocalRole, debuff), EffectDisplay{EffectDisplayEligible, EffectTargetEnemy, ""}},
 		{"a summon holder is on no HUD surface", active(EffectRelationLocalOwned, EffectRelationLocalRole, buff), EffectDisplay{EffectDisplayNonHUD, EffectTargetTeam, effectDisplayBasisSummonHolder}},
-		{"a definition without a HUD cue", active(EffectRelationLocalRole, EffectRelationLocalRole, noCue), EffectDisplay{EffectDisplayNonHUD, EffectTargetTeam, effectDisplayBasisNoCue}},
+		{"a definition without a HUD cue", active(EffectRelationLocalRole, EffectRelationLocalRole, noCue), EffectDisplay{EffectDisplayNonHUD, EffectTargetTeam, EffectDisplayBasisNoCue}},
 		{"no definition is unresolved", active(EffectRelationLocalRole, EffectRelationLocalRole, nil), EffectDisplay{EffectDisplayHUDUnresolved, EffectTargetTeam, effectDisplayBasisNoDefinition}},
 		// BuffItem.Activate draws the icon of a cue without a direction parameter, only without an arrow (Lily's 3.8 statuses).
 		{"a role-unique cue the game draws no arrow for", active(EffectRelationLocalRole, EffectRelationLocalRole, noArrow), EffectDisplay{EffectDisplayEligible, EffectTargetTeam, ""}},
@@ -122,14 +122,14 @@ func TestEffectDisplayDecision(t *testing.T) {
 		{"estimated expired first", EffectInstanceSnapshot{Lifecycle: EffectLifecycleEstimatedExpired, HolderRelation: EffectRelationLocalRole, Static: debuff}, EffectDisplay{Eligibility: EffectDisplayEstimatedExpired}},
 	}
 	for _, tc := range cases {
-		if got := effectDisplayFor(tc.effect); got != tc.want {
+		if got := EffectDisplayFor(tc.effect); got != tc.want {
 			t.Errorf("%s: display = %+v, want %+v", tc.name, got, tc.want)
 		}
 	}
 }
 
 func TestEffectPolarityComesOnlyFromTheHUDCue(t *testing.T) {
-	term := &EffectStaticInfo{Term: &EffectTermInfo{TermID: 850009, Name: "term", Status: string(resolutionCorrelated)}}
+	term := &EffectStaticInfo{Term: &EffectTermInfo{TermID: 850009, Name: "term", Status: string(ResolutionCorrelated)}}
 	for want, static := range map[EffectPolarity]*EffectStaticInfo{
 		EffectPolarityBuff:    {HUDCueTypes: []int32{2}, HUDPolarity: EffectPolarityBuff},
 		EffectPolarityDebuff:  {HUDCueTypes: []int32{2}, HUDPolarity: EffectPolarityDebuff},
@@ -156,7 +156,7 @@ func TestEffectPolarityComesOnlyFromTheHUDCue(t *testing.T) {
 
 func TestEffectTrackerSnapshotCarriesKindAndPolarity(t *testing.T) {
 	tracker := newTestEffectTracker()
-	term := &EffectStaticInfo{DeveloperTags: []string{"战斗状态.异常状态.基础元素异常.风蚀效应"}, HUDCueTypes: []int32{2}, HUDPolarity: EffectPolarityDebuff, Term: &EffectTermInfo{TermID: 850009, Name: "term", Status: string(resolutionCorrelated)}}
+	term := &EffectStaticInfo{DeveloperTags: []string{"战斗状态.异常状态.基础元素异常.风蚀效应"}, HUDCueTypes: []int32{2}, HUDPolarity: EffectPolarityDebuff, Term: &EffectTermInfo{TermID: 850009, Name: "term", Status: string(ResolutionCorrelated)}}
 	tracker.ObserveApply(testEffectApply(1, 0, func(e *EffectApplyEvent) {
 		e.DefinitionLinked, e.Static, e.CombatClass, e.CombatBasis = true, term, EffectCombatClassCombat, effectCombatBasisTerm
 	}))
@@ -171,23 +171,23 @@ func TestViewEffectsListsOnlyEligibleAndAccountsForTheRest(t *testing.T) {
 	// Eligible: a verified HUD status; a short one; a stacked one; the same effect id from two sources
 	// on one holder, which stay two cells because they are independent instances; the same effect id on another holder,
 	// which shares a cell with one of them.
-	p.effects.ObserveApply(displayApply(1, 500, 0, nil))
-	p.effects.ObserveApply(displayApply(2, 501, 0, func(e *EffectApplyEvent) { e.DurationSeconds, e.RemainingSeconds = effectFloat(0.5), effectFloat(0.5) }))
-	p.effects.ObserveApply(displayApply(3, 502, 0, func(e *EffectApplyEvent) { e.StackCount = 4 }))
-	p.effects.ObserveApply(displayApply(4, 503, 0, nil))
-	p.effects.ObserveApply(displayApply(5, 503, 0, func(e *EffectApplyEvent) { e.SourceEntityID = 21 }))
-	p.effects.ObserveApply(displayApply(6, 503, 0, func(e *EffectApplyEvent) { e.HolderEntityID = 11 }))
+	p.Effects.ObserveApply(displayApply(1, 500, 0, nil))
+	p.Effects.ObserveApply(displayApply(2, 501, 0, func(e *EffectApplyEvent) { e.DurationSeconds, e.RemainingSeconds = effectFloat(0.5), effectFloat(0.5) }))
+	p.Effects.ObserveApply(displayApply(3, 502, 0, func(e *EffectApplyEvent) { e.StackCount = 4 }))
+	p.Effects.ObserveApply(displayApply(4, 503, 0, nil))
+	p.Effects.ObserveApply(displayApply(5, 503, 0, func(e *EffectApplyEvent) { e.SourceEntityID = 21 }))
+	p.Effects.ObserveApply(displayApply(6, 503, 0, func(e *EffectApplyEvent) { e.HolderEntityID = 11 }))
 	// Not eligible, each for one reason.
-	p.effects.ObserveApply(displayApply(7, 600, 0, func(e *EffectApplyEvent) {
+	p.Effects.ObserveApply(displayApply(7, 600, 0, func(e *EffectApplyEvent) {
 		e.CombatClass, e.CombatBasis = EffectCombatClassUnknown, effectCombatBasisNoEvidence
 		e.Static = noHUDStatic()
 	}))
-	p.effects.ObserveApply(displayApply(8, 601, 0, func(e *EffectApplyEvent) {
+	p.Effects.ObserveApply(displayApply(8, 601, 0, func(e *EffectApplyEvent) {
 		e.CombatClass, e.CombatBasis = EffectCombatClassNonCombat, effectCombatBasisTag+"跌落无伤"
 		e.Static = noHUDStatic()
 	}))
-	p.effects.ObserveApply(displayApply(9, 602, 0, func(e *EffectApplyEvent) { e.SourceRelation = EffectRelationUnknown }))
-	p.effects.ObserveApply(displayApply(10, 603, 0, func(e *EffectApplyEvent) {
+	p.Effects.ObserveApply(displayApply(9, 602, 0, func(e *EffectApplyEvent) { e.SourceRelation = EffectRelationUnknown }))
+	p.Effects.ObserveApply(displayApply(10, 603, 0, func(e *EffectApplyEvent) {
 		e.CombatClass, e.CombatBasis = EffectCombatClassCombat, effectCombatBasisTag+"无敌"
 		e.DefinitionLinked, e.Static = true, &EffectStaticInfo{DeveloperTags: []string{"功能.逻辑状态标识.无敌.角色闪避"}}
 	}))
@@ -214,10 +214,10 @@ func TestViewEffectsListsOnlyEligibleAndAccountsForTheRest(t *testing.T) {
 
 func TestViewEffectsListCellsWithATimeBeforeThoseWithout(t *testing.T) {
 	p := newEffectViewProcessor()
-	p.effects.ObserveApply(displayApply(1, 900, 0, func(e *EffectApplyEvent) { e.DurationSeconds, e.RemainingSeconds = nil, nil }))
-	p.effects.ObserveApply(displayApply(2, 901, 0, func(e *EffectApplyEvent) { e.DurationSeconds, e.RemainingSeconds = effectFloat(9), effectFloat(9) }))
-	p.effects.ObserveApply(displayApply(3, 902, 0, func(e *EffectApplyEvent) { e.DurationSeconds, e.RemainingSeconds = effectFloat(-1), effectFloat(-1) }))
-	p.effects.ObserveApply(displayApply(4, 903, 0, func(e *EffectApplyEvent) { e.DurationSeconds, e.RemainingSeconds = effectFloat(4), effectFloat(4) }))
+	p.Effects.ObserveApply(displayApply(1, 900, 0, func(e *EffectApplyEvent) { e.DurationSeconds, e.RemainingSeconds = nil, nil }))
+	p.Effects.ObserveApply(displayApply(2, 901, 0, func(e *EffectApplyEvent) { e.DurationSeconds, e.RemainingSeconds = effectFloat(9), effectFloat(9) }))
+	p.Effects.ObserveApply(displayApply(3, 902, 0, func(e *EffectApplyEvent) { e.DurationSeconds, e.RemainingSeconds = effectFloat(-1), effectFloat(-1) }))
+	p.Effects.ObserveApply(displayApply(4, 903, 0, func(e *EffectApplyEvent) { e.DurationSeconds, e.RemainingSeconds = effectFloat(4), effectFloat(4) }))
 	view := effectViewAt(p, 0.5)
 	var order []uint64
 	for _, effect := range view.Active {
@@ -231,12 +231,12 @@ func TestViewEffectsListCellsWithATimeBeforeThoseWithout(t *testing.T) {
 func TestViewEffectsCountsAreStableUnderDuplicatesAndLifecycle(t *testing.T) {
 	p := newEffectViewProcessor()
 	ten := func(e *EffectApplyEvent) { e.DurationSeconds, e.RemainingSeconds = effectFloat(10), effectFloat(10) }
-	p.effects.ObserveApply(displayApply(1, 500, 0, ten))
+	p.Effects.ObserveApply(displayApply(1, 500, 0, ten))
 	// A retransmitted apply and a refresh are the same instance.
-	p.effects.ObserveApply(displayApply(1, 500, 0, ten))
-	p.effects.ObserveApply(displayApply(1, 500, 1, ten))
-	p.effects.ObserveUpdate(EffectUpdateEvent{SessionNumber: 1, HolderEntityID: 10, HandleID: 1, StackCount: 3, HasStackCount: true, RemainingSeconds: effectFloat(10), DurationSeconds: effectFloat(10), ObservedAt: effectAt(2)})
-	p.effects.ObserveUpdate(EffectUpdateEvent{SessionNumber: 1, HolderEntityID: 10, HandleID: 1, StackCount: 2, HasStackCount: true, ObservedAt: effectAt(3)})
+	p.Effects.ObserveApply(displayApply(1, 500, 0, ten))
+	p.Effects.ObserveApply(displayApply(1, 500, 1, ten))
+	p.Effects.ObserveUpdate(EffectUpdateEvent{SessionNumber: 1, HolderEntityID: 10, HandleID: 1, StackCount: 3, HasStackCount: true, RemainingSeconds: effectFloat(10), DurationSeconds: effectFloat(10), ObservedAt: effectAt(2)})
+	p.Effects.ObserveUpdate(EffectUpdateEvent{SessionNumber: 1, HolderEntityID: 10, HandleID: 1, StackCount: 2, HasStackCount: true, ObservedAt: effectAt(3)})
 	view := effectViewAt(p, 3)
 	requireEffectCounts(t, view, ViewEffectCounts{Tracked: 1, Active: 1, Local: 1, Eligible: 1, Listed: 1, Cells: 1, ListedCells: 1})
 	if view.Active[0].StackCount == nil || *view.Active[0].StackCount != 2 {
@@ -244,23 +244,23 @@ func TestViewEffectsCountsAreStableUnderDuplicatesAndLifecycle(t *testing.T) {
 	}
 	requireNear(t, "remaining", view.Active[0].RemainingSeconds, 9)
 	// An older update arriving late changes nothing.
-	p.effects.ObserveUpdate(EffectUpdateEvent{SessionNumber: 1, HolderEntityID: 10, HandleID: 1, StackCount: 5, HasStackCount: true, ObservedAt: effectAt(2.5)})
+	p.Effects.ObserveUpdate(EffectUpdateEvent{SessionNumber: 1, HolderEntityID: 10, HandleID: 1, StackCount: 5, HasStackCount: true, ObservedAt: effectAt(2.5)})
 	if view = effectViewAt(p, 3); *view.Active[0].StackCount != 2 {
 		t.Fatalf("stale update changed the stack to %d", *view.Active[0].StackCount)
 	}
 
 	// Remove ends it; the repeated remove and a late apply of the removed handle do not bring it back.
-	p.effects.ObserveRemove(testEffectRemove(1, 4))
-	p.effects.ObserveRemove(testEffectRemove(1, 4))
-	p.effects.ObserveApply(displayApply(1, 500, 3.5, nil))
+	p.Effects.ObserveRemove(testEffectRemove(1, 4))
+	p.Effects.ObserveRemove(testEffectRemove(1, 4))
+	p.Effects.ObserveApply(displayApply(1, 500, 3.5, nil))
 	requireEffectCounts(t, effectViewAt(p, 4), ViewEffectCounts{})
 	// A new apply after the remove is a new instance, counted once.
-	p.effects.ObserveApply(displayApply(1, 500, 5, nil))
+	p.Effects.ObserveApply(displayApply(1, 500, 5, nil))
 	requireEffectCounts(t, effectViewAt(p, 5), ViewEffectCounts{Tracked: 1, Active: 1, Local: 1, Eligible: 1, Listed: 1, Cells: 1, ListedCells: 1})
 
 	// Holder despawn ends every instance of that holder.
-	p.effects.ObserveApply(displayApply(2, 501, 5, func(e *EffectApplyEvent) { e.HolderEntityID = 11 }))
-	p.effects.ObserveHolderRemoved(1, 10, effectAt(5.5))
+	p.Effects.ObserveApply(displayApply(2, 501, 5, func(e *EffectApplyEvent) { e.HolderEntityID = 11 }))
+	p.Effects.ObserveHolderRemoved(1, 10, effectAt(5.5))
 	view = effectViewAt(p, 5.5)
 	requireEffectCounts(t, view, ViewEffectCounts{Tracked: 1, Active: 1, Local: 1, Eligible: 1, Listed: 1, Cells: 1, ListedCells: 1})
 	if *view.Active[0].EffectID != 501 {
@@ -268,9 +268,9 @@ func TestViewEffectsCountsAreStableUnderDuplicatesAndLifecycle(t *testing.T) {
 	}
 
 	// A new protocol session (scene change or reconnect) drops the live state, as does an interval reset.
-	p.effects.ObserveApply(displayApply(3, 502, 6, func(e *EffectApplyEvent) { e.SessionNumber = 2 }))
+	p.Effects.ObserveApply(displayApply(3, 502, 6, func(e *EffectApplyEvent) { e.SessionNumber = 2 }))
 	requireEffectCounts(t, effectViewAt(p, 6), ViewEffectCounts{Tracked: 1, Active: 1, Local: 1, Eligible: 1, Listed: 1, Cells: 1, ListedCells: 1})
-	p.effects.Reset()
+	p.Effects.Reset()
 	requireEffectCounts(t, effectViewAt(p, 6), ViewEffectCounts{})
 }
 
@@ -279,14 +279,14 @@ func TestViewEffectsBoundAppliesToTheDisplaySetOnly(t *testing.T) {
 	// Instances the game does not draw sort ahead of the eligible ones in the tracker's order (lower holder ID); they must
 	// not take the bounded rows.
 	for handle := uint64(1); handle <= 50; handle++ {
-		p.effects.ObserveApply(displayApply(handle, 700, 0, func(e *EffectApplyEvent) {
+		p.Effects.ObserveApply(displayApply(handle, 700, 0, func(e *EffectApplyEvent) {
 			e.HolderEntityID, e.HolderRelation = 5, EffectRelationLocalRole
 			e.CombatClass, e.CombatBasis = EffectCombatClassUnknown, effectCombatBasisNoEvidence
 			e.Static = noHUDStatic()
 		}))
 	}
 	for handle := uint64(1); handle <= maxViewEffects+3; handle++ {
-		p.effects.ObserveApply(displayApply(handle, 800+handle, 0, nil))
+		p.Effects.ObserveApply(displayApply(handle, 800+handle, 0, nil))
 	}
 	total := 50 + maxViewEffects + 3
 	view := effectViewAt(p, 0.5)

@@ -34,13 +34,13 @@ func recoveryBody(seed, length int) []byte {
 	return body
 }
 
-func sendRecoverySegment(p *processor, streams map[string]*stream, stats *captureStats, direction string, sequence uint32, payload []byte, at time.Duration) {
-	consumeDatagram(makeKCPSegmentForTest(9, sequence, payload), direction, transportGapBase.Add(at), streams, p, stats)
+func sendRecoverySegment(p *Processor, streams map[string]*Stream, stats *CaptureStats, direction string, sequence uint32, payload []byte, at time.Duration) {
+	ConsumeDatagram(makeKCPSegmentForTest(9, sequence, payload), direction, transportGapBase.Add(at), streams, p, stats)
 }
 
-func directionHealth(t *testing.T, p *processor, direction string) TransportDirectionHealth {
+func directionHealth(t *testing.T, p *Processor, direction string) TransportDirectionHealth {
 	t.Helper()
-	for _, health := range p.transportHealthSnapshot().Directions {
+	for _, health := range p.TransportHealthSnapshot().Directions {
 		if health.Direction == direction {
 			return health
 		}
@@ -55,12 +55,12 @@ func TestKCPGapIsSkippedAfterTimeoutAndDeliveryResumes(t *testing.T) {
 	for sequence := uint32(2); sequence <= 4; sequence++ {
 		sendTransportGapFrame(p, streams, stats, sequence, time.Duration(sequence-1)*100*time.Millisecond)
 	}
-	if stats.frames != 1 || stats.kcpGapsSkipped != 0 {
+	if stats.Frames != 1 || stats.KCPGapsSkipped != 0 {
 		t.Fatalf("before the timeout = %+v", *stats)
 	}
 	// 2.2 s is more than kcpGapSkipTimeout after the gap opened at 0.1 s.
 	sendTransportGapFrame(p, streams, stats, 5, 2200*time.Millisecond)
-	if stats.frames != 5 || stats.kcpGapsSkipped != 1 || stats.kcpSegmentsSkipped != 1 || stats.resyncSuccesses != 1 {
+	if stats.Frames != 5 || stats.KCPGapsSkipped != 1 || stats.KCPSegmentsSkipped != 1 || stats.ResyncSuccesses != 1 {
 		t.Fatalf("after the timeout = %+v", *stats)
 	}
 	health := directionHealth(t, p, "in")
@@ -68,7 +68,7 @@ func TestKCPGapIsSkippedAfterTimeoutAndDeliveryResumes(t *testing.T) {
 		health.LastLossReason != kcpSkipGapTimeout {
 		t.Fatalf("inbound health after recovery = %+v", health)
 	}
-	if got := p.transportHealthSnapshot().State; got != TransportRecovered {
+	if got := p.TransportHealthSnapshot().State; got != TransportRecovered {
 		t.Fatalf("capture transport state = %s", got)
 	}
 }
@@ -79,13 +79,13 @@ func TestKCPRetransmissionWithinTimeoutIsNotSkipped(t *testing.T) {
 	sendTransportGapFrame(p, streams, stats, 2, 100*time.Millisecond)
 	sendTransportGapFrame(p, streams, stats, 1, 1900*time.Millisecond)
 	sendTransportGapFrame(p, streams, stats, 3, 2500*time.Millisecond)
-	if stats.frames != 4 || stats.kcpGapsSkipped != 0 || stats.kcpGapsFilled != 1 {
+	if stats.Frames != 4 || stats.KCPGapsSkipped != 0 || stats.KCPGapsFilled != 1 {
 		t.Fatalf("a refilled gap must not be skipped: %+v", *stats)
 	}
 	if health := directionHealth(t, p, "in"); health.State != TransportHealthy || health.Losses != 0 {
 		t.Fatalf("health after a refilled gap = %+v", health)
 	}
-	if snapshot := p.damageStatisticsSnapshot(); snapshot.Integrity.Status != IntegrityIntact {
+	if snapshot := p.DamageStatisticsSnapshot(); snapshot.Integrity.Status != IntegrityIntact {
 		t.Fatalf("a refilled gap must not touch integrity: %+v", snapshot.Integrity)
 	}
 }
@@ -97,15 +97,15 @@ func TestKCPPendingByteLimitForcesSkip(t *testing.T) {
 	state := streams["00000009/in"]
 	for sequence := uint32(2); sequence < 90; sequence++ {
 		sendRecoverySegment(p, streams, stats, "in", sequence, big, time.Millisecond)
-		if state.pendingBytes > maxPendingKCPBytes {
-			t.Fatalf("pending bytes %d exceed the bound %d", state.pendingBytes, maxPendingKCPBytes)
+		if state.PendingBytes > maxPendingKCPBytes {
+			t.Fatalf("pending bytes %d exceed the bound %d", state.PendingBytes, maxPendingKCPBytes)
 		}
 	}
-	if stats.kcpPendingOverflow != 1 || stats.kcpGapsSkipped != 1 || stats.kcpPendingPeak >= maxPendingKCPSegments {
+	if stats.KCPPendingOverflow != 1 || stats.KCPGapsSkipped != 1 || stats.KCPPendingPeak >= maxPendingKCPSegments {
 		t.Fatalf("byte bound did not force exactly one skip: %+v", *stats)
 	}
-	if stats.frames != 89 {
-		t.Fatalf("frames after the byte-forced skip = %d, want 89", stats.frames)
+	if stats.Frames != 89 {
+		t.Fatalf("frames after the byte-forced skip = %d, want 89", stats.Frames)
 	}
 }
 
@@ -115,11 +115,11 @@ func TestKCPConsecutiveGapsRecoverWithoutLooping(t *testing.T) {
 	sendTransportGapFrame(p, streams, stats, 2, 100*time.Millisecond)
 	sendTransportGapFrame(p, streams, stats, 4, 200*time.Millisecond)
 	sendTransportGapFrame(p, streams, stats, 5, 2150*time.Millisecond) // skips the first hole only
-	if stats.frames != 2 || stats.kcpGapsSkipped != 1 {
+	if stats.Frames != 2 || stats.KCPGapsSkipped != 1 {
 		t.Fatalf("after the first timeout = %+v", *stats)
 	}
 	sendTransportGapFrame(p, streams, stats, 6, 2300*time.Millisecond) // the second hole has now waited 2.1 s
-	if stats.frames != 5 || stats.kcpGapsSkipped != 2 || stats.kcpSegmentsSkipped != 2 || stats.resyncSuccesses != 2 {
+	if stats.Frames != 5 || stats.KCPGapsSkipped != 2 || stats.KCPSegmentsSkipped != 2 || stats.ResyncSuccesses != 2 {
 		t.Fatalf("after the second timeout = %+v", *stats)
 	}
 	if health := directionHealth(t, p, "in"); health.Losses != 2 || health.Recoveries != 2 || health.State != TransportRecovered {
@@ -133,7 +133,7 @@ func TestKCPSkipAcrossSequenceWraparound(t *testing.T) {
 	sendTransportGapFrame(p, streams, stats, 0, 100*time.Millisecond) // ^uint32(0) is missing
 	sendTransportGapFrame(p, streams, stats, 1, 150*time.Millisecond)
 	sendTransportGapFrame(p, streams, stats, 2, 2200*time.Millisecond)
-	if stats.frames != 4 || stats.kcpSegmentsSkipped != 1 || stats.kcpGapsSkipped != 1 {
+	if stats.Frames != 4 || stats.KCPSegmentsSkipped != 1 || stats.KCPGapsSkipped != 1 {
 		t.Fatalf("skip across the wrap = %+v", *stats)
 	}
 }
@@ -143,8 +143,8 @@ func TestKCPCaptureEndSkipsOpenGap(t *testing.T) {
 	sendTransportGapFrame(p, streams, stats, 0, 0)
 	sendTransportGapFrame(p, streams, stats, 2, 100*time.Millisecond)
 	sendTransportGapFrame(p, streams, stats, 3, 150*time.Millisecond)
-	finishTransport(streams, p, stats)
-	if stats.frames != 3 || stats.kcpGapsSkipped != 1 || stats.resyncSuccesses != 1 {
+	FinishTransport(streams, p, stats)
+	if stats.Frames != 3 || stats.KCPGapsSkipped != 1 || stats.ResyncSuccesses != 1 {
 		t.Fatalf("capture end must deliver the data behind an open gap: %+v", *stats)
 	}
 	if health := directionHealth(t, p, "in"); health.LastLossReason != kcpSkipCaptureEnd || health.State != TransportRecovered {
@@ -156,12 +156,12 @@ func TestKCPFragmentLostAcrossSkipIsDiscarded(t *testing.T) {
 	p, streams, stats := newTransportGapHarness()
 	frame := makeRecoveryFrame(10, recoveryBody(3, 60))
 	sendRecoverySegment(p, streams, stats, "in", 0, makeRecoveryFrame(9, recoveryBody(4, 20)), 0)
-	consumeDatagram(makeKCPFragmentForTest(9, 1, 2, frame[:20]), "in", transportGapBase.Add(10*time.Millisecond), streams, p, stats)
+	ConsumeDatagram(makeKCPFragmentForTest(9, 1, 2, frame[:20]), "in", transportGapBase.Add(10*time.Millisecond), streams, p, stats)
 	// Fragment 2 of 3 (sequence 2) is lost; the final fragment and a whole frame wait behind it.
-	consumeDatagram(makeKCPFragmentForTest(9, 3, 0, frame[40:]), "in", transportGapBase.Add(20*time.Millisecond), streams, p, stats)
+	ConsumeDatagram(makeKCPFragmentForTest(9, 3, 0, frame[40:]), "in", transportGapBase.Add(20*time.Millisecond), streams, p, stats)
 	sendRecoverySegment(p, streams, stats, "in", 4, makeRecoveryFrame(11, recoveryBody(5, 30)), 30*time.Millisecond)
 	sendRecoverySegment(p, streams, stats, "in", 5, makeRecoveryFrame(12, recoveryBody(6, 30)), 2100*time.Millisecond)
-	if stats.frames != 3 || stats.kcpFragmentsDiscarded != 1 || stats.resyncSuccesses != 1 || stats.badCRC != 0 {
+	if stats.Frames != 3 || stats.KCPFragmentsDiscarded != 1 || stats.ResyncSuccesses != 1 || stats.BadCRC != 0 {
 		t.Fatalf("a message missing a fragment must be dropped whole: %+v", *stats)
 	}
 }
@@ -169,11 +169,11 @@ func TestKCPFragmentLostAcrossSkipIsDiscarded(t *testing.T) {
 func TestKCPStreamTableIsBounded(t *testing.T) {
 	p, streams, stats := newTransportGapHarness()
 	frame := makeTransportTestFrame(false, false)
-	for conv := uint32(0); conv < maxKCPStreams+2; conv++ {
-		consumeDatagram(makeKCPSegmentForTest(conv, 0, frame), "in", transportGapBase.Add(time.Duration(conv)*time.Second), streams, p, stats)
+	for conv := uint32(0); conv < MaxKCPStreams+2; conv++ {
+		ConsumeDatagram(makeKCPSegmentForTest(conv, 0, frame), "in", transportGapBase.Add(time.Duration(conv)*time.Second), streams, p, stats)
 	}
-	if len(streams) != maxKCPStreams || stats.kcpStreamsEvicted != 2 {
-		t.Fatalf("streams=%d evicted=%d", len(streams), stats.kcpStreamsEvicted)
+	if len(streams) != MaxKCPStreams || stats.KCPStreamsEvicted != 2 {
+		t.Fatalf("streams=%d evicted=%d", len(streams), stats.KCPStreamsEvicted)
 	}
 	if _, kept := streams["00000000/in"]; kept {
 		t.Fatal("the least recently active stream was not evicted")
@@ -222,8 +222,8 @@ func TestResyncAfterMidFrameGapFindsNextFrame(t *testing.T) {
 		sendRecoverySegment(p, streams, stats, "out", uint32(i), payload, time.Duration(i)*10*time.Millisecond)
 	}
 	sendRecoverySegment(p, streams, stats, "out", uint32(len(segments)), makeRecoveryFrame(112, recoveryBody(99, 20)), 3*time.Second)
-	if want := len(frames) - lost + 1; stats.frames != want || stats.badCRC != 0 || stats.resyncSuccesses != 1 {
-		t.Fatalf("frames=%d want %d (lost %d): %+v", stats.frames, want, lost, *stats)
+	if want := len(frames) - lost + 1; stats.Frames != want || stats.BadCRC != 0 || stats.ResyncSuccesses != 1 {
+		t.Fatalf("frames=%d want %d (lost %d): %+v", stats.Frames, want, lost, *stats)
 	}
 	health := directionHealth(t, p, "out")
 	if health.EstimatedLostFrames != uint64(lost) || health.LostFramesUnknown != 0 || health.DiscardedBytes == 0 {
@@ -232,14 +232,14 @@ func TestResyncAfterMidFrameGapFindsNextFrame(t *testing.T) {
 }
 
 func TestResyncSkipsNoiseBadCRCAndIncompleteCandidates(t *testing.T) {
-	stats := &captureStats{}
+	stats := &CaptureStats{}
 	valid := makeRecoveryFrame(5, recoveryBody(1, 40))
 	bad := makeRecoveryFrame(6, recoveryBody(2, 40))
 	bad[20] ^= 0xFF // body changed after the CRC was computed
 	// No noise byte is a plausible flag byte, so no candidate starts inside it.
 	noise := []byte{0x00, 0x13, 0x77, 0x09, 0x91, 0x0A, 0x05, 0x00, 0xFE, 0x3C}
 	buffer := append(append(append([]byte(nil), noise...), bad...), valid...)
-	offset, found, _ := findResyncFrame(buffer, nil, stats)
+	offset, found, _ := FindResyncFrame(buffer, nil, stats)
 	if !found || offset != len(noise)+len(bad) {
 		t.Fatalf("offset=%d found=%v, want %d", offset, found, len(noise)+len(bad))
 	}
@@ -247,20 +247,20 @@ func TestResyncSkipsNoiseBadCRCAndIncompleteCandidates(t *testing.T) {
 	// A plausible candidate whose declared length has not arrived must not hold back a later valid frame.
 	incomplete := []byte{0xF0, 0x0F, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00}
 	buffer = append(append([]byte(nil), incomplete...), valid...)
-	offset, found, _ = findResyncFrame(buffer, nil, stats)
+	offset, found, _ = FindResyncFrame(buffer, nil, stats)
 	if !found || offset != len(incomplete) {
 		t.Fatalf("incomplete candidate held back the valid frame: offset=%d found=%v", offset, found)
 	}
 
 	// Without a valid frame, bytes from the first incomplete candidate are kept for more data.
 	buffer = append(append([]byte(nil), noise...), incomplete...)
-	_, found, discardable := findResyncFrame(buffer, nil, stats)
+	_, found, discardable := FindResyncFrame(buffer, nil, stats)
 	if found || discardable != len(noise) {
 		t.Fatalf("found=%v discardable=%d, want %d", found, discardable, len(noise))
 	}
 
 	// Truncated data never validates.
-	_, found, _ = findResyncFrame(valid[:len(valid)-1], nil, stats)
+	_, found, _ = FindResyncFrame(valid[:len(valid)-1], nil, stats)
 	if found {
 		t.Fatal("a truncated frame validated")
 	}
@@ -268,8 +268,8 @@ func TestResyncSkipsNoiseBadCRCAndIncompleteCandidates(t *testing.T) {
 
 func TestResyncReportsUnrecoverableAfterScanBudgetThenRecovers(t *testing.T) {
 	p, _, stats := newTransportGapHarness()
-	state := &stream{key: "00000009/in", direction: "in", pending: make(map[uint32]segment)}
-	p.kcpStreams = map[string]*stream{state.key: state}
+	state := &Stream{key: "00000009/in", direction: "in", Pending: make(map[uint32]segment)}
+	p.kcpStreams = map[string]*Stream{state.key: state}
 	streams := p.kcpStreams
 	beginStreamRecovery(state, kcpSkipGapTimeout, 0, 1, transportGapBase, p, stats)
 	random := rand.New(rand.NewSource(20261104))
@@ -277,27 +277,27 @@ func TestResyncReportsUnrecoverableAfterScanBudgetThenRecovers(t *testing.T) {
 	for sent := 0; sent <= maxResyncScanBytes+3*len(chunk); sent += len(chunk) {
 		random.Read(chunk)
 		processApplicationData(append([]byte(nil), chunk...), transportGapBase.Add(time.Second), "in", streams, state, p, stats)
-		if len(state.applicationBuffer) > maxResyncRetainedBytes {
-			t.Fatalf("resync buffer %d exceeds %d", len(state.applicationBuffer), maxResyncRetainedBytes)
+		if len(state.applicationBuffer) > MaxResyncRetainedBytes {
+			t.Fatalf("resync buffer %d exceeds %d", len(state.applicationBuffer), MaxResyncRetainedBytes)
 		}
 	}
-	if stats.resyncFailures != 1 || stats.frames != 0 || stats.resyncCandidatesChecked == 0 {
+	if stats.ResyncFailures != 1 || stats.Frames != 0 || stats.ResyncCandidatesChecked == 0 {
 		t.Fatalf("noise must exhaust the scan budget without frames: %+v", *stats)
 	}
 	if health := directionHealth(t, p, "in"); health.State != TransportUnrecoverable || health.Unrecovered != 1 {
 		t.Fatalf("health after the budget = %+v", health)
 	}
 	// Valid frames keep arriving; the bounded search window slides over the noise until it reaches them.
-	for i := 0; i < 400 && stats.resyncSuccesses == 0; i++ {
+	for i := 0; i < 400 && stats.ResyncSuccesses == 0; i++ {
 		processApplicationData(makeRecoveryFrame(uint32(i), recoveryBody(i, 400)), transportGapBase.Add(2*time.Second), "in", streams, state, p, stats)
 	}
-	if stats.resyncSuccesses != 1 || stats.frames == 0 {
+	if stats.ResyncSuccesses != 1 || stats.Frames == 0 {
 		t.Fatalf("later frames must still recover the stream: %+v", *stats)
 	}
 	if health := directionHealth(t, p, "in"); health.State != TransportRecovered {
 		t.Fatalf("health after late recovery = %+v", health)
 	}
-	if snapshot := p.damageStatisticsSnapshot(); snapshot.Integrity.Status != IntegrityUnreliable ||
+	if snapshot := p.DamageStatisticsSnapshot(); snapshot.Integrity.Status != IntegrityUnreliable ||
 		!containsRisk(snapshot.Integrity.Risks, riskTransportUnrecovered) {
 		t.Fatalf("an episode that once failed stays unrecovered in integrity: %+v", snapshot.Integrity)
 	}
@@ -309,13 +309,13 @@ func TestInOrderCRCFailureTriggersResync(t *testing.T) {
 	bad[30] ^= 0x55
 	payload := append(append(append([]byte(nil), makeRecoveryFrame(1, recoveryBody(1, 40))...), bad...), makeRecoveryFrame(3, recoveryBody(3, 40))...)
 	sendRecoverySegment(p, streams, stats, "in", 0, payload, 0)
-	if stats.frames != 2 || stats.badCRC != 1 || stats.frameDesyncs != 1 || stats.resyncSuccesses != 1 {
+	if stats.Frames != 2 || stats.BadCRC != 1 || stats.FrameDesyncs != 1 || stats.ResyncSuccesses != 1 {
 		t.Fatalf("CRC failure handling = %+v", *stats)
 	}
 	if health := directionHealth(t, p, "in"); health.State != TransportRecovered || health.LastLossReason != frameDesyncCRC {
 		t.Fatalf("health after a CRC failure = %+v", health)
 	}
-	if p.context.snapshot().State != ContextSuspect {
+	if p.Context.Snapshot().State != ContextSuspect {
 		t.Fatal("an inbound framing loss must make inbound context suspect")
 	}
 }
@@ -353,7 +353,7 @@ func TestResyncRequiresAESPaddingWhenSessionKeyKnown(t *testing.T) {
 }
 
 func TestOutboundSequenceEvidence(t *testing.T) {
-	out := &stream{direction: "out", recovery: streamRecovery{sequenceBeforeLoss: 7, hasSequenceBeforeLoss: true}}
+	out := &Stream{direction: "out", Recovery: streamRecovery{sequenceBeforeLoss: 7, hasSequenceBeforeLoss: true}}
 	if evidence := outboundSequenceEvidence(out, 10); evidence.status != sequenceEvidenceConsistent || evidence.lostFrames != 2 {
 		t.Fatalf("outbound jump of 3 = %+v", evidence)
 	}
@@ -363,7 +363,7 @@ func TestOutboundSequenceEvidence(t *testing.T) {
 	if evidence := outboundSequenceEvidence(out, 7+maxOutboundSequenceJump+1); evidence.status != sequenceEvidenceInconsistent {
 		t.Fatalf("outbound reset-sized jump = %+v", evidence)
 	}
-	in := &stream{direction: "in", recovery: streamRecovery{sequenceBeforeLoss: 7, hasSequenceBeforeLoss: true}}
+	in := &Stream{direction: "in", Recovery: streamRecovery{sequenceBeforeLoss: 7, hasSequenceBeforeLoss: true}}
 	if evidence := outboundSequenceEvidence(in, 8); evidence.status != sequenceEvidenceUnavailable || evidence.lostFrames != -1 {
 		t.Fatalf("inbound sequences must not be used: %+v", evidence)
 	}

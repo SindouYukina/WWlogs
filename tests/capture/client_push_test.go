@@ -10,20 +10,20 @@ import (
 func localRoleReportBody(roleID uint64, entityIDs ...uint64) []byte {
 	role := appendVarintField(nil, fieldClientCurrentRoleReportPushCurrentRoleID, roleID) // ClientCurrentRoleReportPush.CurrentRoleId
 	for _, entityID := range entityIDs {
-		role = appendVarintField(role, fieldClientCurrentRoleReportPushCurrentEntityID, entityID)
+		role = appendVarintField(role, FieldClientCurrentRoleReportPushCurrentEntityID, entityID)
 	}
-	push := appendBytesField(nil, fieldCombatPushDataClientCurrentRoleReportPush, role)
-	data := appendBytesField(nil, fieldCombatSendDataPush, push)
-	return appendBytesField(nil, fieldCombatSendPackRequestData, data)
+	push := appendBytesField(nil, FieldCombatPushDataClientCurrentRoleReportPush, role)
+	data := appendBytesField(nil, FieldCombatSendDataPush, push)
+	return appendBytesField(nil, FieldCombatSendPackRequestData, data)
 }
 
 func TestLocalRoleWireReportDoesNotRequireOptionalProtocolSchema(t *testing.T) {
-	p := newProcessor(nil, &strings.Builder{}, &strings.Builder{}, nil)
-	p.observeClientPushFrame(gameFrame{commandID: cmdCombatSendPackRequest, direction: "out"}, localRoleReportBody(1409, 51522))
-	if !p.playerRelevance.isRoleEntity(51522) {
+	p := NewProcessor(nil, &strings.Builder{}, &strings.Builder{}, nil)
+	p.ObserveClientPushFrame(GameFrame{CommandID: CmdCombatSendPackRequest, Direction: "out"}, localRoleReportBody(1409, 51522))
+	if !p.PlayerRelevance.IsRoleEntity(51522) {
 		t.Fatal("normal product mode did not recognize the exact client-reported role entity")
 	}
-	if p.stats.playerRoleReports != 1 || p.stats.playerRoleReportParseErrors != 0 {
-		t.Fatalf("role report stats = %+v", p.stats)
+	if p.Stats.PlayerRoleReports != 1 || p.Stats.PlayerRoleReportParseErrors != 0 {
+		t.Fatalf("role report stats = %+v", p.Stats)
 	}
 }

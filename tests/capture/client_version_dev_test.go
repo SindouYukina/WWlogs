@@ -8,10 +8,10 @@ import (
 )
 
 func TestClientVersionAuditFieldsContainOnlyVersionData(t *testing.T) {
-	report := &clientVersionReport{
+	report := &ClientVersionReport{
 		ClientBuild:         currentTestBuild,
 		CheckClientVersions: currentTestClientVersions,
-		SourceCommands:      []uint16{cmdLoginRequest, cmdCheckClientPush},
+		SourceCommands:      []uint16{CmdLoginRequest, CmdCheckClientPush},
 	}
 	build, versions, commands := clientVersionAuditFields(report)
 	expectedVersions, err := json.Marshal(currentTestClientVersions)

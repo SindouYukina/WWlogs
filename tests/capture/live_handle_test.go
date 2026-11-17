@@ -10,14 +10,14 @@ import (
 
 func TestLiveCaptureAppliedDescribesRefusedOptions(t *testing.T) {
 	cases := []struct {
-		applied liveCaptureApplied
+		applied LiveCaptureApplied
 		want    string
 	}{
-		{liveCaptureApplied{ReadTimeout: time.Second}, "read_timeout=1s immediate=off kernel_buffer=default"},
-		{liveCaptureApplied{ReadTimeout: time.Second, Immediate: true}, "read_timeout=1s immediate=on kernel_buffer=default"},
-		{liveCaptureApplied{ReadTimeout: time.Second, ImmediateError: "missing"}, "read_timeout=1s immediate=unsupported kernel_buffer=default"},
-		{liveCaptureApplied{ReadTimeout: 100 * time.Millisecond, BufferBytes: 4 << 20}, "read_timeout=100ms immediate=off kernel_buffer=4194304"},
-		{liveCaptureApplied{ReadTimeout: time.Second, BufferError: "refused"}, "read_timeout=1s immediate=off kernel_buffer=default_after_error"},
+		{LiveCaptureApplied{ReadTimeout: time.Second}, "read_timeout=1s immediate=off kernel_buffer=default"},
+		{LiveCaptureApplied{ReadTimeout: time.Second, Immediate: true}, "read_timeout=1s immediate=on kernel_buffer=default"},
+		{LiveCaptureApplied{ReadTimeout: time.Second, ImmediateError: "missing"}, "read_timeout=1s immediate=unsupported kernel_buffer=default"},
+		{LiveCaptureApplied{ReadTimeout: 100 * time.Millisecond, BufferBytes: 4 << 20}, "read_timeout=100ms immediate=off kernel_buffer=4194304"},
+		{LiveCaptureApplied{ReadTimeout: time.Second, BufferError: "refused"}, "read_timeout=1s immediate=off kernel_buffer=default_after_error"},
 	}
 	for _, c := range cases {
 		if got := c.applied.String(); got != c.want {
@@ -27,7 +27,7 @@ func TestLiveCaptureAppliedDescribesRefusedOptions(t *testing.T) {
 }
 
 func TestOpenLiveCaptureReportsMissingDevice(t *testing.T) {
-	_, _, err := openLiveCapture(`\Device\NPF_{00000000-0000-0000-0000-000000000000}`, liveCaptureConfig{ReadTimeout: time.Second, Immediate: true})
+	_, _, err := OpenLiveCapture(`\Device\NPF_{00000000-0000-0000-0000-000000000000}`, liveCaptureConfig{ReadTimeout: time.Second, Immediate: true})
 	if err == nil {
 		t.Skip("a device with the all-zero GUID exists on this host")
 	}
@@ -37,7 +37,7 @@ func TestOpenLiveCaptureReportsMissingDevice(t *testing.T) {
 }
 
 func TestDefaultLiveCaptureConfigUsesImmediateModeWithBoundedFallback(t *testing.T) {
-	cfg := defaultLiveCaptureConfig()
+	cfg := DefaultLiveCaptureConfig()
 	if !cfg.Immediate || cfg.ReadTimeout != time.Second || cfg.FallbackReadTimeout != 100*time.Millisecond || cfg.BufferBytes != 0 {
 		t.Fatalf("default capture config = %+v", cfg)
 	}
@@ -49,7 +49,7 @@ func TestDefaultLiveCaptureConfigUsesImmediateModeWithBoundedFallback(t *testing
 // TestOpenLiveCaptureOnNpcapLoopback opens the real Npcap loopback adapter when it exists; on hosts without Npcap it is
 // skipped. It checks that the options are applied as requested, not merely configured.
 func TestOpenLiveCaptureOnNpcapLoopback(t *testing.T) {
-	handle, applied, err := openLiveCapture(`\Device\NPF_Loopback`, defaultLiveCaptureConfig())
+	handle, applied, err := OpenLiveCapture(`\Device\NPF_Loopback`, DefaultLiveCaptureConfig())
 	if err != nil {
 		t.Skipf("Npcap loopback adapter unavailable: %v", err)
 	}
@@ -57,7 +57,7 @@ func TestOpenLiveCaptureOnNpcapLoopback(t *testing.T) {
 	if !applied.Immediate || applied.ImmediateError != "" || applied.ReadTimeout != time.Second {
 		t.Fatalf("applied = %+v", applied)
 	}
-	off, appliedOff, err := openLiveCapture(`\Device\NPF_Loopback`, liveCaptureConfig{ReadTimeout: 250 * time.Millisecond})
+	off, appliedOff, err := OpenLiveCapture(`\Device\NPF_Loopback`, liveCaptureConfig{ReadTimeout: 250 * time.Millisecond})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -109,7 +109,7 @@ func tagWordMatch(tags []string, words []string) string {
 
 // classifyEffectDefinition classifies an effect from its static definition alone. Combat evidence
 // wins over non-combat evidence, so a definition with both is never hidden.
-func classifyEffectDefinition(static buffStaticParameters, hasDefinition, hasTerm bool) (EffectCombatClass, string) {
+func classifyEffectDefinition(static BuffStaticParameters, hasDefinition, hasTerm bool) (EffectCombatClass, string) {
 	if hasTerm {
 		return EffectCombatClassCombat, effectCombatBasisTerm
 	}
@@ -117,19 +117,19 @@ func classifyEffectDefinition(static buffStaticParameters, hasDefinition, hasTer
 		return EffectCombatClassUnknown, effectCombatBasisDefinitionMissing
 	}
 	attributeClass := EffectCombatClassUnknown
-	if static.hasAttribute && static.hasModifier {
-		attributeClass = attributeCombatClass(static.attribute)
+	if static.HasAttribute && static.HasModifier {
+		attributeClass = attributeCombatClass(static.Attribute)
 	}
 	if attributeClass == EffectCombatClassCombat {
-		return EffectCombatClassCombat, effectCombatBasisAttribute + attributeTypeNames[static.attribute]
+		return EffectCombatClassCombat, effectCombatBasisAttribute + attributeTypeNames[static.Attribute]
 	}
-	if word := tagWordMatch(static.tags, combatTagWords); word != "" {
+	if word := tagWordMatch(static.Tags, combatTagWords); word != "" {
 		return EffectCombatClassCombat, effectCombatBasisTag + word
 	}
 	if attributeClass == EffectCombatClassNonCombat {
-		return EffectCombatClassNonCombat, effectCombatBasisAttribute + attributeTypeNames[static.attribute]
+		return EffectCombatClassNonCombat, effectCombatBasisAttribute + attributeTypeNames[static.Attribute]
 	}
-	if word := tagWordMatch(static.tags, nonCombatTagWords); word != "" {
+	if word := tagWordMatch(static.Tags, nonCombatTagWords); word != "" {
 		return EffectCombatClassNonCombat, effectCombatBasisTag + word
 	}
 	return EffectCombatClassUnknown, effectCombatBasisNoEvidence
@@ -163,29 +163,29 @@ func localEffectRelation(relation EffectEntityRelation) bool {
 }
 
 // effectMonsterEntity reports a runtime entity resolved as a monster.
-func (p *processor) effectMonsterEntity(entityID uint64) bool {
-	if p == nil || p.entities == nil || entityID == 0 {
+func (p *Processor) effectMonsterEntity(entityID uint64) bool {
+	if p == nil || p.Entities == nil || entityID == 0 {
 		return false
 	}
-	identity := resolveEntityIdentity(p.entities, p.masters, entityID)
-	return identity.HasMonster || isExplicitMonsterEntity(identity.Runtime)
+	identity := ResolveEntityIdentity(p.Entities, p.Masters, entityID)
+	return identity.HasMonster || IsExplicitMonsterEntity(identity.Runtime)
 }
 
 // effectPartiesFor resolves both ends of an effect for classification.
-func (p *processor) effectPartiesFor(holder uint64, source uint64, hasSource bool) effectParties {
-	parties := effectParties{holder: p.effectEntityRelation(holder), source: EffectRelationUnknown, holderMonster: p.effectMonsterEntity(holder)}
+func (p *Processor) effectPartiesFor(holder uint64, source uint64, hasSource bool) effectParties {
+	parties := effectParties{holder: p.EffectEntityRelation(holder), source: EffectRelationUnknown, holderMonster: p.effectMonsterEntity(holder)}
 	if hasSource && source != 0 {
-		parties.source, parties.sourceMonster = p.effectEntityRelation(source), p.effectMonsterEntity(source)
+		parties.source, parties.sourceMonster = p.EffectEntityRelation(source), p.effectMonsterEntity(source)
 	}
 	return parties
 }
 
 // effectDefinitionClass classifies an effect id against the loaded Master.
-func (p *processor) effectDefinitionClass(effectID uint64) (EffectCombatClass, string) {
-	if p == nil || !p.masters.hasBuffDefinition(effectID) {
+func (p *Processor) effectDefinitionClass(effectID uint64) (EffectCombatClass, string) {
+	if p == nil || !p.Masters.HasBuffDefinition(effectID) {
 		return EffectCombatClassUnknown, effectCombatBasisDefinitionMissing
 	}
-	static, _ := p.masters.buffStatic(effectID)
-	_, hasTerm := p.masters.buffTerm(effectID)
+	static, _ := p.Masters.buffStatic(effectID)
+	_, hasTerm := p.Masters.buffTerm(effectID)
 	return classifyEffectDefinition(static, true, hasTerm)
 }

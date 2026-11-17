@@ -11,11 +11,11 @@ import (
 )
 
 // undecodableReason is the census reason for a frame decodes refused.
-func undecodableReason(s *protocolSession) string {
-	switch s.state {
-	case protocolPending:
+func undecodableReason(s *ProtocolSession) string {
+	switch s.State {
+	case ProtocolPending:
 		return protocolPendingFailureReason
-	case protocolUnsupported:
+	case ProtocolUnsupported:
 		return protocolUnsupportedFailureReason
 	default:
 		return protocolNoHandshakeReason
@@ -38,9 +38,9 @@ const maxTopLevelFieldKeys = 64
 // that is syntactically valid Protobuf at the top level. The keys are wire
 // facts only. They do not show that a field has a semantic meaning, and nested
 // messages are not inspected here.
-func (e *commandCensusEntry) observeTopLevelFields(fields []protoField) {
+func (e *commandCensusEntry) observeTopLevelFields(fields []ProtoField) {
 	for _, field := range fields {
-		key := fmt.Sprintf("%d/w%d", field.number, field.wire)
+		key := fmt.Sprintf("%d/w%d", field.Number, field.Wire)
 		if e.TopLevelFields == nil {
 			e.TopLevelFields = make(map[string]int)
 		}
@@ -58,7 +58,7 @@ func (e *commandCensusEntry) observeTopLevelFields(fields []protoField) {
 // the typed decoder already uses, so they are not an unknown-field census by
 // themselves.
 func (e *commandCensusEntry) ObserveKnownBodyWire(plain []byte) {
-	fields, err := parseProtoFields(plain)
+	fields, err := ParseProtoFields(plain)
 	if err != nil {
 		e.FailureReasons["implemented body top-level wire parse failed"]++
 		return
@@ -150,12 +150,12 @@ type malformedObservation struct {
 // crcFailureRecord is a CRC failure the census keeps, linked to the next frame that passed its checks once the parser
 // finds one. The JSON of the record is the observation's, then nextValidFrame.
 type crcFailureRecord struct {
-	crcFailureObservation
-	NextValid *frameBoundaryObservation `json:"nextValidFrame,omitempty"`
+	CRCFailureObservation
+	NextValid *FrameBoundaryObservation `json:"nextValidFrame,omitempty"`
 }
 
 type commandCensus struct {
-	processor             *processor
+	processor             *Processor
 	entries               map[censusKey]*commandCensusEntry
 	innerEntries          map[string]int
 	combatNotifyFields    map[uint64]int
@@ -177,7 +177,7 @@ type commandCensus struct {
 const maxFrameErrorObservations = 128
 
 // newCommandCensus is an empty census for the frames of p (nil when no undecoded frame is inspected).
-func newCommandCensus(p *processor) *commandCensus {
+func newCommandCensus(p *Processor) *commandCensus {
 	return &commandCensus{
 		processor:          p,
 		entries:            make(map[censusKey]*commandCensusEntry),
@@ -192,165 +192,165 @@ func newCommandCensus(p *processor) *commandCensus {
 
 func commandName(id uint16) string {
 	switch id {
-	case cmdLoginRequest:
+	case CmdLoginRequest:
 		return "LoginRequest"
-	case cmdCheckClientPush:
+	case CmdCheckClientPush:
 		return "CheckClientPush"
-	case cmdProtoKeyResponse:
+	case CmdProtoKeyResponse:
 		return "ProtoKeyResponse"
-	case cmdJoinSceneNotify:
+	case CmdJoinSceneNotify:
 		return "JoinSceneNotify"
-	case cmdUpdateSceneGroupDataNotify:
+	case CmdUpdateSceneGroupDataNotify:
 		return "UpdateSceneGroupDataNotify"
-	case cmdPlayerLivingStatesNotify:
+	case CmdPlayerLivingStatesNotify:
 		return "PlayerLivingStatesNotify"
-	case cmdAddSysBuffNotify:
+	case CmdAddSysBuffNotify:
 		return "AddSysBuffNotify"
-	case cmdApplyGameplayEffectNotify:
+	case CmdApplyGameplayEffectNotify:
 		return "ApplyGameplayEffectNotify"
-	case cmdApplyGameplayEffectPush:
+	case CmdApplyGameplayEffectPush:
 		return "ApplyGameplayEffectPush"
-	case cmdRemoveGameplayEffectNotify:
+	case CmdRemoveGameplayEffectNotify:
 		return "RemoveGameplayEffectNotify"
-	case cmdRemoveGameplayEffectPush:
+	case CmdRemoveGameplayEffectPush:
 		return "RemoveGameplayEffectPush"
-	case cmdSimpleCombatEntityBuffUpdateNotify:
+	case CmdSimpleCombatEntityBuffUpdateNotify:
 		return "SimpleCombatEntityBuffUpdateNotify"
-	case cmdSimpleCombatEntityBuffLayerCountNotify:
+	case CmdSimpleCombatEntityBuffLayerCountNotify:
 		return "SimpleCombatEntityBuffLayerCountNotify"
-	case cmdBuffStackCountNotify:
+	case CmdBuffStackCountNotify:
 		return "BuffStackCountNotify"
-	case cmdBuffDurationNotify:
+	case CmdBuffDurationNotify:
 		return "BuffDurationNotify"
-	case cmdApplyGameplayEffectRequest:
+	case CmdApplyGameplayEffectRequest:
 		return "ApplyGameplayEffectRequest"
-	case cmdApplyGameplayEffectResponse:
+	case CmdApplyGameplayEffectResponse:
 		return "ApplyGameplayEffectResponse"
-	case cmdRemoveGameplayEffectRequest:
+	case CmdRemoveGameplayEffectRequest:
 		return "RemoveGameplayEffectRequest"
-	case cmdRemoveGameplayEffectResponse:
+	case CmdRemoveGameplayEffectResponse:
 		return "RemoveGameplayEffectResponse"
-	case cmdOrderApplyBuffRequest:
+	case CmdOrderApplyBuffRequest:
 		return "OrderApplyBuffRequest"
-	case cmdOrderApplyBuffResponse:
+	case CmdOrderApplyBuffResponse:
 		return "OrderApplyBuffResponse"
-	case cmdOrderRemoveBuffRequest:
+	case CmdOrderRemoveBuffRequest:
 		return "OrderRemoveBuffRequest"
-	case cmdOrderRemoveBuffResponse:
+	case CmdOrderRemoveBuffResponse:
 		return "OrderRemoveBuffResponse"
-	case cmdApplyBuffS2cRequestNotify:
+	case CmdApplyBuffS2cRequestNotify:
 		return "ApplyBuffS2cRequestNotify"
-	case cmdApplyBuffS2cResponsePush:
+	case CmdApplyBuffS2cResponsePush:
 		return "ApplyBuffS2cResponsePush"
-	case cmdRemoveBuffS2cRequestNotify:
+	case CmdRemoveBuffS2cRequestNotify:
 		return "RemoveBuffS2cRequestNotify"
-	case cmdRemoveBuffS2cResponsePush:
+	case CmdRemoveBuffS2cResponsePush:
 		return "RemoveBuffS2cResponsePush"
-	case cmdRemoveBuffByIDS2cRequestNotify:
+	case CmdRemoveBuffByIDS2cRequestNotify:
 		return "RemoveBuffByIdS2cRequestNotify"
-	case cmdRemoveBuffByIDS2cResponsePush:
+	case CmdRemoveBuffByIDS2cResponsePush:
 		return "RemoveBuffByIdS2cResponsePush"
-	case cmdActivateBuffRequest:
+	case CmdActivateBuffRequest:
 		return "ActivateBuffRequest"
-	case cmdActivateBuffResponse:
+	case CmdActivateBuffResponse:
 		return "ActivateBuffResponse"
-	case cmdActivateBuffNotify:
+	case CmdActivateBuffNotify:
 		return "ActivateBuffNotify"
-	case cmdActivateBuffPush:
+	case CmdActivateBuffPush:
 		return "ActivateBuffPush"
-	case cmdBuffStackCountRequest:
+	case CmdBuffStackCountRequest:
 		return "BuffStackCountRequest"
-	case cmdBuffStackCountResponse:
+	case CmdBuffStackCountResponse:
 		return "BuffStackCountResponse"
-	case cmdBuffStackCountPush:
+	case CmdBuffStackCountPush:
 		return "BuffStackCountPush"
-	case cmdBuffEffectRequest:
+	case CmdBuffEffectRequest:
 		return "BuffEffectRequest"
-	case cmdBuffEffectResponse:
+	case CmdBuffEffectResponse:
 		return "BuffEffectResponse"
-	case cmdBuffEffectPush:
+	case CmdBuffEffectPush:
 		return "BuffEffectPush"
-	case cmdBuffEffectExecuteRequest:
+	case CmdBuffEffectExecuteRequest:
 		return "BuffEffectExecuteRequest"
-	case cmdBuffEffectExecuteResponse:
+	case CmdBuffEffectExecuteResponse:
 		return "BuffEffectExecuteResponse"
-	case cmdBuffEffectExecutePush:
+	case CmdBuffEffectExecutePush:
 		return "BuffEffectExecutePush"
-	case cmdEntityBuffProducerRequest:
+	case CmdEntityBuffProducerRequest:
 		return "EntityBuffProducerRequest"
-	case cmdEntityBuffProducerResponse:
+	case CmdEntityBuffProducerResponse:
 		return "EntityBuffProducerResponse"
-	case cmdEntityBuffProducerOperateRequest:
+	case CmdEntityBuffProducerOperateRequest:
 		return "EntityBuffProducerOperateRequest"
-	case cmdEntityBuffProducerOperateResponse:
+	case CmdEntityBuffProducerOperateResponse:
 		return "EntityBuffProducerOperateResponse"
-	case cmdOrderRemoveBuffByTagsRequest:
+	case CmdOrderRemoveBuffByTagsRequest:
 		return "OrderRemoveBuffByTagsRequest"
-	case cmdOrderRemoveBuffByTagsResponse:
+	case CmdOrderRemoveBuffByTagsResponse:
 		return "OrderRemoveBuffByTagsResponse"
-	case cmdOrderRemoveBuffByTagsNotify:
+	case CmdOrderRemoveBuffByTagsNotify:
 		return "OrderRemoveBuffByTagsNotify"
-	case cmdRemoveBuffByServerIDS2cRequestNotify:
+	case CmdRemoveBuffByServerIDS2cRequestNotify:
 		return "RemoveBuffByServerIdS2cRequestNotify"
-	case cmdAtomicProcessAddBuffRequest:
+	case CmdAtomicProcessAddBuffRequest:
 		return "AtomicProcessAddBuffRequest"
-	case cmdAtomicProcessAddBuffResponse:
+	case CmdAtomicProcessAddBuffResponse:
 		return "AtomicProcessAddBuffResponse"
-	case cmdAtomicProcessRemoveBuffRequest:
+	case CmdAtomicProcessRemoveBuffRequest:
 		return "AtomicProcessRemoveBuffRequest"
-	case cmdAtomicProcessRemoveBuffResponse:
+	case CmdAtomicProcessRemoveBuffResponse:
 		return "AtomicProcessRemoveBuffResponse"
-	case cmdTransformBuffStackNotify:
+	case CmdTransformBuffStackNotify:
 		return "TransformBuffStackNotify"
-	case cmdOrderApplyBuffNotify:
+	case CmdOrderApplyBuffNotify:
 		return "OrderApplyBuffNotify"
-	case cmdOrderRemoveBuffNotify:
+	case CmdOrderRemoveBuffNotify:
 		return "OrderRemoveBuffNotify"
-	case cmdRefreshBuffDurationPush:
+	case CmdRefreshBuffDurationPush:
 		return "RefreshBuffDurationPush"
-	case cmdRemoveSysBuffNotify:
+	case CmdRemoveSysBuffNotify:
 		return "RemoveSysBuffNotify"
-	case cmdSimpleCombatEntityAttributeUpdateNotify:
+	case CmdSimpleCombatEntityAttributeUpdateNotify:
 		return "SimpleCombatEntityAttributeUpdateNotify"
-	case cmdSimpleCombatEntitySyncAttributePush:
+	case CmdSimpleCombatEntitySyncAttributePush:
 		return "SimpleCombatEntitySyncAttributePush"
-	case cmdUpdateSysBuffNotify:
+	case CmdUpdateSysBuffNotify:
 		return "UpdateSysBuffNotify"
-	case cmdUpdatePlayerAllFightRoleNotify:
+	case CmdUpdatePlayerAllFightRoleNotify:
 		return "UpdatePlayerAllFightRoleNotify"
-	case cmdUpdatePlayersFightRolesInfoNotify:
+	case CmdUpdatePlayersFightRolesInfoNotify:
 		return "UpdatePlayersFightRolesInfoNotify"
-	case cmdUpdatePlayerSingleFightRoleNotify:
+	case CmdUpdatePlayerSingleFightRoleNotify:
 		return "UpdatePlayerSingleFightRoleNotify"
-	case cmdChangePlayerFightRoleNotify:
+	case CmdChangePlayerFightRoleNotify:
 		return "ChangePlayerFightRoleNotify"
-	case cmdCombatSendPackRequest:
+	case CmdCombatSendPackRequest:
 		return "CombatRequest (outer transport)"
-	case cmdCombatSendPackResponse:
+	case CmdCombatSendPackResponse:
 		return "CombatResponse (outer transport)"
-	case cmdCombatReceivePackNotify:
+	case CmdCombatReceivePackNotify:
 		return "CombatReceivePackNotify"
-	case cmdDamageExecuteRequest:
+	case CmdDamageExecuteRequest:
 		return "DamageExecute RPC (inner candidate)"
-	case cmdPhantomAttrRecommendResponse:
+	case CmdPhantomAttrRecommendResponse:
 		return "PhantomAttrRecommendResponse"
-	case cmdEntityRemoveDynamicInteractNotify:
+	case CmdEntityRemoveDynamicInteractNotify:
 		return "EntityRemoveDynamicInteractNotify"
-	case cmdEntityCommonTagNotify:
+	case CmdEntityCommonTagNotify:
 		return "EntityCommonTagNotify"
-	case cmdEntityStateReadyNotify:
+	case CmdEntityStateReadyNotify:
 		return "EntityStateReadyNotify"
-	case cmdMovePackagePush:
+	case CmdMovePackagePush:
 		return "MovePackagePush"
-	case cmdPlayerFollowerNotify:
+	case CmdPlayerFollowerNotify:
 		return "PlayerFollowerNotify"
-	case cmdEntityAddNotify:
+	case CmdEntityAddNotify:
 		return "EntityAddNotify (candidate)"
-	case cmdEntityActiveResponse:
+	case CmdEntityActiveResponse:
 		return "EntityActiveResponse (candidate)"
-	case cmdEntityActiveRequest:
+	case CmdEntityActiveRequest:
 		return "EntityActiveRequest (candidate)"
-	case cmdEntityRemoveNotify:
+	case CmdEntityRemoveNotify:
 		return "EntityRemoveNotify (candidate)"
 	default:
 		return ""
@@ -361,11 +361,11 @@ func commandName(id uint16) string {
 // schema basis.
 func hasCurrentProtocolSchema(id uint16) bool {
 	switch id {
-	case cmdUpdateSceneGroupDataNotify, cmdPlayerLivingStatesNotify, cmdAddSysBuffNotify, cmdApplyGameplayEffectNotify, cmdApplyGameplayEffectPush, cmdRemoveGameplayEffectNotify, cmdRemoveGameplayEffectPush, cmdSimpleCombatEntityBuffUpdateNotify, cmdSimpleCombatEntityBuffLayerCountNotify, cmdBuffStackCountNotify, cmdBuffDurationNotify, cmdOrderApplyBuffNotify, cmdOrderRemoveBuffNotify, cmdRefreshBuffDurationPush, cmdRemoveSysBuffNotify, cmdSimpleCombatEntityAttributeUpdateNotify, cmdSimpleCombatEntitySyncAttributePush, cmdUpdateSysBuffNotify,
-		cmdApplyGameplayEffectRequest, cmdApplyGameplayEffectResponse, cmdRemoveGameplayEffectRequest, cmdRemoveGameplayEffectResponse, cmdOrderApplyBuffRequest, cmdOrderApplyBuffResponse, cmdOrderRemoveBuffRequest, cmdOrderRemoveBuffResponse, cmdApplyBuffS2cRequestNotify, cmdApplyBuffS2cResponsePush, cmdRemoveBuffS2cRequestNotify, cmdRemoveBuffS2cResponsePush, cmdRemoveBuffByIDS2cRequestNotify, cmdRemoveBuffByIDS2cResponsePush, cmdActivateBuffRequest, cmdActivateBuffResponse, cmdActivateBuffNotify, cmdActivateBuffPush,
-		cmdBuffStackCountRequest, cmdBuffStackCountResponse, cmdBuffStackCountPush, cmdBuffEffectRequest, cmdBuffEffectResponse, cmdBuffEffectPush, cmdBuffEffectExecuteRequest, cmdBuffEffectExecuteResponse, cmdBuffEffectExecutePush, cmdEntityBuffProducerRequest, cmdEntityBuffProducerResponse, cmdEntityBuffProducerOperateRequest, cmdEntityBuffProducerOperateResponse, cmdOrderRemoveBuffByTagsRequest, cmdOrderRemoveBuffByTagsResponse, cmdOrderRemoveBuffByTagsNotify, cmdRemoveBuffByServerIDS2cRequestNotify,
-		cmdAtomicProcessAddBuffRequest, cmdAtomicProcessAddBuffResponse, cmdAtomicProcessRemoveBuffRequest, cmdAtomicProcessRemoveBuffResponse, cmdTransformBuffStackNotify, cmdJoinSceneNotify, cmdEntityAddNotify, cmdEntityRemoveNotify, cmdEntityActiveRequest, cmdUpdatePlayerAllFightRoleNotify, cmdUpdatePlayersFightRolesInfoNotify, cmdUpdatePlayerSingleFightRoleNotify, cmdChangePlayerFightRoleNotify, cmdCombatReceivePackNotify,
-		cmdEntityActiveResponse, cmdPhantomAttrRecommendResponse, cmdMovePackagePush, cmdPlayerFollowerNotify, cmdEntityRemoveDynamicInteractNotify, cmdEntityCommonTagNotify, cmdEntityStateReadyNotify:
+	case CmdUpdateSceneGroupDataNotify, CmdPlayerLivingStatesNotify, CmdAddSysBuffNotify, CmdApplyGameplayEffectNotify, CmdApplyGameplayEffectPush, CmdRemoveGameplayEffectNotify, CmdRemoveGameplayEffectPush, CmdSimpleCombatEntityBuffUpdateNotify, CmdSimpleCombatEntityBuffLayerCountNotify, CmdBuffStackCountNotify, CmdBuffDurationNotify, CmdOrderApplyBuffNotify, CmdOrderRemoveBuffNotify, CmdRefreshBuffDurationPush, CmdRemoveSysBuffNotify, CmdSimpleCombatEntityAttributeUpdateNotify, CmdSimpleCombatEntitySyncAttributePush, CmdUpdateSysBuffNotify,
+		CmdApplyGameplayEffectRequest, CmdApplyGameplayEffectResponse, CmdRemoveGameplayEffectRequest, CmdRemoveGameplayEffectResponse, CmdOrderApplyBuffRequest, CmdOrderApplyBuffResponse, CmdOrderRemoveBuffRequest, CmdOrderRemoveBuffResponse, CmdApplyBuffS2cRequestNotify, CmdApplyBuffS2cResponsePush, CmdRemoveBuffS2cRequestNotify, CmdRemoveBuffS2cResponsePush, CmdRemoveBuffByIDS2cRequestNotify, CmdRemoveBuffByIDS2cResponsePush, CmdActivateBuffRequest, CmdActivateBuffResponse, CmdActivateBuffNotify, CmdActivateBuffPush,
+		CmdBuffStackCountRequest, CmdBuffStackCountResponse, CmdBuffStackCountPush, CmdBuffEffectRequest, CmdBuffEffectResponse, CmdBuffEffectPush, CmdBuffEffectExecuteRequest, CmdBuffEffectExecuteResponse, CmdBuffEffectExecutePush, CmdEntityBuffProducerRequest, CmdEntityBuffProducerResponse, CmdEntityBuffProducerOperateRequest, CmdEntityBuffProducerOperateResponse, CmdOrderRemoveBuffByTagsRequest, CmdOrderRemoveBuffByTagsResponse, CmdOrderRemoveBuffByTagsNotify, CmdRemoveBuffByServerIDS2cRequestNotify,
+		CmdAtomicProcessAddBuffRequest, CmdAtomicProcessAddBuffResponse, CmdAtomicProcessRemoveBuffRequest, CmdAtomicProcessRemoveBuffResponse, CmdTransformBuffStackNotify, CmdJoinSceneNotify, CmdEntityAddNotify, CmdEntityRemoveNotify, CmdEntityActiveRequest, CmdUpdatePlayerAllFightRoleNotify, CmdUpdatePlayersFightRolesInfoNotify, CmdUpdatePlayerSingleFightRoleNotify, CmdChangePlayerFightRoleNotify, CmdCombatReceivePackNotify,
+		CmdEntityActiveResponse, CmdPhantomAttrRecommendResponse, CmdMovePackagePush, CmdPlayerFollowerNotify, CmdEntityRemoveDynamicInteractNotify, CmdEntityCommonTagNotify, CmdEntityStateReadyNotify:
 		return true
 	default:
 		return false
@@ -390,10 +390,10 @@ func (c *commandCensus) entry(id uint16, direction string) *commandCensusEntry {
 			census:         c,
 		}
 		switch id {
-		case cmdLoginRequest, cmdCheckClientPush:
+		case CmdLoginRequest, CmdCheckClientPush:
 			entry.Name = commandName(id)
 			entry.SchemaBasis = "Only extracted version fields are retained; command 103/116 sibling fields contain device/account identifiers and are excluded from logs and audit"
-		case cmdProtoKeyResponse:
+		case CmdProtoKeyResponse:
 			entry.Name = commandName(id)
 		}
 		c.entries[key] = entry
@@ -415,31 +415,31 @@ func (e *commandCensusEntry) DescribeCurrentProtocol() {
 }
 
 func extractMovePackageObservation(data []byte) (movePackageObservation, error) {
-	fields, err := parseProtoFields(data)
+	fields, err := ParseProtoFields(data)
 	if err != nil {
 		return movePackageObservation{}, err
 	}
 	var observation movePackageObservation
 	for _, field := range fields {
-		if field.number == fieldMovePackagePushSceneOwnerID && field.wire == 0 {
-			observation.SceneOwnerIDs = append(observation.SceneOwnerIDs, field.value)
+		if field.Number == FieldMovePackagePushSceneOwnerID && field.Wire == 0 {
+			observation.SceneOwnerIDs = append(observation.SceneOwnerIDs, field.Value)
 			continue
 		}
-		if field.number != fieldMovePackagePushMovingEntities || field.wire != 2 {
+		if field.Number != FieldMovePackagePushMovingEntities || field.Wire != 2 {
 			continue
 		}
-		movingEntity, err := parseProtoFields(field.data)
+		movingEntity, err := ParseProtoFields(field.Data)
 		if err != nil {
 			return movePackageObservation{}, fmt.Errorf("parse MovePackagePush.MovingEntities: %w", err)
 		}
 		var entity movePackageEntityObservation
 		hasEntityID := false
 		for _, nested := range movingEntity {
-			if nested.number == fieldMovingEntityDataEntityID && nested.wire == 0 {
-				entity.EntityID = nested.value
+			if nested.Number == FieldMovingEntityDataEntityID && nested.Wire == 0 {
+				entity.EntityID = nested.Value
 				hasEntityID = true
-			} else if nested.number == fieldMovingEntityDataOriginator && nested.wire == 0 {
-				entity.OriginatorValue = nested.value
+			} else if nested.Number == FieldMovingEntityDataOriginator && nested.Wire == 0 {
+				entity.OriginatorValue = nested.Value
 				entity.HasOriginator = true
 			}
 		}
@@ -476,31 +476,31 @@ func (c *commandCensus) observeMovePackage(observation movePackageObservation) {
 }
 
 func extractPlayerFollowerObservation(data []byte) (playerFollowerObservation, error) {
-	fields, err := parseProtoFields(data)
+	fields, err := ParseProtoFields(data)
 	if err != nil {
 		return playerFollowerObservation{}, err
 	}
 	var observation playerFollowerObservation
 	for _, field := range fields {
-		if field.number == fieldPlayerFollowerNotifyPlayerID && field.wire == 0 {
-			observation.PlayerID = field.value
+		if field.Number == FieldPlayerFollowerNotifyPlayerID && field.Wire == 0 {
+			observation.PlayerID = field.Value
 			observation.HasPlayerID = true
 			continue
 		}
-		if field.number != fieldPlayerFollowerNotifyListPlayerFollowerPb || field.wire != 2 {
+		if field.Number != FieldPlayerFollowerNotifyListPlayerFollowerPb || field.Wire != 2 {
 			continue
 		}
-		nestedFields, err := parseProtoFields(field.data)
+		nestedFields, err := ParseProtoFields(field.Data)
 		if err != nil {
 			return playerFollowerObservation{}, fmt.Errorf("parse PlayerFollowerNotify.ListPlayerFollowerPb: %w", err)
 		}
 		var follower playerFollowerEntity
 		for _, nested := range nestedFields {
-			if nested.number == fieldPlayerFollowerPbType && nested.wire == 0 {
-				follower.Type = nested.value
+			if nested.Number == FieldPlayerFollowerPbType && nested.Wire == 0 {
+				follower.Type = nested.Value
 				follower.HasType = true
-			} else if nested.number == fieldPlayerFollowerPbEntityID && nested.wire == 0 {
-				follower.EntityID = nested.value
+			} else if nested.Number == FieldPlayerFollowerPbEntityID && nested.Wire == 0 {
+				follower.EntityID = nested.Value
 				follower.HasEntityID = true
 			}
 		}
@@ -518,14 +518,14 @@ func (c *commandCensus) observePlayerFollower(observation playerFollowerObservat
 }
 
 func extractVarintField(data []byte, fieldNumber uint64) ([]uint64, error) {
-	fields, err := parseProtoFields(data)
+	fields, err := ParseProtoFields(data)
 	if err != nil {
 		return nil, err
 	}
 	var values []uint64
 	for _, field := range fields {
-		if field.number == fieldNumber && field.wire == 0 {
-			values = append(values, field.value)
+		if field.Number == fieldNumber && field.Wire == 0 {
+			values = append(values, field.Value)
 		}
 	}
 	return values, nil
@@ -550,15 +550,15 @@ func (c *commandCensus) Malformed(reason string, timestamp time.Time, offset int
 	c.malformedRecords = append(c.malformedRecords, malformedObservation{Reason: reason, Timestamp: timestamp, Offset: offset, DeclaredLength: declaredLength, AvailableBytes: available})
 }
 
-func (c *commandCensus) ObserveFrame(frame gameFrame, session int) censusFrameObserver {
-	entry := c.entry(frame.commandID, frame.direction)
+func (c *commandCensus) ObserveFrame(frame GameFrame, session int) CensusFrameObserver {
+	entry := c.entry(frame.CommandID, frame.Direction)
 	entry.CRCValidFrames++
 	entry.Sessions[session]++
-	if entry.FirstSeen.IsZero() || frame.timestamp.Before(entry.FirstSeen) {
-		entry.FirstSeen = frame.timestamp
+	if entry.FirstSeen.IsZero() || frame.Timestamp.Before(entry.FirstSeen) {
+		entry.FirstSeen = frame.Timestamp
 	}
-	if entry.LastSeen.IsZero() || frame.timestamp.After(entry.LastSeen) {
-		entry.LastSeen = frame.timestamp
+	if entry.LastSeen.IsZero() || frame.Timestamp.After(entry.LastSeen) {
+		entry.LastSeen = frame.Timestamp
 	}
 	return entry
 }
@@ -594,7 +594,7 @@ func (c *commandCensus) ObserveCombatNotifyField(fieldNumber uint64) {
 	c.combatNotifyFields[fieldNumber]++
 }
 
-func (c *commandCensus) FailedCRC(observation crcFailureObservation) int {
+func (c *commandCensus) FailedCRC(observation CRCFailureObservation) int {
 	direction, id, timestamp := observation.Direction, observation.CommandID, observation.Timestamp
 	entry := c.entry(id, direction)
 	entry.CRCFailedHeaders++
@@ -608,11 +608,11 @@ func (c *commandCensus) FailedCRC(observation crcFailureObservation) int {
 		c.crcOmitted++
 		return -1
 	}
-	c.crcFailures = append(c.crcFailures, crcFailureRecord{crcFailureObservation: observation})
+	c.crcFailures = append(c.crcFailures, crcFailureRecord{CRCFailureObservation: observation})
 	return len(c.crcFailures) - 1
 }
 
-func (c *commandCensus) SetNextValidFrame(index int, next frameBoundaryObservation) {
+func (c *commandCensus) SetNextValidFrame(index int, next FrameBoundaryObservation) {
 	if index < 0 || index >= len(c.crcFailures) || c.crcFailures[index].NextValid != nil {
 		return
 	}
@@ -621,63 +621,63 @@ func (c *commandCensus) SetNextValidFrame(index int, next frameBoundaryObservati
 
 // InspectUndecoded counts what the census can learn about a frame no decoder reads. decodable says whether the
 // protocol session reads its numbering (protocolSession.decodes); otherwise only the top-level wire shape is counted.
-func (entry *commandCensusEntry) InspectUndecoded(frame gameFrame, decodable bool) {
+func (entry *commandCensusEntry) InspectUndecoded(frame GameFrame, decodable bool) {
 	p := entry.census.processor
-	if len(p.session) != 32 {
+	if len(p.Session) != 32 {
 		entry.FailureReasons["no implemented schema; session key unavailable"]++
 		return
 	}
-	if len(frame.body) == 0 {
-		entry.FailureReasons[emptyBodyFailureReason]++
+	if len(frame.Body) == 0 {
+		entry.FailureReasons[EmptyBodyFailureReason]++
 		return
 	}
-	plain, err := decryptGameBody(frame.sequence, frame.body, p.session)
+	plain, err := DecryptGameBody(frame.Sequence, frame.Body, p.Session)
 	if err != nil {
 		entry.FailureReasons["no implemented schema; decrypt failed"]++
 		return
 	}
 	entry.DecryptedFrames++
-	if frame.compressed {
-		plain, err = decompressBody(plain, frame.compressedLength)
+	if frame.Compressed {
+		plain, err = DecompressBody(plain, frame.CompressedLength)
 		if err != nil {
 			entry.FailureReasons["no implemented schema; decompression failed"]++
 			return
 		}
 	}
 	if !decodable {
-		if fields, err := parseProtoFields(plain); err == nil {
+		if fields, err := ParseProtoFields(plain); err == nil {
 			entry.GenericProtoValid++
 			entry.observeTopLevelFields(fields)
 		}
-		entry.FailureReasons[undecodableReason(&p.protocol)]++
+		entry.FailureReasons[undecodableReason(&p.Protocol)]++
 		return
 	}
-	if fields, err := parseProtoFields(plain); err == nil {
+	if fields, err := ParseProtoFields(plain); err == nil {
 		entry.GenericProtoValid++
 		// The optional external schema describes the current protocol.
-		p.archiveSchemaDecode(frame, plain)
+		p.ArchiveSchemaDecode(frame, plain)
 		entry.observeTopLevelFields(fields)
 		entry.FailureReasons["message schema not implemented"]++
-		if frame.commandID == cmdMovePackagePush {
+		if frame.CommandID == CmdMovePackagePush {
 			observation, err := extractMovePackageObservation(plain)
 			if err != nil {
 				entry.FailureReasons["MovePackagePush schema-field extraction failed"]++
 			} else {
 				entry.census.observeMovePackage(observation)
 			}
-		} else if frame.commandID == cmdPlayerFollowerNotify {
+		} else if frame.CommandID == CmdPlayerFollowerNotify {
 			observation, err := extractPlayerFollowerObservation(plain)
 			if err != nil {
 				entry.FailureReasons["PlayerFollowerNotify schema-field extraction failed"]++
 			} else {
 				entry.census.observePlayerFollower(observation)
 			}
-		} else if fieldNumber, ok := entityNotifyKeyField(frame.commandID); ok {
+		} else if fieldNumber, ok := entityNotifyKeyField(frame.CommandID); ok {
 			values, err := extractVarintField(plain, fieldNumber)
 			if err != nil {
 				entry.FailureReasons["entity notify ID extraction failed"]++
 			} else {
-				entry.census.observeEntityKey(frame.commandID, fieldNumber, values)
+				entry.census.observeEntityKey(frame.CommandID, fieldNumber, values)
 			}
 		}
 	} else {
@@ -687,18 +687,18 @@ func (entry *commandCensusEntry) InspectUndecoded(frame gameFrame, decodable boo
 
 func entityNotifyKeyField(commandID uint16) (uint64, bool) {
 	switch commandID {
-	case cmdEntityRemoveDynamicInteractNotify:
-		return fieldEntityRemoveDynamicInteractNotifyEntityID, true // EntityRemoveDynamicInteractNotify.EntityId
-	case cmdEntityCommonTagNotify:
-		return fieldEntityCommonTagNotifyID, true // EntityCommonTagNotify.Id
-	case cmdEntityStateReadyNotify:
-		return fieldEntityStateReadyNotifyEntityID, true // EntityStateReadyNotify.EntityId
+	case CmdEntityRemoveDynamicInteractNotify:
+		return FieldEntityRemoveDynamicInteractNotifyEntityID, true // EntityRemoveDynamicInteractNotify.EntityId
+	case CmdEntityCommonTagNotify:
+		return FieldEntityCommonTagNotifyID, true // EntityCommonTagNotify.Id
+	case CmdEntityStateReadyNotify:
+		return FieldEntityStateReadyNotifyEntityID, true // EntityStateReadyNotify.EntityId
 	default:
 		return 0, false
 	}
 }
 
-func (c *commandCensus) write(path string, stats captureStats, clientVersion *clientVersionReport, protocol protocolReport) error {
+func (c *commandCensus) write(path string, stats CaptureStats, clientVersion *ClientVersionReport, protocol protocolReport) error {
 	entries := make([]commandCensusEntry, 0, len(c.entries))
 	for _, entry := range c.entries {
 		copy := *entry
@@ -716,16 +716,16 @@ func (c *commandCensus) write(path string, stats captureStats, clientVersion *cl
 		id        uint16
 		direction string
 	}{
-		{cmdUpdateSceneGroupDataNotify, "in"}, {cmdPlayerLivingStatesNotify, "in"}, {cmdAddSysBuffNotify, "in"}, {cmdApplyGameplayEffectNotify, "in"}, {cmdApplyGameplayEffectPush, "in"}, {cmdRemoveGameplayEffectNotify, "in"}, {cmdRemoveGameplayEffectPush, "in"}, {cmdSimpleCombatEntityBuffUpdateNotify, "in"}, {cmdSimpleCombatEntityBuffLayerCountNotify, "in"}, {cmdBuffStackCountNotify, "in"}, {cmdBuffDurationNotify, "in"}, {cmdOrderApplyBuffNotify, "in"}, {cmdOrderRemoveBuffNotify, "in"}, {cmdRefreshBuffDurationPush, "in"}, {cmdRemoveSysBuffNotify, "in"}, {cmdSimpleCombatEntityAttributeUpdateNotify, "in"}, {cmdSimpleCombatEntitySyncAttributePush, "in"}, {cmdUpdateSysBuffNotify, "in"}, {cmdJoinSceneNotify, "in"}, {cmdEntityAddNotify, "in"}, {cmdEntityRemoveNotify, "in"}, {cmdEntityActiveRequest, "out"}, {cmdEntityActiveResponse, "in"}, {cmdCombatSendPackRequest, "out"}, {cmdCombatSendPackResponse, "in"},
-		{cmdApplyGameplayEffectRequest, "out"}, {cmdApplyGameplayEffectResponse, "in"}, {cmdRemoveGameplayEffectRequest, "out"}, {cmdRemoveGameplayEffectResponse, "in"}, {cmdOrderApplyBuffRequest, "out"}, {cmdOrderApplyBuffResponse, "in"}, {cmdOrderRemoveBuffRequest, "out"}, {cmdOrderRemoveBuffResponse, "in"}, {cmdApplyBuffS2cRequestNotify, "in"}, {cmdApplyBuffS2cResponsePush, "in"}, {cmdRemoveBuffS2cRequestNotify, "in"}, {cmdRemoveBuffS2cResponsePush, "in"}, {cmdRemoveBuffByIDS2cRequestNotify, "in"}, {cmdRemoveBuffByIDS2cResponsePush, "in"}, {cmdActivateBuffRequest, "out"}, {cmdActivateBuffResponse, "in"}, {cmdActivateBuffNotify, "in"}, {cmdActivateBuffPush, "in"},
-		{cmdBuffStackCountRequest, "out"}, {cmdBuffStackCountResponse, "in"}, {cmdBuffStackCountPush, "in"}, {cmdBuffEffectRequest, "out"}, {cmdBuffEffectResponse, "in"}, {cmdBuffEffectPush, "in"}, {cmdBuffEffectExecuteRequest, "out"}, {cmdBuffEffectExecuteResponse, "in"}, {cmdBuffEffectExecutePush, "in"}, {cmdEntityBuffProducerRequest, "out"}, {cmdEntityBuffProducerResponse, "in"}, {cmdEntityBuffProducerOperateRequest, "out"}, {cmdEntityBuffProducerOperateResponse, "in"}, {cmdOrderRemoveBuffByTagsRequest, "out"}, {cmdOrderRemoveBuffByTagsResponse, "in"}, {cmdOrderRemoveBuffByTagsNotify, "in"}, {cmdRemoveBuffByServerIDS2cRequestNotify, "in"}, {cmdAtomicProcessAddBuffRequest, "out"}, {cmdAtomicProcessAddBuffResponse, "in"}, {cmdAtomicProcessRemoveBuffRequest, "out"}, {cmdAtomicProcessRemoveBuffResponse, "in"}, {cmdTransformBuffStackNotify, "in"},
-		{cmdUpdatePlayerAllFightRoleNotify, "in"}, {cmdUpdatePlayersFightRolesInfoNotify, "in"}, {cmdUpdatePlayerSingleFightRoleNotify, "in"}, {cmdChangePlayerFightRoleNotify, "in"},
-		{cmdLoginRequest, "out"}, {cmdCheckClientPush, "out"},
+		{CmdUpdateSceneGroupDataNotify, "in"}, {CmdPlayerLivingStatesNotify, "in"}, {CmdAddSysBuffNotify, "in"}, {CmdApplyGameplayEffectNotify, "in"}, {CmdApplyGameplayEffectPush, "in"}, {CmdRemoveGameplayEffectNotify, "in"}, {CmdRemoveGameplayEffectPush, "in"}, {CmdSimpleCombatEntityBuffUpdateNotify, "in"}, {CmdSimpleCombatEntityBuffLayerCountNotify, "in"}, {CmdBuffStackCountNotify, "in"}, {CmdBuffDurationNotify, "in"}, {CmdOrderApplyBuffNotify, "in"}, {CmdOrderRemoveBuffNotify, "in"}, {CmdRefreshBuffDurationPush, "in"}, {CmdRemoveSysBuffNotify, "in"}, {CmdSimpleCombatEntityAttributeUpdateNotify, "in"}, {CmdSimpleCombatEntitySyncAttributePush, "in"}, {CmdUpdateSysBuffNotify, "in"}, {CmdJoinSceneNotify, "in"}, {CmdEntityAddNotify, "in"}, {CmdEntityRemoveNotify, "in"}, {CmdEntityActiveRequest, "out"}, {CmdEntityActiveResponse, "in"}, {CmdCombatSendPackRequest, "out"}, {CmdCombatSendPackResponse, "in"},
+		{CmdApplyGameplayEffectRequest, "out"}, {CmdApplyGameplayEffectResponse, "in"}, {CmdRemoveGameplayEffectRequest, "out"}, {CmdRemoveGameplayEffectResponse, "in"}, {CmdOrderApplyBuffRequest, "out"}, {CmdOrderApplyBuffResponse, "in"}, {CmdOrderRemoveBuffRequest, "out"}, {CmdOrderRemoveBuffResponse, "in"}, {CmdApplyBuffS2cRequestNotify, "in"}, {CmdApplyBuffS2cResponsePush, "in"}, {CmdRemoveBuffS2cRequestNotify, "in"}, {CmdRemoveBuffS2cResponsePush, "in"}, {CmdRemoveBuffByIDS2cRequestNotify, "in"}, {CmdRemoveBuffByIDS2cResponsePush, "in"}, {CmdActivateBuffRequest, "out"}, {CmdActivateBuffResponse, "in"}, {CmdActivateBuffNotify, "in"}, {CmdActivateBuffPush, "in"},
+		{CmdBuffStackCountRequest, "out"}, {CmdBuffStackCountResponse, "in"}, {CmdBuffStackCountPush, "in"}, {CmdBuffEffectRequest, "out"}, {CmdBuffEffectResponse, "in"}, {CmdBuffEffectPush, "in"}, {CmdBuffEffectExecuteRequest, "out"}, {CmdBuffEffectExecuteResponse, "in"}, {CmdBuffEffectExecutePush, "in"}, {CmdEntityBuffProducerRequest, "out"}, {CmdEntityBuffProducerResponse, "in"}, {CmdEntityBuffProducerOperateRequest, "out"}, {CmdEntityBuffProducerOperateResponse, "in"}, {CmdOrderRemoveBuffByTagsRequest, "out"}, {CmdOrderRemoveBuffByTagsResponse, "in"}, {CmdOrderRemoveBuffByTagsNotify, "in"}, {CmdRemoveBuffByServerIDS2cRequestNotify, "in"}, {CmdAtomicProcessAddBuffRequest, "out"}, {CmdAtomicProcessAddBuffResponse, "in"}, {CmdAtomicProcessRemoveBuffRequest, "out"}, {CmdAtomicProcessRemoveBuffResponse, "in"}, {CmdTransformBuffStackNotify, "in"},
+		{CmdUpdatePlayerAllFightRoleNotify, "in"}, {CmdUpdatePlayersFightRolesInfoNotify, "in"}, {CmdUpdatePlayerSingleFightRoleNotify, "in"}, {CmdChangePlayerFightRoleNotify, "in"},
+		{CmdLoginRequest, "out"}, {CmdCheckClientPush, "out"},
 	} {
 		key := censusKey{CommandID: candidate.id, Direction: candidate.direction}
 		if _, exists := c.entries[key]; !exists {
 			entry := commandCensusEntry{CommandID: candidate.id, Name: commandName(candidate.id), Direction: candidate.direction, Status: "NOT OBSERVED"}
-			if candidate.id == cmdLoginRequest || candidate.id == cmdCheckClientPush {
+			if candidate.id == CmdLoginRequest || candidate.id == CmdCheckClientPush {
 				entry.SchemaBasis = "Only extracted version fields are retained; command 103/116 sibling fields contain device/account identifiers and are excluded from logs and audit"
 			} else if hasCurrentProtocolSchema(candidate.id) {
 				entry.SchemaBasis = censusSchemaBasis()
@@ -746,7 +746,7 @@ func (c *commandCensus) write(path string, stats captureStats, clientVersion *cl
 	report := struct {
 		GeneratedAt        time.Time              `json:"generatedAt"`
 		SessionCount       int                    `json:"sessionCount"`
-		ClientVersion      *clientVersionReport   `json:"clientVersion,omitempty"`
+		ClientVersion      *ClientVersionReport   `json:"clientVersion,omitempty"`
 		Protocol           protocolReport         `json:"protocol"`
 		Transport          map[string]int         `json:"transport"`
 		InnerRPCs          map[string]int         `json:"innerRpcCounts"`
@@ -805,17 +805,17 @@ func (c *commandCensus) write(path string, stats captureStats, clientVersion *cl
 	sort.Slice(report.MoveSceneOwnerIDs, func(i, j int) bool {
 		return report.MoveSceneOwnerIDs[i].EntityID < report.MoveSceneOwnerIDs[j].EntityID
 	})
-	report.Transport["udpPackets"] = stats.udpPackets
-	report.Transport["kcpPushSegments"] = stats.kcpPush
-	report.Transport["kcpControlSegments"] = stats.kcpControl
-	report.Transport["nonKcpUdpDatagrams"] = stats.nonKCPUDP
-	report.Transport["invalidKcpDatagrams"] = stats.invalidKCP
-	report.Transport["kcpOrderedSegments"] = stats.kcpOrdered
-	report.Transport["kcpMessages"] = stats.kcpMessages
-	report.Transport["crcValidFrames"] = stats.frames
-	report.Transport["badCRCFrames"] = stats.badCRC
-	report.Transport["malformedFrames"] = stats.malformed
-	report.Transport["kernelDrops"] = stats.kernelDrops
+	report.Transport["udpPackets"] = stats.UDPPackets
+	report.Transport["kcpPushSegments"] = stats.KCPPush
+	report.Transport["kcpControlSegments"] = stats.KCPControl
+	report.Transport["nonKcpUdpDatagrams"] = stats.NonKCPUDP
+	report.Transport["invalidKcpDatagrams"] = stats.InvalidKCP
+	report.Transport["kcpOrderedSegments"] = stats.KCPOrdered
+	report.Transport["kcpMessages"] = stats.KCPMessages
+	report.Transport["crcValidFrames"] = stats.Frames
+	report.Transport["badCRCFrames"] = stats.BadCRC
+	report.Transport["malformedFrames"] = stats.Malformed
+	report.Transport["kernelDrops"] = stats.KernelDrops
 	data, err := json.MarshalIndent(report, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal command census: %w", err)

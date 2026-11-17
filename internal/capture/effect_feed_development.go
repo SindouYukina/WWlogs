@@ -13,25 +13,25 @@ import (
 // is about: the id from an APPLY, or the id inherited through the handle link. Only an exact
 // buff row is described, the official name is always reported unresolved, and developer tags
 // are labelled internal because they are unofficial simplified-Chinese text.
-func (p *processor) effectSemanticConsoleFields(row buffLifecycleAuditRow) string {
+func (p *Processor) effectSemanticConsoleFields(row BuffLifecycleAuditRow) string {
 	var effectID uint64
 	switch {
 	case (row.EventKind == "GAMEPLAY_EFFECT_APPLY" || row.EventKind == "CLIENT_EFFECT_APPLY_REPORT") && row.ID != nil:
 		effectID = *row.ID
-	case row.HandleLinkedID != nil && row.HandleLinkedStatus == resolutionCorrelated:
+	case row.HandleLinkedID != nil && row.HandleLinkedStatus == ResolutionCorrelated:
 		effectID = *row.HandleLinkedID
 	default:
 		return ""
 	}
-	if p == nil || !p.masters.hasBuffDefinition(effectID) {
+	if p == nil || !p.Masters.HasBuffDefinition(effectID) {
 		return fmt.Sprintf("effectId=%d semantic=%s", effectID, EffectSemanticDefinitionUnresolved)
 	}
-	info := p.effectStaticInfo(effectID)
+	info := p.EffectStaticInfo(effectID)
 	if info == nil {
 		info = &EffectStaticInfo{}
 	}
 	fields := formatEffectSemanticFields(effectID, info)
-	if owner := featureOwner(resolveBuffOwners(p.masters, effectID)); owner != nil {
+	if owner := featureOwner(ResolveBuffOwners(p.Masters, effectID)); owner != nil {
 		fields += fmt.Sprintf(" owner=%q ownerKind=%s", owner.Name, owner.Kind)
 	}
 	return fields
@@ -39,7 +39,7 @@ func (p *processor) effectSemanticConsoleFields(row buffLifecycleAuditRow) strin
 
 // featureOwner returns the first named game feature that lists the effect id. A role observation is
 // skipped: it names only the role that carried the effect, not the feature that grants it.
-func featureOwner(owners *buffOwnersJSON) *buffOwnerText {
+func featureOwner(owners *BuffOwnersJSON) *BuffOwnerText {
 	if owners == nil {
 		return nil
 	}
@@ -95,8 +95,8 @@ func readableDeveloperTags(tags []string) []string {
 }
 
 // writeEffectState writes the final tracker snapshot as one JSON line.
-func (p *processor) writeEffectState(w io.Writer) error {
-	snapshot := p.effectSnapshotAtLastFrame()
+func (p *Processor) writeEffectState(w io.Writer) error {
+	snapshot := p.EffectSnapshotAtLastFrame()
 	line, err := json.Marshal(snapshot)
 	if err != nil {
 		return fmt.Errorf("encode effect state: %w", err)

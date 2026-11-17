@@ -11,34 +11,34 @@ import (
 
 func TestEncounterSummarySeparatesCreditedDamageHealingAndOwnerCandidates(t *testing.T) {
 	var output bytes.Buffer
-	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
-	p.dev.encounterSummary = &output
-	p.masters = &gameMaster{manifest: masterManifest{SourceHash: strings.Repeat("a", 64)}, locale: "zh-TW", databasePath: "data/master_data.db"}
+	p := NewProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
+	p.Dev.encounterSummary = &output
+	p.Masters = &GameMaster{Manifest: MasterManifest{SourceHash: strings.Repeat("a", 64)}, Locale: "zh-TW", DatabasePath: "data/master_data.db"}
 	start := time.Date(2026, 10, 27, 1, 2, 3, 0, time.UTC)
-	p.observeEncounterSummary(combatEvent{
+	p.ObserveEncounterSummary(CombatEvent{
 		Timestamp: start, SessionNumber: 1,
-		Source:      entityIdentity{Runtime: runtimeEntity{entityID: 101, sceneInstanceID: 9001, hasSceneInstanceID: true}},
-		Target:      entityIdentity{Runtime: runtimeEntity{entityID: 201, sceneInstanceID: 9001, hasSceneInstanceID: true}, HasMonster: true, Monster: masterRecord{ID: 71001, Name: "Boss | Candidate"}, MonsterStatus: resolutionCorrelated, MonsterProof: "numeric MonsterId mapping"},
-		CharacterID: 1312, CharacterName: "Role", CharacterNameStatus: resolutionVerified, CharacterStatus: resolutionCorrelated, CharacterProof: "two verified SkillIds map to RoleId",
-		SkillID: 1312011, SkillName: "Skill", SkillNameStatus: resolutionVerified, SkillProof: "SkillDescription -> Skill",
+		Source:      EntityIdentity{Runtime: RuntimeEntity{EntityID: 101, SceneInstanceID: 9001, HasSceneInstanceID: true}},
+		Target:      EntityIdentity{Runtime: RuntimeEntity{EntityID: 201, SceneInstanceID: 9001, HasSceneInstanceID: true}, HasMonster: true, Monster: MasterRecord{ID: 71001, Name: "Boss | Candidate"}, MonsterStatus: ResolutionCorrelated, MonsterProof: "numeric MonsterId mapping"},
+		CharacterID: 1312, CharacterName: "Role", CharacterNameStatus: ResolutionVerified, CharacterStatus: ResolutionCorrelated, CharacterProof: "two verified SkillIds map to RoleId",
+		SkillID: 1312011, SkillName: "Skill", SkillNameStatus: ResolutionVerified, SkillProof: "SkillDescription -> Skill",
 		EventTypeCandidate: "DAMAGE_CANDIDATE", EventTypeProof: "Damage master CalculateType 0", Damage: 300,
-		SummonerCharacter: summonerCharacterIdentity{CharacterID: 1414, HasCharacterID: true, Character: masterRecord{Name: "Owner"}, HasCharacter: true, Status: resolutionCorrelated},
+		SummonerCharacter: SummonerCharacterIdentity{CharacterID: 1414, HasCharacterID: true, Character: MasterRecord{Name: "Owner"}, HasCharacter: true, Status: ResolutionCorrelated},
 	})
-	p.observeEncounterSummary(combatEvent{
+	p.ObserveEncounterSummary(CombatEvent{
 		Timestamp: start.Add(time.Second), SessionNumber: 1,
-		Source:             entityIdentity{Runtime: runtimeEntity{entityID: 301, sceneInstanceID: 9001, hasSceneInstanceID: true}},
-		Target:             entityIdentity{Runtime: runtimeEntity{entityID: 101, sceneInstanceID: 9001, hasSceneInstanceID: true}},
+		Source:             EntityIdentity{Runtime: RuntimeEntity{EntityID: 301, SceneInstanceID: 9001, HasSceneInstanceID: true}},
+		Target:             EntityIdentity{Runtime: RuntimeEntity{EntityID: 101, SceneInstanceID: 9001, HasSceneInstanceID: true}},
 		EventTypeCandidate: "HEALING_CANDIDATE", Damage: 50,
 	})
-	p.observeEncounterSummary(combatEvent{
+	p.ObserveEncounterSummary(CombatEvent{
 		Timestamp: start.Add(2 * time.Second), SessionNumber: 1,
-		Source:             entityIdentity{Runtime: runtimeEntity{entityID: 401, sceneInstanceID: 9002, hasSceneInstanceID: true}},
-		Target:             entityIdentity{Runtime: runtimeEntity{entityID: 402, sceneInstanceID: 9003, hasSceneInstanceID: true}},
+		Source:             EntityIdentity{Runtime: RuntimeEntity{EntityID: 401, SceneInstanceID: 9002, HasSceneInstanceID: true}},
+		Target:             EntityIdentity{Runtime: RuntimeEntity{EntityID: 402, SceneInstanceID: 9003, HasSceneInstanceID: true}},
 		EventTypeCandidate: "DAMAGE_CANDIDATE", Damage: 7,
 	})
 
-	if len(p.dev.encounterSummaries) != 2 {
-		t.Fatalf("summary scope count = %d, want identified scene plus one conflict bucket", len(p.dev.encounterSummaries))
+	if len(p.Dev.encounterSummaries) != 2 {
+		t.Fatalf("summary scope count = %d, want identified scene plus one conflict bucket", len(p.Dev.encounterSummaries))
 	}
 	if err := p.writeEncounterSummary(); err != nil {
 		t.Fatal(err)
@@ -71,23 +71,23 @@ func TestEncounterSummarySeparatesCreditedDamageHealingAndOwnerCandidates(t *tes
 func TestEncounterSummaryUsesPlayerTeamRelationWithoutCharacterIdentity(t *testing.T) {
 	var output bytes.Buffer
 	p, _, _ := newPlayerRelevanceTestProcessor()
-	p.dev.encounterSummary = &output
+	p.Dev.encounterSummary = &output
 	addTestPlayerRoleGroupEntity(p, 100, 77, 1409)
 	observeTestLocalRole(p, 100)
 	addTestPlayerRoleGroupEntity(p, 101, 77, 1508, true)
-	addTestRuntimeEntity(p, 200, func(entity *runtimeEntity) {
-		entity.entityTypeCode, entity.hasEntityType = entityTypeMonster, true
-		entity.monsterID, entity.hasMonsterID = 9001, true
+	addTestRuntimeEntity(p, 200, func(entity *RuntimeEntity) {
+		entity.EntityTypeCode, entity.HasEntityType = EntityTypeMonster, true
+		entity.MonsterID, entity.HasMonsterID = 9001, true
 	})
 
 	event := testDamageEvent(p, 101, 200)
 	event.SessionNumber = 1
 	event.EventTypeCandidate = "DAMAGE_CANDIDATE"
 	event.Damage = 321
-	event.Target.HasMonster, event.Target.MonsterStatus = true, resolutionVerified
-	p.observeEncounterSummary(event)
+	event.Target.HasMonster, event.Target.MonsterStatus = true, ResolutionVerified
+	p.ObserveEncounterSummary(event)
 
-	summary := p.dev.encounterSummaries[encounterSummaryKey{session: 1}]
+	summary := p.Dev.encounterSummaries[encounterSummaryKey{session: 1}]
 	if summary == nil || summary.partyToEnemyCandidateEvents != 1 || summary.partyToEnemyCandidateAbs != 321 || summary.unknownDirectionDamageEvents != 0 {
 		t.Fatalf("known player-team damage lost its direction when CharacterId was unresolved: %+v", summary)
 	}
@@ -112,29 +112,29 @@ func TestEncounterSummaryUsesPlayerTeamRelationWithoutCharacterIdentity(t *testi
 func TestEncounterSummaryListsLocalVehicleAsIndependentPlayerTeamSource(t *testing.T) {
 	var output bytes.Buffer
 	p, _, _ := newPlayerRelevanceTestProcessor()
-	p.dev.encounterSummary = &output
+	p.Dev.encounterSummary = &output
 	addTestPlayerRoleGroupEntity(p, 100, 77, 1409)
 	observeTestLocalRole(p, 100)
-	addTestRuntimeEntity(p, 200, func(entity *runtimeEntity) {
-		entity.entityTypeCode, entity.hasEntityType = entityTypeMonster, true
-		entity.monsterID, entity.hasMonsterID = 9001, true
+	addTestRuntimeEntity(p, 200, func(entity *RuntimeEntity) {
+		entity.EntityTypeCode, entity.HasEntityType = EntityTypeMonster, true
+		entity.MonsterID, entity.HasMonsterID = 9001, true
 	})
 
 	event := testDamageEvent(p, 100, 200)
 	event.SessionNumber = 1
 	event.EventTypeCandidate = "DAMAGE_CANDIDATE"
 	event.Damage = 55
-	event.Target.HasMonster, event.Target.MonsterStatus = true, resolutionVerified
+	event.Target.HasMonster, event.Target.MonsterStatus = true, ResolutionVerified
 	event.CharacterID = 1409
 	event.CharacterName = "Role"
-	event.CharacterNameStatus = resolutionVerified
-	event.CharacterStatus = resolutionVerified
-	event.DamageContributorCandidate = &damageContributorCandidate{
-		ActorType: "Vehicle", FollowerConfigID: 290101, Status: resolutionCorrelated,
+	event.CharacterNameStatus = ResolutionVerified
+	event.CharacterStatus = ResolutionVerified
+	event.DamageContributorCandidate = &DamageContributorCandidate{
+		ActorType: "Vehicle", FollowerConfigID: 290101, Status: ResolutionCorrelated,
 	}
-	p.observeEncounterSummary(event)
+	p.ObserveEncounterSummary(event)
 
-	summary := p.dev.encounterSummaries[encounterSummaryKey{session: 1}]
+	summary := p.Dev.encounterSummaries[encounterSummaryKey{session: 1}]
 	if summary == nil || summary.damageCandidates != 55 || summary.partyToEnemyCandidateAbs != 55 || summary.partyToEnemyCandidateEvents != 1 {
 		t.Fatalf("vehicle damage was lost from player-team totals or counted more than once: %+v", summary)
 	}
@@ -161,23 +161,23 @@ func TestEncounterSummaryListsLocalVehicleAsIndependentPlayerTeamSource(t *testi
 
 func TestEncounterSummaryUsesPlayerTeamTargetWithoutCharacterIdentity(t *testing.T) {
 	p, _, _ := newPlayerRelevanceTestProcessor()
-	p.dev.encounterSummary = &bytes.Buffer{}
+	p.Dev.encounterSummary = &bytes.Buffer{}
 	addTestPlayerRoleGroupEntity(p, 100, 77, 1409)
 	observeTestLocalRole(p, 100)
 	addTestPlayerRoleGroupEntity(p, 101, 77, 1508, true)
-	addTestRuntimeEntity(p, 200, func(entity *runtimeEntity) {
-		entity.entityTypeCode, entity.hasEntityType = entityTypeMonster, true
-		entity.monsterID, entity.hasMonsterID = 9001, true
+	addTestRuntimeEntity(p, 200, func(entity *RuntimeEntity) {
+		entity.EntityTypeCode, entity.HasEntityType = EntityTypeMonster, true
+		entity.MonsterID, entity.HasMonsterID = 9001, true
 	})
 
 	event := testDamageEvent(p, 200, 101)
 	event.SessionNumber = 1
 	event.EventTypeCandidate = "DAMAGE_CANDIDATE"
 	event.Damage = 77
-	event.Source.HasMonster, event.Source.MonsterStatus = true, resolutionVerified
-	p.observeEncounterSummary(event)
+	event.Source.HasMonster, event.Source.MonsterStatus = true, ResolutionVerified
+	p.ObserveEncounterSummary(event)
 
-	summary := p.dev.encounterSummaries[encounterSummaryKey{session: 1}]
+	summary := p.Dev.encounterSummaries[encounterSummaryKey{session: 1}]
 	if summary == nil || summary.enemyToPartyCandidateEvents != 1 || summary.enemyToPartyCandidateAbs != 77 || summary.unknownDirectionDamageEvents != 0 {
 		t.Fatalf("incoming damage to a local player-team role lost its direction when CharacterId was unresolved: %+v", summary)
 	}
@@ -185,36 +185,36 @@ func TestEncounterSummaryUsesPlayerTeamTargetWithoutCharacterIdentity(t *testing
 
 func TestEncounterSummaryGroupsHealingByCreditedSourceTargetAndDamageID(t *testing.T) {
 	var output bytes.Buffer
-	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
-	p.dev.encounterSummary = &output
-	base := combatEvent{
+	p := NewProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
+	p.Dev.encounterSummary = &output
+	base := CombatEvent{
 		SessionNumber: 1,
-		Source: entityIdentity{
-			Runtime:      runtimeEntity{entityID: 12001},
-			HasCharacter: true, Character: masterRecord{ID: 1209, Name: "Healer", NameStatus: string(resolutionVerified)},
-			CharacterStatus: resolutionVerified, CharacterProof: "source RoleId field",
+		Source: EntityIdentity{
+			Runtime:      RuntimeEntity{EntityID: 12001},
+			HasCharacter: true, Character: MasterRecord{ID: 1209, Name: "Healer", NameStatus: string(ResolutionVerified)},
+			CharacterStatus: ResolutionVerified, CharacterProof: "source RoleId field",
 		},
-		Target: entityIdentity{
-			Runtime:      runtimeEntity{entityID: 14001},
-			HasCharacter: true, Character: masterRecord{ID: 1409, Name: "Recipient", NameStatus: string(resolutionVerified)},
-			CharacterStatus: resolutionVerified, CharacterProof: "target RoleId field",
+		Target: EntityIdentity{
+			Runtime:      RuntimeEntity{EntityID: 14001},
+			HasCharacter: true, Character: MasterRecord{ID: 1409, Name: "Recipient", NameStatus: string(ResolutionVerified)},
+			CharacterStatus: ResolutionVerified, CharacterProof: "target RoleId field",
 		},
-		CharacterID: 1209, CharacterName: "Healer", CharacterNameStatus: resolutionVerified,
-		CharacterStatus: resolutionVerified, CharacterProof: "source RoleId field",
-		SkillID: ^uint64(0), SkillStatus: resolutionUnknown,
+		CharacterID: 1209, CharacterName: "Healer", CharacterNameStatus: ResolutionVerified,
+		CharacterStatus: ResolutionVerified, CharacterProof: "source RoleId field",
+		SkillID: ^uint64(0), SkillStatus: ResolutionUnknown,
 		DamageID: 1100, HasDamageID: true,
-		EventTypeCandidate: "HEALING_CANDIDATE", EventTypeStatus: resolutionCorrelated,
+		EventTypeCandidate: "HEALING_CANDIDATE", EventTypeStatus: ResolutionCorrelated,
 		EventTypeProof: "Damage CalculateType=1", Damage: 200,
 	}
-	p.observeEncounterSummary(base)
+	p.ObserveEncounterSummary(base)
 	base.Damage = 50
 	base.SkillID = 0
-	p.observeEncounterSummary(base)
+	p.ObserveEncounterSummary(base)
 
 	unresolvedTarget := base
-	unresolvedTarget.Target = entityIdentity{Runtime: runtimeEntity{entityID: 14999}}
+	unresolvedTarget.Target = EntityIdentity{Runtime: RuntimeEntity{EntityID: 14999}}
 	unresolvedTarget.Damage = 25
-	p.observeEncounterSummary(unresolvedTarget)
+	p.ObserveEncounterSummary(unresolvedTarget)
 
 	if err := p.writeEncounterSummary(); err != nil {
 		t.Fatal(err)
@@ -237,17 +237,17 @@ func TestEncounterSummaryGroupsHealingByCreditedSourceTargetAndDamageID(t *testi
 
 func TestEncounterSummaryHandlesHealingAfterBuffSnapshotCreatesGroup(t *testing.T) {
 	var output bytes.Buffer
-	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
-	p.dev.encounterSummary = &output
-	p.observeBuffSnapshot(buffSnapshotAuditRow{SessionNumber: 1, Buff: rawBuffSnapshot{ID: 70001, HasID: true}})
-	p.observeEncounterSummary(combatEvent{
+	p := NewProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
+	p.Dev.encounterSummary = &output
+	p.observeBuffSnapshot(buffSnapshotAuditRow{SessionNumber: 1, Buff: RawBuffSnapshot{ID: 70001, HasID: true}})
+	p.ObserveEncounterSummary(CombatEvent{
 		SessionNumber: 1,
-		Target: entityIdentity{
-			HasCharacter: true, Character: masterRecord{ID: 1409, Name: "Recipient", NameStatus: string(resolutionVerified)},
-			CharacterStatus: resolutionVerified, CharacterProof: "target RoleId field",
+		Target: EntityIdentity{
+			HasCharacter: true, Character: MasterRecord{ID: 1409, Name: "Recipient", NameStatus: string(ResolutionVerified)},
+			CharacterStatus: ResolutionVerified, CharacterProof: "target RoleId field",
 		},
-		CharacterID: 1209, CharacterStatus: resolutionVerified, CharacterProof: "source RoleId field",
-		SkillID: ^uint64(0), EventTypeCandidate: "HEALING_CANDIDATE", EventTypeStatus: resolutionCorrelated,
+		CharacterID: 1209, CharacterStatus: ResolutionVerified, CharacterProof: "source RoleId field",
+		SkillID: ^uint64(0), EventTypeCandidate: "HEALING_CANDIDATE", EventTypeStatus: ResolutionCorrelated,
 		DamageID: 1100, HasDamageID: true, Damage: 25,
 	})
 	if err := p.writeEncounterSummary(); err != nil {
@@ -261,10 +261,10 @@ func TestEncounterSummaryHandlesHealingAfterBuffSnapshotCreatesGroup(t *testing.
 func TestHealingAttributionRowsAreBounded(t *testing.T) {
 	summary := &encounterSummary{healingAttributions: make(map[healingAttributionKey]*healingAttributionSummary)}
 	for targetID := uint64(1); targetID <= maxSummaryHealingAttributions+1; targetID++ {
-		addHealingAttribution(summary, combatEvent{
-			CharacterID: 1209, CharacterStatus: resolutionVerified,
-			Target: entityIdentity{
-				HasCharacter: true, Character: masterRecord{ID: targetID}, CharacterStatus: resolutionVerified,
+		addHealingAttribution(summary, CombatEvent{
+			CharacterID: 1209, CharacterStatus: ResolutionVerified,
+			Target: EntityIdentity{
+				HasCharacter: true, Character: MasterRecord{ID: targetID}, CharacterStatus: ResolutionVerified,
 			},
 			EventTypeCandidate: "HEALING_CANDIDATE", Damage: 1,
 		})
@@ -279,10 +279,10 @@ func TestHealingAttributionRowsAreBounded(t *testing.T) {
 
 func TestEncounterSummaryWithoutEventsReportsNoMatchedEvents(t *testing.T) {
 	var output bytes.Buffer
-	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
-	p.dev.encounterSummary = &output
+	p := NewProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
+	p.Dev.encounterSummary = &output
 	key := combatActionRequestKey{sessionNumber: 1, messageID: 9}
-	p.dev.combatActionRequests[key] = combatActionRequest{SessionNumber: 1, MessageID: 9, SkillID: 1001}
+	p.Dev.combatActionRequests[key] = combatActionRequest{SessionNumber: 1, MessageID: 9, SkillID: 1001}
 	if err := p.writeEncounterSummary(); err != nil {
 		t.Fatal(err)
 	}
@@ -296,16 +296,16 @@ func TestEncounterSummaryWithoutEventsReportsNoMatchedEvents(t *testing.T) {
 
 func TestEncounterSummaryListsUncreditedRawIDGroups(t *testing.T) {
 	var output bytes.Buffer
-	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
-	p.dev.encounterSummary = &output
-	event := combatEvent{
+	p := NewProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
+	p.Dev.encounterSummary = &output
+	event := CombatEvent{
 		SessionNumber: 2, SourceEntityID: 501, HasSourceEntity: true, TargetEntityID: 602, HasTargetEntity: true,
 		SkillID: 13111001, DamageID: 13111002, HasDamageID: true, BulletID: 13111003, HasBulletID: true,
 		EventTypeCandidate: "DAMAGE_CANDIDATE", Damage: 40,
 	}
-	p.observeEncounterSummary(event)
+	p.ObserveEncounterSummary(event)
 	event.Damage = 60
-	p.observeEncounterSummary(event)
+	p.ObserveEncounterSummary(event)
 
 	if err := p.writeEncounterSummary(); err != nil {
 		t.Fatal(err)
@@ -327,14 +327,14 @@ func TestEncounterSummaryListsUncreditedRawIDGroups(t *testing.T) {
 
 func TestEncounterSummaryBoundsUncreditedRawIDGroups(t *testing.T) {
 	var output bytes.Buffer
-	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
-	p.dev.encounterSummary = &output
+	p := NewProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
+	p.Dev.encounterSummary = &output
 	for skillID := uint64(1); skillID <= maxSummaryUncreditedRows+1; skillID++ {
-		p.observeEncounterSummary(combatEvent{
+		p.ObserveEncounterSummary(CombatEvent{
 			SessionNumber: 1, SkillID: skillID, EventTypeCandidate: "DAMAGE_CANDIDATE", Damage: 1,
 		})
 	}
-	if got := len(p.dev.encounterSummaries[encounterSummaryKey{session: 1}].uncreditedEvents); got != maxSummaryUncreditedRows {
+	if got := len(p.Dev.encounterSummaries[encounterSummaryKey{session: 1}].uncreditedEvents); got != maxSummaryUncreditedRows {
 		t.Fatalf("uncredited group count = %d, want cap %d", got, maxSummaryUncreditedRows)
 	}
 	if err := p.writeEncounterSummary(); err != nil {
@@ -347,15 +347,15 @@ func TestEncounterSummaryBoundsUncreditedRawIDGroups(t *testing.T) {
 
 func TestEncounterSummaryOverflowKeepsUncreditedSessionsSeparate(t *testing.T) {
 	var output bytes.Buffer
-	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
-	p.dev.encounterSummary = &output
+	p := NewProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
+	p.Dev.encounterSummary = &output
 	for session := 1; session <= maxEncounterSummaryGroups+2; session++ {
-		p.observeEncounterSummary(combatEvent{
+		p.ObserveEncounterSummary(CombatEvent{
 			SessionNumber: session, SourceEntityID: 501, HasSourceEntity: true, TargetEntityID: 602, HasTargetEntity: true,
 			SkillID: 700, EventTypeCandidate: "DAMAGE_CANDIDATE", Damage: 1,
 		})
 	}
-	if got := len(p.dev.encounterSummaries[encounterSummaryKey{overflow: true}].uncreditedEvents); got != 2 {
+	if got := len(p.Dev.encounterSummaries[encounterSummaryKey{overflow: true}].uncreditedEvents); got != 2 {
 		t.Fatalf("overflow uncredited groups = %d, want one per session", got)
 	}
 	if err := p.writeEncounterSummary(); err != nil {
@@ -376,23 +376,23 @@ func TestEncounterSummaryOverflowKeepsUncreditedSessionsSeparate(t *testing.T) {
 
 func TestEncounterSummaryReportsBuffSnapshotObservationsWithoutLifecycleClaims(t *testing.T) {
 	var output bytes.Buffer
-	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
-	p.dev.encounterSummary = &output
-	p.entities.entities[8801] = runtimeEntity{entityID: 8801, sceneInstanceID: 9001, hasSceneInstanceID: true, sourceMessageID: cmdEntityActiveResponse}
+	p := NewProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
+	p.Dev.encounterSummary = &output
+	p.Entities.Entities[8801] = RuntimeEntity{EntityID: 8801, SceneInstanceID: 9001, HasSceneInstanceID: true, SourceMessageID: CmdEntityActiveResponse}
 	entityID := uint64(8801)
 	p.observeBuffSnapshot(buffSnapshotAuditRow{
 		SessionNumber: 4,
-		Buff:          rawBuffSnapshot{ID: 70001, HasID: true},
+		Buff:          RawBuffSnapshot{ID: 70001, HasID: true},
 		EntityID:      &entityID,
 	})
 	p.observeBuffSnapshot(buffSnapshotAuditRow{
 		SessionNumber: 4,
-		Buff:          rawBuffSnapshot{ID: 70001, HasID: true},
+		Buff:          RawBuffSnapshot{ID: 70001, HasID: true},
 		EntityID:      &entityID,
 	})
 
-	if len(p.dev.encounterSummaries) != 1 {
-		t.Fatalf("summary scopes = %d, want 1", len(p.dev.encounterSummaries))
+	if len(p.Dev.encounterSummaries) != 1 {
+		t.Fatalf("summary scopes = %d, want 1", len(p.Dev.encounterSummaries))
 	}
 	if err := p.writeEncounterSummary(); err != nil {
 		t.Fatal(err)
@@ -417,34 +417,34 @@ func TestEncounterSummaryReportsBuffSnapshotObservationsWithoutLifecycleClaims(t
 
 func TestEncounterSummaryBackfillsEarlierSourceEventsAsCorrelated(t *testing.T) {
 	var output bytes.Buffer
-	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
-	p.dev.encounterSummary = &output
-	p.masters = &gameMaster{characters: map[uint64]masterRecord{
-		1312: {ID: 1312, Name: "Role", NameStatus: string(resolutionVerified)},
+	p := NewProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
+	p.Dev.encounterSummary = &output
+	p.Masters = &GameMaster{Characters: map[uint64]MasterRecord{
+		1312: {ID: 1312, Name: "Role", NameStatus: string(ResolutionVerified)},
 	}}
-	p.observeEncounterSummary(combatEvent{
+	p.ObserveEncounterSummary(CombatEvent{
 		SessionNumber: 1, HasSourceEntity: true, SourceEntityID: 28006,
-		Source:  entityIdentity{Runtime: runtimeEntity{entityID: 28006, sceneInstanceID: 901, hasSceneInstanceID: true}},
-		SkillID: 1312011, SkillName: "Skill A", SkillNameStatus: resolutionVerified, SkillProof: "SkillDescription -> Skill",
-		CharacterStatus: resolutionUnknown, EventTypeCandidate: "DAMAGE_CANDIDATE", Damage: 120,
+		Source:  EntityIdentity{Runtime: RuntimeEntity{EntityID: 28006, SceneInstanceID: 901, HasSceneInstanceID: true}},
+		SkillID: 1312011, SkillName: "Skill A", SkillNameStatus: ResolutionVerified, SkillProof: "SkillDescription -> Skill",
+		CharacterStatus: ResolutionUnknown, EventTypeCandidate: "DAMAGE_CANDIDATE", Damage: 120,
 	})
-	if got := p.dev.encounterSummaries[encounterSummaryKey{session: 1, sceneInstance: 901, hasScene: true}].unknownCredit; got != 1 {
+	if got := p.Dev.encounterSummaries[encounterSummaryKey{session: 1, sceneInstance: 901, hasScene: true}].unknownCredit; got != 1 {
 		t.Fatalf("unknown credit before correlation = %d, want 1", got)
 	}
-	p.sourceRoles.observe(28006, masterRecord{ID: 1312011, RoleID: 1312, Status: string(resolutionVerified), NameKind: "SkillName"})
-	p.sourceRoles.observe(28006, masterRecord{ID: 1312012, RoleID: 1312, Status: string(resolutionVerified), NameKind: "SkillName"})
-	roleID, ok := p.sourceRoles.correlatedRole(28006)
+	p.SourceRoles.Observe(28006, MasterRecord{ID: 1312011, RoleID: 1312, Status: string(ResolutionVerified), NameKind: "SkillName"})
+	p.SourceRoles.Observe(28006, MasterRecord{ID: 1312012, RoleID: 1312, Status: string(ResolutionVerified), NameKind: "SkillName"})
+	roleID, ok := p.SourceRoles.CorrelatedRole(28006)
 	if !ok {
 		t.Fatal("two distinct verified skills did not establish correlated role")
 	}
-	p.backfillEncounterSummary(28006, roleID)
+	p.BackfillEncounterSummary(28006, roleID)
 
-	summary := p.dev.encounterSummaries[encounterSummaryKey{session: 1, sceneInstance: 901, hasScene: true}]
+	summary := p.Dev.encounterSummaries[encounterSummaryKey{session: 1, sceneInstance: 901, hasScene: true}]
 	if summary.unknownCredit != 0 || summary.unknownCreditAbs != 0 || summary.identityBackfilledEvents != 1 {
 		t.Fatalf("backfill counters = unknown %d/%d, backfilled %d", summary.unknownCredit, summary.unknownCreditAbs, summary.identityBackfilledEvents)
 	}
 	character := summary.characters[1312]
-	if character == nil || character.status != resolutionCorrelated || character.damage != 120 || character.eventCount != 1 {
+	if character == nil || character.status != ResolutionCorrelated || character.damage != 120 || character.eventCount != 1 {
 		t.Fatalf("backfilled character summary = %+v", character)
 	}
 	if err := p.writeEncounterSummary(); err != nil {
@@ -466,63 +466,63 @@ func TestEncounterSummaryBackfillsEarlierSourceEventsAsCorrelated(t *testing.T) 
 }
 
 func TestEncounterSummaryBackfillDoesNotCrossObservedLifecycleReset(t *testing.T) {
-	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
-	p.dev.encounterSummary = &bytes.Buffer{}
-	p.masters = &gameMaster{characters: map[uint64]masterRecord{1312: {ID: 1312}}}
-	p.observeEncounterSummary(combatEvent{
+	p := NewProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
+	p.Dev.encounterSummary = &bytes.Buffer{}
+	p.Masters = &GameMaster{Characters: map[uint64]MasterRecord{1312: {ID: 1312}}}
+	p.ObserveEncounterSummary(CombatEvent{
 		SessionNumber: 1, HasSourceEntity: true, SourceEntityID: 28006,
-		Source:          entityIdentity{Runtime: runtimeEntity{entityID: 28006, sceneInstanceID: 901, hasSceneInstanceID: true}},
-		CharacterStatus: resolutionUnknown, EventTypeCandidate: "DAMAGE_CANDIDATE", Damage: 120,
+		Source:          EntityIdentity{Runtime: RuntimeEntity{EntityID: 28006, SceneInstanceID: 901, HasSceneInstanceID: true}},
+		CharacterStatus: ResolutionUnknown, EventTypeCandidate: "DAMAGE_CANDIDATE", Damage: 120,
 	})
-	p.resetPendingSummaryCredits()
-	p.sourceRoles.observe(28006, masterRecord{ID: 1312011, RoleID: 1312, Status: string(resolutionVerified), NameKind: "SkillName"})
-	p.sourceRoles.observe(28006, masterRecord{ID: 1312012, RoleID: 1312, Status: string(resolutionVerified), NameKind: "SkillName"})
-	roleID, ok := p.sourceRoles.correlatedRole(28006)
+	p.ResetPendingSummaryCredits()
+	p.SourceRoles.Observe(28006, MasterRecord{ID: 1312011, RoleID: 1312, Status: string(ResolutionVerified), NameKind: "SkillName"})
+	p.SourceRoles.Observe(28006, MasterRecord{ID: 1312012, RoleID: 1312, Status: string(ResolutionVerified), NameKind: "SkillName"})
+	roleID, ok := p.SourceRoles.CorrelatedRole(28006)
 	if !ok {
 		t.Fatal("test setup did not establish correlated role")
 	}
-	p.backfillEncounterSummary(28006, roleID)
+	p.BackfillEncounterSummary(28006, roleID)
 
-	summary := p.dev.encounterSummaries[encounterSummaryKey{session: 1, sceneInstance: 901, hasScene: true}]
+	summary := p.Dev.encounterSummaries[encounterSummaryKey{session: 1, sceneInstance: 901, hasScene: true}]
 	if summary.unknownCredit != 1 || summary.unknownCreditAbs != 120 || summary.identityBackfilledEvents != 0 || len(summary.characters) != 0 {
 		t.Fatalf("lifecycle reset allowed an earlier event backfill: %+v", summary)
 	}
 }
 
 func TestEncounterSummaryBackfillRejectsConflictingSkillRoleEvidence(t *testing.T) {
-	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
-	p.dev.encounterSummary = &bytes.Buffer{}
-	p.masters = &gameMaster{characters: map[uint64]masterRecord{1312: {ID: 1312}, 1414: {ID: 1414}}}
-	p.observeEncounterSummary(combatEvent{
+	p := NewProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
+	p.Dev.encounterSummary = &bytes.Buffer{}
+	p.Masters = &GameMaster{Characters: map[uint64]MasterRecord{1312: {ID: 1312}, 1414: {ID: 1414}}}
+	p.ObserveEncounterSummary(CombatEvent{
 		SessionNumber: 1, HasSourceEntity: true, SourceEntityID: 28006,
-		Source:          entityIdentity{Runtime: runtimeEntity{entityID: 28006, sceneInstanceID: 901, hasSceneInstanceID: true}},
-		CharacterStatus: resolutionUnknown, EventTypeCandidate: "DAMAGE_CANDIDATE", Damage: 120,
+		Source:          EntityIdentity{Runtime: RuntimeEntity{EntityID: 28006, SceneInstanceID: 901, HasSceneInstanceID: true}},
+		CharacterStatus: ResolutionUnknown, EventTypeCandidate: "DAMAGE_CANDIDATE", Damage: 120,
 	})
-	p.sourceRoles.observe(28006, masterRecord{ID: 1312011, RoleID: 1312, Status: string(resolutionVerified), NameKind: "SkillName"})
-	p.sourceRoles.observe(28006, masterRecord{ID: 1312012, RoleID: 1312, Status: string(resolutionVerified), NameKind: "SkillName"})
-	p.sourceRoles.observe(28006, masterRecord{ID: 1414001, RoleID: 1414, Status: string(resolutionVerified), NameKind: "SkillName"})
-	p.backfillAvailableSummaryCredits()
+	p.SourceRoles.Observe(28006, MasterRecord{ID: 1312011, RoleID: 1312, Status: string(ResolutionVerified), NameKind: "SkillName"})
+	p.SourceRoles.Observe(28006, MasterRecord{ID: 1312012, RoleID: 1312, Status: string(ResolutionVerified), NameKind: "SkillName"})
+	p.SourceRoles.Observe(28006, MasterRecord{ID: 1414001, RoleID: 1414, Status: string(ResolutionVerified), NameKind: "SkillName"})
+	p.BackfillAvailableSummaryCredits()
 
-	summary := p.dev.encounterSummaries[encounterSummaryKey{session: 1, sceneInstance: 901, hasScene: true}]
+	summary := p.Dev.encounterSummaries[encounterSummaryKey{session: 1, sceneInstance: 901, hasScene: true}]
 	if summary.unknownCredit != 1 || summary.unknownCreditAbs != 120 || summary.identityBackfilledEvents != 0 || len(summary.characters) != 0 {
 		t.Fatalf("conflicting SkillId evidence was backfilled: %+v", summary)
 	}
 }
 
 func TestEncounterSummaryCapsDistinctScopesAndKeepsOverflowTotals(t *testing.T) {
-	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
-	p.dev.encounterSummary = &bytes.Buffer{}
+	p := NewProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
+	p.Dev.encounterSummary = &bytes.Buffer{}
 	for sceneID := uint64(1); sceneID <= maxEncounterSummaryGroups+2; sceneID++ {
-		p.observeEncounterSummary(combatEvent{
+		p.ObserveEncounterSummary(CombatEvent{
 			SessionNumber:      1,
-			Source:             entityIdentity{Runtime: runtimeEntity{sceneInstanceID: sceneID, hasSceneInstanceID: true}},
+			Source:             EntityIdentity{Runtime: RuntimeEntity{SceneInstanceID: sceneID, HasSceneInstanceID: true}},
 			EventTypeCandidate: "DAMAGE_CANDIDATE", Damage: 1,
 		})
 	}
-	if got := len(p.dev.encounterSummaries); got != maxEncounterSummaryGroups+1 {
+	if got := len(p.Dev.encounterSummaries); got != maxEncounterSummaryGroups+1 {
 		t.Fatalf("summary group count = %d, want at most the configured limit plus one overflow bucket", got)
 	}
-	overflow := p.dev.encounterSummaries[encounterSummaryKey{overflow: true}]
+	overflow := p.Dev.encounterSummaries[encounterSummaryKey{overflow: true}]
 	if overflow == nil || overflow.eventCount != 2 || overflow.damageCandidates != 2 {
 		t.Fatalf("overflow summary lost events: %+v", overflow)
 	}

@@ -44,41 +44,41 @@ type encounterFinalLine struct {
 	Encounters    EncounterTrackerSnapshot `json:"encounters"`
 }
 
-func (p *processor) writeEncounterLine(value any) {
-	if p.dev.encounterOut == nil {
+func (p *Processor) writeEncounterLine(value any) {
+	if p.Dev.encounterOut == nil {
 		return
 	}
 	line, err := json.Marshal(value)
 	if err == nil {
 		line = append(line, '\n')
-		_, err = p.dev.encounterOut.Write(line)
+		_, err = p.Dev.encounterOut.Write(line)
 	}
 	if err != nil {
-		fmt.Fprintf(p.diagnostic, "encounter_diagnostic_disabled error=%v\n", err)
-		p.dev.encounterOut = nil
-		p.damageStatistics.observeEncounterTransitions(nil)
-		p.dev.encounterTransitions = nil
+		fmt.Fprintf(p.Diagnostic, "encounter_diagnostic_disabled error=%v\n", err)
+		p.Dev.encounterOut = nil
+		p.DamageStatistics.ObserveEncounterTransitions(nil)
+		p.Dev.encounterTransitions = nil
 	}
 }
 
-func (p *processor) writeBattleStateSignal(at time.Time, container string, signal playerBattleStateSignal, anchor string) {
+func (p *Processor) WriteBattleStateSignal(at time.Time, container string, signal PlayerBattleStateSignal, anchor string) {
 	p.writeEncounterLine(battleStateSignalLine{
 		SchemaVersion: encounterDiagnosticSchemaVersion, Type: "BATTLE_STATE_SIGNAL", ObservedAt: at,
-		ProtocolSession: p.sessionNumber, Container: container, InBattle: signal.inBattle, Anchor: anchor, Accepted: anchor != "",
+		ProtocolSession: p.SessionNumber, Container: container, InBattle: signal.InBattle, Anchor: anchor, Accepted: anchor != "",
 	})
 }
 
-func (p *processor) writeCombatEventRecord(record CombatEventRecord, assignment string) {
+func (p *Processor) WriteCombatEventRecord(record CombatEventRecord, assignment string) {
 	p.writeEncounterLine(combatEventRecordLine{
 		SchemaVersion: encounterDiagnosticSchemaVersion, Type: "COMBAT_EVENT_RECORD", CombatEventRecord: record, Assignment: assignment,
 	})
 }
 
-func (p *processor) flushEncounterTransitions() {
-	if p.dev.encounterOut == nil || p.dev.encounterTransitions == nil {
+func (p *Processor) FlushEncounterTransitions() {
+	if p.Dev.encounterOut == nil || p.Dev.encounterTransitions == nil {
 		return
 	}
-	for _, transition := range p.dev.encounterTransitions.take() {
+	for _, transition := range p.Dev.encounterTransitions.take() {
 		p.writeEncounterLine(encounterTransitionLine{
 			SchemaVersion: encounterDiagnosticSchemaVersion, Type: "ENCOUNTER_TRANSITION", EncounterTransition: transition,
 		})
@@ -86,21 +86,21 @@ func (p *processor) flushEncounterTransitions() {
 }
 
 // writeEncounterFinal writes the closing encounter view after finishCapture.
-func (p *processor) writeEncounterFinal() {
-	if p.dev.encounterOut == nil || p.damageStatistics == nil {
+func (p *Processor) writeEncounterFinal() {
+	if p.Dev.encounterOut == nil || p.DamageStatistics == nil {
 		return
 	}
 	p.writeEncounterLine(encounterFinalLine{
-		SchemaVersion: encounterDiagnosticSchemaVersion, Type: "ENCOUNTER_FINAL", Encounters: p.damageStatistics.Snapshot().Encounters,
+		SchemaVersion: encounterDiagnosticSchemaVersion, Type: "ENCOUNTER_FINAL", Encounters: p.DamageStatistics.Snapshot().Encounters,
 	})
 }
 
 // recordEncounterTransitions keeps every transition of the encounter state machine for the encounter output
 // (-encounter-out); flushEncounterTransitions writes them at the next output point.
-func (p *processor) recordEncounterTransitions() {
+func (p *Processor) recordEncounterTransitions() {
 	log := &encounterTransitionLog{}
-	p.dev.encounterTransitions = log
-	p.damageStatistics.observeEncounterTransitions(log.add)
+	p.Dev.encounterTransitions = log
+	p.DamageStatistics.ObserveEncounterTransitions(log.add)
 }
 
 // encounterTransitionLog holds encounter transitions until the next encounter output point. The statistics report a

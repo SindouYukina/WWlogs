@@ -12,18 +12,18 @@ import (
 	"time"
 )
 
-var combatNotifyAuditSchemaBasis = protocolSchemaBasis()
+var combatNotifyAuditSchemaBasis = ProtocolSchemaBasis()
 
 var combatNotifyAuditNames = map[uint64]string{
-	fieldCombatNotifyDataDamageExecuteNotify:            "DamageExecuteNotify",
-	fieldCombatNotifyDataApplyGameplayEffectNotify:      "ApplyGameplayEffectNotify",
-	fieldCombatNotifyDataRemoveGameplayEffectNotify:     "RemoveGameplayEffectNotify",
-	fieldCombatNotifyDataAttributeChangedNotify:         "AttributeChangedNotify",
-	fieldCombatNotifyDataActivateBuffNotify:             "ActivateBuffNotify",
-	fieldCombatNotifyDataChangeStateNotify:              "ChangeStateNotify",
-	fieldCombatNotifyDataApplyBuffS2CRequestNotify:      "ApplyBuffS2CRequestNotify",
-	fieldCombatNotifyDataRecoverPropChangedNotify:       "RecoverPropChangedNotify",
-	fieldCombatNotifyDataRemoveBuffByIDS2CRequestNotify: "RemoveBuffByIdS2CRequestNotify",
+	FieldCombatNotifyDataDamageExecuteNotify:            "DamageExecuteNotify",
+	FieldCombatNotifyDataApplyGameplayEffectNotify:      "ApplyGameplayEffectNotify",
+	FieldCombatNotifyDataRemoveGameplayEffectNotify:     "RemoveGameplayEffectNotify",
+	FieldCombatNotifyDataAttributeChangedNotify:         "AttributeChangedNotify",
+	FieldCombatNotifyDataActivateBuffNotify:             "ActivateBuffNotify",
+	FieldCombatNotifyDataChangeStateNotify:              "ChangeStateNotify",
+	FieldCombatNotifyDataApplyBuffS2CRequestNotify:      "ApplyBuffS2CRequestNotify",
+	FieldCombatNotifyDataRecoverPropChangedNotify:       "RecoverPropChangedNotify",
+	FieldCombatNotifyDataRemoveBuffByIDS2CRequestNotify: "RemoveBuffByIdS2CRequestNotify",
 }
 
 type combatNotifyFieldShape struct {
@@ -65,89 +65,89 @@ type combatNotifyAuditRow struct {
 	DecodeStatus        string                     `json:"decodeStatus"`
 }
 
-// auditCombatNotify writes the de-identified audit row of one CombatNotifyData field (-combat-notify-audit-out) while the
+// AuditCombatNotify writes the de-identified audit row of one CombatNotifyData field (-combat-notify-audit-out) while the
 // core reads the frame. A failed audit row must not skip the rest of the frame (its damage and effect notifies), so it is
 // counted (diagnostic_isolation_development.go) and the frame continues.
-func (p *processor) auditCombatNotify(frame gameFrame, notification protoField, commonEntityID, commonOriginator, commonMessageID *uint64) {
-	if p.dev.combatNotifyAudit == nil || notification.number == fieldCombatNotifyDataCombatCommon {
+func (p *Processor) AuditCombatNotify(frame GameFrame, notification ProtoField, commonEntityID, commonOriginator, commonMessageID *uint64) {
+	if p.Dev.combatNotifyAudit == nil || notification.Number == FieldCombatNotifyDataCombatCommon {
 		return
 	}
-	if err := writeCombatNotifyAudit(p.dev.combatNotifyAudit, frame, notification, commonEntityID, commonOriginator, commonMessageID, p.sessionNumber); err != nil {
+	if err := writeCombatNotifyAudit(p.Dev.combatNotifyAudit, frame, notification, commonEntityID, commonOriginator, commonMessageID, p.SessionNumber); err != nil {
 		p.noteDiagnosticFailure("combat-notify-audit", err)
 	}
 }
 
-func writeCombatNotifyAudit(w io.Writer, frame gameFrame, notification protoField, commonEntityID, commonOriginator, commonMessageID *uint64, sessionNumber int) error {
-	fields, err := parseProtoFields(notification.data)
+func writeCombatNotifyAudit(w io.Writer, frame GameFrame, notification ProtoField, commonEntityID, commonOriginator, commonMessageID *uint64, sessionNumber int) error {
+	fields, err := ParseProtoFields(notification.Data)
 	if err != nil {
 		return fmt.Errorf("parse inner message: %w", err)
 	}
 	row := combatNotifyAuditRow{
 		SchemaVersion: 2, EventType: "COMBAT_NOTIFY_INNER_FIELD_AUDIT", SessionNumber: sessionNumber,
-		Timestamp: frame.timestamp, OuterCommandID: frame.commandID, Direction: frame.direction,
-		InnerFieldNumber: notification.number, InnerMessageName: combatNotifyAuditNames[notification.number],
+		Timestamp: frame.Timestamp, OuterCommandID: frame.CommandID, Direction: frame.Direction,
+		InnerFieldNumber: notification.Number, InnerMessageName: combatNotifyAuditNames[notification.Number],
 		SchemaBasis: combatNotifyAuditSchemaBasis, CombatCommonEntity: commonEntityID,
 		CombatCommonSource: commonOriginator, CombatCommonMessage: commonMessageID,
 		FieldShapes: summarizeProtoFields(fields), DecodeStatus: "STRUCTURE_DECODED_VALUES_WHITELISTED",
 	}
 
-	switch notification.number {
-	case fieldCombatNotifyDataDamageExecuteNotify:
+	switch notification.Number {
+	case FieldCombatNotifyDataDamageExecuteNotify:
 		record := combatNotifyNestedRecord{FieldNumber: 0, SchemaName: "DamageExecuteNotify", FieldShapes: summarizeProtoFields(fields)}
-		record.Values = numericValuesForFields(fields, fieldDamageExecuteNotifyImmuneType, fieldDamageExecuteNotifyChangeWeakness, fieldDamageExecuteNotifyKilledTarget, fieldDamageExecuteNotifyShieldCoverDamage, fieldDamageExecuteNotifyElementType, fieldDamageExecuteNotifySkillLevel, fieldDamageExecuteNotifyDamageID, fieldDamageExecuteNotifyIsCrit, fieldDamageExecuteNotifyKillerEntityID, fieldDamageExecuteNotifyChangeLife, fieldDamageExecuteNotifyPartID, fieldDamageExecuteNotifyTargetEntityID, fieldDamageExecuteNotifyDamage, fieldDamageExecuteNotifyAttackerEntityID)
+		record.Values = numericValuesForFields(fields, FieldDamageExecuteNotifyImmuneType, FieldDamageExecuteNotifyChangeWeakness, FieldDamageExecuteNotifyKilledTarget, FieldDamageExecuteNotifyShieldCoverDamage, FieldDamageExecuteNotifyElementType, FieldDamageExecuteNotifySkillLevel, FieldDamageExecuteNotifyDamageID, FieldDamageExecuteNotifyIsCrit, FieldDamageExecuteNotifyKillerEntityID, FieldDamageExecuteNotifyChangeLife, FieldDamageExecuteNotifyPartID, FieldDamageExecuteNotifyTargetEntityID, FieldDamageExecuteNotifyDamage, FieldDamageExecuteNotifyAttackerEntityID)
 		row.NestedRecords = append(row.NestedRecords, record)
 		for _, field := range fields {
-			if field.number != fieldDamageExecuteNotifyDamageContext || field.wire != 2 {
+			if field.Number != FieldDamageExecuteNotifyDamageContext || field.Wire != 2 {
 				continue
 			}
-			nestedFields, parseErr := parseProtoFields(field.data)
+			nestedFields, parseErr := ParseProtoFields(field.Data)
 			if parseErr != nil {
 				return fmt.Errorf("parse DamageExecuteNotify.DamageContext: %w", parseErr)
 			}
-			context := combatNotifyNestedRecord{FieldNumber: fieldDamageExecuteNotifyDamageContext, SchemaName: "DamageContext", FieldShapes: summarizeProtoFields(nestedFields)}
-			context.Values = numericValuesForFields(nestedFields, fieldDamageContextSourceType, fieldDamageContextBulletID, fieldDamageContextBulletTags, fieldDamageContextSkillID, fieldDamageContextSkillMessageID)
+			context := combatNotifyNestedRecord{FieldNumber: FieldDamageExecuteNotifyDamageContext, SchemaName: "DamageContext", FieldShapes: summarizeProtoFields(nestedFields)}
+			context.Values = numericValuesForFields(nestedFields, FieldDamageContextSourceType, FieldDamageContextBulletID, FieldDamageContextBulletTags, FieldDamageContextSkillID, FieldDamageContextSkillMessageID)
 			row.NestedRecords = append(row.NestedRecords, context)
 		}
-	case fieldCombatNotifyDataAttributeChangedNotify:
+	case FieldCombatNotifyDataAttributeChangedNotify:
 		for _, field := range fields {
-			if field.number != fieldAttributeChangedNotifyAttributes || field.wire != 2 {
+			if field.Number != FieldAttributeChangedNotifyAttributes || field.Wire != 2 {
 				continue
 			}
-			nestedFields, parseErr := parseProtoFields(field.data)
+			nestedFields, parseErr := ParseProtoFields(field.Data)
 			if parseErr != nil {
 				return fmt.Errorf("parse AttributeChangedNotify.Attributes: %w", parseErr)
 			}
-			record := combatNotifyNestedRecord{FieldNumber: fieldAttributeChangedNotifyAttributes, SchemaName: "GameplayAttributeData", FieldShapes: summarizeProtoFields(nestedFields)}
-			record.Values = numericValuesForFields(nestedFields, fieldGameplayAttributeDataBaseValue, fieldGameplayAttributeDataCurrentValue, fieldGameplayAttributeDataAttributeType)
+			record := combatNotifyNestedRecord{FieldNumber: FieldAttributeChangedNotifyAttributes, SchemaName: "GameplayAttributeData", FieldShapes: summarizeProtoFields(nestedFields)}
+			record.Values = numericValuesForFields(nestedFields, FieldGameplayAttributeDataBaseValue, FieldGameplayAttributeDataCurrentValue, FieldGameplayAttributeDataAttributeType)
 			row.NestedRecords = append(row.NestedRecords, record)
 		}
-	case fieldCombatNotifyDataActivateBuffNotify:
+	case FieldCombatNotifyDataActivateBuffNotify:
 		row.NestedRecords = append(row.NestedRecords, combatNotifyNestedRecord{
 			FieldNumber: 0, SchemaName: "ActivateBuffNotify", FieldShapes: summarizeProtoFields(fields),
-			Values: numericValuesForFields(fields, fieldActivateBuffNotifyOn, fieldActivateBuffNotifyHandle),
+			Values: numericValuesForFields(fields, FieldActivateBuffNotifyOn, FieldActivateBuffNotifyHandle),
 		})
-	case fieldCombatNotifyDataRecoverPropChangedNotify:
+	case FieldCombatNotifyDataRecoverPropChangedNotify:
 		for _, field := range fields {
-			if field.number != fieldRecoverPropChangedNotifyAttributes || field.wire != 2 {
+			if field.Number != FieldRecoverPropChangedNotifyAttributes || field.Wire != 2 {
 				continue
 			}
-			nestedFields, parseErr := parseProtoFields(field.data)
+			nestedFields, parseErr := ParseProtoFields(field.Data)
 			if parseErr != nil {
 				return fmt.Errorf("parse RecoverPropChangedNotify.Attributes: %w", parseErr)
 			}
-			record := combatNotifyNestedRecord{FieldNumber: fieldRecoverPropChangedNotifyAttributes, SchemaName: "RecoverAttr", FieldShapes: summarizeProtoFields(nestedFields)}
-			record.Values = numericValuesForFields(nestedFields, fieldRecoverAttrAttrID, fieldRecoverAttrRatio, fieldRecoverAttrMaxValue, fieldRecoverAttrCurrentValue)
+			record := combatNotifyNestedRecord{FieldNumber: FieldRecoverPropChangedNotifyAttributes, SchemaName: "RecoverAttr", FieldShapes: summarizeProtoFields(nestedFields)}
+			record.Values = numericValuesForFields(nestedFields, FieldRecoverAttrAttrID, FieldRecoverAttrRatio, FieldRecoverAttrMaxValue, FieldRecoverAttrCurrentValue)
 			row.NestedRecords = append(row.NestedRecords, record)
 		}
-	case fieldCombatNotifyDataChangeStateNotify:
+	case FieldCombatNotifyDataChangeStateNotify:
 		row.NestedRecords = append(row.NestedRecords, combatNotifyNestedRecord{
 			FieldNumber: 0, SchemaName: "ChangeStateNotify", FieldShapes: summarizeProtoFields(fields),
-			Values: numericValuesForFields(fields, fieldChangeStateNotifyToState, fieldChangeStateNotifyFromState, fieldChangeStateNotifyFsmID),
+			Values: numericValuesForFields(fields, FieldChangeStateNotifyToState, FieldChangeStateNotifyFromState, FieldChangeStateNotifyFsmID),
 		})
 	}
-	switch notification.number {
-	case fieldCombatNotifyDataDamageExecuteNotify, fieldCombatNotifyDataAttributeChangedNotify, fieldCombatNotifyDataActivateBuffNotify,
-		fieldCombatNotifyDataChangeStateNotify, fieldCombatNotifyDataRecoverPropChangedNotify:
+	switch notification.Number {
+	case FieldCombatNotifyDataDamageExecuteNotify, FieldCombatNotifyDataAttributeChangedNotify, FieldCombatNotifyDataActivateBuffNotify,
+		FieldCombatNotifyDataChangeStateNotify, FieldCombatNotifyDataRecoverPropChangedNotify:
 		row.DecodeStatus = "CANDIDATE_SCHEMA_FIELDS_DECODED"
 	}
 	if err := json.NewEncoder(w).Encode(row); err != nil {
@@ -156,14 +156,14 @@ func writeCombatNotifyAudit(w io.Writer, frame gameFrame, notification protoFiel
 	return nil
 }
 
-func summarizeProtoFields(fields []protoField) []combatNotifyFieldShape {
+func summarizeProtoFields(fields []ProtoField) []combatNotifyFieldShape {
 	counts := make(map[[2]uint64]int)
 	byteCounts := make(map[[2]uint64]int)
 	for _, field := range fields {
-		key := [2]uint64{field.number, field.wire}
+		key := [2]uint64{field.Number, field.Wire}
 		counts[key]++
-		if field.wire == 1 || field.wire == 2 || field.wire == 5 {
-			byteCounts[key] += len(field.data)
+		if field.Wire == 1 || field.Wire == 2 || field.Wire == 5 {
+			byteCounts[key] += len(field.Data)
 		}
 	}
 	keys := make([][2]uint64, 0, len(counts))
@@ -187,14 +187,14 @@ func summarizeProtoFields(fields []protoField) []combatNotifyFieldShape {
 	return result
 }
 
-func numericValuesForFields(fields []protoField, allowlist ...uint64) []combatNotifyNumericValue {
+func numericValuesForFields(fields []ProtoField, allowlist ...uint64) []combatNotifyNumericValue {
 	allowed := make(map[uint64]struct{}, len(allowlist))
 	for _, number := range allowlist {
 		allowed[number] = struct{}{}
 	}
 	values := make([]combatNotifyNumericValue, 0)
 	for _, field := range fields {
-		if _, ok := allowed[field.number]; !ok {
+		if _, ok := allowed[field.Number]; !ok {
 			continue
 		}
 		if numeric, ok := numericProtoValue(field); ok {
@@ -204,17 +204,17 @@ func numericValuesForFields(fields []protoField, allowlist ...uint64) []combatNo
 	return values
 }
 
-func numericProtoValue(field protoField) (combatNotifyNumericValue, bool) {
-	value := combatNotifyNumericValue{FieldNumber: field.number, WireType: field.wire}
-	switch field.wire {
+func numericProtoValue(field ProtoField) (combatNotifyNumericValue, bool) {
+	value := combatNotifyNumericValue{FieldNumber: field.Number, WireType: field.Wire}
+	switch field.Wire {
 	case 0:
-		n := field.value
+		n := field.Value
 		value.Unsigned = &n
 	case 5:
-		if len(field.data) != 4 {
+		if len(field.Data) != 4 {
 			return combatNotifyNumericValue{}, false
 		}
-		f := math.Float32frombits(binary.LittleEndian.Uint32(field.data))
+		f := math.Float32frombits(binary.LittleEndian.Uint32(field.Data))
 		value.Float = &f
 	default:
 		return combatNotifyNumericValue{}, false

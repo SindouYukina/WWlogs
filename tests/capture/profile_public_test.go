@@ -19,18 +19,18 @@ func TestPublicProcessorHasNoDevelopmentState(t *testing.T) {
 		t.Fatalf("Public processorDiagnostics has %d fields and %d bytes", fields, size)
 	}
 	writer := reflect.TypeOf((*io.Writer)(nil)).Elem()
-	processorType := reflect.TypeOf(processor{})
+	processorType := reflect.TypeOf(Processor{})
 	for i := 0; i < processorType.NumField(); i++ {
 		field := processorType.Field(i)
-		if field.Type.Kind() == reflect.Interface && field.Type.Implements(writer) && field.Name != "diagnostic" {
+		if field.Type.Kind() == reflect.Interface && field.Type.Implements(writer) && field.Name != "Diagnostic" {
 			t.Fatalf("Public processor has the writer field %s", field.Name)
 		}
 	}
-	newProcessor(nil, nopWriter{}, nopWriter{}, nopWriter{}).dev.beginProtocolSession()
+	NewProcessor(nil, nopWriter{}, nopWriter{}, nopWriter{}).Dev.BeginProtocolSession()
 }
 
 // discardConsole does nothing: a public processor has no console.
-func discardConsole(*processor) {}
+func discardConsole(*Processor) {}
 
 type nopWriter struct{}
 

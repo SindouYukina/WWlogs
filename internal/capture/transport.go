@@ -27,7 +27,7 @@ const (
 	kcpGapSkipTimeout     = 2 * time.Second
 	maxPendingKCPSegments = 4096
 	maxPendingKCPBytes    = 4 << 20
-	maxKCPStreams         = 16
+	MaxKCPStreams         = 16
 )
 
 // Frame resynchronization bounds. Searches found the next frame within a few hundred bytes in offline fault
@@ -39,10 +39,10 @@ const (
 	// maxResyncCandidatesPerPass and maxResyncCRCBytesPerPass bound the CRC work of one search pass.
 	maxResyncCandidatesPerPass = 1024
 	maxResyncCRCBytesPerPass   = 4 << 20
-	// maxResyncRetainedBytes bounds the buffer held while searching: one maximal frame plus one more. Because older
+	// MaxResyncRetainedBytes bounds the buffer held while searching: one maximal frame plus one more. Because older
 	// bytes are dropped as new ones arrive, a search over noise reaches newly arriving frames within this many bytes
 	// of input even when the per-pass budget stops each pass early.
-	maxResyncRetainedBytes = 2 * maxApplicationFrameLength
+	MaxResyncRetainedBytes = 2 * maxApplicationFrameLength
 )
 
 const maxApplicationFrameLength = int(^uint16(0)) + 3
@@ -64,23 +64,23 @@ type segment struct {
 	timestamp time.Time
 }
 
-type stream struct {
+type Stream struct {
 	key               string
 	conv              uint32
 	direction         string
 	next              uint32
 	initialized       bool
-	pending           map[uint32]segment
-	pendingBytes      int
+	Pending           map[uint32]segment
+	PendingBytes      int
 	assembling        [][]byte
 	assemblingAt      time.Time
 	want              byte
 	applicationBuffer []byte
 	applicationSpans  []applicationSpan
-	// gapOpen is set while a later segment waits for the missing sequence next; gapSince is the capture time of the
+	// GapOpen is set while a later segment waits for the missing sequence next; gapSince is the capture time of the
 	// segment that first revealed the gap.
-	gapOpen  bool
-	gapSince time.Time
+	GapOpen  bool
+	GapSince time.Time
 	// lastDeliveredAt is the capture time of the last segment delivered in order; a loss begins after it.
 	lastDeliveredAt time.Time
 	lastActivityAt  time.Time
@@ -88,13 +88,13 @@ type stream struct {
 	lastFrameSequence uint32
 	hasFrameSequence  bool
 	pendingCRCCensus  []int
-	recovery          streamRecovery
+	Recovery          streamRecovery
 }
 
 // streamRecovery is the recovery episode of one stream. An episode begins when data is known lost (a skipped gap or
 // a framing failure) and ends when a valid frame is found again.
 type streamRecovery struct {
-	active bool
+	Active bool
 	// failed is set once the episode discarded maxResyncScanBytes without finding a frame.
 	failed          bool
 	lossID          uint64
@@ -112,7 +112,7 @@ func kcpSequenceBefore(a, b uint32) bool {
 	return int32(a-b) < 0
 }
 
-func consumeDatagram(payload []byte, direction string, capturedAt time.Time, streams map[string]*stream, processor *processor, stats *captureStats) {
+func ConsumeDatagram(payload []byte, direction string, capturedAt time.Time, streams map[string]*Stream, processor *Processor, stats *CaptureStats) {
 	processor.kcpStreams = streams
 	if capturedAt.After(stats.transportClock) {
 		stats.transportClock = capturedAt
@@ -124,14 +124,14 @@ func consumeDatagram(payload []byte, direction string, capturedAt time.Time, str
 		cmd := payload[4]
 		if cmd != 81 && cmd != 82 && cmd != 83 && cmd != 84 {
 			if !hasKCP {
-				stats.nonKCPUDP++
+				stats.NonKCPUDP++
 			} else {
-				stats.invalidKCP++
+				stats.InvalidKCP++
 			}
 			return
 		}
 		if dataLen < 0 || 24+dataLen > len(payload) {
-			stats.invalidKCP++
+			stats.InvalidKCP++
 			return
 		}
 		hasKCP = true
@@ -141,32 +141,32 @@ func consumeDatagram(payload []byte, direction string, capturedAt time.Time, str
 		data := append([]byte(nil), payload[24:24+dataLen]...)
 		payload = payload[24+dataLen:]
 		if cmd != 81 { // KCP PUSH
-			stats.kcpControl++
+			stats.KCPControl++
 			continue
 		}
-		stats.kcpPush++
+		stats.KCPPush++
 		if processor.retiredKCP.ignores(conv, seq) {
-			stats.kcpRetiredStragglers++
+			stats.KCPRetiredStragglers++
 			continue
 		}
 		state := streamFor(conv, direction, capturedAt, streams, processor, stats)
 		acceptKCPSegment(state, seq, segment{data: data, fragments: fragments, timestamp: capturedAt}, streams, processor, stats)
 	}
 	if !hasKCP && len(payload) > 0 {
-		stats.nonKCPUDP++
+		stats.NonKCPUDP++
 	}
 }
 
 // streamFor returns the stream of one conversation and direction, creating it and evicting the least recently active
 // stream past maxKCPStreams.
-func streamFor(conv uint32, direction string, at time.Time, streams map[string]*stream, processor *processor, stats *captureStats) *stream {
+func streamFor(conv uint32, direction string, at time.Time, streams map[string]*Stream, processor *Processor, stats *CaptureStats) *Stream {
 	key := fmt.Sprintf("%08x/%s", conv, direction)
 	state, ok := streams[key]
 	if !ok {
-		if len(streams) >= maxKCPStreams {
+		if len(streams) >= MaxKCPStreams {
 			evictIdlestStream(streams, processor, stats)
 		}
-		state = &stream{key: key, conv: conv, direction: direction, pending: make(map[uint32]segment)}
+		state = &Stream{key: key, conv: conv, direction: direction, Pending: make(map[uint32]segment)}
 		streams[key] = state
 	}
 	if at.After(state.lastActivityAt) {
@@ -175,8 +175,8 @@ func streamFor(conv uint32, direction string, at time.Time, streams map[string]*
 	return state
 }
 
-func evictIdlestStream(streams map[string]*stream, processor *processor, stats *captureStats) {
-	var oldest *stream
+func evictIdlestStream(streams map[string]*Stream, processor *Processor, stats *CaptureStats) {
+	var oldest *Stream
 	for _, state := range sortedStreams(streams) {
 		if oldest == nil || state.lastActivityAt.Before(oldest.lastActivityAt) {
 			oldest = state
@@ -185,26 +185,26 @@ func evictIdlestStream(streams map[string]*stream, processor *processor, stats *
 	if oldest == nil {
 		return
 	}
-	stats.kcpStreamsEvicted++
-	stats.kcpEvictedPendingSegments += len(oldest.pending)
-	processor.captureLayer.evictedSegments += uint64(len(oldest.pending))
-	if oldest.gapOpen {
+	stats.KCPStreamsEvicted++
+	stats.kcpEvictedPendingSegments += len(oldest.Pending)
+	processor.CaptureLayer.evictedSegments += uint64(len(oldest.Pending))
+	if oldest.GapOpen {
 		closeKCPGap(oldest, processor)
 	}
-	if len(oldest.pending) > 0 && !oldest.recovery.active {
+	if len(oldest.Pending) > 0 && !oldest.Recovery.Active {
 		// Data waiting behind a gap is discarded with the stream: that is a loss, and it can never recover.
-		oldest.recovery.active = true
-		oldest.recovery.lossID = processor.beginTransportLoss(oldest.direction, oldest.lastDeliveredAt, oldest.lastActivityAt, kcpLossStreamEvicted, len(oldest.pending))
+		oldest.Recovery.Active = true
+		oldest.Recovery.lossID = processor.beginTransportLoss(oldest.direction, oldest.lastDeliveredAt, oldest.lastActivityAt, kcpLossStreamEvicted, len(oldest.Pending))
 	}
-	if oldest.recovery.active {
+	if oldest.Recovery.Active {
 		// The episode can never finish; it stays reported as an unrecovered loss.
-		processor.failTransportLoss(oldest.recovery.lossID, oldest.direction)
+		processor.failTransportLoss(oldest.Recovery.lossID, oldest.direction)
 	}
 	delete(streams, oldest.key)
 }
 
-func sortedStreams(streams map[string]*stream) []*stream {
-	list := make([]*stream, 0, len(streams))
+func sortedStreams(streams map[string]*Stream) []*Stream {
+	list := make([]*Stream, 0, len(streams))
 	for _, state := range streams {
 		list = append(list, state)
 	}
@@ -212,73 +212,73 @@ func sortedStreams(streams map[string]*stream) []*stream {
 	return list
 }
 
-func acceptKCPSegment(state *stream, seq uint32, part segment, streams map[string]*stream, processor *processor, stats *captureStats) {
+func acceptKCPSegment(state *Stream, seq uint32, part segment, streams map[string]*Stream, processor *Processor, stats *CaptureStats) {
 	if !state.initialized {
 		state.initialized = true
 		state.next = seq
 	}
 	if kcpSequenceBefore(seq, state.next) {
-		stats.kcpDuplicates++
+		stats.KCPDuplicates++
 		return
 	}
-	if _, exists := state.pending[seq]; exists {
-		stats.kcpDuplicates++
+	if _, exists := state.Pending[seq]; exists {
+		stats.KCPDuplicates++
 		return
 	}
-	if seq != state.next && (len(state.pending) >= maxPendingKCPSegments || state.pendingBytes+len(part.data) > maxPendingKCPBytes) {
+	if seq != state.next && (len(state.Pending) >= maxPendingKCPSegments || state.PendingBytes+len(part.data) > maxPendingKCPBytes) {
 		// The stream cannot hold more while it waits: give up on the missing sequence now.
-		stats.kcpPendingOverflow++
+		stats.KCPPendingOverflow++
 		skipKCPGap(state, part.timestamp, kcpSkipPendingLimit, streams, processor, stats)
 		if kcpSequenceBefore(seq, state.next) {
-			stats.kcpDuplicates++
+			stats.KCPDuplicates++
 			return
 		}
 	}
 	if seq != state.next {
-		stats.kcpOutOfOrder++
-		if !state.gapOpen {
+		stats.KCPOutOfOrder++
+		if !state.GapOpen {
 			openKCPGap(state, part.timestamp, processor, stats)
 		}
 	}
-	state.pending[seq] = part
-	state.pendingBytes += len(part.data)
-	if len(state.pending) > stats.kcpPendingPeak {
-		stats.kcpPendingPeak = len(state.pending)
+	state.Pending[seq] = part
+	state.PendingBytes += len(part.data)
+	if len(state.Pending) > stats.KCPPendingPeak {
+		stats.KCPPendingPeak = len(state.Pending)
 	}
-	if seq == state.next && state.gapOpen {
+	if seq == state.next && state.GapOpen {
 		// The missing sequence arrived: the gap was reordering or a captured retransmission, and nothing was lost.
-		stats.kcpGapsFilled++
-		if wait := part.timestamp.Sub(state.gapSince); wait > stats.kcpMaxGapWait {
-			stats.kcpMaxGapWait = wait
+		stats.KCPGapsFilled++
+		if wait := part.timestamp.Sub(state.GapSince); wait > stats.KCPMaxGapWait {
+			stats.KCPMaxGapWait = wait
 		}
 		closeKCPGap(state, processor)
 	}
 	deliverKCPInOrder(state, streams, processor, stats)
 }
 
-func openKCPGap(state *stream, since time.Time, processor *processor, stats *captureStats) {
-	state.gapOpen, state.gapSince = true, since
-	stats.kcpGapsOpened++
+func openKCPGap(state *Stream, since time.Time, processor *Processor, stats *CaptureStats) {
+	state.GapOpen, state.GapSince = true, since
+	stats.KCPGapsOpened++
 	processor.observeTransportGap(state.key, state.direction, since, true)
 }
 
-func closeKCPGap(state *stream, processor *processor) {
-	state.gapOpen, state.gapSince = false, time.Time{}
+func closeKCPGap(state *Stream, processor *Processor) {
+	state.GapOpen, state.GapSince = false, time.Time{}
 	processor.observeTransportGap(state.key, state.direction, time.Time{}, false)
 }
 
 // deliverKCPInOrder delivers every pending segment that continues the stream, then records whether a new gap holds
 // later segments back.
-func deliverKCPInOrder(state *stream, streams map[string]*stream, processor *processor, stats *captureStats) {
+func deliverKCPInOrder(state *Stream, streams map[string]*Stream, processor *Processor, stats *CaptureStats) {
 	for {
-		part, found := state.pending[state.next]
+		part, found := state.Pending[state.next]
 		if !found {
 			break
 		}
-		delete(state.pending, state.next)
-		state.pendingBytes -= len(part.data)
+		delete(state.Pending, state.next)
+		state.PendingBytes -= len(part.data)
 		state.next++
-		stats.kcpOrdered++
+		stats.KCPOrdered++
 		if part.timestamp.After(state.lastDeliveredAt) {
 			state.lastDeliveredAt = part.timestamp
 		}
@@ -291,7 +291,7 @@ func deliverKCPInOrder(state *stream, streams map[string]*stream, processor *pro
 				state.assembling = append(state.assembling, part.data)
 			default:
 				// The message being assembled cannot complete; this fragment can only begin another one.
-				stats.kcpFragmentResets++
+				stats.KCPFragmentResets++
 				state.assembling = [][]byte{part.data}
 				state.assemblingAt = part.timestamp
 			}
@@ -300,7 +300,7 @@ func deliverKCPInOrder(state *stream, streams map[string]*stream, processor *pro
 		}
 		if len(state.assembling) > 0 && state.want != 0 {
 			// A final fragment while earlier fragments are still expected belongs to an incomplete message.
-			stats.kcpFragmentTailDrops++
+			stats.KCPFragmentTailDrops++
 			state.assembling = nil
 			state.assemblingAt = time.Time{}
 			continue
@@ -317,12 +317,12 @@ func deliverKCPInOrder(state *stream, streams map[string]*stream, processor *pro
 			state.assembling = nil
 			state.assemblingAt = time.Time{}
 		}
-		stats.kcpMessages++
+		stats.KCPMessages++
 		processApplicationData(app, appTimestamp, state.direction, streams, state, processor, stats)
 	}
-	if len(state.pending) > 0 && !state.gapOpen {
+	if len(state.Pending) > 0 && !state.GapOpen {
 		// Delivery stopped at another missing sequence; it is a new gap, open since its earliest waiting segment.
-		openKCPGap(state, earliestPendingTimestamp(state.pending), processor, stats)
+		openKCPGap(state, earliestPendingTimestamp(state.Pending), processor, stats)
 	}
 }
 
@@ -338,10 +338,10 @@ func earliestPendingTimestamp(pending map[uint32]segment) time.Time {
 
 // skipTimedOutGaps skips every gap that stayed open longer than kcpGapSkipTimeout on the capture clock. Streams are
 // visited in key order so a replay always delivers in the same order.
-func skipTimedOutGaps(now time.Time, streams map[string]*stream, processor *processor, stats *captureStats) {
+func skipTimedOutGaps(now time.Time, streams map[string]*Stream, processor *Processor, stats *CaptureStats) {
 	due := false
 	for _, state := range streams {
-		if state.gapOpen && now.Sub(state.gapSince) >= kcpGapSkipTimeout {
+		if state.GapOpen && now.Sub(state.GapSince) >= kcpGapSkipTimeout {
 			due = true
 			break
 		}
@@ -350,25 +350,25 @@ func skipTimedOutGaps(now time.Time, streams map[string]*stream, processor *proc
 		return
 	}
 	for _, state := range sortedStreams(streams) {
-		if state.gapOpen && now.Sub(state.gapSince) >= kcpGapSkipTimeout {
+		if state.GapOpen && now.Sub(state.GapSince) >= kcpGapSkipTimeout {
 			skipKCPGap(state, now, kcpSkipGapTimeout, streams, processor, stats)
 		}
 	}
 }
 
-// finishTransport ends a capture: no retransmission can arrive any more, so every open gap is skipped and its
+// FinishTransport ends a capture: no retransmission can arrive any more, so every open gap is skipped and its
 // waiting data delivered. A stream still searching for a frame afterwards ends its episode unrecovered.
-func finishTransport(streams map[string]*stream, processor *processor, stats *captureStats) {
+func FinishTransport(streams map[string]*Stream, processor *Processor, stats *CaptureStats) {
 	for _, state := range sortedStreams(streams) {
-		if state.gapOpen {
+		if state.GapOpen {
 			skipKCPGap(state, stats.transportClock, kcpSkipCaptureEnd, streams, processor, stats)
 		}
 	}
 	for _, state := range sortedStreams(streams) {
-		if state.recovery.active && !state.recovery.failed {
-			state.recovery.failed = true
-			stats.resyncFailures++
-			processor.failTransportLoss(state.recovery.lossID, state.direction)
+		if state.Recovery.Active && !state.Recovery.failed {
+			state.Recovery.failed = true
+			stats.ResyncFailures++
+			processor.failTransportLoss(state.Recovery.lossID, state.direction)
 		}
 	}
 }
@@ -376,28 +376,28 @@ func finishTransport(streams map[string]*stream, processor *processor, stats *ca
 // skipKCPGap gives up on the missing sequences before the earliest pending segment. The skipped data is lost: the
 // partial fragment message and the partial application frame before the gap are discarded, the processor records
 // the loss, and the stream resynchronizes before it parses frames again.
-func skipKCPGap(state *stream, at time.Time, reason string, streams map[string]*stream, processor *processor, stats *captureStats) {
-	if len(state.pending) == 0 {
-		if state.gapOpen {
+func skipKCPGap(state *Stream, at time.Time, reason string, streams map[string]*Stream, processor *Processor, stats *CaptureStats) {
+	if len(state.Pending) == 0 {
+		if state.GapOpen {
 			closeKCPGap(state, processor)
 		}
 		return
 	}
 	first, found := uint32(0), false
-	for seq := range state.pending {
+	for seq := range state.Pending {
 		if !found || kcpSequenceBefore(seq, first) {
 			first, found = seq, true
 		}
 	}
 	skipped := int(first - state.next)
-	stats.kcpGapsSkipped++
-	stats.kcpSegmentsSkipped += skipped
+	stats.KCPGapsSkipped++
+	stats.KCPSegmentsSkipped += skipped
 	state.next = first
-	if state.gapOpen {
+	if state.GapOpen {
 		closeKCPGap(state, processor)
 	}
 	if len(state.assembling) > 0 {
-		stats.kcpFragmentsDiscarded += len(state.assembling)
+		stats.KCPFragmentsDiscarded += len(state.assembling)
 		state.assembling, state.assemblingAt = nil, time.Time{}
 	}
 	discarded := len(state.applicationBuffer)
@@ -407,29 +407,29 @@ func skipKCPGap(state *stream, at time.Time, reason string, streams map[string]*
 }
 
 // beginStreamRecovery opens (or extends) the stream's recovery episode for a loss detected at at.
-func beginStreamRecovery(state *stream, reason string, discardedBytes, skippedSegments int, at time.Time, processor *processor, stats *captureStats) {
-	stats.resyncBytesDiscarded += discardedBytes
-	if state.recovery.active {
+func beginStreamRecovery(state *Stream, reason string, discardedBytes, skippedSegments int, at time.Time, processor *Processor, stats *CaptureStats) {
+	stats.ResyncBytesDiscarded += discardedBytes
+	if state.Recovery.Active {
 		// A further loss before the stream recovered from the previous one belongs to the same episode.
-		state.recovery.discardedBytes += discardedBytes
-		state.recovery.skippedSegments += skippedSegments
-		processor.extendTransportLoss(state.recovery.lossID, skippedSegments)
+		state.Recovery.discardedBytes += discardedBytes
+		state.Recovery.skippedSegments += skippedSegments
+		processor.extendTransportLoss(state.Recovery.lossID, skippedSegments)
 		return
 	}
 	from := state.lastDeliveredAt
 	if from.IsZero() || from.After(at) {
 		from = at
 	}
-	stats.resyncAttempts++
-	state.recovery = streamRecovery{
-		active: true, reason: reason, discardedBytes: discardedBytes, skippedSegments: skippedSegments,
+	stats.ResyncAttempts++
+	state.Recovery = streamRecovery{
+		Active: true, reason: reason, discardedBytes: discardedBytes, skippedSegments: skippedSegments,
 		sequenceBeforeLoss: state.lastFrameSequence, hasSequenceBeforeLoss: state.hasFrameSequence,
-		episodes: state.recovery.episodes + 1,
+		episodes: state.Recovery.episodes + 1,
 	}
-	state.recovery.lossID = processor.beginTransportLoss(state.direction, from, at, reason, skippedSegments)
+	state.Recovery.lossID = processor.beginTransportLoss(state.direction, from, at, reason, skippedSegments)
 }
 
-func processApplicationData(data []byte, capturedAt time.Time, direction string, streams map[string]*stream, state *stream, processor *processor, stats *captureStats) {
+func processApplicationData(data []byte, capturedAt time.Time, direction string, streams map[string]*Stream, state *Stream, processor *Processor, stats *CaptureStats) {
 	if len(data) == 0 {
 		return
 	}
@@ -442,32 +442,32 @@ func processApplicationData(data []byte, capturedAt time.Time, direction string,
 
 	previousSession := processor.sessionGeneration
 	for {
-		if state.recovery.active && !resynchronizeStream(state, processor, stats) {
+		if state.Recovery.Active && !resynchronizeStream(state, processor, stats) {
 			break
 		}
 		result := parseFrameStream(state.applicationBuffer, direction, state.applicationSpans, processor, state)
-		stats.frames += result.frames
-		stats.badCRC += result.badCRC
-		stats.malformed += result.malformed
+		stats.Frames += result.frames
+		stats.BadCRC += result.badCRC
+		stats.Malformed += result.malformed
 		discardApplicationPrefix(state, result.consumed)
 		if !result.desync {
 			break
 		}
 		// The framing failed inside data that arrived in order: the boundary is lost, so resynchronize from here.
-		stats.frameDesyncs++
+		stats.FrameDesyncs++
 		beginStreamRecovery(state, result.desyncReason, 0, 0, applicationTimestampAt(state.applicationSpans, 0), processor, stats)
 	}
-	if len(state.applicationBuffer) > maxApplicationFrameLength-1 && !state.recovery.active {
+	if len(state.applicationBuffer) > maxApplicationFrameLength-1 && !state.Recovery.Active {
 		state.applicationBuffer = nil
 		state.applicationSpans = nil
-		stats.malformed++
+		stats.Malformed++
 	}
 	if processor.sessionGeneration != previousSession {
 		retireSupersededStreams(streams, state, processor, stats)
 	}
 }
 
-func discardApplicationPrefix(state *stream, count int) {
+func discardApplicationPrefix(state *Stream, count int) {
 	if count <= 0 {
 		return
 	}
@@ -479,47 +479,47 @@ func discardApplicationPrefix(state *stream, count int) {
 // matches, and whose body is a valid AES block sequence under the current session key. It never waits on a candidate
 // whose declared length has not fully arrived when a later candidate already validates. Bytes before the first
 // position that may still start a frame are discarded. It returns true when parsing may continue.
-func resynchronizeStream(state *stream, processor *processor, stats *captureStats) bool {
+func resynchronizeStream(state *Stream, processor *Processor, stats *CaptureStats) bool {
 	buffer := state.applicationBuffer
-	offset, found, discardable := findResyncFrame(buffer, processor.session, stats)
+	offset, found, discardable := FindResyncFrame(buffer, processor.Session, stats)
 	if found {
-		state.recovery.discardedBytes += offset
-		stats.resyncBytesDiscarded += offset
+		state.Recovery.discardedBytes += offset
+		stats.ResyncBytesDiscarded += offset
 		at := applicationTimestampAt(state.applicationSpans, offset)
 		sequence := binary.LittleEndian.Uint32(buffer[offset+4 : offset+8])
 		discardApplicationPrefix(state, offset)
 		evidence := outboundSequenceEvidence(state, sequence)
-		stats.resyncSuccesses++
-		processor.endTransportLoss(state.recovery.lossID, state.direction, at, transportLossDetails{
-			DiscardedBytes: state.recovery.discardedBytes, SkippedSegments: state.recovery.skippedSegments,
+		stats.ResyncSuccesses++
+		processor.endTransportLoss(state.Recovery.lossID, state.direction, at, transportLossDetails{
+			DiscardedBytes: state.Recovery.discardedBytes, SkippedSegments: state.Recovery.skippedSegments,
 			SequenceEvidence: evidence.status, EstimatedLostFrames: evidence.lostFrames, Recovered: true,
-			Unrecoverable: state.recovery.failed,
+			Unrecoverable: state.Recovery.failed,
 		})
-		state.recovery.active, state.recovery.failed = false, false
+		state.Recovery.Active, state.Recovery.failed = false, false
 		return true
 	}
 	if discardable > 0 {
-		state.recovery.discardedBytes += discardable
-		stats.resyncBytesDiscarded += discardable
+		state.Recovery.discardedBytes += discardable
+		stats.ResyncBytesDiscarded += discardable
 		discardApplicationPrefix(state, discardable)
 	}
-	if excess := len(state.applicationBuffer) - maxResyncRetainedBytes; excess > 0 {
-		state.recovery.discardedBytes += excess
-		stats.resyncBytesDiscarded += excess
+	if excess := len(state.applicationBuffer) - MaxResyncRetainedBytes; excess > 0 {
+		state.Recovery.discardedBytes += excess
+		stats.ResyncBytesDiscarded += excess
 		discardApplicationPrefix(state, excess)
 	}
-	if !state.recovery.failed && state.recovery.discardedBytes > maxResyncScanBytes {
-		state.recovery.failed = true
-		stats.resyncFailures++
-		processor.failTransportLoss(state.recovery.lossID, state.direction)
+	if !state.Recovery.failed && state.Recovery.discardedBytes > maxResyncScanBytes {
+		state.Recovery.failed = true
+		stats.ResyncFailures++
+		processor.failTransportLoss(state.Recovery.lossID, state.direction)
 	}
 	return false
 }
 
-// findResyncFrame returns the offset of the first validated frame. discardable is how many leading bytes are proven
+// FindResyncFrame returns the offset of the first validated frame. discardable is how many leading bytes are proven
 // not to start a frame: every offset before it either fails the header checks or holds a complete candidate whose
 // CRC or body failed. A candidate that has not fully arrived keeps the bytes from its offset.
-func findResyncFrame(buffer []byte, sessionKey []byte, stats *captureStats) (offset int, found bool, discardable int) {
+func FindResyncFrame(buffer []byte, sessionKey []byte, stats *CaptureStats) (offset int, found bool, discardable int) {
 	firstIncomplete := -1
 	candidates, crcBytes := 0, 0
 	stop := len(buffer) - 3 // the flag byte frame[3] must be present
@@ -538,13 +538,13 @@ func findResyncFrame(buffer []byte, sessionKey []byte, stats *captureStats) (off
 			continue
 		}
 		if candidates >= maxResyncCandidatesPerPass || crcBytes+total > maxResyncCRCBytesPerPass {
-			stats.resyncBudgetStops++
+			stats.ResyncBudgetStops++
 			stop = off
 			break
 		}
 		candidates++
 		crcBytes += total
-		stats.resyncCandidatesChecked++
+		stats.ResyncCandidatesChecked++
 		if validResyncCandidate(buffer[off:off+total], sessionKey) {
 			return off, true, off
 		}
@@ -632,11 +632,11 @@ type sequenceEvidence struct {
 	lostFrames int // -1 when unknown
 }
 
-func outboundSequenceEvidence(state *stream, sequence uint32) sequenceEvidence {
-	if state.direction != "out" || !state.recovery.hasSequenceBeforeLoss {
+func outboundSequenceEvidence(state *Stream, sequence uint32) sequenceEvidence {
+	if state.direction != "out" || !state.Recovery.hasSequenceBeforeLoss {
 		return sequenceEvidence{status: sequenceEvidenceUnavailable, lostFrames: -1}
 	}
-	jump := sequence - state.recovery.sequenceBeforeLoss
+	jump := sequence - state.Recovery.sequenceBeforeLoss
 	if jump == 0 || jump > maxOutboundSequenceJump {
 		return sequenceEvidence{status: sequenceEvidenceInconsistent, lostFrames: -1}
 	}
@@ -653,7 +653,7 @@ func outboundSequenceEvidence(state *stream, sequence uint32) sequenceEvidence {
 //
 // The other direction of the handshake's own conversation is the same connection and stays; its partial frame
 // predates the key and is dropped.
-func retireSupersededStreams(streams map[string]*stream, current *stream, processor *processor, stats *captureStats) {
+func retireSupersededStreams(streams map[string]*Stream, current *Stream, processor *Processor, stats *CaptureStats) {
 	at := processor.protocolSessionStartedAt
 	for _, state := range sortedStreams(streams) {
 		if state == current {
@@ -663,21 +663,21 @@ func retireSupersededStreams(streams map[string]*stream, current *stream, proces
 			state.applicationBuffer, state.applicationSpans = nil, nil
 			continue
 		}
-		if state.gapOpen {
+		if state.GapOpen {
 			closeKCPGap(state, processor)
 		}
-		if state.recovery.active || len(state.pending) > 0 {
+		if state.Recovery.Active || len(state.Pending) > 0 {
 			processor.supersedeStreamLoss(state, at)
 		}
-		stats.kcpStreamsRetired++
-		stats.kcpRetiredPendingSegments += len(state.pending)
+		stats.KCPStreamsRetired++
+		stats.KCPRetiredPendingSegments += len(state.Pending)
 		processor.retiredKCP.retire(state.conv)
 		delete(streams, state.key)
 	}
 }
 
 // maxRetiredConversations bounds the conversations remembered as superseded.
-const maxRetiredConversations = maxKCPStreams
+const maxRetiredConversations = MaxKCPStreams
 
 // retiredConversations are the conversations of superseded connections. A later PUSH segment of one is a straggler of
 // the dead connection and is ignored, so it cannot open a new stream whose gap would never close; a PUSH with sequence

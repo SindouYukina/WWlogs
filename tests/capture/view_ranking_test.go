@@ -30,9 +30,9 @@ func rankingNumber(value uint64) string {
 
 func TestRankRolesAndVehicleTogetherByDamage(t *testing.T) {
 	roles := []ViewRole{rankingRole(1, 1205, 100), rankingRole(1, 1506, 300)}
-	vehicle := &ViewVehicle{VehicleDamageSnapshot: VehicleDamageSnapshot{Kind: vehicleKindMotorcycle, DamageDealt: 200}}
+	vehicle := &ViewVehicle{VehicleDamageSnapshot: VehicleDamageSnapshot{Kind: VehicleKindMotorcycle, DamageDealt: 200}}
 	rankViewContributors(roles, vehicle, nil)
-	want := map[string]int{"role-1-1506": 0, "vehicle-" + vehicleKindMotorcycle: 1, "role-1-1205": 2}
+	want := map[string]int{"role-1-1506": 0, "vehicle-" + VehicleKindMotorcycle: 1, "role-1-1205": 2}
 	got := rankingOrder(roles, vehicle)
 	if len(got) != len(want) {
 		t.Fatalf("got %v", got)
@@ -51,8 +51,8 @@ func TestRankRolesAndVehicleTogetherByDamage(t *testing.T) {
 func TestRankKeepsEqualDamageInOneOrderWhateverTheInput(t *testing.T) {
 	first := []ViewRole{rankingRole(2, 1003, 700), rankingRole(1, 1001, 700), rankingRole(1, 999, 700)}
 	second := []ViewRole{rankingRole(1, 999, 700), rankingRole(1, 1001, 700), rankingRole(2, 1003, 700)}
-	vehicleA := &ViewVehicle{VehicleDamageSnapshot: VehicleDamageSnapshot{Kind: vehicleKindMotorcycle, DamageDealt: 700}}
-	vehicleB := &ViewVehicle{VehicleDamageSnapshot: VehicleDamageSnapshot{Kind: vehicleKindMotorcycle, DamageDealt: 700}}
+	vehicleA := &ViewVehicle{VehicleDamageSnapshot: VehicleDamageSnapshot{Kind: VehicleKindMotorcycle, DamageDealt: 700}}
+	vehicleB := &ViewVehicle{VehicleDamageSnapshot: VehicleDamageSnapshot{Kind: VehicleKindMotorcycle, DamageDealt: 700}}
 	rankViewContributors(first, vehicleA, nil)
 	rankViewContributors(second, vehicleB, nil)
 	a, b := rankingOrder(first, vehicleA), rankingOrder(second, vehicleB)
@@ -62,7 +62,7 @@ func TestRankKeepsEqualDamageInOneOrderWhateverTheInput(t *testing.T) {
 		}
 	}
 	// The tie order is the row identity read as text, the same order the rows have always had.
-	want := map[string]int{"role-1-1001": 0, "role-1-999": 1, "role-2-1003": 2, "vehicle-" + vehicleKindMotorcycle: 3}
+	want := map[string]int{"role-1-1001": 0, "role-1-999": 1, "role-2-1003": 2, "vehicle-" + VehicleKindMotorcycle: 3}
 	for key, rank := range want {
 		if a[key] != rank {
 			t.Errorf("%s rank = %d, want %d", key, a[key], rank)
@@ -72,7 +72,7 @@ func TestRankKeepsEqualDamageInOneOrderWhateverTheInput(t *testing.T) {
 
 func TestContributorDPSUsesTheScopesOwnDuration(t *testing.T) {
 	build := func() ([]ViewRole, *ViewVehicle) {
-		return []ViewRole{rankingRole(1, 1205, 100), rankingRole(1, 1506, 300)}, &ViewVehicle{VehicleDamageSnapshot: VehicleDamageSnapshot{Kind: vehicleKindMotorcycle, DamageDealt: 200}}
+		return []ViewRole{rankingRole(1, 1205, 100), rankingRole(1, 1506, 300)}, &ViewVehicle{VehicleDamageSnapshot: VehicleDamageSnapshot{Kind: VehicleKindMotorcycle, DamageDealt: 200}}
 	}
 	for _, status := range []DPSStatus{DPSStatusAvailable, DPSStatusLowerBound} {
 		roles, vehicle := build()
@@ -114,7 +114,7 @@ func TestEncounterRowsShareOneScopeAndOneDenominator(t *testing.T) {
 			{PlayerID: 77, RoleID: 1409, DamageDealt: 300, OutgoingEvents: 3},
 			{PlayerID: 77, RoleID: 1508, DamageDealt: 400, OutgoingEvents: 4},
 		},
-		Vehicle:        &VehicleDamageSnapshot{Kind: vehicleKindMotorcycle, DamageDealt: 200, OutgoingEvents: 2},
+		Vehicle:        &VehicleDamageSnapshot{Kind: VehicleKindMotorcycle, DamageDealt: 200, OutgoingEvents: 2},
 		UnassignedRole: UnassignedRoleTotals{DamageDealt: 100, OutgoingEvents: 1},
 		EncounterDPS:   DPSResult{Status: DPSStatusAvailable, Damage: 1000, Duration: 8 * time.Second, Value: 125},
 	}
@@ -176,15 +176,15 @@ func TestEmptyAndZeroDurationEncountersHaveNoInventedNumbers(t *testing.T) {
 
 func TestIntervalAndEncounterRowsNeverMix(t *testing.T) {
 	p := newViewTestProcessor()
-	statistics := p.damageStatistics
+	statistics := p.DamageStatistics
 	// A finished encounter of one role, then a running one of another: the interval holds both.
 	roleOutgoing(statistics, 1508, 200, 10)
 	roleOutgoing(statistics, 1508, 300, 14)
 	statistics.observeCaptureTime(encounterAt(14 + encounterInactivityTimeout.Seconds() + 5))
 	roleOutgoing(statistics, 1409, 300, 100)
 	roleOutgoing(statistics, 1409, 100, 110)
-	p.currentFrameTime = encounterAt(110)
-	view := p.viewSnapshot()
+	p.CurrentFrameTime = encounterAt(110)
+	view := p.ViewSnapshot()
 	if view.Encounters.Current == nil || len(view.Encounters.Recent) != 1 {
 		t.Fatalf("encounters = %+v", view.Encounters)
 	}

@@ -11,26 +11,26 @@ import (
 func TestDamageRPCSchemaExtractsResponsePayloadByRPCID(t *testing.T) {
 	schema := &protocolSchema{Messages: map[string]schemaMessage{
 		"DamageExecuteResponse": {Fields: []schemaField{
-			{Number: fieldDamageExecuteResponseDamage, Name: "Damage", schemaType: schemaType{Kind: "int32"}},
+			{Number: FieldDamageExecuteResponseDamage, Name: "Damage", schemaType: schemaType{Kind: "int32"}},
 			{Number: fieldDamageExecuteResponseIsCrit, Name: "IsCrit", schemaType: schemaType{Kind: "bool"}},
 		}},
 	}}
-	payload := appendVarintField(appendVarintField(nil, fieldDamageExecuteResponseDamage, 100), fieldDamageExecuteResponseIsCrit, 1)
-	item := appendBytesField(appendVarintField(nil, fieldCombatResponseDataRequestID, 5), fieldCombatResponseDataDamageExecuteResponse, payload)
-	batch := appendBytesField(nil, fieldCombatReceiveDataCombatResponseData, item)
-	wrapped := appendBytesField(nil, fieldCombatReceivePackNotifyData, batch)
-	body := appendBytesField(nil, fieldCombatSendPackResponseReceivePackNotify, wrapped)
+	payload := appendVarintField(appendVarintField(nil, FieldDamageExecuteResponseDamage, 100), fieldDamageExecuteResponseIsCrit, 1)
+	item := appendBytesField(appendVarintField(nil, FieldCombatResponseDataRequestID, 5), FieldCombatResponseDataDamageExecuteResponse, payload)
+	batch := appendBytesField(nil, FieldCombatReceiveDataCombatResponseData, item)
+	wrapped := appendBytesField(nil, FieldCombatReceivePackNotifyData, batch)
+	body := appendBytesField(nil, FieldCombatSendPackResponseReceivePackNotify, wrapped)
 
 	var out strings.Builder
-	p := &processor{
-		sessionNumber: 2,
-		dev: processorDiagnostics{
+	p := &Processor{
+		SessionNumber: 2,
+		Dev: processorDiagnostics{
 			protocolSchema:  schema,
 			schemaDecodeOut: &out,
 			frameOrdinal:    1,
 		},
 	}
-	p.archiveDamageRPCSchema(gameFrame{commandID: cmdCombatSendPackResponse, direction: "in"}, body)
+	p.ArchiveDamageRPCSchema(GameFrame{CommandID: CmdCombatSendPackResponse, Direction: "in"}, body)
 	var record damageRPCSchemaRecord
 	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &record); err != nil {
 		t.Fatalf("record is not valid JSON: %v (%q)", err, out.String())

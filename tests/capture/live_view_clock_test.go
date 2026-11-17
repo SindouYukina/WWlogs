@@ -12,19 +12,19 @@ import (
 // liveClockHarness drives one processor the way a live session does: frame(at) is a frame received at wall time at, and
 // publish(wall) is a publish at that wall time. Times are seconds on the shared effect test base.
 type liveClockHarness struct {
-	p     *processor
+	p     *Processor
 	clock liveViewClock
 }
 
 func newLiveClockHarness() *liveClockHarness { return &liveClockHarness{p: newEffectViewProcessor()} }
 
 func (h *liveClockHarness) frame(at float64) {
-	h.p.currentFrameTime = effectAt(at)
+	h.p.CurrentFrameTime = effectAt(at)
 	h.clock.observeFrame(effectAt(at), effectAt(at))
 }
 
 func (h *liveClockHarness) publish(wall float64) ViewEffects {
-	h.p.viewClockLead, h.p.viewClockStalled = h.clock.read(effectAt(wall), h.p.currentFrameTime)
+	h.p.ViewClockLead, h.p.ViewClockStalled = h.clock.read(effectAt(wall), h.p.CurrentFrameTime)
 	return h.p.viewEffects()
 }
 
@@ -38,7 +38,7 @@ func timedEffect(handle uint64, seconds float64) EffectApplyEvent {
 func TestLiveClockCountsDownThroughNormalQuietGaps(t *testing.T) {
 	for _, silence := range []float64{0, 1, 3, 5} {
 		h := newLiveClockHarness()
-		h.p.effects.ObserveApply(timedEffect(1, 30))
+		h.p.Effects.ObserveApply(timedEffect(1, 30))
 		h.frame(0)
 		view := h.publish(silence)
 		if view.ClockStalled {
@@ -50,7 +50,7 @@ func TestLiveClockCountsDownThroughNormalQuietGaps(t *testing.T) {
 
 func TestLiveClockStallsExactlyAtTheLimit(t *testing.T) {
 	h := newLiveClockHarness()
-	h.p.effects.ObserveApply(timedEffect(1, 30))
+	h.p.Effects.ObserveApply(timedEffect(1, 30))
 	h.frame(0)
 	limit := LiveFrameSilenceLimit.Seconds()
 	if view := h.publish(limit - 0.001); view.ClockStalled {
@@ -66,7 +66,7 @@ func TestLiveClockStallsExactlyAtTheLimit(t *testing.T) {
 func TestLiveClockHoldsPastTheLimitWithoutInventingTime(t *testing.T) {
 	for _, silence := range []float64{10, 20, 30} {
 		h := newLiveClockHarness()
-		h.p.effects.ObserveApply(timedEffect(1, 60))
+		h.p.Effects.ObserveApply(timedEffect(1, 60))
 		h.frame(0)
 		view := h.publish(silence)
 		if !view.ClockStalled {
@@ -79,12 +79,12 @@ func TestLiveClockHoldsPastTheLimitWithoutInventingTime(t *testing.T) {
 
 func TestLiveClockEndsAnEffectThatRunsOutDuringSilence(t *testing.T) {
 	h := newLiveClockHarness()
-	h.p.effects.ObserveApply(timedEffect(1, 3))
+	h.p.Effects.ObserveApply(timedEffect(1, 3))
 	h.frame(0)
 	if view := h.publish(2); len(view.Active) != 1 {
 		t.Fatalf("before its end: %+v", view.Active)
 	}
-	view := h.publish(3 + effectDisplayExpiryGrace.Seconds() + 0.5)
+	view := h.publish(3 + EffectDisplayExpiryGrace.Seconds() + 0.5)
 	if len(view.Active) != 0 || view.Counts.PredictedExpired != 1 {
 		t.Fatalf("after its end: %+v", view.Counts)
 	}
@@ -92,7 +92,7 @@ func TestLiveClockEndsAnEffectThatRunsOutDuringSilence(t *testing.T) {
 
 func TestLiveClockNeverReportsANegativeRemaining(t *testing.T) {
 	h := newLiveClockHarness()
-	h.p.effects.ObserveApply(timedEffect(1, 3))
+	h.p.Effects.ObserveApply(timedEffect(1, 3))
 	h.frame(0)
 	for wall := 0.0; wall <= 6; wall += 0.25 {
 		for _, effect := range h.publish(wall).Active {
@@ -105,7 +105,7 @@ func TestLiveClockNeverReportsANegativeRemaining(t *testing.T) {
 
 func TestLiveClockKeepsALongEffectThroughSilence(t *testing.T) {
 	h := newLiveClockHarness()
-	h.p.effects.ObserveApply(timedEffect(1, 120))
+	h.p.Effects.ObserveApply(timedEffect(1, 120))
 	h.frame(0)
 	if view := h.publish(30); len(view.Active) != 1 {
 		t.Fatalf("a long effect left during silence: %+v", view.Counts)
@@ -114,8 +114,8 @@ func TestLiveClockKeepsALongEffectThroughSilence(t *testing.T) {
 
 func TestLiveClockRecoveryResynchronizesWithoutReviving(t *testing.T) {
 	h := newLiveClockHarness()
-	h.p.effects.ObserveApply(timedEffect(1, 15))
-	h.p.effects.ObserveApply(timedEffect(2, 120))
+	h.p.Effects.ObserveApply(timedEffect(1, 15))
+	h.p.Effects.ObserveApply(timedEffect(2, 120))
 	h.frame(0)
 	if view := h.publish(30); !view.ClockStalled {
 		t.Fatal("expected a stalled clock")
@@ -137,13 +137,13 @@ func TestLiveClockRecoveryResynchronizesWithoutReviving(t *testing.T) {
 
 func TestLiveClockRecoveryRestoresAnEffectOnlyWhenTheServerDoes(t *testing.T) {
 	h := newLiveClockHarness()
-	h.p.effects.ObserveApply(timedEffect(1, 3))
+	h.p.Effects.ObserveApply(timedEffect(1, 3))
 	h.frame(0)
 	h.frame(30)
 	if view := h.publish(30); len(view.Active) != 0 {
 		t.Fatalf("an ended effect came back on its own: %+v", view.Active)
 	}
-	h.p.effects.ObserveUpdate(EffectUpdateEvent{SessionNumber: 1, HolderEntityID: 10, HandleID: 1, RemainingSeconds: effectFloat(5), DurationSeconds: effectFloat(5), ObservedAt: effectAt(30)})
+	h.p.Effects.ObserveUpdate(EffectUpdateEvent{SessionNumber: 1, HolderEntityID: 10, HandleID: 1, RemainingSeconds: effectFloat(5), DurationSeconds: effectFloat(5), ObservedAt: effectAt(30)})
 	view := h.publish(30)
 	if len(view.Active) != 1 {
 		t.Fatalf("a server refresh did not restore it: %+v", view.Counts)
@@ -153,11 +153,11 @@ func TestLiveClockRecoveryRestoresAnEffectOnlyWhenTheServerDoes(t *testing.T) {
 
 func TestLiveClockReadingNeverRunsBackwards(t *testing.T) {
 	h := newLiveClockHarness()
-	h.p.effects.ObserveApply(timedEffect(1, 60))
+	h.p.Effects.ObserveApply(timedEffect(1, 60))
 	h.frame(10)
 	first := h.publish(10.5).Active[0]
 	// A frame reassembled late carries an older capture time.
-	h.p.currentFrameTime = effectAt(9.9)
+	h.p.CurrentFrameTime = effectAt(9.9)
 	h.clock.observeFrame(effectAt(9.9), effectAt(10.6))
 	second := h.publish(10.6).Active[0]
 	if *second.RemainingSeconds > *first.RemainingSeconds {
@@ -165,7 +165,7 @@ func TestLiveClockReadingNeverRunsBackwards(t *testing.T) {
 	}
 	requireNear(t, "older frame", second.RemainingSeconds, 60-10.6)
 	// A delayed frame: its capture time is older than the wall time already read.
-	h.p.currentFrameTime = effectAt(10.7)
+	h.p.CurrentFrameTime = effectAt(10.7)
 	h.clock.observeFrame(effectAt(10.7), effectAt(11.5))
 	third := h.publish(11.5).Active[0]
 	if *third.RemainingSeconds > *second.RemainingSeconds {
@@ -196,23 +196,23 @@ func TestLiveClockBeforeTheFirstFrameReadsNothing(t *testing.T) {
 
 func TestLiveClockOnlyReadsTheEffectsView(t *testing.T) {
 	h := newLiveClockHarness()
-	h.p.effects.ObserveApply(timedEffect(1, 30))
+	h.p.Effects.ObserveApply(timedEffect(1, 30))
 	h.frame(5)
-	before := h.p.effectSnapshotAtLastFrame()
+	before := h.p.EffectSnapshotAtLastFrame()
 	h.publish(12)
-	after := h.p.effectSnapshotAtLastFrame()
-	if !reflect.DeepEqual(before.Effects[0].RemainingSeconds, after.Effects[0].RemainingSeconds) || h.p.currentFrameTime != effectAt(5) {
+	after := h.p.EffectSnapshotAtLastFrame()
+	if !reflect.DeepEqual(before.Effects[0].RemainingSeconds, after.Effects[0].RemainingSeconds) || h.p.CurrentFrameTime != effectAt(5) {
 		t.Fatal("reading the clock changed the capture-time state")
 	}
 }
 
 func TestTransportLossMarksOnlyEffectsNotUpdatedSince(t *testing.T) {
 	h := newLiveClockHarness()
-	h.p.effects.ObserveApply(timedEffect(1, 60))
-	h.p.effects.ObserveApply(timedEffect(2, 60))
+	h.p.Effects.ObserveApply(timedEffect(1, 60))
+	h.p.Effects.ObserveApply(timedEffect(2, 60))
 	h.frame(0)
-	h.p.effects.MarkTransportLoss(effectAt(1))
-	h.p.effects.ObserveUpdate(EffectUpdateEvent{SessionNumber: 1, HolderEntityID: 10, HandleID: 2, RemainingSeconds: effectFloat(60), DurationSeconds: effectFloat(60), ObservedAt: effectAt(2)})
+	h.p.Effects.MarkTransportLoss(effectAt(1))
+	h.p.Effects.ObserveUpdate(EffectUpdateEvent{SessionNumber: 1, HolderEntityID: 10, HandleID: 2, RemainingSeconds: effectFloat(60), DurationSeconds: effectFloat(60), ObservedAt: effectAt(2)})
 	h.frame(2)
 	view := h.publish(2)
 	if view.Status != EffectSnapshotDegraded {
@@ -230,8 +230,8 @@ func TestTransportLossMarksOnlyEffectsNotUpdatedSince(t *testing.T) {
 func TestReplayViewDoesNotDependOnAnyWallClock(t *testing.T) {
 	build := func() ViewEffects {
 		p := newEffectViewProcessor()
-		p.effects.ObserveApply(timedEffect(1, 30))
-		p.currentFrameTime = effectAt(4)
+		p.Effects.ObserveApply(timedEffect(1, 30))
+		p.CurrentFrameTime = effectAt(4)
 		return p.viewEffects()
 	}
 	first := build()

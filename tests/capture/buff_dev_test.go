@@ -14,11 +14,11 @@ func TestFormatBuffLifecycleConsoleUsesRawEffectEvidence(t *testing.T) {
 	timestamp := time.Date(2026, 11, 2, 2, 37, 28, 33000000, time.UTC)
 	buffID, handleID, targetID, stack := uint64(70001), uint64(111), uint64(8801), uint64(3)
 	duration, remaining := float32(12.5), float32(4.25)
-	line := formatBuffLifecycleConsole(buffLifecycleAuditRow{
+	line := formatBuffLifecycleConsole(BuffLifecycleAuditRow{
 		Timestamp: timestamp, EventKind: "GAMEPLAY_EFFECT_APPLY",
 		BuffID: &buffID, HandleID: &handleID, TargetEntityID: &targetID, StackCount: &stack,
 		DurationSeconds: &duration, RemainingDuration: &remaining,
-		BuffDefinitionStatus: resolutionUnknown, TargetStatus: resolutionUnknown,
+		BuffDefinitionStatus: ResolutionUnknown, TargetStatus: ResolutionUnknown,
 	}, "", "")
 	for _, want := range []string{"BuffEvent", "kind=GAMEPLAY_EFFECT_APPLY", "buffId=70001", "handle=111", "target=8801", "targetStatus=UNKNOWN", "stack=3", "duration_s=12.500", "remaining_s=4.250", "buffIdLookup=UNKNOWN"} {
 		if !strings.Contains(line, want) {
@@ -32,11 +32,11 @@ func TestFormatBuffLifecycleConsoleUsesRawEffectEvidence(t *testing.T) {
 
 func TestFormatBuffLifecycleConsoleShowsCorrelatedStackHolder(t *testing.T) {
 	effectID, handleID, entityID, stack := uint64(10061000), uint64(177), uint64(29106), uint64(6)
-	line := formatBuffLifecycleConsole(buffLifecycleAuditRow{
+	line := formatBuffLifecycleConsole(BuffLifecycleAuditRow{
 		EventKind: "BUFF_STACK_COUNT_CHANGE", ID: &effectID, HandleID: &handleID,
-		HandleLinkedID: &effectID, HandleLinkedStatus: resolutionCorrelated,
+		HandleLinkedID: &effectID, HandleLinkedStatus: ResolutionCorrelated,
 		CombatCommonEntityID: &entityID, StackCount: &stack,
-		TargetStatus: resolutionUnknown,
+		TargetStatus: ResolutionUnknown,
 	}, "", "")
 	for _, want := range []string{"BuffEvent", "kind=BUFF_STACK_COUNT_CHANGE", "id=10061000", "handle=177", "handleLinkedId=10061000", "holder=29106", "holderStatus=CORRELATED", "handleLinkedStatus=CORRELATED", "stack=6"} {
 		if !strings.Contains(line, want) {
@@ -50,9 +50,9 @@ func TestFormatBuffLifecycleConsoleShowsCorrelatedStackHolder(t *testing.T) {
 
 func TestFormatBuffLifecycleConsoleKeepsUnlinkedHolderUnconfirmed(t *testing.T) {
 	entityID, handleID, stack := uint64(29106), uint64(177), uint64(6)
-	line := formatBuffLifecycleConsole(buffLifecycleAuditRow{
+	line := formatBuffLifecycleConsole(BuffLifecycleAuditRow{
 		EventKind: "BUFF_STACK_COUNT_CHANGE", HandleID: &handleID,
-		HandleLinkedStatus: resolutionUnknown, CombatCommonEntityID: &entityID,
+		HandleLinkedStatus: ResolutionUnknown, CombatCommonEntityID: &entityID,
 		StackCount: &stack,
 	}, "", "")
 	for _, want := range []string{"holderCandidate=29106", "holderStatus=UNKNOWN", "stack=6"} {
@@ -67,9 +67,9 @@ func TestFormatBuffLifecycleConsoleKeepsUnlinkedHolderUnconfirmed(t *testing.T) 
 
 func TestFormatBuffLifecycleConsoleDoesNotTreatRequestContextAsTarget(t *testing.T) {
 	id, entityID := uint64(10061000), uint64(90)
-	line := formatBuffLifecycleConsole(buffLifecycleAuditRow{
+	line := formatBuffLifecycleConsole(BuffLifecycleAuditRow{
 		EventKind: "BUFF_APPLY_REQUEST_NOTIFY", ID: &id, CombatCommonEntityID: &entityID,
-		GenericIDDefinitionStatus: resolutionCorrelated, TargetStatus: resolutionUnknown,
+		GenericIDDefinitionStatus: ResolutionCorrelated, TargetStatus: ResolutionUnknown,
 	}, "", "")
 	for _, want := range []string{"kind=BUFF_APPLY_REQUEST_NOTIFY", "id=10061000", "commonEntity=90", "idReferenceStatus=CORRELATED"} {
 		if !strings.Contains(line, want) {
@@ -83,10 +83,10 @@ func TestFormatBuffLifecycleConsoleDoesNotTreatRequestContextAsTarget(t *testing
 
 func TestFormatBuffLifecycleConsoleOmitsMaxStackSentinelFromRemoveRequest(t *testing.T) {
 	buffID, entityID, stack := uint64(600100116), uint64(30116), ^uint64(0)
-	line := formatBuffLifecycleConsole(buffLifecycleAuditRow{
+	line := formatBuffLifecycleConsole(BuffLifecycleAuditRow{
 		EventKind: "BUFF_REMOVE_BY_ID_REQUEST_NOTIFY", BuffID: &buffID,
 		CombatCommonEntityID: &entityID, StackCount: &stack,
-		BuffDefinitionStatus: resolutionCorrelated,
+		BuffDefinitionStatus: ResolutionCorrelated,
 	}, "", "")
 	if !strings.Contains(line, "buffId=600100116") || !strings.Contains(line, "commonEntity=30116") {
 		t.Fatalf("remove request context was lost: %q", line)
@@ -101,9 +101,9 @@ func TestFormatBuffLifecycleConsoleOmitsMaxStackSentinelFromRemoveRequest(t *tes
 
 func TestFormatBuffLifecycleConsoleMarksApplyRequestUnconfirmed(t *testing.T) {
 	id, instigator := uint64(3000020003), uint64(30116)
-	line := formatBuffLifecycleConsole(buffLifecycleAuditRow{
+	line := formatBuffLifecycleConsole(BuffLifecycleAuditRow{
 		EventKind: "BUFF_APPLY_REQUEST_NOTIFY", ID: &id, InstigatorID: &instigator,
-		GenericIDDefinitionStatus: resolutionCorrelated,
+		GenericIDDefinitionStatus: ResolutionCorrelated,
 	}, "", "")
 	if !strings.Contains(line, "effectState=UNCONFIRMED") || !strings.Contains(line, "idReferenceStatus=CORRELATED") {
 		t.Fatalf("apply request evidence was not labeled precisely: %q", line)
@@ -112,55 +112,55 @@ func TestFormatBuffLifecycleConsoleMarksApplyRequestUnconfirmed(t *testing.T) {
 
 func TestEntityActiveResponseDecodesBuffSnapshotWithCorrelatedEntity(t *testing.T) {
 	var output, eventStream bytes.Buffer
-	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
-	p.dev.buffSnapshots = &output
-	p.dev.combatEventsJSONL = &eventStream
-	p.masters = &gameMaster{buffDefinitions: map[uint64]struct{}{70001: {}}}
-	p.sessionNumber = 5
+	p := NewProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
+	p.Dev.buffSnapshots = &output
+	p.Dev.combatEventsJSONL = &eventStream
+	p.Masters = &GameMaster{BuffDefinitions: map[uint64]struct{}{70001: {}}}
+	p.SessionNumber = 5
 	const token = 42
-	if err := p.handleActiveRequest(token, appendVarintField(nil, fieldEntityActiveRequestEntityID, 8801)); err != nil {
+	if err := p.HandleActiveRequest(token, appendVarintField(nil, FieldEntityActiveRequestEntityID, 8801)); err != nil {
 		t.Fatal(err)
 	}
 
 	var buffRecord []byte
-	buffRecord = appendVarintField(buffRecord, fieldFightBuffInformationHandleID, 111)
-	buffRecord = appendVarintField(buffRecord, fieldFightBuffInformationBuffID, 70001)
-	buffRecord = appendVarintField(buffRecord, fieldFightBuffInformationLevel, 2)
-	buffRecord = appendVarintField(buffRecord, fieldFightBuffInformationStackCount, 3)
-	buffRecord = appendVarintField(buffRecord, fieldFightBuffInformationInstigatorID, 99002)
-	buffRecord = appendVarintField(buffRecord, fieldFightBuffInformationEntityID, 8801)
-	buffRecord = appendVarintField(buffRecord, fieldFightBuffInformationApplyType, 1)
-	buffRecord = appendFixed32TestField(buffRecord, fieldFightBuffInformationDuration, mathFloat32bits(12.5))
-	buffRecord = appendFixed32TestField(buffRecord, fieldFightBuffInformationLeftDuration, mathFloat32bits(4.25))
-	buffRecord = appendBytesField(buffRecord, fieldFightBuffInformationContext, appendVarintField(nil, fieldFightBuffEffectContextLeftCooldown, 7))
-	buffRecord = appendVarintField(buffRecord, fieldFightBuffInformationIsActive, 1)
-	buffRecord = appendVarintField(buffRecord, fieldFightBuffInformationConfBuffID, 70002)
+	buffRecord = appendVarintField(buffRecord, FieldFightBuffInformationHandleID, 111)
+	buffRecord = appendVarintField(buffRecord, FieldFightBuffInformationBuffID, 70001)
+	buffRecord = appendVarintField(buffRecord, FieldFightBuffInformationLevel, 2)
+	buffRecord = appendVarintField(buffRecord, FieldFightBuffInformationStackCount, 3)
+	buffRecord = appendVarintField(buffRecord, FieldFightBuffInformationInstigatorID, 99002)
+	buffRecord = appendVarintField(buffRecord, FieldFightBuffInformationEntityID, 8801)
+	buffRecord = appendVarintField(buffRecord, FieldFightBuffInformationApplyType, 1)
+	buffRecord = appendFixed32TestField(buffRecord, FieldFightBuffInformationDuration, mathFloat32bits(12.5))
+	buffRecord = appendFixed32TestField(buffRecord, FieldFightBuffInformationLeftDuration, mathFloat32bits(4.25))
+	buffRecord = appendBytesField(buffRecord, FieldFightBuffInformationContext, appendVarintField(nil, fieldFightBuffEffectContextLeftCooldown, 7))
+	buffRecord = appendVarintField(buffRecord, FieldFightBuffInformationIsActive, 1)
+	buffRecord = appendVarintField(buffRecord, FieldFightBuffInformationConfBuffID, 70002)
 	buffRecord = appendVarintField(buffRecord, 30, 9)
 
-	xAs := appendBytesField(nil, fieldFightBuffComponentPbFightBuffInfos, buffRecord)
-	componentPb := appendBytesField(nil, fieldEntityComponentPbFightBuffComponent, xAs)
-	response := appendBytesField(nil, fieldEntityActiveResponseComponentPbs, componentPb)
-	frame := gameFrame{commandID: cmdEntityActiveResponse, direction: "in", token: token, timestamp: time.Date(2026, 10, 26, 5, 0, 0, 0, time.UTC)}
-	if err := p.handleActiveResponse(frame, response); err != nil {
+	xAs := appendBytesField(nil, FieldFightBuffComponentPbFightBuffInfos, buffRecord)
+	componentPb := appendBytesField(nil, FieldEntityComponentPbFightBuffComponent, xAs)
+	response := appendBytesField(nil, FieldEntityActiveResponseComponentPbs, componentPb)
+	frame := GameFrame{CommandID: CmdEntityActiveResponse, Direction: "in", Token: token, Timestamp: time.Date(2026, 10, 26, 5, 0, 0, 0, time.UTC)}
+	if err := p.HandleActiveResponse(frame, response); err != nil {
 		t.Fatal(err)
 	}
-	if p.stats.buffSnapshotResponses != 1 {
-		t.Fatalf("snapshot responses = %d, want 1", p.stats.buffSnapshotResponses)
+	if p.Stats.BuffSnapshotResponses != 1 {
+		t.Fatalf("snapshot responses = %d, want 1", p.Stats.BuffSnapshotResponses)
 	}
-	if p.stats.observedBuffEvents != 1 {
-		t.Fatalf("observed buff records = %d, want 1", p.stats.observedBuffEvents)
+	if p.Stats.ObservedBuffEvents != 1 {
+		t.Fatalf("observed buff records = %d, want 1", p.Stats.ObservedBuffEvents)
 	}
 	var row buffSnapshotAuditRow
 	if err := json.Unmarshal(bytes.TrimSpace(output.Bytes()), &row); err != nil {
 		t.Fatal(err)
 	}
-	if row.EntityID == nil || *row.EntityID != 8801 || row.EntityIDStatus != resolutionCorrelated {
+	if row.EntityID == nil || *row.EntityID != 8801 || row.EntityIDStatus != ResolutionCorrelated {
 		t.Fatalf("entity association = %v/%s", row.EntityID, row.EntityIDStatus)
 	}
 	if row.Buff.ID != 70001 || row.Buff.Level != 2 || row.Buff.Stack != 3 || row.Buff.InstigatorID != 99002 || !row.Buff.HasActive || !row.Buff.Active {
 		t.Fatalf("decoded Buff snapshot = %+v", row.Buff)
 	}
-	if row.BuffIDStatus != resolutionCorrelated || row.BuffDefinitionStatus != resolutionCorrelated || row.BuffDefinitionTable != "buff" || row.BuffDefinitionID == nil || *row.BuffDefinitionID != 70001 || row.BuffSemanticStatus != resolutionUnknown || row.InstigatorSemantics != resolutionCorrelated || !strings.Contains(row.WindowsSchemaVerification, "client/master compatibility UNKNOWN") {
+	if row.BuffIDStatus != ResolutionCorrelated || row.BuffDefinitionStatus != ResolutionCorrelated || row.BuffDefinitionTable != "buff" || row.BuffDefinitionID == nil || *row.BuffDefinitionID != 70001 || row.BuffSemanticStatus != ResolutionUnknown || row.InstigatorSemantics != ResolutionCorrelated || !strings.Contains(row.WindowsSchemaVerification, "client/master compatibility UNKNOWN") {
 		t.Fatalf("evidence levels were overstated: %+v", row)
 	}
 	if !strings.Contains(row.BuffDefinitionEvidence, "exact normalized buff.id row found") || !strings.Contains(row.BuffSemanticEvidence, "does not establish application or uptime") || !row.Buff.HasConfBuffID || row.Buff.ConfBuffID == row.Buff.ID {
@@ -185,20 +185,20 @@ func TestEntityActiveResponseDecodesBuffSnapshotWithCorrelatedEntity(t *testing.
 	if err := json.Unmarshal(bytes.TrimSpace(eventStream.Bytes()), &streamRow); err != nil {
 		t.Fatalf("decode unified event row: %v", err)
 	}
-	if streamRow["schemaVersion"] != float64(buffSnapshotSchemaVersion) || streamRow["eventType"] != "BUFF_SNAPSHOT" || streamRow["sessionNumber"] != float64(5) || streamRow["messageId"] != float64(cmdEntityActiveResponse) || streamRow["buffSemanticStatus"] != string(resolutionUnknown) {
+	if streamRow["schemaVersion"] != float64(buffSnapshotSchemaVersion) || streamRow["eventType"] != "BUFF_SNAPSHOT" || streamRow["sessionNumber"] != float64(5) || streamRow["messageId"] != float64(CmdEntityActiveResponse) || streamRow["buffSemanticStatus"] != string(ResolutionUnknown) {
 		t.Fatalf("snapshot missing from unified event stream: %#v", streamRow)
 	}
 }
 
 func TestEntityActiveResponseDoesNotSubstituteConfBuffIDForMissingDefinition(t *testing.T) {
 	var output bytes.Buffer
-	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
-	p.dev.buffSnapshots = &output
-	p.masters = &gameMaster{buffDefinitions: map[uint64]struct{}{70002: {}}}
-	buffRecord := appendVarintField(nil, fieldFightBuffInformationBuffID, 1312010090)
-	buffRecord = appendVarintField(buffRecord, fieldFightBuffInformationConfBuffID, 70002)
-	response := appendBytesField(nil, fieldEntityActiveResponseComponentPbs, appendBytesField(nil, fieldEntityComponentPbFightBuffComponent, appendBytesField(nil, fieldFightBuffComponentPbFightBuffInfos, buffRecord)))
-	if err := p.handleActiveResponse(gameFrame{commandID: cmdEntityActiveResponse, direction: "in", token: 7}, response); err != nil {
+	p := NewProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
+	p.Dev.buffSnapshots = &output
+	p.Masters = &GameMaster{BuffDefinitions: map[uint64]struct{}{70002: {}}}
+	buffRecord := appendVarintField(nil, FieldFightBuffInformationBuffID, 1312010090)
+	buffRecord = appendVarintField(buffRecord, FieldFightBuffInformationConfBuffID, 70002)
+	response := appendBytesField(nil, FieldEntityActiveResponseComponentPbs, appendBytesField(nil, FieldEntityComponentPbFightBuffComponent, appendBytesField(nil, FieldFightBuffComponentPbFightBuffInfos, buffRecord)))
+	if err := p.HandleActiveResponse(GameFrame{CommandID: CmdEntityActiveResponse, Direction: "in", Token: 7}, response); err != nil {
 		t.Fatal(err)
 	}
 	var row buffSnapshotAuditRow
@@ -208,28 +208,28 @@ func TestEntityActiveResponseDoesNotSubstituteConfBuffIDForMissingDefinition(t *
 	if row.Buff.ID != 1312010090 || !row.Buff.HasID || row.Buff.ConfBuffID != 70002 || !row.Buff.HasConfBuffID {
 		t.Fatalf("raw Buff and ConfBuff IDs were not kept separate: %+v", row.Buff)
 	}
-	if row.BuffDefinitionStatus != resolutionUnknown || row.BuffDefinitionID != nil || row.BuffDefinitionTable != "" {
+	if row.BuffDefinitionStatus != ResolutionUnknown || row.BuffDefinitionID != nil || row.BuffDefinitionTable != "" {
 		t.Fatalf("missing BuffId definition was resolved through ConfBuffId: %+v", row)
 	}
-	if row.BuffSemanticStatus != resolutionUnknown {
+	if row.BuffSemanticStatus != ResolutionUnknown {
 		t.Fatalf("unresolved runtime semantics changed: %s", row.BuffSemanticStatus)
 	}
 }
 
 func TestEntityActiveResponseWithoutMatchingRequestKeepsEntityUnknown(t *testing.T) {
 	var output bytes.Buffer
-	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
-	p.dev.buffSnapshots = &output
-	buffRecord := appendVarintField(nil, fieldFightBuffInformationBuffID, 70001)
-	response := appendBytesField(nil, fieldEntityActiveResponseComponentPbs, appendBytesField(nil, fieldEntityComponentPbFightBuffComponent, appendBytesField(nil, fieldFightBuffComponentPbFightBuffInfos, buffRecord)))
-	if err := p.handleActiveResponse(gameFrame{commandID: cmdEntityActiveResponse, direction: "in", token: 7}, response); err != nil {
+	p := NewProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
+	p.Dev.buffSnapshots = &output
+	buffRecord := appendVarintField(nil, FieldFightBuffInformationBuffID, 70001)
+	response := appendBytesField(nil, FieldEntityActiveResponseComponentPbs, appendBytesField(nil, FieldEntityComponentPbFightBuffComponent, appendBytesField(nil, FieldFightBuffComponentPbFightBuffInfos, buffRecord)))
+	if err := p.HandleActiveResponse(GameFrame{CommandID: CmdEntityActiveResponse, Direction: "in", Token: 7}, response); err != nil {
 		t.Fatal(err)
 	}
 	var row buffSnapshotAuditRow
 	if err := json.Unmarshal(bytes.TrimSpace(output.Bytes()), &row); err != nil {
 		t.Fatal(err)
 	}
-	if row.EntityID != nil || row.EntityIDStatus != resolutionUnknown {
+	if row.EntityID != nil || row.EntityIDStatus != ResolutionUnknown {
 		t.Fatalf("unmatched response entity = %v/%s", row.EntityID, row.EntityIDStatus)
 	}
 	if strings.Contains(output.String(), "entityId\":0") {
@@ -239,16 +239,16 @@ func TestEntityActiveResponseWithoutMatchingRequestKeepsEntityUnknown(t *testing
 
 func TestEntityActiveResponseAddsBuffObservationToEncounterSummary(t *testing.T) {
 	var summary bytes.Buffer
-	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
-	p.dev.encounterSummary = &summary
-	p.sessionNumber = 3
+	p := NewProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
+	p.Dev.encounterSummary = &summary
+	p.SessionNumber = 3
 	const token = 17
-	if err := p.handleActiveRequest(token, appendVarintField(nil, fieldEntityActiveRequestEntityID, 8801)); err != nil {
+	if err := p.HandleActiveRequest(token, appendVarintField(nil, FieldEntityActiveRequestEntityID, 8801)); err != nil {
 		t.Fatal(err)
 	}
-	buffRecord := appendVarintField(nil, fieldFightBuffInformationBuffID, 70001)
-	response := appendBytesField(nil, fieldEntityActiveResponseComponentPbs, appendBytesField(nil, fieldEntityComponentPbFightBuffComponent, appendBytesField(nil, fieldFightBuffComponentPbFightBuffInfos, buffRecord)))
-	if err := p.handleActiveResponse(gameFrame{commandID: cmdEntityActiveResponse, direction: "in", token: token}, response); err != nil {
+	buffRecord := appendVarintField(nil, FieldFightBuffInformationBuffID, 70001)
+	response := appendBytesField(nil, FieldEntityActiveResponseComponentPbs, appendBytesField(nil, FieldEntityComponentPbFightBuffComponent, appendBytesField(nil, FieldFightBuffComponentPbFightBuffInfos, buffRecord)))
+	if err := p.HandleActiveResponse(GameFrame{CommandID: CmdEntityActiveResponse, Direction: "in", Token: token}, response); err != nil {
 		t.Fatal(err)
 	}
 	if err := p.writeEncounterSummary(); err != nil {
@@ -263,29 +263,29 @@ func TestEntityActiveResponseAddsBuffObservationToEncounterSummary(t *testing.T)
 
 func TestCombatReceivePackNotifyDecodesInnerBuffApply(t *testing.T) {
 	var lifecycle bytes.Buffer
-	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
-	p.dev.buffLifecycle = &lifecycle
+	p := NewProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
+	p.Dev.buffLifecycle = &lifecycle
 	census := newCommandCensus(p)
-	p.census = census
-	p.sessionNumber = 4
+	p.Census = census
+	p.SessionNumber = 4
 
-	apply := appendVarintField(nil, fieldApplyGameplayEffectNotifyHandle, 501)             // Handle
-	apply = appendVarintField(apply, fieldApplyGameplayEffectNotifyID, 71001)              // Id
-	apply = appendVarintField(apply, fieldApplyGameplayEffectNotifyEntityID, 8801)         // EntityId
-	apply = appendVarintField(apply, fieldApplyGameplayEffectNotifyInstigatorID, 99002)    // InstigatorId
-	notify := appendBytesField(nil, fieldCombatNotifyDataApplyGameplayEffectNotify, apply) // CombatNotifyData.ApplyGameplayEffectNotify
-	data := appendBytesField(nil, fieldCombatReceiveDataCombatNotifyData, notify)          // CombatReceiveData.CombatNotifyData
-	body := appendBytesField(nil, fieldCombatReceivePackNotifyData, data)                  // CombatReceivePackNotify.Data[]
-	frame := gameFrame{commandID: cmdCombatReceivePackNotify, direction: "in", timestamp: time.Date(2026, 10, 27, 5, 0, 0, 0, time.UTC)}
+	apply := appendVarintField(nil, FieldApplyGameplayEffectNotifyHandle, 501)             // Handle
+	apply = appendVarintField(apply, FieldApplyGameplayEffectNotifyID, 71001)              // Id
+	apply = appendVarintField(apply, FieldApplyGameplayEffectNotifyEntityID, 8801)         // EntityId
+	apply = appendVarintField(apply, FieldApplyGameplayEffectNotifyInstigatorID, 99002)    // InstigatorId
+	notify := appendBytesField(nil, FieldCombatNotifyDataApplyGameplayEffectNotify, apply) // CombatNotifyData.ApplyGameplayEffectNotify
+	data := appendBytesField(nil, FieldCombatReceiveDataCombatNotifyData, notify)          // CombatReceiveData.CombatNotifyData
+	body := appendBytesField(nil, FieldCombatReceivePackNotifyData, data)                  // CombatReceivePackNotify.Data[]
+	frame := GameFrame{CommandID: CmdCombatReceivePackNotify, Direction: "in", Timestamp: time.Date(2026, 10, 27, 5, 0, 0, 0, time.UTC)}
 
-	if err := p.handleCombatReceivePackNotify(frame, body); err != nil {
+	if err := p.HandleCombatReceivePackNotify(frame, body); err != nil {
 		t.Fatalf("handle CombatReceivePackNotify: %v", err)
 	}
-	var row buffLifecycleAuditRow
+	var row BuffLifecycleAuditRow
 	if err := json.Unmarshal(bytes.TrimSpace(lifecycle.Bytes()), &row); err != nil {
 		t.Fatalf("decode lifecycle JSONL: %v", err)
 	}
-	if row.CommandID != cmdCombatReceivePackNotify || row.MessageID != cmdCombatReceivePackNotify || row.InnerMessageFieldNumber == nil || *row.InnerMessageFieldNumber != fieldCombatNotifyDataApplyGameplayEffectNotify {
+	if row.CommandID != CmdCombatReceivePackNotify || row.MessageID != CmdCombatReceivePackNotify || row.InnerMessageFieldNumber == nil || *row.InnerMessageFieldNumber != FieldCombatNotifyDataApplyGameplayEffectNotify {
 		t.Fatalf("outer and inner message provenance = %+v", row)
 	}
 	if row.MessageName != "ApplyGameplayEffectNotify" || row.EventKind != "GAMEPLAY_EFFECT_APPLY" || row.SessionNumber != 4 {
@@ -301,30 +301,30 @@ func TestCombatReceivePackNotifyDecodesInnerBuffApply(t *testing.T) {
 
 func TestCombatSendPackResponseProcessesNestedBuffApply(t *testing.T) {
 	var lifecycle bytes.Buffer
-	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
-	p.dev.buffLifecycle = &lifecycle
+	p := NewProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
+	p.Dev.buffLifecycle = &lifecycle
 	census := newCommandCensus(p)
-	p.census = census
-	p.sessionNumber = 4
+	p.Census = census
+	p.SessionNumber = 4
 
-	apply := appendVarintField(nil, fieldApplyGameplayEffectNotifyHandle, 501)             // Handle
-	apply = appendVarintField(apply, fieldApplyGameplayEffectNotifyID, 71001)              // Id
-	apply = appendVarintField(apply, fieldApplyGameplayEffectNotifyEntityID, 8801)         // EntityId
-	apply = appendVarintField(apply, fieldApplyGameplayEffectNotifyInstigatorID, 99002)    // InstigatorId
-	notify := appendBytesField(nil, fieldCombatNotifyDataApplyGameplayEffectNotify, apply) // CombatNotifyData.ApplyGameplayEffectNotify
-	data := appendBytesField(nil, fieldCombatReceiveDataCombatNotifyData, notify)          // CombatReceiveData.CombatNotifyData
-	receive := appendBytesField(nil, fieldCombatReceivePackNotifyData, data)               // CombatReceivePackNotify.Data[]
-	body := appendBytesField(nil, fieldCombatSendPackResponseReceivePackNotify, receive)   // CombatSendPackResponse.ReceivePackNotify
-	frame := gameFrame{commandID: cmdCombatSendPackResponse, direction: "in", timestamp: time.Date(2026, 10, 27, 5, 0, 0, 0, time.UTC)}
+	apply := appendVarintField(nil, FieldApplyGameplayEffectNotifyHandle, 501)             // Handle
+	apply = appendVarintField(apply, FieldApplyGameplayEffectNotifyID, 71001)              // Id
+	apply = appendVarintField(apply, FieldApplyGameplayEffectNotifyEntityID, 8801)         // EntityId
+	apply = appendVarintField(apply, FieldApplyGameplayEffectNotifyInstigatorID, 99002)    // InstigatorId
+	notify := appendBytesField(nil, FieldCombatNotifyDataApplyGameplayEffectNotify, apply) // CombatNotifyData.ApplyGameplayEffectNotify
+	data := appendBytesField(nil, FieldCombatReceiveDataCombatNotifyData, notify)          // CombatReceiveData.CombatNotifyData
+	receive := appendBytesField(nil, FieldCombatReceivePackNotifyData, data)               // CombatReceivePackNotify.Data[]
+	body := appendBytesField(nil, FieldCombatSendPackResponseReceivePackNotify, receive)   // CombatSendPackResponse.ReceivePackNotify
+	frame := GameFrame{CommandID: CmdCombatSendPackResponse, Direction: "in", Timestamp: time.Date(2026, 10, 27, 5, 0, 0, 0, time.UTC)}
 
-	if err := p.handleCombatReceivePacks(frame, body); err != nil {
+	if err := p.HandleCombatReceivePacks(frame, body); err != nil {
 		t.Fatalf("handle embedded CombatReceivePackNotify: %v", err)
 	}
-	var row buffLifecycleAuditRow
+	var row BuffLifecycleAuditRow
 	if err := json.Unmarshal(bytes.TrimSpace(lifecycle.Bytes()), &row); err != nil {
 		t.Fatalf("decode lifecycle JSONL: %v", err)
 	}
-	if row.CommandID != cmdCombatSendPackResponse || row.MessageID != cmdCombatSendPackResponse || row.InnerMessageFieldNumber == nil || *row.InnerMessageFieldNumber != fieldCombatNotifyDataApplyGameplayEffectNotify {
+	if row.CommandID != CmdCombatSendPackResponse || row.MessageID != CmdCombatSendPackResponse || row.InnerMessageFieldNumber == nil || *row.InnerMessageFieldNumber != FieldCombatNotifyDataApplyGameplayEffectNotify {
 		t.Fatalf("outer and inner message provenance = %+v", row)
 	}
 	if row.MessageName != "ApplyGameplayEffectNotify" || row.EventKind != "GAMEPLAY_EFFECT_APPLY" || row.SessionNumber != 4 {
@@ -340,58 +340,58 @@ func TestCombatSendPackResponseProcessesNestedBuffApply(t *testing.T) {
 
 func TestCombatReceivePackNotifyCarriesCombatCommonContextWithBuffRequest(t *testing.T) {
 	var lifecycle bytes.Buffer
-	p := &processor{
-		sessionNumber: 5,
-		entities: &entityResolver{entities: map[uint64]runtimeEntity{
+	p := &Processor{
+		SessionNumber: 5,
+		Entities: &EntityResolver{Entities: map[uint64]RuntimeEntity{
 			8801: {
-				entityID: 8801, roleID: 771, hasRoleID: true,
-				sourceMessageID: cmdUpdateSceneGroupDataNotify, sourceFieldPath: "scene role map",
+				EntityID: 8801, RoleID: 771, HasRoleID: true,
+				SourceMessageID: CmdUpdateSceneGroupDataNotify, SourceFieldPath: "scene role map",
 			},
 		}},
-		masters: &gameMaster{characters: map[uint64]masterRecord{
-			771: {ID: 771, Name: "Candidate", Status: string(resolutionVerified), NameStatus: string(resolutionVerified)},
+		Masters: &GameMaster{Characters: map[uint64]MasterRecord{
+			771: {ID: 771, Name: "Candidate", Status: string(ResolutionVerified), NameStatus: string(ResolutionVerified)},
 		}},
-		dev: processorDiagnostics{buffLifecycle: &lifecycle},
+		Dev: processorDiagnostics{buffLifecycle: &lifecycle},
 	}
 	census := newCommandCensus(p)
-	p.census = census
-	request := appendVarintField(appendVarintField(nil, fieldApplyBuffS2cRequestNotifyID, 71001), fieldApplyBuffS2cRequestNotifyInstigatorID, 8801)
-	notify := appendBytesField(nil, fieldCombatNotifyDataCombatCommon, appendVarintField(appendVarintField(nil, fieldCombatCommonMessageID, 17), fieldCombatCommonEntityID, 303))
-	notify = appendBytesField(notify, fieldCombatNotifyDataApplyBuffS2CRequestNotify, request)
-	data := appendBytesField(nil, fieldCombatReceiveDataCombatNotifyData, notify)
-	body := appendBytesField(nil, fieldCombatReceivePackNotifyData, data)
-	if err := p.handleCombatReceivePackNotify(gameFrame{commandID: cmdCombatReceivePackNotify, direction: "in"}, body); err != nil {
+	p.Census = census
+	request := appendVarintField(appendVarintField(nil, FieldApplyBuffS2cRequestNotifyID, 71001), FieldApplyBuffS2cRequestNotifyInstigatorID, 8801)
+	notify := appendBytesField(nil, FieldCombatNotifyDataCombatCommon, appendVarintField(appendVarintField(nil, FieldCombatCommonMessageID, 17), FieldCombatCommonEntityID, 303))
+	notify = appendBytesField(notify, FieldCombatNotifyDataApplyBuffS2CRequestNotify, request)
+	data := appendBytesField(nil, FieldCombatReceiveDataCombatNotifyData, notify)
+	body := appendBytesField(nil, FieldCombatReceivePackNotifyData, data)
+	if err := p.HandleCombatReceivePackNotify(GameFrame{CommandID: CmdCombatReceivePackNotify, Direction: "in"}, body); err != nil {
 		t.Fatalf("handle nested Buff request: %v", err)
 	}
-	var row buffLifecycleAuditRow
+	var row BuffLifecycleAuditRow
 	if err := json.Unmarshal(bytes.TrimSpace(lifecycle.Bytes()), &row); err != nil {
 		t.Fatalf("decode nested Buff request: %v", err)
 	}
-	if row.InnerMessageFieldNumber == nil || *row.InnerMessageFieldNumber != fieldCombatNotifyDataApplyBuffS2CRequestNotify || row.CombatCommonMessageID == nil || *row.CombatCommonMessageID != 17 || row.CombatCommonEntityID == nil || *row.CombatCommonEntityID != 303 {
+	if row.InnerMessageFieldNumber == nil || *row.InnerMessageFieldNumber != FieldCombatNotifyDataApplyBuffS2CRequestNotify || row.CombatCommonMessageID == nil || *row.CombatCommonMessageID != 17 || row.CombatCommonEntityID == nil || *row.CombatCommonEntityID != 303 {
 		t.Fatalf("nested Buff request lost envelope provenance: %+v", row)
 	}
-	if row.TargetEntityID != nil || row.TargetStatus != resolutionUnknown || row.CombatCommonEntityID == nil || *row.CombatCommonEntityID != 303 {
+	if row.TargetEntityID != nil || row.TargetStatus != ResolutionUnknown || row.CombatCommonEntityID == nil || *row.CombatCommonEntityID != 303 {
 		t.Fatalf("CombatCommon context must remain raw and must not be asserted as a target: %+v", row)
 	}
-	if row.ProviderStatus != resolutionUnknown || row.ProviderNameStatus != resolutionUnknown || row.InstigatorStatus != resolutionUnknown {
+	if row.ProviderStatus != ResolutionUnknown || row.ProviderNameStatus != ResolutionUnknown || row.InstigatorStatus != ResolutionUnknown {
 		t.Fatalf("provider semantics must remain UNKNOWN despite a character candidate: %+v", row)
 	}
 	if row.InstigatorCharacterCandidateID == nil || *row.InstigatorCharacterCandidateID != 771 || row.InstigatorCharacterCandidateName != "Candidate" {
 		t.Fatalf("resolved character must be retained as a candidate: %+v", row)
 	}
-	if row.InstigatorCharacterCandidateStatus != resolutionVerified {
+	if row.InstigatorCharacterCandidateStatus != ResolutionVerified {
 		t.Fatalf("candidate identity status = %s, want VERIFIED", row.InstigatorCharacterCandidateStatus)
 	}
 	if census.combatNotifyFields[53] != 1 {
 		t.Fatalf("inner request census count = %d, want 1", census.combatNotifyFields[53])
 	}
 	lifecycle.Reset()
-	zeroContext := appendBytesField(nil, fieldCombatNotifyDataCombatCommon, appendVarintField(nil, fieldCombatCommonEntityID, 0))
-	zeroNotify := appendBytesField(zeroContext, fieldCombatNotifyDataApplyBuffS2CRequestNotify, request)
-	if err := p.handleCombatReceivePackNotify(gameFrame{commandID: cmdCombatReceivePackNotify, direction: "in"}, appendBytesField(nil, fieldCombatReceivePackNotifyData, appendBytesField(nil, fieldCombatReceiveDataCombatNotifyData, zeroNotify))); err != nil {
+	zeroContext := appendBytesField(nil, FieldCombatNotifyDataCombatCommon, appendVarintField(nil, FieldCombatCommonEntityID, 0))
+	zeroNotify := appendBytesField(zeroContext, FieldCombatNotifyDataApplyBuffS2CRequestNotify, request)
+	if err := p.HandleCombatReceivePackNotify(GameFrame{CommandID: CmdCombatReceivePackNotify, Direction: "in"}, appendBytesField(nil, FieldCombatReceivePackNotifyData, appendBytesField(nil, FieldCombatReceiveDataCombatNotifyData, zeroNotify))); err != nil {
 		t.Fatalf("handle Buff request with zero CombatCommon.EntityId: %v", err)
 	}
-	row = buffLifecycleAuditRow{}
+	row = BuffLifecycleAuditRow{}
 	if err := json.Unmarshal(bytes.TrimSpace(lifecycle.Bytes()), &row); err != nil {
 		t.Fatalf("decode Buff request with zero CombatCommon.EntityId: %v", err)
 	}
@@ -401,17 +401,17 @@ func TestCombatReceivePackNotifyCarriesCombatCommonContextWithBuffRequest(t *tes
 }
 
 func TestGameplayEffectApplyCorrelatesProviderOnlyWithMatchingGroundTruthContext(t *testing.T) {
-	newProcessorWithIdentity := func() (*processor, *bytes.Buffer) {
+	newProcessorWithIdentity := func() (*Processor, *bytes.Buffer) {
 		var lifecycle bytes.Buffer
-		p := &processor{
-			sessionNumber: 7,
-			entities: &entityResolver{entities: map[uint64]runtimeEntity{
-				8801: {entityID: 8801, roleID: 771, hasRoleID: true, sourceMessageID: cmdUpdateSceneGroupDataNotify, sourceFieldPath: "scene role map"},
+		p := &Processor{
+			SessionNumber: 7,
+			Entities: &EntityResolver{Entities: map[uint64]RuntimeEntity{
+				8801: {EntityID: 8801, RoleID: 771, HasRoleID: true, SourceMessageID: CmdUpdateSceneGroupDataNotify, SourceFieldPath: "scene role map"},
 			}},
-			masters: &gameMaster{characters: map[uint64]masterRecord{
-				771: {ID: 771, Name: "Cartethyia", Status: string(resolutionVerified), NameStatus: string(resolutionVerified)},
+			Masters: &GameMaster{Characters: map[uint64]MasterRecord{
+				771: {ID: 771, Name: "Cartethyia", Status: string(ResolutionVerified), NameStatus: string(ResolutionVerified)},
 			}},
-			dev: processorDiagnostics{buffLifecycle: &lifecycle},
+			Dev: processorDiagnostics{buffLifecycle: &lifecycle},
 		}
 		return p, &lifecycle
 	}
@@ -419,17 +419,17 @@ func TestGameplayEffectApplyCorrelatesProviderOnlyWithMatchingGroundTruthContext
 	t.Run("correlates provider and target", func(t *testing.T) {
 		p, output := newProcessorWithIdentity()
 		target, originator, message := uint64(303), uint64(771), uint64(17)
-		body := appendVarintField(nil, fieldApplyGameplayEffectNotifyHandle, 1234)
-		body = appendVarintField(body, fieldApplyGameplayEffectNotifyEntityID, target)
-		body = appendVarintField(body, fieldApplyGameplayEffectNotifyInstigatorID, 8801)
-		if err := p.handleInnerBuffLifecycleMessage(gameFrame{commandID: cmdCombatReceivePackNotify, direction: "in"}, fieldCombatNotifyDataApplyBuffS2CRequestNotify, cmdApplyGameplayEffectNotify, body, &target, &originator, &message); err != nil {
+		body := appendVarintField(nil, FieldApplyGameplayEffectNotifyHandle, 1234)
+		body = appendVarintField(body, FieldApplyGameplayEffectNotifyEntityID, target)
+		body = appendVarintField(body, FieldApplyGameplayEffectNotifyInstigatorID, 8801)
+		if err := p.HandleInnerBuffLifecycleMessage(GameFrame{CommandID: CmdCombatReceivePackNotify, Direction: "in"}, FieldCombatNotifyDataApplyBuffS2CRequestNotify, CmdApplyGameplayEffectNotify, body, &target, &originator, &message); err != nil {
 			t.Fatal(err)
 		}
-		var row buffLifecycleAuditRow
+		var row BuffLifecycleAuditRow
 		if err := json.Unmarshal(bytes.TrimSpace(output.Bytes()), &row); err != nil {
 			t.Fatal(err)
 		}
-		if row.SchemaVersion != buffLifecycleSchemaVersion || row.TargetStatus != resolutionCorrelated || row.InstigatorStatus != resolutionCorrelated || row.ProviderStatus != resolutionCorrelated || row.ProviderNameStatus != resolutionCorrelated {
+		if row.SchemaVersion != BuffLifecycleSchemaVersion || row.TargetStatus != ResolutionCorrelated || row.InstigatorStatus != ResolutionCorrelated || row.ProviderStatus != ResolutionCorrelated || row.ProviderNameStatus != ResolutionCorrelated {
 			t.Fatalf("expected schema v4 correlated gameplay-effect attribution: %+v", row)
 		}
 		if row.ProviderCharacterID == nil || *row.ProviderCharacterID != 771 || row.ProviderName != "Cartethyia" {
@@ -440,36 +440,36 @@ func TestGameplayEffectApplyCorrelatesProviderOnlyWithMatchingGroundTruthContext
 	t.Run("leaves mismatched target unknown", func(t *testing.T) {
 		p, output := newProcessorWithIdentity()
 		commonTarget, originator, message := uint64(303), uint64(771), uint64(17)
-		body := appendVarintField(nil, fieldApplyGameplayEffectNotifyHandle, 1234)
-		body = appendVarintField(body, fieldApplyGameplayEffectNotifyEntityID, 304)
-		body = appendVarintField(body, fieldApplyGameplayEffectNotifyInstigatorID, 8801)
-		if err := p.handleInnerBuffLifecycleMessage(gameFrame{commandID: cmdCombatReceivePackNotify, direction: "in"}, fieldCombatNotifyDataApplyBuffS2CRequestNotify, cmdApplyGameplayEffectNotify, body, &commonTarget, &originator, &message); err != nil {
+		body := appendVarintField(nil, FieldApplyGameplayEffectNotifyHandle, 1234)
+		body = appendVarintField(body, FieldApplyGameplayEffectNotifyEntityID, 304)
+		body = appendVarintField(body, FieldApplyGameplayEffectNotifyInstigatorID, 8801)
+		if err := p.HandleInnerBuffLifecycleMessage(GameFrame{CommandID: CmdCombatReceivePackNotify, Direction: "in"}, FieldCombatNotifyDataApplyBuffS2CRequestNotify, CmdApplyGameplayEffectNotify, body, &commonTarget, &originator, &message); err != nil {
 			t.Fatal(err)
 		}
-		var row buffLifecycleAuditRow
+		var row BuffLifecycleAuditRow
 		if err := json.Unmarshal(bytes.TrimSpace(output.Bytes()), &row); err != nil {
 			t.Fatal(err)
 		}
-		if row.TargetStatus != resolutionUnknown || row.InstigatorStatus != resolutionUnknown || row.ProviderStatus != resolutionUnknown || row.ProviderCharacterID != nil {
+		if row.TargetStatus != ResolutionUnknown || row.InstigatorStatus != ResolutionUnknown || row.ProviderStatus != ResolutionUnknown || row.ProviderCharacterID != nil {
 			t.Fatalf("mismatched target must not produce provider attribution: %+v", row)
 		}
 	})
 
 	t.Run("does not claim an unverified provider name", func(t *testing.T) {
 		p, output := newProcessorWithIdentity()
-		p.masters.characters[771] = masterRecord{ID: 771, Status: string(resolutionVerified), NameStatus: string(resolutionUnknown)}
+		p.Masters.Characters[771] = MasterRecord{ID: 771, Status: string(ResolutionVerified), NameStatus: string(ResolutionUnknown)}
 		target, originator, message := uint64(303), uint64(771), uint64(17)
-		body := appendVarintField(nil, fieldApplyGameplayEffectNotifyHandle, 1234)
-		body = appendVarintField(body, fieldApplyGameplayEffectNotifyEntityID, target)
-		body = appendVarintField(body, fieldApplyGameplayEffectNotifyInstigatorID, 8801)
-		if err := p.handleInnerBuffLifecycleMessage(gameFrame{commandID: cmdCombatReceivePackNotify, direction: "in"}, fieldCombatNotifyDataApplyBuffS2CRequestNotify, cmdApplyGameplayEffectNotify, body, &target, &originator, &message); err != nil {
+		body := appendVarintField(nil, FieldApplyGameplayEffectNotifyHandle, 1234)
+		body = appendVarintField(body, FieldApplyGameplayEffectNotifyEntityID, target)
+		body = appendVarintField(body, FieldApplyGameplayEffectNotifyInstigatorID, 8801)
+		if err := p.HandleInnerBuffLifecycleMessage(GameFrame{CommandID: CmdCombatReceivePackNotify, Direction: "in"}, FieldCombatNotifyDataApplyBuffS2CRequestNotify, CmdApplyGameplayEffectNotify, body, &target, &originator, &message); err != nil {
 			t.Fatal(err)
 		}
-		var row buffLifecycleAuditRow
+		var row BuffLifecycleAuditRow
 		if err := json.Unmarshal(bytes.TrimSpace(output.Bytes()), &row); err != nil {
 			t.Fatal(err)
 		}
-		if row.ProviderStatus != resolutionCorrelated || row.ProviderNameStatus != resolutionUnknown || row.ProviderName != "" {
+		if row.ProviderStatus != ResolutionCorrelated || row.ProviderNameStatus != ResolutionUnknown || row.ProviderName != "" {
 			t.Fatalf("unverified master name must stay unknown: %+v", row)
 		}
 	})
@@ -477,15 +477,15 @@ func TestGameplayEffectApplyCorrelatesProviderOnlyWithMatchingGroundTruthContext
 	t.Run("does not promote non-gameplay Buff target semantics", func(t *testing.T) {
 		p, output := newProcessorWithIdentity()
 		target, originator, message := uint64(303), uint64(771), uint64(17)
-		body := appendVarintField(nil, fieldSimpleCombatEntityBuffUpdateNotifyEntityID, target)
-		if err := p.handleInnerBuffLifecycleMessage(gameFrame{commandID: cmdCombatReceivePackNotify, direction: "in"}, fieldCombatNotifyDataApplyBuffS2CRequestNotify, cmdSimpleCombatEntityBuffUpdateNotify, body, &target, &originator, &message); err != nil {
+		body := appendVarintField(nil, FieldSimpleCombatEntityBuffUpdateNotifyEntityID, target)
+		if err := p.HandleInnerBuffLifecycleMessage(GameFrame{CommandID: CmdCombatReceivePackNotify, Direction: "in"}, FieldCombatNotifyDataApplyBuffS2CRequestNotify, CmdSimpleCombatEntityBuffUpdateNotify, body, &target, &originator, &message); err != nil {
 			t.Fatal(err)
 		}
-		var row buffLifecycleAuditRow
+		var row BuffLifecycleAuditRow
 		if err := json.Unmarshal(bytes.TrimSpace(output.Bytes()), &row); err != nil {
 			t.Fatal(err)
 		}
-		if row.TargetStatus != resolutionUnknown || row.ProviderStatus != resolutionUnknown {
+		if row.TargetStatus != ResolutionUnknown || row.ProviderStatus != ResolutionUnknown {
 			t.Fatalf("CombatCommon match must not promote unrelated Buff target semantics: %+v", row)
 		}
 	})
@@ -493,17 +493,17 @@ func TestGameplayEffectApplyCorrelatesProviderOnlyWithMatchingGroundTruthContext
 
 func TestBuffLifecycleOutputRetainsUnknownFieldsAndRejectsWireMismatch(t *testing.T) {
 	var output, eventStream bytes.Buffer
-	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
-	p.dev.buffLifecycle = &output
-	p.dev.combatEventsJSONL = &eventStream
-	p.sessionNumber = 2
-	body := appendVarintField(nil, fieldRemoveGameplayEffectNotifyEntityID, 8801)
+	p := NewProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
+	p.Dev.buffLifecycle = &output
+	p.Dev.combatEventsJSONL = &eventStream
+	p.SessionNumber = 2
+	body := appendVarintField(nil, FieldRemoveGameplayEffectNotifyEntityID, 8801)
 	body = appendVarintField(body, 99, 1)
-	frame := gameFrame{commandID: cmdRemoveGameplayEffectNotify, direction: "in"}
-	if err := p.handleBuffLifecycleMessage(frame, body); err != nil {
+	frame := GameFrame{CommandID: CmdRemoveGameplayEffectNotify, Direction: "in"}
+	if err := p.HandleBuffLifecycleMessage(frame, body); err != nil {
 		t.Fatal(err)
 	}
-	var row buffLifecycleAuditRow
+	var row BuffLifecycleAuditRow
 	if err := json.Unmarshal(bytes.TrimSpace(output.Bytes()), &row); err != nil {
 		t.Fatal(err)
 	}
@@ -514,28 +514,28 @@ func TestBuffLifecycleOutputRetainsUnknownFieldsAndRejectsWireMismatch(t *testin
 	if err := json.Unmarshal(bytes.TrimSpace(eventStream.Bytes()), &streamRow); err != nil {
 		t.Fatalf("decode unified event row: %v", err)
 	}
-	if streamRow["schemaVersion"] != float64(buffLifecycleSchemaVersion) || streamRow["eventType"] != "BUFF_LIFECYCLE" || streamRow["sessionNumber"] != float64(2) || streamRow["messageId"] != float64(cmdRemoveGameplayEffectNotify) || streamRow["direction"] != "in" {
+	if streamRow["schemaVersion"] != float64(BuffLifecycleSchemaVersion) || streamRow["eventType"] != "BUFF_LIFECYCLE" || streamRow["sessionNumber"] != float64(2) || streamRow["messageId"] != float64(CmdRemoveGameplayEffectNotify) || streamRow["direction"] != "in" {
 		t.Fatalf("Buff lifecycle missing from unified event stream: %#v", streamRow)
 	}
-	badWire := appendBytesField(nil, fieldRemoveGameplayEffectNotifyEntityID, []byte{1})
-	if _, err := decodeBuffLifecycleMessage(gameFrame{commandID: cmdRemoveGameplayEffectNotify}, badWire); err == nil {
+	badWire := appendBytesField(nil, FieldRemoveGameplayEffectNotifyEntityID, []byte{1})
+	if _, err := DecodeBuffLifecycleMessage(GameFrame{CommandID: CmdRemoveGameplayEffectNotify}, badWire); err == nil {
 		t.Fatal("recognized field with a schema-incompatible wire type should fail")
 	}
 }
 
 func TestBuffLifecycleDefinitionLookupUsesOnlyTypedBuffID(t *testing.T) {
-	master := &gameMaster{buffDefinitions: map[uint64]struct{}{70001: {}}}
-	decodeOutput := func(commandID uint16, body []byte) (buffLifecycleAuditRow, map[string]any) {
+	master := &GameMaster{BuffDefinitions: map[uint64]struct{}{70001: {}}}
+	decodeOutput := func(commandID uint16, body []byte) (BuffLifecycleAuditRow, map[string]any) {
 		t.Helper()
 		var lifecycle, eventStream bytes.Buffer
-		p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
-		p.masters = master
-		p.dev.buffLifecycle = &lifecycle
-		p.dev.combatEventsJSONL = &eventStream
-		if err := p.handleBuffLifecycleMessage(gameFrame{commandID: commandID, direction: "in"}, body); err != nil {
+		p := NewProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
+		p.Masters = master
+		p.Dev.buffLifecycle = &lifecycle
+		p.Dev.combatEventsJSONL = &eventStream
+		if err := p.HandleBuffLifecycleMessage(GameFrame{CommandID: commandID, Direction: "in"}, body); err != nil {
 			t.Fatal(err)
 		}
-		var row buffLifecycleAuditRow
+		var row BuffLifecycleAuditRow
 		if err := json.Unmarshal(bytes.TrimSpace(lifecycle.Bytes()), &row); err != nil {
 			t.Fatal(err)
 		}
@@ -543,34 +543,34 @@ func TestBuffLifecycleDefinitionLookupUsesOnlyTypedBuffID(t *testing.T) {
 		if err := json.Unmarshal(bytes.TrimSpace(eventStream.Bytes()), &event); err != nil {
 			t.Fatal(err)
 		}
-		if event["schemaVersion"] != float64(buffLifecycleSchemaVersion) {
+		if event["schemaVersion"] != float64(BuffLifecycleSchemaVersion) {
 			t.Fatalf("unified lifecycle event schema version = %v", event["schemaVersion"])
 		}
 		return row, event
 	}
 
-	matched, matchedEvent := decodeOutput(cmdRemoveBuffByIDS2cRequestNotify, appendVarintField(nil, fieldRemoveBuffByIDS2cRequestNotifyBuffID, 70001))
-	if matched.BuffID == nil || *matched.BuffID != 70001 || matched.BuffDefinitionStatus != resolutionCorrelated || matched.BuffDefinitionTable != "buff" || matched.BuffDefinitionID == nil || *matched.BuffDefinitionID != 70001 {
+	matched, matchedEvent := decodeOutput(CmdRemoveBuffByIDS2cRequestNotify, appendVarintField(nil, FieldRemoveBuffByIDS2cRequestNotifyBuffID, 70001))
+	if matched.BuffID == nil || *matched.BuffID != 70001 || matched.BuffDefinitionStatus != ResolutionCorrelated || matched.BuffDefinitionTable != "buff" || matched.BuffDefinitionID == nil || *matched.BuffDefinitionID != 70001 {
 		t.Fatalf("typed BuffId did not link to its exact table row: %+v", matched)
 	}
-	if matched.BuffDefinitionEvidence == "" || matched.SchemaVersion != buffLifecycleSchemaVersion {
+	if matched.BuffDefinitionEvidence == "" || matched.SchemaVersion != BuffLifecycleSchemaVersion {
 		t.Fatalf("static link provenance/schema version missing: %+v", matched)
 	}
-	if matchedEvent["buffDefinitionStatus"] != string(resolutionCorrelated) || matchedEvent["buffDefinitionTable"] != "buff" || matchedEvent["buffDefinitionId"] != float64(70001) {
+	if matchedEvent["buffDefinitionStatus"] != string(ResolutionCorrelated) || matchedEvent["buffDefinitionTable"] != "buff" || matchedEvent["buffDefinitionId"] != float64(70001) {
 		t.Fatalf("unified event did not expose the typed static link: %#v", matchedEvent)
 	}
 
-	unmatched, unmatchedEvent := decodeOutput(cmdRemoveBuffByIDS2cRequestNotify, appendVarintField(nil, fieldRemoveBuffByIDS2cRequestNotifyBuffID, 1312010090))
-	if unmatched.BuffID == nil || *unmatched.BuffID != 1312010090 || unmatched.BuffDefinitionStatus != resolutionUnknown || unmatched.BuffDefinitionTable != "" || unmatched.BuffDefinitionID != nil {
+	unmatched, unmatchedEvent := decodeOutput(CmdRemoveBuffByIDS2cRequestNotify, appendVarintField(nil, FieldRemoveBuffByIDS2cRequestNotifyBuffID, 1312010090))
+	if unmatched.BuffID == nil || *unmatched.BuffID != 1312010090 || unmatched.BuffDefinitionStatus != ResolutionUnknown || unmatched.BuffDefinitionTable != "" || unmatched.BuffDefinitionID != nil {
 		t.Fatalf("unmatched typed BuffId was resolved: %+v", unmatched)
 	}
-	if unmatchedEvent["buffDefinitionStatus"] != string(resolutionUnknown) || unmatchedEvent["buffDefinitionId"] != nil {
+	if unmatchedEvent["buffDefinitionStatus"] != string(ResolutionUnknown) || unmatchedEvent["buffDefinitionId"] != nil {
 		t.Fatalf("unmatched unified event was misclassified: %#v", unmatchedEvent)
 	}
 
-	apply := appendVarintField(nil, fieldApplyGameplayEffectNotifyID, 70001)          // ApplyGameplayEffectNotify.Id
-	apply = appendVarintField(apply, fieldApplyGameplayEffectNotifyConfBuffID, 70001) // ConfBuffId
-	nonBuffID, nonBuffIDEvent := decodeOutput(cmdApplyGameplayEffectNotify, apply)
+	apply := appendVarintField(nil, FieldApplyGameplayEffectNotifyID, 70001)          // ApplyGameplayEffectNotify.Id
+	apply = appendVarintField(apply, FieldApplyGameplayEffectNotifyConfBuffID, 70001) // ConfBuffId
+	nonBuffID, nonBuffIDEvent := decodeOutput(CmdApplyGameplayEffectNotify, apply)
 	if nonBuffID.BuffID != nil || nonBuffID.BuffDefinitionStatus != "" || nonBuffID.BuffDefinitionID != nil {
 		t.Fatalf("generic Id or ConfBuffId was substituted for typed BuffId: %+v", nonBuffID)
 	}
@@ -581,14 +581,14 @@ func TestBuffLifecycleDefinitionLookupUsesOnlyTypedBuffID(t *testing.T) {
 
 func TestWriteBuffLifecycleConsoleEmitsBuffEvent(t *testing.T) {
 	var stdout, diagnostic bytes.Buffer
-	p := newProcessor(nil, &stdout, &diagnostic, nil)
+	p := NewProcessor(nil, &stdout, &diagnostic, nil)
 	// The row has no combat classification, so only the diagnostic console prints it; the default
 	// combat policy is covered by TestDefaultEffectConsoleShowsOnlyCombatLifecycleOfTheLocalTeam.
-	p.dev.showEffectEvents, p.dev.showAllEffectEvents = true, true
+	p.Dev.showEffectEvents, p.Dev.showAllEffectEvents = true, true
 	buffID := uint64(70001)
-	p.writeBuffLifecycleConsole(buffLifecycleAuditRow{
-		EventKind: "GAMEPLAY_EFFECT_REMOVE", BuffID: &buffID, BuffDefinitionStatus: resolutionUnknown,
-		TargetStatus: resolutionUnknown,
+	p.WriteBuffLifecycleConsole(BuffLifecycleAuditRow{
+		EventKind: "GAMEPLAY_EFFECT_REMOVE", BuffID: &buffID, BuffDefinitionStatus: ResolutionUnknown,
+		TargetStatus: ResolutionUnknown,
 	})
 	if !strings.Contains(stdout.String(), "BuffEvent") || !strings.Contains(stdout.String(), "kind=GAMEPLAY_EFFECT_REMOVE") || !strings.Contains(stdout.String(), "buffId=70001") {
 		t.Fatalf("effect lifecycle was not printed: %q", stdout.String())

@@ -190,13 +190,13 @@ type CombatActorType struct {
 }
 
 // combatActorTypeOf reads the static identity of an endpoint for enemy grouping only.
-func combatActorTypeOf(identity entityIdentity) *CombatActorType {
-	actor := CombatActorType{MonsterStatus: string(resolutionUnknown), TemplateStatus: string(resolutionUnknown)}
-	if identity.HasMonster && identity.Monster.ID != 0 && identity.MonsterStatus != resolutionUnknown {
+func combatActorTypeOf(identity EntityIdentity) *CombatActorType {
+	actor := CombatActorType{MonsterStatus: string(ResolutionUnknown), TemplateStatus: string(ResolutionUnknown)}
+	if identity.HasMonster && identity.Monster.ID != 0 && identity.MonsterStatus != ResolutionUnknown {
 		actor.MonsterID, actor.MonsterStatus = identity.Monster.ID, string(identity.MonsterStatus)
 	}
-	if identity.TemplateStatus == resolutionCorrelated && len(identity.TemplateCandidates) == 1 && identity.TemplateCandidates[0].TemplateID != 0 {
-		actor.TemplateID, actor.TemplateStatus = identity.TemplateCandidates[0].TemplateID, string(resolutionCorrelated)
+	if identity.TemplateStatus == ResolutionCorrelated && len(identity.TemplateCandidates) == 1 && identity.TemplateCandidates[0].TemplateID != 0 {
+		actor.TemplateID, actor.TemplateStatus = identity.TemplateCandidates[0].TemplateID, string(ResolutionCorrelated)
 	}
 	return &actor
 }
@@ -262,7 +262,7 @@ func (a *enemyAggregate) add(record CombatEventRecord) {
 			a.entries = make(map[enemyKey]*EncounterEnemySnapshot)
 		}
 		entry = &EncounterEnemySnapshot{
-			Ordinal: len(a.entries), MonsterStatus: string(resolutionUnknown), TemplateStatus: string(resolutionUnknown),
+			Ordinal: len(a.entries), MonsterStatus: string(ResolutionUnknown), TemplateStatus: string(ResolutionUnknown),
 			FirstSeenAt: record.ObservedAt, LastSeenAt: record.ObservedAt,
 		}
 		a.entries[key] = entry
@@ -311,8 +311,8 @@ func (e *EncounterEnemySnapshot) observeType(actor *CombatActorType) {
 
 func (e *EncounterEnemySnapshot) clearType() {
 	e.IdentityConflict = true
-	e.MonsterID, e.MonsterStatus = 0, string(resolutionUnknown)
-	e.TemplateID, e.TemplateStatus = 0, string(resolutionUnknown)
+	e.MonsterID, e.MonsterStatus = 0, string(ResolutionUnknown)
+	e.TemplateID, e.TemplateStatus = 0, string(ResolutionUnknown)
 }
 
 // snapshot lists the instances in first-met order.
@@ -533,7 +533,7 @@ func (s *DamageStatistics) ConfigureHistory(level HistoryLevel, recording bool) 
 		return
 	}
 	j.want = recording
-	if recording && !j.recording && s.encounters.historyBoundary() {
+	if recording && !j.recording && s.Encounters.historyBoundary() {
 		j.startLocked(HistoryStartCapture)
 	}
 }
@@ -555,10 +555,10 @@ func (s *DamageStatistics) SetHistoryRecording(on bool) {
 	}
 	j.want = on
 	switch {
-	case on && !j.recording && s.encounters.historyBoundary():
+	case on && !j.recording && s.Encounters.historyBoundary():
 		j.startLocked(HistoryStartEnabled)
 	case !on && j.recording:
-		j.stopLocked(HistoryStopDisabled, s.encounters.historyInProgress())
+		j.stopLocked(HistoryStopDisabled, s.Encounters.historyInProgress())
 	}
 }
 
@@ -583,7 +583,7 @@ func (s *DamageStatistics) HistoryRecording() HistoryRecordingState {
 	if j.level == HistoryOff {
 		return HistoryRecordingState{}
 	}
-	return HistoryRecordingState{Enabled: j.want, Recording: j.recording, InProgress: j.recording && len(s.encounters.historyInProgress()) > 0}
+	return HistoryRecordingState{Enabled: j.want, Recording: j.recording, InProgress: j.recording && len(s.Encounters.historyInProgress()) > 0}
 }
 
 // TakeHistory returns the journal entries recorded since the previous call and how many the bound refused. It also starts a
@@ -597,7 +597,7 @@ func (s *DamageStatistics) TakeHistory() ([]HistoryEntry, uint64) {
 	j := s.history
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	if j.level != HistoryOff && j.want && !j.recording && s.encounters.historyBoundary() {
+	if j.level != HistoryOff && j.want && !j.recording && s.Encounters.historyBoundary() {
 		j.startLocked(HistoryStartEnabled)
 	}
 	return j.takeLocked()
@@ -612,7 +612,7 @@ func (s *DamageStatistics) CheckpointHistory() {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.encounters.checkpoint()
+	s.Encounters.checkpoint()
 }
 
 // ApplyEncounterIntegrity sets an encounter's integrity and applies it to its Encounter DPS, peak DPS and healing exactly as
@@ -643,7 +643,7 @@ func integrityEqual(a, b DataIntegrity) bool {
 // prelude, and no healing result is recent enough to join an encounter that opens later. A span that starts here therefore
 // sees every entry of each encounter it records.
 func (t *encounterTracker) historyBoundary() bool {
-	if t.current != nil || len(t.prelude) > 0 {
+	if t.Current != nil || len(t.prelude) > 0 {
 		return false
 	}
 	for _, event := range t.healing {
@@ -656,26 +656,26 @@ func (t *encounterTracker) historyBoundary() bool {
 
 // historyInProgress lists the encounter key a stopping span leaves unfinished.
 func (t *encounterTracker) historyInProgress() []string {
-	if t.current == nil {
+	if t.Current == nil {
 		return nil
 	}
-	return []string{historyKey(t.intervalID, t.current.sequence)}
+	return []string{historyKey(t.intervalID, t.Current.sequence)}
 }
 
 // checkpoint journals the encounter in progress the way finish journals a finished one: the engine's own rendering, with
 // Encounter DPS, peak DPS and healing before data integrity is applied, evaluated at the newest capture time (live) or at
 // the candidate end. It is skipped before confirmed activity and when nothing changed since the last checkpoint.
 func (t *encounterTracker) checkpoint() {
-	record := t.current
+	record := t.Current
 	if record == nil || !record.historyActive || !t.history.on() {
 		return
 	}
 	events := record.totals.OutgoingEvents + record.totals.IncomingEvents
-	if record.checkpointed && record.checkpointEvents == events && record.checkpointState == record.state {
+	if record.checkpointed && record.checkpointEvents == events && record.checkpointState == record.State {
 		return
 	}
 	end, confidence := t.highWater, "live"
-	if record.state == EncounterEndingCandidate {
+	if record.State == EncounterEndingCandidate {
 		end, confidence = record.endAt, "ending_candidate"
 	}
 	if end.Before(record.lastActivity) {
@@ -686,7 +686,7 @@ func (t *encounterTracker) checkpoint() {
 	base.EncounterDPS = encounterDPS(record, end, confidence)
 	base.PeakDPS = encounterPeakDPS(record, end, confidence)
 	base.Healing = t.encounterHealing(record, end)
-	record.checkpointed, record.checkpointEvents, record.checkpointState = true, events, record.state
+	record.checkpointed, record.checkpointEvents, record.checkpointState = true, events, record.State
 	t.history.add(HistoryEntry{Kind: HistoryEncounterCheckpoint, Encounter: historyKey(t.intervalID, record.sequence), Finished: &HistoryEncounter{
 		Snapshot: base, Timeline: record.timeline.store(), Enemies: record.enemies.snapshot(), EnemiesOverflow: record.enemies.overflow,
 		Scene: record.scene, CheckpointAt: end,

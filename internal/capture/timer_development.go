@@ -25,10 +25,10 @@ type timerObservation struct {
 
 // observeTimerSchema keeps challenge timer fields separate from the decoded
 // payload and correlates them only with the observed TimeCheckResponse FlowTime.
-func (p *processor) observeTimerSchema(frame gameFrame, messageName string, decoded *decodedMessage) {
+func (p *Processor) observeTimerSchema(frame GameFrame, messageName string, decoded *decodedMessage) {
 	frameOrdinal := uint64(0)
-	if p.dev.frameOrdinal > 0 {
-		frameOrdinal = p.dev.frameOrdinal - 1
+	if p.Dev.frameOrdinal > 0 {
+		frameOrdinal = p.Dev.frameOrdinal - 1
 	}
 	switch messageName {
 	case "TimeCheckResponse":
@@ -36,26 +36,26 @@ func (p *processor) observeTimerSchema(frame gameFrame, messageName string, deco
 		if !ok || flowTime <= 0 {
 			return
 		}
-		for i := range p.dev.timerObservations {
-			observation := &p.dev.timerObservations[i]
-			if observation.sessionNumber != p.sessionNumber || observation.nextFlowFrame != 0 || observation.frameOrdinal >= frameOrdinal {
+		for i := range p.Dev.timerObservations {
+			observation := &p.Dev.timerObservations[i]
+			if observation.sessionNumber != p.SessionNumber || observation.nextFlowFrame != 0 || observation.frameOrdinal >= frameOrdinal {
 				continue
 			}
 			observation.nextFlowTime = flowTime
 			observation.nextFlowFrame = frameOrdinal
 		}
-		p.dev.flowTime = flowTime
-		p.dev.hasFlowTime = true
-		p.dev.flowTimeFrame = frameOrdinal
+		p.Dev.flowTime = flowTime
+		p.Dev.hasFlowTime = true
+		p.Dev.flowTimeFrame = frameOrdinal
 	case "UpdateTimerInfoNotify":
 		info := firstChildMessage(decoded, "TimerInfo")
 		if info == nil {
 			return
 		}
 		observation := timerObservation{
-			sessionNumber: p.sessionNumber,
+			sessionNumber: p.SessionNumber,
 			frameOrdinal:  frameOrdinal,
-			timestamp:     frame.timestamp,
+			timestamp:     frame.Timestamp,
 			timerType:     stringScalarValue(info, "TimerType"),
 		}
 		if nodeID, ok := scalarValue(info, "NodeId"); ok {
@@ -64,15 +64,15 @@ func (p *processor) observeTimerSchema(frame gameFrame, messageName string, deco
 		if endTime, ok := scalarValue(info, "EndTime"); ok {
 			observation.endTime, observation.hasEndTime = endTime, true
 		}
-		if p.dev.hasFlowTime {
-			observation.priorFlowTime = p.dev.flowTime
-			observation.priorFlowFrame = p.dev.flowTimeFrame
+		if p.Dev.hasFlowTime {
+			observation.priorFlowTime = p.Dev.flowTime
+			observation.priorFlowFrame = p.Dev.flowTimeFrame
 		}
-		if len(p.dev.timerObservations) == maxTimerObservations {
-			copy(p.dev.timerObservations, p.dev.timerObservations[1:])
-			p.dev.timerObservations = p.dev.timerObservations[:len(p.dev.timerObservations)-1]
+		if len(p.Dev.timerObservations) == maxTimerObservations {
+			copy(p.Dev.timerObservations, p.Dev.timerObservations[1:])
+			p.Dev.timerObservations = p.Dev.timerObservations[:len(p.Dev.timerObservations)-1]
 		}
-		p.dev.timerObservations = append(p.dev.timerObservations, observation)
+		p.Dev.timerObservations = append(p.Dev.timerObservations, observation)
 	}
 }
 

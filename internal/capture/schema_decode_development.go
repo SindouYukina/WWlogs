@@ -75,14 +75,14 @@ func decodeSchemaMessage(schema *protocolSchema, typeName string, data []byte, d
 	if depth > maxSchemaDepth {
 		return &decodedMessage{Type: typeName, Unknown: []unknownField{{Reason: "depth limit reached", Hex: hex.EncodeToString(data)}}}, nil
 	}
-	fields, err := parseProtoFields(data)
+	fields, err := ParseProtoFields(data)
 	if err != nil {
 		return nil, fmt.Errorf("parse %s: %w", typeName, err)
 	}
 	index := message.fieldIndex()
 	result := &decodedMessage{Type: typeName}
 	for _, raw := range fields {
-		field, known := index[raw.number]
+		field, known := index[raw.Number]
 		if !known {
 			result.Unknown = append(result.Unknown, rawUnknown(raw, "field number not in schema"))
 			continue
@@ -110,19 +110,19 @@ func decodeSchemaMessage(schema *protocolSchema, typeName string, data []byte, d
 	return result, nil
 }
 
-func rawUnknown(raw protoField, reason string) unknownField {
-	out := unknownField{Number: raw.number, Wire: raw.wire, Reason: reason}
-	if raw.wire == 0 {
-		out.Varint = raw.value
-	} else if raw.data != nil {
-		out.Hex = hex.EncodeToString(raw.data)
+func rawUnknown(raw ProtoField, reason string) unknownField {
+	out := unknownField{Number: raw.Number, Wire: raw.Wire, Reason: reason}
+	if raw.Wire == 0 {
+		out.Varint = raw.Value
+	} else if raw.Data != nil {
+		out.Hex = hex.EncodeToString(raw.Data)
 	}
 	return out
 }
 
 // decodeSchemaField decodes one occurrence. It reports false when the wire type
 // cannot carry the schema kind, leaving the caller to keep the raw field.
-func decodeSchemaField(schema *protocolSchema, field schemaField, raw protoField, depth int) (decodedField, bool) {
+func decodeSchemaField(schema *protocolSchema, field schemaField, raw ProtoField, depth int) (decodedField, bool) {
 	out := decodedField{Number: field.Number, Name: field.Name, Kind: field.Kind}
 	kind := field.schemaType
 	if field.Kind == "repeated" && field.Element != nil {
@@ -141,107 +141,107 @@ func decodeSchemaField(schema *protocolSchema, field schemaField, raw protoField
 	return out, true
 }
 
-func decodeSchemaValue(schema *protocolSchema, kind schemaType, raw protoField, depth int) (any, *decodedMessage, bool) {
+func decodeSchemaValue(schema *protocolSchema, kind schemaType, raw ProtoField, depth int) (any, *decodedMessage, bool) {
 	switch kind.Kind {
 	case "int32":
-		return int32(raw.value), nil, raw.wire == 0
+		return int32(raw.Value), nil, raw.Wire == 0
 	case "int64":
-		return int64(raw.value), nil, raw.wire == 0
+		return int64(raw.Value), nil, raw.Wire == 0
 	case "uint32":
-		return uint32(raw.value), nil, raw.wire == 0
+		return uint32(raw.Value), nil, raw.Wire == 0
 	case "uint64":
-		return raw.value, nil, raw.wire == 0
+		return raw.Value, nil, raw.Wire == 0
 	case "enum":
-		return int32(raw.value), nil, raw.wire == 0
+		return int32(raw.Value), nil, raw.Wire == 0
 	case "bool":
-		return raw.value != 0, nil, raw.wire == 0
+		return raw.Value != 0, nil, raw.Wire == 0
 	case "float":
-		if raw.wire != 5 || len(raw.data) != 4 {
+		if raw.Wire != 5 || len(raw.Data) != 4 {
 			return nil, nil, false
 		}
-		bits := uint32(raw.data[0]) | uint32(raw.data[1])<<8 | uint32(raw.data[2])<<16 | uint32(raw.data[3])<<24
+		bits := uint32(raw.Data[0]) | uint32(raw.Data[1])<<8 | uint32(raw.Data[2])<<16 | uint32(raw.Data[3])<<24
 		return float64(math.Float32frombits(bits)), nil, true
 	case "double":
-		if raw.wire != 1 || len(raw.data) != 8 {
+		if raw.Wire != 1 || len(raw.Data) != 8 {
 			return nil, nil, false
 		}
 		var bits uint64
 		for i := 7; i >= 0; i-- {
-			bits = bits<<8 | uint64(raw.data[i])
+			bits = bits<<8 | uint64(raw.Data[i])
 		}
 		return math.Float64frombits(bits), nil, true
 	case "string":
-		if raw.wire != 2 {
+		if raw.Wire != 2 {
 			return nil, nil, false
 		}
-		return string(raw.data), nil, true
+		return string(raw.Data), nil, true
 	case "bytes":
-		if raw.wire != 2 {
+		if raw.Wire != 2 {
 			return nil, nil, false
 		}
-		return base64.StdEncoding.EncodeToString(raw.data), nil, true
+		return base64.StdEncoding.EncodeToString(raw.Data), nil, true
 	case "class":
-		if raw.wire != 2 {
+		if raw.Wire != 2 {
 			return nil, nil, false
 		}
 		if _, known := schema.Messages[kind.Type]; !known {
-			return nil, &decodedMessage{Type: kind.Type, Unknown: []unknownField{{Reason: "message type not in schema", Hex: hex.EncodeToString(raw.data)}}}, true
+			return nil, &decodedMessage{Type: kind.Type, Unknown: []unknownField{{Reason: "message type not in schema", Hex: hex.EncodeToString(raw.Data)}}}, true
 		}
-		nested, err := decodeSchemaMessage(schema, kind.Type, raw.data, depth+1)
+		nested, err := decodeSchemaMessage(schema, kind.Type, raw.Data, depth+1)
 		if err != nil {
-			return nil, &decodedMessage{Type: kind.Type, Unknown: []unknownField{{Reason: "nested decode failed", Hex: hex.EncodeToString(raw.data)}}}, true
+			return nil, &decodedMessage{Type: kind.Type, Unknown: []unknownField{{Reason: "nested decode failed", Hex: hex.EncodeToString(raw.Data)}}}, true
 		}
 		return nil, nested, true
 	}
 	return nil, nil, false
 }
 
-// archiveSchemaDecode writes a schema-directed decode of a decrypted frame when a
+// ArchiveSchemaDecode writes a schema-directed decode of a decrypted frame when a
 // schema is loaded and the command name has a schema message. It reads the same
 // plaintext as the typed decoder and does not change typed results.
-func (p *processor) archiveSchemaDecode(frame gameFrame, plain []byte) {
-	if p.dev.protocolSchema == nil {
+func (p *Processor) ArchiveSchemaDecode(frame GameFrame, plain []byte) {
+	if p.Dev.protocolSchema == nil {
 		return
 	}
 	// Commands 103 and 116 carry device and account identifiers beside the client
 	// version fields. The census keeps only the version fields; this output does not
 	// decode them at all.
-	if frame.commandID == cmdLoginRequest || frame.commandID == cmdCheckClientPush {
-		p.dev.schemaDecodeSkipped++
+	if frame.CommandID == CmdLoginRequest || frame.CommandID == CmdCheckClientPush {
+		p.Dev.schemaDecodeSkipped++
 		return
 	}
-	name, known := p.schemaMessageFor(frame.commandID)
+	name, known := p.schemaMessageFor(frame.CommandID)
 	if !known {
-		p.dev.schemaDecodeSkipped++
+		p.Dev.schemaDecodeSkipped++
 		return
 	}
-	decoded, err := decodeSchemaMessage(p.dev.protocolSchema, name, plain, 0)
+	decoded, err := decodeSchemaMessage(p.Dev.protocolSchema, name, plain, 0)
 	if err != nil {
-		p.dev.schemaDecodeErrors++
+		p.Dev.schemaDecodeErrors++
 		return
 	}
 	p.observeTimerSchema(frame, name, decoded)
 	p.archiveRoleConfigRecords(frame, decoded)
-	if p.dev.schemaDecodeOut == nil {
+	if p.Dev.schemaDecodeOut == nil {
 		return
 	}
 	record := schemaDecodeRecord{
 		SchemaVersion: schemaDecodeSchemaVersion,
-		FrameOrdinal:  p.dev.frameOrdinal - 1,
-		SessionNumber: p.sessionNumber,
-		Direction:     frame.direction,
-		CommandID:     frame.commandID,
+		FrameOrdinal:  p.Dev.frameOrdinal - 1,
+		SessionNumber: p.SessionNumber,
+		Direction:     frame.Direction,
+		CommandID:     frame.CommandID,
 		Decoded:       decoded,
 	}
-	writeResearchRecord(p.dev.schemaDecodeOut, record, &p.dev.schemaDecodeErrors)
+	writeResearchRecord(p.Dev.schemaDecodeOut, record, &p.Dev.schemaDecodeErrors)
 }
 
 // decodePackedScalars decodes a proto3 packed repeated scalar, where all elements
 // share one length-delimited field. It reports false when the field is not a
 // repeated numeric scalar or when the payload is not a whole number of elements,
 // so the caller keeps the raw field.
-func decodePackedScalars(schema *protocolSchema, field schemaField, raw protoField, depth int) ([]decodedField, bool) {
-	if field.Kind != "repeated" || field.Element == nil || raw.wire != 2 {
+func decodePackedScalars(schema *protocolSchema, field schemaField, raw ProtoField, depth int) ([]decodedField, bool) {
+	if field.Kind != "repeated" || field.Element == nil || raw.Wire != 2 {
 		return nil, false
 	}
 	element := *field.Element
@@ -257,27 +257,27 @@ func decodePackedScalars(schema *protocolSchema, field schemaField, raw protoFie
 		return nil, false
 	}
 	var out []decodedField
-	data := raw.data
+	data := raw.Data
 	for len(data) > 0 {
-		var item protoField
-		item.number = raw.number
+		var item ProtoField
+		item.Number = raw.Number
 		if fixedSize == 0 {
 			value, n := binary.Uvarint(data)
 			if n <= 0 {
 				return nil, false
 			}
-			item.wire = 0
-			item.value = value
+			item.Wire = 0
+			item.Value = value
 			data = data[n:]
 		} else {
 			if len(data) < fixedSize {
 				return nil, false
 			}
-			item.wire = 1
+			item.Wire = 1
 			if fixedSize == 4 {
-				item.wire = 5
+				item.Wire = 5
 			}
-			item.data = data[:fixedSize]
+			item.Data = data[:fixedSize]
 			data = data[fixedSize:]
 		}
 		value, _, ok := decodeSchemaValue(schema, element, item, depth)
@@ -292,17 +292,17 @@ func decodePackedScalars(schema *protocolSchema, field schemaField, raw protoFie
 // decodeMapEntry decodes one map entry, which is a length-delimited message with
 // key in field 1 and value in field 2. Entries missing either part are rejected
 // so that the raw field is kept instead of being guessed.
-func decodeMapEntry(schema *protocolSchema, field schemaField, raw protoField, depth int) (decodedField, bool) {
-	if field.Key == nil || field.Value == nil || raw.wire != 2 {
+func decodeMapEntry(schema *protocolSchema, field schemaField, raw ProtoField, depth int) (decodedField, bool) {
+	if field.Key == nil || field.Value == nil || raw.Wire != 2 {
 		return decodedField{}, false
 	}
-	parts, err := parseProtoFields(raw.data)
+	parts, err := ParseProtoFields(raw.Data)
 	if err != nil {
 		return decodedField{}, false
 	}
-	var keyField, valueField *protoField
+	var keyField, valueField *ProtoField
 	for i := range parts {
-		switch parts[i].number {
+		switch parts[i].Number {
 		case 1:
 			keyField = &parts[i]
 		case 2:
@@ -335,45 +335,45 @@ func schemaMessageName(commandName string) string {
 // schemaMessageFor returns the schema message for an outer command. The census
 // name is tried first. Commands the census does not name are looked up in the
 // schema's message-ID enums, which map every observed ID to its message name.
-func (p *processor) schemaMessageFor(commandID uint16) (string, bool) {
+func (p *Processor) schemaMessageFor(commandID uint16) (string, bool) {
 	if name := schemaMessageName(commandName(commandID)); name != "" {
-		if _, known := p.dev.protocolSchema.Messages[name]; known {
+		if _, known := p.Dev.protocolSchema.Messages[name]; known {
 			return name, true
 		}
 	}
 	for _, enum := range []string{"EMessageId", "EPushMessageId", "ENotifyMessageId"} {
-		name, found := p.dev.protocolSchema.enumName(enum, int64(commandID))
+		name, found := p.Dev.protocolSchema.enumName(enum, int64(commandID))
 		if !found {
 			continue
 		}
-		if _, known := p.dev.protocolSchema.Messages[name]; known {
+		if _, known := p.Dev.protocolSchema.Messages[name]; known {
 			return name, true
 		}
 	}
 	return "", false
 }
 
-// archiveUndecodedSchema writes schema decodes for commands outside the typed
+// ArchiveUndecodedSchema writes schema decodes for commands outside the typed
 // decoder when no census is running. handleFrame calls it only for frames the
 // protocol session reads, whose numbering is the current protocol the external
 // schema describes. It decrypts and decompresses the frame the same way the
 // census path does and writes only frames that parse as top-level Protobuf.
-func (p *processor) archiveUndecodedSchema(frame gameFrame) {
-	if p.dev.protocolSchema == nil || (p.dev.schemaDecodeOut == nil && p.dev.roleConfigOut == nil) || len(p.session) != 32 || len(frame.body) == 0 {
+func (p *Processor) ArchiveUndecodedSchema(frame GameFrame) {
+	if p.Dev.protocolSchema == nil || (p.Dev.schemaDecodeOut == nil && p.Dev.roleConfigOut == nil) || len(p.Session) != 32 || len(frame.Body) == 0 {
 		return
 	}
-	plain, err := decryptGameBody(frame.sequence, frame.body, p.session)
+	plain, err := DecryptGameBody(frame.Sequence, frame.Body, p.Session)
 	if err != nil {
 		return
 	}
-	if frame.compressed {
-		plain, err = decompressBody(plain, frame.compressedLength)
+	if frame.Compressed {
+		plain, err = DecompressBody(plain, frame.CompressedLength)
 		if err != nil {
 			return
 		}
 	}
-	if _, err := parseProtoFields(plain); err != nil {
+	if _, err := ParseProtoFields(plain); err != nil {
 		return
 	}
-	p.archiveSchemaDecode(frame, plain)
+	p.ArchiveSchemaDecode(frame, plain)
 }

@@ -21,10 +21,10 @@ func openSessionDiagnostics(requested bool, _ layers.LinkType) (*sessionDiagnost
 	return &sessionDiagnostics{}, nil
 }
 
-func (*sessionDiagnostics) attach(*processor) {}
+func (*sessionDiagnostics) Attach(*Processor) {}
 
-func (*sessionDiagnostics) packet(gopacket.CaptureInfo, []byte) {}
+func (*sessionDiagnostics) Packet(gopacket.CaptureInfo, []byte) {}
 
-func (*sessionDiagnostics) observeEffectDisplay(*processor, time.Time) {}
+func (*sessionDiagnostics) ObserveEffectDisplay(*Processor, time.Time) {}
 
-func (*sessionDiagnostics) finish(string, CaptureCounter) string { return "" }
+func (*sessionDiagnostics) Finish(string, CaptureCounter) string { return "" }

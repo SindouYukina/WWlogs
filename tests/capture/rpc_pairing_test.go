@@ -14,54 +14,54 @@ func pairingAt(seconds float64) time.Time {
 }
 
 // pairingFrame advances the processor clock the way handleFrame does for one decoded frame.
-func pairingFrame(p *processor, seconds float64) {
-	p.currentFrameTime = pairingAt(seconds)
-	p.observePairingClock(p.currentFrameTime)
+func pairingFrame(p *Processor, seconds float64) {
+	p.CurrentFrameTime = pairingAt(seconds)
+	p.observePairingClock(p.CurrentFrameTime)
 }
 
 func damageRequestBody(rpcID, attackerID, targetID uint64) []byte {
-	u3n := appendVarintField(nil, fieldDamageExecuteRequestDamageID, 70010001)      // DamageId
-	u3n = appendVarintField(u3n, fieldDamageExecuteRequestTargetEntityID, targetID) // TargetEntityId
-	u3n = appendVarintField(u3n, fieldDamageExecuteRequestAttackerEntityID, attackerID)
-	request := appendVarintField(nil, fieldCombatRequestDataRequestID, rpcID)
-	request = appendBytesField(request, fieldCombatRequestDataDamageExecuteRequest, u3n)
-	return appendBytesField(nil, fieldCombatSendPackRequestData, appendBytesField(nil, fieldCombatSendDataRequest, request))
+	u3n := appendVarintField(nil, FieldDamageExecuteRequestDamageID, 70010001)      // DamageId
+	u3n = appendVarintField(u3n, FieldDamageExecuteRequestTargetEntityID, targetID) // TargetEntityId
+	u3n = appendVarintField(u3n, FieldDamageExecuteRequestAttackerEntityID, attackerID)
+	request := appendVarintField(nil, FieldCombatRequestDataRequestID, rpcID)
+	request = appendBytesField(request, FieldCombatRequestDataDamageExecuteRequest, u3n)
+	return appendBytesField(nil, FieldCombatSendPackRequestData, appendBytesField(nil, FieldCombatSendDataRequest, request))
 }
 
 func damageResponseBody(rpcID uint64, amount int32) []byte {
-	lis := appendVarintField(nil, fieldDamageExecuteResponseErrorCode, 0)
-	lis = appendVarintField(lis, fieldDamageExecuteResponseImmuneType, 0)
-	lis = appendVarintField(lis, fieldDamageExecuteResponseDamage, uint64(uint32(amount)))
-	response := appendVarintField(nil, fieldCombatResponseDataRequestID, rpcID)
-	response = appendBytesField(response, fieldCombatResponseDataDamageExecuteResponse, lis)
-	item := appendBytesField(nil, fieldCombatReceiveDataCombatResponseData, response)
-	return appendBytesField(nil, fieldCombatSendPackResponseReceivePackNotify, appendBytesField(nil, fieldCombatReceivePackNotifyData, item))
+	lis := appendVarintField(nil, FieldDamageExecuteResponseErrorCode, 0)
+	lis = appendVarintField(lis, FieldDamageExecuteResponseImmuneType, 0)
+	lis = appendVarintField(lis, FieldDamageExecuteResponseDamage, uint64(uint32(amount)))
+	response := appendVarintField(nil, FieldCombatResponseDataRequestID, rpcID)
+	response = appendBytesField(response, FieldCombatResponseDataDamageExecuteResponse, lis)
+	item := appendBytesField(nil, FieldCombatReceiveDataCombatResponseData, response)
+	return appendBytesField(nil, FieldCombatSendPackResponseReceivePackNotify, appendBytesField(nil, FieldCombatReceivePackNotifyData, item))
 }
 
 // newPairingTestProcessor has one local role entity (100) and one monster (200).
-func newPairingTestProcessor() *processor {
-	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
-	p.entities = newEntityResolver()
-	p.masters = &gameMaster{damage: map[uint64]damageMasterRecord{
+func newPairingTestProcessor() *Processor {
+	p := NewProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
+	p.Entities = NewEntityResolver()
+	p.Masters = &GameMaster{Damage: map[uint64]DamageMasterRecord{
 		70010001: {ID: 70010001, CalculateType: 0, SourceHash: strings.Repeat("a", 64), SourceTable: "damage"},
 	}}
 	addTestPlayerRoleGroupEntity(p, 100, 77, 1409)
-	p.observeLocalRoleEntity(100)
-	addTestRuntimeEntity(p, 200, func(entity *runtimeEntity) {
-		entity.entityTypeCode, entity.hasEntityType = entityTypeMonster, true
-		entity.monsterID, entity.hasMonsterID = 9001, true
+	p.ObserveLocalRoleEntity(100)
+	addTestRuntimeEntity(p, 200, func(entity *RuntimeEntity) {
+		entity.EntityTypeCode, entity.HasEntityType = EntityTypeMonster, true
+		entity.MonsterID, entity.HasMonsterID = 9001, true
 	})
 	return p
 }
 
-func sendDamageRequest(p *processor, seconds float64, rpcID uint64) {
+func sendDamageRequest(p *Processor, seconds float64, rpcID uint64) {
 	pairingFrame(p, seconds)
-	p.handleDamageRequests(gameFrame{direction: "out", commandID: cmdCombatSendPackRequest, timestamp: pairingAt(seconds)}, damageRequestBody(rpcID, 100, 200))
+	p.HandleDamageRequests(GameFrame{Direction: "out", CommandID: CmdCombatSendPackRequest, Timestamp: pairingAt(seconds)}, damageRequestBody(rpcID, 100, 200))
 }
 
-func sendDamageResponse(p *processor, seconds float64, rpcID uint64, amount int32) {
+func sendDamageResponse(p *Processor, seconds float64, rpcID uint64, amount int32) {
 	pairingFrame(p, seconds)
-	if err := p.handleCombatReceivePacks(gameFrame{direction: "in", commandID: cmdCombatSendPackResponse, timestamp: pairingAt(seconds)}, damageResponseBody(rpcID, amount)); err != nil {
+	if err := p.HandleCombatReceivePacks(GameFrame{Direction: "in", CommandID: CmdCombatSendPackResponse, Timestamp: pairingAt(seconds)}, damageResponseBody(rpcID, amount)); err != nil {
 		panic(err)
 	}
 }
@@ -69,14 +69,14 @@ func sendDamageResponse(p *processor, seconds float64, rpcID uint64, amount int3
 func TestDamageResponseBeforeRequestPairsAtResponseTime(t *testing.T) {
 	p := newPairingTestProcessor()
 	sendDamageResponse(p, 1, 42, 500)
-	if got := p.damageStatistics.Snapshot(); got.DamageDealt != 0 || got.OutgoingEvents != 0 {
+	if got := p.DamageStatistics.Snapshot(); got.DamageDealt != 0 || got.OutgoingEvents != 0 {
 		t.Fatalf("a response without its request was counted: %+v", got)
 	}
-	if got := p.rpcPairingSnapshot(); got.HeldResponses != 1 || got.Paired != 0 {
+	if got := p.RPCPairingSnapshot(); got.HeldResponses != 1 || got.Paired != 0 {
 		t.Fatalf("response was not held for its request: %+v", got)
 	}
 	sendDamageRequest(p, 2.5, 42)
-	got := p.damageStatistics.Snapshot()
+	got := p.DamageStatistics.Snapshot()
 	if got.DamageDealt != 500 || got.OutgoingEvents != 1 {
 		t.Fatalf("out-of-order pair was not counted exactly once: %+v", got)
 	}
@@ -84,15 +84,15 @@ func TestDamageResponseBeforeRequestPairsAtResponseTime(t *testing.T) {
 	if encounter == nil || !encounter.FirstActivityAt.Equal(pairingAt(1)) {
 		t.Fatalf("out-of-order pair must use the response frame time, got %+v", encounter)
 	}
-	pairing := p.rpcPairingSnapshot()
+	pairing := p.RPCPairingSnapshot()
 	if pairing.Paired != 1 || pairing.PairedOutOfOrder != 1 || pairing.HeldResponses != 0 || pairing.PendingRequests != 0 {
 		t.Fatalf("pairing counters = %+v", pairing)
 	}
 	if pairing.MaxOutOfOrderWaitMs != 1500 {
 		t.Fatalf("max out-of-order wait = %.1f ms, want 1500", pairing.MaxOutOfOrderWaitMs)
 	}
-	if !p.currentFrameTime.Equal(pairingAt(2.5)) {
-		t.Fatalf("processor clock was not restored after the late pair: %s", p.currentFrameTime)
+	if !p.CurrentFrameTime.Equal(pairingAt(2.5)) {
+		t.Fatalf("processor clock was not restored after the late pair: %s", p.CurrentFrameTime)
 	}
 }
 
@@ -100,11 +100,11 @@ func TestInOrderPairIsUnchangedByHolding(t *testing.T) {
 	p := newPairingTestProcessor()
 	sendDamageRequest(p, 1, 7)
 	sendDamageResponse(p, 1.2, 7, 300)
-	got := p.damageStatistics.Snapshot()
+	got := p.DamageStatistics.Snapshot()
 	if got.DamageDealt != 300 || got.OutgoingEvents != 1 {
 		t.Fatalf("in-order pair = %+v", got)
 	}
-	if pairing := p.rpcPairingSnapshot(); pairing.Paired != 1 || pairing.PairedOutOfOrder != 0 || pairing.HeldResponses != 0 {
+	if pairing := p.RPCPairingSnapshot(); pairing.Paired != 1 || pairing.PairedOutOfOrder != 0 || pairing.HeldResponses != 0 {
 		t.Fatalf("pairing counters = %+v", pairing)
 	}
 }
@@ -116,11 +116,11 @@ func TestDuplicateResponsesNeverCountTwice(t *testing.T) {
 	sendDamageRequest(p, 1.5, 9)
 	sendDamageResponse(p, 1.6, 9, 100) // retransmitted after the pair
 	sendDamageRequest(p, 1.7, 9)       // retransmitted request after the pair: nothing is held for it
-	got := p.damageStatistics.Snapshot()
+	got := p.DamageStatistics.Snapshot()
 	if got.DamageDealt != 100 || got.OutgoingEvents != 1 {
 		t.Fatalf("duplicates changed the totals: %+v", got)
 	}
-	if pairing := p.rpcPairingSnapshot(); pairing.DuplicateResponses != 2 || pairing.Paired != 1 || pairing.PairedOutOfOrder != 1 {
+	if pairing := p.RPCPairingSnapshot(); pairing.DuplicateResponses != 2 || pairing.Paired != 1 || pairing.PairedOutOfOrder != 1 {
 		t.Fatalf("pairing counters = %+v", pairing)
 	}
 }
@@ -131,16 +131,16 @@ func TestHeldResponseExpiresAndLateRequestStaysUnpaired(t *testing.T) {
 	// Another frame later than the hold window ends the hold.
 	sendDamageResponse(p, 1+damageResponseHoldWindow.Seconds()+0.5, 12, 50)
 	sendDamageRequest(p, 1+damageResponseHoldWindow.Seconds()+0.6, 11)
-	got := p.damageStatistics.Snapshot()
+	got := p.DamageStatistics.Snapshot()
 	if got.DamageDealt != 0 {
 		t.Fatalf("an expired response was paired with a late request: %+v", got)
 	}
-	pairing := p.rpcPairingSnapshot()
+	pairing := p.RPCPairingSnapshot()
 	if pairing.UnpairedExpired != 1 || pairing.Paired != 0 || pairing.PendingRequests != 1 || pairing.HeldResponses != 1 {
 		t.Fatalf("pairing counters = %+v", pairing)
 	}
-	if p.stats.unpairedResponses != 1 {
-		t.Fatalf("unpaired responses = %d, want 1", p.stats.unpairedResponses)
+	if p.Stats.UnpairedResponses != 1 {
+		t.Fatalf("unpaired responses = %d, want 1", p.Stats.UnpairedResponses)
 	}
 }
 
@@ -152,7 +152,7 @@ func TestHeldResponsesWithinWindowPairInAnyOrder(t *testing.T) {
 	for i, rpcID := range []uint64{23, 21, 22} {
 		sendDamageRequest(p, 3+float64(i)*0.1, rpcID)
 	}
-	if got := p.damageStatistics.Snapshot(); got.DamageDealt != 60 || got.OutgoingEvents != 3 {
+	if got := p.DamageStatistics.Snapshot(); got.DamageDealt != 60 || got.OutgoingEvents != 3 {
 		t.Fatalf("reordered pairs = %+v", got)
 	}
 }
@@ -161,14 +161,14 @@ func TestHeldResponsesAreBoundedByCount(t *testing.T) {
 	p := newPairingTestProcessor()
 	pairingFrame(p, 1)
 	for rpcID := uint64(1); rpcID <= maxHeldDamageResponses+1; rpcID++ {
-		p.handleOneDamageResult(rpcID, appendVarintField(nil, fieldDamageExecuteResponseDamage, 1))
+		p.HandleOneDamageResult(rpcID, appendVarintField(nil, FieldDamageExecuteResponseDamage, 1))
 	}
-	pairing := p.rpcPairingSnapshot()
+	pairing := p.RPCPairingSnapshot()
 	if pairing.HeldResponses != maxHeldDamageResponses || pairing.UnpairedEvicted != 1 {
 		t.Fatalf("held responses were not bounded: %+v", pairing)
 	}
 	sendDamageRequest(p, 1.5, 1) // the evicted, oldest response
-	if got := p.damageStatistics.Snapshot(); got.DamageDealt != 0 {
+	if got := p.DamageStatistics.Snapshot(); got.DamageDealt != 0 {
 		t.Fatalf("an evicted response was paired: %+v", got)
 	}
 }
@@ -180,10 +180,10 @@ func TestHeldResponsesNeverPairAcrossProtocolSessions(t *testing.T) {
 	p.discardHeldResponses(&p.pairing.sessionChange)
 	p.sessionGeneration++
 	sendDamageRequest(p, 1.5, 31)
-	if got := p.damageStatistics.Snapshot(); got.DamageDealt != 0 {
+	if got := p.DamageStatistics.Snapshot(); got.DamageDealt != 0 {
 		t.Fatalf("a response of the previous session was paired: %+v", got)
 	}
-	if pairing := p.rpcPairingSnapshot(); pairing.UnpairedSessionChange != 1 || pairing.Paired != 0 {
+	if pairing := p.RPCPairingSnapshot(); pairing.UnpairedSessionChange != 1 || pairing.Paired != 0 {
 		t.Fatalf("pairing counters = %+v", pairing)
 	}
 
@@ -191,10 +191,10 @@ func TestHeldResponsesNeverPairAcrossProtocolSessions(t *testing.T) {
 	sendDamageResponse(p, 2, 32, 100)
 	p.sessionGeneration++
 	sendDamageRequest(p, 2.5, 32)
-	if got := p.damageStatistics.Snapshot(); got.DamageDealt != 0 {
+	if got := p.DamageStatistics.Snapshot(); got.DamageDealt != 0 {
 		t.Fatalf("a hold from another generation was paired: %+v", got)
 	}
-	if pairing := p.rpcPairingSnapshot(); pairing.UnpairedSessionChange != 2 {
+	if pairing := p.RPCPairingSnapshot(); pairing.UnpairedSessionChange != 2 {
 		t.Fatalf("pairing counters = %+v", pairing)
 	}
 }
@@ -203,12 +203,12 @@ func TestHeldResponsesAreUnpairedAtCaptureEnd(t *testing.T) {
 	p := newPairingTestProcessor()
 	sendDamageResponse(p, 1, 41, 100)
 	sendDamageResponse(p, 1.1, 42, 100)
-	p.finishCapture()
-	pairing := p.rpcPairingSnapshot()
-	if pairing.UnpairedCaptureEnd != 2 || pairing.HeldResponses != 0 || p.stats.unpairedResponses != 2 {
-		t.Fatalf("pairing counters at capture end = %+v unpaired=%d", pairing, p.stats.unpairedResponses)
+	p.FinishCapture()
+	pairing := p.RPCPairingSnapshot()
+	if pairing.UnpairedCaptureEnd != 2 || pairing.HeldResponses != 0 || p.Stats.UnpairedResponses != 2 {
+		t.Fatalf("pairing counters at capture end = %+v unpaired=%d", pairing, p.Stats.UnpairedResponses)
 	}
-	if got := p.damageStatistics.Snapshot(); got.DamageDealt != 0 {
+	if got := p.DamageStatistics.Snapshot(); got.DamageDealt != 0 {
 		t.Fatalf("held responses were counted at capture end: %+v", got)
 	}
 }
@@ -216,27 +216,27 @@ func TestHeldResponsesAreUnpairedAtCaptureEnd(t *testing.T) {
 func TestInvalidHeldResponseStaysInvalid(t *testing.T) {
 	p := newPairingTestProcessor()
 	pairingFrame(p, 1)
-	immune := appendVarintField(nil, fieldDamageExecuteResponseImmuneType, 1)
-	immune = appendVarintField(immune, fieldDamageExecuteResponseDamage, 100)
-	p.handleOneDamageResult(51, immune)
+	immune := appendVarintField(nil, FieldDamageExecuteResponseImmuneType, 1)
+	immune = appendVarintField(immune, FieldDamageExecuteResponseDamage, 100)
+	p.HandleOneDamageResult(51, immune)
 	sendDamageRequest(p, 1.5, 51)
-	if got := p.damageStatistics.Snapshot(); got.DamageDealt != 0 {
+	if got := p.DamageStatistics.Snapshot(); got.DamageDealt != 0 {
 		t.Fatalf("an immune response became damage: %+v", got)
 	}
-	if pairing := p.rpcPairingSnapshot(); pairing.InvalidResponses != 1 || pairing.Paired != 1 {
+	if pairing := p.RPCPairingSnapshot(); pairing.InvalidResponses != 1 || pairing.Paired != 1 {
 		t.Fatalf("pairing counters = %+v", pairing)
 	}
 }
 
 func entityRemoveBody(ids ...uint64) []byte {
-	body := appendVarintField(nil, fieldEntityRemoveNotifyIsRemove, 1)
+	body := appendVarintField(nil, FieldEntityRemoveNotifyIsRemove, 1)
 	for _, id := range ids {
-		body = appendBytesField(body, fieldEntityRemoveNotifyRemoveInfos, appendVarintField(nil, fieldEntityRemoveInfoEntityID, id))
+		body = appendBytesField(body, FieldEntityRemoveNotifyRemoveInfos, appendVarintField(nil, FieldEntityRemoveInfoEntityID, id))
 	}
 	return body
 }
 
-func removeEntities(t *testing.T, p *processor, seconds float64, ids ...uint64) {
+func removeEntities(t *testing.T, p *Processor, seconds float64, ids ...uint64) {
 	t.Helper()
 	pairingFrame(p, seconds)
 	if err := p.handleEntityRemoveNotify(entityRemoveBody(ids...)); err != nil {
@@ -259,7 +259,7 @@ func TestHeldPairSeesATargetRemovedAfterItsResponse(t *testing.T) {
 	removeEntities(t, held, 1.01, 200)
 	sendDamageRequest(held, 1.02, 42)
 
-	want, got := inOrder.damageStatistics.Snapshot(), held.damageStatistics.Snapshot()
+	want, got := inOrder.DamageStatistics.Snapshot(), held.DamageStatistics.Snapshot()
 	if want.DamageDealt != 500 || want.UnattributedOutgoingDamage != 0 {
 		t.Fatalf("in-order reference = %+v", want)
 	}
@@ -268,13 +268,13 @@ func TestHeldPairSeesATargetRemovedAfterItsResponse(t *testing.T) {
 			got.DamageDealt, got.UnattributedOutgoingDamage, want.DamageDealt, want.UnattributedOutgoingDamage)
 	}
 	// The rewind lasts for the pair only: the target is removed again, and nothing is kept once no response is held.
-	if _, present := held.entities.entities[200]; present {
+	if _, present := held.Entities.Entities[200]; present {
 		t.Fatal("the removed target came back after the pair")
 	}
-	if entity, status := held.entities.resolve(200); status != resolutionUnknown && entity.entityID == 200 {
+	if entity, status := held.Entities.Resolve(200); status != ResolutionUnknown && entity.EntityID == 200 {
 		t.Fatalf("the removed target still resolves: %+v", entity)
 	}
-	if pairing := held.rpcPairingSnapshot(); pairing.RewoundEntities != 1 || pairing.PairedOutOfOrder != 1 || len(held.pairing.removals) != 0 {
+	if pairing := held.RPCPairingSnapshot(); pairing.RewoundEntities != 1 || pairing.PairedOutOfOrder != 1 || len(held.pairing.removals) != 0 {
 		t.Fatalf("pairing = %+v, removals kept = %d", pairing, len(held.pairing.removals))
 	}
 }
@@ -293,14 +293,14 @@ func TestHeldPairKeepsARemovalThatPrecededItsResponse(t *testing.T) {
 	sendDamageResponse(held, 1.01, 42, 500)
 	sendDamageRequest(held, 1.02, 42)
 
-	want, got := inOrder.damageStatistics.Snapshot(), held.damageStatistics.Snapshot()
+	want, got := inOrder.DamageStatistics.Snapshot(), held.DamageStatistics.Snapshot()
 	if want.DamageDealt != 0 || want.UnattributedOutgoingDamage != 500 {
 		t.Fatalf("in-order reference = %+v", want)
 	}
 	if got.DamageDealt != 0 || got.UnattributedOutgoingDamage != 500 {
 		t.Fatalf("a held response that followed the removal was attributed: %+v", got)
 	}
-	if pairing := held.rpcPairingSnapshot(); pairing.RewoundEntities != 0 || pairing.HeldResponses != 1 {
+	if pairing := held.RPCPairingSnapshot(); pairing.RewoundEntities != 0 || pairing.HeldResponses != 1 {
 		t.Fatalf("pairing = %+v", pairing)
 	}
 }
@@ -310,15 +310,15 @@ func TestRewindRestoresAReusedEntityID(t *testing.T) {
 	sendDamageResponse(p, 1.01, 42, 500)
 	removeEntities(t, p, 1.01, 200)
 	// The ID is reused by a new entity before the delayed request arrives.
-	addTestRuntimeEntity(p, 200, func(entity *runtimeEntity) {
-		entity.entityTypeCode, entity.hasEntityType = entityTypeMonster, true
-		entity.monsterID, entity.hasMonsterID = 9002, true
+	addTestRuntimeEntity(p, 200, func(entity *RuntimeEntity) {
+		entity.EntityTypeCode, entity.HasEntityType = EntityTypeMonster, true
+		entity.MonsterID, entity.HasMonsterID = 9002, true
 	})
 	sendDamageRequest(p, 1.02, 42)
-	if got := p.damageStatistics.Snapshot(); got.DamageDealt != 500 {
+	if got := p.DamageStatistics.Snapshot(); got.DamageDealt != 500 {
 		t.Fatalf("held pair = %+v", got)
 	}
-	if entity := p.entities.entities[200]; entity.monsterID != 9002 {
+	if entity := p.Entities.Entities[200]; entity.MonsterID != 9002 {
 		t.Fatalf("the reused entity was not restored after the pair: %+v", entity)
 	}
 }
@@ -331,8 +331,8 @@ func TestRemovalsAreNotKeptWithoutHeldResponses(t *testing.T) {
 	}
 	// A held response that expires releases the removals it kept.
 	sendDamageResponse(p, 2, 42, 500)
-	addTestRuntimeEntity(p, 300, func(entity *runtimeEntity) {
-		entity.entityTypeCode, entity.hasEntityType = entityTypeMonster, true
+	addTestRuntimeEntity(p, 300, func(entity *RuntimeEntity) {
+		entity.EntityTypeCode, entity.HasEntityType = EntityTypeMonster, true
 	})
 	removeEntities(t, p, 2.1, 300)
 	if len(p.pairing.removals) != 1 {
@@ -340,8 +340,8 @@ func TestRemovalsAreNotKeptWithoutHeldResponses(t *testing.T) {
 	}
 	pairingFrame(p, 2+damageResponseHoldWindow.Seconds()+1)
 	p.expireHeldResponses()
-	if len(p.pairing.removals) != 0 || p.rpcPairingSnapshot().UnpairedExpired != 1 {
-		t.Fatalf("expired hold kept its removals: %d, %+v", len(p.pairing.removals), p.rpcPairingSnapshot())
+	if len(p.pairing.removals) != 0 || p.RPCPairingSnapshot().UnpairedExpired != 1 {
+		t.Fatalf("expired hold kept its removals: %d, %+v", len(p.pairing.removals), p.RPCPairingSnapshot())
 	}
 }
 

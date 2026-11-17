@@ -9,11 +9,11 @@ import (
 )
 
 // writeTestSkillHit writes one paired damage result whose request carried DamageContext.SkillId and DamageId.
-func writeTestSkillHit(p *processor, rpcID, skillID, damageID uint64, amount int64) {
+func writeTestSkillHit(p *Processor, rpcID, skillID, damageID uint64, amount int64) {
 	event := testDamageEvent(p, 100, 200)
 	event.EventTypeCandidate, event.Damage, event.RPCID, event.SkillID = "DAMAGE_CANDIDATE", amount, rpcID, skillID
 	event.DamageID, event.HasDamageID = damageID, damageID != 0
-	p.writeDamageEvent(event)
+	p.WriteDamageEvent(event)
 }
 
 func TestSkillRowKeepsDistinctSortedDamageIDsWithoutChangingTotals(t *testing.T) {
@@ -21,7 +21,7 @@ func TestSkillRowKeepsDistinctSortedDamageIDsWithoutChangingTotals(t *testing.T)
 	writeTestSkillHit(p, 1, 1312050, 1312050202, 100)
 	writeTestSkillHit(p, 2, 1312050, 1312050201, 150)
 	writeTestSkillHit(p, 3, 1312050, 1312050202, 50)
-	got := p.damageStatistics.Snapshot()
+	got := p.DamageStatistics.Snapshot()
 	assertRoleTotalsReconcile(t, got)
 	want := SkillDamageSnapshot{SkillID: 1312050, DamageDealt: 300, OutgoingEvents: 3, DamageIDs: []uint64{1312050201, 1312050202}}
 	if skill := skillOf(t, roleOf(t, got, 1409).Skills, 1312050); !reflect.DeepEqual(skill, want) {
@@ -55,16 +55,16 @@ func TestSkillRowMarksDamageIDsIncompleteForMissingOrTooManyIDs(t *testing.T) {
 
 // testSkillNameMaster has role 1312 with UI skill 1006203 (damage 9001, 9002), UI skill 1006201 (damage 9003), a DamageId
 // 9004 that two UI skills list, and an Echo skill 280026010 named by PhantomItem 60001062.
-func testSkillNameMaster() *gameMaster {
+func testSkillNameMaster() *GameMaster {
 	names := newSkillNameMaster()
 	names.damageListSkills = map[uint64]uint64{9001: 1006203, 9002: 1006203, 9003: 1006201, 9005: 1004207}
 	names.uiSkillRoles = map[uint64]map[uint64]struct{}{1006203: {1312: {}}, 1006201: {1312: {}}, 1004207: {1508: {}}}
 	names.uiSkillNames = map[uint64]string{1006203: "暝傘形·重鎖獄瘴", 1006201: "攏傘形", 1004207: "解弦視界·萬理歸塵"}
 	names.echoItems = map[uint64]uint64{280026010: 60001062}
 	names.echoNames = map[uint64]string{60001062: "共鳴迴響·芙露德莉斯"}
-	return &gameMaster{skills: map[uint64]masterRecord{
-		1312011: {ID: 1312011, Name: "攏傘形", NameStatus: string(resolutionVerified)},
-		1312050: {ID: 1312050, NameStatus: string(resolutionUnknown)},
+	return &GameMaster{Skills: map[uint64]MasterRecord{
+		1312011: {ID: 1312011, Name: "攏傘形", NameStatus: string(ResolutionVerified)},
+		1312050: {ID: 1312050, NameStatus: string(ResolutionUnknown)},
 	}, skillNames: names}
 }
 
@@ -117,8 +117,8 @@ func TestSkillRowKeepsTheCastingRolesEchoIdentitiesBounded(t *testing.T) {
 // TestViewSkillsDecideWhetherARowShowsItsID pins the three row kinds: a verified name hides the ID, a derived name and an
 // unknown row keep it.
 func TestViewSkillsDecideWhetherARowShowsItsID(t *testing.T) {
-	p := newProcessor(nil, io.Discard, io.Discard, nil)
-	p.masters = testSkillNameMaster()
+	p := NewProcessor(nil, io.Discard, io.Discard, nil)
+	p.Masters = testSkillNameMaster()
 	skills := []SkillDamageSnapshot{
 		{SkillID: 1312011, DamageDealt: 3, OutgoingEvents: 1},
 		{SkillID: 1312050, DamageDealt: 2, OutgoingEvents: 1, DamageIDs: []uint64{9001, 9002}},
@@ -158,20 +158,20 @@ func TestSkillRowNameSources(t *testing.T) {
 		{"an Echo skill with one shared Echo name", 1409, SkillDamageSnapshot{SkillID: 280026010, DamageIDs: []uint64{28002601}}, "共鳴迴響·芙露德莉斯", "DERIVED", "echo", 60001062},
 	}
 	for _, c := range cases {
-		name, status, source, sourceID := master.skillRowName(c.roleID, c.skill)
+		name, status, source, sourceID := master.SkillRowName(c.roleID, c.skill)
 		if name != c.wantName || status != c.status || source != c.source || sourceID != c.sourceID {
 			t.Errorf("%s: got (%q, %s, %q, %d), want (%q, %s, %q, %d)", c.name, name, status, source, sourceID, c.wantName, c.status, c.source, c.sourceID)
 		}
 	}
-	var none *gameMaster
-	if name, status, source, _ := none.skillRowName(1312, SkillDamageSnapshot{SkillID: 1}); name != "" || status != "UNKNOWN" || source != "" {
+	var none *GameMaster
+	if name, status, source, _ := none.SkillRowName(1312, SkillDamageSnapshot{SkillID: 1}); name != "" || status != "UNKNOWN" || source != "" {
 		t.Fatalf("no Master = (%q, %s, %q)", name, status, source)
 	}
 }
 
 func TestViewSkillsCarryTheNameSource(t *testing.T) {
 	p := newPairingTestProcessor()
-	p.masters = testSkillNameMaster()
+	p.Masters = testSkillNameMaster()
 	skills := []SkillDamageSnapshot{
 		{SkillID: 1312050, DamageDealt: 80, OutgoingEvents: 2, DamageIDs: []uint64{9001, 9002}},
 		{SkillID: 1312011, DamageDealt: 20, OutgoingEvents: 1, DamageIDs: []uint64{9003}},
@@ -225,7 +225,7 @@ func TestSkillNameSourcesLoaderExcludesAmbiguousRelations(t *testing.T) {
 			t.Fatalf("%s: %v", statement, err)
 		}
 	}
-	master := &gameMaster{}
+	master := &GameMaster{}
 	if err := loadSQLiteSkillNameSources(db, "zh-TW", master); err != nil {
 		t.Fatal(err)
 	}
@@ -268,7 +268,7 @@ func TestSkillNameSourcesLoaderToleratesAnOlderMaster(t *testing.T) {
 	if _, err := db.Exec("CREATE TABLE skill(id TEXT PRIMARY KEY,skill_group_id TEXT)"); err != nil {
 		t.Fatal(err)
 	}
-	master := &gameMaster{}
+	master := &GameMaster{}
 	if err := loadSQLiteSkillNameSources(db, "zh-TW", master); err != nil {
 		t.Fatal(err)
 	}
@@ -327,7 +327,7 @@ func TestTrackedMasterDerivesObservedSkillNames(t *testing.T) {
 		{1312, SkillDamageSnapshot{SkillID: 1508404, DamageIDs: []uint64{15084040013}}, "", 0, ""},
 	}
 	for _, c := range cases {
-		name, status, source, sourceID := master.skillRowName(c.roleID, c.skill)
+		name, status, source, sourceID := master.SkillRowName(c.roleID, c.skill)
 		wantStatus := "DERIVED"
 		if c.source == "" {
 			wantStatus = "UNKNOWN"
@@ -336,7 +336,7 @@ func TestTrackedMasterDerivesObservedSkillNames(t *testing.T) {
 			t.Errorf("role %d skill %d: got (%q, %s, %q, %d), want (%q, %s, %q, %d)", c.roleID, c.skill.SkillID, name, status, source, sourceID, c.wantName, wantStatus, c.source, c.sourceID)
 		}
 	}
-	if name, status, source, _ := master.skillRowName(1312, SkillDamageSnapshot{SkillID: 1312011, DamageIDs: []uint64{1312011001}}); name != "攏傘形" || status != "VERIFIED" || source != "official" {
+	if name, status, source, _ := master.SkillRowName(1312, SkillDamageSnapshot{SkillID: 1312011, DamageIDs: []uint64{1312011001}}); name != "攏傘形" || status != "VERIFIED" || source != "official" {
 		t.Fatalf("an official name changed: (%q, %s, %q)", name, status, source)
 	}
 	// Hits without a SkillId: an Echo's bullets need the attacker to hold that Echo; Outro Skill DMG names the role's Outro skill.
@@ -461,7 +461,7 @@ func TestViewSkillsNameTheEchoOfAnUnassignedRowWithoutMovingIt(t *testing.T) {
 	master.skillNames.damageVisions = map[uint64]uint64{28003302: 280033}
 	master.skillNames.visionItems = map[uint64]uint64{280033: 60001672}
 	master.skillNames.echoNames[60001672] = "共鳴迴響·鳴式·利維亞坦"
-	p.masters = master
+	p.Masters = master
 	unassigned := UnassignedSkillTotals{DamageDealt: 42025, OutgoingEvents: 27, MissingSkillEvents: 27, DamageIDs: []uint64{28003302}, EchoVisions: []uint64{280033}}
 	skills, row := p.viewSkills(1508, nil, unassigned, 42025)
 	if len(skills) != 0 || row.Name != "共鳴迴響·鳴式·利維亞坦" || row.NameStatus != "DERIVED" || row.NameSource != "echo" || row.SourceID != 60001672 || row.IconKind != "echo-skill" || row.IconID != 280033 || row.UnnamedReason != "" {
@@ -482,7 +482,7 @@ func TestViewSkillsNameTheEchoOfAnUnassignedRowWithoutMovingIt(t *testing.T) {
 
 // testOutroNameMaster has role 1311 with Outro UI skill 1006109, an Intro UI skill 1006106 whose list holds Outro damage 9101 and
 // 9102 and Intro damage 9103, role 1312 with its own list (9104 is its Outro damage), and role 1209 with two Outro skills.
-func testOutroNameMaster() *gameMaster {
+func testOutroNameMaster() *GameMaster {
 	names := newSkillNameMaster()
 	names.damageListSkills = map[uint64]uint64{9101: 1006106, 9102: 1006106, 9103: 1006106, 9104: 1006203, 9105: 1006204, 9110: 1009901}
 	names.uiSkillRoles = map[uint64]map[uint64]struct{}{1006106: {1311: {}}, 1006109: {1311: {}}, 1006203: {1312: {}}, 1006204: {1209: {}}, 1009901: {1209: {}}}
@@ -490,7 +490,7 @@ func testOutroNameMaster() *gameMaster {
 	names.uiSkillTypes = map[uint64]int64{1006106: 5, 1006109: 11, 1006203: 5, 1006204: 11, 1009901: 11}
 	names.outroDamage = map[uint64]struct{}{9101: {}, 9102: {}, 9104: {}, 9105: {}, 9110: {}}
 	names.roleOutro = map[uint64]uint64{1311: 1006109}
-	return &gameMaster{skillNames: names}
+	return &GameMaster{skillNames: names}
 }
 
 func TestUnassignedSkillNameOutroDamageRequiresTheRolesOwnRowAndOneOutroSkill(t *testing.T) {

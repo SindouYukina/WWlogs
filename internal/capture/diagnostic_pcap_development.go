@@ -106,7 +106,7 @@ func openDiagnosticPCAP(path string, link layers.LinkType, runID string, pipelin
 	if err != nil {
 		return nil, fmt.Errorf("create PCAP: %w", err)
 	}
-	if err := pcapgo.NewWriter(file).WriteFileHeader(liveCaptureSnapLen, link); err != nil {
+	if err := pcapgo.NewWriter(file).WriteFileHeader(LiveCaptureSnapLen, link); err != nil {
 		file.Close()
 		return nil, fmt.Errorf("write PCAP header: %w", err)
 	}

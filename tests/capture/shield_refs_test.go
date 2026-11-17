@@ -11,10 +11,10 @@ import (
 
 func TestObserveShieldReferencesUsesOnlyTheTypedConfigIDNamespace(t *testing.T) {
 	var out bytes.Buffer
-	p := &processor{
-		masters:       &gameMaster{shieldDefinitions: map[uint64]struct{}{1409404003: {}, 1508990003: {}}, buffDefinitions: map[uint64]struct{}{1409404003: {}}},
-		sessionNumber: 2,
-		dev: processorDiagnostics{
+	p := &Processor{
+		Masters:       &GameMaster{ShieldDefinitions: map[uint64]struct{}{1409404003: {}, 1508990003: {}}, BuffDefinitions: map[uint64]struct{}{1409404003: {}}},
+		SessionNumber: 2,
+		Dev: processorDiagnostics{
 			shieldRefOut: &out,
 			frameOrdinal: 9,
 		},
@@ -28,7 +28,7 @@ func TestObserveShieldReferencesUsesOnlyTheTypedConfigIDNamespace(t *testing.T) 
 		messageField("CombatNotifyData", &decodedMessage{Type: "CombatNotifyData", Fields: []decodedField{messageField("ShieldUpdateNotify", shieldNotify)}}),
 		messageField("Unrelated", &decodedMessage{Type: "Unrelated", Fields: []decodedField{scalarField("ConfigId", 1409404003)}}),
 	}}
-	p.observeShieldReferences(gameFrame{commandID: cmdCombatReceivePackNotify, token: 99}, data, "in")
+	p.observeShieldReferences(GameFrame{CommandID: CmdCombatReceivePackNotify, Token: 99}, data, "in")
 
 	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
 	if len(lines) != 3 {
@@ -40,19 +40,19 @@ func TestObserveShieldReferencesUsesOnlyTheTypedConfigIDNamespace(t *testing.T) 
 			t.Fatalf("decode record %d: %v", index, err)
 		}
 	}
-	if first.ConfigID == nil || *first.ConfigID != 1409404003 || first.ShieldDefinitionStatus != resolutionCorrelated || first.ShieldDefinitionTable != "shield" || first.ShieldDefinitionID == nil || *first.ShieldDefinitionID != 1409404003 {
+	if first.ConfigID == nil || *first.ConfigID != 1409404003 || first.ShieldDefinitionStatus != ResolutionCorrelated || first.ShieldDefinitionTable != "shield" || first.ShieldDefinitionID == nil || *first.ShieldDefinitionID != 1409404003 {
 		t.Fatalf("first exact shield link = %+v", first)
 	}
 	if first.ShieldValue == nil || *first.ShieldValue != 720 || first.Handle == nil || *first.Handle != 31 || first.UpdateType == nil || *first.UpdateType != 1 {
 		t.Fatalf("raw ShieldUpdateInfo values were not preserved: %+v", first)
 	}
-	if first.FieldPath != "Data.CombatNotifyData.ShieldUpdateNotify.Shields[0].ConfigId" || first.OuterCommandID != cmdCombatReceivePackNotify || first.FrameToken != 99 || first.Direction != "in" {
+	if first.FieldPath != "Data.CombatNotifyData.ShieldUpdateNotify.Shields[0].ConfigId" || first.OuterCommandID != CmdCombatReceivePackNotify || first.FrameToken != 99 || first.Direction != "in" {
 		t.Fatalf("typed reference context missing: %+v", first)
 	}
-	if second.ConfigID == nil || *second.ConfigID != 1508990003 || second.ShieldDefinitionStatus != resolutionCorrelated {
+	if second.ConfigID == nil || *second.ConfigID != 1508990003 || second.ShieldDefinitionStatus != ResolutionCorrelated {
 		t.Fatalf("second exact shield link = %+v", second)
 	}
-	if missing.ConfigID == nil || *missing.ConfigID != 1312010090 || missing.ShieldDefinitionStatus != resolutionUnknown || missing.ShieldDefinitionTable != "" {
+	if missing.ConfigID == nil || *missing.ConfigID != 1312010090 || missing.ShieldDefinitionStatus != ResolutionUnknown || missing.ShieldDefinitionTable != "" {
 		t.Fatalf("unmatched ConfigId must remain unresolved: %+v", missing)
 	}
 }

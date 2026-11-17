@@ -13,7 +13,7 @@ func TestKCPReorderingFillsTheGapAndDeliversInOrder(t *testing.T) {
 	sendTransportGapFrame(p, streams, stats, 10, 0)
 	sendTransportGapFrame(p, streams, stats, 12, 100*time.Millisecond)
 	sendTransportGapFrame(p, streams, stats, 13, 150*time.Millisecond)
-	if stats.frames != 1 || stats.kcpGapsOpened != 1 || stats.kcpOutOfOrder != 2 {
+	if stats.Frames != 1 || stats.KCPGapsOpened != 1 || stats.KCPOutOfOrder != 2 {
 		t.Fatalf("before the gap fills: %+v", *stats)
 	}
 	if health := summarizeKCPTransport(streams); health.OpenGaps != 1 || health.PendingSegments != 2 ||
@@ -21,7 +21,7 @@ func TestKCPReorderingFillsTheGapAndDeliversInOrder(t *testing.T) {
 		t.Fatalf("open gap health = %+v", health)
 	}
 	sendTransportGapFrame(p, streams, stats, 11, 400*time.Millisecond)
-	if stats.frames != 4 || stats.kcpGapsFilled != 1 || stats.kcpMaxGapWait != 300*time.Millisecond || stats.kcpPendingPeak != 3 {
+	if stats.Frames != 4 || stats.KCPGapsFilled != 1 || stats.KCPMaxGapWait != 300*time.Millisecond || stats.KCPPendingPeak != 3 {
 		t.Fatalf("after the gap fills: %+v", *stats)
 	}
 	if health := summarizeKCPTransport(streams); health.OpenGaps != 0 || health.PendingSegments != 0 {
@@ -37,14 +37,14 @@ func TestKCPUnfilledGapStallsTheStreamAndStaysVisible(t *testing.T) {
 	for sequence := uint32(2); sequence < 10; sequence++ {
 		sendTransportGapFrame(p, streams, stats, sequence, time.Duration(sequence)*100*time.Millisecond)
 	}
-	if stats.frames != 1 || stats.kcpGapsFilled != 0 || stats.kcpGapsSkipped != 0 {
+	if stats.Frames != 1 || stats.KCPGapsFilled != 0 || stats.KCPGapsSkipped != 0 {
 		t.Fatalf("frames while an unfilled gap waits = %+v", *stats)
 	}
 	health := summarizeKCPTransport(streams)
 	if health.OpenGaps != 1 || health.PendingSegments != 8 || !health.OldestGapSince.Equal(transportGapBase.Add(200*time.Millisecond)) {
 		t.Fatalf("waiting stream health = %+v", health)
 	}
-	if got := p.transportHealthSnapshot().State; got != TransportGapDetected {
+	if got := p.TransportHealthSnapshot().State; got != TransportGapDetected {
 		t.Fatalf("transport state while waiting = %s, want %s", got, TransportGapDetected)
 	}
 	line := transportHealthLine(streams, *stats)
@@ -60,14 +60,14 @@ func TestKCPSecondHoleAfterAFilledGapOpensANewGap(t *testing.T) {
 	sendTransportGapFrame(p, streams, stats, 0, 0)
 	sendTransportGapFrame(p, streams, stats, 3, 100*time.Millisecond)
 	sendTransportGapFrame(p, streams, stats, 1, 200*time.Millisecond) // 2 is still missing
-	if stats.frames != 2 || stats.kcpGapsOpened != 2 || stats.kcpGapsFilled != 1 {
+	if stats.Frames != 2 || stats.KCPGapsOpened != 2 || stats.KCPGapsFilled != 1 {
 		t.Fatalf("after the first hole filled = %+v", *stats)
 	}
 	if health := summarizeKCPTransport(streams); health.OpenGaps != 1 || !health.OldestGapSince.Equal(transportGapBase.Add(100*time.Millisecond)) {
 		t.Fatalf("second hole health = %+v", health)
 	}
 	sendTransportGapFrame(p, streams, stats, 2, 300*time.Millisecond)
-	if stats.frames != 4 || stats.kcpGapsFilled != 2 || stats.kcpMaxGapWait != 200*time.Millisecond || stats.kcpGapsSkipped != 0 {
+	if stats.Frames != 4 || stats.KCPGapsFilled != 2 || stats.KCPMaxGapWait != 200*time.Millisecond || stats.KCPGapsSkipped != 0 {
 		t.Fatalf("after both holes filled = %+v", *stats)
 	}
 }

@@ -28,38 +28,38 @@ type damageRPCItem struct {
 // carries, embedded in a CombatSendPackResponse or standalone. The paths are the ones handleDamageRequests and
 // handleCombatReceivePacks read.
 func damageRPCPayloads(commandID uint16, body []byte) ([]damageRPCItem, error) {
-	if commandID != cmdCombatSendPackRequest {
-		bodies, err := receivePackNotifyBodies(commandID, body)
+	if commandID != CmdCombatSendPackRequest {
+		bodies, err := ReceivePackNotifyBodies(commandID, body)
 		if err != nil {
 			return nil, err
 		}
 		var items []damageRPCItem
 		for _, notify := range bodies {
-			responses, _ := receivePackDamageResponses(notify)
+			responses, _ := ReceivePackDamageResponses(notify)
 			for _, response := range responses {
-				items = append(items, damageRPCItem{RPCID: response.rpcID, Payload: response.payload})
+				items = append(items, damageRPCItem{RPCID: response.RPCID, Payload: response.Payload})
 			}
 		}
 		return items, nil
 	}
-	outer, err := parseProtoFields(body)
+	outer, err := ParseProtoFields(body)
 	if err != nil {
 		return nil, err
 	}
 	var items []damageRPCItem
 	for _, field := range outer {
-		if field.number != fieldCombatSendPackRequestData || field.wire != 2 {
+		if field.Number != FieldCombatSendPackRequestData || field.Wire != 2 {
 			continue
 		}
-		envelopes, err := parseProtoFields(field.data)
+		envelopes, err := ParseProtoFields(field.Data)
 		if err != nil {
 			return nil, err
 		}
 		for _, envelope := range envelopes {
-			if envelope.number != fieldCombatSendDataRequest || envelope.wire != 2 {
+			if envelope.Number != FieldCombatSendDataRequest || envelope.Wire != 2 {
 				continue
 			}
-			fields, err := parseProtoFields(envelope.data)
+			fields, err := ParseProtoFields(envelope.Data)
 			if err != nil {
 				continue
 			}
@@ -67,11 +67,11 @@ func damageRPCPayloads(commandID uint16, body []byte) ([]damageRPCItem, error) {
 			var rpcID uint64
 			var payload []byte
 			for _, f := range fields {
-				if f.number == fieldCombatRequestDataRequestID && f.wire == 0 {
-					rpcID = f.value
+				if f.Number == FieldCombatRequestDataRequestID && f.Wire == 0 {
+					rpcID = f.Value
 				}
-				if f.number == fieldCombatRequestDataDamageExecuteRequest && f.wire == 2 {
-					payload = f.data
+				if f.Number == FieldCombatRequestDataDamageExecuteRequest && f.Wire == 2 {
+					payload = f.Data
 				}
 			}
 			if payload != nil {
@@ -82,43 +82,43 @@ func damageRPCPayloads(commandID uint16, body []byte) ([]damageRPCItem, error) {
 	return items, nil
 }
 
-// archiveDamageRPCSchema writes schema decodes of damage RPC payloads. It is
+// ArchiveDamageRPCSchema writes schema decodes of damage RPC payloads. It is
 // read-only with respect to the typed pipeline and does nothing without a schema
 // and an output writer.
-func (p *processor) archiveDamageRPCSchema(frame gameFrame, plain []byte) {
-	if p.dev.protocolSchema == nil || p.dev.schemaDecodeOut == nil {
+func (p *Processor) ArchiveDamageRPCSchema(frame GameFrame, plain []byte) {
+	if p.Dev.protocolSchema == nil || p.Dev.schemaDecodeOut == nil {
 		return
 	}
 	var message string
-	switch frame.commandID {
-	case cmdCombatSendPackRequest:
+	switch frame.CommandID {
+	case CmdCombatSendPackRequest:
 		message = "DamageExecuteRequest"
-	case cmdCombatSendPackResponse, cmdCombatReceivePackNotify:
+	case CmdCombatSendPackResponse, CmdCombatReceivePackNotify:
 		message = "DamageExecuteResponse"
 	default:
 		return
 	}
-	items, err := damageRPCPayloads(frame.commandID, plain)
+	items, err := damageRPCPayloads(frame.CommandID, plain)
 	if err != nil {
-		p.dev.schemaDecodeErrors++
+		p.Dev.schemaDecodeErrors++
 		return
 	}
 	for _, item := range items {
-		decoded, err := decodeSchemaMessage(p.dev.protocolSchema, message, item.Payload, 0)
+		decoded, err := decodeSchemaMessage(p.Dev.protocolSchema, message, item.Payload, 0)
 		if err != nil {
-			p.dev.schemaDecodeErrors++
+			p.Dev.schemaDecodeErrors++
 			continue
 		}
 		record := damageRPCSchemaRecord{
 			SchemaVersion: schemaDecodeSchemaVersion,
-			FrameOrdinal:  p.dev.frameOrdinal - 1,
-			SessionNumber: p.sessionNumber,
-			Direction:     frame.direction,
-			CommandID:     frame.commandID,
+			FrameOrdinal:  p.Dev.frameOrdinal - 1,
+			SessionNumber: p.SessionNumber,
+			Direction:     frame.Direction,
+			CommandID:     frame.CommandID,
 			RPCID:         item.RPCID,
 			Message:       message,
 			Decoded:       decoded,
 		}
-		writeResearchRecord(p.dev.schemaDecodeOut, record, &p.dev.schemaDecodeErrors)
+		writeResearchRecord(p.Dev.schemaDecodeOut, record, &p.Dev.schemaDecodeErrors)
 	}
 }

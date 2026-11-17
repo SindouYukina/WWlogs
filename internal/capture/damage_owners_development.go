@@ -9,18 +9,18 @@ const maxDamageOwnerRows = 5
 
 // damageOwnersJSONL is what a damage event carries for a DamageId that has at least one static owner.
 type damageOwnersJSONL struct {
-	Status     resolutionStatus   `json:"status"`
+	Status     ResolutionStatus   `json:"status"`
 	OwnerCount int                `json:"ownerCount"`
-	Owners     []damageOwnerJSONL `json:"owners"`
+	Owners     []DamageOwnerJSONL `json:"owners"`
 	Evidence   string             `json:"evidence"`
 }
 
 // resolveDamageOwners returns the static owners of a DamageId, or nil when the master lists none.
-func resolveDamageOwners(masters *gameMaster, damageID uint64, hasDamageID bool) *damageOwnersJSONL {
+func resolveDamageOwners(masters *GameMaster, damageID uint64, hasDamageID bool) *damageOwnersJSONL {
 	if masters == nil || !hasDamageID {
 		return nil
 	}
-	list := masters.damageOwners[damageID]
+	list := masters.DamageOwners[damageID]
 	if len(list) == 0 {
 		return nil
 	}
@@ -29,7 +29,7 @@ func resolveDamageOwners(masters *gameMaster, damageID uint64, hasDamageID bool)
 		shown = shown[:maxDamageOwnerRows]
 	}
 	return &damageOwnersJSONL{
-		Status:     resolutionCorrelated,
+		Status:     ResolutionCorrelated,
 		OwnerCount: len(list),
 		Owners:     shown,
 		Evidence: "the DamageId is listed by the skill's damage references or by a Buff's extra-effect parameters; the role is the owner of that skill group. " +

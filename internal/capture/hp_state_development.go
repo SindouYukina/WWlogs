@@ -34,8 +34,8 @@ type hpStateRecord struct {
 // archiveHPState writes Life and LifeMax attribute values from one decoded
 // CombatReceivePackNotify. It reads the schema tree only, so the typed pipeline
 // is unaffected.
-func (p *processor) archiveHPState(frame gameFrame, decoded *decodedMessage) {
-	if p.dev.hpStateOut == nil || decoded == nil {
+func (p *Processor) archiveHPState(frame GameFrame, decoded *decodedMessage) {
+	if p.Dev.hpStateOut == nil || decoded == nil {
 		return
 	}
 	order := 0
@@ -55,20 +55,20 @@ func (p *processor) archiveHPState(frame gameFrame, decoded *decodedMessage) {
 					currentValue, _ := scalarValue(attribute, "CurrentValue")
 					record := hpStateRecord{
 						SchemaVersion:   hpStateSchemaVersion,
-						FrameOrdinal:    p.dev.frameOrdinal - 1,
-						SessionNumber:   p.sessionNumber,
-						Timestamp:       formatTimestamp(frame.timestamp),
+						FrameOrdinal:    p.Dev.frameOrdinal - 1,
+						SessionNumber:   p.SessionNumber,
+						Timestamp:       formatTimestamp(frame.Timestamp),
 						EntityID:        entityID,
 						AttributeType:   typeValue,
 						BaseValue:       baseValue,
 						CurrentValue:    currentValue,
 						EventOrderInMsg: order,
 					}
-					if name, known := p.dev.protocolSchema.enumName("EAttributeType", typeValue); known {
+					if name, known := p.Dev.protocolSchema.enumName("EAttributeType", typeValue); known {
 						record.AttributeName = name
 					}
 					order++
-					writeResearchRecord(p.dev.hpStateOut, record, &p.dev.hpStateErrors)
+					writeResearchRecord(p.Dev.hpStateOut, record, &p.Dev.hpStateErrors)
 				}
 			}
 		}
@@ -139,21 +139,21 @@ func combatCommonEntityID(notify *decodedMessage) (uint64, bool) {
 	return uint64(value), true
 }
 
-// archiveHPStateFrame decodes a combat frame for HP output when that output is
+// ArchiveHPStateFrame decodes a combat frame for HP output when that output is
 // enabled. It runs on the same plaintext as the other observers.
-func (p *processor) archiveHPStateFrame(frame gameFrame, plain []byte) {
-	if p.dev.hpStateOut == nil || p.dev.protocolSchema == nil || (frame.commandID != cmdCombatReceivePackNotify && frame.commandID != cmdCombatSendPackResponse) {
+func (p *Processor) ArchiveHPStateFrame(frame GameFrame, plain []byte) {
+	if p.Dev.hpStateOut == nil || p.Dev.protocolSchema == nil || (frame.CommandID != CmdCombatReceivePackNotify && frame.CommandID != CmdCombatSendPackResponse) {
 		return
 	}
-	payloads, err := receivePackNotifyBodies(frame.commandID, plain)
+	payloads, err := ReceivePackNotifyBodies(frame.CommandID, plain)
 	if err != nil {
-		p.dev.hpStateErrors++
+		p.Dev.hpStateErrors++
 		return
 	}
 	for _, payload := range payloads {
-		decoded, err := decodeSchemaMessage(p.dev.protocolSchema, "CombatReceivePackNotify", payload, 0)
+		decoded, err := decodeSchemaMessage(p.Dev.protocolSchema, "CombatReceivePackNotify", payload, 0)
 		if err != nil {
-			p.dev.hpStateErrors++
+			p.Dev.hpStateErrors++
 			continue
 		}
 		p.archiveHPState(frame, decoded)

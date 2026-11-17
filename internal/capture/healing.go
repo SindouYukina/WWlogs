@@ -223,8 +223,8 @@ func intervalHealing(statistics DamageStatisticsSnapshot) HealingResult {
 // gateHealing holds the local team's healing back while local-player attribution is suspect after a transport loss,
 // as gateAttribution does for damage, unless the client has referenced both entities since. It changes none of the
 // damage gate's counters.
-func (p *processor) gateHealing(record CombatEventRecord) CombatEventRecord {
-	if !p.context.attribution.suspect || (p.context.revalidatesEntity(record.Source.EntityID) && p.context.revalidatesEntity(record.Target.EntityID)) {
+func (p *Processor) gateHealing(record CombatEventRecord) CombatEventRecord {
+	if !p.Context.attribution.suspect || (p.Context.revalidatesEntity(record.Source.EntityID) && p.Context.revalidatesEntity(record.Target.EntityID)) {
 		return record
 	}
 	record.ContextDowngrade = contextDowngradeAttribution

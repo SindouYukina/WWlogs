@@ -130,7 +130,7 @@ type rollingDamageEvent struct {
 type DamageStatistics struct {
 	mu sync.RWMutex
 
-	captureSessionID           uint64
+	CaptureSessionID           uint64
 	statisticsIntervalID       uint64
 	entities                   map[combatStatisticsKey]PlayerEntityDamageSnapshot
 	damageDealt                int64
@@ -161,8 +161,8 @@ type DamageStatistics struct {
 	// appliedKeys outlives Reset: a repeated response must not re-enter a later interval either.
 	appliedKeys     map[CombatEventKey]struct{}
 	appliedKeyOrder []CombatEventKey
-	// encounters is replaced, not cleared, on Reset so encounter IDs carry the new interval.
-	encounters *encounterTracker
+	// Encounters is replaced, not cleared, on Reset so encounter IDs carry the new interval.
+	Encounters *encounterTracker
 	// lastDowngradeAt is the capture time of the newest event kept unattributed by the attribution context gate.
 	lastDowngradeAt time.Time
 	roles           roleAggregate
@@ -182,13 +182,13 @@ type DamageStatistics struct {
 func NewDamageStatistics() *DamageStatistics {
 	captureSessionID := captureSessionSequence.Add(1)
 	statistics := &DamageStatistics{
-		captureSessionID:     captureSessionID,
+		CaptureSessionID:     captureSessionID,
 		statisticsIntervalID: 1,
 		entities:             make(map[combatStatisticsKey]PlayerEntityDamageSnapshot),
-		encounters:           newEncounterTracker(captureSessionID, 1),
+		Encounters:           newEncounterTracker(captureSessionID, 1),
 		history:              &historyJournal{},
 	}
-	statistics.encounters.history = statistics.history
+	statistics.Encounters.history = statistics.history
 	return statistics
 }
 
@@ -216,8 +216,8 @@ func (s *DamageStatistics) SnapshotAt(query CaptureQueryTime) DamageStatisticsSn
 
 func (s *DamageStatistics) snapshotAtLocked(query CaptureQueryTime) DamageStatisticsSnapshot {
 	snapshot := s.snapshotLocked()
-	if query.CaptureSessionID == s.captureSessionID && !query.Timestamp.IsZero() {
-		snapshot.Encounters = s.encounters.snapshot(query.Timestamp)
+	if query.CaptureSessionID == s.CaptureSessionID && !query.Timestamp.IsZero() {
+		snapshot.Encounters = s.Encounters.snapshot(query.Timestamp)
 		snapshot.EncounterDPS = snapshot.Encounters.headlineDPS()
 		snapshot.Integrity = snapshot.Encounters.Integrity
 	}
@@ -234,7 +234,7 @@ func (s *DamageStatistics) snapshotAtLocked(query CaptureQueryTime) DamageStatis
 
 func (s *DamageStatistics) validateRollingQueryLocked(query CaptureQueryTime) string {
 	switch {
-	case query.CaptureSessionID == 0 || query.CaptureSessionID != s.captureSessionID:
+	case query.CaptureSessionID == 0 || query.CaptureSessionID != s.CaptureSessionID:
 		return "capture_session_mismatch"
 	case query.Timestamp.IsZero():
 		return "query_time_unavailable"
@@ -281,7 +281,7 @@ func unavailableRollingDPS(reason string) DPSResult {
 
 func (s *DamageStatistics) snapshotLocked() DamageStatisticsSnapshot {
 	snapshot := DamageStatisticsSnapshot{
-		CaptureSessionID: s.captureSessionID, StatisticsIntervalID: s.statisticsIntervalID,
+		CaptureSessionID: s.CaptureSessionID, StatisticsIntervalID: s.statisticsIntervalID,
 		DamageDealt: s.damageDealt, DamageTaken: s.damageTaken,
 		OutgoingEvents: s.outgoingEvents, IncomingEvents: s.incomingEvents,
 		UnattributedOutgoingDamage: s.unattributedOutgoingDamage, UnattributedIncomingDamage: s.unattributedIncomingDamage,
@@ -296,7 +296,7 @@ func (s *DamageStatistics) snapshotLocked() DamageStatisticsSnapshot {
 	for _, entity := range s.entities {
 		snapshot.ByPlayerEntity = append(snapshot.ByPlayerEntity, entity)
 	}
-	snapshot.Encounters = s.encounters.snapshot(time.Time{})
+	snapshot.Encounters = s.Encounters.snapshot(time.Time{})
 	snapshot.EncounterDPS = snapshot.Encounters.headlineDPS()
 	snapshot.Integrity = snapshot.Encounters.Integrity
 	snapshot.Roles, snapshot.UnassignedRole = s.roles.snapshot()
@@ -382,14 +382,14 @@ func (s *DamageStatistics) resetLocked() {
 	s.healing = healingAccumulator{}
 	s.healingNotLocal = 0
 	s.healingDuplicates = 0
-	s.encounters = s.encounters.nextInterval(s.statisticsIntervalID)
+	s.Encounters = s.Encounters.nextInterval(s.statisticsIntervalID)
 }
 
-func (p *processor) damageStatisticsSnapshot() DamageStatisticsSnapshot {
-	if p == nil || p.damageStatistics == nil {
+func (p *Processor) DamageStatisticsSnapshot() DamageStatisticsSnapshot {
+	if p == nil || p.DamageStatistics == nil {
 		return emptyDamageStatisticsSnapshot()
 	}
-	return p.damageStatistics.Snapshot()
+	return p.DamageStatistics.Snapshot()
 }
 
 func emptyDamageStatisticsSnapshot() DamageStatisticsSnapshot {
@@ -406,35 +406,35 @@ func emptyDamageStatisticsSnapshot() DamageStatisticsSnapshot {
 	}
 }
 
-func (p *processor) damageStatisticsSnapshotAt(query CaptureQueryTime) DamageStatisticsSnapshot {
-	if p == nil || p.damageStatistics == nil {
+func (p *Processor) DamageStatisticsSnapshotAt(query CaptureQueryTime) DamageStatisticsSnapshot {
+	if p == nil || p.DamageStatistics == nil {
 		return emptyDamageStatisticsSnapshot()
 	}
-	return p.damageStatistics.SnapshotAt(query)
+	return p.DamageStatistics.SnapshotAt(query)
 }
 
-func (p *processor) resetDamageStatistics() {
-	if p != nil && p.damageStatistics != nil {
-		p.damageStatistics.Reset()
+func (p *Processor) resetDamageStatistics() {
+	if p != nil && p.DamageStatistics != nil {
+		p.DamageStatistics.Reset()
 	}
 }
 
-func (p *processor) snapshotAndResetDamageStatistics() DamageStatisticsSnapshot {
-	if p == nil || p.damageStatistics == nil {
+func (p *Processor) snapshotAndResetDamageStatistics() DamageStatisticsSnapshot {
+	if p == nil || p.DamageStatistics == nil {
 		return emptyDamageStatisticsSnapshot()
 	}
-	return p.damageStatistics.snapshotAndReset()
+	return p.DamageStatistics.snapshotAndReset()
 }
 
-func (p *processor) snapshotAndResetDamageStatisticsAt(query CaptureQueryTime) DamageStatisticsSnapshot {
-	if p == nil || p.damageStatistics == nil {
+func (p *Processor) snapshotAndResetDamageStatisticsAt(query CaptureQueryTime) DamageStatisticsSnapshot {
+	if p == nil || p.DamageStatistics == nil {
 		return emptyDamageStatisticsSnapshot()
 	}
-	return p.damageStatistics.snapshotAndResetAt(query)
+	return p.DamageStatistics.snapshotAndResetAt(query)
 }
 
 // addDamageEvent receives only events that passed response validation and RPC deduplication.
-func (s *DamageStatistics) addDamageEvent(event combatEvent, sourceRelation, targetRelation playerRelation) {
+func (s *DamageStatistics) addDamageEvent(event CombatEvent, sourceRelation, targetRelation PlayerRelation) {
 	record, ok := normalizeCombatEvent(event, sourceRelation, targetRelation)
 	if !ok {
 		return
@@ -444,8 +444,8 @@ func (s *DamageStatistics) addDamageEvent(event combatEvent, sourceRelation, tar
 
 // Statistics-level assignments for records that never reach the encounter tracker.
 const (
-	statisticsAssignmentDuplicate  = "duplicate"
-	statisticsAssignmentNotCounted = "not_counted"
+	StatisticsAssignmentDuplicate  = "duplicate"
+	StatisticsAssignmentNotCounted = "not_counted"
 )
 
 // addCombatEvent applies one normalized record and returns its encounter assignment. Damage enters the damage totals
@@ -453,7 +453,7 @@ const (
 // was already applied is counted as a duplicate and ignored.
 func (s *DamageStatistics) addCombatEvent(record CombatEventRecord) string {
 	if s == nil || record.Amount <= 0 || (record.Kind != CombatEventDamage && record.Kind != CombatEventHealing) {
-		return statisticsAssignmentNotCounted
+		return StatisticsAssignmentNotCounted
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -466,13 +466,13 @@ func (s *DamageStatistics) addCombatEvent(record CombatEventRecord) string {
 	if record.Key.hasIdentity() {
 		if _, seen := s.appliedKeys[record.Key]; seen {
 			s.duplicateEvents++
-			return statisticsAssignmentDuplicate
+			return StatisticsAssignmentDuplicate
 		}
 		s.rememberAppliedKeyLocked(record.Key)
 	}
 	s.history.accept(&record)
 	if record.ContextDowngrade != "" {
-		s.encounters.contextDowngraded++
+		s.Encounters.contextDowngraded++
 		if record.ObservedAt.After(s.lastDowngradeAt) {
 			s.lastDowngradeAt = record.ObservedAt
 		}
@@ -497,7 +497,7 @@ func (s *DamageStatistics) addCombatEvent(record CombatEventRecord) string {
 		s.unattributedIncomingDamage += record.Amount
 		s.unattributedIncomingEvents++
 	}
-	return s.encounters.observeEvent(record)
+	return s.Encounters.observeEvent(record)
 }
 
 // rememberAppliedKeyLocked keeps a bounded FIFO of applied keys. The bound matches the RPC consumed set, so an
@@ -527,17 +527,17 @@ func (s *DamageStatistics) addHealingLocked(record CombatEventRecord) string {
 	if record.Key.hasIdentity() {
 		if _, seen := s.appliedHealingKeys[record.Key]; seen {
 			s.healingDuplicates++
-			return statisticsAssignmentDuplicate
+			return StatisticsAssignmentDuplicate
 		}
 		rememberBoundedKey(&s.appliedHealingKeys, &s.appliedHealingKeyOrder, record.Key)
 	}
 	s.history.accept(&record)
 	if !isLocalHealing(record) {
 		s.healingNotLocal++
-		return statisticsAssignmentNotCounted
+		return StatisticsAssignmentNotCounted
 	}
 	s.healing.add(healingEventOf(record))
-	s.encounters.observeHealing(record)
+	s.Encounters.observeHealing(record)
 	return statisticsAssignmentHealing
 }
 
@@ -652,7 +652,7 @@ func (s *DamageStatistics) damageSpanDPSLocked() DPSResult {
 // the value is a lower bound. A loss that reaches either end may have removed the true first or last event, which
 // would change the span itself, so the value is withheld.
 func (s *DamageStatistics) applySpanIntegrityLocked(result *DPSResult) {
-	t := s.encounters
+	t := s.Encounters
 	inside, outside := false, false
 	for _, id := range t.lossOrder {
 		loss, ok := t.losses[id]

@@ -126,22 +126,22 @@ func TestAbandonedWriterWritesNothingAfterItsCurrentCall(t *testing.T) {
 func TestRestoreKeepsAbandonedTargetsBehindTheClosedSink(t *testing.T) {
 	gate := newGateWriter(io.Discard)
 	var events bytes.Buffer
-	p := newProcessor(nil, gate, &bytes.Buffer{}, nil)
-	p.dev.combatEventsJSONL = &events
+	p := NewProcessor(nil, gate, &bytes.Buffer{}, nil)
+	p.Dev.combatEventsJSONL = &events
 	pipeline := newDiagnosticPipeline(true)
 	restore := wrapProcessorDiagnostics(p, pipeline, nil)
-	p.dev.stdout.Write([]byte("console\n"))
+	p.Dev.stdout.Write([]byte("console\n"))
 	<-gate.entered
-	p.dev.combatEventsJSONL.Write([]byte("{}\n"))
+	p.Dev.combatEventsJSONL.Write([]byte("{}\n"))
 	pipeline.close(100 * time.Millisecond)
 	restore()
-	if p.dev.combatEventsJSONL != &events {
+	if p.Dev.combatEventsJSONL != &events {
 		t.Fatal("a drained sink's writer must be restored")
 	}
-	if p.dev.stdout == io.Writer(gate) {
+	if p.Dev.stdout == io.Writer(gate) {
 		t.Fatal("a writer still owned by an abandoned goroutine must not be handed back")
 	}
-	p.dev.stdout.Write([]byte("late\n")) // dropped by the closed sink, never written concurrently
+	p.Dev.stdout.Write([]byte("late\n")) // dropped by the closed sink, never written concurrently
 	close(gate.release)
 }
 
@@ -340,22 +340,22 @@ func TestDiagnosticPCAPRunsDoNotShareState(t *testing.T) {
 
 func TestDiagnosticDropsDoNotTouchStatisticsOrIntegrity(t *testing.T) {
 	run := func(diagnostic io.Writer) (DamageStatisticsSnapshot, TransportHealthSnapshot) {
-		p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
+		p := NewProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
 		addTestPlayerRoleGroupEntity(p, 1001, 77, 1102)
-		addTestRuntimeEntity(p, 2002, func(e *runtimeEntity) {
-			e.hasEntityType, e.entityTypeCode = true, entityTypeMonster
-			e.hasMonsterID, e.monsterID = true, 9
+		addTestRuntimeEntity(p, 2002, func(e *RuntimeEntity) {
+			e.HasEntityType, e.EntityTypeCode = true, EntityTypeMonster
+			e.HasMonsterID, e.MonsterID = true, 9
 		})
-		p.playerRelevance.observeRoleEntity(1001)
-		p.playerRelevance.reconcileLocalPlayers(p.entities)
-		p.dev.combatEventsJSONL = diagnostic
-		p.damageStatistics.observeBattleState(true, encounterAt(1), 0)
+		p.PlayerRelevance.ObserveRoleEntity(1001)
+		p.PlayerRelevance.ReconcileLocalPlayers(p.Entities)
+		p.Dev.combatEventsJSONL = diagnostic
+		p.DamageStatistics.ObserveBattleState(true, encounterAt(1), 0)
 		for i := 0; i < 200; i++ {
 			event := testDamageEvent(p, 1001, 2002)
 			event.RPCID, event.Timestamp, event.EventTypeCandidate = uint64(i+1), encounterAt(2+float64(i)/100), "DAMAGE_CANDIDATE"
-			p.writeDamageEvent(event)
+			p.WriteDamageEvent(event)
 		}
-		return p.damageStatisticsSnapshot(), p.transportHealthSnapshot()
+		return p.DamageStatisticsSnapshot(), p.TransportHealthSnapshot()
 	}
 	reference, _ := run(nil)
 	pipeline := newDiagnosticPipeline(true)

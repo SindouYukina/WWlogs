@@ -12,13 +12,13 @@ import (
 
 func TestBuffOverlapQueryUsesHalfOpenIntervals(t *testing.T) {
 	base := time.Date(2026, 10, 28, 1, 0, 0, 0, time.UTC)
-	p := &processor{}
-	p.observeBuffInterval(overlapRow("GAMEPLAY_EFFECT_APPLY", resolutionCorrelated, 27472, 69, base))
-	p.observeBuffInterval(overlapRow("GAMEPLAY_EFFECT_REMOVE", resolutionCorrelated, 27472, 69, base.Add(2*time.Second)))
+	p := &Processor{}
+	p.ObserveBuffInterval(overlapRow("GAMEPLAY_EFFECT_APPLY", ResolutionCorrelated, 27472, 69, base))
+	p.ObserveBuffInterval(overlapRow("GAMEPLAY_EFFECT_REMOVE", ResolutionCorrelated, 27472, 69, base.Add(2*time.Second)))
 	// Damage at the apply instant is inside; at the remove instant it is outside.
-	p.recordDamageForOverlap(combatEvent{SessionNumber: 1, RPCID: 10, Timestamp: base, Damage: 5, Target: entityIdentity{Runtime: runtimeEntity{entityID: 27472}}})
-	p.recordDamageForOverlap(combatEvent{SessionNumber: 1, RPCID: 11, Timestamp: base.Add(2 * time.Second), Damage: 6, Target: entityIdentity{Runtime: runtimeEntity{entityID: 27472}}})
-	p.recordDamageForOverlap(combatEvent{SessionNumber: 1, RPCID: 12, Timestamp: base.Add(time.Second), Damage: 7, Target: entityIdentity{Runtime: runtimeEntity{entityID: 99999}}})
+	p.recordDamageForOverlap(CombatEvent{SessionNumber: 1, RPCID: 10, Timestamp: base, Damage: 5, Target: EntityIdentity{Runtime: RuntimeEntity{EntityID: 27472}}})
+	p.recordDamageForOverlap(CombatEvent{SessionNumber: 1, RPCID: 11, Timestamp: base.Add(2 * time.Second), Damage: 6, Target: EntityIdentity{Runtime: RuntimeEntity{EntityID: 27472}}})
+	p.recordDamageForOverlap(CombatEvent{SessionNumber: 1, RPCID: 12, Timestamp: base.Add(time.Second), Damage: 7, Target: EntityIdentity{Runtime: RuntimeEntity{EntityID: 99999}}})
 
 	var out bytes.Buffer
 	if err := p.writeBuffOverlap(&out); err != nil {
@@ -45,9 +45,9 @@ func TestBuffOverlapQueryUsesHalfOpenIntervals(t *testing.T) {
 
 func TestBuffOverlapLabelsOpenIntervals(t *testing.T) {
 	base := time.Date(2026, 10, 28, 1, 0, 0, 0, time.UTC)
-	p := &processor{}
-	p.observeBuffInterval(overlapRow("GAMEPLAY_EFFECT_APPLY", resolutionCorrelated, 27472, 72, base))
-	p.recordDamageForOverlap(combatEvent{SessionNumber: 1, RPCID: 20, Timestamp: base.Add(time.Hour), Damage: 1, Target: entityIdentity{Runtime: runtimeEntity{entityID: 27472}}})
+	p := &Processor{}
+	p.ObserveBuffInterval(overlapRow("GAMEPLAY_EFFECT_APPLY", ResolutionCorrelated, 27472, 72, base))
+	p.recordDamageForOverlap(CombatEvent{SessionNumber: 1, RPCID: 20, Timestamp: base.Add(time.Hour), Damage: 1, Target: EntityIdentity{Runtime: RuntimeEntity{EntityID: 27472}}})
 	var out bytes.Buffer
 	if err := p.writeBuffOverlap(&out); err != nil {
 		t.Fatalf("writeBuffOverlap: %v", err)
@@ -63,22 +63,22 @@ func TestBuffOverlapLabelsOpenIntervals(t *testing.T) {
 
 func TestBuffIntervalsUseOnlyCorrelatedApplyAndRemove(t *testing.T) {
 	base := time.Date(2026, 10, 28, 1, 0, 0, 0, time.UTC)
-	p := &processor{}
-	p.observeBuffInterval(overlapRow("GAMEPLAY_EFFECT_APPLY", resolutionCorrelated, 27472, 69, base))
-	p.observeBuffInterval(overlapRow("GAMEPLAY_EFFECT_APPLY", resolutionCorrelated, 27472, 69, base.Add(time.Second))) // duplicate
-	p.observeBuffInterval(overlapRow("GAMEPLAY_EFFECT_REMOVE", resolutionCorrelated, 27472, 69, base.Add(2*time.Second)))
-	p.observeBuffInterval(overlapRow("GAMEPLAY_EFFECT_REMOVE", resolutionCorrelated, 27472, 68, base))                   // no apply
-	p.observeBuffInterval(overlapRow("GAMEPLAY_EFFECT_APPLY", resolutionUnknown, 27472, 70, base))                       // target not correlated
-	p.observeBuffInterval(overlapRow("ApplyBuffS2cRequestNotify", resolutionCorrelated, 27472, 71, base))                // request, not applied state
-	p.observeBuffInterval(overlapRow("GAMEPLAY_EFFECT_APPLY", resolutionCorrelated, 27472, 72, base.Add(3*time.Second))) // open at end
+	p := &Processor{}
+	p.ObserveBuffInterval(overlapRow("GAMEPLAY_EFFECT_APPLY", ResolutionCorrelated, 27472, 69, base))
+	p.ObserveBuffInterval(overlapRow("GAMEPLAY_EFFECT_APPLY", ResolutionCorrelated, 27472, 69, base.Add(time.Second))) // duplicate
+	p.ObserveBuffInterval(overlapRow("GAMEPLAY_EFFECT_REMOVE", ResolutionCorrelated, 27472, 69, base.Add(2*time.Second)))
+	p.ObserveBuffInterval(overlapRow("GAMEPLAY_EFFECT_REMOVE", ResolutionCorrelated, 27472, 68, base))                   // no apply
+	p.ObserveBuffInterval(overlapRow("GAMEPLAY_EFFECT_APPLY", ResolutionUnknown, 27472, 70, base))                       // target not correlated
+	p.ObserveBuffInterval(overlapRow("ApplyBuffS2cRequestNotify", ResolutionCorrelated, 27472, 71, base))                // request, not applied state
+	p.ObserveBuffInterval(overlapRow("GAMEPLAY_EFFECT_APPLY", ResolutionCorrelated, 27472, 72, base.Add(3*time.Second))) // open at end
 
-	if len(p.dev.buffIntervals) != 2 {
-		t.Fatalf("intervals = %d, want 2 (handles 69 and 72)", len(p.dev.buffIntervals))
+	if len(p.Dev.buffIntervals) != 2 {
+		t.Fatalf("intervals = %d, want 2 (handles 69 and 72)", len(p.Dev.buffIntervals))
 	}
-	if p.dev.buffDuplicateApplies != 1 || p.dev.buffUnmatchedRemoves != 1 || p.dev.buffOverlapSkipped != 1 {
-		t.Fatalf("duplicates=%d unmatched=%d skipped=%d, want 1,1,1", p.dev.buffDuplicateApplies, p.dev.buffUnmatchedRemoves, p.dev.buffOverlapSkipped)
+	if p.Dev.buffDuplicateApplies != 1 || p.Dev.buffUnmatchedRemoves != 1 || p.Dev.buffOverlapSkipped != 1 {
+		t.Fatalf("duplicates=%d unmatched=%d skipped=%d, want 1,1,1", p.Dev.buffDuplicateApplies, p.Dev.buffUnmatchedRemoves, p.Dev.buffOverlapSkipped)
 	}
-	if !p.dev.buffIntervals[0].closed || p.dev.buffIntervals[1].closed {
-		t.Fatalf("closed flags = %v,%v, want true,false", p.dev.buffIntervals[0].closed, p.dev.buffIntervals[1].closed)
+	if !p.Dev.buffIntervals[0].closed || p.Dev.buffIntervals[1].closed {
+		t.Fatalf("closed flags = %v,%v, want true,false", p.Dev.buffIntervals[0].closed, p.Dev.buffIntervals[1].closed)
 	}
 }

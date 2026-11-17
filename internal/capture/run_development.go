@@ -83,16 +83,16 @@ func masterDatabaseSourceLabel(databasePath string) string {
 	return "external test override"
 }
 
-func (p *processor) liveDiagnosticSnapshot(sampledAt time.Time) liveDiagnosticSnapshot {
-	statistics := p.damageStatisticsSnapshot()
-	captureObservedAt := p.currentFrameTime
+func (p *Processor) liveDiagnosticSnapshot(sampledAt time.Time) liveDiagnosticSnapshot {
+	statistics := p.DamageStatisticsSnapshot()
+	captureObservedAt := p.CurrentFrameTime
 	if !captureObservedAt.IsZero() {
-		statistics = p.damageStatisticsSnapshotAt(CaptureQueryTime{
+		statistics = p.DamageStatisticsSnapshotAt(CaptureQueryTime{
 			CaptureSessionID: statistics.CaptureSessionID,
 			Timestamp:        captureObservedAt,
 		})
 	}
-	effects := p.effectSnapshotAtLastFrame()
+	effects := p.EffectSnapshotAtLastFrame()
 	var clockDifference *float64
 	if !sampledAt.IsZero() && !captureObservedAt.IsZero() {
 		difference := sampledAt.Sub(captureObservedAt).Seconds()
@@ -183,7 +183,7 @@ func flagWasSet(name string) bool {
 
 // Main parses the capture command flags and runs live capture or PCAP replay.
 func Main() {
-	exitIfVersionRequested()
+	ExitIfVersionRequested()
 	ip := flag.String("ip", "", "Local network interface IPv4 address; if omitted, list available interfaces for selection")
 	minPort := flag.Int("min-port", 13100, "Lower bound of the UDP server port range")
 	maxPort := flag.Int("max-port", 13120, "Upper bound of the UDP server port range")
@@ -241,9 +241,9 @@ func Main() {
 	fmt.Printf("WWlogs %s\n", versioninfo.Current().Product.DevelopmentLine)
 	announceBuildIdentity(os.Stderr)
 	if *ip == "" && *pcapIn == "" {
-		selectedIP, err := promptLocalIPv4(os.Stdin, os.Stdout)
+		selectedIP, err := PromptLocalIPv4(os.Stdin, os.Stdout)
 		if err != nil {
-			fatal("select network interface", err)
+			Fatal("select network interface", err)
 		}
 		*ip = selectedIP
 	}
@@ -258,7 +258,7 @@ func Main() {
 	) {
 		bundle, err := defaultLiveCaptureOutputBundle(os.Getenv("LOCALAPPDATA"), time.Now())
 		if err != nil {
-			fatal("create default live capture output", err)
+			Fatal("create default live capture output", err)
 		}
 		defaultOutputDirectory, consoleLogPath = bundle.directory, bundle.console
 		*pcapOut = bundle.pcap
@@ -280,52 +280,52 @@ func Main() {
 	}
 
 	if *minPort < 1 || *maxPort > 65535 || *minPort > *maxPort {
-		fatal("port range", fmt.Errorf("invalid range %d-%d", *minPort, *maxPort))
+		Fatal("port range", fmt.Errorf("invalid range %d-%d", *minPort, *maxPort))
 	}
 	if *pcapIn != "" && *pcapOut != "" {
-		fatal("PCAP mode", fmt.Errorf("-pcap-in and -pcap-out cannot be combined"))
+		Fatal("PCAP mode", fmt.Errorf("-pcap-in and -pcap-out cannot be combined"))
 	}
 	if *liveDiagnosticOut != "" && *pcapIn != "" {
-		fatal("live diagnostics", fmt.Errorf("-live-diagnostic-out requires live capture"))
+		Fatal("live diagnostics", fmt.Errorf("-live-diagnostic-out requires live capture"))
 	}
 	if *combatNotifyAuditOut != "" && *pcapIn == "" {
-		fatal("CombatNotifyData audit", fmt.Errorf("-combat-notify-audit-out requires -pcap-in"))
+		Fatal("CombatNotifyData audit", fmt.Errorf("-combat-notify-audit-out requires -pcap-in"))
 	}
 	if *maxPCAPBytes > 0 && *maxPCAPBytes < 24 {
-		fatal("PCAP size limit", fmt.Errorf("-max-pcap-bytes must be at least 24"))
+		Fatal("PCAP size limit", fmt.Errorf("-max-pcap-bytes must be at least 24"))
 	}
 	filterExpression := *filter
 	if filterExpression == "" {
 		filterExpression = fmt.Sprintf("udp and portrange %d-%d", *minPort, *maxPort)
 	}
-	captureConfig := defaultLiveCaptureConfig()
+	captureConfig := DefaultLiveCaptureConfig()
 	captureConfig.Immediate = *captureImmediate
-	masters, err := loadGameMasterDatabase(*masterDatabase, *masterLocale)
+	masters, err := LoadGameMasterDatabase(*masterDatabase, *masterLocale)
 	if err != nil {
-		fatal("load combat master SQLite", err)
+		Fatal("load combat master SQLite", err)
 	}
 	if *preflight {
-		device, err := findDeviceByIP(*ip)
+		device, err := FindDeviceByIP(*ip)
 		if err != nil {
-			fatal("find Npcap adapter", err)
+			Fatal("find Npcap adapter", err)
 		}
-		handle, applied, err := openLiveCapture(device, captureConfig)
+		handle, applied, err := OpenLiveCapture(device, captureConfig)
 		if err != nil {
-			fatal("open Npcap adapter", err)
+			Fatal("open Npcap adapter", err)
 		}
 		defer handle.Close()
 		if err := handle.SetBPFFilter(filterExpression); err != nil {
-			fatal("set capture filter", err)
+			Fatal("set capture filter", err)
 		}
-		fmt.Fprintf(os.Stderr, "capture_preflight=PASS adapter=%s local_ipv4=%s filter=%q master_source=%q master_sha256=%s locale=%s %s\n", device, *ip, filterExpression, masterDatabaseSourceLabel(masters.databasePath), masters.manifest.SourceHash, masters.locale, applied)
+		fmt.Fprintf(os.Stderr, "capture_preflight=PASS adapter=%s local_ipv4=%s filter=%q master_source=%q master_sha256=%s locale=%s %s\n", device, *ip, filterExpression, masterDatabaseSourceLabel(masters.DatabasePath), masters.Manifest.SourceHash, masters.Locale, applied)
 		return
 	}
 	if (*stopFile != "" || *statusFile != "" || *maxPCAPBytes > 0) && (*pcapIn != "" || *pcapOut == "") {
-		fatal("live capture controls", fmt.Errorf("-stop-file, -status-file, and -max-pcap-bytes require live capture with -pcap-out"))
+		Fatal("live capture controls", fmt.Errorf("-stop-file, -status-file, and -max-pcap-bytes require live capture with -pcap-out"))
 	}
-	rsaKey, err := loadEmbeddedPrivateKey()
+	rsaKey, err := LoadEmbeddedPrivateKey()
 	if err != nil {
-		fatal("load embedded RSA key", err)
+		Fatal("load embedded RSA key", err)
 	}
 	var consoleLog *os.File
 	var stdoutTarget io.Writer = os.Stdout
@@ -333,7 +333,7 @@ func Main() {
 	if consoleLogPath != "" {
 		consoleLog, err = os.OpenFile(consoleLogPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
 		if err != nil {
-			fatal("create console log", err)
+			Fatal("create console log", err)
 		}
 		defer consoleLog.Close()
 		stdoutTarget = io.MultiWriter(os.Stdout, consoleLog)
@@ -355,11 +355,11 @@ func Main() {
 	if *auditOut != "" {
 		auditFile, err = os.Create(*auditOut)
 		if err != nil {
-			fatal("create event audit", err)
+			Fatal("create event audit", err)
 		}
 		defer auditFile.Close()
 		if _, err := fmt.Fprintln(auditFile, "timestamp\trpc_id\tattacker_entity_id\ttarget_entity_id\tattacker_runtime_status\tattacker_runtime_evidence\ttarget_runtime_status\ttarget_runtime_evidence\tcharacter_id\tcharacter_name\tcharacter_status\tcharacter_evidence\tskill_id\tskill_name\tskill_status\tskill_evidence\tskill_message_id\tdamage_id\tmonster_id\ttarget_name\ttarget_monster_status\ttarget_monster_evidence\tsummoner_id\tsummoner_character_id\tsummoner_character_name\tsummoner_character_status\tsummoner_character_evidence\tsummoner_entity_chain\tplayer_entity_id\tdamage\tdamage_source_type\tbullet_id\tattacker_runtime_fields_json\ttarget_runtime_fields_json\tserver_result_raw\tchange_life_raw\tdamage_calculate_type\tevent_type_candidate\tevent_type_status\tevent_type_evidence\tcharacter_name_status\tskill_name_status\tclient_build\tcheck_client_version_fields_json\tclient_version_source_commands"); err != nil {
-			fatal("write event audit header", err)
+			Fatal("write event audit header", err)
 		}
 		auditWriter = auditFile
 	}
@@ -367,12 +367,12 @@ func Main() {
 	if *buffSnapshotOut != "" {
 		if dir := filepath.Dir(*buffSnapshotOut); dir != "." {
 			if err := os.MkdirAll(dir, 0o700); err != nil {
-				fatal("create Buff snapshot directory", err)
+				Fatal("create Buff snapshot directory", err)
 			}
 		}
 		buffSnapshotFile, err = os.Create(*buffSnapshotOut)
 		if err != nil {
-			fatal("create Buff snapshot JSONL", err)
+			Fatal("create Buff snapshot JSONL", err)
 		}
 		defer buffSnapshotFile.Close()
 	}
@@ -380,12 +380,12 @@ func Main() {
 	if *buffEventOut != "" {
 		if dir := filepath.Dir(*buffEventOut); dir != "." {
 			if err := os.MkdirAll(dir, 0o700); err != nil {
-				fatal("create Buff lifecycle directory", err)
+				Fatal("create Buff lifecycle directory", err)
 			}
 		}
 		buffEventFile, err = os.Create(*buffEventOut)
 		if err != nil {
-			fatal("create Buff lifecycle JSONL", err)
+			Fatal("create Buff lifecycle JSONL", err)
 		}
 		defer buffEventFile.Close()
 	}
@@ -393,12 +393,12 @@ func Main() {
 	if *encounterSummaryOut != "" {
 		if dir := filepath.Dir(*encounterSummaryOut); dir != "." {
 			if err := os.MkdirAll(dir, 0o700); err != nil {
-				fatal("create encounter summary directory", err)
+				Fatal("create encounter summary directory", err)
 			}
 		}
 		encounterSummaryFile, err = os.Create(*encounterSummaryOut)
 		if err != nil {
-			fatal("create encounter summary", err)
+			Fatal("create encounter summary", err)
 		}
 		defer encounterSummaryFile.Close()
 	}
@@ -406,12 +406,12 @@ func Main() {
 	if *combatEventsJSONLOut != "" {
 		if dir := filepath.Dir(*combatEventsJSONLOut); dir != "." {
 			if err := os.MkdirAll(dir, 0o700); err != nil {
-				fatal("create combat event JSONL directory", err)
+				Fatal("create combat event JSONL directory", err)
 			}
 		}
 		combatEventsJSONLFile, err = os.Create(*combatEventsJSONLOut)
 		if err != nil {
-			fatal("create combat event JSONL", err)
+			Fatal("create combat event JSONL", err)
 		}
 		defer combatEventsJSONLFile.Close()
 	}
@@ -419,12 +419,12 @@ func Main() {
 	if *frameArchiveOut != "" {
 		if dir := filepath.Dir(*frameArchiveOut); dir != "." {
 			if err := os.MkdirAll(dir, 0o700); err != nil {
-				fatal("create frame archive directory", err)
+				Fatal("create frame archive directory", err)
 			}
 		}
 		frameArchiveFile, err = os.Create(*frameArchiveOut)
 		if err != nil {
-			fatal("create frame archive", err)
+			Fatal("create frame archive", err)
 		}
 		defer frameArchiveFile.Close()
 	}
@@ -432,35 +432,35 @@ func Main() {
 	if *combatNotifyAuditOut != "" {
 		if dir := filepath.Dir(*combatNotifyAuditOut); dir != "." {
 			if err := os.MkdirAll(dir, 0o700); err != nil {
-				fatal("create CombatNotifyData audit directory", err)
+				Fatal("create CombatNotifyData audit directory", err)
 			}
 		}
 		combatNotifyAuditFile, err = os.OpenFile(*combatNotifyAuditOut, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
 		if err != nil {
-			fatal("create CombatNotifyData audit", err)
+			Fatal("create CombatNotifyData audit", err)
 		}
 		defer combatNotifyAuditFile.Close()
 	}
-	processor := newProcessor(rsaKey, stdout, diagnosticTarget, auditWriter)
-	processor.dev.showEffectEvents = *showEffectEvents && *pcapIn == ""
-	processor.dev.showAllEffectEvents = *showAllEffectEvents
-	processor.masters = masters
-	processor.dev.research = *research
+	processor := NewProcessor(rsaKey, stdout, diagnosticTarget, auditWriter)
+	processor.Dev.showEffectEvents = *showEffectEvents && *pcapIn == ""
+	processor.Dev.showAllEffectEvents = *showAllEffectEvents
+	processor.Masters = masters
+	processor.Dev.research = *research
 	if buffSnapshotFile != nil {
-		processor.dev.buffSnapshots = buffSnapshotFile
+		processor.Dev.buffSnapshots = buffSnapshotFile
 	}
 	if buffEventFile != nil {
-		processor.dev.buffLifecycle = buffEventFile
+		processor.Dev.buffLifecycle = buffEventFile
 	}
 	if *encounterOut != "" {
 		if dir := filepath.Dir(*encounterOut); dir != "." {
 			if err := os.MkdirAll(dir, 0o700); err != nil {
-				fatal("create encounter output directory", err)
+				Fatal("create encounter output directory", err)
 			}
 		}
 		encounterFile, err := os.Create(*encounterOut)
 		if err != nil {
-			fatal("create encounter output", err)
+			Fatal("create encounter output", err)
 		}
 		defer encounterFile.Close()
 		encounterWriter := bufio.NewWriter(encounterFile)
@@ -469,37 +469,37 @@ func Main() {
 				encounterWriter.Flush()
 			}
 		}()
-		processor.dev.encounterOut = encounterWriter
+		processor.Dev.encounterOut = encounterWriter
 		processor.recordEncounterTransitions()
 	}
 	if encounterSummaryFile != nil {
-		processor.dev.encounterSummary = encounterSummaryFile
+		processor.Dev.encounterSummary = encounterSummaryFile
 	}
-	processor.dev.combatEventsJSONL = optionalFileWriter(combatEventsJSONLFile)
-	processor.dev.combatNotifyAudit = optionalFileWriter(combatNotifyAuditFile)
+	processor.Dev.combatEventsJSONL = optionalFileWriter(combatEventsJSONLFile)
+	processor.Dev.combatNotifyAudit = optionalFileWriter(combatNotifyAuditFile)
 	if *protocolSchemaPath != "" {
 		schema, err := loadProtocolSchema(*protocolSchemaPath)
 		if err != nil {
-			fatal("load protocol schema", err)
+			Fatal("load protocol schema", err)
 		}
-		processor.dev.protocolSchema = schema
+		processor.Dev.protocolSchema = schema
 	}
 	if *summonOwnerOutPath != "" {
-		if processor.dev.protocolSchema == nil {
-			fatal("summon owner output", fmt.Errorf("-summon-owner-out requires -protocol-schema"))
+		if processor.Dev.protocolSchema == nil {
+			Fatal("summon owner output", fmt.Errorf("-summon-owner-out requires -protocol-schema"))
 		}
 		if dir := filepath.Dir(*summonOwnerOutPath); dir != "." {
 			if err := os.MkdirAll(dir, 0o700); err != nil {
-				fatal("create summon owner directory", err)
+				Fatal("create summon owner directory", err)
 			}
 		}
 		ownerFile, err := os.Create(*summonOwnerOutPath)
 		if err != nil {
-			fatal("create summon owner output", err)
+			Fatal("create summon owner output", err)
 		}
 		defer ownerFile.Close()
 		ownerWriter := bufio.NewWriter(ownerFile)
-		processor.dev.summonOwnerOut = ownerWriter
+		processor.Dev.summonOwnerOut = ownerWriter
 		defer func() {
 			if !diagnostics.released(ownerWriter) {
 				return
@@ -510,21 +510,21 @@ func Main() {
 		}()
 	}
 	if *skillRefOutPath != "" {
-		if processor.dev.protocolSchema == nil {
-			fatal("skill reference output", fmt.Errorf("-skill-ref-out requires -protocol-schema"))
+		if processor.Dev.protocolSchema == nil {
+			Fatal("skill reference output", fmt.Errorf("-skill-ref-out requires -protocol-schema"))
 		}
 		if dir := filepath.Dir(*skillRefOutPath); dir != "." {
 			if err := os.MkdirAll(dir, 0o700); err != nil {
-				fatal("create skill reference directory", err)
+				Fatal("create skill reference directory", err)
 			}
 		}
 		skillFile, err := os.Create(*skillRefOutPath)
 		if err != nil {
-			fatal("create skill reference output", err)
+			Fatal("create skill reference output", err)
 		}
 		defer skillFile.Close()
 		skillWriter := bufio.NewWriter(skillFile)
-		processor.dev.skillRefOut = skillWriter
+		processor.Dev.skillRefOut = skillWriter
 		defer func() {
 			if !diagnostics.released(skillWriter) {
 				return
@@ -535,21 +535,21 @@ func Main() {
 		}()
 	}
 	if *bulletRefOutPath != "" {
-		if processor.dev.protocolSchema == nil {
-			fatal("bullet reference output", fmt.Errorf("-bullet-ref-out requires -protocol-schema"))
+		if processor.Dev.protocolSchema == nil {
+			Fatal("bullet reference output", fmt.Errorf("-bullet-ref-out requires -protocol-schema"))
 		}
 		if dir := filepath.Dir(*bulletRefOutPath); dir != "." {
 			if err := os.MkdirAll(dir, 0o700); err != nil {
-				fatal("create bullet reference directory", err)
+				Fatal("create bullet reference directory", err)
 			}
 		}
 		bulletFile, err := os.Create(*bulletRefOutPath)
 		if err != nil {
-			fatal("create bullet reference output", err)
+			Fatal("create bullet reference output", err)
 		}
 		defer bulletFile.Close()
 		bulletWriter := bufio.NewWriter(bulletFile)
-		processor.dev.bulletRefOut = bulletWriter
+		processor.Dev.bulletRefOut = bulletWriter
 		defer func() {
 			if !diagnostics.released(bulletWriter) {
 				return
@@ -560,21 +560,21 @@ func Main() {
 		}()
 	}
 	if *shieldRefOutPath != "" {
-		if processor.dev.protocolSchema == nil || masters == nil {
-			fatal("shield reference output", fmt.Errorf("-shield-ref-out requires -protocol-schema and -master-db"))
+		if processor.Dev.protocolSchema == nil || masters == nil {
+			Fatal("shield reference output", fmt.Errorf("-shield-ref-out requires -protocol-schema and -master-db"))
 		}
 		if dir := filepath.Dir(*shieldRefOutPath); dir != "." {
 			if err := os.MkdirAll(dir, 0o700); err != nil {
-				fatal("create shield reference directory", err)
+				Fatal("create shield reference directory", err)
 			}
 		}
 		shieldFile, err := os.Create(*shieldRefOutPath)
 		if err != nil {
-			fatal("create shield reference output", err)
+			Fatal("create shield reference output", err)
 		}
 		defer shieldFile.Close()
 		shieldWriter := bufio.NewWriter(shieldFile)
-		processor.dev.shieldRefOut = shieldWriter
+		processor.Dev.shieldRefOut = shieldWriter
 		defer func() {
 			if !diagnostics.released(shieldWriter) {
 				return
@@ -585,21 +585,21 @@ func Main() {
 		}()
 	}
 	if *partRefOutPath != "" {
-		if processor.dev.protocolSchema == nil {
-			fatal("part reference output", fmt.Errorf("-part-ref-out requires -protocol-schema"))
+		if processor.Dev.protocolSchema == nil {
+			Fatal("part reference output", fmt.Errorf("-part-ref-out requires -protocol-schema"))
 		}
 		if dir := filepath.Dir(*partRefOutPath); dir != "." {
 			if err := os.MkdirAll(dir, 0o700); err != nil {
-				fatal("create part reference directory", err)
+				Fatal("create part reference directory", err)
 			}
 		}
 		partFile, err := os.Create(*partRefOutPath)
 		if err != nil {
-			fatal("create part reference output", err)
+			Fatal("create part reference output", err)
 		}
 		defer partFile.Close()
 		partWriter := bufio.NewWriter(partFile)
-		processor.dev.partRefOut = partWriter
+		processor.Dev.partRefOut = partWriter
 		defer func() {
 			if !diagnostics.released(partWriter) {
 				return
@@ -610,21 +610,21 @@ func Main() {
 		}()
 	}
 	if *clientPushOutPath != "" {
-		if processor.dev.protocolSchema == nil {
-			fatal("client push output", fmt.Errorf("-client-push-out requires -protocol-schema"))
+		if processor.Dev.protocolSchema == nil {
+			Fatal("client push output", fmt.Errorf("-client-push-out requires -protocol-schema"))
 		}
 		if dir := filepath.Dir(*clientPushOutPath); dir != "." {
 			if err := os.MkdirAll(dir, 0o700); err != nil {
-				fatal("create client push directory", err)
+				Fatal("create client push directory", err)
 			}
 		}
 		clientFile, err := os.Create(*clientPushOutPath)
 		if err != nil {
-			fatal("create client push output", err)
+			Fatal("create client push output", err)
 		}
 		defer clientFile.Close()
 		clientWriter := bufio.NewWriter(clientFile)
-		processor.dev.clientPushOut = clientWriter
+		processor.Dev.clientPushOut = clientWriter
 		defer func() {
 			if !diagnostics.released(clientWriter) {
 				return
@@ -635,21 +635,21 @@ func Main() {
 		}()
 	}
 	if *damagePushOutPath != "" {
-		if processor.dev.protocolSchema == nil {
-			fatal("damage push output", fmt.Errorf("-damage-push-out requires -protocol-schema"))
+		if processor.Dev.protocolSchema == nil {
+			Fatal("damage push output", fmt.Errorf("-damage-push-out requires -protocol-schema"))
 		}
 		if dir := filepath.Dir(*damagePushOutPath); dir != "." {
 			if err := os.MkdirAll(dir, 0o700); err != nil {
-				fatal("create damage push directory", err)
+				Fatal("create damage push directory", err)
 			}
 		}
 		pushFile, err := os.Create(*damagePushOutPath)
 		if err != nil {
-			fatal("create damage push output", err)
+			Fatal("create damage push output", err)
 		}
 		defer pushFile.Close()
 		pushWriter := bufio.NewWriter(pushFile)
-		processor.dev.damagePushOut = pushWriter
+		processor.Dev.damagePushOut = pushWriter
 		defer func() {
 			if !diagnostics.released(pushWriter) {
 				return
@@ -660,21 +660,21 @@ func Main() {
 		}()
 	}
 	if *combatStateOutPath != "" {
-		if processor.dev.protocolSchema == nil {
-			fatal("combat state output", fmt.Errorf("-combat-state-out requires -protocol-schema"))
+		if processor.Dev.protocolSchema == nil {
+			Fatal("combat state output", fmt.Errorf("-combat-state-out requires -protocol-schema"))
 		}
 		if dir := filepath.Dir(*combatStateOutPath); dir != "." {
 			if err := os.MkdirAll(dir, 0o700); err != nil {
-				fatal("create combat state directory", err)
+				Fatal("create combat state directory", err)
 			}
 		}
 		stateFile, err := os.Create(*combatStateOutPath)
 		if err != nil {
-			fatal("create combat state output", err)
+			Fatal("create combat state output", err)
 		}
 		defer stateFile.Close()
 		stateWriter := bufio.NewWriter(stateFile)
-		processor.dev.combatStateOut = stateWriter
+		processor.Dev.combatStateOut = stateWriter
 		defer func() {
 			if !diagnostics.released(stateWriter) {
 				return
@@ -685,21 +685,21 @@ func Main() {
 		}()
 	}
 	if *hpStateOutPath != "" {
-		if processor.dev.protocolSchema == nil {
-			fatal("hp state output", fmt.Errorf("-hp-state-out requires -protocol-schema"))
+		if processor.Dev.protocolSchema == nil {
+			Fatal("hp state output", fmt.Errorf("-hp-state-out requires -protocol-schema"))
 		}
 		if dir := filepath.Dir(*hpStateOutPath); dir != "." {
 			if err := os.MkdirAll(dir, 0o700); err != nil {
-				fatal("create hp state directory", err)
+				Fatal("create hp state directory", err)
 			}
 		}
 		hpFile, err := os.Create(*hpStateOutPath)
 		if err != nil {
-			fatal("create hp state output", err)
+			Fatal("create hp state output", err)
 		}
 		defer hpFile.Close()
 		hpWriter := bufio.NewWriter(hpFile)
-		processor.dev.hpStateOut = hpWriter
+		processor.Dev.hpStateOut = hpWriter
 		defer func() {
 			if !diagnostics.released(hpWriter) {
 				return
@@ -710,21 +710,21 @@ func Main() {
 		}()
 	}
 	if *schemaDecodeOut != "" {
-		if processor.dev.protocolSchema == nil {
-			fatal("schema decode output", fmt.Errorf("-schema-decode-out requires -protocol-schema"))
+		if processor.Dev.protocolSchema == nil {
+			Fatal("schema decode output", fmt.Errorf("-schema-decode-out requires -protocol-schema"))
 		}
 		if dir := filepath.Dir(*schemaDecodeOut); dir != "." {
 			if err := os.MkdirAll(dir, 0o700); err != nil {
-				fatal("create schema decode directory", err)
+				Fatal("create schema decode directory", err)
 			}
 		}
 		schemaFile, err := os.Create(*schemaDecodeOut)
 		if err != nil {
-			fatal("create schema decode output", err)
+			Fatal("create schema decode output", err)
 		}
 		defer schemaFile.Close()
 		schemaWriter := bufio.NewWriter(schemaFile)
-		processor.dev.schemaDecodeOut = schemaWriter
+		processor.Dev.schemaDecodeOut = schemaWriter
 		defer func() {
 			if !diagnostics.released(schemaWriter) {
 				return
@@ -735,21 +735,21 @@ func Main() {
 		}()
 	}
 	if *roleConfigOutPath != "" {
-		if processor.dev.protocolSchema == nil || masters == nil {
-			fatal("role config output", fmt.Errorf("-role-config-out requires -protocol-schema and -master-db"))
+		if processor.Dev.protocolSchema == nil || masters == nil {
+			Fatal("role config output", fmt.Errorf("-role-config-out requires -protocol-schema and -master-db"))
 		}
 		if dir := filepath.Dir(*roleConfigOutPath); dir != "." {
 			if err := os.MkdirAll(dir, 0o700); err != nil {
-				fatal("create role config directory", err)
+				Fatal("create role config directory", err)
 			}
 		}
 		roleConfigFile, err := os.Create(*roleConfigOutPath)
 		if err != nil {
-			fatal("create role config output", err)
+			Fatal("create role config output", err)
 		}
 		defer roleConfigFile.Close()
 		roleConfigWriter := bufio.NewWriter(roleConfigFile)
-		processor.dev.roleConfigOut = roleConfigWriter
+		processor.Dev.roleConfigOut = roleConfigWriter
 		defer func() {
 			if !diagnostics.released(roleConfigWriter) {
 				return
@@ -762,12 +762,12 @@ func Main() {
 	var frameArchiveWriter *bufio.Writer
 	if frameArchiveFile != nil {
 		frameArchiveWriter = bufio.NewWriter(frameArchiveFile)
-		processor.dev.frameArchive = frameArchiveWriter
+		processor.Dev.frameArchive = frameArchiveWriter
 	}
 	var census *commandCensus
 	if *commandCensusOut != "" {
 		census = newCommandCensus(processor)
-		processor.census = census
+		processor.Census = census
 	}
 	// Every per-event diagnostic sink now writes from its own goroutine; the capture loop only queues records.
 	diagnostics = newDiagnosticPipeline(*pcapIn == "")
@@ -777,33 +777,33 @@ func Main() {
 	}
 	restoreDiagnostics := wrapProcessorDiagnostics(processor, diagnostics, flushers)
 	fmt.Fprintf(os.Stderr, "master_data_loaded source=%q sha256=%s locale=%s characters=%d monsters=%d skills=%d damage=%d\n",
-		masterDatabaseSourceLabel(masters.databasePath), masters.manifest.SourceHash, masters.locale,
-		len(masters.characters), len(masters.monsters), len(masters.skills), len(masters.damage))
+		masterDatabaseSourceLabel(masters.DatabasePath), masters.Manifest.SourceHash, masters.Locale,
+		len(masters.Characters), len(masters.Monsters), len(masters.Skills), len(masters.Damage))
 
 	var device string
 	var handle *pcap.Handle
 	if *pcapIn != "" {
 		handle, err = pcap.OpenOffline(*pcapIn)
 		if err != nil {
-			fatal("open offline PCAP", err)
+			Fatal("open offline PCAP", err)
 		}
 		device = "offline:" + *pcapIn
 	} else {
-		device, err = findDeviceByIP(*ip)
+		device, err = FindDeviceByIP(*ip)
 		if err != nil {
-			fatal("find Npcap adapter", err)
+			Fatal("find Npcap adapter", err)
 		}
-		var applied liveCaptureApplied
-		handle, applied, err = openLiveCapture(device, captureConfig)
+		var applied LiveCaptureApplied
+		handle, applied, err = OpenLiveCapture(device, captureConfig)
 		if err != nil {
-			fatal("open Npcap adapter", err)
+			Fatal("open Npcap adapter", err)
 		}
 		fmt.Fprintf(os.Stderr, "capture_handle %s\n", applied)
 	}
 	defer handle.Close()
 
 	if err := handle.SetBPFFilter(filterExpression); err != nil {
-		fatal("set capture filter", err)
+		Fatal("set capture filter", err)
 	}
 
 	// The development PCAP queues packet records whole; a write failure disables it without stopping the analysis, and
@@ -812,7 +812,7 @@ func Main() {
 	if *pcapOut != "" {
 		developmentPCAP, err = openDiagnosticPCAP(*pcapOut, handle.LinkType(), runID, diagnostics, time.Now(), nil)
 		if err != nil {
-			fatal("create PCAP", err)
+			Fatal("create PCAP", err)
 		}
 	}
 
@@ -823,10 +823,10 @@ func Main() {
 	}
 
 	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
-	processor.observeCaptureSource(*pcapIn == "")
-	processor.captureLayer.diagnosticDropCount = diagnostics.droppedRecords
-	streams := make(map[string]*stream)
-	stats := captureStats{}
+	processor.ObserveCaptureSource(*pcapIn == "")
+	processor.CaptureLayer.DiagnosticDropCount = diagnostics.droppedRecords
+	streams := make(map[string]*Stream)
+	stats := CaptureStats{}
 	started := time.Now()
 	var liveDiagnosticFile *os.File
 	if *liveDiagnosticOut != "" && *pcapIn == "" {
@@ -907,14 +907,14 @@ func Main() {
 			return
 		}
 		if statsResult, statsErr := handle.Stats(); statsErr == nil && statsResult != nil {
-			stats.kernelDrops = statsResult.PacketsDropped
+			stats.KernelDrops = statsResult.PacketsDropped
 		}
 		status.State = state
 		status.StopReason = reason
 		status.UpdatedAt = now
 		lastStatusWrite = now
-		status.UDPPackets = stats.udpPackets
-		status.KernelDrops = stats.kernelDrops
+		status.UDPPackets = stats.UDPPackets
+		status.KernelDrops = stats.KernelDrops
 		status.PCAPBytes = currentPCAPBytes
 		status.DiagnosticDroppedRecords = diagnostics.droppedRecords()
 		status.RunID = runID
@@ -959,7 +959,7 @@ func Main() {
 		packet, packetErr := packetSource.NextPacket()
 		if packetErr != nil {
 			if packetErr == pcap.NextErrorTimeoutExpired {
-				processor.sampleCaptureStats(handle, time.Now(), false)
+				processor.SampleCaptureStats(handle, time.Now(), false)
 				writeStatus("RUNNING", "")
 				writeLiveDiagnostic(time.Now(), false)
 				continue
@@ -984,26 +984,26 @@ func Main() {
 			currentPCAPBytes += recordBytes
 		}
 		receivedAt := time.Now()
-		processor.observePacketRead()
-		processor.sampleCaptureStats(handle, receivedAt, false)
+		processor.ObservePacketRead()
+		processor.SampleCaptureStats(handle, receivedAt, false)
 		udpLayer := packet.Layer(layers.LayerTypeUDP)
 		if udpLayer == nil {
 			continue
 		}
 		udp := udpLayer.(*layers.UDP)
-		stats.udpPackets++
-		direction := packetDirection(packet, *ip, udp, *minPort, *maxPort)
+		stats.UDPPackets++
+		direction := PacketDirection(packet, *ip, udp, *minPort, *maxPort)
 		capturedAt := packet.Metadata().CaptureInfo.Timestamp
-		consumeDatagram(udp.Payload, direction, capturedAt, streams, processor, &stats)
-		processor.observePacketTiming(capturedAt, receivedAt, time.Now())
+		ConsumeDatagram(udp.Payload, direction, capturedAt, streams, processor, &stats)
+		processor.ObservePacketTiming(capturedAt, receivedAt, time.Now())
 		writeLiveDiagnostic(time.Now(), false)
 		writeStatus("RUNNING", "")
 	}
 
 finished:
-	finishTransport(streams, processor, &stats)
-	processor.sampleCaptureStats(handle, time.Now(), true)
-	processor.finishCapture()
+	FinishTransport(streams, processor, &stats)
+	processor.SampleCaptureStats(handle, time.Now(), true)
+	processor.FinishCapture()
 	processor.writeEncounterFinal()
 	writeLiveDiagnostic(time.Now(), true)
 	// Drain the asynchronous sinks before the synchronous end-of-run summaries use the same files directly.
@@ -1011,11 +1011,11 @@ finished:
 	pipelineStats := diagnostics.close(diagnosticFlushTimeout)
 	restoreDiagnostics()
 	if statsResult, statsErr := handle.Stats(); statsErr == nil && statsResult != nil {
-		stats.kernelDrops = statsResult.PacketsDropped
+		stats.KernelDrops = statsResult.PacketsDropped
 	}
 	var pcapIntegrity *diagnosticPCAPIntegrity
 	if developmentPCAP != nil {
-		record := developmentPCAP.finish(time.Now(), stopReason, processor.captureLayerHealth().KernelDropped)
+		record := developmentPCAP.finish(time.Now(), stopReason, processor.CaptureLayerHealth().KernelDropped)
 		pcapIntegrity = &record
 	}
 	writeStatus("STOPPED", stopReason)
@@ -1025,55 +1025,55 @@ finished:
 		}
 	}
 	if err := processor.writeEncounterSummary(); err != nil {
-		fatal("write encounter summary", err)
+		Fatal("write encounter summary", err)
 	}
 	if frameArchiveWriter != nil && diagnostics.released(frameArchiveWriter) {
 		if err := frameArchiveWriter.Flush(); err != nil {
-			fatal("flush frame archive", err)
+			Fatal("flush frame archive", err)
 		}
-		fmt.Fprintf(os.Stderr, "frame_archive frames=%d write_errors=%d\n", processor.dev.frameOrdinal, processor.dev.frameArchiveErrors)
+		fmt.Fprintf(os.Stderr, "frame_archive frames=%d write_errors=%d\n", processor.Dev.frameOrdinal, processor.Dev.frameArchiveErrors)
 	}
 	if *buffOverlapOut != "" {
 		if dir := filepath.Dir(*buffOverlapOut); dir != "." {
 			if err := os.MkdirAll(dir, 0o700); err != nil {
-				fatal("create buff overlap directory", err)
+				Fatal("create buff overlap directory", err)
 			}
 		}
 		overlapFile, err := os.Create(*buffOverlapOut)
 		if err != nil {
-			fatal("create buff overlap output", err)
+			Fatal("create buff overlap output", err)
 		}
 		overlapWriter := bufio.NewWriter(overlapFile)
 		if err := processor.writeBuffOverlap(overlapWriter); err != nil {
-			fatal("write buff overlap", err)
+			Fatal("write buff overlap", err)
 		}
 		if err := overlapWriter.Flush(); err != nil {
-			fatal("flush buff overlap", err)
+			Fatal("flush buff overlap", err)
 		}
 		overlapFile.Close()
-		fmt.Fprintf(os.Stderr, "buff_overlap damage_results=%d intervals=%d duplicate_applies=%d unmatched_removes=%d skipped=%d interval_overflow=%d damage_overflow=%d\n", len(processor.dev.damageOverlap), len(processor.dev.buffIntervals), processor.dev.buffDuplicateApplies, processor.dev.buffUnmatchedRemoves, processor.dev.buffOverlapSkipped, processor.dev.buffIntervalOverflow, processor.dev.damageOverlapOverflow)
+		fmt.Fprintf(os.Stderr, "buff_overlap damage_results=%d intervals=%d duplicate_applies=%d unmatched_removes=%d skipped=%d interval_overflow=%d damage_overflow=%d\n", len(processor.Dev.damageOverlap), len(processor.Dev.buffIntervals), processor.Dev.buffDuplicateApplies, processor.Dev.buffUnmatchedRemoves, processor.Dev.buffOverlapSkipped, processor.Dev.buffIntervalOverflow, processor.Dev.damageOverlapOverflow)
 	}
 	if *effectStateOut != "" {
 		if dir := filepath.Dir(*effectStateOut); dir != "." {
 			if err := os.MkdirAll(dir, 0o755); err != nil {
-				fatal("create effect state directory", err)
+				Fatal("create effect state directory", err)
 			}
 		}
 		effectFile, err := os.Create(*effectStateOut)
 		if err != nil {
-			fatal("create effect state output", err)
+			Fatal("create effect state output", err)
 		}
 		if err := processor.writeEffectState(effectFile); err != nil {
-			fatal("write effect state", err)
+			Fatal("write effect state", err)
 		}
 		if err := effectFile.Close(); err != nil {
-			fatal("close effect state output", err)
+			Fatal("close effect state output", err)
 		}
-		counters := processor.effects.Snapshot().Counters
+		counters := processor.Effects.Snapshot().Counters
 		fmt.Fprintf(os.Stderr, "effect_state applies=%d duplicate_applies=%d instant_applies=%d updates=%d updates_without_apply=%d removes=%d removes_without_instance=%d holder_removals=%d excluded_unrelated=%d\n", counters.Applies, counters.DuplicateApplies, counters.InstantApplies, counters.Updates, counters.UpdatesWithoutApply, counters.Removes, counters.RemovesWithoutInstance, counters.HolderRemovals, counters.ExcludedUnrelated)
 	}
-	fmt.Fprintf(os.Stderr, "schema_decode errors=%d skipped_without_schema=%d\n", processor.dev.schemaDecodeErrors, processor.dev.schemaDecodeSkipped)
-	fmt.Fprintln(os.Stderr, protocolReportOf(&processor.protocol).line())
+	fmt.Fprintf(os.Stderr, "schema_decode errors=%d skipped_without_schema=%d\n", processor.Dev.schemaDecodeErrors, processor.Dev.schemaDecodeSkipped)
+	fmt.Fprintln(os.Stderr, protocolReportOf(&processor.Protocol).line())
 	for _, line := range processor.researchOutputErrorLines() {
 		fmt.Fprintln(os.Stderr, line)
 	}
@@ -1081,39 +1081,39 @@ finished:
 	if line := processor.diagnosticFailureLine(); line != "" {
 		fmt.Fprintln(diagnosticTarget, line)
 	}
-	fmt.Fprintf(diagnosticTarget, "statistics_final %s\n", processor.currentStatisticsReport())
+	fmt.Fprintf(diagnosticTarget, "statistics_final %s\n", processor.CurrentStatisticsReport())
 	fmt.Fprintln(diagnosticTarget, transportHealthLine(streams, stats))
-	fmt.Fprintln(diagnosticTarget, rpcPairingLine(processor.rpcPairingSnapshot()))
-	fmt.Fprintln(diagnosticTarget, damageNotifyLine(processor.notifyStats, processor.serverSequence.total))
+	fmt.Fprintln(diagnosticTarget, rpcPairingLine(processor.RPCPairingSnapshot()))
+	fmt.Fprintln(diagnosticTarget, damageNotifyLine(processor.NotifyStats, processor.ServerSequence.Total))
 	fmt.Fprintln(diagnosticTarget, diagnosticPipelineLine(runID, pipelineStats))
-	fmt.Fprintln(diagnosticTarget, captureLatencyLine(processor.captureLayerHealth()))
+	fmt.Fprintln(diagnosticTarget, captureLatencyLine(processor.CaptureLayerHealth()))
 	if pcapIntegrity != nil {
 		fmt.Fprintln(diagnosticTarget, pcapIntegrity.line())
 	}
 	fmt.Fprintf(diagnosticTarget, "capture_finished udp=%d kcp_push=%d kcp_ordered=%d kcp_messages=%d protocol_frames=%d bad_crc=%d malformed_frames=%d kernel_drops=%d duration=%s\n",
-		stats.udpPackets, stats.kcpPush, stats.kcpOrdered, stats.kcpMessages, stats.frames, stats.badCRC, stats.malformed, stats.kernelDrops, time.Since(started).Round(time.Millisecond))
+		stats.UDPPackets, stats.KCPPush, stats.KCPOrdered, stats.KCPMessages, stats.Frames, stats.BadCRC, stats.Malformed, stats.KernelDrops, time.Since(started).Round(time.Millisecond))
 	if *commandCensusOut != "" {
 		if dir := filepath.Dir(*commandCensusOut); dir != "." {
 			if err := os.MkdirAll(dir, 0o700); err != nil {
-				fatal("create command census directory", err)
+				Fatal("create command census directory", err)
 			}
 		}
-		if err := census.write(*commandCensusOut, stats, processor.clientVersion, protocolReportOf(&processor.protocol)); err != nil {
-			fatal("write command census", err)
+		if err := census.write(*commandCensusOut, stats, processor.ClientVersion, protocolReportOf(&processor.Protocol)); err != nil {
+			Fatal("write command census", err)
 		}
 	}
-	if *clientVersionOut != "" && processor.clientVersion != nil {
+	if *clientVersionOut != "" && processor.ClientVersion != nil {
 		if dir := filepath.Dir(*clientVersionOut); dir != "." {
 			if err := os.MkdirAll(dir, 0o700); err != nil {
-				fatal("create client version directory", err)
+				Fatal("create client version directory", err)
 			}
 		}
-		data, err := json.MarshalIndent(processor.clientVersion, "", "  ")
+		data, err := json.MarshalIndent(processor.ClientVersion, "", "  ")
 		if err != nil {
-			fatal("marshal client version metadata", err)
+			Fatal("marshal client version metadata", err)
 		}
 		if err := os.WriteFile(*clientVersionOut, data, 0o600); err != nil {
-			fatal("write client version metadata", err)
+			Fatal("write client version metadata", err)
 		}
 	}
 }

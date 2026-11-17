@@ -14,14 +14,14 @@ func TestLiveDiagnosticSnapshotUsesCaptureTimeForDPS(t *testing.T) {
 	observedAt := time.Date(2026, time.November, 2, 12, 0, 0, 0, time.UTC)
 	sampledAt := observedAt.Add(1500 * time.Millisecond)
 	statistics := NewDamageStatistics()
-	processor := &processor{
-		damageStatistics: statistics,
-		effects:          NewEffectTracker(statistics.captureSessionID),
-		currentFrameTime: observedAt,
+	processor := &Processor{
+		DamageStatistics: statistics,
+		Effects:          NewEffectTracker(statistics.CaptureSessionID),
+		CurrentFrameTime: observedAt,
 	}
 
 	snapshot := processor.liveDiagnosticSnapshot(sampledAt)
-	if snapshot.DamageStatistics.CaptureSessionID != statistics.captureSessionID ||
+	if snapshot.DamageStatistics.CaptureSessionID != statistics.CaptureSessionID ||
 		snapshot.DamageStatistics.StatisticsIntervalID != 1 {
 		t.Fatalf("capture and interval identity missing: %+v", snapshot.DamageStatistics)
 	}

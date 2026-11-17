@@ -33,24 +33,24 @@ func TestElementOfAttributeCoversTheElementFamiliesOnly(t *testing.T) {
 }
 
 func TestEffectElementUsesTheDefinitionOnly(t *testing.T) {
-	modifier := func(attribute uint64) buffStaticParameters {
-		return buffStaticParameters{attribute: attribute, hasAttribute: true, hasModifier: true}
+	modifier := func(attribute uint64) BuffStaticParameters {
+		return BuffStaticParameters{Attribute: attribute, HasAttribute: true, HasModifier: true}
 	}
 	cases := []struct {
 		name    string
 		term    uint64
 		hasTerm bool
-		static  buffStaticParameters
+		static  BuffStaticParameters
 		want    uint64
 		basis   string
 	}{
-		{"ailment term", 850009, true, buffStaticParameters{}, 4, effectElementBasisTerm},
+		{"ailment term", 850009, true, BuffStaticParameters{}, 4, effectElementBasisTerm},
 		{"a term wins over an attribute", 850012, true, modifier(22), 6, effectElementBasisTerm},
 		{"element bonus", 0, false, modifier(24), 3, effectElementBasisAttribute},
 		{"unknown term falls back to the attribute", 1, true, modifier(25), 4, effectElementBasisAttribute},
 		{"attack is not an element", 0, false, modifier(7), 0, ""},
-		{"an attribute without a modifier states nothing", 0, false, buffStaticParameters{attribute: 24, hasAttribute: true}, 0, ""},
-		{"no evidence", 0, false, buffStaticParameters{}, 0, ""},
+		{"an attribute without a modifier states nothing", 0, false, BuffStaticParameters{Attribute: 24, HasAttribute: true}, 0, ""},
+		{"no evidence", 0, false, BuffStaticParameters{}, 0, ""},
 	}
 	for _, tc := range cases {
 		got, basis := effectElementFor(tc.term, tc.hasTerm, tc.static)
@@ -96,7 +96,7 @@ func TestEffectElementsMatchTheOfficialMasterNames(t *testing.T) {
 
 func TestViewProjectsTheStripFieldsWithoutChangingTheInstance(t *testing.T) {
 	p := newEffectViewProcessor()
-	p.effects.ObserveApply(displayApply(1, 900, 0, func(e *EffectApplyEvent) {
+	p.Effects.ObserveApply(displayApply(1, 900, 0, func(e *EffectApplyEvent) {
 		e.DefinitionLinked, e.Static = true, &EffectStaticInfo{HUDCueTypes: []int32{2}, HUDPolarity: EffectPolarityDebuff, ElementID: 3, ElementBasis: effectElementBasisAttribute}
 	}))
 	view := p.viewEffects()
@@ -117,10 +117,10 @@ func TestViewProjectsTheStripFieldsWithoutChangingTheInstance(t *testing.T) {
 
 func TestViewClockLeadOnlyAdvancesTheCountdownsOfTheView(t *testing.T) {
 	p := newEffectViewProcessor()
-	p.effects.ObserveApply(displayApply(1, 900, 0, nil))
+	p.Effects.ObserveApply(displayApply(1, 900, 0, nil))
 	before := effectViewAt(p, 1).Active[0]
-	frozen := p.effectSnapshotAtLastFrame().Effects[0]
-	p.viewClockLead = 500 * time.Millisecond
+	frozen := p.EffectSnapshotAtLastFrame().Effects[0]
+	p.ViewClockLead = 500 * time.Millisecond
 	after := p.viewEffects().Active[0]
 	if before.RemainingSeconds == nil || after.RemainingSeconds == nil {
 		t.Fatal("expected timed effects")
@@ -132,7 +132,7 @@ func TestViewClockLeadOnlyAdvancesTheCountdownsOfTheView(t *testing.T) {
 		t.Fatalf("the lead must not move the expiry or the identity: %+v vs %+v", before, after)
 	}
 	// Diagnostics and statistics keep reading at the newest frame.
-	still := p.effectSnapshotAtLastFrame().Effects[0]
+	still := p.EffectSnapshotAtLastFrame().Effects[0]
 	if *still.RemainingSeconds != *frozen.RemainingSeconds {
 		t.Fatalf("frame-time readers moved: %v vs %v", *still.RemainingSeconds, *frozen.RemainingSeconds)
 	}

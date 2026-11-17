@@ -8,11 +8,11 @@ import (
 )
 
 func TestConsoleLineShowsDeveloperLabelAndSourceCharacter(t *testing.T) {
-	event := combatEvent{
+	event := CombatEvent{
 		SourceEntityID: 46742, HasSourceEntity: true, TargetEntityID: 46880, HasTargetEntity: true,
 		SkillID: 1409253, SkillDevLabel: "Skill 1", SkillDevLabelKind: "unofficial-translation",
 		DamageID: 140925101, HasDamageID: true, Damage: 10616, EventTypeCandidate: "DAMAGE_CANDIDATE",
-		Source: entityIdentity{HasCharacter: true, CharacterStatus: resolutionVerified, Character: masterRecord{ID: 1409, Name: "Cartethyia", NameStatus: string(resolutionVerified)}},
+		Source: EntityIdentity{HasCharacter: true, CharacterStatus: ResolutionVerified, Character: MasterRecord{ID: 1409, Name: "Cartethyia", NameStatus: string(ResolutionVerified)}},
 	}
 	line := formatNormal(event)
 	if !strings.Contains(line, "[internal] Skill 1 [SkillId:1409253]") {
@@ -23,7 +23,7 @@ func TestConsoleLineShowsDeveloperLabelAndSourceCharacter(t *testing.T) {
 	}
 
 	named := event
-	named.SkillName, named.SkillNameStatus, named.SkillStatus = "Official Name", resolutionVerified, resolutionVerified
+	named.SkillName, named.SkillNameStatus, named.SkillStatus = "Official Name", ResolutionVerified, ResolutionVerified
 	if line := formatNormal(named); strings.Contains(line, "[internal]") || !strings.Contains(line, "Official Name [SkillId:1409253, VERIFIED]") {
 		t.Fatalf("an official name must win over the developer label: %s", line)
 	}

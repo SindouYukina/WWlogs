@@ -71,29 +71,29 @@ func TestClientVersionObservationWaitsForHandshakeAndKeepsFirstValues(t *testing
 	loginPayload = appendBytesField(loginPayload, fieldLoginRequestDevLoginCheckData, []byte("ACCOUNT-UID"))
 	loginPayload = appendBytesField(loginPayload, fieldLoginRequestPublicResourceVersionInfo, []byte("0123456789abcdef0123456789abcdef"))
 
-	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
-	p.currentFrameTime = time.Date(2026, time.October, 27, 1, 2, 3, 0, time.UTC)
-	if err := p.observeClientVersion(cmdCheckClientPush, versions); err != nil {
+	p := NewProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
+	p.CurrentFrameTime = time.Date(2026, time.October, 27, 1, 2, 3, 0, time.UTC)
+	if err := p.observeClientVersion(CmdCheckClientPush, versions); err != nil {
 		t.Fatal(err)
 	}
-	if p.clientVersion != nil {
-		t.Fatalf("version was accepted before handshake: %+v", p.clientVersion)
+	if p.ClientVersion != nil {
+		t.Fatalf("version was accepted before handshake: %+v", p.ClientVersion)
 	}
-	p.sessionNumber = 1
-	if err := p.observeClientVersion(cmdCheckClientPush, versions); err != nil {
+	p.SessionNumber = 1
+	if err := p.observeClientVersion(CmdCheckClientPush, versions); err != nil {
 		t.Fatal(err)
 	}
-	if err := p.observeClientVersion(cmdLoginRequest, loginPayload); err != nil {
+	if err := p.observeClientVersion(CmdLoginRequest, loginPayload); err != nil {
 		t.Fatal(err)
 	}
-	if err := p.observeClientVersion(cmdLoginRequest, appendBytesField(nil, fieldLoginRequestClientBasicInfo, appendBytesField(nil, fieldClientBasicInfoClientVersion, []byte(currentTestClientVersions[2]+".1")))); err != nil {
+	if err := p.observeClientVersion(CmdLoginRequest, appendBytesField(nil, fieldLoginRequestClientBasicInfo, appendBytesField(nil, fieldClientBasicInfoClientVersion, []byte(currentTestClientVersions[2]+".1")))); err != nil {
 		t.Fatal(err)
 	}
-	got := p.clientVersion
+	got := p.ClientVersion
 	if got.SessionNumber != 1 || got.ClientBuild != completeBuild || strings.Join(got.CheckClientVersions, ",") != strings.Join(currentTestClientVersions, ",") {
 		t.Fatalf("client version report = %+v", got)
 	}
-	if len(got.SourceCommands) != 2 || got.SourceCommands[0] != cmdLoginRequest || got.SourceCommands[1] != cmdCheckClientPush {
+	if len(got.SourceCommands) != 2 || got.SourceCommands[0] != CmdLoginRequest || got.SourceCommands[1] != CmdCheckClientPush {
 		t.Fatalf("source command IDs = %v", got.SourceCommands)
 	}
 	encoded, err := json.Marshal(got)

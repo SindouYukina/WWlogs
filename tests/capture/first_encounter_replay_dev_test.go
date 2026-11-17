@@ -56,11 +56,11 @@ func TestInitialAttributionReplayMatrix(t *testing.T) {
 	if !enabled {
 		t.Skip("explicit replay matrix inputs are not supplied")
 	}
-	key, err := loadEmbeddedPrivateKey()
+	key, err := LoadEmbeddedPrivateKey()
 	if err != nil {
 		t.Fatal(err)
 	}
-	masters, err := loadGameMasterDatabase(inputs.master, inputs.locale)
+	masters, err := LoadGameMasterDatabase(inputs.master, inputs.locale)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,9 +70,9 @@ func TestInitialAttributionReplayMatrix(t *testing.T) {
 	for _, item := range inputs.pcaps {
 		t.Run(item.name, func(t *testing.T) {
 			sink := newEquivalenceHashSink()
-			p, packets := equivalenceReplay(t, inputs, masters, key, item.path, func(p *processor) { p.dev.combatEventsJSONL = firstEncounterEventSink{sink} }, nil)
-			p.finishCapture()
-			statistics := p.damageStatisticsSnapshot()
+			p, packets := equivalenceReplay(t, inputs, masters, key, item.path, func(p *Processor) { p.Dev.combatEventsJSONL = firstEncounterEventSink{sink} }, nil)
+			p.FinishCapture()
+			statistics := p.DamageStatisticsSnapshot()
 			assertEncounterTotalsConserved(t, statistics)
 			assertRoleTotalsReconcile(t, statistics)
 			result := struct {
@@ -80,7 +80,7 @@ func TestInitialAttributionReplayMatrix(t *testing.T) {
 				Requests, Responses, Matched, Unpaired, Invalid, Duplicate, Packets int
 				Pairing                                                             RPCPairingSnapshot       `json:"pairing"`
 				Statistics                                                          DamageStatisticsSnapshot `json:"statistics"`
-			}{map[string]any{"lines": sink.lines, "sha256": fmt.Sprintf("%x", sink.hash.Sum(nil))}, p.stats.damageRequests, p.stats.candidateResponses, p.stats.decodedMatchedEvents, p.stats.unpairedResponses, p.stats.invalidResponses, p.stats.duplicateResponses, packets.udpPackets, p.rpcPairingSnapshot(), statistics}
+			}{map[string]any{"lines": sink.lines, "sha256": fmt.Sprintf("%x", sink.hash.Sum(nil))}, p.Stats.DamageRequests, p.Stats.CandidateResponses, p.Stats.DecodedMatchedEvents, p.Stats.UnpairedResponses, p.Stats.InvalidResponses, p.Stats.DuplicateResponses, packets.UDPPackets, p.RPCPairingSnapshot(), statistics}
 			data, err := json.MarshalIndent(result, "", "  ")
 			if err != nil {
 				t.Fatal(err)
@@ -104,7 +104,7 @@ func (w firstEncounterSchemaSink) Write(data []byte) (int, error) {
 		} `json:"decoded"`
 	}
 	// Only retain the scalar identity in memory for an equality check. Never persist the decoded body or ID.
-	if json.Unmarshal(data, &row) == nil && row.CommandID == cmdBasicInfoNotify && row.Direction == "in" {
+	if json.Unmarshal(data, &row) == nil && row.CommandID == CmdBasicInfoNotify && row.Direction == "in" {
 		for _, f := range row.Decoded.Fields {
 			if f.Number == 15 {
 				var id uint64
@@ -124,11 +124,11 @@ func TestFirstEncounterReplayTrace(t *testing.T) {
 	if path == "" || master == "" || out == "" {
 		t.Skip("explicit first-encounter replay inputs are not supplied")
 	}
-	key, err := loadEmbeddedPrivateKey()
+	key, err := LoadEmbeddedPrivateKey()
 	if err != nil {
 		t.Fatal(err)
 	}
-	masters, err := loadGameMasterDatabase(master, "en-US")
+	masters, err := LoadGameMasterDatabase(master, "en-US")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,9 +153,9 @@ func TestFirstEncounterReplayTrace(t *testing.T) {
 	var stages []stage
 	truncated := false
 	last := ""
-	observe := func(_ int, p *processor) {
-		s := p.damageStatisticsSnapshotAt(CaptureQueryTime{CaptureSessionID: p.damageStatistics.captureSessionID, Timestamp: p.currentFrameTime})
-		state := fmt.Sprintf("%d/%d/%d/%d/%d/%d/%s/%t/%t", p.sessionNumber, p.stats.playerRoleReports, len(p.playerRelevance.localPlayerIDs), len(p.playerRelevance.roleEntities), len(p.scenePlayerIDs), len(s.Encounters.Completed), s.Encounters.State, p.stats.damageRequests > 0, p.stats.decodedMatchedEvents > 0)
+	observe := func(_ int, p *Processor) {
+		s := p.DamageStatisticsSnapshotAt(CaptureQueryTime{CaptureSessionID: p.DamageStatistics.CaptureSessionID, Timestamp: p.CurrentFrameTime})
+		state := fmt.Sprintf("%d/%d/%d/%d/%d/%d/%s/%t/%t", p.SessionNumber, p.Stats.PlayerRoleReports, len(p.PlayerRelevance.LocalPlayerIDs), len(p.PlayerRelevance.RoleEntities), len(p.ScenePlayerIDs), len(s.Encounters.Completed), s.Encounters.State, p.Stats.DamageRequests > 0, p.Stats.DecodedMatchedEvents > 0)
 		if state == last {
 			return
 		}
@@ -164,7 +164,7 @@ func TestFirstEncounterReplayTrace(t *testing.T) {
 			return
 		}
 		last = state
-		v := p.viewSnapshot()
+		v := p.ViewSnapshot()
 		// Keep totals and trust, but omit player/entity identity tables from the trace.
 		s.ByPlayerEntity, s.Roles = nil, nil
 		for i := range s.Encounters.Completed {
@@ -173,33 +173,33 @@ func TestFirstEncounterReplayTrace(t *testing.T) {
 		if s.Encounters.Current != nil {
 			s.Encounters.Current.Roles = nil
 		}
-		stages = append(stages, stage{At: p.currentFrameTime.Format(encounterReplayTimeLayout), ProtocolSession: p.sessionNumber,
-			RoleReports: p.stats.playerRoleReports, LocalPlayers: len(p.playerRelevance.localPlayerIDs), LocalRoleEntities: len(p.playerRelevance.roleEntities),
-			Requests: p.stats.damageRequests, Responses: p.stats.candidateResponses, Matched: p.stats.decodedMatchedEvents,
-			Unpaired: p.stats.unpairedResponses, Duplicate: p.stats.duplicateResponses, Statistics: s,
+		stages = append(stages, stage{At: p.CurrentFrameTime.Format(encounterReplayTimeLayout), ProtocolSession: p.SessionNumber,
+			RoleReports: p.Stats.PlayerRoleReports, LocalPlayers: len(p.PlayerRelevance.LocalPlayerIDs), LocalRoleEntities: len(p.PlayerRelevance.RoleEntities),
+			Requests: p.Stats.DamageRequests, Responses: p.Stats.CandidateResponses, Matched: p.Stats.DecodedMatchedEvents,
+			Unpaired: p.Stats.UnpairedResponses, Duplicate: p.Stats.DuplicateResponses, Statistics: s,
 			ViewDamage: v.Statistics.DamageDealt, ViewRoles: len(v.Roles)})
 		if v.Statistics.DamageDealt != s.DamageDealt {
 			t.Fatal("statistics and view diverged")
 		}
 	}
-	p, _ := equivalenceReplay(t, equivalenceInputs{localIP: "192.168.1.2"}, masters, key, path, func(p *processor) {
-		p.intervalPerProtocolSession = true
-		p.dev.protocolSchema = schema
-		p.dev.schemaDecodeOut = firstEncounterSchemaSink{observe: func(id uint64) {
+	p, _ := equivalenceReplay(t, equivalenceInputs{localIP: "192.168.1.2"}, masters, key, path, func(p *Processor) {
+		p.IntervalPerProtocolSession = true
+		p.Dev.protocolSchema = schema
+		p.Dev.schemaDecodeOut = firstEncounterSchemaSink{observe: func(id uint64) {
 			basicID = id
-			basicAt = p.currentFrameTime.Format(encounterReplayTimeLayout)
-			basicBeforeDamage = p.stats.damageRequests == 0
+			basicAt = p.CurrentFrameTime.Format(encounterReplayTimeLayout)
+			basicBeforeDamage = p.Stats.DamageRequests == 0
 		}}
-	}, func(index int, p *processor) {
-		if basicID != 0 && p.playerRelevance.isLocalPlayerID(basicID) {
+	}, func(index int, p *Processor) {
+		if basicID != 0 && p.PlayerRelevance.IsLocalPlayerID(basicID) {
 			basicMatchesLaterAnchor = true
 		}
 		observe(index, p)
 	})
-	p.finishCapture()
+	p.FinishCapture()
 	observe(0, p)
-	assertEncounterTotalsConserved(t, p.damageStatisticsSnapshot())
-	assertRoleTotalsReconcile(t, p.damageStatisticsSnapshot())
+	assertEncounterTotalsConserved(t, p.DamageStatisticsSnapshot())
+	assertRoleTotalsReconcile(t, p.DamageStatisticsSnapshot())
 	data, err := json.MarshalIndent(struct {
 		Stages                      []stage `json:"stages"`
 		Truncated                   bool    `json:"truncated"`

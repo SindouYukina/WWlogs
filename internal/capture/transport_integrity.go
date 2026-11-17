@@ -122,28 +122,28 @@ func (m *transportMonitor) counters(direction string) *transportDirectionCounter
 
 // maxTransportLossEpisodes bounds the open-episode table; a stream holds at most one open episode, and streams are
 // bounded by maxKCPStreams, so the table cannot exceed it in normal operation.
-const maxTransportLossEpisodes = 4 * maxKCPStreams
+const maxTransportLossEpisodes = 4 * MaxKCPStreams
 
 // beginTransportLoss records that data of direction was lost after from and returns the episode ID. It marks the
 // context that depends on that direction suspect and tells statistics and effect tracking.
-func (p *processor) beginTransportLoss(direction string, from, detectedAt time.Time, reason string, skippedSegments int) uint64 {
+func (p *Processor) beginTransportLoss(direction string, from, detectedAt time.Time, reason string, skippedSegments int) uint64 {
 	id := p.openLossEpisode(direction, from, detectedAt, reason, skippedSegments)
-	p.context.invalidate(direction, from, reason)
-	if direction == "in" && p.damageStatistics != nil {
-		p.damageStatistics.setBattleStateUnverified(true)
+	p.Context.invalidate(direction, from, reason)
+	if direction == "in" && p.DamageStatistics != nil {
+		p.DamageStatistics.setBattleStateUnverified(true)
 	}
-	if p.damageStatistics != nil {
-		p.damageStatistics.beginTransportLoss(id, direction, from)
-		p.flushEncounterTransitions()
+	if p.DamageStatistics != nil {
+		p.DamageStatistics.beginTransportLoss(id, direction, from)
+		p.FlushEncounterTransitions()
 	}
-	if p.effects != nil {
-		p.effects.MarkTransportLoss(from)
+	if p.Effects != nil {
+		p.Effects.MarkTransportLoss(from)
 	}
 	return id
 }
 
 // openLossEpisode records a new loss episode of direction and counts it.
-func (p *processor) openLossEpisode(direction string, from, detectedAt time.Time, reason string, skippedSegments int) uint64 {
+func (p *Processor) openLossEpisode(direction string, from, detectedAt time.Time, reason string, skippedSegments int) uint64 {
 	m := &p.transport
 	m.nextLossID++
 	id := m.nextLossID
@@ -171,26 +171,26 @@ func (p *processor) openLossEpisode(direction string, from, detectedAt time.Time
 // and never recovered; the episode ends at the handshake, so it can mark only encounters before it. The new session's
 // context is not invalidated and no effect is touched: both were rebuilt at the handshake and depend on nothing the old
 // connection carried.
-func (p *processor) supersedeStreamLoss(state *stream, at time.Time) {
-	id := state.recovery.lossID
-	if !state.recovery.active {
+func (p *Processor) supersedeStreamLoss(state *Stream, at time.Time) {
+	id := state.Recovery.lossID
+	if !state.Recovery.Active {
 		from := state.lastDeliveredAt
 		if from.IsZero() || from.After(at) {
 			from = at
 		}
-		id = p.openLossEpisode(state.direction, from, at, kcpLossSuperseded, len(state.pending))
-		if p.damageStatistics != nil {
-			p.damageStatistics.beginTransportLoss(id, state.direction, from)
+		id = p.openLossEpisode(state.direction, from, at, kcpLossSuperseded, len(state.Pending))
+		if p.DamageStatistics != nil {
+			p.DamageStatistics.beginTransportLoss(id, state.direction, from)
 		}
 	}
-	state.recovery.active = false
+	state.Recovery.Active = false
 	p.failTransportLoss(id, state.direction)
 	if episode, ok := p.transport.episodes[id]; ok {
 		episode.ended = true
 	}
-	if p.damageStatistics != nil {
-		p.damageStatistics.endTransportLoss(id, at)
-		p.flushEncounterTransitions()
+	if p.DamageStatistics != nil {
+		p.DamageStatistics.endTransportLoss(id, at)
+		p.FlushEncounterTransitions()
 	}
 }
 
@@ -204,7 +204,7 @@ func sortedEpisodeIDs(episodes map[uint64]*transportLossEpisode) []uint64 {
 }
 
 // extendTransportLoss adds further skipped segments to an episode that has not recovered yet.
-func (p *processor) extendTransportLoss(id uint64, skippedSegments int) {
+func (p *Processor) extendTransportLoss(id uint64, skippedSegments int) {
 	if episode, ok := p.transport.episodes[id]; ok {
 		p.transport.counters(episode.direction).skippedSegments += uint64(skippedSegments)
 	}
@@ -212,7 +212,7 @@ func (p *processor) extendTransportLoss(id uint64, skippedSegments int) {
 
 // endTransportLoss records that the stream found a valid frame at to. The data between the episode's start and to
 // stays lost; only the transport state changes.
-func (p *processor) endTransportLoss(id uint64, direction string, to time.Time, details transportLossDetails) {
+func (p *Processor) endTransportLoss(id uint64, direction string, to time.Time, details transportLossDetails) {
 	counters := p.transport.counters(direction)
 	counters.recoveries++
 	counters.discardedBytes += uint64(details.DiscardedBytes)
@@ -225,15 +225,15 @@ func (p *processor) endTransportLoss(id uint64, direction string, to time.Time, 
 	if episode, ok := p.transport.episodes[id]; ok {
 		episode.ended = true
 	}
-	p.context.observeLossEnd(direction, to)
-	if p.damageStatistics != nil {
-		p.damageStatistics.endTransportLoss(id, to)
-		p.flushEncounterTransitions()
+	p.Context.observeLossEnd(direction, to)
+	if p.DamageStatistics != nil {
+		p.DamageStatistics.endTransportLoss(id, to)
+		p.FlushEncounterTransitions()
 	}
 }
 
 // failTransportLoss records that an episode could not find a frame within its budget or before the capture ended.
-func (p *processor) failTransportLoss(id uint64, direction string) {
+func (p *Processor) failTransportLoss(id uint64, direction string) {
 	episode, ok := p.transport.episodes[id]
 	if ok && episode.failed {
 		return
@@ -242,26 +242,26 @@ func (p *processor) failTransportLoss(id uint64, direction string) {
 		episode.failed = true
 	}
 	p.transport.counters(direction).unrecovered++
-	if p.damageStatistics != nil {
-		p.damageStatistics.failTransportLoss(id)
-		p.flushEncounterTransitions()
+	if p.DamageStatistics != nil {
+		p.DamageStatistics.failTransportLoss(id)
+		p.FlushEncounterTransitions()
 	}
 }
 
 // observeTransportGap tells statistics that a stream's data after since is delayed (open) or no longer delayed.
-func (p *processor) observeTransportGap(streamKey, direction string, since time.Time, open bool) {
-	if p.damageStatistics == nil {
+func (p *Processor) observeTransportGap(streamKey, direction string, since time.Time, open bool) {
+	if p.DamageStatistics == nil {
 		return
 	}
 	if open {
-		p.damageStatistics.setTransportGap(streamKey, since)
+		p.DamageStatistics.setTransportGap(streamKey, since)
 	} else {
-		p.damageStatistics.setTransportGap(streamKey, time.Time{})
+		p.DamageStatistics.setTransportGap(streamKey, time.Time{})
 	}
 }
 
-// transportHealthSnapshot combines the live stream state with the episode counters.
-func (p *processor) transportHealthSnapshot() TransportHealthSnapshot {
+// TransportHealthSnapshot combines the live stream state with the episode counters.
+func (p *Processor) TransportHealthSnapshot() TransportHealthSnapshot {
 	byDirection := map[string]*TransportDirectionHealth{
 		"in":  {Direction: "in", State: TransportHealthy},
 		"out": {Direction: "out", State: TransportHealthy},
@@ -272,21 +272,21 @@ func (p *processor) transportHealthSnapshot() TransportHealthSnapshot {
 			continue
 		}
 		health.Streams++
-		health.PendingSegments += len(state.pending)
-		health.PendingBytes += state.pendingBytes
+		health.PendingSegments += len(state.Pending)
+		health.PendingBytes += state.PendingBytes
 		current := TransportHealthy
 		switch {
-		case state.recovery.active && state.recovery.failed:
+		case state.Recovery.Active && state.Recovery.failed:
 			current = TransportUnrecoverable
-		case state.recovery.active:
+		case state.Recovery.Active:
 			current = TransportRecovering
-		case state.gapOpen:
+		case state.GapOpen:
 			current = TransportGapDetected
 		}
-		if state.gapOpen {
+		if state.GapOpen {
 			health.OpenGaps++
-			if health.OpenGapSince.IsZero() || state.gapSince.Before(health.OpenGapSince) {
-				health.OpenGapSince = state.gapSince
+			if health.OpenGapSince.IsZero() || state.GapSince.Before(health.OpenGapSince) {
+				health.OpenGapSince = state.GapSince
 			}
 		}
 		if transportStateRank(current) > transportStateRank(health.State) {
@@ -505,7 +505,7 @@ func (c *contextValidity) resetForScene(at time.Time, basis string) {
 	}
 }
 
-func (c *contextValidity) snapshot() ContextValiditySnapshot {
+func (c *contextValidity) Snapshot() ContextValiditySnapshot {
 	snapshot := ContextValiditySnapshot{State: ContextValid, DowngradedEvents: c.downgradedEvents,
 		RevalidatedEvents: c.revalidatedEvents, ClientReferencedEntities: len(c.clientReferenced)}
 	for _, name := range contextComponentOrder {
@@ -524,43 +524,43 @@ func (c *contextValidity) snapshot() ContextValiditySnapshot {
 }
 
 // observeContextSceneJoin and observeContextSessionStart rebuild context at scene and session boundaries.
-func (p *processor) observeContextSceneJoin(at time.Time) {
-	p.context.resetForScene(at, contextBasisSceneJoin)
-	if p.damageStatistics != nil && !p.context.battleState.suspect {
-		p.damageStatistics.setBattleStateUnverified(false)
+func (p *Processor) observeContextSceneJoin(at time.Time) {
+	p.Context.resetForScene(at, contextBasisSceneJoin)
+	if p.DamageStatistics != nil && !p.Context.battleState.suspect {
+		p.DamageStatistics.setBattleStateUnverified(false)
 	}
 }
 
-func (p *processor) observeContextSessionStart(at time.Time) {
-	p.context.resetForScene(at, contextBasisSessionStart)
-	if p.damageStatistics != nil {
-		p.damageStatistics.setBattleStateUnverified(false)
+func (p *Processor) observeContextSessionStart(at time.Time) {
+	p.Context.resetForScene(at, contextBasisSessionStart)
+	if p.DamageStatistics != nil {
+		p.DamageStatistics.setBattleStateUnverified(false)
 	}
 }
 
 // observeContextBattleSignal re-establishes the battle state from a local battle-state signal after the loss.
-func (p *processor) observeContextBattleSignal(at time.Time) {
-	if !p.context.battleState.suspect || !p.context.inboundEvidenceUsable(at) {
+func (p *Processor) observeContextBattleSignal(at time.Time) {
+	if !p.Context.battleState.suspect || !p.Context.inboundEvidenceUsable(at) {
 		return
 	}
-	p.context.battleState.revalidate(at, contextBasisBattleSignal)
-	if p.damageStatistics != nil {
-		p.damageStatistics.setBattleStateUnverified(false)
+	p.Context.battleState.revalidate(at, contextBasisBattleSignal)
+	if p.DamageStatistics != nil {
+		p.DamageStatistics.setBattleStateUnverified(false)
 	}
 }
 
 // observeContextLocalRole re-establishes local-player attribution when, after an inbound loss ended, the client
 // reports a current role entity that the registry still maps through PlayerSceneGroup to the anchored local player.
 // That shows the scene and the team mapping survived the loss.
-func (p *processor) observeContextLocalRole(entityID uint64, at time.Time) {
-	if !p.context.attribution.suspect || !p.context.inboundEvidenceUsable(at) || p.entities == nil || p.playerRelevance == nil {
+func (p *Processor) observeContextLocalRole(entityID uint64, at time.Time) {
+	if !p.Context.attribution.suspect || !p.Context.inboundEvidenceUsable(at) || p.Entities == nil || p.PlayerRelevance == nil {
 		return
 	}
-	entity, status := p.entities.resolve(entityID)
-	if status == resolutionUnknown || entity.entityID != entityID || !p.playerRelevance.isLocalPlayerRoleEntity(entity) {
+	entity, status := p.Entities.Resolve(entityID)
+	if status == ResolutionUnknown || entity.EntityID != entityID || !p.PlayerRelevance.isLocalPlayerRoleEntity(entity) {
 		return
 	}
-	p.context.attribution.revalidate(at, contextBasisLocalRoleReport)
+	p.Context.attribution.revalidate(at, contextBasisLocalRoleReport)
 }
 
 // Attribution downgrade reason carried on statistics records.
@@ -568,20 +568,20 @@ const contextDowngradeAttribution = "local_player_attribution_suspect"
 
 // gateAttribution keeps an event unattributed while local-player attribution is suspect: a local relation built
 // before the loss may no longer be true, and confirmed output must not include it.
-func (p *processor) gateAttribution(record CombatEventRecord) CombatEventRecord {
-	if !p.context.attribution.suspect {
+func (p *Processor) gateAttribution(record CombatEventRecord) CombatEventRecord {
+	if !p.Context.attribution.suspect {
 		return record
 	}
 	switch record.Flow {
 	case CombatFlowLocalOutgoing:
-		if p.context.revalidatesEntity(record.Source.EntityID) {
-			p.context.revalidatedEvents++
+		if p.Context.revalidatesEntity(record.Source.EntityID) {
+			p.Context.revalidatedEvents++
 			return record
 		}
 		record.Flow = CombatFlowUnattributedOutgoing
 	case CombatFlowLocalIncoming:
-		if p.context.revalidatesEntity(record.Target.EntityID) {
-			p.context.revalidatedEvents++
+		if p.Context.revalidatesEntity(record.Target.EntityID) {
+			p.Context.revalidatedEvents++
 			return record
 		}
 		record.Flow = CombatFlowUnattributedIncoming
@@ -590,7 +590,7 @@ func (p *processor) gateAttribution(record CombatEventRecord) CombatEventRecord 
 	}
 	record.Confidence = record.Flow.confidence()
 	record.ContextDowngrade = contextDowngradeAttribution
-	p.context.downgradedEvents++
+	p.Context.downgradedEvents++
 	return record
 }
 
@@ -602,9 +602,9 @@ type DataIntegritySnapshot struct {
 	Statistics DataIntegrity           `json:"statistics"`
 }
 
-func (p *processor) dataIntegritySnapshot(statistics DamageStatisticsSnapshot) DataIntegritySnapshot {
+func (p *Processor) dataIntegritySnapshot(statistics DamageStatisticsSnapshot) DataIntegritySnapshot {
 	return DataIntegritySnapshot{
-		Capture: p.captureLayerHealth(), Transport: p.transportHealthSnapshot(), Context: p.context.snapshot(),
+		Capture: p.CaptureLayerHealth(), Transport: p.TransportHealthSnapshot(), Context: p.Context.Snapshot(),
 		Statistics: statistics.Integrity,
 	}
 }

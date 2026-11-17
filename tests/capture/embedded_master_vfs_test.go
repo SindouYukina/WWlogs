@@ -96,15 +96,15 @@ func TestMasterLookupDigest(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		writeSortedLookups(digest, "character", master.characters)
-		writeSortedLookups(digest, "monster", master.monsters)
-		writeSortedLookups(digest, "skill", master.skills)
-		writeSortedLookups(digest, "commonSkill", master.commonSkills)
-		writeSortedLookups(digest, "buff", master.buffDefinitions)
-		writeSortedLookups(digest, "shield", master.shieldDefinitions)
-		writeSortedLookups(digest, "bullet", master.commonBullets)
-		writeSortedLookups(digest, "damage", master.damage)
-		writeSortedLookups(digest, "template", master.sceneIdentity.templateCatalog)
+		writeSortedLookups(digest, "character", master.Characters)
+		writeSortedLookups(digest, "monster", master.Monsters)
+		writeSortedLookups(digest, "skill", master.Skills)
+		writeSortedLookups(digest, "commonSkill", master.CommonSkills)
+		writeSortedLookups(digest, "buff", master.BuffDefinitions)
+		writeSortedLookups(digest, "shield", master.ShieldDefinitions)
+		writeSortedLookups(digest, "bullet", master.CommonBullets)
+		writeSortedLookups(digest, "damage", master.Damage)
+		writeSortedLookups(digest, "template", master.SceneIdentity.TemplateCatalog)
 		writeSortedLookups(digest, "damageListSkill", master.skillNames.damageListSkills)
 		writeSortedLookups(digest, "uiSkillName", master.skillNames.uiSkillNames)
 		writeSortedLookups(digest, "echoItem", master.skillNames.echoItems)
@@ -116,13 +116,13 @@ func TestMasterLookupDigest(t *testing.T) {
 		writeSortedLookups(digest, "roleOutro", master.skillNames.roleOutro)
 		writeSortedLookups(digest, "outroDamage", master.skillNames.outroDamage)
 		hudCues := map[uint64]string{}
-		for id, static := range master.buffStatics {
+		for id, static := range master.BuffStatics {
 			if len(static.hudCueTypes) > 0 {
 				hudCues[id] = fmt.Sprintf("%v/%s/%v", static.hudCueTypes, static.hudPolarity, static.hudHiddenOnMonsterHead)
 			}
 		}
 		writeSortedLookups(digest, "buffHudCue", hudCues)
-		fmt.Fprintf(digest, "relations=%d monsters=%d\n", len(master.sceneIdentity.levelTemplates), len(master.sceneIdentity.levelMonsters))
+		fmt.Fprintf(digest, "relations=%d monsters=%d\n", len(master.SceneIdentity.LevelTemplates), len(master.SceneIdentity.levelMonsters))
 	}
 	t.Logf("master lookup digest: %s", hex.EncodeToString(digest.Sum(nil)))
 }
@@ -140,7 +140,7 @@ func writeSortedLookups[V any](out io.Writer, family string, values map[uint64]V
 
 // stripPointers renders a pointer-carrying template candidate by value, so a digest never depends on an address.
 func stripPointers(value any) any {
-	if candidate, ok := value.(sceneTemplateCandidate); ok && candidate.DevLabel != nil {
+	if candidate, ok := value.(SceneTemplateCandidate); ok && candidate.DevLabel != nil {
 		label := *candidate.DevLabel
 		candidate.DevLabel = nil
 		return fmt.Sprintf("%+v|%+v", candidate, label)
@@ -174,9 +174,9 @@ func TestSceneTemplateRelationsShareOnlySingleTemplateKeys(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	master := &gameMaster{sceneIdentity: &sceneIdentityMaster{
-		levelTemplates: make(map[sceneLevelKey][]sceneTemplateCandidate),
-		templateCatalog: map[uint64]sceneTemplateCandidate{
+	master := &GameMaster{SceneIdentity: &SceneIdentityMaster{
+		LevelTemplates: make(map[SceneLevelKey][]SceneTemplateCandidate),
+		TemplateCatalog: map[uint64]SceneTemplateCandidate{
 			7: {TemplateID: 7, RawName: "seven"},
 			8: {TemplateID: 8, RawName: "eight"},
 		},
@@ -186,7 +186,7 @@ func TestSceneTemplateRelationsShareOnlySingleTemplateKeys(t *testing.T) {
 	}
 	ids := func(entity uint64) []uint64 {
 		var out []uint64
-		for _, candidate := range master.sceneIdentity.levelTemplates[sceneLevelKey{mapID: 1, entityID: entity}] {
+		for _, candidate := range master.SceneIdentity.LevelTemplates[SceneLevelKey{MapID: 1, EntityID: entity}] {
 			out = append(out, candidate.TemplateID)
 		}
 		return out
@@ -202,8 +202,8 @@ func TestSceneTemplateRelationsShareOnlySingleTemplateKeys(t *testing.T) {
 			}
 		}
 	}
-	first := master.sceneIdentity.levelTemplates[sceneLevelKey{mapID: 1, entityID: 10}]
-	second := master.sceneIdentity.levelTemplates[sceneLevelKey{mapID: 1, entityID: 11}]
+	first := master.SceneIdentity.LevelTemplates[SceneLevelKey{MapID: 1, EntityID: 10}]
+	second := master.SceneIdentity.LevelTemplates[SceneLevelKey{MapID: 1, EntityID: 11}]
 	if &first[0] != &second[0] {
 		t.Fatal("entities of one template do not share a candidate")
 	}
@@ -229,14 +229,14 @@ func TestEmbeddedMasterKeepsEverySceneTemplateRelation(t *testing.T) {
 		t.Fatal(err)
 	}
 	total := 0
-	for key, candidates := range master.sceneIdentity.levelTemplates {
+	for key, candidates := range master.SceneIdentity.LevelTemplates {
 		total += len(candidates)
 		for _, candidate := range candidates {
 			var found int
-			if key.entityID%4096 != 0 {
+			if key.EntityID%4096 != 0 {
 				continue
 			}
-			if err := db.QueryRow("SELECT count(*) FROM map_entity_template_ref WHERE map_id=? AND entity_id=? AND template_id=?", key.mapID, key.entityID, candidate.TemplateID).Scan(&found); err != nil || found == 0 {
+			if err := db.QueryRow("SELECT count(*) FROM map_entity_template_ref WHERE map_id=? AND entity_id=? AND template_id=?", key.MapID, key.EntityID, candidate.TemplateID).Scan(&found); err != nil || found == 0 {
 				t.Fatalf("relation %+v -> %d is not in the database: %d, %v", key, candidate.TemplateID, found, err)
 			}
 		}

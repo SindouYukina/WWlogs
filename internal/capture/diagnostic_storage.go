@@ -2,7 +2,7 @@ package capture
 
 import ()
 
-type diagnosticSetupError struct{ err error }
+type DiagnosticSetupError struct{ Err error }
 
-func (e *diagnosticSetupError) Error() string { return e.err.Error() }
-func (e *diagnosticSetupError) Unwrap() error { return e.err }
+func (e *DiagnosticSetupError) Error() string { return e.Err.Error() }
+func (e *DiagnosticSetupError) Unwrap() error { return e.Err }

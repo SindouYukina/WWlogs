@@ -122,18 +122,18 @@ func TestDefaultSessionDiagnosticsWriteReplayPCAPAndPreserveStatistics(t *testin
 		t.Fatal(err)
 	}
 	p := newPairingTestProcessor()
-	d.attach(p)
+	d.Attach(p)
 	payload := []byte{1, 2, 3, 4, 5, 6}
 	at := time.Date(2026, 11, 5, 1, 2, 3, 0, time.UTC)
-	d.packet(gopacket.CaptureInfo{Timestamp: at, CaptureLength: len(payload), Length: len(payload)}, payload)
+	d.Packet(gopacket.CaptureInfo{Timestamp: at, CaptureLength: len(payload), Length: len(payload)}, payload)
 	writeTestDamage(p, 100, 200, 1, 100)
-	before := p.damageStatistics.Snapshot()
-	summary := d.finish(StopReasonRequested, CaptureCounter{Status: CaptureCounterAvailable})
-	after := p.damageStatistics.Snapshot()
+	before := p.DamageStatistics.Snapshot()
+	summary := d.Finish(StopReasonRequested, CaptureCounter{Status: CaptureCounterAvailable})
+	after := p.DamageStatistics.Snapshot()
 	if !reflect.DeepEqual(before, after) || !strings.Contains(summary, "state=complete") || !strings.Contains(summary, "shutdown=clean") {
 		t.Fatal("diagnostics changed statistics or did not close cleanly")
 	}
-	if d.finish(StopReasonRequested, CaptureCounter{}) != "" {
+	if d.Finish(StopReasonRequested, CaptureCounter{}) != "" {
 		t.Fatal("diagnostics finalized twice")
 	}
 	file, err := os.Open(d.pcap.path)
@@ -170,7 +170,7 @@ func TestDiagnosticCapacityFailureDoesNotChangeDamageOrBlock(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := newPairingTestProcessor()
-	d.attach(p)
+	d.Attach(p)
 	for _, sink := range d.pipeline.sinks {
 		target, ok := sink.target.(*budgetedDiagnosticWriter)
 		if ok {
@@ -180,9 +180,9 @@ func TestDiagnosticCapacityFailureDoesNotChangeDamageOrBlock(t *testing.T) {
 		}
 	}
 	writeTestDamage(p, 100, 200, 1, 150)
-	d.packet(gopacket.CaptureInfo{Timestamp: time.Now(), CaptureLength: 4, Length: 4}, []byte{1, 2, 3, 4})
-	summary := d.finish(StopReasonRequested, CaptureCounter{})
-	got := p.damageStatistics.Snapshot()
+	d.Packet(gopacket.CaptureInfo{Timestamp: time.Now(), CaptureLength: 4, Length: 4}, []byte{1, 2, 3, 4})
+	summary := d.Finish(StopReasonRequested, CaptureCounter{})
+	got := p.DamageStatistics.Snapshot()
 	assertRoleTotalsReconcile(t, got)
 	if got.DamageDealt != 150 || got.Roles[0].DamageDealt != 150 || !strings.Contains(summary, "state=incomplete") || !strings.Contains(summary, "writer_failure") {
 		t.Fatal("full diagnostic storage lost analysis or hid incomplete output")

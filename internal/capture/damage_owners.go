@@ -10,9 +10,9 @@ import (
 // how IDs from different SQLite storage types compare.
 const damageOwnerIDs = `WITH damage_ids(id) AS MATERIALIZED (SELECT CAST(id AS TEXT) FROM damage) `
 
-// damageOwnerJSONL is one static owner of a DamageId: a skill that lists the DamageId in its damage references, or a
+// DamageOwnerJSONL is one static owner of a DamageId: a skill that lists the DamageId in its damage references, or a
 // Buff whose extra-effect parameters name it. The owner is a master-table reference, not the runtime attacker.
-type damageOwnerJSONL struct {
+type DamageOwnerJSONL struct {
 	Kind     string `json:"kind"`
 	ID       uint64 `json:"id"`
 	RoleID   uint64 `json:"roleId,omitempty"`
@@ -21,7 +21,7 @@ type damageOwnerJSONL struct {
 
 // loadSQLiteDamageOwners indexes, for every DamageId, the skills (skill_damage_ref) and Buffs (buff_extra_effect_parameters)
 // that reference it, with the role that owns the skill group of each skill. Both tables are optional.
-func loadSQLiteDamageOwners(db *sql.DB, locale string, master *gameMaster) error {
+func loadSQLiteDamageOwners(db *sql.DB, locale string, master *GameMaster) error {
 	exists, err := masterTableExists(db, "skill_damage_ref")
 	if err != nil || !exists {
 		return err
@@ -49,16 +49,16 @@ func loadSQLiteDamageOwners(db *sql.DB, locale string, master *gameMaster) error
 			rows.Close()
 			return err
 		}
-		owner := damageOwnerJSONL{Kind: "skill", ID: skillID}
+		owner := DamageOwnerJSONL{Kind: "skill", ID: skillID}
 		if roleRaw != "" {
 			if roleID, err := parseMasterID(roleRaw, "roleinfo.id"); err == nil {
 				owner.RoleID = roleID
-				if record, ok := master.characters[roleID]; ok {
+				if record, ok := master.Characters[roleID]; ok {
 					owner.RoleName = record.Name
 				}
 			}
 		}
-		master.damageOwners[damageID] = append(master.damageOwners[damageID], owner)
+		master.DamageOwners[damageID] = append(master.DamageOwners[damageID], owner)
 	}
 	if err := rows.Close(); err != nil {
 		return err
@@ -86,12 +86,12 @@ func loadSQLiteDamageOwners(db *sql.DB, locale string, master *gameMaster) error
 		if err != nil {
 			return err
 		}
-		master.damageOwners[damageID] = append(master.damageOwners[damageID], damageOwnerJSONL{Kind: "buff", ID: buffID})
+		master.DamageOwners[damageID] = append(master.DamageOwners[damageID], DamageOwnerJSONL{Kind: "buff", ID: buffID})
 	}
 	if err := buffRows.Err(); err != nil {
 		return err
 	}
-	for _, list := range master.damageOwners {
+	for _, list := range master.DamageOwners {
 		sort.Slice(list, func(i, j int) bool {
 			if list[i].Kind != list[j].Kind {
 				return list[i].Kind < list[j].Kind

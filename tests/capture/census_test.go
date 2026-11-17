@@ -20,7 +20,7 @@ func TestFrameErrorObservationsAreBounded(t *testing.T) {
 	census := newCommandCensus(nil)
 	when := time.Date(2026, time.October, 26, 5, 0, 0, 0, time.UTC)
 	for i := 0; i < maxFrameErrorObservations+3; i++ {
-		census.FailedCRC(crcFailureObservation{Direction: "in", CommandID: uint16(i), Timestamp: when})
+		census.FailedCRC(CRCFailureObservation{Direction: "in", CommandID: uint16(i), Timestamp: when})
 		census.Malformed("candidate", when, i, 1, 2)
 	}
 	if len(census.crcFailures) != maxFrameErrorObservations || census.crcOmitted != 3 {
@@ -33,9 +33,9 @@ func TestFrameErrorObservationsAreBounded(t *testing.T) {
 
 func TestCommandCensusLinksCRCFailureToNeighborFrames(t *testing.T) {
 	census := newCommandCensus(nil)
-	previous := frameBoundaryObservation{Offset: 0, MessageType: 1, Sequence: 12, CommandID: 1234, FrameLength: 14}
-	index := census.FailedCRC(crcFailureObservation{Direction: "in", Offset: 14, PreviousValid: &previous})
-	next := frameBoundaryObservation{Offset: 40, MessageType: 1, Sequence: 14, CommandID: 5678, FrameLength: 15}
+	previous := FrameBoundaryObservation{Offset: 0, MessageType: 1, Sequence: 12, CommandID: 1234, FrameLength: 14}
+	index := census.FailedCRC(CRCFailureObservation{Direction: "in", Offset: 14, PreviousValid: &previous})
+	next := FrameBoundaryObservation{Offset: 40, MessageType: 1, Sequence: 14, CommandID: 5678, FrameLength: 15}
 	census.SetNextValidFrame(index, next)
 
 	observation := census.crcFailures[index]
@@ -45,16 +45,16 @@ func TestCommandCensusLinksCRCFailureToNeighborFrames(t *testing.T) {
 	if observation.NextValid == nil || observation.NextValid.Sequence != 14 {
 		t.Fatalf("next valid frame context = %#v", observation.NextValid)
 	}
-	census.SetNextValidFrame(index, frameBoundaryObservation{Sequence: 99})
+	census.SetNextValidFrame(index, FrameBoundaryObservation{Sequence: 99})
 	if observation.NextValid.Sequence != 14 {
 		t.Fatalf("next valid frame context was overwritten: %#v", observation.NextValid)
 	}
 }
 
 func TestExtractMovePackageObservationUsesSchemaFieldNumbers(t *testing.T) {
-	message := appendVarintField(nil, fieldMovePackagePushSceneOwnerID, 99)
-	message = appendBytesField(message, fieldMovePackagePushMovingEntities, appendVarintField(appendVarintField(nil, fieldMovingEntityDataEntityID, 7), fieldMovingEntityDataOriginator, 3))
-	message = appendBytesField(message, fieldMovePackagePushMovingEntities, appendVarintField(nil, fieldMovingEntityDataEntityID, 42))
+	message := appendVarintField(nil, FieldMovePackagePushSceneOwnerID, 99)
+	message = appendBytesField(message, FieldMovePackagePushMovingEntities, appendVarintField(appendVarintField(nil, FieldMovingEntityDataEntityID, 7), FieldMovingEntityDataOriginator, 3))
+	message = appendBytesField(message, FieldMovePackagePushMovingEntities, appendVarintField(nil, FieldMovingEntityDataEntityID, 42))
 	observation, err := extractMovePackageObservation(message)
 	if err != nil {
 		t.Fatal(err)
@@ -68,8 +68,8 @@ func TestExtractMovePackageObservationUsesSchemaFieldNumbers(t *testing.T) {
 }
 
 func TestExtractPlayerFollowerObservationUsesSchemaFieldNumbers(t *testing.T) {
-	message := appendVarintField(nil, fieldPlayerFollowerNotifyPlayerID, 99)
-	message = appendBytesField(message, fieldPlayerFollowerNotifyListPlayerFollowerPb, appendVarintField(appendVarintField(nil, fieldPlayerFollowerPbType, 2), fieldPlayerFollowerPbEntityID, 7))
+	message := appendVarintField(nil, FieldPlayerFollowerNotifyPlayerID, 99)
+	message = appendBytesField(message, FieldPlayerFollowerNotifyListPlayerFollowerPb, appendVarintField(appendVarintField(nil, FieldPlayerFollowerPbType, 2), FieldPlayerFollowerPbEntityID, 7))
 	observation, err := extractPlayerFollowerObservation(message)
 	if err != nil {
 		t.Fatal(err)

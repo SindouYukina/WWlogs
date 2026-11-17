@@ -48,11 +48,11 @@ func TestReplayPerformanceCollector(t *testing.T) {
 		rounds = parsed
 	}
 	captures := loadRawCaptures(t, os.Getenv("WWLOGS_PERF_PCAPS"))
-	key, err := loadEmbeddedPrivateKey()
+	key, err := LoadEmbeddedPrivateKey()
 	if err != nil {
 		t.Fatalf("embedded key payload is required: %v", err)
 	}
-	masters, err := loadGameMasterDatabase(os.Getenv("WWLOGS_PERF_MASTER_DB"), "zh-TW")
+	masters, err := LoadGameMasterDatabase(os.Getenv("WWLOGS_PERF_MASTER_DB"), "zh-TW")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,25 +73,25 @@ func TestReplayPerformanceCollector(t *testing.T) {
 		}))
 		phases["pipeline"] = append(phases["pipeline"], measurePhase(total, func() {
 			for _, capture := range captures {
-				p := newProcessor(key, io.Discard, io.Discard, nil)
-				p.masters = masters
-				streams, stats := make(map[string]*stream), captureStats{}
+				p := NewProcessor(key, io.Discard, io.Discard, nil)
+				p.Masters = masters
+				streams, stats := make(map[string]*Stream), CaptureStats{}
 				replayRawCapture(p, capture, nil, 0, streams, &stats)
-				finishTransport(streams, p, &stats)
-				p.finishCapture()
-				_ = p.currentStatisticsReport().String()
+				FinishTransport(streams, p, &stats)
+				p.FinishCapture()
+				_ = p.CurrentStatisticsReport().String()
 			}
 		}))
 		directory := t.TempDir()
 		phases["diagnostics"] = append(phases["diagnostics"], measurePhase(total, func() {
 			for i, capture := range captures {
-				p := newProcessor(key, io.Discard, io.Discard, nil)
-				p.masters = masters
+				p := NewProcessor(key, io.Discard, io.Discard, nil)
+				p.Masters = masters
 				files, finish := perfDiagnosticFiles(t, filepath.Join(directory, strconv.Itoa(i)), p)
-				streams, stats := make(map[string]*stream), captureStats{}
+				streams, stats := make(map[string]*Stream), CaptureStats{}
 				replayRawCapture(p, capture, nil, 0, streams, &stats)
-				finishTransport(streams, p, &stats)
-				p.finishCapture()
+				FinishTransport(streams, p, &stats)
+				p.FinishCapture()
 				p.writeEncounterFinal()
 				finish()
 				for _, file := range files {
@@ -109,15 +109,15 @@ func TestReplayPerformanceCollector(t *testing.T) {
 			largest = capture
 		}
 	}
-	p := newProcessor(key, io.Discard, io.Discard, nil)
-	p.masters = masters
-	streams, stats := make(map[string]*stream), captureStats{}
+	p := NewProcessor(key, io.Discard, io.Discard, nil)
+	p.Masters = masters
+	streams, stats := make(map[string]*Stream), CaptureStats{}
 	replayRawCapture(p, largest, nil, 0, streams, &stats)
 	const calls = 2000
 	started := time.Now()
 	for i := 0; i < calls; i++ {
-		_ = p.currentStatisticsReport().String()
-		_ = p.transportHealthSnapshot()
+		_ = p.CurrentStatisticsReport().String()
+		_ = p.TransportHealthSnapshot()
 	}
 	result["statisticsReportAndHealthMicrosPerCall"] = float64(time.Since(started).Microseconds()) / calls
 	started = time.Now()
@@ -133,14 +133,14 @@ func TestReplayPerformanceCollector(t *testing.T) {
 
 	// Worst-case resynchronization: one search pass over a full retained buffer of noise.
 	random := rand.New(rand.NewSource(1))
-	noise := make([]byte, maxResyncRetainedBytes)
+	noise := make([]byte, MaxResyncRetainedBytes)
 	random.Read(noise)
 	var worst time.Duration
 	started = time.Now()
 	const passes = 50
 	for i := 0; i < passes; i++ {
 		passStart := time.Now()
-		findResyncFrame(noise, nil, &captureStats{})
+		FindResyncFrame(noise, nil, &CaptureStats{})
 		if elapsed := time.Since(passStart); elapsed > worst {
 			worst = elapsed
 		}
@@ -159,7 +159,7 @@ func TestReplayPerformanceCollector(t *testing.T) {
 }
 
 // perfDiagnosticFiles points the development per-event sinks at real files and returns a function that finishes them.
-func perfDiagnosticFiles(t *testing.T, directory string, p *processor) ([]*os.File, func()) {
+func perfDiagnosticFiles(t *testing.T, directory string, p *Processor) ([]*os.File, func()) {
 	t.Helper()
 	if err := os.MkdirAll(directory, 0o700); err != nil {
 		t.Fatal(err)
@@ -174,8 +174,8 @@ func perfDiagnosticFiles(t *testing.T, directory string, p *processor) ([]*os.Fi
 	events, buffEvents, buffSnapshots, archive, encounters, console := open("combat-events.jsonl"), open("buff-events.jsonl"),
 		open("buff-snapshots.jsonl"), open("frames.jsonl"), open("encounters.jsonl"), open("console.log")
 	consoleWriter := bufio.NewWriter(console)
-	p.dev.combatEventsJSONL, p.dev.buffLifecycle, p.dev.buffSnapshots = events, buffEvents, buffSnapshots
-	p.dev.frameArchive, p.dev.encounterOut, p.dev.stdout = archive, encounters, consoleWriter
+	p.Dev.combatEventsJSONL, p.Dev.buffLifecycle, p.Dev.buffSnapshots = events, buffEvents, buffSnapshots
+	p.Dev.frameArchive, p.Dev.encounterOut, p.Dev.stdout = archive, encounters, consoleWriter
 	p.recordEncounterTransitions()
 	finish := perfWrapDiagnostics(p, consoleWriter)
 	return []*os.File{events, buffEvents, buffSnapshots, archive, encounters, console}, func() {

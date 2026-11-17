@@ -36,18 +36,18 @@ func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("test wri
 func TestFrameDecodeStatusClassifiesWithoutDecrypting(t *testing.T) {
 	tests := []struct {
 		name     string
-		frame    gameFrame
+		frame    GameFrame
 		readable bool
-		state    protocolState
+		state    ProtocolState
 		want     string
 	}{
-		{"handshake", gameFrame{commandID: cmdProtoKeyResponse, direction: "in", body: []byte{1}}, false, protocolNone, frameStatusHandshake},
-		{"empty body", gameFrame{commandID: 1651, direction: "in"}, true, protocolCurrent, frameStatusEmptyBody},
-		{"implemented in the current protocol", gameFrame{commandID: cmdCombatSendPackRequest, direction: "out", body: []byte{1}}, true, protocolCurrent, frameStatusImplemented},
-		{"undecoded", gameFrame{commandID: 1651, direction: "in", body: []byte{1}}, true, protocolCurrent, frameStatusUndecoded},
-		{"another game version", gameFrame{commandID: cmdCombatSendPackRequest, direction: "out", body: []byte{1}}, false, protocolUnsupported, frameStatusNotCurrentProtocol},
-		{"before the version report", gameFrame{commandID: cmdCombatSendPackRequest, direction: "out", body: []byte{1}}, false, protocolPending, frameStatusNotCurrentProtocol},
-		{"command 112 outbound is not handshake", gameFrame{commandID: cmdProtoKeyResponse, direction: "out", body: []byte{1}}, false, protocolNone, frameStatusUndecoded},
+		{"handshake", GameFrame{CommandID: CmdProtoKeyResponse, Direction: "in", Body: []byte{1}}, false, ProtocolNone, frameStatusHandshake},
+		{"empty body", GameFrame{CommandID: 1651, Direction: "in"}, true, ProtocolCurrent, frameStatusEmptyBody},
+		{"implemented in the current protocol", GameFrame{CommandID: CmdCombatSendPackRequest, Direction: "out", Body: []byte{1}}, true, ProtocolCurrent, frameStatusImplemented},
+		{"undecoded", GameFrame{CommandID: 1651, Direction: "in", Body: []byte{1}}, true, ProtocolCurrent, frameStatusUndecoded},
+		{"another game version", GameFrame{CommandID: CmdCombatSendPackRequest, Direction: "out", Body: []byte{1}}, false, ProtocolUnsupported, frameStatusNotCurrentProtocol},
+		{"before the version report", GameFrame{CommandID: CmdCombatSendPackRequest, Direction: "out", Body: []byte{1}}, false, ProtocolPending, frameStatusNotCurrentProtocol},
+		{"command 112 outbound is not handshake", GameFrame{CommandID: CmdProtoKeyResponse, Direction: "out", Body: []byte{1}}, false, ProtocolNone, frameStatusUndecoded},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -62,11 +62,11 @@ func TestArchiveRecordsOrderDigestsAndNoKeyMaterial(t *testing.T) {
 	key := bytes.Repeat([]byte{0xA5}, 32)
 	body := []byte("ciphertext-bytes-that-are-not-plaintext")
 	var out bytes.Buffer
-	p := &processor{session: key, sessionNumber: 2, dev: processorDiagnostics{frameArchive: &out}}
+	p := &Processor{Session: key, SessionNumber: 2, Dev: processorDiagnostics{frameArchive: &out}}
 	stamp := time.Date(2026, 10, 28, 1, 2, 3, 4, time.UTC)
 
-	p.handleFrame(gameFrame{commandID: 1651, direction: "in", sequence: 7, token: 9, body: nil, timestamp: stamp})
-	p.archiveFrame(gameFrame{commandID: 1651, direction: "in", sequence: 8, body: body, timestamp: stamp})
+	p.HandleFrame(GameFrame{CommandID: 1651, Direction: "in", Sequence: 7, Token: 9, Body: nil, Timestamp: stamp})
+	p.ArchiveFrame(GameFrame{CommandID: 1651, Direction: "in", Sequence: 8, Body: body, Timestamp: stamp})
 
 	raw := out.String()
 	if strings.Contains(raw, hex.EncodeToString(key)) || strings.Contains(raw, string(body)) {
@@ -93,9 +93,9 @@ func TestArchiveRecordsOrderDigestsAndNoKeyMaterial(t *testing.T) {
 }
 
 func TestArchiveCountsWriteErrorsWithoutPanicking(t *testing.T) {
-	p := &processor{dev: processorDiagnostics{frameArchive: failingWriter{}}}
-	p.archiveFrame(gameFrame{commandID: 1651, direction: "in", body: []byte{1}})
-	if p.dev.frameArchiveErrors != 1 || p.dev.frameOrdinal != 1 {
-		t.Fatalf("errors=%d ordinal=%d, want 1 and 1", p.dev.frameArchiveErrors, p.dev.frameOrdinal)
+	p := &Processor{Dev: processorDiagnostics{frameArchive: failingWriter{}}}
+	p.ArchiveFrame(GameFrame{CommandID: 1651, Direction: "in", Body: []byte{1}})
+	if p.Dev.frameArchiveErrors != 1 || p.Dev.frameOrdinal != 1 {
+		t.Fatalf("errors=%d ordinal=%d, want 1 and 1", p.Dev.frameArchiveErrors, p.Dev.frameOrdinal)
 	}
 }

@@ -84,7 +84,7 @@ func requireNoFinding(t *testing.T, contract string, findings []string) {
 // The shared core reads Development state directly instead of through a hook (contract 2).
 func TestNegativeSharedCodeReadsDevelopmentState(t *testing.T) {
 	public, development := probeChecks(t, overrides(file("architecture_probe.go", "",
-		"func (p *processor) architectureProbeReadsResearch() bool { return p.dev.research }")))
+		"func (p *Processor) architectureProbeReadsResearch() bool { return p.Dev.research }")))
 	findings := sharedReferenceFindings(public, development)
 	requireFinding(t, findings, "architecture_probe.go", "field processorDiagnostics.research", "only the Development profile declares")
 	requireFinding(t, findings, "Public profile does not type-check", "research")
@@ -151,17 +151,17 @@ func TestNegativeProfileFileConstraints(t *testing.T) {
 // (contract 3).
 func TestNegativeSplitDeclarationsCarryValues(t *testing.T) {
 	public, development := probeChecks(t, overrides(
-		file("architecture_probe_public.go", "!wwdev", "func (p *processor) architectureProbeDecision() bool { return false }\n\n"+
-			"func (p *processor) architectureProbeHook(int) {}\n\n"+
+		file("architecture_probe_public.go", "!wwdev", "func (p *Processor) architectureProbeDecision() bool { return false }\n\n"+
+			"func (p *Processor) architectureProbeHook(int) {}\n\n"+
 			"type architectureProbeState struct{ count int }"),
-		file("architecture_probe_development.go", "wwdev", "func (p *processor) architectureProbeDecision() bool { return p.dev.research }\n\n"+
-			"func (p *processor) architectureProbeHook(value int64) {}\n\n"+
+		file("architecture_probe_development.go", "wwdev", "func (p *Processor) architectureProbeDecision() bool { return p.Dev.research }\n\n"+
+			"func (p *Processor) architectureProbeHook(value int64) {}\n\n"+
 			"type architectureProbeState struct{ count int }"),
-		file("architecture_probe.go", "", "func (p *processor) architectureProbeUse() int {\n\tif p.architectureProbeDecision() {\n\t\treturn 1\n\t}\n\treturn 0\n}"),
+		file("architecture_probe.go", "", "func (p *Processor) architectureProbeUse() int {\n\tif p.architectureProbeDecision() {\n\t\treturn 1\n\t}\n\treturn 0\n}"),
 	))
 	findings, _ := splitDeclarationFindings(public, development)
-	requireFinding(t, findings, "method processor.architectureProbeDecision", "returns a value")
-	requireFinding(t, findings, "method processor.architectureProbeHook", "differ")
+	requireFinding(t, findings, "method Processor.architectureProbeDecision", "returns a value")
+	requireFinding(t, findings, "method Processor.architectureProbeHook", "differ")
 	requireFinding(t, findings, "type architectureProbeState", "has 1 fields")
 	real, _ := splitDeclarationFindings(productCheck(t, publicProfile, probePackage), productCheck(t, developmentProfile, probePackage))
 	requireNoFinding(t, "split declarations", real)
@@ -170,7 +170,7 @@ func TestNegativeSplitDeclarationsCarryValues(t *testing.T) {
 // The core takes the research schema as an input (contract 6).
 func TestNegativeResearchSchemaEntersTheCore(t *testing.T) {
 	_, development := probeChecks(t, overrides(file("architecture_probe.go", "",
-		"func (p *processor) architectureProbeDecodesWithSchema(schema *protocolSchema) bool { return schema != nil }")))
+		"func (p *Processor) architectureProbeDecodesWithSchema(schema *protocolSchema) bool { return schema != nil }")))
 	requireFinding(t, researchSchemaFindings(development), "architecture_probe.go", "research schema declaration protocolSchema")
 	requireNoFinding(t, "research schema", researchSchemaFindings(productCheck(t, developmentProfile, probePackage)))
 }
@@ -180,16 +180,16 @@ func TestNegativeResearchSchemaEntersTheCore(t *testing.T) {
 func TestNegativeDevelopmentWritesCoreState(t *testing.T) {
 	_, development := probeChecks(t, overrides(
 		file("architecture_probe.go", "", "var architectureProbeShared int"),
-		file("architecture_probe_development.go", "wwdev", "func (p *processor) architectureProbeCountsParseError() { p.stats.parseErrors++ }\n\n"+
-			"func architectureProbeChangesRow(row *buffLifecycleAuditRow) { row.SessionNumber++ }\n\n"+
-			"func architectureProbeReplacesEvent(event *combatEvent) { *event = combatEvent{} }\n\n"+
+		file("architecture_probe_development.go", "wwdev", "func (p *Processor) architectureProbeCountsParseError() { p.Stats.ParseErrors++ }\n\n"+
+			"func architectureProbeChangesRow(row *BuffLifecycleAuditRow) { row.SessionNumber++ }\n\n"+
+			"func architectureProbeReplacesEvent(event *CombatEvent) { *event = CombatEvent{} }\n\n"+
 			"func architectureProbeSetsShared() { architectureProbeShared = 1 }\n\n"+
-			"func (p *processor) architectureProbeOwnState() { p.dev.research = true }"),
+			"func (p *Processor) architectureProbeOwnState() { p.Dev.research = true }"),
 	))
 	findings, _ := developmentWriteFindings(development)
-	requireFinding(t, findings, "architectureProbeCountsParseError", "core state processor.stats")
-	requireFinding(t, findings, "architectureProbeChangesRow", "buffLifecycleAuditRow.SessionNumber", "core type")
-	requireFinding(t, findings, "architectureProbeReplacesEvent", "combatEvent")
+	requireFinding(t, findings, "architectureProbeCountsParseError", "core state Processor.Stats")
+	requireFinding(t, findings, "architectureProbeChangesRow", "BuffLifecycleAuditRow.SessionNumber", "core type")
+	requireFinding(t, findings, "architectureProbeReplacesEvent", "CombatEvent")
 	requireFinding(t, findings, "architectureProbeSetsShared", "shared package variable architectureProbeShared")
 	for _, finding := range findings {
 		if strings.Contains(finding, "architectureProbeOwnState") {
@@ -205,12 +205,12 @@ func TestNegativeDevelopmentStateInTheCoreProcessor(t *testing.T) {
 	realPublic := productCheck(t, publicProfile, probePackage)
 	declaring := realPublic.where(realPublic.pkg.Scope().Lookup(coreStateType).Pos())
 	public, _ := probeChecks(t, overrides(
-		realFileWith(t, declaring, "type processor struct {", "type processor struct {\n\tarchitectureProbeResearch map[uint64]uint64"),
-		file("architecture_probe.go", "", "func (p *processor) architectureProbeRecord(key uint64) { p.architectureProbeResearch[key] = key }"),
-		file("architecture_probe_development.go", "wwdev", "func (p *processor) architectureProbeReport() int { return len(p.architectureProbeResearch) }"),
+		realFileWith(t, declaring, "type Processor struct {", "type Processor struct {\n\tarchitectureProbeResearch map[uint64]uint64"),
+		file("architecture_probe.go", "", "func (p *Processor) architectureProbeRecord(key uint64) { p.architectureProbeResearch[key] = key }"),
+		file("architecture_probe_development.go", "wwdev", "func (p *Processor) architectureProbeReport() int { return len(p.architectureProbeResearch) }"),
 	))
 	findings, _ := coreFieldFindings(public)
-	requireFinding(t, findings, "processor.architectureProbeResearch is never read by shared code")
+	requireFinding(t, findings, "Processor.architectureProbeResearch is never read by shared code")
 	real, _ := coreFieldFindings(realPublic)
 	requireNoFinding(t, "core fields", real)
 }

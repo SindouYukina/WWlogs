@@ -12,5 +12,5 @@ func newProcessorDiagnostics(io.Writer, io.Writer) processorDiagnostics {
 	return processorDiagnostics{}
 }
 
-func (*processorDiagnostics) beginProtocolSession() {
+func (*processorDiagnostics) BeginProtocolSession() {
 }

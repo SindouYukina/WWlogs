@@ -194,7 +194,7 @@ func manifestPaths(t *testing.T) []string {
 	return paths
 }
 
-var reConstant = regexp.MustCompile(`(?m)^\s*(cmd|field)([A-Za-z0-9_]+)\s*=\s*(\d+)\s*//\s*(\S+)\s*$`)
+var reConstant = regexp.MustCompile(`(?m)^\s*([Cc]md|[Ff]ield)([A-Za-z0-9_]+)\s*=\s*(\d+)\s*//\s*(\S+)\s*$`)
 var reHash = regexp.MustCompile(`\(SHA-256 ([0-9a-f]{64})\)`)
 
 // schemaFromConstants writes a client schema (the protojs_schema.py layout) that agrees with the generated numbers, with
@@ -218,7 +218,7 @@ func schemaFromConstants(t *testing.T, renumber string) string {
 	commands := map[string]string{}
 	for _, m := range reConstant.FindAllStringSubmatch(text, -1) {
 		number, key := m[3], m[4]
-		if m[1] == "cmd" {
+		if strings.EqualFold(m[1], "cmd") {
 			if m[1]+m[2] == renumber {
 				value, _ := strconv.Atoi(number)
 				number = strconv.Itoa(value + 1)
@@ -468,10 +468,10 @@ func TestGateFailsRetiredProtocolLayerAndStaleNumbers(t *testing.T) {
 	}
 	in := readiness.Inputs{Root: tree, MasterPath: filepath.Join(root, "data", "master_data.db"), ManifestPath: filepath.Join(root, "assets", "manifest.json"),
 		AssetRoot: filepath.Join(root, "assets"), Product: sharedProduct(t), Locales: []string{}}
-	in.ProtocolSchema = schemaFromConstants(t, "cmdDamageExecuteRequest")
+	in.ProtocolSchema = schemaFromConstants(t, "CmdDamageExecuteRequest")
 	report := run(t, in)
 	wantFail(t, report, "protocol.single-native-decoder", "internal/capture/protocol_translation.go: a retired protocol layer", "internal/capture/protocol_translation_3.8.json: a retired protocol layer", "internal/capture/damage_numbers.go:4 assigns a wire number outside the generated file")
-	wantFail(t, report, "protocol.schema-keys", "cmdDamageExecuteRequest")
+	wantFail(t, report, "protocol.schema-keys", "CmdDamageExecuteRequest")
 
 	// The same tree without the defects passes both checks: the injection, not the fixture, made them fail.
 	clean := baseInputs(t)

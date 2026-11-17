@@ -281,7 +281,7 @@ var reviewedProfileValues = map[string]string{
 	"internal/buildinfo const profile":                  "build identity: the profile name the build reports (Settings/About, -version); no combat decision reads it",
 	"internal/capture func newProcessorDiagnostics":     "constructs the Development state of a processor; the Public form is the empty struct",
 	"internal/capture func openSessionDiagnostics":      "capability gate: Public refuses a Development diagnostics request instead of opening a spool",
-	"internal/capture method sessionDiagnostics.finish": "summary text of the Development spool for the session result; Public returns the empty string",
+	"internal/capture method sessionDiagnostics.Finish": "summary text of the Development spool for the session result; Public returns the empty string",
 	"cmd/desktop var composition":                       "the desktop build composition: the Public command line, or the Development one of internal/devdesktop",
 }
 
@@ -376,17 +376,17 @@ func splitDeclarationFindings(public, development *checkedPackage) (findings []s
 // reviewedDevelopmentWrites are the writes of Development code to core state that configure a processor before or
 // around processing (function, then field), each with the reason it cannot change combat results.
 var reviewedDevelopmentWrites = map[string]string{
-	"Main processor.masters":                           "entry point configuration: the Development CLI hands the processor the Master it loaded, as the Public Main does",
-	"Main processor.census":                            "Deferred (Phase 3B R05): the command census is embedded in the core frame parser; only Development creates it, and the parser only reports to it",
-	"Main processor.captureLayer":                      "the Development diagnostic pipeline reports its dropped records in the capture-layer health (operational status, not combat results)",
-	"sessionDiagnostics.attach processor.captureLayer": "the same dropped-record counter for a Desktop Development session spool",
-	"sessionDiagnostics.attach processor.diagnostic":   "a Desktop Development session routes the operational diagnostic stream into the spool console.log",
+	"Main Processor.Masters":                           "entry point configuration: the Development CLI hands the processor the Master it loaded, as the Public Main does",
+	"Main Processor.Census":                            "Deferred (Phase 3B R05): the command census is embedded in the core frame parser; only Development creates it, and the parser only reports to it",
+	"Main Processor.CaptureLayer":                      "the Development diagnostic pipeline reports its dropped records in the capture-layer health (operational status, not combat results)",
+	"sessionDiagnostics.Attach Processor.CaptureLayer": "the same dropped-record counter for a Desktop Development session spool",
+	"sessionDiagnostics.Attach Processor.Diagnostic":   "a Desktop Development session routes the operational diagnostic stream into the spool console.log",
 }
 
 // coreStateType is the core state struct of the capture package; its dev field holds the Development state.
 const (
-	coreStateType        = "processor"
-	developmentStateName = "dev"
+	coreStateType        = "Processor"
+	developmentStateName = "Dev"
 )
 
 // writeTargets returns the expressions a node assigns to, increments, or deletes from, with the assignment statement
@@ -625,7 +625,7 @@ func developmentWriteFindings(development *checkedPackage) (findings []string, r
 
 // reviewedUnreadCoreFields are core fields only Development code reads, each with the reason it stays in the core.
 var reviewedUnreadCoreFields = map[string]string{
-	"notifyStats": "Deferred (Phase 3B-4A): the core counts its own DamageExecuteNotify settlement decisions here, and the failure-injection tests compare it as a core result; only the Development summary prints it",
+	"NotifyStats": "Deferred (Phase 3B-4A): the core counts its own DamageExecuteNotify settlement decisions here, and the failure-injection tests compare it as a core result; only the Development summary prints it",
 }
 
 func coreFieldFindings(public *checkedPackage) (findings []string, reviewedSeen map[string]bool) {

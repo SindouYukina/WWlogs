@@ -77,14 +77,14 @@ type vehicleContributorSummary struct {
 	followerConfigID uint64
 	name             string
 	nameKind         string
-	status           resolutionStatus
+	status           ResolutionStatus
 	events           int
 	damage           int64
 }
 
 type pendingSummaryCredit struct {
 	key   encounterSummaryKey
-	event combatEvent
+	event CombatEvent
 }
 
 const maxPendingSummaryCreditEvents = 16384
@@ -93,7 +93,7 @@ type characterSummary struct {
 	id               uint64
 	name             string
 	nameStatus       string
-	status           resolutionStatus
+	status           ResolutionStatus
 	proofs           map[string]struct{}
 	damage           int64
 	healingCandidate int64
@@ -111,7 +111,7 @@ type skillSummaryKey struct {
 type skillSummary struct {
 	id        uint64
 	name      string
-	nameState resolutionStatus
+	nameState ResolutionStatus
 	proofs    map[string]struct{}
 	eventType string
 	amount    int64
@@ -130,18 +130,18 @@ type healingAttributionKey struct {
 type healingAttributionSummary struct {
 	key                  healingAttributionKey
 	healerName           string
-	healerNameStatus     resolutionStatus
-	healerStatus         resolutionStatus
+	healerNameStatus     ResolutionStatus
+	healerStatus         ResolutionStatus
 	healerProofs         map[string]struct{}
 	targetName           string
-	targetNameStatus     resolutionStatus
-	targetStatus         resolutionStatus
+	targetNameStatus     ResolutionStatus
+	targetStatus         ResolutionStatus
 	targetProofs         map[string]struct{}
 	skillName            string
-	skillNameStatus      resolutionStatus
-	skillStatus          resolutionStatus
+	skillNameStatus      ResolutionStatus
+	skillStatus          ResolutionStatus
 	skillProofs          map[string]struct{}
-	classificationStatus resolutionStatus
+	classificationStatus ResolutionStatus
 	classificationProofs map[string]struct{}
 	reportedMagnitudeAbs int64
 	events               int
@@ -150,7 +150,7 @@ type healingAttributionSummary struct {
 type ownerCandidateSummary struct {
 	id     uint64
 	name   string
-	status resolutionStatus
+	status ResolutionStatus
 	proof  string
 	amount int64
 	events int
@@ -165,7 +165,7 @@ type bossCandidateSummary struct {
 	monsterID uint64
 	entityID  uint64
 	name      string
-	status    resolutionStatus
+	status    ResolutionStatus
 	proof     string
 }
 
@@ -207,7 +207,7 @@ func derefUint64(value *uint64) uint64 {
 	return *value
 }
 
-func addVehicleContributorEvent(summary *encounterSummary, event combatEvent) {
+func addVehicleContributorEvent(summary *encounterSummary, event CombatEvent) {
 	candidate := event.DamageContributorCandidate
 	if summary.vehicleContributors == nil {
 		summary.vehicleContributors = make(map[uint64]*vehicleContributorSummary)
@@ -251,17 +251,17 @@ func writeVehicleContributors(w io.Writer, summary *encounterSummary) error {
 	return err
 }
 
-func (p *processor) observeEncounterSummary(event combatEvent) {
-	if p.dev.encounterSummary == nil {
+func (p *Processor) ObserveEncounterSummary(event CombatEvent) {
+	if p.Dev.encounterSummary == nil {
 		return
 	}
-	sourceRelation, targetRelation, _ := p.playerRelevantDamageEvent(event)
-	if p.dev.encounterSummaries == nil {
-		p.dev.encounterSummaries = make(map[encounterSummaryKey]*encounterSummary)
+	sourceRelation, targetRelation, _ := p.PlayerRelevantDamageEvent(event)
+	if p.Dev.encounterSummaries == nil {
+		p.Dev.encounterSummaries = make(map[encounterSummaryKey]*encounterSummary)
 	}
 	key := encounterSummaryKey{session: event.SessionNumber}
-	sourceScene, sourceHasScene := event.Source.Runtime.sceneInstanceID, event.Source.Runtime.hasSceneInstanceID
-	targetScene, targetHasScene := event.Target.Runtime.sceneInstanceID, event.Target.Runtime.hasSceneInstanceID
+	sourceScene, sourceHasScene := event.Source.Runtime.SceneInstanceID, event.Source.Runtime.HasSceneInstanceID
+	targetScene, targetHasScene := event.Target.Runtime.SceneInstanceID, event.Target.Runtime.HasSceneInstanceID
 	switch {
 	case sourceHasScene && targetHasScene && sourceScene != targetScene:
 		key.scopeConflict = true
@@ -270,10 +270,10 @@ func (p *processor) observeEncounterSummary(event combatEvent) {
 	case targetHasScene:
 		key.sceneInstance, key.hasScene = targetScene, true
 	}
-	if _, exists := p.dev.encounterSummaries[key]; !exists && len(p.dev.encounterSummaries) >= maxEncounterSummaryGroups {
+	if _, exists := p.Dev.encounterSummaries[key]; !exists && len(p.Dev.encounterSummaries) >= maxEncounterSummaryGroups {
 		key = encounterSummaryKey{overflow: true}
 	}
-	summary := p.dev.encounterSummaries[key]
+	summary := p.Dev.encounterSummaries[key]
 	if summary == nil {
 		summary = &encounterSummary{
 			key: key, characters: make(map[uint64]*characterSummary),
@@ -284,7 +284,7 @@ func (p *processor) observeEncounterSummary(event combatEvent) {
 			uncreditedEvents:       make(map[uncreditedEventKey]*uncreditedEventSummary),
 			classificationEvidence: make(map[string]struct{}),
 		}
-		p.dev.encounterSummaries[key] = summary
+		p.Dev.encounterSummaries[key] = summary
 	}
 	if summary.startedAt.IsZero() || (!event.Timestamp.IsZero() && event.Timestamp.Before(summary.startedAt)) {
 		summary.startedAt = event.Timestamp
@@ -317,7 +317,7 @@ func (p *processor) observeEncounterSummary(event combatEvent) {
 		addHealingAttribution(summary, event)
 	}
 
-	if sourceRelation == playerRelationLocal && event.EventTypeCandidate == "DAMAGE_CANDIDATE" &&
+	if sourceRelation == PlayerRelationLocal && event.EventTypeCandidate == "DAMAGE_CANDIDATE" &&
 		event.DamageContributorCandidate != nil && event.DamageContributorCandidate.ActorType == "Vehicle" {
 		addVehicleContributorEvent(summary, event)
 	} else if isCreditedCharacterStatus(event.CharacterStatus) && event.CharacterID != 0 {
@@ -327,12 +327,12 @@ func (p *processor) observeEncounterSummary(event combatEvent) {
 		summary.unknownCreditAbs += event.Damage
 		addUncreditedEvent(summary, event)
 		if event.HasSourceEntity && event.SourceEntityID != 0 {
-			if p.dev.pendingSummaryCreditCount < maxPendingSummaryCreditEvents {
-				if p.dev.pendingSummaryCredits == nil {
-					p.dev.pendingSummaryCredits = make(map[uint64][]pendingSummaryCredit)
+			if p.Dev.pendingSummaryCreditCount < maxPendingSummaryCreditEvents {
+				if p.Dev.pendingSummaryCredits == nil {
+					p.Dev.pendingSummaryCredits = make(map[uint64][]pendingSummaryCredit)
 				}
-				p.dev.pendingSummaryCredits[event.SourceEntityID] = append(p.dev.pendingSummaryCredits[event.SourceEntityID], pendingSummaryCredit{key: key, event: event})
-				p.dev.pendingSummaryCreditCount++
+				p.Dev.pendingSummaryCredits[event.SourceEntityID] = append(p.Dev.pendingSummaryCredits[event.SourceEntityID], pendingSummaryCredit{key: key, event: event})
+				p.Dev.pendingSummaryCreditCount++
 			} else {
 				summary.identityBackfillEventsOmitted++
 			}
@@ -365,8 +365,8 @@ func (p *processor) observeEncounterSummary(event combatEvent) {
 	addBossCandidate(summary, event.Target)
 }
 
-func observeDamageDirection(summary *encounterSummary, event combatEvent, sourceRelation, targetRelation playerRelation) {
-	if sourceRelation == playerRelationLocal && isEnemyEntityIdentity(event.Target) {
+func observeDamageDirection(summary *encounterSummary, event CombatEvent, sourceRelation, targetRelation PlayerRelation) {
+	if sourceRelation == PlayerRelationLocal && isEnemyEntityIdentity(event.Target) {
 		summary.partyToEnemyCandidateAbs += event.Damage
 		summary.partyToEnemyCandidateEvents++
 		if len(event.Target.TemplateCandidates) > 0 {
@@ -375,7 +375,7 @@ func observeDamageDirection(summary *encounterSummary, event combatEvent, source
 		}
 		return
 	}
-	if targetRelation == playerRelationLocal && isEnemyEntityIdentity(event.Source) {
+	if targetRelation == PlayerRelationLocal && isEnemyEntityIdentity(event.Source) {
 		summary.enemyToPartyCandidateAbs += event.Damage
 		summary.enemyToPartyCandidateEvents++
 		if len(event.Source.TemplateCandidates) > 0 {
@@ -388,11 +388,11 @@ func observeDamageDirection(summary *encounterSummary, event combatEvent, source
 	summary.unknownDirectionDamageEvents++
 }
 
-func isEnemyEntityIdentity(identity entityIdentity) bool {
+func isEnemyEntityIdentity(identity EntityIdentity) bool {
 	return identity.HasMonster || len(identity.TemplateCandidates) > 0
 }
 
-func addUncreditedEvent(summary *encounterSummary, event combatEvent) {
+func addUncreditedEvent(summary *encounterSummary, event CombatEvent) {
 	if summary.uncreditedEvents == nil {
 		summary.uncreditedEvents = make(map[uncreditedEventKey]*uncreditedEventSummary)
 	}
@@ -410,7 +410,7 @@ func addUncreditedEvent(summary *encounterSummary, event combatEvent) {
 	row.magnitude += event.Damage
 }
 
-func removeUncreditedEvent(summary *encounterSummary, event combatEvent) {
+func removeUncreditedEvent(summary *encounterSummary, event CombatEvent) {
 	key := makeUncreditedEventKey(event)
 	row := summary.uncreditedEvents[key]
 	if row == nil {
@@ -432,11 +432,11 @@ func uncreditedEventKeyTail(key uncreditedEventKey) string {
 		key.targetSceneID, key.hasDamageID, key.hasBulletID, uint64(key.bulletID), key.hasSourceEntity, key.hasTargetEntity)
 }
 
-func makeUncreditedEventKey(event combatEvent) uncreditedEventKey {
+func makeUncreditedEventKey(event CombatEvent) uncreditedEventKey {
 	return uncreditedEventKey{
 		sessionNumber: event.SessionNumber,
-		sourceSceneID: event.Source.Runtime.sceneInstanceID, hasSourceScene: event.Source.Runtime.hasSceneInstanceID,
-		targetSceneID: event.Target.Runtime.sceneInstanceID, hasTargetScene: event.Target.Runtime.hasSceneInstanceID,
+		sourceSceneID: event.Source.Runtime.SceneInstanceID, hasSourceScene: event.Source.Runtime.HasSceneInstanceID,
+		targetSceneID: event.Target.Runtime.SceneInstanceID, hasTargetScene: event.Target.Runtime.HasSceneInstanceID,
 		eventType: event.EventTypeCandidate, skillID: event.SkillID,
 		damageID: event.DamageID, hasDamageID: event.HasDamageID,
 		bulletID: event.BulletID, hasBulletID: event.HasBulletID,
@@ -445,26 +445,26 @@ func makeUncreditedEventKey(event combatEvent) uncreditedEventKey {
 	}
 }
 
-func (p *processor) observeBuffSnapshot(row buffSnapshotAuditRow) {
-	if p.dev.encounterSummary == nil {
+func (p *Processor) observeBuffSnapshot(row buffSnapshotAuditRow) {
+	if p.Dev.encounterSummary == nil {
 		return
 	}
-	if p.dev.encounterSummaries == nil {
-		p.dev.encounterSummaries = make(map[encounterSummaryKey]*encounterSummary)
+	if p.Dev.encounterSummaries == nil {
+		p.Dev.encounterSummaries = make(map[encounterSummaryKey]*encounterSummary)
 	}
 	key := encounterSummaryKey{session: row.SessionNumber}
 	observation := buffObservationKey{hasBuffID: row.Buff.HasID, buffID: row.Buff.ID}
 	if row.EntityID != nil && *row.EntityID != 0 {
 		observation.targetID, observation.hasTargetID = *row.EntityID, true
-		entity, _ := p.entities.resolve(*row.EntityID)
-		if entity.hasSceneInstanceID {
-			key.sceneInstance, key.hasScene = entity.sceneInstanceID, true
+		entity, _ := p.Entities.Resolve(*row.EntityID)
+		if entity.HasSceneInstanceID {
+			key.sceneInstance, key.hasScene = entity.SceneInstanceID, true
 		}
 	}
-	if _, exists := p.dev.encounterSummaries[key]; !exists && len(p.dev.encounterSummaries) >= maxEncounterSummaryGroups {
+	if _, exists := p.Dev.encounterSummaries[key]; !exists && len(p.Dev.encounterSummaries) >= maxEncounterSummaryGroups {
 		key = encounterSummaryKey{overflow: true}
 	}
-	summary := p.dev.encounterSummaries[key]
+	summary := p.Dev.encounterSummaries[key]
 	if summary == nil {
 		summary = &encounterSummary{
 			key: key, characters: make(map[uint64]*characterSummary),
@@ -474,7 +474,7 @@ func (p *processor) observeBuffSnapshot(row buffSnapshotAuditRow) {
 			buffObservations:       make(map[buffObservationKey]int),
 			classificationEvidence: make(map[string]struct{}),
 		}
-		p.dev.encounterSummaries[key] = summary
+		p.Dev.encounterSummaries[key] = summary
 	}
 	if _, exists := summary.buffObservations[observation]; !exists && len(summary.buffObservations) >= maxSummaryBuffObservations {
 		summary.buffObservationsOmitted++
@@ -483,7 +483,7 @@ func (p *processor) observeBuffSnapshot(row buffSnapshotAuditRow) {
 	summary.buffObservations[observation]++
 }
 
-func addHealingAttribution(summary *encounterSummary, event combatEvent) {
+func addHealingAttribution(summary *encounterSummary, event CombatEvent) {
 	if !isCreditedCharacterStatus(event.CharacterStatus) || event.CharacterID == 0 ||
 		!event.Target.HasCharacter || event.Target.Character.ID == 0 ||
 		!isCreditedCharacterStatus(event.Target.CharacterStatus) {
@@ -522,7 +522,7 @@ func addHealingAttribution(summary *encounterSummary, event combatEvent) {
 	if event.CharacterProof != "" {
 		row.healerProofs[event.CharacterProof] = struct{}{}
 	}
-	if event.CharacterName != "" && (event.CharacterNameStatus == resolutionVerified || event.CharacterNameStatus == resolutionCorrelated) {
+	if event.CharacterName != "" && (event.CharacterNameStatus == ResolutionVerified || event.CharacterNameStatus == ResolutionCorrelated) {
 		row.healerName, row.healerNameStatus = event.CharacterName, event.CharacterNameStatus
 	}
 	target := event.Target.Character
@@ -530,14 +530,14 @@ func addHealingAttribution(summary *encounterSummary, event combatEvent) {
 	if event.Target.CharacterProof != "" {
 		row.targetProofs[event.Target.CharacterProof] = struct{}{}
 	}
-	if target.Name != "" && (target.NameStatus == string(resolutionVerified) || target.NameStatus == string(resolutionCorrelated)) {
-		row.targetName, row.targetNameStatus = target.Name, resolutionStatus(target.NameStatus)
+	if target.Name != "" && (target.NameStatus == string(ResolutionVerified) || target.NameStatus == string(ResolutionCorrelated)) {
+		row.targetName, row.targetNameStatus = target.Name, ResolutionStatus(target.NameStatus)
 	}
 	row.skillStatus = strongestEvidence(row.skillStatus, event.SkillStatus)
 	if event.SkillProof != "" {
 		row.skillProofs[event.SkillProof] = struct{}{}
 	}
-	if event.SkillName != "" && (event.SkillNameStatus == resolutionVerified || event.SkillNameStatus == resolutionCorrelated) {
+	if event.SkillName != "" && (event.SkillNameStatus == ResolutionVerified || event.SkillNameStatus == ResolutionCorrelated) {
 		row.skillName, row.skillNameStatus = event.SkillName, event.SkillNameStatus
 	}
 	row.classificationStatus = strongestEvidence(row.classificationStatus, event.EventTypeStatus)
@@ -548,7 +548,7 @@ func addHealingAttribution(summary *encounterSummary, event combatEvent) {
 	row.events++
 }
 
-func addCreditedCharacterEvent(summary *encounterSummary, event combatEvent) {
+func addCreditedCharacterEvent(summary *encounterSummary, event CombatEvent) {
 	character := summary.characters[event.CharacterID]
 	if character == nil {
 		character = &characterSummary{id: event.CharacterID, skills: make(map[skillSummaryKey]*skillSummary), proofs: make(map[string]struct{})}
@@ -558,7 +558,7 @@ func addCreditedCharacterEvent(summary *encounterSummary, event combatEvent) {
 	if event.CharacterProof != "" {
 		character.proofs[event.CharacterProof] = struct{}{}
 	}
-	if event.CharacterName != "" && (event.CharacterNameStatus == resolutionVerified || event.CharacterNameStatus == resolutionCorrelated) {
+	if event.CharacterName != "" && (event.CharacterNameStatus == ResolutionVerified || event.CharacterNameStatus == ResolutionCorrelated) {
 		character.name, character.nameStatus = event.CharacterName, string(event.CharacterNameStatus)
 	}
 	character.eventCount++
@@ -581,7 +581,7 @@ func addCreditedCharacterEvent(summary *encounterSummary, event combatEvent) {
 	if skill != nil && event.SkillProof != "" {
 		skill.proofs[event.SkillProof] = struct{}{}
 	}
-	if skill != nil && event.SkillName != "" && (event.SkillNameStatus == resolutionVerified || event.SkillNameStatus == resolutionCorrelated) {
+	if skill != nil && event.SkillName != "" && (event.SkillNameStatus == ResolutionVerified || event.SkillNameStatus == ResolutionCorrelated) {
 		skill.name, skill.nameState = event.SkillName, event.SkillNameStatus
 	}
 	if skill != nil {
@@ -590,31 +590,31 @@ func addCreditedCharacterEvent(summary *encounterSummary, event combatEvent) {
 	}
 }
 
-func (p *processor) backfillEncounterSummary(sourceID, roleID uint64) {
-	if sourceID == 0 || roleID == 0 || p.masters == nil {
+func (p *Processor) BackfillEncounterSummary(sourceID, roleID uint64) {
+	if sourceID == 0 || roleID == 0 || p.Masters == nil {
 		return
 	}
-	character, ok := p.masters.characters[roleID]
+	character, ok := p.Masters.Characters[roleID]
 	if !ok {
 		return
 	}
-	pending := p.dev.pendingSummaryCredits[sourceID]
+	pending := p.Dev.pendingSummaryCredits[sourceID]
 	if len(pending) == 0 {
 		return
 	}
-	delete(p.dev.pendingSummaryCredits, sourceID)
-	p.dev.pendingSummaryCreditCount -= len(pending)
+	delete(p.Dev.pendingSummaryCredits, sourceID)
+	p.Dev.pendingSummaryCreditCount -= len(pending)
 	for _, item := range pending {
-		summary := p.dev.encounterSummaries[item.key]
+		summary := p.Dev.encounterSummaries[item.key]
 		if summary == nil || summary.unknownCredit <= 0 {
 			continue
 		}
 		event := item.event
 		event.CharacterID = character.ID
-		event.CharacterStatus = resolutionCorrelated
+		event.CharacterStatus = ResolutionCorrelated
 		event.CharacterProof = "backfilled within observed session/scene/entity lifetime from 2+ distinct verified DamageContext.SkillId values mapped to RoleId through SkillDescription -> Skill"
 		event.CharacterName = character.Name
-		event.CharacterNameStatus = resolutionStatus(character.NameStatus)
+		event.CharacterNameStatus = ResolutionStatus(character.NameStatus)
 		summary.unknownCredit--
 		summary.unknownCreditAbs -= event.Damage
 		removeUncreditedEvent(summary, event)
@@ -623,85 +623,85 @@ func (p *processor) backfillEncounterSummary(sourceID, roleID uint64) {
 	}
 }
 
-func (p *processor) backfillAvailableSummaryCredits() {
-	if p.dev.pendingSummaryCredits == nil {
+func (p *Processor) BackfillAvailableSummaryCredits() {
+	if p.Dev.pendingSummaryCredits == nil {
 		return
 	}
-	sourceIDs := make([]uint64, 0, len(p.dev.pendingSummaryCredits))
-	for sourceID := range p.dev.pendingSummaryCredits {
+	sourceIDs := make([]uint64, 0, len(p.Dev.pendingSummaryCredits))
+	for sourceID := range p.Dev.pendingSummaryCredits {
 		sourceIDs = append(sourceIDs, sourceID)
 	}
 	for _, sourceID := range sourceIDs {
-		if roleID, correlated := p.sourceRoles.correlatedRole(sourceID); correlated {
-			p.backfillEncounterSummary(sourceID, roleID)
+		if roleID, correlated := p.SourceRoles.CorrelatedRole(sourceID); correlated {
+			p.BackfillEncounterSummary(sourceID, roleID)
 		}
 	}
 }
 
-func (p *processor) removePendingSummaryCredits(sourceID uint64) {
-	if p.dev.pendingSummaryCredits == nil {
+func (p *Processor) RemovePendingSummaryCredits(sourceID uint64) {
+	if p.Dev.pendingSummaryCredits == nil {
 		return
 	}
-	p.dev.pendingSummaryCreditCount -= len(p.dev.pendingSummaryCredits[sourceID])
-	delete(p.dev.pendingSummaryCredits, sourceID)
+	p.Dev.pendingSummaryCreditCount -= len(p.Dev.pendingSummaryCredits[sourceID])
+	delete(p.Dev.pendingSummaryCredits, sourceID)
 }
 
-func (p *processor) resetPendingSummaryCredits() {
-	p.dev.pendingSummaryCredits = nil
-	p.dev.pendingSummaryCreditCount = 0
+func (p *Processor) ResetPendingSummaryCredits() {
+	p.Dev.pendingSummaryCredits = nil
+	p.Dev.pendingSummaryCreditCount = 0
 }
 
-func isCreditedCharacterStatus(status resolutionStatus) bool {
-	return status == resolutionVerified || status == resolutionCorrelated
+func isCreditedCharacterStatus(status ResolutionStatus) bool {
+	return status == ResolutionVerified || status == ResolutionCorrelated
 }
 
-func strongestEvidence(current, next resolutionStatus) resolutionStatus {
-	if current == resolutionVerified || next == resolutionVerified {
-		return resolutionVerified
+func strongestEvidence(current, next ResolutionStatus) ResolutionStatus {
+	if current == ResolutionVerified || next == ResolutionVerified {
+		return ResolutionVerified
 	}
-	if current == resolutionCorrelated || next == resolutionCorrelated {
-		return resolutionCorrelated
+	if current == ResolutionCorrelated || next == ResolutionCorrelated {
+		return ResolutionCorrelated
 	}
-	return resolutionUnknown
+	return ResolutionUnknown
 }
 
-func addBossCandidate(summary *encounterSummary, identity entityIdentity) {
+func addBossCandidate(summary *encounterSummary, identity EntityIdentity) {
 	if !identity.HasMonster || identity.Monster.ID == 0 || !isCreditedCharacterStatus(identity.MonsterStatus) {
 		return
 	}
-	key := bossCandidateKey{monsterID: identity.Monster.ID, entityID: identity.Runtime.entityID}
+	key := bossCandidateKey{monsterID: identity.Monster.ID, entityID: identity.Runtime.EntityID}
 	if _, exists := summary.bossCandidates[key]; !exists && len(summary.bossCandidates) >= maxSummaryBossCandidates {
 		summary.bossCandidatesOmitted++
 		return
 	}
 	summary.bossCandidates[key] = bossCandidateSummary{
-		monsterID: identity.Monster.ID, entityID: identity.Runtime.entityID,
+		monsterID: identity.Monster.ID, entityID: identity.Runtime.EntityID,
 		name: identity.Monster.Name, status: identity.MonsterStatus, proof: identity.MonsterProof,
 	}
 }
 
-func (p *processor) writeEncounterSummary() error {
-	if p.dev.encounterSummary == nil {
+func (p *Processor) writeEncounterSummary() error {
+	if p.Dev.encounterSummary == nil {
 		return nil
 	}
-	p.backfillAvailableSummaryCredits()
-	if _, err := fmt.Fprintln(p.dev.encounterSummary, "# Combat Attribution Summary"); err != nil {
+	p.BackfillAvailableSummaryCredits()
+	if _, err := fmt.Fprintln(p.Dev.encounterSummary, "# Combat Attribution Summary"); err != nil {
 		return err
 	}
-	if p.masters != nil {
-		source := masterDatabaseSourceLabel(p.masters.databasePath)
-		if p.masters.databasePath != "embedded" {
-			source += ": " + filepath.Base(p.masters.databasePath)
+	if p.Masters != nil {
+		source := masterDatabaseSourceLabel(p.Masters.DatabasePath)
+		if p.Masters.DatabasePath != "embedded" {
+			source += ": " + filepath.Base(p.Masters.DatabasePath)
 		}
-		if _, err := fmt.Fprintf(p.dev.encounterSummary, "\nCombat master: %s (Global, %s, SHA-256 %s)\n", source, p.masters.locale, p.masters.manifest.SourceHash); err != nil {
+		if _, err := fmt.Fprintf(p.Dev.encounterSummary, "\nCombat master: %s (Global, %s, SHA-256 %s)\n", source, p.Masters.Locale, p.Masters.Manifest.SourceHash); err != nil {
 			return err
 		}
 	}
-	if _, err := fmt.Fprintln(p.dev.encounterSummary, "\nAmounts are absolute CombatResult values. Damage and healing categories are master-based candidates. Healing is not verified as effective HP recovery, and overheal is unknown. Buff snapshot observations are listed separately from combat credit; no Echo or summon attribution is inferred here."); err != nil {
+	if _, err := fmt.Fprintln(p.Dev.encounterSummary, "\nAmounts are absolute CombatResult values. Damage and healing categories are master-based candidates. Healing is not verified as effective HP recovery, and overheal is unknown. Buff snapshot observations are listed separately from combat credit; no Echo or summon attribution is inferred here."); err != nil {
 		return err
 	}
-	keys := make([]encounterSummaryKey, 0, len(p.dev.encounterSummaries))
-	for key := range p.dev.encounterSummaries {
+	keys := make([]encounterSummaryKey, 0, len(p.Dev.encounterSummaries))
+	for key := range p.Dev.encounterSummaries {
 		keys = append(keys, key)
 	}
 	sort.Slice(keys, func(i, j int) bool {
@@ -723,20 +723,20 @@ func (p *processor) writeEncounterSummary() error {
 		return !keys[i].overflow && keys[j].overflow
 	})
 	if len(keys) == 0 {
-		if _, err := fmt.Fprintln(p.dev.encounterSummary, "\nNo matched combat events were observed."); err != nil {
+		if _, err := fmt.Fprintln(p.Dev.encounterSummary, "\nNo matched combat events were observed."); err != nil {
 			return err
 		}
 	} else {
 		for _, key := range keys {
-			if err := writeOneEncounterSummary(p.dev.encounterSummary, p.dev.encounterSummaries[key]); err != nil {
+			if err := writeOneEncounterSummary(p.Dev.encounterSummary, p.Dev.encounterSummaries[key]); err != nil {
 				return err
 			}
 		}
 	}
-	if err := writeCombatActionRequests(p.dev.encounterSummary, p); err != nil {
+	if err := writeCombatActionRequests(p.Dev.encounterSummary, p); err != nil {
 		return err
 	}
-	return writeTimerObservations(p.dev.encounterSummary, p.dev.timerObservations)
+	return writeTimerObservations(p.Dev.encounterSummary, p.Dev.timerObservations)
 }
 
 func writeTimerObservations(w io.Writer, observations []timerObservation) error {
@@ -777,12 +777,12 @@ func summaryTextLabel(value string) string {
 	return value
 }
 
-func writeCombatActionRequests(w io.Writer, p *processor) error {
+func writeCombatActionRequests(w io.Writer, p *Processor) error {
 	if _, err := fmt.Fprintln(w, "\n## Outbound skill requests"); err != nil {
 		return err
 	}
-	keys := make([]combatActionRequestKey, 0, len(p.dev.combatActionRequests))
-	for key := range p.dev.combatActionRequests {
+	keys := make([]combatActionRequestKey, 0, len(p.Dev.combatActionRequests))
+	for key := range p.Dev.combatActionRequests {
 		keys = append(keys, key)
 	}
 	sort.Slice(keys, func(i, j int) bool {
@@ -793,7 +793,7 @@ func writeCombatActionRequests(w io.Writer, p *processor) error {
 	})
 	linked, unlinked := 0, 0
 	for _, key := range keys {
-		if p.dev.combatActionRequests[key].LinkedDamageEvents > 0 {
+		if p.Dev.combatActionRequests[key].LinkedDamageEvents > 0 {
 			linked++
 		} else {
 			unlinked++
@@ -807,7 +807,7 @@ func writeCombatActionRequests(w io.Writer, p *processor) error {
 		return err
 	}
 	for _, key := range keys {
-		action := p.dev.combatActionRequests[key]
+		action := p.Dev.combatActionRequests[key]
 		status := "NO_CORRELATED_DAMAGE_RESULT"
 		if action.LinkedDamageEvents > 0 {
 			status = "LINKED_TO_SERVER_DAMAGE_RESULT"
@@ -1241,7 +1241,7 @@ func formatSummaryTime(value time.Time) string {
 
 func valueOrUnknown(value string) string {
 	if value == "" {
-		return string(resolutionUnknown)
+		return string(ResolutionUnknown)
 	}
 	return value
 }
@@ -1255,7 +1255,7 @@ func markdownText(value string) string {
 
 func joinEvidence(values map[string]struct{}) string {
 	if len(values) == 0 {
-		return string(resolutionUnknown)
+		return string(ResolutionUnknown)
 	}
 	items := make([]string, 0, len(values))
 	for value := range values {

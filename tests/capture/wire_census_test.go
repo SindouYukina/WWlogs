@@ -9,7 +9,7 @@ import (
 func TestTopLevelFieldCountsUseWireFactsOnly(t *testing.T) {
 	// field 1 varint 150, field 2 length-delimited "ab", field 5 fixed32.
 	body := []byte{0x08, 0x96, 0x01, 0x12, 0x02, 'a', 'b', 0x2d, 1, 2, 3, 4}
-	fields, err := parseProtoFields(body)
+	fields, err := ParseProtoFields(body)
 	if err != nil {
 		t.Fatalf("parseProtoFields: %v", err)
 	}
@@ -27,9 +27,9 @@ func TestTopLevelFieldCountsUseWireFactsOnly(t *testing.T) {
 }
 
 func TestTopLevelFieldCountsAreBounded(t *testing.T) {
-	var fields []protoField
+	var fields []ProtoField
 	for number := uint64(1); number <= maxTopLevelFieldKeys+6; number++ {
-		fields = append(fields, protoField{number: number, wire: 0})
+		fields = append(fields, ProtoField{Number: number, Wire: 0})
 	}
 	var entry commandCensusEntry
 	entry.observeTopLevelFields(fields)

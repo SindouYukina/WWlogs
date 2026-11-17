@@ -20,48 +20,48 @@ func TestRPCPairingLineReportsCounters(t *testing.T) {
 }
 
 func TestCaptureLatencyHistogramReportsUpperBounds(t *testing.T) {
-	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
+	p := NewProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
 	base := time.Date(2026, 11, 4, 0, 0, 0, 0, time.UTC)
-	p.observePacketTiming(base, base.Add(time.Millisecond), base.Add(2*time.Millisecond))
-	if got := p.captureLayerHealth().DeliveryDelay.Status; got != CaptureCounterNotApplicable {
+	p.ObservePacketTiming(base, base.Add(time.Millisecond), base.Add(2*time.Millisecond))
+	if got := p.CaptureLayerHealth().DeliveryDelay.Status; got != CaptureCounterNotApplicable {
 		t.Fatalf("replay must not report live latency, got %s", got)
 	}
-	p.observeCaptureSource(true)
-	if got := p.captureLayerHealth().DeliveryDelay.Status; got != CaptureCounterUnavailable {
+	p.ObserveCaptureSource(true)
+	if got := p.CaptureLayerHealth().DeliveryDelay.Status; got != CaptureCounterUnavailable {
 		t.Fatalf("live latency without samples = %s", got)
 	}
 	for i := 0; i < 90; i++ {
-		p.observePacketTiming(base, base.Add(3*time.Millisecond), base.Add(4*time.Millisecond))
+		p.ObservePacketTiming(base, base.Add(3*time.Millisecond), base.Add(4*time.Millisecond))
 	}
 	for i := 0; i < 9; i++ {
-		p.observePacketTiming(base, base.Add(80*time.Millisecond), base.Add(81*time.Millisecond))
+		p.ObservePacketTiming(base, base.Add(80*time.Millisecond), base.Add(81*time.Millisecond))
 	}
-	p.observePacketTiming(base, base.Add(700*time.Millisecond), base.Add(701*time.Millisecond))
-	p.observePacketTiming(base, base.Add(-time.Microsecond), time.Time{}) // clock read order, counts as no delay
-	delivery := p.captureLayerHealth().DeliveryDelay
+	p.ObservePacketTiming(base, base.Add(700*time.Millisecond), base.Add(701*time.Millisecond))
+	p.ObservePacketTiming(base, base.Add(-time.Microsecond), time.Time{}) // clock read order, counts as no delay
+	delivery := p.CaptureLayerHealth().DeliveryDelay
 	if delivery.Status != CaptureCounterAvailable || delivery.Samples != 101 || delivery.P50ms != 5 || delivery.P95ms != 100 ||
 		delivery.P99ms != 100 || delivery.MaxMs != 700 {
 		t.Fatalf("delivery summary = %+v", delivery)
 	}
-	if processed := p.captureLayerHealth().ProcessedDelay; processed.Samples != 100 {
+	if processed := p.CaptureLayerHealth().ProcessedDelay; processed.Samples != 100 {
 		t.Fatalf("processed samples = %+v", processed)
 	}
-	if line := captureLatencyLine(p.captureLayerHealth()); !strings.Contains(line, "delivery=samples:101/p50<=5ms/p95<=100ms/p99<=100ms/max:700.0ms") {
+	if line := captureLatencyLine(p.CaptureLayerHealth()); !strings.Contains(line, "delivery=samples:101/p50<=5ms/p95<=100ms/p99<=100ms/max:700.0ms") {
 		t.Fatalf("latency line = %q", line)
 	}
 }
 
 func TestDamageResponseKeepsUnresolvedEntityVisible(t *testing.T) {
 	var stdout, diagnostic, jsonl bytes.Buffer
-	p := newProcessor(nil, &stdout, &diagnostic, nil)
-	p.dev.combatEventsJSONL = &jsonl
-	p.pending[42] = pendingDamageRequest{attackerEntityID: 25320, hasAttackerEntityID: true, damageID: 70010001, hasDamageID: true, damageSourceType: 1, hasDamageSourceType: true, bulletID: -1, hasBulletID: true}
-	response := appendVarintField(nil, fieldDamageExecuteResponseErrorCode, 0)      // success
-	response = appendVarintField(response, fieldDamageExecuteResponseImmuneType, 0) // not immune
-	response = appendVarintField(response, fieldDamageExecuteResponseDamage, 9001)
+	p := NewProcessor(nil, &stdout, &diagnostic, nil)
+	p.Dev.combatEventsJSONL = &jsonl
+	p.Pending[42] = PendingDamageRequest{AttackerEntityID: 25320, HasAttackerEntityID: true, DamageID: 70010001, HasDamageID: true, DamageSourceType: 1, HasDamageSourceType: true, BulletID: -1, HasBulletID: true}
+	response := appendVarintField(nil, FieldDamageExecuteResponseErrorCode, 0)      // success
+	response = appendVarintField(response, FieldDamageExecuteResponseImmuneType, 0) // not immune
+	response = appendVarintField(response, FieldDamageExecuteResponseDamage, 9001)
 
-	p.handleOneDamageResult(42, response)
-	p.handleOneDamageResult(42, response)
+	p.HandleOneDamageResult(42, response)
+	p.HandleOneDamageResult(42, response)
 
 	if stdout.Len() == 0 {
 		t.Fatal("unresolved damage was hidden even though it was not proven unrelated")
@@ -69,8 +69,8 @@ func TestDamageResponseKeepsUnresolvedEntityVisible(t *testing.T) {
 	if !strings.Contains(stdout.String(), "[PlayerTeamSide: UNCONFIRMED]") {
 		t.Fatalf("unresolved relation was not labeled in normal output: %q", stdout.String())
 	}
-	if p.stats.printed != 1 || p.stats.duplicateResponses != 1 || p.stats.matchedCombatResultAbs != 9001 || p.stats.decodedMatchedEvents != 1 || p.stats.decodedCombatResultAbs != 9001 || p.stats.includedUnresolvedRelations != 1 || p.stats.suppressedUnrelatedEvents != 0 || p.stats.unclassifiedResult != 9001 {
-		t.Fatalf("unexpected stats: visible=%d duplicates=%d visible_abs=%d decoded_events=%d decoded_abs=%d unresolved=%d suppressed=%d unclassified_abs=%d", p.stats.printed, p.stats.duplicateResponses, p.stats.matchedCombatResultAbs, p.stats.decodedMatchedEvents, p.stats.decodedCombatResultAbs, p.stats.includedUnresolvedRelations, p.stats.suppressedUnrelatedEvents, p.stats.unclassifiedResult)
+	if p.Stats.Printed != 1 || p.Stats.DuplicateResponses != 1 || p.Stats.MatchedCombatResultAbs != 9001 || p.Stats.DecodedMatchedEvents != 1 || p.Stats.DecodedCombatResultAbs != 9001 || p.Stats.IncludedUnresolvedRelations != 1 || p.Stats.SuppressedUnrelatedEvents != 0 || p.Stats.UnclassifiedResult != 9001 {
+		t.Fatalf("unexpected stats: visible=%d duplicates=%d visible_abs=%d decoded_events=%d decoded_abs=%d unresolved=%d suppressed=%d unclassified_abs=%d", p.Stats.Printed, p.Stats.DuplicateResponses, p.Stats.MatchedCombatResultAbs, p.Stats.DecodedMatchedEvents, p.Stats.DecodedCombatResultAbs, p.Stats.IncludedUnresolvedRelations, p.Stats.SuppressedUnrelatedEvents, p.Stats.UnclassifiedResult)
 	}
 	if !strings.Contains(jsonl.String(), `"entityId":25320`) || strings.Contains(jsonl.String(), `"characterId":25320`) {
 		t.Fatalf("raw entity identity was lost or promoted to a character: %q", jsonl.String())
@@ -79,22 +79,22 @@ func TestDamageResponseKeepsUnresolvedEntityVisible(t *testing.T) {
 
 func TestDamageResponsePreservesRawResultsAndMarksHealingOnlyAsCandidate(t *testing.T) {
 	var stdout, diagnostic, audit bytes.Buffer
-	p := newProcessor(nil, &stdout, &diagnostic, &audit)
-	p.masters = &gameMaster{damage: map[uint64]damageMasterRecord{
+	p := NewProcessor(nil, &stdout, &diagnostic, &audit)
+	p.Masters = &GameMaster{Damage: map[uint64]DamageMasterRecord{
 		120900505: {ID: 120900505, CalculateType: 1, SourceTable: "damage"},
 	}}
-	p.pending[9] = pendingDamageRequest{damageID: 120900505, hasDamageID: true}
-	response := appendVarintField(nil, fieldDamageExecuteResponseErrorCode, 0)
-	response = appendVarintField(response, fieldDamageExecuteResponseImmuneType, 0)
+	p.Pending[9] = PendingDamageRequest{DamageID: 120900505, HasDamageID: true}
+	response := appendVarintField(nil, FieldDamageExecuteResponseErrorCode, 0)
+	response = appendVarintField(response, FieldDamageExecuteResponseImmuneType, 0)
 	changeLife := int32(-700)
 	serverResult := int32(-1311)
-	response = appendVarintField(response, fieldDamageExecuteResponseChangeLife, uint64(uint32(changeLife))) // raw ChangeLife
-	response = appendVarintField(response, fieldDamageExecuteResponseDamage, uint64(uint32(serverResult)))   // raw server result
+	response = appendVarintField(response, FieldDamageExecuteResponseChangeLife, uint64(uint32(changeLife))) // raw ChangeLife
+	response = appendVarintField(response, FieldDamageExecuteResponseDamage, uint64(uint32(serverResult)))   // raw server result
 
-	p.handleOneDamageResult(9, response)
+	p.HandleOneDamageResult(9, response)
 
-	if p.stats.printed != 1 || p.stats.matchedCombatResultAbs != 1311 || p.stats.decodedMatchedEvents != 1 || p.stats.decodedCombatResultAbs != 1311 || p.stats.includedUnresolvedRelations != 1 || p.stats.suppressedUnrelatedEvents != 0 || p.stats.damageCandidateResult != 0 || p.stats.healingCandidateEvents != 1 || p.stats.healingCandidateResult != 1311 || p.stats.otherCandidateResult != 0 || p.stats.unclassifiedResult != 0 {
-		t.Fatalf("candidate classification changed raw result accounting: %+v", p.stats)
+	if p.Stats.Printed != 1 || p.Stats.MatchedCombatResultAbs != 1311 || p.Stats.DecodedMatchedEvents != 1 || p.Stats.DecodedCombatResultAbs != 1311 || p.Stats.IncludedUnresolvedRelations != 1 || p.Stats.SuppressedUnrelatedEvents != 0 || p.Stats.DamageCandidateResult != 0 || p.Stats.HealingCandidateEvents != 1 || p.Stats.HealingCandidateResult != 1311 || p.Stats.OtherCandidateResult != 0 || p.Stats.UnclassifiedResult != 0 {
+		t.Fatalf("candidate classification changed raw result accounting: %+v", p.Stats)
 	}
 	var summary bytes.Buffer
 	p.printSummary(&summary)
@@ -113,19 +113,19 @@ func TestDamageResponsePreservesRawResultsAndMarksHealingOnlyAsCandidate(t *test
 
 func TestCombatEventJSONLPreservesRawIDsAndUnknownResolution(t *testing.T) {
 	var stdout, diagnostic, jsonl bytes.Buffer
-	p := newProcessor(nil, &stdout, &diagnostic, nil)
-	p.dev.combatEventsJSONL = &jsonl
-	event := combatEvent{
+	p := NewProcessor(nil, &stdout, &diagnostic, nil)
+	p.Dev.combatEventsJSONL = &jsonl
+	event := CombatEvent{
 		Timestamp: time.Date(2026, 10, 27, 1, 2, 3, 4000, time.UTC), SessionNumber: 3, RPCID: 91,
 		SourceEntityID: 30298, HasSourceEntity: true, TargetEntityID: 30802, HasTargetEntity: true,
 		SkillID: 280026010, DamageID: 28002601, HasDamageID: true, Damage: 177,
 		ServerResultRaw: -177, HasServerResult: true, ChangeLifeRaw: -200, HasChangeLife: true,
-		CharacterStatus: resolutionUnknown, CharacterNameStatus: resolutionUnknown,
-		SkillStatus: resolutionUnknown, SkillNameStatus: resolutionUnknown, EventTypeStatus: resolutionUnknown,
-		Source: entityIdentity{Runtime: runtimeEntity{entityID: 30298}, RuntimeStatus: resolutionUnknown},
-		Target: entityIdentity{Runtime: runtimeEntity{entityID: 30802}, RuntimeStatus: resolutionUnknown},
+		CharacterStatus: ResolutionUnknown, CharacterNameStatus: ResolutionUnknown,
+		SkillStatus: ResolutionUnknown, SkillNameStatus: ResolutionUnknown, EventTypeStatus: ResolutionUnknown,
+		Source: EntityIdentity{Runtime: RuntimeEntity{EntityID: 30298}, RuntimeStatus: ResolutionUnknown},
+		Target: EntityIdentity{Runtime: RuntimeEntity{EntityID: 30802}, RuntimeStatus: ResolutionUnknown},
 	}
-	p.writeDamageEvent(event)
+	p.WriteDamageEvent(event)
 	var got map[string]any
 	if err := json.NewDecoder(&jsonl).Decode(&got); err != nil {
 		t.Fatalf("decode event JSONL: %v", err)
@@ -142,11 +142,11 @@ func TestCombatEventJSONLPreservesRawIDsAndUnknownResolution(t *testing.T) {
 		t.Fatalf("unresolved event gained a top-level character ID: %#v", got)
 	}
 	credit := got["credit"].(map[string]any)
-	if _, exists := credit["characterId"]; exists || credit["status"] != string(resolutionUnknown) {
+	if _, exists := credit["characterId"]; exists || credit["status"] != string(ResolutionUnknown) {
 		t.Fatalf("unknown credit was promoted: %#v", credit)
 	}
 	result := got["combatResult"].(map[string]any)
-	if result["damageId"] != float64(28002601) || result["combatResultAbs"] != float64(177) || result["serverResultRaw"] != float64(-177) || result["classStatus"] != string(resolutionUnknown) {
+	if result["damageId"] != float64(28002601) || result["combatResultAbs"] != float64(177) || result["serverResultRaw"] != float64(-177) || result["classStatus"] != string(ResolutionUnknown) {
 		t.Fatalf("raw combat result evidence or unknown class changed: %#v", result)
 	}
 	runtimeFields := source["runtimeFields"].(map[string]any)
@@ -157,7 +157,7 @@ func TestCombatEventJSONLPreservesRawIDsAndUnknownResolution(t *testing.T) {
 }
 
 func TestFormatNormalLabelsHealingAsCandidateResult(t *testing.T) {
-	event := combatEvent{Damage: 1311, EventTypeCandidate: "HEALING_CANDIDATE"}
+	event := CombatEvent{Damage: 1311, EventTypeCandidate: "HEALING_CANDIDATE"}
 	line := formatNormal(event)
 	if !strings.Contains(line, "1311 [Healing Candidate Result]") || strings.Contains(line, "Damage Candidate Result") {
 		t.Fatalf("healing output was not labeled separately: %s", line)
@@ -165,9 +165,9 @@ func TestFormatNormalLabelsHealingAsCandidateResult(t *testing.T) {
 }
 
 func TestFormatNormalLabelsVerifiedMonsterInsteadOfUnknownCredit(t *testing.T) {
-	event := combatEvent{
-		Source: entityIdentity{
-			HasMonster: true, Monster: masterRecord{ID: 602000019}, MonsterStatus: resolutionVerified,
+	event := CombatEvent{
+		Source: EntityIdentity{
+			HasMonster: true, Monster: MasterRecord{ID: 602000019}, MonsterStatus: ResolutionVerified,
 		},
 		Damage: 2151,
 	}
@@ -178,10 +178,10 @@ func TestFormatNormalLabelsVerifiedMonsterInsteadOfUnknownCredit(t *testing.T) {
 }
 
 func TestFormatNormalLabelsCorrelatedTemplateInsteadOfUnknownCredit(t *testing.T) {
-	event := combatEvent{
-		Source: entityIdentity{
-			TemplateStatus:     resolutionCorrelated,
-			TemplateCandidates: []sceneTemplateCandidate{{TemplateID: 602000019}},
+	event := CombatEvent{
+		Source: EntityIdentity{
+			TemplateStatus:     ResolutionCorrelated,
+			TemplateCandidates: []SceneTemplateCandidate{{TemplateID: 602000019}},
 		},
 		Damage: 2151,
 	}
@@ -192,13 +192,13 @@ func TestFormatNormalLabelsCorrelatedTemplateInsteadOfUnknownCredit(t *testing.T
 }
 
 func TestCorrelatedRoleIsCreditNotSourceIdentity(t *testing.T) {
-	event := combatEvent{
+	event := CombatEvent{
 		SourceEntityID:      90,
 		HasSourceEntity:     true,
 		CharacterID:         1312,
 		CharacterName:       "Role",
-		CharacterNameStatus: resolutionVerified,
-		CharacterStatus:     resolutionCorrelated,
+		CharacterNameStatus: ResolutionVerified,
+		CharacterStatus:     ResolutionCorrelated,
 		DamageID:            70010001,
 		HasDamageID:         true,
 		Damage:              100,
@@ -213,11 +213,11 @@ func TestCorrelatedRoleIsCreditNotSourceIdentity(t *testing.T) {
 }
 
 func TestUnverifiedLocalizedSkillNameIsNotDisplayed(t *testing.T) {
-	event := combatEvent{
+	event := CombatEvent{
 		SkillID:         1312011,
 		SkillName:       "Unverified label",
-		SkillStatus:     resolutionVerified,
-		SkillNameStatus: resolutionUnknown,
+		SkillStatus:     ResolutionVerified,
+		SkillNameStatus: ResolutionUnknown,
 	}
 	got := formatNormal(event)
 	if !strings.Contains(got, "SkillId:1312011") || strings.Contains(got, "Unverified label") {
@@ -226,12 +226,12 @@ func TestUnverifiedLocalizedSkillNameIsNotDisplayed(t *testing.T) {
 }
 
 func TestResolvedCharacterIDRemainsVisibleWhenNameIsUnknown(t *testing.T) {
-	event := combatEvent{
+	event := CombatEvent{
 		SourceEntityID:      90,
 		HasSourceEntity:     true,
 		CharacterID:         1312,
-		CharacterStatus:     resolutionCorrelated,
-		CharacterNameStatus: resolutionUnknown,
+		CharacterStatus:     ResolutionCorrelated,
+		CharacterNameStatus: ResolutionUnknown,
 		Damage:              100,
 	}
 	got := formatNormal(event)
@@ -244,33 +244,33 @@ func TestResolvedCharacterIDRemainsVisibleWhenNameIsUnknown(t *testing.T) {
 }
 
 func TestSummonerEntityChainResolvesCharacterSeparatelyFromDamageCredit(t *testing.T) {
-	resolver := newEntityResolver()
+	resolver := NewEntityResolver()
 	add := func(entityID, configID, configType uint64, summonerID uint64, hasSummoner bool) {
-		entity := appendVarintField(nil, fieldEntityPbID, entityID)
+		entity := appendVarintField(nil, FieldEntityPbID, entityID)
 		if configID != 0 {
-			entity = appendVarintField(entity, fieldEntityPbConfigID, configID)
+			entity = appendVarintField(entity, FieldEntityPbConfigID, configID)
 		}
 		if configType != 0 {
-			entity = appendVarintField(entity, fieldEntityPbConfigType, configType)
+			entity = appendVarintField(entity, FieldEntityPbConfigType, configType)
 		}
 		if hasSummoner {
-			summoner := appendVarintField(nil, fieldSummonerComponentPbSummonerID, summonerID)
-			entity = appendBytesField(entity, fieldEntityPbComponentPbs, appendBytesField(nil, fieldEntityComponentPbSummonerComponent, summoner))
+			summoner := appendVarintField(nil, FieldSummonerComponentPbSummonerID, summonerID)
+			entity = appendBytesField(entity, FieldEntityPbComponentPbs, appendBytesField(nil, FieldEntityComponentPbSummonerComponent, summoner))
 		}
-		notify := appendBytesField(appendVarintField(nil, fieldEntityAddNotifyIsAdd, 1), fieldEntityAddNotifyEntityPbs, entity)
-		if _, err := resolver.applyEntityAddNotify(notify); err != nil {
+		notify := appendBytesField(appendVarintField(nil, fieldEntityAddNotifyIsAdd, 1), FieldEntityAddNotifyEntityPbs, entity)
+		if _, err := resolver.ApplyEntityAddNotify(notify); err != nil {
 			t.Fatal(err)
 		}
 	}
 	add(100, 1312, 3, 0, false) // summoner entity is a character.
 	add(101, 0, 0, 100, true)   // intermediate summon.
 	add(200, 0, 0, 101, true)   // damage source summon.
-	masters := &gameMaster{characters: map[uint64]masterRecord{
-		1312: {ID: 1312, Name: "Test Role", NameStatus: string(resolutionVerified), Status: string(resolutionVerified)},
+	masters := &GameMaster{Characters: map[uint64]MasterRecord{
+		1312: {ID: 1312, Name: "Test Role", NameStatus: string(ResolutionVerified), Status: string(ResolutionVerified)},
 	}}
-	source, _ := resolver.resolve(200)
-	got := resolveSummonerCharacter(resolver, masters, source)
-	if !got.HasCharacterID || got.CharacterID != 1312 || !got.HasCharacter || got.Status != resolutionCorrelated {
+	source, _ := resolver.Resolve(200)
+	got := ResolveSummonerCharacter(resolver, masters, source)
+	if !got.HasCharacterID || got.CharacterID != 1312 || !got.HasCharacter || got.Status != ResolutionCorrelated {
 		t.Fatalf("summoner chain did not resolve a separately correlated character: %+v", got)
 	}
 	if len(got.EntityIDs) != 2 || got.EntityIDs[0] != 101 || got.EntityIDs[1] != 100 {
@@ -279,7 +279,7 @@ func TestSummonerEntityChainResolvesCharacterSeparatelyFromDamageCredit(t *testi
 	if !strings.Contains(got.Proof, "SummonerId") || !strings.Contains(got.Proof, "CreatureDataId") {
 		t.Fatalf("summoner chain provenance missing: %q", got.Proof)
 	}
-	event := combatEvent{Source: resolveEntityIdentity(resolver, masters, 200), SummonerCharacter: got, Damage: 42}
+	event := CombatEvent{Source: ResolveEntityIdentity(resolver, masters, 200), SummonerCharacter: got, Damage: 42}
 	line := formatNormal(event)
 	if !strings.Contains(line, "Credit:?") || !strings.Contains(line, "Summoner:Test Role [CORRELATED]") {
 		t.Fatalf("summoner relation must remain separate from damage credit: %q", line)
@@ -287,10 +287,10 @@ func TestSummonerEntityChainResolvesCharacterSeparatelyFromDamageCredit(t *testi
 }
 
 func TestHealingCandidateJSONLSeparatesReportedMagnitudeFromUnknownEffectiveness(t *testing.T) {
-	event := combatEvent{
+	event := CombatEvent{
 		Damage: 1311, ServerResultRaw: -1311, HasServerResult: true,
 		ChangeLifeRaw: -700, HasChangeLife: true, DamageCalculateType: 1, HasCalculateType: true,
-		EventTypeCandidate: "HEALING_CANDIDATE", EventTypeStatus: resolutionCorrelated,
+		EventTypeCandidate: "HEALING_CANDIDATE", EventTypeStatus: ResolutionCorrelated,
 		EventTypeProof: "CalculateType=1 uses cure/heal display; HP restoration not verified",
 	}
 	view := jsonlView(event, nil)
@@ -313,7 +313,7 @@ func TestHealingCandidateJSONLSeparatesReportedMagnitudeFromUnknownEffectiveness
 		t.Fatalf("raw result fields changed: %#v", result)
 	}
 	healing := got["healing"].(map[string]any)
-	if healing["reportedMagnitudeAbs"] != float64(1311) || healing["magnitudeStatus"] != string(resolutionCorrelated) || healing["effectiveStatus"] != string(resolutionUnknown) || healing["hpDeltaStatus"] != string(resolutionUnknown) || healing["overhealStatus"] != string(resolutionUnknown) {
+	if healing["reportedMagnitudeAbs"] != float64(1311) || healing["magnitudeStatus"] != string(ResolutionCorrelated) || healing["effectiveStatus"] != string(ResolutionUnknown) || healing["hpDeltaStatus"] != string(ResolutionUnknown) || healing["overhealStatus"] != string(ResolutionUnknown) {
 		t.Fatalf("healing evidence classification = %#v", healing)
 	}
 	if healing["effectiveAmountAbs"] != nil || healing["overhealAmountAbs"] != nil {
@@ -322,14 +322,14 @@ func TestHealingCandidateJSONLSeparatesReportedMagnitudeFromUnknownEffectiveness
 }
 
 func TestRuntimeIdentityAuditKeepsOwnerAndSummonerNamespacesSeparate(t *testing.T) {
-	entity := runtimeEntity{
-		entityID: 500, sceneInstanceID: 43, hasSceneInstanceID: true,
-		ownerID: 88, hasOwnerID: true, ownerIncID: 889, hasOwnerIncID: true,
-		summonerID: 600, hasSummonerID: true, sceneSummonerID: 800, hasSceneSummonerID: true,
-		playerEntityID: 640, hasPlayerEntityID: true,
-		playerID: 77, hasPlayerID: true, roleID: 1312, hasRoleID: true,
-		roleSourceFieldPath: "JoinSceneNotify.SceneInfo.PlayerInfos[].PlayerSceneGroupData[].FightRoleInfos[].RoleId",
-		sourceMessageID:     cmdJoinSceneNotify, sourceFieldPath: "JoinSceneNotify.SceneInfo.AoiData.Entities.EntityPb.Id",
+	entity := RuntimeEntity{
+		EntityID: 500, SceneInstanceID: 43, HasSceneInstanceID: true,
+		OwnerID: 88, HasOwnerID: true, OwnerIncID: 889, HasOwnerIncID: true,
+		SummonerID: 600, HasSummonerID: true, SceneSummonerID: 800, HasSceneSummonerID: true,
+		PlayerEntityID: 640, HasPlayerEntityID: true,
+		PlayerID: 77, HasPlayerID: true, RoleID: 1312, HasRoleID: true,
+		RoleSourceFieldPath: "JoinSceneNotify.SceneInfo.PlayerInfos[].PlayerSceneGroupData[].FightRoleInfos[].RoleId",
+		SourceMessageID:     CmdJoinSceneNotify, SourceFieldPath: "JoinSceneNotify.SceneInfo.AoiData.Entities.EntityPb.Id",
 	}
 	var got map[string]any
 	if err := json.Unmarshal([]byte(marshalRuntimeIdentity(entity)), &got); err != nil {
@@ -345,10 +345,10 @@ func TestRuntimeIdentityAuditKeepsOwnerAndSummonerNamespacesSeparate(t *testing.
 			t.Fatalf("runtime audit field %s lost its value/presence: %#v", name, got[name])
 		}
 	}
-	if got["sourceMessageId"] != float64(cmdJoinSceneNotify) || got["sourceFieldPath"] != entity.sourceFieldPath {
+	if got["sourceMessageId"] != float64(CmdJoinSceneNotify) || got["sourceFieldPath"] != entity.SourceFieldPath {
 		t.Fatalf("runtime audit provenance missing: %#v", got)
 	}
-	if got["roleSourceFieldPath"] != entity.roleSourceFieldPath {
+	if got["roleSourceFieldPath"] != entity.RoleSourceFieldPath {
 		t.Fatalf("role identity provenance missing: %#v", got)
 	}
 }

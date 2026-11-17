@@ -51,16 +51,16 @@ type combatActionRequestKey struct {
 
 const maxCombatActionRequests = 8192
 
-// archiveClientPushResearch decodes an outbound CombatSendPackRequest a second time with the research schema
+// ArchiveClientPushResearch decodes an outbound CombatSendPackRequest a second time with the research schema
 // (-protocol-schema) for the client-push, bullet and skill research outputs. It runs after the core role decoder
 // (observeClientPushFrame) on the same plaintext and never changes core state.
-func (p *processor) archiveClientPushResearch(frame gameFrame, plain []byte) {
-	if p.dev.protocolSchema == nil {
+func (p *Processor) ArchiveClientPushResearch(frame GameFrame, plain []byte) {
+	if p.Dev.protocolSchema == nil {
 		return
 	}
-	decoded, err := decodeSchemaMessage(p.dev.protocolSchema, "CombatSendPackRequest", plain, 0)
+	decoded, err := decodeSchemaMessage(p.Dev.protocolSchema, "CombatSendPackRequest", plain, 0)
 	if err != nil {
-		p.dev.clientPushErrors++
+		p.Dev.clientPushErrors++
 		return
 	}
 	p.archiveClientPushes(frame, decoded)
@@ -69,7 +69,7 @@ func (p *processor) archiveClientPushResearch(frame gameFrame, plain []byte) {
 // archiveClientPushes writes the role reports and skill-end pushes from one
 // decoded CombatSendPackRequest. It keeps the most recent reported role so that
 // each skill row carries the role that was active when it was reported.
-func (p *processor) archiveClientPushes(frame gameFrame, decoded *decodedMessage) {
+func (p *Processor) archiveClientPushes(frame GameFrame, decoded *decodedMessage) {
 	if decoded == nil {
 		return
 	}
@@ -77,10 +77,10 @@ func (p *processor) archiveClientPushes(frame gameFrame, decoded *decodedMessage
 		for _, request := range childMessages(data, "Request") {
 			p.observeCombatActionRequest(frame, request)
 		}
-		if p.dev.bulletRefOut != nil {
+		if p.Dev.bulletRefOut != nil {
 			p.observeBulletReferences(frame, data, "out")
 		}
-		if p.dev.skillRefOut != nil {
+		if p.Dev.skillRefOut != nil {
 			p.observeSkillReferences(frame, data, "out")
 		}
 		for _, push := range childMessages(data, "Push") {
@@ -99,8 +99,8 @@ func (p *processor) archiveClientPushes(frame gameFrame, decoded *decodedMessage
 	}
 }
 
-func (p *processor) observeCombatActionRequest(frame gameFrame, request *decodedMessage) {
-	if p.dev.combatActionRequests == nil || request == nil {
+func (p *Processor) observeCombatActionRequest(frame GameFrame, request *decodedMessage) {
+	if p.Dev.combatActionRequests == nil || request == nil {
 		return
 	}
 	common := firstChildMessage(request, "CombatCommon")
@@ -133,26 +133,26 @@ func (p *processor) observeCombatActionRequest(frame gameFrame, request *decoded
 	}
 	entityIDValue, _ := scalarValue(common, "EntityId")
 	targetIDValue, _ := scalarValue(info, "TargetId")
-	if p.dev.combatActionOrder == nil {
-		p.dev.combatActionOrder = make([]combatActionRequestKey, 0, maxCombatActionRequests)
+	if p.Dev.combatActionOrder == nil {
+		p.Dev.combatActionOrder = make([]combatActionRequestKey, 0, maxCombatActionRequests)
 	}
-	key := combatActionRequestKey{sessionNumber: p.sessionNumber, messageID: messageID}
-	if _, exists := p.dev.combatActionRequests[key]; exists {
+	key := combatActionRequestKey{sessionNumber: p.SessionNumber, messageID: messageID}
+	if _, exists := p.Dev.combatActionRequests[key]; exists {
 		return
 	}
-	p.dev.combatActionOrder = append(p.dev.combatActionOrder, key)
-	p.dev.combatActionRequests[key] = combatActionRequest{
-		SessionNumber: p.sessionNumber, MessageID: messageID, EntityID: uint64(max(entityIDValue, 0)), SkillID: uint64(skillID), TargetID: uint64(max(targetIDValue, 0)),
-		RequestType: requestType, Timestamp: formatTimestamp(frame.timestamp),
+	p.Dev.combatActionOrder = append(p.Dev.combatActionOrder, key)
+	p.Dev.combatActionRequests[key] = combatActionRequest{
+		SessionNumber: p.SessionNumber, MessageID: messageID, EntityID: uint64(max(entityIDValue, 0)), SkillID: uint64(skillID), TargetID: uint64(max(targetIDValue, 0)),
+		RequestType: requestType, Timestamp: formatTimestamp(frame.Timestamp),
 	}
-	if p.dev.clientPushOut != nil {
+	if p.Dev.clientPushOut != nil {
 		messageIDInt := messageIDValue
 		skillIDInt := skillID
 		record := clientPushRecord{
 			SchemaVersion: clientPushSchemaVersion,
-			FrameOrdinal:  p.dev.frameOrdinal - 1,
-			SessionNumber: p.sessionNumber,
-			Timestamp:     formatTimestamp(frame.timestamp),
+			FrameOrdinal:  p.Dev.frameOrdinal - 1,
+			SessionNumber: p.SessionNumber,
+			Timestamp:     formatTimestamp(frame.Timestamp),
 			PushName:      "SkillActionRequest",
 			MessageID:     &messageIDInt,
 			SkillID:       &skillIDInt,
@@ -169,10 +169,10 @@ func (p *processor) observeCombatActionRequest(frame gameFrame, request *decoded
 		}
 		p.writeClientPush(record)
 	}
-	for len(p.dev.combatActionRequests) > maxCombatActionRequests && len(p.dev.combatActionOrder) > 0 {
-		oldest := p.dev.combatActionOrder[0]
-		p.dev.combatActionOrder = p.dev.combatActionOrder[1:]
-		delete(p.dev.combatActionRequests, oldest)
+	for len(p.Dev.combatActionRequests) > maxCombatActionRequests && len(p.Dev.combatActionOrder) > 0 {
+		oldest := p.Dev.combatActionOrder[0]
+		p.Dev.combatActionOrder = p.Dev.combatActionOrder[1:]
+		delete(p.Dev.combatActionRequests, oldest)
 	}
 }
 
@@ -180,17 +180,17 @@ func (p *processor) observeCombatActionRequest(frame gameFrame, request *decoded
 // (observeCombatActionRequest) and returns a copy for the event line. writeDamageEventOutputs calls it once per damage
 // result; the core neither calls nor reads it. The returned copy is a separate variable so that only a found request is
 // allocated: a returned &action would move every lookup to the heap.
-func (p *processor) linkSkillRequest(messageID uint64) *combatActionRequest {
+func (p *Processor) linkSkillRequest(messageID uint64) *combatActionRequest {
 	if messageID == 0 {
 		return nil
 	}
-	key := combatActionRequestKey{sessionNumber: p.sessionNumber, messageID: messageID}
-	action, ok := p.dev.combatActionRequests[key]
+	key := combatActionRequestKey{sessionNumber: p.SessionNumber, messageID: messageID}
+	action, ok := p.Dev.combatActionRequests[key]
 	if !ok {
 		return nil
 	}
 	action.LinkedDamageEvents++
-	p.dev.combatActionRequests[key] = action
+	p.Dev.combatActionRequests[key] = action
 	linked := action
 	return &linked
 }
@@ -207,21 +207,21 @@ func firstChildMessage(message *decodedMessage, name string) *decodedMessage {
 	return nil
 }
 
-func (p *processor) observeRoleReport(frame gameFrame, message *decodedMessage) {
+func (p *Processor) observeRoleReport(frame GameFrame, message *decodedMessage) {
 	role, hasRole := scalarValue(message, "CurrentRoleId")
 	entity, hasEntity := scalarValue(message, "CurrentEntityId")
 	record := clientPushRecord{
 		SchemaVersion: clientPushSchemaVersion,
-		FrameOrdinal:  p.dev.frameOrdinal - 1,
-		SessionNumber: p.sessionNumber,
-		Timestamp:     formatTimestamp(frame.timestamp),
+		FrameOrdinal:  p.Dev.frameOrdinal - 1,
+		SessionNumber: p.SessionNumber,
+		Timestamp:     formatTimestamp(frame.Timestamp),
 		PushName:      "ClientCurrentRoleReportPush",
 		Evidence:      "client-reported current role; a change between reports is a candidate character switch",
 	}
 	if hasRole {
 		record.CurrentRoleID = &role
-		p.dev.activeRoleID = role
-		p.dev.hasActiveRole = true
+		p.Dev.activeRoleID = role
+		p.Dev.hasActiveRole = true
 	}
 	// The role entity itself is tracked by the core decoder (observeLocalRoleReports), with its conflict check, for the
 	// same push; this research record only reports what the schema decoded.
@@ -231,14 +231,14 @@ func (p *processor) observeRoleReport(frame gameFrame, message *decodedMessage) 
 	p.writeClientPush(record)
 }
 
-func (p *processor) observeEndSkill(frame gameFrame, message *decodedMessage) {
+func (p *Processor) observeEndSkill(frame GameFrame, message *decodedMessage) {
 	for _, usage := range childMessages(message, "UseSkillInfo") {
 		skillID, hasSkill := scalarValue(usage, "SkillId")
 		record := clientPushRecord{
 			SchemaVersion: clientPushSchemaVersion,
-			FrameOrdinal:  p.dev.frameOrdinal - 1,
-			SessionNumber: p.sessionNumber,
-			Timestamp:     formatTimestamp(frame.timestamp),
+			FrameOrdinal:  p.Dev.frameOrdinal - 1,
+			SessionNumber: p.SessionNumber,
+			Timestamp:     formatTimestamp(frame.Timestamp),
 			PushName:      "EndSkillPush",
 			Evidence:      "client-reported skill end; the skill identifier is as observed and has no name mapping yet",
 		}
@@ -246,8 +246,8 @@ func (p *processor) observeEndSkill(frame gameFrame, message *decodedMessage) {
 		// boss or healer effects, are reported while a character is active. The owner
 		// candidate comes from the thousands prefix of SkillId, which matches RoleId in
 		// the preload table; it is CORRELATED, not VERIFIED.
-		if p.dev.hasActiveRole {
-			role := p.dev.activeRoleID
+		if p.Dev.hasActiveRole {
+			role := p.Dev.activeRoleID
 			record.ActiveRoleID = &role
 		}
 		if hasSkill {
@@ -262,11 +262,11 @@ func (p *processor) observeEndSkill(frame gameFrame, message *decodedMessage) {
 	}
 }
 
-func (p *processor) writeClientPush(record clientPushRecord) {
-	if p.dev.clientPushOut == nil {
+func (p *Processor) writeClientPush(record clientPushRecord) {
+	if p.Dev.clientPushOut == nil {
 		return
 	}
-	writeResearchRecord(p.dev.clientPushOut, record, &p.dev.clientPushErrors)
+	writeResearchRecord(p.Dev.clientPushOut, record, &p.Dev.clientPushErrors)
 }
 
 // floatValue reads a float field from a decoded message.

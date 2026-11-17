@@ -70,68 +70,68 @@ type overlapRowJSONL struct {
 	ActiveBuffs    []activeBuffJSONL `json:"activeBuffs"`
 }
 
-// observeBuffInterval updates the Buff state from one lifecycle row. Only
+// ObserveBuffInterval updates the Buff state from one lifecycle row. Only
 // server-side gameplay-effect APPLY and REMOVE rows with a CORRELATED or VERIFIED
 // target participate. Request notifies are not applied state.
-func (p *processor) observeBuffInterval(row buffLifecycleAuditRow) {
+func (p *Processor) ObserveBuffInterval(row BuffLifecycleAuditRow) {
 	if row.EventKind != "GAMEPLAY_EFFECT_APPLY" && row.EventKind != "GAMEPLAY_EFFECT_REMOVE" {
 		return
 	}
-	if row.TargetStatus != resolutionCorrelated && row.TargetStatus != resolutionVerified {
-		p.dev.buffOverlapSkipped++
+	if row.TargetStatus != ResolutionCorrelated && row.TargetStatus != ResolutionVerified {
+		p.Dev.buffOverlapSkipped++
 		return
 	}
 	if row.TargetEntityID == nil || row.HandleID == nil {
-		p.dev.buffOverlapSkipped++
+		p.Dev.buffOverlapSkipped++
 		return
 	}
 	key := overlapKey{session: row.SessionNumber, target: *row.TargetEntityID, handle: *row.HandleID}
-	if p.dev.buffIntervalOpen == nil {
-		p.dev.buffIntervalOpen = make(map[overlapKey]*buffInterval)
+	if p.Dev.buffIntervalOpen == nil {
+		p.Dev.buffIntervalOpen = make(map[overlapKey]*buffInterval)
 	}
 	switch row.EventKind {
 	case "GAMEPLAY_EFFECT_APPLY":
-		if _, open := p.dev.buffIntervalOpen[key]; open {
-			p.dev.buffDuplicateApplies++
+		if _, open := p.Dev.buffIntervalOpen[key]; open {
+			p.Dev.buffDuplicateApplies++
 			return
 		}
-		if len(p.dev.buffIntervals) >= maxBuffIntervals {
-			p.dev.buffIntervalOverflow++
+		if len(p.Dev.buffIntervals) >= maxBuffIntervals {
+			p.Dev.buffIntervalOverflow++
 			return
 		}
 		interval := &buffInterval{key: key, start: row.Timestamp}
 		if row.BuffID != nil {
 			interval.buffID, interval.hasBuffID = *row.BuffID, true
 		}
-		p.dev.buffIntervals = append(p.dev.buffIntervals, interval)
-		p.dev.buffIntervalOpen[key] = interval
+		p.Dev.buffIntervals = append(p.Dev.buffIntervals, interval)
+		p.Dev.buffIntervalOpen[key] = interval
 	case "GAMEPLAY_EFFECT_REMOVE":
-		interval, open := p.dev.buffIntervalOpen[key]
+		interval, open := p.Dev.buffIntervalOpen[key]
 		if !open {
-			p.dev.buffUnmatchedRemoves++
+			p.Dev.buffUnmatchedRemoves++
 			return
 		}
 		interval.end = row.Timestamp
 		interval.closed = true
-		delete(p.dev.buffIntervalOpen, key)
+		delete(p.Dev.buffIntervalOpen, key)
 	}
 }
 
 // recordDamageForOverlap stores a typed damage result for the overlap query. Only
 // results with a resolved target runtime entity are recorded.
-func (p *processor) recordDamageForOverlap(event combatEvent) {
-	if event.Target.Runtime.entityID == 0 {
+func (p *Processor) recordDamageForOverlap(event CombatEvent) {
+	if event.Target.Runtime.EntityID == 0 {
 		return
 	}
-	if len(p.dev.damageOverlap) >= maxOverlapDamageRecord {
-		p.dev.damageOverlapOverflow++
+	if len(p.Dev.damageOverlap) >= maxOverlapDamageRecord {
+		p.Dev.damageOverlapOverflow++
 		return
 	}
-	p.dev.damageOverlap = append(p.dev.damageOverlap, damageOverlapRecord{
+	p.Dev.damageOverlap = append(p.Dev.damageOverlap, damageOverlapRecord{
 		session:   event.SessionNumber,
 		rpcID:     event.RPCID,
 		timestamp: event.Timestamp,
-		target:    event.Target.Runtime.entityID,
+		target:    event.Target.Runtime.EntityID,
 		damage:    event.Damage,
 	})
 }
@@ -139,9 +139,9 @@ func (p *processor) recordDamageForOverlap(event combatEvent) {
 // writeBuffOverlap writes one row per recorded damage result. Results with no
 // active instance still get a row, so a query can distinguish "no active Buff"
 // from "not recorded".
-func (p *processor) writeBuffOverlap(w io.Writer) error {
+func (p *Processor) writeBuffOverlap(w io.Writer) error {
 	const precision = "PACKET_OBSERVED_TIME"
-	for _, record := range p.dev.damageOverlap {
+	for _, record := range p.Dev.damageOverlap {
 		row := overlapRowJSONL{
 			SchemaVersion:  1,
 			SessionNumber:  record.session,
@@ -152,7 +152,7 @@ func (p *processor) writeBuffOverlap(w io.Writer) error {
 			Precision:      precision,
 			ActiveBuffs:    []activeBuffJSONL{},
 		}
-		for _, interval := range p.dev.buffIntervals {
+		for _, interval := range p.Dev.buffIntervals {
 			if interval.key.session != record.session || interval.key.target != record.target {
 				continue
 			}

@@ -125,11 +125,11 @@ func TestHealingInventoryCollector(t *testing.T) {
 	if master == "" || listPath == "" {
 		t.Fatal("WWLOGS_HEALING_MASTER_DB and WWLOGS_HEALING_PCAPS are required")
 	}
-	key, err := loadEmbeddedPrivateKey()
+	key, err := LoadEmbeddedPrivateKey()
 	if err != nil {
 		t.Fatalf("embedded key payload is required: %v", err)
 	}
-	masters, err := loadGameMasterDatabase(master, "zh-TW")
+	masters, err := LoadGameMasterDatabase(master, "zh-TW")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,25 +158,25 @@ func TestHealingInventoryCollector(t *testing.T) {
 	}
 }
 
-func inventoryHealing(t *testing.T, masters *gameMaster, key *staticRSA, schema *protocolSchema, name string, packets []perturbationPacket) healingInventory {
+func inventoryHealing(t *testing.T, masters *GameMaster, key *StaticRSA, schema *protocolSchema, name string, packets []perturbationPacket) healingInventory {
 	t.Helper()
 	var records, events, hp bytes.Buffer
-	p := newProcessor(key, io.Discard, io.Discard, nil)
-	p.masters = masters
-	p.dev.encounterOut = &records
-	p.dev.combatEventsJSONL = &events
+	p := NewProcessor(key, io.Discard, io.Discard, nil)
+	p.Masters = masters
+	p.Dev.encounterOut = &records
+	p.Dev.combatEventsJSONL = &events
 	if schema != nil {
-		p.dev.protocolSchema = schema
-		p.dev.hpStateOut = &hp
+		p.Dev.protocolSchema = schema
+		p.Dev.hpStateOut = &hp
 	}
-	streams := make(map[string]*stream)
-	stats := captureStats{}
+	streams := make(map[string]*Stream)
+	stats := CaptureStats{}
 	for _, packet := range packets {
-		stats.udpPackets++
-		consumeDatagram(packet.payload, packet.direction, packet.at, streams, p, &stats)
+		stats.UDPPackets++
+		ConsumeDatagram(packet.payload, packet.direction, packet.at, streams, p, &stats)
 	}
-	finishTransport(streams, p, &stats)
-	p.finishCapture()
+	FinishTransport(streams, p, &stats)
+	p.FinishCapture()
 
 	type jsonlEvent struct {
 		SessionNumber int    `json:"sessionNumber"`
@@ -263,7 +263,7 @@ func inventoryHealing(t *testing.T, masters *gameMaster, key *staticRSA, schema 
 			if event.SourceRoleID == 0 {
 				inventory.HealerUnknown++
 			}
-			if event.TargetRel != playerRelationLocal.String() {
+			if event.TargetRel != PlayerRelationLocal.String() {
 				inventory.TargetUnknown++
 			}
 			inventory.HealingAssigned[assignmentKind(record.Assignment)]++
@@ -288,9 +288,9 @@ func inventoryHealing(t *testing.T, masters *gameMaster, key *staticRSA, schema 
 				inventory.Effective += effective
 				inventory.Overheal += record.Amount - min(record.Amount, effective)
 			}
-			if record.Target.Relation == playerRelationLocal.String() {
+			if record.Target.Relation == PlayerRelationLocal.String() {
 				inventory.LocalTeam += effective
-				if event.SourceRoleID != 0 || (record.Source.Relation == playerRelationLocal.String()) {
+				if event.SourceRoleID != 0 || (record.Source.Relation == PlayerRelationLocal.String()) {
 					inventory.LocalTeamKnown += effective
 				}
 			}
@@ -300,7 +300,7 @@ func inventoryHealing(t *testing.T, masters *gameMaster, key *staticRSA, schema 
 	if schema != nil {
 		inventory.Life = checkLifeReports(&hp, changeLife, &records)
 	}
-	statistics := p.damageStatisticsSnapshot()
+	statistics := p.DamageStatisticsSnapshot()
 	engine := &healingEngineReport{
 		Interval: statistics.Healing, NotLocal: statistics.HealingNotLocalEvents, Duplicates: statistics.HealingDuplicateEvents,
 		Inconsistent: statistics.HealingInconsistentEvents, PeakMatchesBest: true,
@@ -310,7 +310,7 @@ func inventoryHealing(t *testing.T, masters *gameMaster, key *staticRSA, schema 
 		encounters = append(encounters, *statistics.Encounters.Current)
 	}
 	timelines := map[string]EncounterTimelineSnapshot{}
-	for _, timeline := range p.damageStatistics.encounterTimelines() {
+	for _, timeline := range p.DamageStatistics.EncounterTimelines() {
 		timelines[timeline.EncounterID] = timeline
 	}
 	for _, encounter := range encounters {
@@ -341,7 +341,7 @@ func jsonNumber(value int64) string {
 
 func assignmentKind(assignment string) string {
 	switch assignment {
-	case "", statisticsAssignmentNotCounted, statisticsAssignmentDuplicate:
+	case "", StatisticsAssignmentNotCounted, StatisticsAssignmentDuplicate:
 		return "assignment:" + assignment
 	}
 	return "encounter_or_outside"

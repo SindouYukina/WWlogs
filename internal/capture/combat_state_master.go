@@ -5,31 +5,31 @@ import (
 	"fmt"
 )
 
-// propertyName is one PropertyIndex row: the attribute key used by the client and its localized display name.
-type propertyName struct {
+// PropertyName is one PropertyIndex row: the attribute key used by the client and its localized display name.
+type PropertyName struct {
 	Key  string
 	Name string
 }
 
-// fsmNodeKey identifies a node inside one state-machine config; node uuids are only unique per machine.
-type fsmNodeKey struct {
-	machine string
+// FSMNodeKey identifies a node inside one state-machine config; node uuids are only unique per machine.
+type FSMNodeKey struct {
+	Machine string
 	uuid    int64
 }
 
-// fsmMaster indexes the AI state-machine node identities (not their behaviour logic).
-type fsmMaster struct {
-	machinesByNode    map[int64][]string // node uuid -> machines that define it
-	machinesByVersion map[int64][]string // config Version -> machines (EntityFsmComponentPb.HashCode)
-	names             map[fsmNodeKey]string
-	children          map[fsmNodeKey][]int64
-	references        map[fsmNodeKey]int64
-	// labels holds the localized developer node names by zh-CN name: the master locale and the zh-CN original.
-	labels map[string]map[string]localizedSkillLabel
+// FSMMaster indexes the AI state-machine node identities (not their behaviour logic).
+type FSMMaster struct {
+	MachinesByNode    map[int64][]string // node uuid -> machines that define it
+	MachinesByVersion map[int64][]string // config Version -> machines (EntityFsmComponentPb.HashCode)
+	Names             map[FSMNodeKey]string
+	Children          map[FSMNodeKey][]int64
+	References        map[FSMNodeKey]int64
+	// Labels holds the localized developer node names by zh-CN name: the master locale and the zh-CN original.
+	Labels map[string]map[string]LocalizedSkillLabel
 }
 
 // loadSQLitePropertyNames reads PropertyIndex keys and the master-locale names; the tables are optional.
-func loadSQLitePropertyNames(db *sql.DB, locale string, master *gameMaster) error {
+func loadSQLitePropertyNames(db *sql.DB, locale string, master *GameMaster) error {
 	exists, err := masterTableExists(db, "propertyindex")
 	if err != nil || !exists {
 		return err
@@ -42,28 +42,28 @@ func loadSQLitePropertyNames(db *sql.DB, locale string, master *gameMaster) erro
 	defer rows.Close()
 	for rows.Next() {
 		var id int64
-		var entry propertyName
+		var entry PropertyName
 		if err := rows.Scan(&id, &entry.Key, &entry.Name); err != nil {
 			return fmt.Errorf("read PropertyIndex name: %w", err)
 		}
-		master.propertyNames[id] = entry
+		master.PropertyNames[id] = entry
 	}
 	return rows.Err()
 }
 
 // loadSQLiteStateMachines reads the state-machine node identities and their containment; the tables are optional.
-func loadSQLiteStateMachines(db *sql.DB, locale string, master *gameMaster) error {
+func loadSQLiteStateMachines(db *sql.DB, locale string, master *GameMaster) error {
 	exists, err := masterTableExists(db, "aistatemachine_node")
 	if err != nil || !exists {
 		return err
 	}
-	fsm := &fsmMaster{
-		machinesByNode:    make(map[int64][]string),
-		machinesByVersion: make(map[int64][]string),
-		names:             make(map[fsmNodeKey]string),
-		children:          make(map[fsmNodeKey][]int64),
-		references:        make(map[fsmNodeKey]int64),
-		labels:            make(map[string]map[string]localizedSkillLabel),
+	fsm := &FSMMaster{
+		MachinesByNode:    make(map[int64][]string),
+		MachinesByVersion: make(map[int64][]string),
+		Names:             make(map[FSMNodeKey]string),
+		Children:          make(map[FSMNodeKey][]int64),
+		References:        make(map[FSMNodeKey]int64),
+		Labels:            make(map[string]map[string]LocalizedSkillLabel),
 	}
 	versions, err := db.Query("SELECT id,version FROM aistatemachine ORDER BY id")
 	if err != nil {
@@ -76,7 +76,7 @@ func loadSQLiteStateMachines(db *sql.DB, locale string, master *gameMaster) erro
 			versions.Close()
 			return fmt.Errorf("read state-machine version: %w", err)
 		}
-		fsm.machinesByVersion[version] = append(fsm.machinesByVersion[version], machine)
+		fsm.MachinesByVersion[version] = append(fsm.MachinesByVersion[version], machine)
 	}
 	if err := versions.Close(); err != nil {
 		return err
@@ -93,11 +93,11 @@ func loadSQLiteStateMachines(db *sql.DB, locale string, master *gameMaster) erro
 			rows.Close()
 			return fmt.Errorf("read state-machine node: %w", err)
 		}
-		key := fsmNodeKey{machine, uuid}
-		fsm.machinesByNode[uuid] = append(fsm.machinesByNode[uuid], machine)
-		fsm.names[key] = name
+		key := FSMNodeKey{machine, uuid}
+		fsm.MachinesByNode[uuid] = append(fsm.MachinesByNode[uuid], machine)
+		fsm.Names[key] = name
 		if reference.Valid {
-			fsm.references[key] = reference.Int64
+			fsm.References[key] = reference.Int64
 		}
 	}
 	if err := rows.Close(); err != nil {
@@ -114,8 +114,8 @@ func loadSQLiteStateMachines(db *sql.DB, locale string, master *gameMaster) erro
 		if err := childRows.Scan(&machine, &uuid, &child); err != nil {
 			return fmt.Errorf("read state-machine node child: %w", err)
 		}
-		key := fsmNodeKey{machine, uuid}
-		fsm.children[key] = append(fsm.children[key], child)
+		key := FSMNodeKey{machine, uuid}
+		fsm.Children[key] = append(fsm.Children[key], child)
 	}
 	if err := childRows.Err(); err != nil {
 		return err
@@ -132,14 +132,14 @@ func loadSQLiteStateMachines(db *sql.DB, locale string, master *gameMaster) erro
 		defer labelRows.Close()
 		for labelRows.Next() {
 			var name string
-			var label localizedSkillLabel
+			var label LocalizedSkillLabel
 			if err := labelRows.Scan(&name, &label.Locale, &label.Text, &label.Kind); err != nil {
 				return fmt.Errorf("read state-machine node label: %w", err)
 			}
-			byLocale := fsm.labels[name]
+			byLocale := fsm.Labels[name]
 			if byLocale == nil {
-				byLocale = make(map[string]localizedSkillLabel)
-				fsm.labels[name] = byLocale
+				byLocale = make(map[string]LocalizedSkillLabel)
+				fsm.Labels[name] = byLocale
 			}
 			byLocale[label.Locale] = label
 		}
@@ -147,6 +147,6 @@ func loadSQLiteStateMachines(db *sql.DB, locale string, master *gameMaster) erro
 			return err
 		}
 	}
-	master.fsm = fsm
+	master.FSM = fsm
 	return nil
 }

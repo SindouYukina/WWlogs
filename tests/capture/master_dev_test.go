@@ -27,7 +27,7 @@ func TestLoadGameMasterDatabaseLoadsNormalizedShieldDefinitionKeys(t *testing.T)
 		t.Fatal(err)
 	}
 
-	master, err := loadGameMasterDatabase(path, "zh-TW")
+	master, err := LoadGameMasterDatabase(path, "zh-TW")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +75,7 @@ func TestResolveBulletFollowsSourceChainToExactlyOneActor(t *testing.T) {
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
-	master, err := loadGameMasterDatabase(path, "zh-TW")
+	master, err := LoadGameMasterDatabase(path, "zh-TW")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,44 +86,44 @@ func TestResolveBulletFollowsSourceChainToExactlyOneActor(t *testing.T) {
 		t.Fatal("a SkillId listed by multiple actor assets must remain ambiguous")
 	}
 	character := bulletSource{RoleSkinID: 9001, HasRoleSkin: true}
-	if r := resolveBullet(master, 111, character); r.Status != resolutionCorrelated || r.Namespace != "BulletPreload.ActorBlueprint" || r.ActorBlueprint != "/Game/A.A_C" {
+	if r := resolveBullet(master, 111, character); r.Status != ResolutionCorrelated || r.Namespace != "BulletPreload.ActorBlueprint" || r.ActorBlueprint != "/Game/A.A_C" {
 		t.Fatalf("a character bullet held by its own actor must correlate: %+v", r)
 	}
 	// The chain is read from the combat master; the protocol schema label names where field names come from, not it.
 	if r := resolveBullet(master, 111, character); !strings.Contains(r.Proof, "BulletPreload rows in the combat master") || strings.Contains(r.Proof, "pinned") {
 		t.Fatalf("the preload chain proof must name the combat master it was read from: %q", r.Proof)
 	}
-	if r := resolveBullet(master, 111, bulletSource{SkillID: 501}); r.Status != resolutionCorrelated || r.ActorBlueprint != "/Game/A.A_C" || r.Via == "" {
+	if r := resolveBullet(master, 111, bulletSource{SkillID: 501}); r.Status != ResolutionCorrelated || r.ActorBlueprint != "/Game/A.A_C" || r.Via == "" {
 		t.Fatalf("a co-referenced SkillId with one actor owner must resolve its listed bullet: %+v", r)
 	}
-	if r := resolveBullet(master, 222, bulletSource{SkillID: 502}); r.Status != resolutionUnknown {
+	if r := resolveBullet(master, 222, bulletSource{SkillID: 502}); r.Status != ResolutionUnknown {
 		t.Fatalf("a SkillId shared by multiple actors must not select a bullet owner: %+v", r)
 	}
-	if r := resolveBullet(master, 222, bulletSource{RoleSkinID: 9001, HasRoleSkin: true, SkillID: 503}); r.Status != resolutionUnknown {
+	if r := resolveBullet(master, 222, bulletSource{RoleSkinID: 9001, HasRoleSkin: true, SkillID: 503}); r.Status != ResolutionUnknown {
 		t.Fatalf("a runtime source chain must not be overridden by a conflicting SkillId owner: %+v", r)
 	}
-	if r := resolveBullet(master, 222, character); r.Status != resolutionUnknown {
+	if r := resolveBullet(master, 222, character); r.Status != ResolutionUnknown {
 		t.Fatalf("a bullet held only by another actor must not resolve for this source: %+v", r)
 	}
 	monster := bulletSource{BlueprintTypes: []string{"MonsterB"}}
-	if r := resolveBullet(master, 222, monster); r.Status != resolutionCorrelated || r.ActorBlueprint != "/Game/B.B_C" {
+	if r := resolveBullet(master, 222, monster); r.Status != ResolutionCorrelated || r.ActorBlueprint != "/Game/B.B_C" {
 		t.Fatalf("a template-derived actor bullet must correlate: %+v", r)
 	}
 	both := bulletSource{RoleSkinID: 9001, HasRoleSkin: true, BlueprintTypes: []string{"MonsterB"}}
-	if r := resolveBullet(master, 333, both); r.Status != resolutionUnknown || r.Namespace != "" {
+	if r := resolveBullet(master, 333, both); r.Status != ResolutionUnknown || r.Namespace != "" {
 		t.Fatalf("a key held by two source-chain actors must stay ambiguous: %+v", r)
 	}
 	echo := bulletSource{RoleSkinID: 9001, HasRoleSkin: true, SkillID: 280026010}
-	if r := resolveBullet(master, 280026012, echo); r.Status != resolutionCorrelated || r.ActorBlueprint != "/Game/V.V_C" {
+	if r := resolveBullet(master, 280026012, echo); r.Status != ResolutionCorrelated || r.ActorBlueprint != "/Game/V.V_C" {
 		t.Fatalf("an echo bullet reached through Vision.BirthCastSkillId must correlate to the echo actor: %+v", r)
 	}
-	if r := resolveBullet(master, 210002005, character); r.Status != resolutionCorrelated || r.Namespace != "CDT_CommonBulletData.RowKey" {
+	if r := resolveBullet(master, 210002005, character); r.Status != ResolutionCorrelated || r.Namespace != "CDT_CommonBulletData.RowKey" {
 		t.Fatalf("a common-table-only key must correlate to the common table: %+v", r)
 	}
-	if r := resolveBullet(master, 444, character); r.Status != resolutionUnknown {
+	if r := resolveBullet(master, 444, character); r.Status != ResolutionUnknown {
 		t.Fatalf("a key held by both the source actor and the common table must stay ambiguous: %+v", r)
 	}
-	if r := resolveBullet(master, 999, character); r.Status != resolutionUnknown {
+	if r := resolveBullet(master, 999, character); r.Status != ResolutionUnknown {
 		t.Fatalf("an unknown key must stay unknown: %+v", r)
 	}
 	if resolveBullet(nil, 1, character) != nil {
@@ -157,85 +157,85 @@ func TestResolveBulletUsesLiveVisionSummonOfTheSourceEntity(t *testing.T) {
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
-	master, err := loadGameMasterDatabase(path, "zh-TW")
+	master, err := LoadGameMasterDatabase(path, "zh-TW")
 	if err != nil {
 		t.Fatal(err)
 	}
 	with := bulletSource{VisionSummonCfgs: []uint64{280045}}
-	if r := resolveBullet(master, 280045101, with); r.Status != resolutionCorrelated || r.ActorBlueprint != "/Game/V.V_C" {
+	if r := resolveBullet(master, 280045101, with); r.Status != ResolutionCorrelated || r.ActorBlueprint != "/Game/V.V_C" {
 		t.Fatalf("a live vision summon of the source entity must lead to the echo actor: %+v", r)
 	}
 	own := bulletSource{OwnSummonCfgID: 280045, HasOwnSummonCfgID: true}
-	if r := resolveBullet(master, 280045101, own); r.Status != resolutionCorrelated || r.ActorBlueprint != "/Game/V.V_C" {
+	if r := resolveBullet(master, 280045101, own); r.Status != ResolutionCorrelated || r.ActorBlueprint != "/Game/V.V_C" {
 		t.Fatalf("a summon firing its own bullet must resolve through its own SummonCfg: %+v", r)
 	}
-	if r := resolveBullet(master, 280045101, bulletSource{}); r.Status != resolutionUnknown {
+	if r := resolveBullet(master, 280045101, bulletSource{}); r.Status != ResolutionUnknown {
 		t.Fatalf("without a vision summon the bullet must stay a numeric match: %+v", r)
 	}
 
-	resolver := &entityResolver{entities: map[uint64]runtimeEntity{
-		92: {entityID: 92, summonerID: 90, hasSummonerID: true, summonType: 1, hasSummonType: true, summonConfigID: 280045, hasSummonConfigID: true},
-		93: {entityID: 93, summonerID: 90, hasSummonerID: true, summonType: 5, hasSummonType: true, summonConfigID: 6013, hasSummonConfigID: true},
-		94: {entityID: 94, summonerID: 77, hasSummonerID: true, summonType: 1, hasSummonType: true, summonConfigID: 280026, hasSummonConfigID: true},
+	resolver := &EntityResolver{Entities: map[uint64]RuntimeEntity{
+		92: {EntityID: 92, SummonerID: 90, HasSummonerID: true, SummonType: 1, HasSummonType: true, SummonConfigID: 280045, HasSummonConfigID: true},
+		93: {EntityID: 93, SummonerID: 90, HasSummonerID: true, SummonType: 5, HasSummonType: true, SummonConfigID: 6013, HasSummonConfigID: true},
+		94: {EntityID: 94, SummonerID: 77, HasSummonerID: true, SummonType: 1, HasSummonType: true, SummonConfigID: 280026, HasSummonConfigID: true},
 	}}
-	if got := resolver.visionSummonConfigs(90); len(got) != 1 || got[0] != 280045 {
+	if got := resolver.VisionSummonConfigs(90); len(got) != 1 || got[0] != 280045 {
 		t.Fatalf("only ConcomitantVision summons of the named summoner count: %v", got)
 	}
-	if resolver.visionSummonConfigs(0) != nil || (*entityResolver)(nil).visionSummonConfigs(90) != nil {
+	if resolver.VisionSummonConfigs(0) != nil || (*EntityResolver)(nil).VisionSummonConfigs(90) != nil {
 		t.Fatal("no summoner or no resolver must yield nothing")
 	}
 }
 
 func TestSceneTemplateDisplayRequiresUniqueLocalizedCandidate(t *testing.T) {
-	candidate := sceneTemplateCandidate{TemplateID: 7, Name: "Localized Boss", NameStatus: string(resolutionVerified), NameTextKey: "Entity.Name", Language: "en-US"}
+	candidate := SceneTemplateCandidate{TemplateID: 7, Name: "Localized Boss", NameStatus: string(ResolutionVerified), NameTextKey: "Entity.Name", Language: "en-US"}
 	for _, count := range []int{1, 2} {
-		identity := entityIdentity{TemplateStatus: resolutionCorrelated, TemplateCandidates: []sceneTemplateCandidate{candidate}}
+		identity := EntityIdentity{TemplateStatus: ResolutionCorrelated, TemplateCandidates: []SceneTemplateCandidate{candidate}}
 		if count == 2 {
-			identity.TemplateCandidates = append(identity.TemplateCandidates, sceneTemplateCandidate{TemplateID: 8, Name: "Localized Boss", NameStatus: string(resolutionVerified)})
+			identity.TemplateCandidates = append(identity.TemplateCandidates, SceneTemplateCandidate{TemplateID: 8, Name: "Localized Boss", NameStatus: string(ResolutionVerified)})
 		}
 		destination := combatEventEntityJSONL{}
 		applySceneTemplateJSONL(&destination, identity)
-		if count == 1 && (destination.SceneTemplate.Name != "Localized Boss" || destination.SceneTemplate.NameStatus != resolutionVerified) {
+		if count == 1 && (destination.SceneTemplate.Name != "Localized Boss" || destination.SceneTemplate.NameStatus != ResolutionVerified) {
 			t.Fatalf("unique localized name not exposed: %+v", destination.SceneTemplate)
 		}
-		if count == 2 && (destination.SceneTemplate.Name != "" || destination.SceneTemplate.NameStatus != resolutionUnknown) {
+		if count == 2 && (destination.SceneTemplate.Name != "" || destination.SceneTemplate.NameStatus != ResolutionUnknown) {
 			t.Fatalf("ambiguous names selected a candidate: %+v", destination.SceneTemplate)
 		}
 	}
 }
 
 func TestUnknownTemplateIdentityDoesNotPublishLocalizedTopLevelName(t *testing.T) {
-	identity := entityIdentity{TemplateStatus: resolutionUnknown, TemplateCandidates: []sceneTemplateCandidate{{TemplateID: 7, Name: "Candidate", NameStatus: string(resolutionVerified)}}}
+	identity := EntityIdentity{TemplateStatus: ResolutionUnknown, TemplateCandidates: []SceneTemplateCandidate{{TemplateID: 7, Name: "Candidate", NameStatus: string(ResolutionVerified)}}}
 	destination := combatEventEntityJSONL{}
 	applySceneTemplateJSONL(&destination, identity)
-	if destination.SceneTemplate.Name != "" || destination.SceneTemplate.NameStatus != resolutionUnknown {
+	if destination.SceneTemplate.Name != "" || destination.SceneTemplate.NameStatus != ResolutionUnknown {
 		t.Fatalf("unknown identity published a display name: %+v", destination.SceneTemplate)
 	}
 }
 
 func TestSceneTemplateResolutionDoesNotConflateTemplateConfigWithMonsterId(t *testing.T) {
-	master := testSceneTemplateMaster([]sceneTemplateCandidate{{
+	master := testSceneTemplateMaster([]SceneTemplateCandidate{{
 		TemplateID: 667000003, BlueprintType: "Monster_branch1.3_013", RawName: "internal boss label",
 	}})
-	resolver := &entityResolver{entities: map[uint64]runtimeEntity{
+	resolver := &EntityResolver{Entities: map[uint64]RuntimeEntity{
 		123: {
-			entityID: 123, sceneInstanceID: 50, hasSceneInstanceID: true,
-			configID: 244750005, hasConfigID: true, configType: 1, hasConfigType: true,
-			sourceMessageID: cmdJoinSceneNotify,
+			EntityID: 123, SceneInstanceID: 50, HasSceneInstanceID: true,
+			ConfigID: 244750005, HasConfigID: true, ConfigType: 1, HasConfigType: true,
+			SourceMessageID: CmdJoinSceneNotify,
 		},
 	}}
-	identity := resolveEntityIdentity(resolver, master, 123)
+	identity := ResolveEntityIdentity(resolver, master, 123)
 	if identity.HasMonster || identity.Monster.ID != 0 {
 		t.Fatalf("TemplateConfig must not be exposed as a MonsterId: %+v", identity)
 	}
-	if len(identity.TemplateCandidates) != 1 || identity.TemplateCandidates[0].TemplateID != 667000003 || identity.TemplateStatus != resolutionCorrelated {
+	if len(identity.TemplateCandidates) != 1 || identity.TemplateCandidates[0].TemplateID != 667000003 || identity.TemplateStatus != ResolutionCorrelated {
 		t.Fatalf("map-scoped TemplateConfig was not correlated: %+v", identity)
 	}
 	if identity.TemplateCandidates[0].RawName != "internal boss label" || identity.TemplateProof == "" {
 		t.Fatalf("template raw label or evidence missing: %+v", identity)
 	}
 
-	view := jsonlView((combatEvent{Target: identity}), master)
+	view := jsonlView((CombatEvent{Target: identity}), master)
 	encoded, err := json.Marshal(view)
 	if err != nil {
 		t.Fatal(err)
@@ -249,7 +249,7 @@ func TestSceneTemplateResolutionDoesNotConflateTemplateConfigWithMonsterId(t *te
 		t.Fatalf("template identity was mislabeled as monster: %s", encoded)
 	}
 	template, ok := target["sceneTemplate"].(map[string]any)
-	if !ok || template["identityType"] != "template-derived" || template["status"] != string(resolutionCorrelated) || template["nameStatus"] != string(resolutionUnknown) {
+	if !ok || template["identityType"] != "template-derived" || template["status"] != string(ResolutionCorrelated) || template["nameStatus"] != string(ResolutionUnknown) {
 		t.Fatalf("template identity JSON lost evidence or unknown localization: %s", encoded)
 	}
 }

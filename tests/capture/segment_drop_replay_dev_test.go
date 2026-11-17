@@ -99,11 +99,11 @@ func TestSegmentDropReplayCollector(t *testing.T) {
 		samples = parsed
 	}
 	pcaps := readSegmentDropList(t, listPath)
-	key, err := loadEmbeddedPrivateKey()
+	key, err := LoadEmbeddedPrivateKey()
 	if err != nil {
 		t.Fatalf("embedded key payload is required: %v", err)
 	}
-	masters, err := loadGameMasterDatabase(master, "zh-TW")
+	masters, err := LoadGameMasterDatabase(master, "zh-TW")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,15 +130,15 @@ type segmentDropRun struct {
 	transport  TransportHealthSnapshot
 	context    ContextValiditySnapshot
 	pairing    RPCPairingSnapshot
-	stats      captureStats
+	stats      CaptureStats
 }
 
-func runSegmentDrops(t *testing.T, masters *gameMaster, key *staticRSA, capture equivalencePCAP, samples int) segmentDropSummary {
+func runSegmentDrops(t *testing.T, masters *GameMaster, key *StaticRSA, capture equivalencePCAP, samples int) segmentDropSummary {
 	t.Helper()
 	baseline, pushes := segmentDropReplay(t, masters, key, capture.path, nil)
 	summary := segmentDropSummary{
 		Name: capture.name, BaselineFrames: len(baseline.frames), BaselineDamage: baseline.statistics.DamageDealt,
-		BaselineSkips: baseline.stats.kcpGapsSkipped, BaselinePairing: baseline.pairing, OutboundExactAll: true,
+		BaselineSkips: baseline.stats.KCPGapsSkipped, BaselinePairing: baseline.pairing, OutboundExactAll: true,
 	}
 	assertRoleTotalsReconcile(t, baseline.statistics)
 	baselineRoles := map[uint64]RoleDamageSnapshot{}
@@ -219,10 +219,10 @@ func runSegmentDrops(t *testing.T, masters *gameMaster, key *staticRSA, capture 
 			t.Errorf("drop %+v left the interval INTACT", drop)
 		}
 		lost := len(baseline.frames) - len(run.frames)
-		mid := run.stats.resyncBytesDiscarded > baseline.stats.resyncBytesDiscarded
+		mid := run.stats.ResyncBytesDiscarded > baseline.stats.ResyncBytesDiscarded
 		entry := segmentDropCase{
 			Direction: drop.direction, Sequence: drop.sequence, FramesLost: lost, MidFrame: mid,
-			ResyncBytes: run.stats.resyncBytesDiscarded - baseline.stats.resyncBytesDiscarded, EstimatedLost: health.EstimatedLostFrames,
+			ResyncBytes: run.stats.ResyncBytesDiscarded - baseline.stats.ResyncBytesDiscarded, EstimatedLost: health.EstimatedLostFrames,
 			LostFramesUnknown: health.LostFramesUnknown, DamageDealtLost: b.DamageDealt - s.DamageDealt,
 			DowngradedEvents: run.context.DowngradedEvents, TransportState: string(run.transport.State),
 			IntervalIntegrity: string(s.Integrity.Status), NonIntactEncounter: nonIntact,
@@ -268,12 +268,12 @@ func sortedSegmentDropStreams(pushes map[segmentDropStream][]uint32) []segmentDr
 
 // segmentDropReplay replays a capture, removing the KCP PUSH segments in drop. It returns the decoded frames as
 // identity strings, the final snapshots, and the distinct PUSH sequences seen per stream.
-func segmentDropReplay(t *testing.T, masters *gameMaster, key *staticRSA, path string, drop map[segmentDropKey]bool) (segmentDropRun, map[segmentDropStream][]uint32) {
+func segmentDropReplay(t *testing.T, masters *GameMaster, key *StaticRSA, path string, drop map[segmentDropKey]bool) (segmentDropRun, map[segmentDropStream][]uint32) {
 	t.Helper()
 	var archive bytes.Buffer
-	p := newProcessor(key, io.Discard, io.Discard, nil)
-	p.masters = masters
-	p.dev.frameArchive = &archive
+	p := NewProcessor(key, io.Discard, io.Discard, nil)
+	p.Masters = masters
+	p.Dev.frameArchive = &archive
 	handle, err := pcap.OpenOffline(path)
 	if err != nil {
 		t.Fatalf("open %s: %v", path, err)
@@ -283,8 +283,8 @@ func segmentDropReplay(t *testing.T, masters *gameMaster, key *staticRSA, path s
 		t.Fatal(err)
 	}
 	source := gopacket.NewPacketSource(handle, handle.LinkType())
-	streams := make(map[string]*stream)
-	stats := captureStats{}
+	streams := make(map[string]*Stream)
+	stats := CaptureStats{}
 	seen := map[segmentDropStream]map[uint32]bool{}
 	for {
 		packet, err := source.NextPacket()
@@ -296,13 +296,13 @@ func segmentDropReplay(t *testing.T, masters *gameMaster, key *staticRSA, path s
 			continue
 		}
 		udp := udpLayer.(*layers.UDP)
-		stats.udpPackets++
-		direction := packetDirection(packet, "192.168.1.2", udp, 13100, 13120)
+		stats.UDPPackets++
+		direction := PacketDirection(packet, "192.168.1.2", udp, 13100, 13120)
 		payload := filterKCPSegments(udp.Payload, direction, drop, seen)
-		consumeDatagram(payload, direction, packet.Metadata().CaptureInfo.Timestamp, streams, p, &stats)
+		ConsumeDatagram(payload, direction, packet.Metadata().CaptureInfo.Timestamp, streams, p, &stats)
 	}
-	finishTransport(streams, p, &stats)
-	p.finishCapture()
+	FinishTransport(streams, p, &stats)
+	p.FinishCapture()
 	var frames []string
 	for _, line := range bytes.Split(archive.Bytes(), []byte{'\n'}) {
 		var record frameArchiveRecord
@@ -311,10 +311,10 @@ func segmentDropReplay(t *testing.T, masters *gameMaster, key *staticRSA, path s
 		}
 		frames = append(frames, fmt.Sprintf("%s/%d/%d/%d/%s/%s", record.Direction, record.SessionNumber, record.Sequence, record.CommandID, record.BodySHA256, record.Timestamp))
 	}
-	statistics := p.damageStatisticsSnapshot()
+	statistics := p.DamageStatisticsSnapshot()
 	// After recovery every retained encounter's timeline must still add up to it, and the effect view must still
 	// account for each tracked instance exactly once.
-	timelines := p.damageStatistics.encounterTimelines()
+	timelines := p.DamageStatistics.EncounterTimelines()
 	encounters := append([]EncounterSnapshot{}, statistics.Encounters.Completed...)
 	if statistics.Encounters.Current != nil {
 		encounters = append(encounters, *statistics.Encounters.Current)
@@ -328,8 +328,8 @@ func segmentDropReplay(t *testing.T, masters *gameMaster, key *staticRSA, path s
 			}
 		}
 	}
-	if view := p.viewSnapshot(); view.Effects.Counts.accountingError(len(view.Effects.Active)) != nil {
-		t.Errorf("effect view counts: %v", view.Effects.Counts.accountingError(len(view.Effects.Active)))
+	if view := p.ViewSnapshot(); view.Effects.Counts.AccountingError(len(view.Effects.Active)) != nil {
+		t.Errorf("effect view counts: %v", view.Effects.Counts.AccountingError(len(view.Effects.Active)))
 	}
 	pushes := map[segmentDropStream][]uint32{}
 	for stream, sequences := range seen {
@@ -338,7 +338,7 @@ func segmentDropReplay(t *testing.T, masters *gameMaster, key *staticRSA, path s
 		}
 		sort.Slice(pushes[stream], func(i, j int) bool { return pushes[stream][i] < pushes[stream][j] })
 	}
-	return segmentDropRun{frames: frames, statistics: statistics, transport: p.transportHealthSnapshot(), context: p.context.snapshot(), pairing: p.rpcPairingSnapshot(), stats: stats}, pushes
+	return segmentDropRun{frames: frames, statistics: statistics, transport: p.TransportHealthSnapshot(), context: p.Context.Snapshot(), pairing: p.RPCPairingSnapshot(), stats: stats}, pushes
 }
 
 // filterKCPSegments returns payload without the PUSH segments listed in drop and records the PUSH sequences seen.

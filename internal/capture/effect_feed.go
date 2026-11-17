@@ -2,26 +2,26 @@ package capture
 
 import "time"
 
-// effectEntityRelation classifies an entity with the same evidence rules as damage
+// EffectEntityRelation classifies an entity with the same evidence rules as damage
 // attribution. A role of the local team, whether reported as the current entity or
 // listed in the local PlayerSceneGroup, is local_role; the local player's own
 // Proto_PlayerEntity is local_player; other entities that reach the local team through
 // a confirmed owner chain are local_owned.
-func (p *processor) effectEntityRelation(entityID uint64) EffectEntityRelation {
-	if p == nil || p.entities == nil || entityID == 0 {
+func (p *Processor) EffectEntityRelation(entityID uint64) EffectEntityRelation {
+	if p == nil || p.Entities == nil || entityID == 0 {
 		return EffectRelationUnknown
 	}
-	identity := resolveEntityIdentity(p.entities, p.masters, entityID)
-	if identity.Runtime.entityID == entityID && p.playerRelevance.isLocalPlayerEntity(identity.Runtime) {
+	identity := ResolveEntityIdentity(p.Entities, p.Masters, entityID)
+	if identity.Runtime.EntityID == entityID && p.PlayerRelevance.isLocalPlayerEntity(identity.Runtime) {
 		return EffectRelationLocalPlayer
 	}
 	switch p.playerRelationForEntity(entityID, identity) {
-	case playerRelationLocal:
-		if p.playerRelevance.isRoleEntity(entityID) || p.playerRelevance.isLocalPlayerRoleEntity(identity.Runtime) {
+	case PlayerRelationLocal:
+		if p.PlayerRelevance.IsRoleEntity(entityID) || p.PlayerRelevance.isLocalPlayerRoleEntity(identity.Runtime) {
 			return EffectRelationLocalRole
 		}
 		return EffectRelationLocalOwned
-	case playerRelationUnrelated:
+	case PlayerRelationUnrelated:
 		return EffectRelationNonPlayer
 	default:
 		return EffectRelationUnknown
@@ -31,26 +31,26 @@ func (p *processor) effectEntityRelation(entityID uint64) EffectEntityRelation {
 // refreshEffectRelations re-evaluates UNKNOWN relations of tracked effects after the
 // entity or local-team evidence changed. It must run on the processing goroutine,
 // the only owner of the entity resolver.
-func (p *processor) refreshEffectRelations() {
-	if p == nil || p.effects == nil {
+func (p *Processor) refreshEffectRelations() {
+	if p == nil || p.Effects == nil {
 		return
 	}
-	p.effects.RefreshUnknownRelations(p.effectEntityRelation)
+	p.Effects.RefreshUnknownRelations(p.EffectEntityRelation)
 }
 
-func (p *processor) effectHolderGeneration(entityID uint64) uint64 {
-	if p == nil || p.entities == nil {
+func (p *Processor) effectHolderGeneration(entityID uint64) uint64 {
+	if p == nil || p.Entities == nil {
 		return 0
 	}
-	return p.entities.lifecycleView(entityID).ReusedAfterRemove
+	return p.Entities.lifecycleView(entityID).ReusedAfterRemove
 }
 
-// effectStaticInfo returns the static definition parameters of an effect id, or nil.
-func (p *processor) effectStaticInfo(effectID uint64) *EffectStaticInfo {
+// EffectStaticInfo returns the static definition parameters of an effect id, or nil.
+func (p *Processor) EffectStaticInfo(effectID uint64) *EffectStaticInfo {
 	if p == nil {
 		return nil
 	}
-	return p.masters.effectStaticInfo(effectID)
+	return p.Masters.effectStaticInfo(effectID)
 }
 
 // EffectDefinition is the static Master evidence of one effect id for a view of stored effects: the same definition the
@@ -73,27 +73,27 @@ func (m *MasterData) EffectDefinition(effectID uint64) EffectDefinition {
 }
 
 // effectStaticInfo builds the static definition parameters of an effect id, or nil without a static row or a term.
-func (m *gameMaster) effectStaticInfo(effectID uint64) *EffectStaticInfo {
+func (m *GameMaster) effectStaticInfo(effectID uint64) *EffectStaticInfo {
 	static, hasStatic := m.buffStatic(effectID)
 	term, hasTerm := m.buffTerm(effectID)
 	if !hasStatic && !hasTerm {
 		return nil
 	}
-	info := &EffectStaticInfo{DeveloperTags: append([]string(nil), static.tags...), HUDCueTypes: append([]int32(nil), static.hudCueTypes...), HUDPolarity: static.hudPolarity, HUDHiddenOnMonsterHead: static.hudHiddenOnMonsterHead}
-	info.ElementID, info.ElementBasis = effectElementFor(term.termID, hasTerm, static)
+	info := &EffectStaticInfo{DeveloperTags: append([]string(nil), static.Tags...), HUDCueTypes: append([]int32(nil), static.hudCueTypes...), HUDPolarity: static.hudPolarity, HUDHiddenOnMonsterHead: static.hudHiddenOnMonsterHead}
+	info.ElementID, info.ElementBasis = effectElementFor(term.TermID, hasTerm, static)
 	if hasTerm {
-		info.Term = &EffectTermInfo{TermID: term.termID, Name: term.name, Description: term.description, Status: string(term.status)}
+		info.Term = &EffectTermInfo{TermID: term.TermID, Name: term.Name, Description: term.Description, Status: string(term.Status)}
 	}
-	if static.hasDurationPolicy {
-		value := static.durationPolicy
+	if static.HasDurationPolicy {
+		value := static.DurationPolicy
 		info.DurationPolicy = &value
 	}
-	if static.hasDuration {
-		value := static.durationSeconds
+	if static.HasDuration {
+		value := static.DurationSeconds
 		info.StaticDurationSeconds = &value
 	}
-	if static.hasStackLimit {
-		value := static.stackLimit
+	if static.HasStackLimit {
+		value := static.StackLimit
 		info.StackLimit = &value
 	}
 	return info
@@ -111,34 +111,34 @@ func float64Pointer(value *float32) *float64 {
 // Gameplay-effect notifies and the local client's effect reports carry a handle;
 // server apply and remove requests and the client's answers to them identify no
 // instance by themselves and never create tracked state.
-func (p *processor) observeEffectLifecycle(row buffLifecycleAuditRow) {
-	if p == nil || p.effects == nil {
+func (p *Processor) observeEffectLifecycle(row BuffLifecycleAuditRow) {
+	if p == nil || p.Effects == nil {
 		return
 	}
 	switch row.EventKind {
 	case "GAMEPLAY_EFFECT_APPLY":
 		holder, ok := correlatedEffectHolder(row)
 		if !ok || row.HandleID == nil {
-			p.effects.NoteSkippedUncorrelatedHolder()
+			p.Effects.NoteSkippedUncorrelatedHolder()
 			return
 		}
 		event := EffectApplyEvent{
 			SessionNumber: row.SessionNumber, HolderEntityID: holder, HolderGeneration: p.effectHolderGeneration(holder),
-			HandleID: *row.HandleID, HolderRelation: p.effectEntityRelation(holder), SourceRelation: EffectRelationUnknown,
+			HandleID: *row.HandleID, HolderRelation: p.EffectEntityRelation(holder), SourceRelation: EffectRelationUnknown,
 			DurationSeconds: float64Pointer(row.DurationSeconds), RemainingSeconds: float64Pointer(row.RemainingDuration),
 			ObservedAt: row.Timestamp,
 		}
 		if row.ID != nil {
 			event.EffectID, event.HasEffectID = *row.ID, true
-			event.DefinitionLinked = p.masters.hasBuffDefinition(*row.ID)
+			event.DefinitionLinked = p.Masters.HasBuffDefinition(*row.ID)
 			if event.DefinitionLinked {
-				event.Static = p.effectStaticInfo(*row.ID)
+				event.Static = p.EffectStaticInfo(*row.ID)
 			}
 			event.CombatClass, event.CombatBasis = p.effectDefinitionClass(*row.ID)
 		}
 		if row.InstigatorID != nil && *row.InstigatorID != 0 {
 			event.SourceEntityID, event.HasSource = *row.InstigatorID, true
-			event.SourceRelation = p.effectEntityRelation(*row.InstigatorID)
+			event.SourceRelation = p.EffectEntityRelation(*row.InstigatorID)
 		}
 		if row.StackCount != nil {
 			event.StackCount, event.HasStackCount = *row.StackCount, true
@@ -147,22 +147,22 @@ func (p *processor) observeEffectLifecycle(row buffLifecycleAuditRow) {
 		p.withHistoryActors(&event)
 		p.recordStatusTrigger(row, holder)
 		p.observeStatusCause(row, holder, &event.HolderRelation, event.SourceRelation)
-		p.effects.ObserveApply(event)
-		p.effects.RefreshRelations(row.SessionNumber, holder, p.effectEntityRelation)
+		p.Effects.ObserveApply(event)
+		p.Effects.RefreshRelations(row.SessionNumber, holder, p.EffectEntityRelation)
 	case "GAMEPLAY_EFFECT_REMOVE":
 		holder, ok := correlatedEffectHolder(row)
 		if !ok || row.HandleID == nil {
-			p.effects.NoteSkippedUncorrelatedHolder()
+			p.Effects.NoteSkippedUncorrelatedHolder()
 			return
 		}
 		p.observeStatusCause(row, holder, nil, EffectRelationUnknown)
-		p.effects.ObserveRemove(EffectRemoveEvent{
+		p.Effects.ObserveRemove(EffectRemoveEvent{
 			SessionNumber: row.SessionNumber, HolderEntityID: holder, HolderGeneration: p.effectHolderGeneration(holder),
 			HandleID: *row.HandleID, ObservedAt: row.Timestamp,
 		})
 	case "BUFF_DURATION_CHANGE", "BUFF_STACK_COUNT_CHANGE":
 		if row.CombatCommonEntityID == nil || *row.CombatCommonEntityID == 0 || row.HandleID == nil {
-			p.effects.NoteSkippedUncorrelatedHolder()
+			p.Effects.NoteSkippedUncorrelatedHolder()
 			return
 		}
 		holder := *row.CombatCommonEntityID
@@ -180,8 +180,8 @@ func (p *processor) observeEffectLifecycle(row buffLifecycleAuditRow) {
 			// Before the tracker takes the new count: the cause compares it with the count before.
 			p.observeStatusCause(row, holder, nil, EffectRelationUnknown)
 		}
-		p.effects.ObserveUpdate(event)
-		p.effects.RefreshRelations(row.SessionNumber, holder, p.effectEntityRelation)
+		p.Effects.ObserveUpdate(event)
+		p.Effects.RefreshRelations(row.SessionNumber, holder, p.EffectEntityRelation)
 	case "CLIENT_EFFECT_APPLY_REPORT", "CLIENT_EFFECT_STACK_REPORT", "CLIENT_EFFECT_REMOVE_REPORT":
 		p.observeClientEffectReport(row)
 	}
@@ -190,10 +190,10 @@ func (p *processor) observeEffectLifecycle(row buffLifecycleAuditRow) {
 // observeClientEffectReport feeds an outbound effect report of the local client. The
 // report is the client's own state change, not a server confirmation, and the tracker
 // keeps it labelled client_report.
-func (p *processor) observeClientEffectReport(row buffLifecycleAuditRow) {
-	holder, ok := clientEffectHolder(row)
+func (p *Processor) observeClientEffectReport(row BuffLifecycleAuditRow) {
+	holder, ok := ClientEffectHolder(row)
 	if !ok || row.HandleID == nil {
-		p.effects.NoteSkippedUncorrelatedHolder()
+		p.Effects.NoteSkippedUncorrelatedHolder()
 		return
 	}
 	generation := p.effectHolderGeneration(holder)
@@ -202,27 +202,27 @@ func (p *processor) observeClientEffectReport(row buffLifecycleAuditRow) {
 		event := EffectApplyEvent{
 			Evidence: EffectEvidenceClientReport, SessionNumber: row.SessionNumber,
 			HolderEntityID: holder, HolderGeneration: generation, HandleID: *row.HandleID,
-			HolderRelation: p.effectEntityRelation(holder), SourceRelation: EffectRelationUnknown,
+			HolderRelation: p.EffectEntityRelation(holder), SourceRelation: EffectRelationUnknown,
 			DurationSeconds: float64Pointer(row.DurationSeconds), ObservedAt: row.Timestamp,
 		}
 		if row.ID != nil {
 			event.EffectID, event.HasEffectID = *row.ID, true
-			event.DefinitionLinked = p.masters.hasBuffDefinition(*row.ID)
+			event.DefinitionLinked = p.Masters.HasBuffDefinition(*row.ID)
 			if event.DefinitionLinked {
-				event.Static = p.effectStaticInfo(*row.ID)
+				event.Static = p.EffectStaticInfo(*row.ID)
 			}
 			event.CombatClass, event.CombatBasis = p.effectDefinitionClass(*row.ID)
 		}
 		if row.InstigatorID != nil && *row.InstigatorID != 0 {
 			event.SourceEntityID, event.HasSource = *row.InstigatorID, true
-			event.SourceRelation = p.effectEntityRelation(*row.InstigatorID)
+			event.SourceRelation = p.EffectEntityRelation(*row.InstigatorID)
 		}
 		if row.StackCount != nil {
 			event.StackCount, event.HasStackCount = *row.StackCount, true
 		}
 		event.HolderMonster, event.SourceMonster = p.effectMonsterEntity(event.HolderEntityID), event.HasSource && p.effectMonsterEntity(event.SourceEntityID)
 		p.withHistoryActors(&event)
-		p.effects.ObserveApply(event)
+		p.Effects.ObserveApply(event)
 	case "CLIENT_EFFECT_STACK_REPORT":
 		event := EffectUpdateEvent{
 			SessionNumber: row.SessionNumber, HolderEntityID: holder, HolderGeneration: generation,
@@ -237,44 +237,44 @@ func (p *processor) observeClientEffectReport(row buffLifecycleAuditRow) {
 		if row.StackCount != nil {
 			event.StackCount, event.HasStackCount = *row.StackCount, true
 		}
-		p.effects.ObserveUpdate(event)
+		p.Effects.ObserveUpdate(event)
 	case "CLIENT_EFFECT_REMOVE_REPORT":
-		p.effects.ObserveRemove(EffectRemoveEvent{
+		p.Effects.ObserveRemove(EffectRemoveEvent{
 			SessionNumber: row.SessionNumber, HolderEntityID: holder, HolderGeneration: generation,
 			HandleID: *row.HandleID, ObservedAt: row.Timestamp,
 			Evidence: EffectEvidenceClientReport, Premature: row.IsPrematureRemoval != nil && *row.IsPrematureRemoval,
 		})
 	}
-	p.effects.RefreshRelations(row.SessionNumber, holder, p.effectEntityRelation)
+	p.Effects.RefreshRelations(row.SessionNumber, holder, p.EffectEntityRelation)
 }
 
 // observeEffectSnapshot feeds one FightBuffInformation row of an EntityActiveResponse.
 // The holder is the entity of the matching EntityActiveRequest; without that match
 // the row says nothing about who holds the effect.
-func (p *processor) observeEffectSnapshot(frame gameFrame, record rawBuffSnapshot, entityID uint64, entityKnown bool) {
-	if p == nil || p.effects == nil {
+func (p *Processor) observeEffectSnapshot(frame GameFrame, record RawBuffSnapshot, entityID uint64, entityKnown bool) {
+	if p == nil || p.Effects == nil {
 		return
 	}
 	if !entityKnown || entityID == 0 || !record.HasHandleID {
-		p.effects.NoteSkippedSnapshot()
+		p.Effects.NoteSkippedSnapshot()
 		return
 	}
 	event := EffectApplyEvent{
-		SessionNumber: p.sessionNumber, HolderEntityID: entityID, HolderGeneration: p.effectHolderGeneration(entityID),
-		HandleID: record.HandleID, HolderRelation: p.effectEntityRelation(entityID), SourceRelation: EffectRelationUnknown,
-		ObservedAt: frame.timestamp,
+		SessionNumber: p.SessionNumber, HolderEntityID: entityID, HolderGeneration: p.effectHolderGeneration(entityID),
+		HandleID: record.HandleID, HolderRelation: p.EffectEntityRelation(entityID), SourceRelation: EffectRelationUnknown,
+		ObservedAt: frame.Timestamp,
 	}
 	if record.HasID {
 		event.EffectID, event.HasEffectID = record.ID, true
-		event.DefinitionLinked = p.masters.hasBuffDefinition(record.ID)
+		event.DefinitionLinked = p.Masters.HasBuffDefinition(record.ID)
 		if event.DefinitionLinked {
-			event.Static = p.effectStaticInfo(record.ID)
+			event.Static = p.EffectStaticInfo(record.ID)
 		}
 		event.CombatClass, event.CombatBasis = p.effectDefinitionClass(record.ID)
 	}
 	if record.HasInstigatorID && record.InstigatorID != 0 {
 		event.SourceEntityID, event.HasSource = record.InstigatorID, true
-		event.SourceRelation = p.effectEntityRelation(record.InstigatorID)
+		event.SourceRelation = p.EffectEntityRelation(record.InstigatorID)
 	}
 	if record.HasStack {
 		event.StackCount, event.HasStackCount = record.Stack, true
@@ -289,17 +289,17 @@ func (p *processor) observeEffectSnapshot(frame gameFrame, record rawBuffSnapsho
 	}
 	event.HolderMonster, event.SourceMonster = p.effectMonsterEntity(event.HolderEntityID), event.HasSource && p.effectMonsterEntity(event.SourceEntityID)
 	p.withHistoryActors(&event)
-	p.effects.ObserveSnapshot(event)
-	p.effects.RefreshRelations(p.sessionNumber, entityID, p.effectEntityRelation)
+	p.Effects.ObserveSnapshot(event)
+	p.Effects.RefreshRelations(p.SessionNumber, entityID, p.EffectEntityRelation)
 }
 
 // correlatedEffectHolder returns the holder of a gameplay-effect row. The explicit
 // TargetEntityId counts only when it matches CombatCommon.EntityId on the same
 // event; a remove row that carries no explicit target falls back to CombatCommon.
-func correlatedEffectHolder(row buffLifecycleAuditRow) (uint64, bool) {
+func correlatedEffectHolder(row BuffLifecycleAuditRow) (uint64, bool) {
 	switch {
 	case row.TargetEntityID != nil:
-		if (row.TargetStatus != resolutionCorrelated && row.TargetStatus != resolutionVerified) || *row.TargetEntityID == 0 {
+		if (row.TargetStatus != ResolutionCorrelated && row.TargetStatus != ResolutionVerified) || *row.TargetEntityID == 0 {
 			return 0, false
 		}
 		return *row.TargetEntityID, true
@@ -310,22 +310,22 @@ func correlatedEffectHolder(row buffLifecycleAuditRow) (uint64, bool) {
 	}
 }
 
-// effectSnapshotAtLastFrame evaluates the tracker at the newest frame time, which
+// EffectSnapshotAtLastFrame evaluates the tracker at the newest frame time, which
 // is the capture clock the tracker's events use.
-func (p *processor) effectSnapshotAtLastFrame() EffectSnapshot {
-	return p.effectSnapshotAfterLastFrame(0)
+func (p *Processor) EffectSnapshotAtLastFrame() EffectSnapshot {
+	return p.EffectSnapshotAfterLastFrame(0)
 }
 
-// effectSnapshotAfterLastFrame evaluates the tracker lead past the newest frame. Querying never changes the tracker, so a
+// EffectSnapshotAfterLastFrame evaluates the tracker lead past the newest frame. Querying never changes the tracker, so a
 // later query only reads the same countdowns further along.
-func (p *processor) effectSnapshotAfterLastFrame(lead time.Duration) EffectSnapshot {
-	if p == nil || p.effects == nil {
+func (p *Processor) EffectSnapshotAfterLastFrame(lead time.Duration) EffectSnapshot {
+	if p == nil || p.Effects == nil {
 		return emptyEffectSnapshot()
 	}
 	p.refreshEffectRelations()
-	query := p.currentFrameTime
+	query := p.CurrentFrameTime
 	if !query.IsZero() {
 		query = query.Add(lead)
 	}
-	return p.effects.SnapshotAt(CaptureQueryTime{CaptureSessionID: p.effects.captureSessionID, Timestamp: query})
+	return p.Effects.SnapshotAt(CaptureQueryTime{CaptureSessionID: p.Effects.CaptureSessionID, Timestamp: query})
 }

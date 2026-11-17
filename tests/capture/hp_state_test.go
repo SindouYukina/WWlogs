@@ -4,27 +4,27 @@ package capture
 
 func attributeMessage(attributeType, baseValue int64, withCurrent bool) decodedField {
 	fields := []decodedField{
-		{Number: fieldGameplayAttributeDataAttributeType, Name: "AttributeType", Kind: "int32", Value: attributeType},
-		{Number: fieldGameplayAttributeDataBaseValue, Name: "BaseValue", Kind: "int32", Value: baseValue},
+		{Number: FieldGameplayAttributeDataAttributeType, Name: "AttributeType", Kind: "int32", Value: attributeType},
+		{Number: FieldGameplayAttributeDataBaseValue, Name: "BaseValue", Kind: "int32", Value: baseValue},
 	}
 	if withCurrent {
-		fields = append(fields, decodedField{Number: fieldGameplayAttributeDataCurrentValue, Name: "CurrentValue", Kind: "int32", Value: baseValue})
+		fields = append(fields, decodedField{Number: FieldGameplayAttributeDataCurrentValue, Name: "CurrentValue", Kind: "int32", Value: baseValue})
 	}
-	return decodedField{Number: fieldAttributeChangedNotifyAttributes, Name: "Attributes", Kind: "class", Message: &decodedMessage{Type: "GameplayAttributeData", Fields: fields}}
+	return decodedField{Number: FieldAttributeChangedNotifyAttributes, Name: "Attributes", Kind: "class", Message: &decodedMessage{Type: "GameplayAttributeData", Fields: fields}}
 }
 
 func notifyWithEntity(entity uint64, attributes ...decodedField) decodedField {
-	common := decodedField{Number: fieldCombatNotifyDataCombatCommon, Name: "CombatCommon", Kind: "class", Message: &decodedMessage{Type: "CombatCommon", Fields: []decodedField{
-		{Number: fieldCombatCommonEntityID, Name: "EntityId", Kind: "int64", Value: int64(entity)},
+	common := decodedField{Number: FieldCombatNotifyDataCombatCommon, Name: "CombatCommon", Kind: "class", Message: &decodedMessage{Type: "CombatCommon", Fields: []decodedField{
+		{Number: FieldCombatCommonEntityID, Name: "EntityId", Kind: "int64", Value: int64(entity)},
 	}}}
-	change := decodedField{Number: fieldCombatNotifyDataAttributeChangedNotify, Name: "AttributeChangedNotify", Kind: "class", Message: &decodedMessage{Type: "AttributeChangedNotify", Fields: attributes}}
-	return decodedField{Number: fieldCombatReceiveDataCombatNotifyData, Name: "CombatNotifyData", Kind: "class", Message: &decodedMessage{Type: "CombatNotifyData", Fields: []decodedField{common, change}}}
+	change := decodedField{Number: FieldCombatNotifyDataAttributeChangedNotify, Name: "AttributeChangedNotify", Kind: "class", Message: &decodedMessage{Type: "AttributeChangedNotify", Fields: attributes}}
+	return decodedField{Number: FieldCombatReceiveDataCombatNotifyData, Name: "CombatNotifyData", Kind: "class", Message: &decodedMessage{Type: "CombatNotifyData", Fields: []decodedField{common, change}}}
 }
 
 func wrapData(notifies ...decodedField) *decodedMessage {
 	var fields []decodedField
 	for _, notify := range notifies {
-		fields = append(fields, decodedField{Number: fieldCombatReceivePackNotifyData, Name: "Data", Kind: "repeated", Message: &decodedMessage{Type: "CombatReceiveData", Fields: []decodedField{notify}}})
+		fields = append(fields, decodedField{Number: FieldCombatReceivePackNotifyData, Name: "Data", Kind: "repeated", Message: &decodedMessage{Type: "CombatReceiveData", Fields: []decodedField{notify}}})
 	}
 	return &decodedMessage{Type: "CombatReceivePackNotify", Fields: fields}
 }

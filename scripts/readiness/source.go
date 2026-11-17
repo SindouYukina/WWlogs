@@ -43,9 +43,10 @@ var (
 	reProtocolClient = regexp.MustCompile(`(?m)^const currentProtocolClient = "([^"]*)"`)
 	reProtocolHash   = regexp.MustCompile(`Protocol\.js \(SHA-256 ([0-9a-f]{64})\)`)
 	reNetDefineHash  = regexp.MustCompile(`NetDefine\.js[\s/]*\(SHA-256 ([0-9a-f]{64})\)`)
-	reConstant       = regexp.MustCompile(`(?m)^\s*(cmd|field)([A-Za-z0-9_]+)\s*=\s*(\d+)\s*//\s*(\S+)\s*$`)
-	// A wire number outside the generated files: a command or field constant assigned a literal.
-	reStrayNumber = regexp.MustCompile(`(?m)^\s*(?:const\s+)?(cmd|field)[A-Z][A-Za-z0-9_]*\s*=\s*\d+\b`)
+	reConstant       = regexp.MustCompile(`(?m)^\s*([Cc]md|[Ff]ield)([A-Za-z0-9_]+)\s*=\s*(\d+)\s*//\s*(\S+)\s*$`)
+	// A wire number outside the generated files: a command or field constant assigned a literal. The generated constants
+	// are cmd*/field*, or Cmd*/Field* when the Development module (internal/devcapture) reads them from the core.
+	reStrayNumber = regexp.MustCompile(`(?m)^\s*(?:const\s+)?([Cc]md|[Ff]ield)[A-Z][A-Za-z0-9_]*\s*=\s*\d+\b`)
 	// A game version literal held by any identifier but the generated one, in Go or TypeScript.
 	reVersionLiteral = regexp.MustCompile(`(?i)\b(\w*gameversion\w*)\s*(?::=|=|:)\s*(?:string\s*=\s*)?["'](\d+\.\d+(?:\.\d+)?)["']`)
 	// File names of retired protocol layers.
@@ -68,7 +69,7 @@ func parseConstants(file, text string) []protocolConstant {
 			continue
 		}
 		kind := "command"
-		if match[1] == "field" {
+		if strings.EqualFold(match[1], "field") {
 			kind = "field"
 		}
 		out = append(out, protocolConstant{file: file, name: match[1] + match[2], value: value, key: match[4], kind: kind})

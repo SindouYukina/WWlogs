@@ -63,7 +63,7 @@ func TestLoadBuffHUDCuesKeepsHUDTypesWithAPath(t *testing.T) {
 			t.Fatalf("%s: %v", statement, err)
 		}
 	}
-	statics := map[uint64]buffStaticParameters{}
+	statics := map[uint64]BuffStaticParameters{}
 	if err := loadBuffHUDCues(db, statics); err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +74,7 @@ func TestLoadBuffHUDCuesKeepsHUDTypesWithAPath(t *testing.T) {
 	if want := map[uint64][]int32{10: {2, 24}, 13: {2}}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("HUD cue types = %v, want %v", got, want)
 	}
-	older := map[uint64]buffStaticParameters{}
+	older := map[uint64]BuffStaticParameters{}
 	if _, err := db.Exec("DROP TABLE gameplaycue"); err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +105,7 @@ func TestLoadBuffHUDCuesReadsDirectionAndMonsterHeadFromTheFirstCue(t *testing.T
 			t.Fatalf("%s: %v", statement, err)
 		}
 	}
-	statics := map[uint64]buffStaticParameters{}
+	statics := map[uint64]BuffStaticParameters{}
 	if err := loadBuffHUDCues(db, statics); err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +124,7 @@ func TestLoadBuffHUDCuesReadsDirectionAndMonsterHeadFromTheFirstCue(t *testing.T
 	if _, err := db.Exec("DROP TABLE gameplaycue_parameters"); err != nil {
 		t.Fatal(err)
 	}
-	older := map[uint64]buffStaticParameters{}
+	older := map[uint64]BuffStaticParameters{}
 	if err := loadBuffHUDCues(db, older); err != nil {
 		t.Fatal(err)
 	}
@@ -177,9 +177,9 @@ func TestTrackedMasterHUDCuesOfKnownEffects(t *testing.T) {
 		}
 	}
 	p := newEffectViewProcessor()
-	p.masters = master
+	p.Masters = master
 	for id, kind := range map[uint64]EffectKind{2002202312: EffectKindHUDEffect, 1312010093: EffectKindUnknown} {
-		if got, _ := classifyEffectKind(EffectCombatClassUnknown, effectCombatBasisNoEvidence, p.effectStaticInfo(id)); got != kind {
+		if got, _ := classifyEffectKind(EffectCombatClassUnknown, effectCombatBasisNoEvidence, p.EffectStaticInfo(id)); got != kind {
 			t.Errorf("effect %d without other evidence: kind %s, want %s", id, got, kind)
 		}
 	}

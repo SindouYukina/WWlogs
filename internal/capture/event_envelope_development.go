@@ -30,19 +30,19 @@ type auxEventOrder struct {
 
 // nextEventEnvelope returns the envelope for the next event written in the
 // current frame. The order counter resets whenever the frame ordinal changes.
-func (p *processor) nextEventEnvelope() eventEnvelope {
+func (p *Processor) nextEventEnvelope() eventEnvelope {
 	var frame uint64
-	if p.dev.frameOrdinal > 0 {
-		frame = p.dev.frameOrdinal - 1
+	if p.Dev.frameOrdinal > 0 {
+		frame = p.Dev.frameOrdinal - 1
 	}
-	if p.dev.eventOrderFrame != frame {
-		p.dev.eventOrderFrame = frame
-		p.dev.eventOrder = 0
+	if p.Dev.eventOrderFrame != frame {
+		p.Dev.eventOrderFrame = frame
+		p.Dev.eventOrder = 0
 	}
-	order := p.dev.eventOrder
-	p.dev.eventOrder++
+	order := p.Dev.eventOrder
+	p.Dev.eventOrder++
 	return eventEnvelope{
-		EventID:          fmt.Sprintf("s%d-f%d-e%d", p.sessionNumber, frame, order),
+		EventID:          fmt.Sprintf("s%d-f%d-e%d", p.SessionNumber, frame, order),
 		EmitFrameOrdinal: frame,
 		EmitOrderInFrame: order,
 	}
@@ -51,18 +51,18 @@ func (p *processor) nextEventEnvelope() eventEnvelope {
 // nextAuxEventEnvelope numbers events that are not part of the primary event sequence in a namespace of their own
 // (one letter per event type: "x" for hits without an amount, "p" for pushed damage), so adding an event type never
 // shifts the ids of events consumers already key on.
-func (p *processor) nextAuxEventEnvelope(kind string) eventEnvelope {
+func (p *Processor) nextAuxEventEnvelope(kind string) eventEnvelope {
 	var frame uint64
-	if p.dev.frameOrdinal > 0 {
-		frame = p.dev.frameOrdinal - 1
+	if p.Dev.frameOrdinal > 0 {
+		frame = p.Dev.frameOrdinal - 1
 	}
-	if p.dev.auxEventOrders == nil {
-		p.dev.auxEventOrders = make(map[string]*auxEventOrder)
+	if p.Dev.auxEventOrders == nil {
+		p.Dev.auxEventOrders = make(map[string]*auxEventOrder)
 	}
-	counter := p.dev.auxEventOrders[kind]
+	counter := p.Dev.auxEventOrders[kind]
 	if counter == nil {
 		counter = &auxEventOrder{}
-		p.dev.auxEventOrders[kind] = counter
+		p.Dev.auxEventOrders[kind] = counter
 	}
 	if counter.frame != frame {
 		counter.frame = frame
@@ -71,7 +71,7 @@ func (p *processor) nextAuxEventEnvelope(kind string) eventEnvelope {
 	order := counter.order
 	counter.order++
 	return eventEnvelope{
-		EventID:          fmt.Sprintf("s%d-f%d-%s%d", p.sessionNumber, frame, kind, order),
+		EventID:          fmt.Sprintf("s%d-f%d-%s%d", p.SessionNumber, frame, kind, order),
 		EmitFrameOrdinal: frame,
 		EmitOrderInFrame: order,
 	}

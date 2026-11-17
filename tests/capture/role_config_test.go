@@ -28,11 +28,11 @@ func TestLoadGameMasterDatabaseLoadsTrialRoleParents(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	master, err := loadGameMasterDatabase(path, "zh-TW")
+	master, err := LoadGameMasterDatabase(path, "zh-TW")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if parentID, ok := master.trialRoleParents[13120001]; !ok || parentID != 1312 {
+	if parentID, ok := master.TrialRoleParents[13120001]; !ok || parentID != 1312 {
 		t.Fatalf("TrialRoleInfo parent = %d, ok=%t; want 1312", parentID, ok)
 	}
 	resolution, ok := resolveRoleConfigRole(master, 13120001)
@@ -61,22 +61,22 @@ func TestArchiveRoleConfigRecordsPreservesRawAndCanonicalRoleIDs(t *testing.T) {
 	body = appendBytesField(body, 7, appendVarintField(nil, 1, 999999))
 	body = appendBytesField(body, 7, nil)
 	var out strings.Builder
-	p := &processor{
-		sessionNumber: 2,
-		masters: &gameMaster{
-			locale: "zh-TW",
-			characters: map[uint64]masterRecord{
-				1312: {ID: 1312, Name: "測試角色", NameStatus: string(resolutionVerified), Language: "zh-TW"},
+	p := &Processor{
+		SessionNumber: 2,
+		Masters: &GameMaster{
+			Locale: "zh-TW",
+			Characters: map[uint64]MasterRecord{
+				1312: {ID: 1312, Name: "測試角色", NameStatus: string(ResolutionVerified), Language: "zh-TW"},
 			},
-			trialRoleParents: map[uint64]uint64{12117004: 1312},
+			TrialRoleParents: map[uint64]uint64{12117004: 1312},
 		},
-		dev: processorDiagnostics{
+		Dev: processorDiagnostics{
 			protocolSchema: schema,
 			roleConfigOut:  &out,
 			frameOrdinal:   10,
 		},
 	}
-	p.archiveSchemaDecode(gameFrame{commandID: 18250, direction: "in"}, body)
+	p.ArchiveSchemaDecode(GameFrame{CommandID: 18250, Direction: "in"}, body)
 
 	var records []roleConfigRecord
 	for _, line := range strings.Split(strings.TrimSpace(out.String()), "\n") {
@@ -95,7 +95,7 @@ func TestArchiveRoleConfigRecordsPreservesRawAndCanonicalRoleIDs(t *testing.T) {
 	if records[1].RawRoleID == nil || *records[1].RawRoleID != 12117004 || records[1].CanonicalRoleID == nil || *records[1].CanonicalRoleID != 1312 || records[1].Status != "CORRELATED_TRIALROLEINFO_PARENT" || records[1].CanonicalRoleName != "測試角色" {
 		t.Fatalf("TrialRoleInfo alias = %+v", records[1])
 	}
-	if records[2].RawRoleID == nil || *records[2].RawRoleID != 999999 || records[2].CanonicalRoleID != nil || records[2].Status != string(resolutionUnknown) {
+	if records[2].RawRoleID == nil || *records[2].RawRoleID != 999999 || records[2].CanonicalRoleID != nil || records[2].Status != string(ResolutionUnknown) {
 		t.Fatalf("unknown RoleId must remain raw and unresolved: %+v", records[2])
 	}
 	if records[3].RawRoleID != nil || records[3].Status != "MISSING_ROLE_ID" {

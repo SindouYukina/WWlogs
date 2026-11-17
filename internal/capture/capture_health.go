@@ -130,53 +130,53 @@ type captureLayerState struct {
 	received, dropped   uint64
 	sampledAt           time.Time
 	evictedSegments     uint64
-	diagnosticDropCount func() uint64
+	DiagnosticDropCount func() uint64
 	delivery, processed latencyHistogram
 }
 
-func (p *processor) observeCaptureSource(live bool) {
-	p.captureLayer.live = live
+func (p *Processor) ObserveCaptureSource(live bool) {
+	p.CaptureLayer.live = live
 	if !live {
-		p.captureLayer.statsReason = "offline_replay_has_no_driver_counters"
+		p.CaptureLayer.statsReason = "offline_replay_has_no_driver_counters"
 	}
 }
 
-func (p *processor) observePacketRead() {
-	p.captureLayer.packetsRead++
+func (p *Processor) ObservePacketRead() {
+	p.CaptureLayer.packetsRead++
 }
 
-// observePacketTiming records, for live capture only, how long a packet waited between its Npcap timestamp and the
+// ObservePacketTiming records, for live capture only, how long a packet waited between its Npcap timestamp and the
 // loop (received) and until its decoding finished (processed). Replay timestamps are historical and are not used.
-func (p *processor) observePacketTiming(captured, received, processed time.Time) {
-	if !p.captureLayer.live || captured.IsZero() {
+func (p *Processor) ObservePacketTiming(captured, received, processed time.Time) {
+	if !p.CaptureLayer.live || captured.IsZero() {
 		return
 	}
-	p.captureLayer.delivery.observe(received.Sub(captured))
+	p.CaptureLayer.delivery.observe(received.Sub(captured))
 	if !processed.IsZero() {
-		p.captureLayer.processed.observe(processed.Sub(captured))
+		p.CaptureLayer.processed.observe(processed.Sub(captured))
 	}
 }
 
-// sampleCaptureStats reads the Npcap counters at most once per captureStatsSampleInterval of wall-clock time.
-func (p *processor) sampleCaptureStats(handle *pcap.Handle, now time.Time, force bool) {
-	if !p.captureLayer.live || handle == nil {
+// SampleCaptureStats reads the Npcap counters at most once per captureStatsSampleInterval of wall-clock time.
+func (p *Processor) SampleCaptureStats(handle *pcap.Handle, now time.Time, force bool) {
+	if !p.CaptureLayer.live || handle == nil {
 		return
 	}
-	if !force && !p.captureLayer.sampledAt.IsZero() && now.Sub(p.captureLayer.sampledAt) < captureStatsSampleInterval {
+	if !force && !p.CaptureLayer.sampledAt.IsZero() && now.Sub(p.CaptureLayer.sampledAt) < captureStatsSampleInterval {
 		return
 	}
-	p.captureLayer.sampledAt = now
+	p.CaptureLayer.sampledAt = now
 	stats, err := handle.Stats()
 	if err != nil || stats == nil {
-		p.captureLayer.statsKnown, p.captureLayer.statsReason = false, "pcap_stats_failed"
+		p.CaptureLayer.statsKnown, p.CaptureLayer.statsReason = false, "pcap_stats_failed"
 		return
 	}
-	p.captureLayer.statsKnown, p.captureLayer.statsReason = true, ""
-	p.captureLayer.received, p.captureLayer.dropped = uint64(stats.PacketsReceived), uint64(stats.PacketsDropped)
+	p.CaptureLayer.statsKnown, p.CaptureLayer.statsReason = true, ""
+	p.CaptureLayer.received, p.CaptureLayer.dropped = uint64(stats.PacketsReceived), uint64(stats.PacketsDropped)
 }
 
-func (p *processor) captureLayerHealth() CaptureLayerHealth {
-	state := p.captureLayer
+func (p *Processor) CaptureLayerHealth() CaptureLayerHealth {
+	state := p.CaptureLayer
 	health := CaptureLayerHealth{
 		Source: "offline", PacketsRead: state.packetsRead,
 		InterfaceDropped:   CaptureCounter{Status: CaptureCounterUnavailable, Reason: "interface_drop_semantics_not_verified"},
@@ -200,8 +200,8 @@ func (p *processor) captureLayerHealth() CaptureLayerHealth {
 	}
 	health.DeliveryDelay = state.delivery.summary(state.live)
 	health.ProcessedDelay = state.processed.summary(state.live)
-	if state.diagnosticDropCount != nil {
-		health.DiagnosticDropped = CaptureCounter{Status: CaptureCounterAvailable, Value: state.diagnosticDropCount()}
+	if state.DiagnosticDropCount != nil {
+		health.DiagnosticDropped = CaptureCounter{Status: CaptureCounterAvailable, Value: state.DiagnosticDropCount()}
 	}
 	return health
 }

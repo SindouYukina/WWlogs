@@ -75,53 +75,53 @@ type effectAuditRow struct {
 	ExcludedUnchanged bool `json:"excludedUnchanged,omitempty"`
 }
 
-func effectAuditMergeKind(cell effectDisplayCell) string {
-	if cell.instances() > 1 {
+func effectAuditMergeKind(cell EffectDisplayCell) string {
+	if cell.Instances() > 1 {
 		return "same_effect_on_several_holders"
 	}
 	return "single_instance"
 }
 
-func effectAuditCountdown(cell effectDisplayCell) string {
-	return string(cell.earliest.RemainingStatus)
+func effectAuditCountdown(cell EffectDisplayCell) string {
+	return string(cell.Earliest.RemainingStatus)
 }
 
-func effectAuditLeaves(cell effectDisplayCell) (string, *time.Time) {
-	if cell.earliest.ExpectedExpiry == nil {
+func effectAuditLeaves(cell EffectDisplayCell) (string, *time.Time) {
+	if cell.Earliest.ExpectedExpiry == nil {
 		return "server_remove", nil
 	}
-	latest := *cell.earliest.ExpectedExpiry
-	for _, member := range cell.members {
+	latest := *cell.Earliest.ExpectedExpiry
+	for _, member := range cell.Members {
 		if member.ExpectedExpiry != nil && member.ExpectedExpiry.After(latest) {
 			latest = *member.ExpectedExpiry
 		}
 	}
-	hidden := latest.Add(effectDisplayExpiryGrace)
+	hidden := latest.Add(EffectDisplayExpiryGrace)
 	return "server_remove_or_expiry_plus_grace", &hidden
 }
 
-func newEffectAuditCell(cell effectDisplayCell) effectAuditCell {
-	representative := cell.representative
+func newEffectAuditCell(cell EffectDisplayCell) effectAuditCell {
+	representative := cell.Representative
 	out := effectAuditCell{
-		Key: effectViewKey(representative), EffectID: cloneUint64(representative.EffectID), Instances: cell.instances(),
+		Key: EffectViewKey(representative), EffectID: CloneUint64(representative.EffectID), Instances: cell.Instances(),
 		Shown: string(representative.Kind), ShownBasis: representative.KindBasis, Evidence: "CORRELATED", Merge: effectAuditMergeKind(cell),
-		Target: string(effectDisplayFor(representative).Target), Countdown: effectAuditCountdown(cell), CountdownHandle: cell.earliest.HandleID,
-		RemainingSeconds: cloneFloat64(cell.earliest.RemainingSeconds), DurationSeconds: cloneFloat64(representative.ServerDurationSeconds),
-		Stack: cloneUint64(representative.StackCount), StackFrom: "every_member_equal", Icon: "none",
+		Target: string(EffectDisplayFor(representative).Target), Countdown: effectAuditCountdown(cell), CountdownHandle: cell.Earliest.HandleID,
+		RemainingSeconds: CloneFloat64(cell.Earliest.RemainingSeconds), DurationSeconds: CloneFloat64(representative.ServerDurationSeconds),
+		Stack: CloneUint64(representative.StackCount), StackFrom: "every_member_equal", Icon: "none",
 	}
-	if cell.instances() == 1 {
+	if cell.Instances() == 1 {
 		out.StackFrom = "single_instance"
 	}
-	if cell.earliest.ExpectedExpiry != nil {
-		expiry := *cell.earliest.ExpectedExpiry
+	if cell.Earliest.ExpectedExpiry != nil {
+		expiry := *cell.Earliest.ExpectedExpiry
 		out.ExpectedExpiry = &expiry
 	}
 	if static := representative.Static; static != nil && len(static.HUDCueTypes) > 0 {
 		out.Icon, out.CueTypes = "hud_cue", static.HUDCueTypes
 	}
 	out.Leaves, out.HiddenAfter = effectAuditLeaves(cell)
-	for _, member := range cell.members {
-		row := effectAuditMember{Holder: member.HolderEntityID, HolderGeneration: member.HolderGeneration, Handle: member.HandleID, HolderRelation: string(member.HolderRelation), Source: cloneUint64(member.SourceEntityID), SourceRelation: string(member.SourceRelation), RemainingSeconds: cloneFloat64(member.RemainingSeconds), Stack: cloneUint64(member.StackCount)}
+	for _, member := range cell.Members {
+		row := effectAuditMember{Holder: member.HolderEntityID, HolderGeneration: member.HolderGeneration, Handle: member.HandleID, HolderRelation: string(member.HolderRelation), Source: CloneUint64(member.SourceEntityID), SourceRelation: string(member.SourceRelation), RemainingSeconds: CloneFloat64(member.RemainingSeconds), Stack: CloneUint64(member.StackCount)}
 		out.Members = append(out.Members, row)
 	}
 	sort.Slice(out.Members, func(i, j int) bool { return out.Members[i].Handle < out.Members[j].Handle })
@@ -130,9 +130,9 @@ func newEffectAuditCell(cell effectDisplayCell) effectAuditCell {
 
 // effectDisplayAudit explains the current view. The two signatures change only when the set of cells or of excluded
 // effects changes, never because time passed.
-func (p *processor) effectDisplayAudit() (row effectAuditRow, cellSignature, excludedSignature string) {
-	snapshot := p.effectSnapshotAfterLastFrame(p.viewClockLead)
-	row = effectAuditRow{At: p.currentFrameTime, ClockLead: p.viewClockLead.Seconds(), ClockStalled: p.viewClockStalled, Status: string(snapshot.Status)}
+func (p *Processor) effectDisplayAudit() (row effectAuditRow, cellSignature, excludedSignature string) {
+	snapshot := p.EffectSnapshotAfterLastFrame(p.ViewClockLead)
+	row = effectAuditRow{At: p.CurrentFrameTime, ClockLead: p.ViewClockLead.Seconds(), ClockStalled: p.ViewClockStalled, Status: string(snapshot.Status)}
 	var eligible []EffectInstanceSnapshot
 	type excludedKey struct {
 		reason string
@@ -144,8 +144,8 @@ func (p *processor) effectDisplayAudit() (row effectAuditRow, cellSignature, exc
 	}
 	excluded := map[excludedKey]int{}
 	for _, effect := range snapshot.Effects {
-		display := effectDisplayFor(effect)
-		row.Counts.add(display.Eligibility)
+		display := EffectDisplayFor(effect)
+		row.Counts.Add(display.Eligibility)
 		if display.Eligibility == EffectDisplayEligible {
 			eligible = append(eligible, effect)
 			continue
@@ -156,7 +156,7 @@ func (p *processor) effectDisplayAudit() (row effectAuditRow, cellSignature, exc
 		}
 		excluded[key]++
 	}
-	cells := effectDisplayCells(eligible)
+	cells := EffectDisplayCells(eligible)
 	row.Counts.Cells, row.Counts.ListedCells, row.Counts.Listed = len(cells), len(cells), len(eligible)
 	var signature strings.Builder
 	for _, cell := range cells {
@@ -193,8 +193,8 @@ type effectDisplayAuditWriter struct {
 	excluded string
 }
 
-func (w *effectDisplayAuditWriter) observe(p *processor, now time.Time) {
-	if w == nil || w.target == nil || p.effects == nil {
+func (w *effectDisplayAuditWriter) observe(p *Processor, now time.Time) {
+	if w == nil || w.target == nil || p.Effects == nil {
 		return
 	}
 	if !w.lastAt.IsZero() && now.Sub(w.lastAt) < effectDisplayAuditInterval {

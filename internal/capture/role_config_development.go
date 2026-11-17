@@ -27,16 +27,16 @@ type roleConfigRecord struct {
 
 type roleConfigRoleResolution struct {
 	CanonicalRoleID uint64
-	Character       masterRecord
+	Character       MasterRecord
 	Status          string
 	Basis           string
 }
 
-func resolveRoleConfigRole(m *gameMaster, rawRoleID uint64) (roleConfigRoleResolution, bool) {
+func resolveRoleConfigRole(m *GameMaster, rawRoleID uint64) (roleConfigRoleResolution, bool) {
 	if m == nil {
 		return roleConfigRoleResolution{}, false
 	}
-	if character, ok := m.characters[rawRoleID]; ok {
+	if character, ok := m.Characters[rawRoleID]; ok {
 		return roleConfigRoleResolution{
 			CanonicalRoleID: character.ID,
 			Character:       character,
@@ -44,11 +44,11 @@ func resolveRoleConfigRole(m *gameMaster, rawRoleID uint64) (roleConfigRoleResol
 			Basis:           "RoleConfigInfoNotify.RoleConfigs.RoleId -> roleinfo.id",
 		}, true
 	}
-	parentID, ok := m.trialRoleParents[rawRoleID]
+	parentID, ok := m.TrialRoleParents[rawRoleID]
 	if !ok {
 		return roleConfigRoleResolution{}, false
 	}
-	character, ok := m.characters[parentID]
+	character, ok := m.Characters[parentID]
 	if !ok {
 		return roleConfigRoleResolution{}, false
 	}
@@ -61,22 +61,22 @@ func resolveRoleConfigRole(m *gameMaster, rawRoleID uint64) (roleConfigRoleResol
 }
 
 // archiveRoleConfigRecords writes one result per RoleConfigInfo in a decoded notify.
-func (p *processor) archiveRoleConfigRecords(frame gameFrame, decoded *decodedMessage) {
-	if p == nil || p.dev.roleConfigOut == nil || decoded == nil || decoded.Type != "RoleConfigInfoNotify" {
+func (p *Processor) archiveRoleConfigRecords(frame GameFrame, decoded *decodedMessage) {
+	if p == nil || p.Dev.roleConfigOut == nil || decoded == nil || decoded.Type != "RoleConfigInfoNotify" {
 		return
 	}
 	for index, config := range childMessages(decoded, "RoleConfigs") {
 		roleID, hasRoleID := scalarValue(config, "RoleId")
 		record := roleConfigRecord{
 			SchemaVersion:           roleConfigRecordSchemaVersion,
-			FrameOrdinal:            p.dev.frameOrdinal - 1,
-			SessionNumber:           p.sessionNumber,
-			Direction:               frame.direction,
-			CommandID:               frame.commandID,
+			FrameOrdinal:            p.Dev.frameOrdinal - 1,
+			SessionNumber:           p.SessionNumber,
+			Direction:               frame.Direction,
+			CommandID:               frame.CommandID,
 			ConfigIndex:             index,
 			IDNamespace:             "RoleConfigInfoNotify.RoleConfigs.RoleId",
-			CanonicalRoleNameStatus: string(resolutionUnknown),
-			Status:                  string(resolutionUnknown),
+			CanonicalRoleNameStatus: string(ResolutionUnknown),
+			Status:                  string(ResolutionUnknown),
 			Basis:                   "no RoleInfo definition or TrialRoleInfo parent relation for the observed RoleId",
 			Evidence:                "raw RoleId is observed in the decrypted RoleConfigInfoNotify; canonical identity requires a unique normalized master relation",
 		}
@@ -86,8 +86,8 @@ func (p *processor) archiveRoleConfigRecords(frame gameFrame, decoded *decodedMe
 			record.Evidence = "the schema-decoded RoleConfigInfo contains no RoleId scalar"
 		} else {
 			record.RawRoleID = &roleID
-			if roleID > 0 && p.masters != nil {
-				if resolution, ok := resolveRoleConfigRole(p.masters, uint64(roleID)); ok {
+			if roleID > 0 && p.Masters != nil {
+				if resolution, ok := resolveRoleConfigRole(p.Masters, uint64(roleID)); ok {
 					canonicalID := resolution.CanonicalRoleID
 					record.CanonicalRoleID = &canonicalID
 					record.CanonicalRoleName = resolution.Character.Name
@@ -101,6 +101,6 @@ func (p *processor) archiveRoleConfigRecords(frame gameFrame, decoded *decodedMe
 				record.Basis = "RoleConfigInfo.RoleId is not a positive role key"
 			}
 		}
-		writeResearchRecord(p.dev.roleConfigOut, record, &p.dev.roleConfigErrors)
+		writeResearchRecord(p.Dev.roleConfigOut, record, &p.Dev.roleConfigErrors)
 	}
 }

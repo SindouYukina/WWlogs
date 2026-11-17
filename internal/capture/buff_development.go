@@ -19,93 +19,93 @@ type buffSnapshotAuditRow struct {
 	RequestCommandID  uint16           `json:"requestCommandId"`
 	FrameToken        uint16           `json:"frameToken"`
 	EntityID          *uint64          `json:"entityId,omitempty"`
-	EntityIDStatus    resolutionStatus `json:"entityIdStatus"`
+	EntityIDStatus    ResolutionStatus `json:"entityIdStatus"`
 	ComponentPath     string           `json:"componentPath"`
 	// BuffIDStatus records the captured field mapping, not static-definition resolution.
-	BuffIDStatus resolutionStatus `json:"buffIdStatus"`
+	BuffIDStatus ResolutionStatus `json:"buffIdStatus"`
 	// BuffDefinitionStatus records an exact link from BuffId to the normalized static buff table.
-	BuffDefinitionStatus   resolutionStatus `json:"buffDefinitionStatus"`
+	BuffDefinitionStatus   ResolutionStatus `json:"buffDefinitionStatus"`
 	BuffDefinitionTable    string           `json:"buffDefinitionTable,omitempty"`
 	BuffDefinitionID       *uint64          `json:"buffDefinitionId,omitempty"`
 	BuffDefinitionEvidence string           `json:"buffDefinitionEvidence"`
 	// BuffOwners names the features that list this BuffId in an explicit reference table; the Buff has no name of its own.
-	BuffOwners *buffOwnersJSON `json:"buffOwners,omitempty"`
+	BuffOwners *BuffOwnersJSON `json:"buffOwners,omitempty"`
 	// BuffSemanticStatus covers runtime application and effect semantics, not static row lookup.
-	BuffSemanticStatus        resolutionStatus `json:"buffSemanticStatus"`
+	BuffSemanticStatus        ResolutionStatus `json:"buffSemanticStatus"`
 	BuffSemanticEvidence      string           `json:"buffSemanticEvidence"`
-	InstigatorSemantics       resolutionStatus `json:"instigatorSemantics"`
+	InstigatorSemantics       ResolutionStatus `json:"instigatorSemantics"`
 	InstigatorEvidence        string           `json:"instigatorEvidence,omitempty"`
 	ReferenceSchema           string           `json:"referenceSchema"`
 	WindowsSchemaVerification string           `json:"windowsSchemaVerification"`
-	Buff                      rawBuffSnapshot  `json:"buff"`
+	Buff                      RawBuffSnapshot  `json:"buff"`
 }
 
 const buffSnapshotSchemaVersion = 4
 
 // fightBuffSnapshotPath is the wire path of the buff records an EntityActiveResponse carries.
 var fightBuffSnapshotPath = fmt.Sprintf("EntityActiveResponse.field%d(ComponentPbs[])->EntityComponentPb.field%d(FightBuffComponent)->FightBuffComponentPb.field%d(FightBuffInfos[])->FightBuffInformation",
-	fieldEntityActiveResponseComponentPbs, fieldEntityComponentPbFightBuffComponent, fieldFightBuffComponentPbFightBuffInfos)
+	FieldEntityActiveResponseComponentPbs, FieldEntityComponentPbFightBuffComponent, FieldFightBuffComponentPbFightBuffInfos)
 
-// recordBuffSnapshotDiagnostics writes the research row of one Buff record of an EntityActiveResponse (the Buff snapshot
+// RecordBuffSnapshotDiagnostics writes the research row of one Buff record of an EntityActiveResponse (the Buff snapshot
 // output, the event line and the encounter summary) after the core has read it (observeEffectSnapshot). The row exists
 // only when one of those outputs does. A failed row must not skip the identity, FSM and part components of the same
 // response, so it is counted (diagnostic_isolation_development.go) and the response handler continues.
-func (p *processor) recordBuffSnapshotDiagnostics(frame gameFrame, record rawBuffSnapshot, request pendingActiveRequest, matched bool) {
-	if p.dev.buffSnapshots == nil && p.dev.combatEventsJSONL == nil && p.dev.encounterSummary == nil {
+func (p *Processor) RecordBuffSnapshotDiagnostics(frame GameFrame, record RawBuffSnapshot, request PendingActiveRequest, matched bool) {
+	if p.Dev.buffSnapshots == nil && p.Dev.combatEventsJSONL == nil && p.Dev.encounterSummary == nil {
 		return
 	}
 	row := buffSnapshotAuditRow{
-		SchemaVersion: buffSnapshotSchemaVersion, EventType: "BUFF_SNAPSHOT", SessionNumber: p.sessionNumber,
-		MessageID: frame.commandID, Timestamp: frame.timestamp, ResponseCommandID: frame.commandID,
-		ResponseDirection: frame.direction, RequestCommandID: cmdEntityActiveRequest,
-		FrameToken: frame.token, EntityIDStatus: resolutionUnknown,
+		SchemaVersion: buffSnapshotSchemaVersion, EventType: "BUFF_SNAPSHOT", SessionNumber: p.SessionNumber,
+		MessageID: frame.CommandID, Timestamp: frame.Timestamp, ResponseCommandID: frame.CommandID,
+		ResponseDirection: frame.Direction, RequestCommandID: CmdEntityActiveRequest,
+		FrameToken: frame.Token, EntityIDStatus: ResolutionUnknown,
 		ComponentPath:             fightBuffSnapshotPath,
-		BuffIDStatus:              resolutionCorrelated,
-		BuffDefinitionStatus:      resolutionUnknown,
+		BuffIDStatus:              ResolutionCorrelated,
+		BuffDefinitionStatus:      ResolutionUnknown,
 		BuffDefinitionEvidence:    "No exact normalized buff.id row has been linked; the raw BuffId remains unchanged",
-		BuffSemanticStatus:        resolutionUnknown,
+		BuffSemanticStatus:        ResolutionUnknown,
 		BuffSemanticEvidence:      "This status covers runtime application and effect semantics; static row lookup is reported separately, and snapshot presence does not establish application or uptime",
 		ReferenceSchema:           CurrentProtocol(),
-		WindowsSchemaVerification: protocolSchemaBasis() + "; client/master compatibility UNKNOWN",
+		WindowsSchemaVerification: ProtocolSchemaBasis() + "; client/master compatibility UNKNOWN",
 		Buff:                      record,
 	}
-	if record.HasID && p.masters != nil && p.masters.hasBuffDefinition(record.ID) {
+	if record.HasID && p.Masters != nil && p.Masters.HasBuffDefinition(record.ID) {
 		definitionID := record.ID
-		row.BuffDefinitionStatus = resolutionCorrelated
+		row.BuffDefinitionStatus = ResolutionCorrelated
 		row.BuffDefinitionTable = "buff"
 		row.BuffDefinitionID = &definitionID
 		row.BuffDefinitionEvidence = "FightBuffInformation.BuffId follows the client's BuffById lookup; exact normalized buff.id row found. This links static attributes only and does not establish runtime application or effect semantics"
-		row.BuffOwners = resolveBuffOwners(p.masters, record.ID)
+		row.BuffOwners = ResolveBuffOwners(p.Masters, record.ID)
 	} else if record.HasID {
 		// No static definition: only an observed-role owner can exist; the definition status stays UNKNOWN.
-		row.BuffOwners = resolveBuffOwners(p.masters, record.ID)
+		row.BuffOwners = ResolveBuffOwners(p.Masters, record.ID)
 	}
 	if record.HasInstigatorID {
-		row.InstigatorSemantics = resolutionCorrelated
+		row.InstigatorSemantics = ResolutionCorrelated
 		row.InstigatorEvidence = "Client code (static research: CharacterBuffComponent, ActiveBuff) compares InstigatorId with CreatureDataId and resolves it through CreatureModel.GetEntity; client/master compatibility UNKNOWN"
 	}
-	if matched && request.hasEntityID {
-		entityID := request.entityID
+	if matched && request.HasEntityID {
+		entityID := request.EntityID
 		row.EntityID = &entityID
-		row.EntityIDStatus = resolutionCorrelated
+		row.EntityIDStatus = ResolutionCorrelated
 	}
 	p.observeBuffSnapshot(row)
-	if p.dev.buffSnapshots != nil {
-		p.writeDiagnosticRow(p.dev.buffSnapshots, "buff-snapshots", row)
+	if p.Dev.buffSnapshots != nil {
+		p.writeDiagnosticRow(p.Dev.buffSnapshots, "buff-snapshots", row)
 	}
-	p.writeStructuredEventJSONL(row)
+	p.WriteStructuredEventJSONL(row)
 }
 
-func (p *processor) writeBuffLifecycleConsole(row buffLifecycleAuditRow) {
-	if p == nil || !p.dev.showEffectEvents || p.dev.stdout == nil {
+func (p *Processor) WriteBuffLifecycleConsole(row BuffLifecycleAuditRow) {
+	if p == nil || !p.Dev.showEffectEvents || p.Dev.stdout == nil {
 		return
 	}
-	if !p.dev.showAllEffectEvents && !combatConsoleVisible(row) {
+	if !p.Dev.showAllEffectEvents && !combatConsoleVisible(row) {
 		return
 	}
 	// The verified character names are resolved at print time.
 	var holderName, sourceName string
-	if holder, ok := lifecycleEntity(&row); ok {
+	if holder, ok := LifecycleEntity(&row); ok {
 		holderName = p.verifiedCharacterName(holder)
 	}
 	if row.InstigatorID != nil {
@@ -116,11 +116,11 @@ func (p *processor) writeBuffLifecycleConsole(row buffLifecycleAuditRow) {
 		line += " " + fields
 	}
 	// The effect lines share the console sink with the damage lines (writeDamageEventOutputs) and its failure count.
-	if _, err := fmt.Fprintln(p.dev.stdout, line); err != nil {
+	if _, err := fmt.Fprintln(p.Dev.stdout, line); err != nil {
 		p.noteDiagnosticFailure("console", err)
 		return
 	}
-	if flusher, ok := p.dev.stdout.(interface{ Flush() error }); ok {
+	if flusher, ok := p.Dev.stdout.(interface{ Flush() error }); ok {
 		if err := flusher.Flush(); err != nil {
 			p.noteDiagnosticFailure("console", err)
 		}
@@ -129,12 +129,12 @@ func (p *processor) writeBuffLifecycleConsole(row buffLifecycleAuditRow) {
 
 // verifiedCharacterName returns the character name of a runtime entity when both the character link
 // and the name are verified, and an empty string otherwise.
-func (p *processor) verifiedCharacterName(entityID uint64) string {
-	if p == nil || p.entities == nil || entityID == 0 {
+func (p *Processor) verifiedCharacterName(entityID uint64) string {
+	if p == nil || p.Entities == nil || entityID == 0 {
 		return ""
 	}
-	identity := resolveEntityIdentity(p.entities, p.masters, entityID)
-	if !identity.HasCharacter || identity.CharacterStatus != resolutionVerified || identity.Character.NameStatus != string(resolutionVerified) {
+	identity := ResolveEntityIdentity(p.Entities, p.Masters, entityID)
+	if !identity.HasCharacter || identity.CharacterStatus != ResolutionVerified || identity.Character.NameStatus != string(ResolutionVerified) {
 		return ""
 	}
 	return identity.Character.Name
@@ -145,24 +145,24 @@ func (p *processor) verifiedCharacterName(entityID uint64) string {
 // -show-all-effect-events: unknown and non-combat effects, effects between non-player entities,
 // instant effects (no lifecycle to show), server buff requests and the client's answers (the apply or
 // remove they cause is printed instead), duration refreshes and stack messages that change nothing.
-func combatConsoleVisible(row buffLifecycleAuditRow) bool {
+func combatConsoleVisible(row BuffLifecycleAuditRow) bool {
 	switch row.EventKind {
 	case "GAMEPLAY_EFFECT_APPLY", "CLIENT_EFFECT_APPLY_REPORT":
-		if row.HandleID == nil || !validEffectHandle(*row.HandleID) {
+		if row.HandleID == nil || !ValidEffectHandle(*row.HandleID) {
 			return false
 		}
 	case "GAMEPLAY_EFFECT_REMOVE", "CLIENT_EFFECT_REMOVE_REPORT":
 	case "BUFF_STACK_COUNT_CHANGE", "CLIENT_EFFECT_STACK_REPORT":
-		if row.consoleSuppressed {
+		if row.ConsoleSuppressed {
 			return false
 		}
 	default:
 		return false
 	}
-	return row.CombatClass == EffectCombatClassCombat && row.playerRelated
+	return row.CombatClass == EffectCombatClassCombat && row.PlayerRelated
 }
 
-func formatBuffLifecycleConsole(row buffLifecycleAuditRow, holderName, sourceName string) string {
+func formatBuffLifecycleConsole(row BuffLifecycleAuditRow, holderName, sourceName string) string {
 	parts := []string{"BuffEvent"}
 	if !row.Timestamp.IsZero() {
 		parts = append(parts, row.Timestamp.Local().Format("15:04:05.000"))
@@ -180,7 +180,7 @@ func formatBuffLifecycleConsole(row buffLifecycleAuditRow, holderName, sourceNam
 	}
 	if row.CombatClass != "" {
 		parts = append(parts, "combatClass="+strings.ToUpper(string(row.CombatClass)), "combatBasis="+row.CombatClassBasis,
-			fmt.Sprintf("localTeam=%t", row.playerRelated))
+			fmt.Sprintf("localTeam=%t", row.PlayerRelated))
 	}
 	appendID := func(label string, value *uint64) {
 		if value != nil {
@@ -193,14 +193,14 @@ func formatBuffLifecycleConsole(row buffLifecycleAuditRow, holderName, sourceNam
 	appendID("handleLinkedId", row.HandleLinkedID)
 	switch row.EventKind {
 	case "CLIENT_EFFECT_APPLY_REPORT", "CLIENT_EFFECT_STACK_REPORT", "CLIENT_EFFECT_REMOVE_REPORT":
-		if holder, ok := clientEffectHolder(row); ok {
-			parts = append(parts, fmt.Sprintf("holder=%d", holder), "holderStatus="+string(resolutionCorrelated))
+		if holder, ok := ClientEffectHolder(row); ok {
+			parts = append(parts, fmt.Sprintf("holder=%d", holder), "holderStatus="+string(ResolutionCorrelated))
 			if holderName != "" {
 				parts = append(parts, "holderName="+holderName)
 			}
 		} else {
 			appendID("holderCandidate", row.CombatCommonEntityID)
-			parts = append(parts, "holderStatus="+string(resolutionUnknown))
+			parts = append(parts, "holderStatus="+string(ResolutionUnknown))
 		}
 		appendID("instigator", row.InstigatorID)
 		if row.InstigatorID != nil && sourceName != "" {
@@ -253,9 +253,9 @@ func formatBuffLifecycleConsole(row buffLifecycleAuditRow, holderName, sourceNam
 	} else if row.CombatCommonEntityID != nil {
 		switch row.EventKind {
 		case "BUFF_DURATION_CHANGE", "BUFF_STACK_COUNT_CHANGE":
-			label, status := "holderCandidate", resolutionUnknown
-			if row.HandleLinkedStatus == resolutionCorrelated {
-				label, status = "holder", resolutionCorrelated
+			label, status := "holderCandidate", ResolutionUnknown
+			if row.HandleLinkedStatus == ResolutionCorrelated {
+				label, status = "holder", ResolutionCorrelated
 			}
 			parts = append(parts,
 				fmt.Sprintf("%s=%d", label, *row.CombatCommonEntityID),
@@ -291,15 +291,15 @@ func formatBuffLifecycleConsole(row buffLifecycleAuditRow, holderName, sourceNam
 // (InnerMessageFieldNumber). A client report reaches the core inside CombatSendPackRequest pushes; every other inner
 // message, in CombatReceivePackNotify or nested in CombatSendPackResponse, has the notify path, as before the path
 // left the core.
-func withMessagePath(row buffLifecycleAuditRow) buffLifecycleAuditRow {
+func withMessagePath(row BuffLifecycleAuditRow) BuffLifecycleAuditRow {
 	if row.InnerMessageFieldNumber == nil {
 		return row
 	}
 	fieldNumber := *row.InnerMessageFieldNumber
-	if row.CommandID == cmdCombatSendPackRequest {
-		row.MessagePath = fmt.Sprintf("CombatSendPackRequest.field%d(CombatSendData[]).field%d(CombatPushData).field%d", fieldCombatSendPackRequestData, fieldCombatSendDataPush, fieldNumber)
+	if row.CommandID == CmdCombatSendPackRequest {
+		row.MessagePath = fmt.Sprintf("CombatSendPackRequest.field%d(CombatSendData[]).field%d(CombatPushData).field%d", FieldCombatSendPackRequestData, FieldCombatSendDataPush, fieldNumber)
 	} else {
-		row.MessagePath = fmt.Sprintf("CombatReceivePackNotify.field%d(CombatReceiveData[]).field%d(CombatNotifyData).field%d", fieldCombatReceivePackNotifyData, fieldCombatReceiveDataCombatNotifyData, fieldNumber)
+		row.MessagePath = fmt.Sprintf("CombatReceivePackNotify.field%d(CombatReceiveData[]).field%d(CombatNotifyData).field%d", FieldCombatReceivePackNotifyData, FieldCombatReceiveDataCombatNotifyData, fieldNumber)
 	}
 	return row
 }

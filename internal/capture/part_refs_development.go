@@ -11,7 +11,7 @@ import (
 type runtimePartReference struct {
 	partID          int32
 	status          partReferenceStatus
-	information     *runtimePartInformation
+	information     *RuntimePartInformation
 	informationFrom string
 	evidence        string
 }
@@ -24,7 +24,7 @@ const (
 	partReferenceUnknown    partReferenceStatus = "UNKNOWN"
 )
 
-func resolvePartReference(r *entityResolver, entityID uint64, partID int32) runtimePartReference {
+func resolvePartReference(r *EntityResolver, entityID uint64, partID int32) runtimePartReference {
 	result := runtimePartReference{partID: partID, status: partReferenceUnknown}
 	if partID == -1 {
 		result.status = partReferenceNoPart
@@ -35,23 +35,23 @@ func resolvePartReference(r *entityResolver, entityID uint64, partID int32) runt
 		result.evidence = "Non-positive DamageExecuteRequest.PartId is preserved without assigning a PartInformation row"
 		return result
 	}
-	entity, ok := r.entities[entityID]
-	if !ok || !entity.hasPartComponent {
+	entity, ok := r.Entities[entityID]
+	if !ok || !entity.HasPartComponent {
 		result.evidence = "No current PartComponent observation is available for the exact target entity in this session"
 		return result
 	}
-	information, ok := entity.partInformation[partID]
+	information, ok := entity.PartInformation[partID]
 	if !ok {
 		result.evidence = "Current target PartComponent has no PartLifeInfos row with this exact PartId"
 		return result
 	}
-	if information.conflicted {
+	if information.Conflicted {
 		result.evidence = "Current target PartComponent has conflicting PartLifeInfos rows for this PartId"
 		return result
 	}
 	result.status = partReferenceCorrelated
 	result.information = &information
-	result.informationFrom = entity.partComponentSource
+	result.informationFrom = entity.PartComponentSource
 	result.evidence = "DamageExecuteRequest.PartId exactly matches PartComponent.PartLifeInfos.PartId observed for the same TargetEntityId before this request; this is a session-scoped runtime relation, not a static Master key"
 	return result
 }
@@ -85,64 +85,64 @@ type partInformationRecord struct {
 	Activated *bool    `json:"activated,omitempty"`
 }
 
-func (p *processor) writePartReference(frame gameFrame, rpcID uint64, request pendingDamageRequest) {
-	if p.dev.partRefOut == nil {
+func (p *Processor) WritePartReference(frame GameFrame, rpcID uint64, request PendingDamageRequest) {
+	if p.Dev.partRefOut == nil {
 		return
 	}
 	ordinal := uint64(0)
-	if p.dev.frameOrdinal > 0 {
-		ordinal = p.dev.frameOrdinal - 1
+	if p.Dev.frameOrdinal > 0 {
+		ordinal = p.Dev.frameOrdinal - 1
 	}
 	reference := runtimePartReference{
 		status:   partReferenceUnknown,
 		evidence: "DamageExecuteRequest.PartId field is absent; no value or PartInformation row was inferred",
 	}
-	if request.hasPartID {
+	if request.HasPartID {
 		targetEntityID := uint64(0)
-		if request.hasTargetEntityID {
-			targetEntityID = request.targetEntityID
+		if request.HasTargetEntityID {
+			targetEntityID = request.TargetEntityID
 		}
-		reference = resolvePartReference(p.entities, targetEntityID, request.partID)
+		reference = resolvePartReference(p.Entities, targetEntityID, request.PartID)
 	}
 	row := partReferenceRecord{
 		SchemaVersion: partReferenceSchemaVersion,
 		EventType:     "DAMAGE_REQUEST_PART_REFERENCE",
 		FrameOrdinal:  ordinal,
-		SessionNumber: p.sessionNumber,
-		Timestamp:     frame.timestamp,
-		Direction:     frame.direction,
-		CommandID:     frame.commandID,
+		SessionNumber: p.SessionNumber,
+		Timestamp:     frame.Timestamp,
+		Direction:     frame.Direction,
+		CommandID:     frame.CommandID,
 		RPCID:         rpcID,
 		FieldPath:     "DamageExecuteRequest.PartId",
-		FieldNumber:   fieldDamageExecuteRequestPartID,
+		FieldNumber:   FieldDamageExecuteRequestPartID,
 		TargetEntityID: optionalUint64(
-			request.targetEntityID,
-			request.hasTargetEntityID,
+			request.TargetEntityID,
+			request.HasTargetEntityID,
 		),
-		PartID:    optionalInt32(request.partID, request.hasPartID),
-		HasPartID: request.hasPartID,
+		PartID:    optionalInt32(request.PartID, request.HasPartID),
+		HasPartID: request.HasPartID,
 		Status:    reference.status,
 		Evidence:  reference.evidence,
 	}
 	if reference.information != nil {
 		information := reference.information
 		row.PartInformation = &partInformationRecord{
-			PartID:    information.partID,
-			PartTag:   optionalInt32(information.partTag, information.hasPartTag),
-			LifeMax:   optionalFloat32(information.lifeMax, information.hasLifeMax),
-			Activated: optionalBool(information.activated, information.hasActivated),
+			PartID:    information.PartID,
+			PartTag:   optionalInt32(information.PartTag, information.HasPartTag),
+			LifeMax:   optionalFloat32(information.LifeMax, information.HasLifeMax),
+			Activated: optionalBool(information.Activated, information.HasActivated),
 		}
 		row.PartInformationSource = reference.informationFrom
 	}
 	line, err := json.Marshal(row)
 	if err != nil {
-		p.dev.partRefErrors++
-		fmt.Fprintf(p.diagnostic, "part_reference_encode_error=%v\n", err)
+		p.Dev.partRefErrors++
+		fmt.Fprintf(p.Diagnostic, "part_reference_encode_error=%v\n", err)
 		return
 	}
-	if _, err := p.dev.partRefOut.Write(append(line, '\n')); err != nil {
-		p.dev.partRefErrors++
-		fmt.Fprintf(p.diagnostic, "part_reference_write_error=%v\n", err)
+	if _, err := p.Dev.partRefOut.Write(append(line, '\n')); err != nil {
+		p.Dev.partRefErrors++
+		fmt.Fprintf(p.Diagnostic, "part_reference_write_error=%v\n", err)
 	}
 }
 

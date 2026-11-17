@@ -11,13 +11,13 @@ func TestAttributionIDsDoNotDependOnLocalizedMasterNames(t *testing.T) {
 		SourceEntityID uint64
 		TargetEntityID uint64
 		CharacterID    uint64
-		CharacterState resolutionStatus
+		CharacterState ResolutionStatus
 		SkillID        uint64
-		SkillState     resolutionStatus
+		SkillState     ResolutionStatus
 		DamageID       uint64
 		Damage         int64
 		EventType      string
-		EventTypeState resolutionStatus
+		EventTypeState ResolutionStatus
 	}
 
 	labels := []struct {
@@ -34,41 +34,41 @@ func TestAttributionIDsDoNotDependOnLocalizedMasterNames(t *testing.T) {
 
 	var baseline attributionIDs
 	for index, label := range labels {
-		master := &gameMaster{
-			manifest: masterManifest{Language: label.locale},
-			characters: map[uint64]masterRecord{
+		master := &GameMaster{
+			Manifest: MasterManifest{Language: label.locale},
+			Characters: map[uint64]MasterRecord{
 				1312: {
-					ID: 1312, Name: label.characterName, NameStatus: string(resolutionVerified),
-					Status: string(resolutionVerified),
+					ID: 1312, Name: label.characterName, NameStatus: string(ResolutionVerified),
+					Status: string(ResolutionVerified),
 				},
 			},
-			skills: map[uint64]masterRecord{
+			Skills: map[uint64]MasterRecord{
 				1312011: {
-					ID: 1312011, Name: label.skillName, NameStatus: string(resolutionVerified),
-					Status: string(resolutionVerified), RoleID: 1312, NameKind: "SkillName",
+					ID: 1312011, Name: label.skillName, NameStatus: string(ResolutionVerified),
+					Status: string(ResolutionVerified), RoleID: 1312, NameKind: "SkillName",
 				},
 				1312012: {
-					ID: 1312012, Name: label.skillName + " second", NameStatus: string(resolutionVerified),
-					Status: string(resolutionVerified), RoleID: 1312, NameKind: "SkillName",
+					ID: 1312012, Name: label.skillName + " second", NameStatus: string(ResolutionVerified),
+					Status: string(ResolutionVerified), RoleID: 1312, NameKind: "SkillName",
 				},
 			},
-			damage: map[uint64]damageMasterRecord{
+			Damage: map[uint64]DamageMasterRecord{
 				131201101: {
 					ID: 131201101, CalculateType: 0, SourceTable: "Damage",
 				},
 			},
 		}
-		processor := newProcessor(nil, io.Discard, io.Discard, nil)
-		processor.masters = master
-		processor.sourceRoles.observe(28006, master.skills[1312011])
-		processor.sourceRoles.observe(28006, master.skills[1312012])
+		processor := NewProcessor(nil, io.Discard, io.Discard, nil)
+		processor.Masters = master
+		processor.SourceRoles.Observe(28006, master.Skills[1312011])
+		processor.SourceRoles.Observe(28006, master.Skills[1312012])
 
-		request := pendingDamageRequest{
-			attackerEntityID: 28006, hasAttackerEntityID: true,
-			targetEntityID: 28530, hasTargetEntityID: true,
-			skillID: 1312011, damageID: 131201101, hasDamageID: true,
+		request := PendingDamageRequest{
+			AttackerEntityID: 28006, HasAttackerEntityID: true,
+			TargetEntityID: 28530, HasTargetEntityID: true,
+			SkillID: 1312011, DamageID: 131201101, HasDamageID: true,
 		}
-		event := processor.buildDamageEvent(7, request, -404, 0, false, 404)
+		event := processor.BuildDamageEvent(7, request, -404, 0, false, 404)
 		got := attributionIDs{
 			SourceEntityID: event.SourceEntityID,
 			TargetEntityID: event.TargetEntityID,

@@ -51,53 +51,53 @@ type frameArchiveRecord struct {
 // bodies take precedence over command support because neither path decrypts
 // a payload. readable says whether the protocol session reads the frame's
 // numbering (protocolSession.readable).
-func frameDecodeStatus(frame gameFrame, readable bool, state protocolState) string {
-	if frame.commandID == cmdProtoKeyResponse && frame.direction == "in" {
+func frameDecodeStatus(frame GameFrame, readable bool, state ProtocolState) string {
+	if frame.CommandID == CmdProtoKeyResponse && frame.Direction == "in" {
 		return frameStatusHandshake
 	}
-	if len(frame.body) == 0 {
+	if len(frame.Body) == 0 {
 		return frameStatusEmptyBody
 	}
-	if !readable && (state == protocolPending || state == protocolUnsupported) {
+	if !readable && (state == ProtocolPending || state == ProtocolUnsupported) {
 		return frameStatusNotCurrentProtocol
 	}
-	if readable && isImplementedCommand(frame.commandID) {
+	if readable && IsImplementedCommand(frame.CommandID) {
 		return frameStatusImplemented
 	}
 	return frameStatusUndecoded
 }
 
 // archivedFrameStatus classifies frame in the current protocol session.
-func (p *processor) archivedFrameStatus(frame gameFrame) string {
-	return frameDecodeStatus(frame, p.protocol.readable(frame.commandID), p.protocol.state)
+func (p *Processor) archivedFrameStatus(frame GameFrame) string {
+	return frameDecodeStatus(frame, p.Protocol.Readable(frame.CommandID), p.Protocol.State)
 }
 
-// archiveFrame appends one record for the frame and advances the capture-order
+// ArchiveFrame appends one record for the frame and advances the capture-order
 // counter. The counter advances even without an archive writer so that
 // frameOrdinal stays stable when the archive flag is toggled.
-func (p *processor) archiveFrame(frame gameFrame) {
-	ordinal := p.dev.frameOrdinal
-	p.dev.frameOrdinal++
-	if p.dev.frameArchive == nil {
+func (p *Processor) ArchiveFrame(frame GameFrame) {
+	ordinal := p.Dev.frameOrdinal
+	p.Dev.frameOrdinal++
+	if p.Dev.frameArchive == nil {
 		return
 	}
-	digest := sha256.Sum256(frame.body)
+	digest := sha256.Sum256(frame.Body)
 	record := frameArchiveRecord{
 		SchemaVersion:    frameArchiveSchemaVersion,
 		FrameOrdinal:     ordinal,
-		SessionNumber:    p.sessionNumber,
-		Direction:        frame.direction,
-		MessageType:      frame.messageType,
-		Sequence:         frame.sequence,
-		Token:            frame.token,
-		CommandID:        frame.commandID,
-		Compressed:       frame.compressed,
-		CompressedLength: frame.compressedLength,
-		BodyLength:       len(frame.body),
+		SessionNumber:    p.SessionNumber,
+		Direction:        frame.Direction,
+		MessageType:      frame.MessageType,
+		Sequence:         frame.Sequence,
+		Token:            frame.Token,
+		CommandID:        frame.CommandID,
+		Compressed:       frame.Compressed,
+		CompressedLength: frame.CompressedLength,
+		BodyLength:       len(frame.Body),
 		BodySHA256:       hex.EncodeToString(digest[:]),
-		SessionKeyReady:  len(p.session) == 32,
+		SessionKeyReady:  len(p.Session) == 32,
 		DecodeStatus:     p.archivedFrameStatus(frame),
-		Timestamp:        frame.timestamp.Format("2006-01-02T15:04:05.000000000Z07:00"),
+		Timestamp:        frame.Timestamp.Format("2006-01-02T15:04:05.000000000Z07:00"),
 	}
-	writeResearchRecord(p.dev.frameArchive, record, &p.dev.frameArchiveErrors)
+	writeResearchRecord(p.Dev.frameArchive, record, &p.Dev.frameArchiveErrors)
 }

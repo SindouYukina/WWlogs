@@ -13,7 +13,7 @@ func journaledTracker(t *testing.T) (*EffectTracker, *DamageStatistics) {
 	statistics.EnableHistory(HistoryEvents)
 	takeSpan(t, statistics)
 	tracker := newJournaledEffectTracker(statistics)
-	tracker.captureSessionID = effectTestCaptureSession
+	tracker.CaptureSessionID = effectTestCaptureSession
 	return tracker, statistics
 }
 
@@ -207,11 +207,11 @@ func TestHistoryRecordingStopsAtOnceAndNamesTheEncounterInProgress(t *testing.T)
 	statistics := NewDamageStatistics()
 	statistics.EnableHistory(HistoryEvents)
 	takeSpan(t, statistics)
-	statistics.observeBattleState(true, encounterAt(10), 1)
+	statistics.ObserveBattleState(true, encounterAt(10), 1)
 	outgoing(statistics, 100, 11)
 	statistics.SetHistoryRecording(false)
 	outgoing(statistics, 100, 12)
-	statistics.observeBattleState(false, encounterAt(20), 1)
+	statistics.ObserveBattleState(false, encounterAt(20), 1)
 	statistics.observeCaptureTime(encounterAt(30))
 	entries, _ := statistics.TakeHistory()
 	kinds := journalKinds(entries)
@@ -235,7 +235,7 @@ func TestHistoryRecordingStopsAtOnceAndNamesTheEncounterInProgress(t *testing.T)
 func TestHistoryRecordingStartsOnlyAtACleanBoundary(t *testing.T) {
 	statistics := NewDamageStatistics()
 	statistics.ConfigureHistory(HistoryEvents, false)
-	statistics.observeBattleState(true, encounterAt(10), 1)
+	statistics.ObserveBattleState(true, encounterAt(10), 1)
 	outgoing(statistics, 100, 11)
 	statistics.SetHistoryRecording(true)
 	if state := statistics.HistoryRecording(); !state.Enabled || state.Recording {
@@ -245,16 +245,16 @@ func TestHistoryRecordingStartsOnlyAtACleanBoundary(t *testing.T) {
 	if entries, _ := statistics.TakeHistory(); len(entries) != 0 {
 		t.Fatalf("journaled inside the encounter: %v", journalKinds(entries))
 	}
-	statistics.observeBattleState(false, encounterAt(20), 1)
+	statistics.ObserveBattleState(false, encounterAt(20), 1)
 	statistics.observeCaptureTime(encounterAt(25))
 	entries, _ := statistics.TakeHistory()
 	if got := journalKinds(entries); !reflect.DeepEqual(got, []HistoryEntryKind{HistoryRecordingStarted}) || entries[0].Recording.Reason != HistoryStartEnabled {
 		t.Fatalf("journal = %v", got)
 	}
 	// The next encounter is recorded whole.
-	statistics.observeBattleState(true, encounterAt(40), 1)
+	statistics.ObserveBattleState(true, encounterAt(40), 1)
 	outgoing(statistics, 70, 41)
-	statistics.observeBattleState(false, encounterAt(45), 1)
+	statistics.ObserveBattleState(false, encounterAt(45), 1)
 	statistics.observeCaptureTime(encounterAt(50))
 	entries, _ = statistics.TakeHistory()
 	if kinds := journalKinds(entries); kinds[0] != HistoryEncounterOpened || kinds[len(kinds)-1] != HistoryEncounterFinished {
@@ -266,9 +266,9 @@ func TestHistoryKeepsTheIntegrityOfARecordedEncounterAfterTheStop(t *testing.T) 
 	statistics := NewDamageStatistics()
 	statistics.EnableHistory(HistoryEvents)
 	takeSpan(t, statistics)
-	statistics.observeBattleState(true, encounterAt(10), 1)
+	statistics.ObserveBattleState(true, encounterAt(10), 1)
 	outgoing(statistics, 100, 11)
-	statistics.observeBattleState(false, encounterAt(12), 1)
+	statistics.ObserveBattleState(false, encounterAt(12), 1)
 	statistics.observeCaptureTime(encounterAt(20))
 	statistics.SetHistoryRecording(false)
 	statistics.TakeHistory()
@@ -294,7 +294,7 @@ func TestHistoryCheckpointIsTheEngineRenderingOfTheEncounterInProgress(t *testin
 	statistics.EnableHistory(HistoryEvents)
 	takeSpan(t, statistics)
 	statistics.CheckpointHistory()
-	statistics.observeBattleState(true, encounterAt(10), 1)
+	statistics.ObserveBattleState(true, encounterAt(10), 1)
 	outgoing(statistics, 100, 11)
 	outgoing(statistics, 300, 14)
 	statistics.TakeHistory()
@@ -314,7 +314,7 @@ func TestHistoryCheckpointIsTheEngineRenderingOfTheEncounterInProgress(t *testin
 		rendered.Totals != live.Totals || !reflect.DeepEqual(rendered.Roles, live.Roles) {
 		t.Fatalf("the checkpoint is not the engine's live rendering:\n%+v\n%+v", rendered.EncounterDPS, live.EncounterDPS)
 	}
-	statistics.observeBattleState(false, encounterAt(20), 1)
+	statistics.ObserveBattleState(false, encounterAt(20), 1)
 	statistics.observeCaptureTime(encounterAt(30))
 	entries, _ = statistics.TakeHistory()
 	if kinds := journalKinds(entries); kinds[len(kinds)-1] != HistoryEncounterFinished {

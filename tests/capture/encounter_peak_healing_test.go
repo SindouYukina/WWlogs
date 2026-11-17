@@ -54,9 +54,9 @@ func TestPeakDPSIsTheBestOneSecondInterval(t *testing.T) {
 func TestPeakDPSNeverScalesUpAShortInterval(t *testing.T) {
 	// An encounter of 0.4 s: its only interval is reported per 1 s, not divided by 0.4 s.
 	statistics := NewDamageStatistics()
-	statistics.observeBattleState(true, encounterAt(10), 1)
+	statistics.ObserveBattleState(true, encounterAt(10), 1)
 	outgoing(statistics, 800, 10.2)
-	statistics.observeBattleState(false, encounterAt(10.4), 1)
+	statistics.ObserveBattleState(false, encounterAt(10.4), 1)
 	statistics.observeCaptureTime(encounterAt(15))
 	encounter := requireOneCompleted(t, statistics.Snapshot())
 	requirePeak(t, encounter.PeakDPS, 800)
@@ -295,7 +295,7 @@ func TestHealingStaysWithItsEncounterAcrossEndsRestartsAndResets(t *testing.T) {
 }
 
 func TestHealingRecordTakesTheAppliedHPFromChangeLife(t *testing.T) {
-	event := combatEvent{
+	event := CombatEvent{
 		Damage: 1200, HasSourceEntity: true, SourceEntityID: 1, HasTargetEntity: true, TargetEntityID: 2, EventTypeCandidate: "HEALING_CANDIDATE",
 	}
 	for _, c := range []struct {
@@ -311,7 +311,7 @@ func TestHealingRecordTakesTheAppliedHPFromChangeLife(t *testing.T) {
 		{"HP lowered: not healing", true, 300, 0, true},
 	} {
 		event.HasChangeLife, event.ChangeLifeRaw = c.has, c.changeLife
-		record, ok := normalizeCombatEvent(event, playerRelationLocal, playerRelationLocal)
+		record, ok := normalizeCombatEvent(event, PlayerRelationLocal, PlayerRelationLocal)
 		if !ok || record.Kind != CombatEventHealing || record.Flow != CombatFlowLocalInternal || record.Amount != 1200 ||
 			record.AppliedHealing != c.applied || record.HealingInconsistent != c.inconsistent {
 			t.Fatalf("%s: %+v", c.name, record)
@@ -319,24 +319,24 @@ func TestHealingRecordTakesTheAppliedHPFromChangeLife(t *testing.T) {
 	}
 	// Damage records never carry applied healing.
 	event.EventTypeCandidate, event.HasChangeLife, event.ChangeLifeRaw = "DAMAGE_CANDIDATE", true, -100
-	if record, _ := normalizeCombatEvent(event, playerRelationLocal, playerRelationUnrelated); record.AppliedHealing != 0 || record.HealingInconsistent {
+	if record, _ := normalizeCombatEvent(event, PlayerRelationLocal, PlayerRelationUnrelated); record.AppliedHealing != 0 || record.HealingInconsistent {
 		t.Fatalf("damage record: %+v", record)
 	}
 }
 
 func TestHealingIsHeldBackWhileLocalAttributionIsSuspect(t *testing.T) {
-	p := newProcessor(nil, nil, nil, nil)
+	p := NewProcessor(nil, nil, nil, nil)
 	record := healing(CombatFlowLocalInternal, 500, 500, 10, 1209)
 	if got := p.gateHealing(record); got.ContextDowngrade != "" {
 		t.Fatalf("healing held back without a suspect attribution: %+v", got)
 	}
-	p.context.attribution.suspect = true
+	p.Context.attribution.suspect = true
 	if got := p.gateHealing(record); got.ContextDowngrade != contextDowngradeAttribution || isLocalHealing(got) {
 		t.Fatalf("suspect attribution: %+v", got)
 	}
-	p.context.observeClientReference(record.Source.EntityID, record.Target.EntityID)
-	if got := p.gateHealing(record); got.ContextDowngrade != "" || p.context.downgradedEvents != 0 {
-		t.Fatalf("both entities referenced again: %+v (damage gate counter %d)", got, p.context.downgradedEvents)
+	p.Context.observeClientReference(record.Source.EntityID, record.Target.EntityID)
+	if got := p.gateHealing(record); got.ContextDowngrade != "" || p.Context.downgradedEvents != 0 {
+		t.Fatalf("both entities referenced again: %+v (damage gate counter %d)", got, p.Context.downgradedEvents)
 	}
 }
 

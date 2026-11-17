@@ -46,11 +46,11 @@ func TestEntityIDAllocationCollector(t *testing.T) {
 		t.Skip("WWLOGS_ENTITY_ID_OUT is not set")
 	}
 	pcaps := readSegmentDropList(t, os.Getenv("WWLOGS_SEGMENT_DROP_PCAPS"))
-	key, err := loadEmbeddedPrivateKey()
+	key, err := LoadEmbeddedPrivateKey()
 	if err != nil {
 		t.Fatal(err)
 	}
-	masters, err := loadGameMasterDatabase(os.Getenv("WWLOGS_SEGMENT_DROP_MASTER_DB"), "zh-TW")
+	masters, err := LoadGameMasterDatabase(os.Getenv("WWLOGS_SEGMENT_DROP_MASTER_DB"), "zh-TW")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,16 +69,16 @@ func TestEntityIDAllocationCollector(t *testing.T) {
 			kind          string
 			wasLocalRole  bool
 		}
-		kindOf := func(p *processor, id uint64) string {
-			entity, ok := p.entities.entities[id]
+		kindOf := func(p *Processor, id uint64) string {
+			entity, ok := p.Entities.Entities[id]
 			switch {
 			case !ok:
 				return ""
-			case entity.hasRoleID && entity.roleID != 0:
+			case entity.HasRoleID && entity.RoleID != 0:
 				return "role"
-			case isExplicitMonsterEntity(entity):
+			case IsExplicitMonsterEntity(entity):
 				return "monster"
-			case entity.hasSummonerID && entity.summonerID != 0:
+			case entity.HasSummonerID && entity.SummonerID != 0:
 				return "summon"
 			default:
 				return "other"
@@ -90,20 +90,20 @@ func TestEntityIDAllocationCollector(t *testing.T) {
 		var maxID uint64
 		localRoleScenes := map[uint64]map[int]bool{}
 		previous := map[uint64]entityLifecycle{}
-		p, _ := equivalenceReplay(t, equivalenceInputs{localIP: "192.168.1.2"}, masters, key, capture.path, nil, func(_ int, p *processor) {
-			if p.sessionNumber != session {
-				session, maxID, previous = p.sessionNumber, 0, map[uint64]entityLifecycle{}
+		p, _ := equivalenceReplay(t, equivalenceInputs{localIP: "192.168.1.2"}, masters, key, capture.path, nil, func(_ int, p *Processor) {
+			if p.SessionNumber != session {
+				session, maxID, previous = p.SessionNumber, 0, map[uint64]entityLifecycle{}
 				result.Sessions++
 			}
 			// JoinSceneNotify replaces the role-entity set, so a new map marks a scene join.
-			if pointer := reflect.ValueOf(p.playerRelevance.roleEntities).Pointer(); pointer != rolePointer {
+			if pointer := reflect.ValueOf(p.PlayerRelevance.RoleEntities).Pointer(); pointer != rolePointer {
 				if rolePointer != 0 {
 					scene++
 					result.Scenes++
 				}
 				rolePointer = pointer
 			}
-			for id, record := range p.entities.lifecycles {
+			for id, record := range p.Entities.lifecycles {
 				before, known := previous[id]
 				if known && before.addCount == record.addCount && before.removeCount == record.removeCount && before.state == record.state {
 					continue
@@ -122,14 +122,14 @@ func TestEntityIDAllocationCollector(t *testing.T) {
 				if record.addCount > before.addCount {
 					if before.removeCount > 0 && before.state == lifecycleRemoved {
 						result.ReAddAfterRemove++
-					} else if before.addCount > 0 && before.state == lifecyclePresent {
+					} else if before.addCount > 0 && before.state == LifecyclePresent {
 						result.DuplicateAddNoRemove++
 					}
 					if entry.hasConfig && record.hasConfigID && entry.config != record.lastConfigID {
 						result.ReAddDifferentConfig++
 					}
 				}
-				present := record.state == lifecyclePresent
+				present := record.state == LifecyclePresent
 				kind := kindOf(p, id)
 				if entry.absent && present {
 					result.Reappeared++
@@ -153,7 +153,7 @@ func TestEntityIDAllocationCollector(t *testing.T) {
 				entry.scenes[scene] = true
 				previous[id] = record
 			}
-			for id := range p.playerRelevance.roleEntities {
+			for id := range p.PlayerRelevance.RoleEntities {
 				if entry := ids[id]; entry != nil {
 					entry.wasLocalRole = true
 				}
@@ -171,7 +171,7 @@ func TestEntityIDAllocationCollector(t *testing.T) {
 		}
 		result.LocalRoleEntities = len(localRoleScenes)
 		for id := range localRoleScenes {
-			if entity, ok := p.entities.entities[id]; ok && !p.playerRelevance.isRoleEntity(id) && !p.playerRelevance.isLocalPlayerRoleEntity(entity) {
+			if entity, ok := p.Entities.Entities[id]; ok && !p.PlayerRelevance.IsRoleEntity(id) && !p.PlayerRelevance.isLocalPlayerRoleEntity(entity) {
 				result.LocalRoleIDAsNonLocal++
 			}
 		}
@@ -180,7 +180,7 @@ func TestEntityIDAllocationCollector(t *testing.T) {
 				result.LocalRoleIDsAcrossScn++
 			}
 		}
-		result.Adds = uint64(p.stats.entityAdds)
+		result.Adds = uint64(p.Stats.EntityAdds)
 		all = append(all, result)
 	}
 	sort.Slice(all, func(i, j int) bool { return all[i].Name < all[j].Name })

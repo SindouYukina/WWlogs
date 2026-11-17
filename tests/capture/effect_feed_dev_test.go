@@ -14,13 +14,13 @@ func TestEffectFeedLeavesLifecycleJSONLUnchanged(t *testing.T) {
 	run := func(disable bool) []byte {
 		p := newEffectTestProcessor()
 		var lifecycle bytes.Buffer
-		p.dev.buffLifecycle = &lifecycle
+		p.Dev.buffLifecycle = &lifecycle
 		if disable {
-			p.effects = nil
+			p.Effects = nil
 		}
-		deliverEffectMessage(t, p, 0, effectPackBody(200, fieldCombatNotifyDataApplyGameplayEffectNotify, effectApplyPayload(1, 42, 200, 100, 1, 30, 30)))
-		deliverEffectMessage(t, p, 1, effectPackBody(200, fieldCombatNotifyDataBuffStackCountNotify, effectStackPayload(1, 2, 30, 30)))
-		deliverEffectMessage(t, p, 2, effectPackBody(200, fieldCombatNotifyDataRemoveGameplayEffectNotify, effectRemovePayload(1, 200, 100)))
+		deliverEffectMessage(t, p, 0, effectPackBody(200, FieldCombatNotifyDataApplyGameplayEffectNotify, effectApplyPayload(1, 42, 200, 100, 1, 30, 30)))
+		deliverEffectMessage(t, p, 1, effectPackBody(200, FieldCombatNotifyDataBuffStackCountNotify, effectStackPayload(1, 2, 30, 30)))
+		deliverEffectMessage(t, p, 2, effectPackBody(200, FieldCombatNotifyDataRemoveGameplayEffectNotify, effectRemovePayload(1, 200, 100)))
 		return lifecycle.Bytes()
 	}
 	withTracker, withoutTracker = run(false), run(true)
@@ -31,8 +31,8 @@ func TestEffectFeedLeavesLifecycleJSONLUnchanged(t *testing.T) {
 
 func TestEffectFeedWritesFinalStateAsOneJSONLine(t *testing.T) {
 	p := newEffectTestProcessor()
-	deliverEffectMessage(t, p, 0, effectPackBody(200, fieldCombatNotifyDataApplyGameplayEffectNotify, effectApplyPayload(1, 42, 200, 100, 1, 30, 30)))
-	p.currentFrameTime = effectAt(10)
+	deliverEffectMessage(t, p, 0, effectPackBody(200, FieldCombatNotifyDataApplyGameplayEffectNotify, effectApplyPayload(1, 42, 200, 100, 1, 30, 30)))
+	p.CurrentFrameTime = effectAt(10)
 	var out bytes.Buffer
 	if err := p.writeEffectState(&out); err != nil {
 		t.Fatalf("write effect state: %v", err)
@@ -74,48 +74,48 @@ func TestEffectSemanticConsoleFieldsAreLabelledAndNeverNameTheEffect(t *testing.
 
 func TestEffectSemanticConsoleFieldsFollowApplyAndHandleLink(t *testing.T) {
 	p := newEffectTestProcessor()
-	p.masters = &gameMaster{buffDefinitions: map[uint64]struct{}{10041000: {}}}
+	p.Masters = &GameMaster{BuffDefinitions: map[uint64]struct{}{10041000: {}}}
 	apply := uint64(10041000)
 	link := uint64(10041000)
-	if got := p.effectSemanticConsoleFields(buffLifecycleAuditRow{EventKind: "GAMEPLAY_EFFECT_APPLY", ID: &apply}); !strings.Contains(got, "effectId=10041000") || !strings.Contains(got, "definition_linked_name_unresolved") {
+	if got := p.effectSemanticConsoleFields(BuffLifecycleAuditRow{EventKind: "GAMEPLAY_EFFECT_APPLY", ID: &apply}); !strings.Contains(got, "effectId=10041000") || !strings.Contains(got, "definition_linked_name_unresolved") {
 		t.Errorf("apply row fields = %q", got)
 	}
-	if got := p.effectSemanticConsoleFields(buffLifecycleAuditRow{EventKind: "BUFF_STACK_COUNT_CHANGE", HandleLinkedID: &link, HandleLinkedStatus: resolutionCorrelated}); !strings.Contains(got, "effectId=10041000") {
+	if got := p.effectSemanticConsoleFields(BuffLifecycleAuditRow{EventKind: "BUFF_STACK_COUNT_CHANGE", HandleLinkedID: &link, HandleLinkedStatus: ResolutionCorrelated}); !strings.Contains(got, "effectId=10041000") {
 		t.Errorf("handle-linked row fields = %q", got)
 	}
 	// An unconfirmed handle link must not attribute the update to an effect id.
-	if got := p.effectSemanticConsoleFields(buffLifecycleAuditRow{EventKind: "BUFF_STACK_COUNT_CHANGE", HandleLinkedID: &link, HandleLinkedStatus: resolutionUnknown}); got != "" {
+	if got := p.effectSemanticConsoleFields(BuffLifecycleAuditRow{EventKind: "BUFF_STACK_COUNT_CHANGE", HandleLinkedID: &link, HandleLinkedStatus: ResolutionUnknown}); got != "" {
 		t.Errorf("unconfirmed handle link produced fields: %q", got)
 	}
 	// Request notifications describe no effect instance.
-	if got := p.effectSemanticConsoleFields(buffLifecycleAuditRow{EventKind: "BUFF_APPLY_REQUEST_NOTIFY", ID: &apply}); got != "" {
+	if got := p.effectSemanticConsoleFields(BuffLifecycleAuditRow{EventKind: "BUFF_APPLY_REQUEST_NOTIFY", ID: &apply}); got != "" {
 		t.Errorf("request notification produced fields: %q", got)
 	}
 	unknown := uint64(1312010090)
-	if got := p.effectSemanticConsoleFields(buffLifecycleAuditRow{EventKind: "GAMEPLAY_EFFECT_APPLY", ID: &unknown}); !strings.Contains(got, "semantic=definition_unresolved") {
+	if got := p.effectSemanticConsoleFields(BuffLifecycleAuditRow{EventKind: "GAMEPLAY_EFFECT_APPLY", ID: &unknown}); !strings.Contains(got, "semantic=definition_unresolved") {
 		t.Errorf("unlinked id fields = %q", got)
 	}
 }
 
 func TestEffectFeedReportsCorrelatedTermNameWithoutPromotingIt(t *testing.T) {
 	p := newEffectTestProcessor()
-	p.masters = &gameMaster{
-		buffDefinitions: map[uint64]struct{}{10041000: {}, 10040002: {}},
-		buffStatics:     map[uint64]buffStaticParameters{10041000: {stackLimit: 3, hasStackLimit: true}},
-		buffTerms:       map[uint64]effectTermRecord{10041000: {termID: 850009, name: "風蝕效應", description: "持續時造成氣動傷害", status: resolutionCorrelated}},
+	p.Masters = &GameMaster{
+		BuffDefinitions: map[uint64]struct{}{10041000: {}, 10040002: {}},
+		BuffStatics:     map[uint64]BuffStaticParameters{10041000: {StackLimit: 3, HasStackLimit: true}},
+		BuffTerms:       map[uint64]EffectTermRecord{10041000: {TermID: 850009, Name: "風蝕效應", Description: "持續時造成氣動傷害", Status: ResolutionCorrelated}},
 	}
-	deliverEffectMessage(t, p, 0, effectPackBody(200, fieldCombatNotifyDataApplyGameplayEffectNotify, effectApplyPayload(1, 10041000, 200, 100, 1, 14.8, 14.8)))
-	deliverEffectMessage(t, p, 0, effectPackBody(200, fieldCombatNotifyDataApplyGameplayEffectNotify, effectApplyPayload(2, 10040002, 200, 100, 1, 2, 2)))
+	deliverEffectMessage(t, p, 0, effectPackBody(200, FieldCombatNotifyDataApplyGameplayEffectNotify, effectApplyPayload(1, 10041000, 200, 100, 1, 14.8, 14.8)))
+	deliverEffectMessage(t, p, 0, effectPackBody(200, FieldCombatNotifyDataApplyGameplayEffectNotify, effectApplyPayload(2, 10040002, 200, 100, 1, 2, 2)))
 	byHandle := map[uint64]EffectInstanceSnapshot{}
-	for _, effect := range p.effects.Snapshot().Effects {
+	for _, effect := range p.Effects.Snapshot().Effects {
 		byHandle[effect.HandleID] = effect
 	}
 	named := byHandle[1]
 	if named.SemanticStatus != EffectSemanticNameCorrelated || named.Static == nil || named.Static.Term == nil ||
-		named.Static.Term.Name != "風蝕效應" || named.Static.Term.Status != string(resolutionCorrelated) {
+		named.Static.Term.Name != "風蝕效應" || named.Static.Term.Status != string(ResolutionCorrelated) {
 		t.Fatalf("named effect = %+v static=%+v", named, named.Static)
 	}
-	if named.DefinitionStatus != string(resolutionCorrelated) {
+	if named.DefinitionStatus != string(ResolutionCorrelated) {
 		t.Fatalf("definition status = %s", named.DefinitionStatus)
 	}
 	// A linked effect without a term keeps its id and an unresolved name.
@@ -125,14 +125,14 @@ func TestEffectFeedReportsCorrelatedTermNameWithoutPromotingIt(t *testing.T) {
 	}
 	// The tracker owns its copy of the term.
 	named.Static.Term.Name = "mutated"
-	for _, effect := range p.effects.Snapshot().Effects {
+	for _, effect := range p.Effects.Snapshot().Effects {
 		if effect.HandleID == 1 && effect.Static.Term.Name != "風蝕效應" {
 			t.Fatal("tracker state changed through a snapshot term")
 		}
 	}
 
 	apply := uint64(10041000)
-	fields := p.effectSemanticConsoleFields(buffLifecycleAuditRow{EventKind: "GAMEPLAY_EFFECT_APPLY", ID: &apply})
+	fields := p.effectSemanticConsoleFields(BuffLifecycleAuditRow{EventKind: "GAMEPLAY_EFFECT_APPLY", ID: &apply})
 	for _, want := range []string{"semantic=definition_linked_name_correlated", `name="風蝕效應"`, "nameStatus=CORRELATED", "nameSource=Term850009"} {
 		if !strings.Contains(fields, want) {
 			t.Errorf("console fields %q lack %q", fields, want)
@@ -142,27 +142,27 @@ func TestEffectFeedReportsCorrelatedTermNameWithoutPromotingIt(t *testing.T) {
 
 // newEffectTestProcessor has a local role entity 100, a second local role 101,
 // monsters 200 and 201, and an unclassified entity 300.
-func newEffectTestProcessor() *processor {
+func newEffectTestProcessor() *Processor {
 	p, _, _ := newPlayerRelevanceTestProcessor()
-	p.sessionNumber = 1
+	p.SessionNumber = 1
 	observeTestLocalRole(p, 100)
 	addTestRuntimeEntity(p, 100, nil)
-	addTestRuntimeEntity(p, 200, func(entity *runtimeEntity) { entity.monsterID, entity.hasMonsterID = 9001, true })
-	addTestRuntimeEntity(p, 201, func(entity *runtimeEntity) { entity.monsterID, entity.hasMonsterID = 9002, true })
+	addTestRuntimeEntity(p, 200, func(entity *RuntimeEntity) { entity.MonsterID, entity.HasMonsterID = 9001, true })
+	addTestRuntimeEntity(p, 201, func(entity *RuntimeEntity) { entity.MonsterID, entity.HasMonsterID = 9002, true })
 	addTestRuntimeEntity(p, 300, nil)
 	return p
 }
 
 func TestEffectFeedUpgradesUnknownRelationWhenEvidenceArrives(t *testing.T) {
 	p := newEffectTestProcessor()
-	deliverEffectMessage(t, p, 0, effectPackBody(200, fieldCombatNotifyDataApplyGameplayEffectNotify, effectApplyPayload(1, 42, 200, 102, 1, 30, 30)))
-	if effect := onlyEffect(t, p.effects.Snapshot()); effect.SourceRelation != EffectRelationUnknown {
+	deliverEffectMessage(t, p, 0, effectPackBody(200, FieldCombatNotifyDataApplyGameplayEffectNotify, effectApplyPayload(1, 42, 200, 102, 1, 30, 30)))
+	if effect := onlyEffect(t, p.Effects.Snapshot()); effect.SourceRelation != EffectRelationUnknown {
 		t.Fatalf("source relation before the role is known = %s", effect.SourceRelation)
 	}
 	observeTestLocalRole(p, 102)
 	addTestRuntimeEntity(p, 102, nil)
-	deliverEffectMessage(t, p, 1, effectPackBody(200, fieldCombatNotifyDataBuffDurationNotify, effectDurationPayload(1, 30, 30)))
-	if effect := onlyEffect(t, p.effects.Snapshot()); effect.SourceRelation != EffectRelationLocalRole {
+	deliverEffectMessage(t, p, 1, effectPackBody(200, FieldCombatNotifyDataBuffDurationNotify, effectDurationPayload(1, 30, 30)))
+	if effect := onlyEffect(t, p.Effects.Snapshot()); effect.SourceRelation != EffectRelationLocalRole {
 		t.Fatalf("source relation after the role is known = %s", effect.SourceRelation)
 	}
 }
@@ -171,12 +171,12 @@ func TestEffectFeedRefreshesHolderRelationWhenLocalTeamBecomesKnown(t *testing.T
 	p := newEffectTestProcessor()
 	// Holder 102 is not yet known as a local role when its snapshot row arrives and gets no later message.
 	deliverEffectSnapshot(t, p, 1, 102, 0, effectSnapshotResponse(165, 1001002004, 102, 1, -1, -1))
-	if effect := onlyEffect(t, p.effects.Snapshot()); effect.HolderRelation != EffectRelationUnknown {
+	if effect := onlyEffect(t, p.Effects.Snapshot()); effect.HolderRelation != EffectRelationUnknown {
 		t.Fatalf("holder relation before the team is known = %s", effect.HolderRelation)
 	}
 	addTestRuntimeEntity(p, 102, nil)
 	observeTestLocalRole(p, 102)
-	effect := onlyEffect(t, p.effects.Snapshot())
+	effect := onlyEffect(t, p.Effects.Snapshot())
 	if effect.HolderRelation != EffectRelationLocalRole || effect.SourceRelation != EffectRelationLocalRole {
 		t.Fatalf("relations after the team is known = %s/%s, want local_role/local_role", effect.HolderRelation, effect.SourceRelation)
 	}
@@ -184,20 +184,20 @@ func TestEffectFeedRefreshesHolderRelationWhenLocalTeamBecomesKnown(t *testing.T
 
 func TestEffectFeedLabelsEveryLocalTeamRoleAndKeepsOtherPlayersUnknown(t *testing.T) {
 	p, _, _ := newPlayerRelevanceTestProcessor()
-	p.sessionNumber = 1
+	p.SessionNumber = 1
 	addTestPlayerRoleGroupEntity(p, 100, 77, 1409)
 	addTestPlayerRoleGroupEntity(p, 101, 77, 1508, true) // team role never reported as the current entity
 	addTestPlayerRoleGroupEntity(p, 102, 88, 1312)       // another player's role
 	observeTestLocalRole(p, 100)
-	addTestRuntimeEntity(p, 200, func(entity *runtimeEntity) { entity.monsterID, entity.hasMonsterID = 9001, true })
-	addTestRuntimeEntity(p, 300, func(entity *runtimeEntity) {
-		entity.summonerID, entity.hasSummonerID = 101, true // a summon of the second team role
+	addTestRuntimeEntity(p, 200, func(entity *RuntimeEntity) { entity.MonsterID, entity.HasMonsterID = 9001, true })
+	addTestRuntimeEntity(p, 300, func(entity *RuntimeEntity) {
+		entity.SummonerID, entity.HasSummonerID = 101, true // a summon of the second team role
 	})
 	// Each player's Proto_PlayerEntity holds team-level effects; only the local player's counts as local.
-	playerEntity := func(playerID uint64) func(*runtimeEntity) {
-		return func(entity *runtimeEntity) {
-			entity.entityTypeCode, entity.hasEntityType = entityTypePlayerEntity, true
-			entity.playerID, entity.hasPlayerID = playerID, true
+	playerEntity := func(playerID uint64) func(*RuntimeEntity) {
+		return func(entity *RuntimeEntity) {
+			entity.EntityTypeCode, entity.HasEntityType = EntityTypePlayerEntity, true
+			entity.PlayerID, entity.HasPlayerID = playerID, true
 		}
 	}
 	addTestRuntimeEntity(p, 400, playerEntity(77))
@@ -208,7 +208,7 @@ func TestEffectFeedLabelsEveryLocalTeamRoleAndKeepsOtherPlayersUnknown(t *testin
 		200: EffectRelationNonPlayer, 300: EffectRelationLocalOwned,
 		400: EffectRelationLocalPlayer, 401: EffectRelationUnknown,
 	} {
-		if got := p.effectEntityRelation(entityID); got != want {
+		if got := p.EffectEntityRelation(entityID); got != want {
 			t.Errorf("entity %d relation = %s, want %s", entityID, got, want)
 		}
 	}
@@ -218,20 +218,20 @@ func TestEffectFeedLabelsEveryLocalTeamRoleAndKeepsOtherPlayersUnknown(t *testin
 // ailment to the local player's Proto_PlayerEntity, which is on the team's side although it is not a role.
 func TestEffectFeedPlayerEntityHoldsMonsterDebuffs(t *testing.T) {
 	p, _, _ := newPlayerRelevanceTestProcessor()
-	p.sessionNumber = 1
+	p.SessionNumber = 1
 	addTestPlayerRoleGroupEntity(p, 100, 77, 1409)
 	observeTestLocalRole(p, 100)
-	addTestRuntimeEntity(p, 200, func(entity *runtimeEntity) { entity.monsterID, entity.hasMonsterID = 9001, true })
-	addTestRuntimeEntity(p, 400, func(entity *runtimeEntity) {
-		entity.entityTypeCode, entity.hasEntityType = entityTypePlayerEntity, true
-		entity.playerID, entity.hasPlayerID = 77, true
+	addTestRuntimeEntity(p, 200, func(entity *RuntimeEntity) { entity.MonsterID, entity.HasMonsterID = 9001, true })
+	addTestRuntimeEntity(p, 400, func(entity *RuntimeEntity) {
+		entity.EntityTypeCode, entity.HasEntityType = EntityTypePlayerEntity, true
+		entity.PlayerID, entity.HasPlayerID = 77, true
 	})
-	deliverEffectMessage(t, p, 0, effectPackBody(400, fieldCombatNotifyDataApplyGameplayEffectNotify, effectApplyPayload(171, 10010000, 400, 200, 1, 15, 15)))
-	effect := onlyEffect(t, p.effects.SnapshotAt(effectQueryFor(p, 1)))
+	deliverEffectMessage(t, p, 0, effectPackBody(400, FieldCombatNotifyDataApplyGameplayEffectNotify, effectApplyPayload(171, 10010000, 400, 200, 1, 15, 15)))
+	effect := onlyEffect(t, p.Effects.SnapshotAt(effectQueryFor(p, 1)))
 	if effect.HolderRelation != EffectRelationLocalPlayer || effect.SourceRelation != EffectRelationNonPlayer {
 		t.Fatalf("relations = %s/%s, want local_player/non_player", effect.HolderRelation, effect.SourceRelation)
 	}
-	if got := effectDisplayFor(effect); got.Eligibility == EffectDisplayNotLocal || got.Target != EffectTargetTeam {
+	if got := EffectDisplayFor(effect); got.Eligibility == EffectDisplayNotLocal || got.Target != EffectTargetTeam {
 		t.Fatalf("display = %+v, want a team-side effect", got)
 	}
 }
@@ -239,8 +239,8 @@ func TestEffectFeedPlayerEntityHoldsMonsterDebuffs(t *testing.T) {
 func TestEffectFeedTracksDecodedApplyStackAndRemove(t *testing.T) {
 	p := newEffectTestProcessor()
 
-	deliverEffectMessage(t, p, 0, effectPackBody(200, fieldCombatNotifyDataApplyGameplayEffectNotify, effectApplyPayload(171, 10041000, 200, 100, 1, 14.8, 14.8)))
-	effect := onlyEffect(t, p.effects.SnapshotAt(effectQueryFor(p, 1)))
+	deliverEffectMessage(t, p, 0, effectPackBody(200, FieldCombatNotifyDataApplyGameplayEffectNotify, effectApplyPayload(171, 10041000, 200, 100, 1, 14.8, 14.8)))
+	effect := onlyEffect(t, p.Effects.SnapshotAt(effectQueryFor(p, 1)))
 	if effect.HolderEntityID != 200 || effect.HandleID != 171 || effect.EffectID == nil || *effect.EffectID != 10041000 {
 		t.Fatalf("decoded apply = %+v", effect)
 	}
@@ -250,16 +250,16 @@ func TestEffectFeedTracksDecodedApplyStackAndRemove(t *testing.T) {
 	requireNear(t, "remaining one second after apply", effect.RemainingSeconds, 13.8)
 
 	// A stack message carries a fresh remaining time for the same handle.
-	deliverEffectMessage(t, p, 4, effectPackBody(200, fieldCombatNotifyDataBuffStackCountNotify, effectStackPayload(171, 2, 14.8, 14.8)))
-	deliverEffectMessage(t, p, 4, effectPackBody(200, fieldCombatNotifyDataBuffDurationNotify, effectDurationPayload(171, 14.8, 14.8)))
-	effect = onlyEffect(t, p.effects.SnapshotAt(effectQueryFor(p, 5)))
+	deliverEffectMessage(t, p, 4, effectPackBody(200, FieldCombatNotifyDataBuffStackCountNotify, effectStackPayload(171, 2, 14.8, 14.8)))
+	deliverEffectMessage(t, p, 4, effectPackBody(200, FieldCombatNotifyDataBuffDurationNotify, effectDurationPayload(171, 14.8, 14.8)))
+	effect = onlyEffect(t, p.Effects.SnapshotAt(effectQueryFor(p, 5)))
 	if effect.StackCount == nil || *effect.StackCount != 2 {
 		t.Fatalf("stack = %v, want 2", effect.StackCount)
 	}
 	requireNear(t, "remaining one second after refresh", effect.RemainingSeconds, 13.8)
 
-	deliverEffectMessage(t, p, 18.9, effectPackBody(200, fieldCombatNotifyDataRemoveGameplayEffectNotify, effectRemovePayload(171, 200, 100)))
-	snapshot := p.effects.SnapshotAt(effectQueryFor(p, 20))
+	deliverEffectMessage(t, p, 18.9, effectPackBody(200, FieldCombatNotifyDataRemoveGameplayEffectNotify, effectRemovePayload(171, 200, 100)))
+	snapshot := p.Effects.SnapshotAt(effectQueryFor(p, 20))
 	if len(snapshot.Effects) != 0 || len(snapshot.RecentEnded) != 1 || snapshot.RecentEnded[0].Lifecycle != EffectLifecycleConfirmedRemoved {
 		t.Fatalf("after remove: %+v", snapshot)
 	}
@@ -268,16 +268,16 @@ func TestEffectFeedTracksDecodedApplyStackAndRemove(t *testing.T) {
 
 func TestEffectFeedSeparatesSameEffectOnDifferentHolders(t *testing.T) {
 	p := newEffectTestProcessor()
-	deliverEffectMessage(t, p, 0, effectPackBody(200, fieldCombatNotifyDataApplyGameplayEffectNotify, effectApplyPayload(7, 555, 200, 100, 1, 5, 5)))
-	deliverEffectMessage(t, p, 0, effectPackBody(201, fieldCombatNotifyDataApplyGameplayEffectNotify, effectApplyPayload(7, 555, 201, 100, 1, 5, 5)))
-	deliverEffectMessage(t, p, 0, effectPackBody(100, fieldCombatNotifyDataApplyGameplayEffectNotify, effectApplyPayload(8, 555, 100, 100, 1, 5, 5)))
+	deliverEffectMessage(t, p, 0, effectPackBody(200, FieldCombatNotifyDataApplyGameplayEffectNotify, effectApplyPayload(7, 555, 200, 100, 1, 5, 5)))
+	deliverEffectMessage(t, p, 0, effectPackBody(201, FieldCombatNotifyDataApplyGameplayEffectNotify, effectApplyPayload(7, 555, 201, 100, 1, 5, 5)))
+	deliverEffectMessage(t, p, 0, effectPackBody(100, FieldCombatNotifyDataApplyGameplayEffectNotify, effectApplyPayload(8, 555, 100, 100, 1, 5, 5)))
 
-	snapshot := p.effects.SnapshotAt(effectQueryFor(p, 1))
+	snapshot := p.Effects.SnapshotAt(effectQueryFor(p, 1))
 	if len(snapshot.Effects) != 3 {
 		t.Fatalf("effects = %+v, want three isolated instances", snapshot.Effects)
 	}
-	deliverEffectMessage(t, p, 2, effectPackBody(200, fieldCombatNotifyDataRemoveGameplayEffectNotify, effectRemovePayload(7, 200, 100)))
-	snapshot = p.effects.SnapshotAt(effectQueryFor(p, 3))
+	deliverEffectMessage(t, p, 2, effectPackBody(200, FieldCombatNotifyDataRemoveGameplayEffectNotify, effectRemovePayload(7, 200, 100)))
+	snapshot = p.Effects.SnapshotAt(effectQueryFor(p, 3))
 	if len(snapshot.Effects) != 2 {
 		t.Fatalf("a REMOVE on holder 200 changed %d instances", 3-len(snapshot.Effects))
 	}
@@ -295,8 +295,8 @@ func TestEffectFeedSeparatesSameEffectOnDifferentHolders(t *testing.T) {
 func TestEffectFeedDoesNotPromoteUnknownEntitiesToPlayers(t *testing.T) {
 	p := newEffectTestProcessor()
 	// Source 999 was never seen; holder 300 is a runtime entity with no monster or player evidence.
-	deliverEffectMessage(t, p, 0, effectPackBody(300, fieldCombatNotifyDataApplyGameplayEffectNotify, effectApplyPayload(1, 42, 300, 999, 1, 5, 5)))
-	effect := onlyEffect(t, p.effects.SnapshotAt(effectQueryFor(p, 1)))
+	deliverEffectMessage(t, p, 0, effectPackBody(300, FieldCombatNotifyDataApplyGameplayEffectNotify, effectApplyPayload(1, 42, 300, 999, 1, 5, 5)))
+	effect := onlyEffect(t, p.Effects.SnapshotAt(effectQueryFor(p, 1)))
 	if effect.HolderRelation != EffectRelationUnknown || effect.SourceRelation != EffectRelationUnknown {
 		t.Fatalf("unknown entities were classified: %s/%s", effect.HolderRelation, effect.SourceRelation)
 	}
@@ -307,8 +307,8 @@ func TestEffectFeedDoesNotPromoteUnknownEntitiesToPlayers(t *testing.T) {
 
 func TestEffectFeedExcludesMonsterAppliedMonsterEffects(t *testing.T) {
 	p := newEffectTestProcessor()
-	deliverEffectMessage(t, p, 0, effectPackBody(200, fieldCombatNotifyDataApplyGameplayEffectNotify, effectApplyPayload(1, 42, 200, 201, 1, 5, 5)))
-	snapshot := p.effects.Snapshot()
+	deliverEffectMessage(t, p, 0, effectPackBody(200, FieldCombatNotifyDataApplyGameplayEffectNotify, effectApplyPayload(1, 42, 200, 201, 1, 5, 5)))
+	snapshot := p.Effects.Snapshot()
 	if len(snapshot.Effects) != 0 || snapshot.Counters.ExcludedUnrelated != 1 {
 		t.Fatalf("NPC-versus-NPC effect was tracked: %+v", snapshot)
 	}
@@ -317,8 +317,8 @@ func TestEffectFeedExcludesMonsterAppliedMonsterEffects(t *testing.T) {
 func TestEffectFeedRequiresCorrelatedHolder(t *testing.T) {
 	p := newEffectTestProcessor()
 	// TargetEntityId 200 does not match CombatCommon.EntityId 201: the holder is not established.
-	deliverEffectMessage(t, p, 0, effectPackBody(201, fieldCombatNotifyDataApplyGameplayEffectNotify, effectApplyPayload(1, 42, 200, 100, 1, 5, 5)))
-	snapshot := p.effects.Snapshot()
+	deliverEffectMessage(t, p, 0, effectPackBody(201, FieldCombatNotifyDataApplyGameplayEffectNotify, effectApplyPayload(1, 42, 200, 100, 1, 5, 5)))
+	snapshot := p.Effects.Snapshot()
 	if len(snapshot.Effects) != 0 || snapshot.Counters.SkippedUncorrelatedHolder != 1 {
 		t.Fatalf("uncorrelated apply was tracked: %+v", snapshot)
 	}
@@ -326,11 +326,11 @@ func TestEffectFeedRequiresCorrelatedHolder(t *testing.T) {
 
 func TestEffectFeedIgnoresRequestNotifications(t *testing.T) {
 	p := newEffectTestProcessor()
-	apply := appendVarintField(appendVarintField(nil, fieldApplyBuffS2cRequestNotifyID, 71001), fieldApplyBuffS2cRequestNotifyInstigatorID, 100) // ApplyBuffS2CRequestNotify
-	deliverEffectMessage(t, p, 0, effectPackBody(200, fieldCombatNotifyDataApplyBuffS2CRequestNotify, apply))
-	remove := appendVarintField(appendVarintField(nil, fieldRemoveBuffByIDS2cRequestNotifyBuffID, 71001), fieldRemoveBuffByIDS2cRequestNotifyInstigatorID, 100) // RemoveBuffByIdS2CRequestNotify
-	deliverEffectMessage(t, p, 1, effectPackBody(200, fieldCombatNotifyDataRemoveBuffByIDS2CRequestNotify, remove))
-	snapshot := p.effects.Snapshot()
+	apply := appendVarintField(appendVarintField(nil, FieldApplyBuffS2cRequestNotifyID, 71001), FieldApplyBuffS2cRequestNotifyInstigatorID, 100) // ApplyBuffS2CRequestNotify
+	deliverEffectMessage(t, p, 0, effectPackBody(200, FieldCombatNotifyDataApplyBuffS2CRequestNotify, apply))
+	remove := appendVarintField(appendVarintField(nil, FieldRemoveBuffByIDS2cRequestNotifyBuffID, 71001), FieldRemoveBuffByIDS2cRequestNotifyInstigatorID, 100) // RemoveBuffByIdS2CRequestNotify
+	deliverEffectMessage(t, p, 1, effectPackBody(200, FieldCombatNotifyDataRemoveBuffByIDS2CRequestNotify, remove))
+	snapshot := p.Effects.Snapshot()
 	if len(snapshot.Effects) != 0 || snapshot.Counters != (EffectCounters{}) {
 		t.Fatalf("request notifications reached the tracker: %+v", snapshot)
 	}
@@ -338,12 +338,12 @@ func TestEffectFeedIgnoresRequestNotifications(t *testing.T) {
 
 func TestEffectFeedInstantEffectsCreateNoLifecycle(t *testing.T) {
 	p := newEffectTestProcessor()
-	payload := appendVarintField(nil, fieldApplyGameplayEffectNotifyHandle, ^uint64(1)) // Handle -2 with no duration fields
-	payload = appendVarintField(payload, fieldApplyGameplayEffectNotifyID, 70052)
-	payload = appendVarintField(payload, fieldApplyGameplayEffectNotifyEntityID, 100)
-	payload = appendVarintField(payload, fieldApplyGameplayEffectNotifyInstigatorID, 100)
-	deliverEffectMessage(t, p, 0, effectPackBody(100, fieldCombatNotifyDataApplyGameplayEffectNotify, payload))
-	snapshot := p.effects.Snapshot()
+	payload := appendVarintField(nil, FieldApplyGameplayEffectNotifyHandle, ^uint64(1)) // Handle -2 with no duration fields
+	payload = appendVarintField(payload, FieldApplyGameplayEffectNotifyID, 70052)
+	payload = appendVarintField(payload, FieldApplyGameplayEffectNotifyEntityID, 100)
+	payload = appendVarintField(payload, FieldApplyGameplayEffectNotifyInstigatorID, 100)
+	deliverEffectMessage(t, p, 0, effectPackBody(100, FieldCombatNotifyDataApplyGameplayEffectNotify, payload))
+	snapshot := p.Effects.Snapshot()
 	if len(snapshot.Effects) != 0 || snapshot.Counters.InstantApplies != 1 {
 		t.Fatalf("instant effect result: %+v", snapshot)
 	}
@@ -351,26 +351,26 @@ func TestEffectFeedInstantEffectsCreateNoLifecycle(t *testing.T) {
 
 func TestEffectFeedUnknownDurationStaysActiveWithoutCountdown(t *testing.T) {
 	p := newEffectTestProcessor()
-	deliverEffectMessage(t, p, 0, effectPackBody(100, fieldCombatNotifyDataApplyGameplayEffectNotify, effectApplyPayload(3, 10044000, 100, 100, 1, -1, -1)))
-	effect := onlyEffect(t, p.effects.SnapshotAt(effectQueryFor(p, 30)))
+	deliverEffectMessage(t, p, 0, effectPackBody(100, FieldCombatNotifyDataApplyGameplayEffectNotify, effectApplyPayload(3, 10044000, 100, 100, 1, -1, -1)))
+	effect := onlyEffect(t, p.Effects.SnapshotAt(effectQueryFor(p, 30)))
 	if effect.Lifecycle != EffectLifecycleActive || effect.RemainingStatus != EffectRemainingUnknown || effect.RemainingReason != "no_server_duration" || effect.RemainingSeconds != nil {
 		t.Fatalf("effect with a -1 duration = %+v", effect)
 	}
-	deliverEffectMessage(t, p, 31, effectPackBody(100, fieldCombatNotifyDataRemoveGameplayEffectNotify, effectRemovePayload(3, 100, 100)))
-	if snapshot := p.effects.Snapshot(); len(snapshot.Effects) != 0 || len(snapshot.RecentEnded) != 1 || snapshot.RecentEnded[0].ExpiryDeltaSeconds != nil {
+	deliverEffectMessage(t, p, 31, effectPackBody(100, FieldCombatNotifyDataRemoveGameplayEffectNotify, effectRemovePayload(3, 100, 100)))
+	if snapshot := p.Effects.Snapshot(); len(snapshot.Effects) != 0 || len(snapshot.RecentEnded) != 1 || snapshot.RecentEnded[0].ExpiryDeltaSeconds != nil {
 		t.Fatalf("remove of an effect without a finite duration: %+v", snapshot)
 	}
 }
 
 func TestEffectFeedStatisticsIntervalResetIsolatesEffects(t *testing.T) {
 	p := newEffectTestProcessor()
-	deliverEffectMessage(t, p, 0, effectPackBody(200, fieldCombatNotifyDataApplyGameplayEffectNotify, effectApplyPayload(1, 42, 200, 100, 1, 30, 30)))
-	snapshot := p.effects.SnapshotAndResetAt(effectQueryFor(p, 1))
+	deliverEffectMessage(t, p, 0, effectPackBody(200, FieldCombatNotifyDataApplyGameplayEffectNotify, effectApplyPayload(1, 42, 200, 100, 1, 30, 30)))
+	snapshot := p.Effects.SnapshotAndResetAt(effectQueryFor(p, 1))
 	if len(snapshot.Effects) != 1 || snapshot.StatisticsIntervalID != 1 {
 		t.Fatalf("closing snapshot = %+v", snapshot)
 	}
-	deliverEffectMessage(t, p, 2, effectPackBody(200, fieldCombatNotifyDataApplyGameplayEffectNotify, effectApplyPayload(2, 43, 200, 100, 1, 30, 30)))
-	snapshot = p.effects.SnapshotAt(effectQueryFor(p, 3))
+	deliverEffectMessage(t, p, 2, effectPackBody(200, FieldCombatNotifyDataApplyGameplayEffectNotify, effectApplyPayload(2, 43, 200, 100, 1, 30, 30)))
+	snapshot = p.Effects.SnapshotAt(effectQueryFor(p, 3))
 	effect := onlyEffect(t, snapshot)
 	if snapshot.StatisticsIntervalID != 2 || effect.HandleID != 2 || snapshot.Counters.Applies != 1 {
 		t.Fatalf("next interval = %+v", snapshot)
@@ -379,25 +379,25 @@ func TestEffectFeedStatisticsIntervalResetIsolatesEffects(t *testing.T) {
 
 func TestEffectFeedDoesNotChangeDamageStatistics(t *testing.T) {
 	p := newEffectTestProcessor()
-	before := p.damageStatistics.Snapshot()
-	deliverEffectMessage(t, p, 0, effectPackBody(200, fieldCombatNotifyDataApplyGameplayEffectNotify, effectApplyPayload(1, 42, 200, 100, 1, 30, 30)))
-	deliverEffectMessage(t, p, 1, effectPackBody(200, fieldCombatNotifyDataRemoveGameplayEffectNotify, effectRemovePayload(1, 200, 100)))
-	after := p.damageStatistics.Snapshot()
+	before := p.DamageStatistics.Snapshot()
+	deliverEffectMessage(t, p, 0, effectPackBody(200, FieldCombatNotifyDataApplyGameplayEffectNotify, effectApplyPayload(1, 42, 200, 100, 1, 30, 30)))
+	deliverEffectMessage(t, p, 1, effectPackBody(200, FieldCombatNotifyDataRemoveGameplayEffectNotify, effectRemovePayload(1, 200, 100)))
+	after := p.DamageStatistics.Snapshot()
 	if before.DamageDealt != after.DamageDealt || before.DamageTaken != after.DamageTaken || before.StatisticsIntervalID != after.StatisticsIntervalID ||
 		before.OutgoingEvents != after.OutgoingEvents || before.IncomingEvents != after.IncomingEvents {
 		t.Fatalf("effect messages changed damage statistics: %+v -> %+v", before, after)
 	}
-	if p.effects.captureSessionID != p.damageStatistics.captureSessionID {
-		t.Fatalf("effect session %d differs from damage statistics session %d", p.effects.captureSessionID, p.damageStatistics.captureSessionID)
+	if p.Effects.CaptureSessionID != p.DamageStatistics.CaptureSessionID {
+		t.Fatalf("effect session %d differs from damage statistics session %d", p.Effects.CaptureSessionID, p.DamageStatistics.CaptureSessionID)
 	}
 }
 
 func TestEffectFeedBoundaryDropsLiveState(t *testing.T) {
 	p := newEffectTestProcessor()
-	deliverEffectMessage(t, p, 0, effectPackBody(200, fieldCombatNotifyDataApplyGameplayEffectNotify, effectApplyPayload(1, 42, 200, 100, 1, 30, 30)))
-	p.effects.EndLiveState()
-	deliverEffectMessage(t, p, 1, effectPackBody(200, fieldCombatNotifyDataRemoveGameplayEffectNotify, effectRemovePayload(1, 200, 100)))
-	snapshot := p.effects.Snapshot()
+	deliverEffectMessage(t, p, 0, effectPackBody(200, FieldCombatNotifyDataApplyGameplayEffectNotify, effectApplyPayload(1, 42, 200, 100, 1, 30, 30)))
+	p.Effects.EndLiveState()
+	deliverEffectMessage(t, p, 1, effectPackBody(200, FieldCombatNotifyDataRemoveGameplayEffectNotify, effectRemovePayload(1, 200, 100)))
+	snapshot := p.Effects.Snapshot()
 	if len(snapshot.Effects) != 0 || snapshot.Counters.BoundaryDrops != 1 || snapshot.Counters.RemovesWithoutInstance != 1 {
 		t.Fatalf("state after boundary = %+v", snapshot)
 	}
@@ -408,7 +408,7 @@ func TestEffectFeedSnapshotRowCreatesBaselineInstanceThatARemoveConfirms(t *test
 	deliverEffectSnapshot(t, p, 1, 200, 0, effectSnapshotResponse(168, 640012035, 100, 1, 3, 3.001))
 	deliverEffectSnapshot(t, p, 2, 100, 0, effectSnapshotResponse(165, 1001002004, 100, 1, -1, -1))
 
-	snapshot := p.effects.SnapshotAt(effectQueryFor(p, 1))
+	snapshot := p.Effects.SnapshotAt(effectQueryFor(p, 1))
 	if len(snapshot.Effects) != 2 || snapshot.Counters.SnapshotInstances != 2 || snapshot.Counters.Applies != 0 {
 		t.Fatalf("snapshot baseline = %+v", snapshot)
 	}
@@ -429,8 +429,8 @@ func TestEffectFeedSnapshotRowCreatesBaselineInstanceThatARemoveConfirms(t *test
 	}
 
 	// The REMOVE that follows names the same (holder, handle): it is no longer an orphan.
-	deliverEffectMessage(t, p, 3.02, effectPackBody(200, fieldCombatNotifyDataRemoveGameplayEffectNotify, effectRemovePayload(168, 200, 100)))
-	snapshot = p.effects.SnapshotAt(effectQueryFor(p, 4))
+	deliverEffectMessage(t, p, 3.02, effectPackBody(200, FieldCombatNotifyDataRemoveGameplayEffectNotify, effectRemovePayload(168, 200, 100)))
+	snapshot = p.Effects.SnapshotAt(effectQueryFor(p, 4))
 	if snapshot.Counters.Removes != 1 || snapshot.Counters.RemovesWithoutInstance != 0 || len(snapshot.RecentEnded) != 1 {
 		t.Fatalf("remove after a snapshot baseline = %+v", snapshot.Counters)
 	}
@@ -442,7 +442,7 @@ func TestEffectFeedRepeatedSnapshotDumpsDoNotDuplicateInstances(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		deliverEffectSnapshot(t, p, uint16(i+1), 200, float64(i), effectSnapshotResponse(168, 640012035, 100, 1, 30, 30))
 	}
-	snapshot := p.effects.SnapshotAt(effectQueryFor(p, 2.5))
+	snapshot := p.Effects.SnapshotAt(effectQueryFor(p, 2.5))
 	effect := onlyEffect(t, snapshot)
 	if snapshot.Counters.SnapshotInstances != 1 || snapshot.Counters.DuplicateSnapshots != 2 {
 		t.Fatalf("counters = %+v", snapshot.Counters)
@@ -452,11 +452,11 @@ func TestEffectFeedRepeatedSnapshotDumpsDoNotDuplicateInstances(t *testing.T) {
 
 func TestEffectFeedSnapshotWithoutRequestMatchIsNotAttributed(t *testing.T) {
 	p := newEffectTestProcessor()
-	frame := gameFrame{commandID: cmdEntityActiveResponse, direction: "in", token: 9, timestamp: effectAt(0)}
-	if err := p.handleActiveResponse(frame, effectSnapshotResponse(168, 640012035, 100, 1, 30, 30)); err != nil {
+	frame := GameFrame{CommandID: CmdEntityActiveResponse, Direction: "in", Token: 9, Timestamp: effectAt(0)}
+	if err := p.HandleActiveResponse(frame, effectSnapshotResponse(168, 640012035, 100, 1, 30, 30)); err != nil {
 		t.Fatal(err)
 	}
-	snapshot := p.effects.Snapshot()
+	snapshot := p.Effects.Snapshot()
 	if len(snapshot.Effects) != 0 || snapshot.Counters.SnapshotsSkipped != 1 {
 		t.Fatalf("snapshot row without a request was attributed: %+v", snapshot)
 	}
@@ -465,8 +465,8 @@ func TestEffectFeedSnapshotWithoutRequestMatchIsNotAttributed(t *testing.T) {
 func TestEffectFeedApplyAfterSnapshotUpgradesOrigin(t *testing.T) {
 	p := newEffectTestProcessor()
 	deliverEffectSnapshot(t, p, 1, 200, 0, effectSnapshotResponse(7, 555, 100, 1, 30, 30))
-	deliverEffectMessage(t, p, 1, effectPackBody(200, fieldCombatNotifyDataApplyGameplayEffectNotify, effectApplyPayload(7, 555, 200, 100, 1, 30, 30)))
-	effect := onlyEffect(t, p.effects.SnapshotAt(effectQueryFor(p, 2)))
+	deliverEffectMessage(t, p, 1, effectPackBody(200, FieldCombatNotifyDataApplyGameplayEffectNotify, effectApplyPayload(7, 555, 200, 100, 1, 30, 30)))
+	effect := onlyEffect(t, p.Effects.SnapshotAt(effectQueryFor(p, 2)))
 	if effect.Origin != EffectOriginApply || effect.AppliedAt == nil {
 		t.Fatalf("origin after a confirming APPLY = %+v", effect)
 	}
@@ -474,37 +474,37 @@ func TestEffectFeedApplyAfterSnapshotUpgradesOrigin(t *testing.T) {
 
 func TestEffectFeedLinksStaticDefinitionOnlyByExactRow(t *testing.T) {
 	p := newEffectTestProcessor()
-	p.masters = &gameMaster{buffDefinitions: map[uint64]struct{}{10041000: {}}}
-	deliverEffectMessage(t, p, 0, effectPackBody(200, fieldCombatNotifyDataApplyGameplayEffectNotify, effectApplyPayload(1, 10041000, 200, 100, 1, 30, 30)))
-	deliverEffectMessage(t, p, 0, effectPackBody(200, fieldCombatNotifyDataApplyGameplayEffectNotify, effectApplyPayload(2, 1312010090, 200, 100, 1, 30, 30)))
+	p.Masters = &GameMaster{BuffDefinitions: map[uint64]struct{}{10041000: {}}}
+	deliverEffectMessage(t, p, 0, effectPackBody(200, FieldCombatNotifyDataApplyGameplayEffectNotify, effectApplyPayload(1, 10041000, 200, 100, 1, 30, 30)))
+	deliverEffectMessage(t, p, 0, effectPackBody(200, FieldCombatNotifyDataApplyGameplayEffectNotify, effectApplyPayload(2, 1312010090, 200, 100, 1, 30, 30)))
 	byHandle := map[uint64]EffectInstanceSnapshot{}
-	for _, effect := range p.effects.Snapshot().Effects {
+	for _, effect := range p.Effects.Snapshot().Effects {
 		byHandle[effect.HandleID] = effect
 	}
-	if got := byHandle[1].DefinitionStatus; got != string(resolutionCorrelated) {
+	if got := byHandle[1].DefinitionStatus; got != string(ResolutionCorrelated) {
 		t.Fatalf("effect with a static row: definitionStatus = %s", got)
 	}
 	// An id without a row is still tracked, keeps its raw id and is not named or dropped.
 	unnamed := byHandle[2]
-	if unnamed.DefinitionStatus != string(resolutionUnknown) || unnamed.EffectID == nil || *unnamed.EffectID != 1312010090 || unnamed.Lifecycle != EffectLifecycleActive {
+	if unnamed.DefinitionStatus != string(ResolutionUnknown) || unnamed.EffectID == nil || *unnamed.EffectID != 1312010090 || unnamed.Lifecycle != EffectLifecycleActive {
 		t.Fatalf("effect without a static row = %+v", unnamed)
 	}
 }
 
 func TestEffectFeedAttachesStaticDefinitionWithoutResolvingAName(t *testing.T) {
 	p := newEffectTestProcessor()
-	p.masters = &gameMaster{
-		buffDefinitions: map[uint64]struct{}{10041000: {}, 70000045: {}},
-		buffStatics: map[uint64]buffStaticParameters{
-			10041000: {durationSeconds: 14.8, hasDuration: true, stackLimit: 3, hasStackLimit: true, durationPolicy: 2, hasDurationPolicy: true, tags: []string{"a.b.c"}},
+	p.Masters = &GameMaster{
+		BuffDefinitions: map[uint64]struct{}{10041000: {}, 70000045: {}},
+		BuffStatics: map[uint64]BuffStaticParameters{
+			10041000: {DurationSeconds: 14.8, HasDuration: true, StackLimit: 3, HasStackLimit: true, DurationPolicy: 2, HasDurationPolicy: true, Tags: []string{"a.b.c"}},
 		},
 	}
-	deliverEffectMessage(t, p, 0, effectPackBody(200, fieldCombatNotifyDataApplyGameplayEffectNotify, effectApplyPayload(1, 10041000, 200, 100, 1, 14.8, 14.8)))
-	deliverEffectMessage(t, p, 0, effectPackBody(200, fieldCombatNotifyDataApplyGameplayEffectNotify, effectApplyPayload(2, 70000045, 200, 100, 1, -1, -1)))
-	deliverEffectMessage(t, p, 0, effectPackBody(200, fieldCombatNotifyDataApplyGameplayEffectNotify, effectApplyPayload(3, 1312010090, 200, 100, 1, 5, 5)))
+	deliverEffectMessage(t, p, 0, effectPackBody(200, FieldCombatNotifyDataApplyGameplayEffectNotify, effectApplyPayload(1, 10041000, 200, 100, 1, 14.8, 14.8)))
+	deliverEffectMessage(t, p, 0, effectPackBody(200, FieldCombatNotifyDataApplyGameplayEffectNotify, effectApplyPayload(2, 70000045, 200, 100, 1, -1, -1)))
+	deliverEffectMessage(t, p, 0, effectPackBody(200, FieldCombatNotifyDataApplyGameplayEffectNotify, effectApplyPayload(3, 1312010090, 200, 100, 1, 5, 5)))
 
 	byHandle := map[uint64]EffectInstanceSnapshot{}
-	for _, effect := range p.effects.Snapshot().Effects {
+	for _, effect := range p.Effects.Snapshot().Effects {
 		byHandle[effect.HandleID] = effect
 	}
 	aero := byHandle[1]
@@ -513,7 +513,7 @@ func TestEffectFeedAttachesStaticDefinitionWithoutResolvingAName(t *testing.T) {
 		t.Fatalf("linked effect = %+v static=%+v", aero, aero.Static)
 	}
 	// A definition with no parameters is still linked, and the name is still unresolved.
-	if bare := byHandle[2]; bare.SemanticStatus != EffectSemanticNameUnresolved || bare.DefinitionStatus != string(resolutionCorrelated) {
+	if bare := byHandle[2]; bare.SemanticStatus != EffectSemanticNameUnresolved || bare.DefinitionStatus != string(ResolutionCorrelated) {
 		t.Fatalf("definition without parameters = %+v", bare)
 	}
 	// An id with no static row is tracked and flagged unresolved, without a name or parameters.
@@ -524,7 +524,7 @@ func TestEffectFeedAttachesStaticDefinitionWithoutResolvingAName(t *testing.T) {
 	// The snapshot owns its static block.
 	*aero.Static.StackLimit = 99
 	aero.Static.DeveloperTags[0] = "mutated"
-	again := p.effects.Snapshot()
+	again := p.Effects.Snapshot()
 	for _, effect := range again.Effects {
 		if effect.HandleID == 1 && (*effect.Static.StackLimit != 3 || effect.Static.DeveloperTags[0] != "a.b.c") {
 			t.Fatalf("tracker state changed through a snapshot: %+v", effect.Static)

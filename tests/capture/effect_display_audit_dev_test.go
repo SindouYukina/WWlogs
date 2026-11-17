@@ -13,14 +13,14 @@ import (
 func TestEffectDisplayAuditExplainsCellsAndExclusions(t *testing.T) {
 	p := newEffectViewProcessor()
 	for handle, holder := range []uint64{10, 11, 12} {
-		p.effects.ObserveApply(cellInstance(uint64(handle+1), 500, holder, 0, 15, nil))
+		p.Effects.ObserveApply(cellInstance(uint64(handle+1), 500, holder, 0, 15, nil))
 	}
-	p.effects.ObserveApply(cellInstance(4, 501, 10, 0, 8, func(e *EffectApplyEvent) {
+	p.Effects.ObserveApply(cellInstance(4, 501, 10, 0, 8, func(e *EffectApplyEvent) {
 		e.StackCount = 3
 		e.Static = &EffectStaticInfo{DurationPolicy: finitePolicy(), HUDCueTypes: []int32{14}, HUDPolarity: EffectPolarityBuff}
 	}))
-	p.effects.ObserveApply(passiveApply(5, 502, 0, nil))
-	p.currentFrameTime = effectAt(1)
+	p.Effects.ObserveApply(passiveApply(5, 502, 0, nil))
+	p.CurrentFrameTime = effectAt(1)
 	row, cells, excluded := p.effectDisplayAudit()
 	if len(row.Cells) != 2 || row.Counts.Eligible != 4 || row.Counts.NonHUD != 1 {
 		t.Fatalf("audit = %+v", row)
@@ -39,18 +39,18 @@ func TestEffectDisplayAuditExplainsCellsAndExclusions(t *testing.T) {
 	if team.Countdown != string(EffectRemainingEstimated) || team.StackFrom != "every_member_equal" || team.Leaves != "server_remove_or_expiry_plus_grace" {
 		t.Fatalf("team cell sources = %+v", team)
 	}
-	if want := effectAt(15).Add(effectDisplayExpiryGrace); team.HiddenAfter == nil || !team.HiddenAfter.Equal(want) {
+	if want := effectAt(15).Add(EffectDisplayExpiryGrace); team.HiddenAfter == nil || !team.HiddenAfter.Equal(want) {
 		t.Fatalf("hidden after = %v, want %v", team.HiddenAfter, want)
 	}
 	hud := byID[501]
 	if hud.Merge != "single_instance" || hud.Icon != "hud_cue" || *hud.Stack != 3 || hud.StackFrom != "single_instance" {
 		t.Fatalf("HUD cell = %+v", hud)
 	}
-	if len(row.Excluded) != 1 || row.Excluded[0].Reason != string(EffectDisplayNonHUD) || row.Excluded[0].DisplayBasis != effectDisplayBasisNoCue || row.Excluded[0].EffectID != 502 {
+	if len(row.Excluded) != 1 || row.Excluded[0].Reason != string(EffectDisplayNonHUD) || row.Excluded[0].DisplayBasis != EffectDisplayBasisNoCue || row.Excluded[0].EffectID != 502 {
 		t.Fatalf("excluded = %+v", row.Excluded)
 	}
 	// Time passing changes neither set: a countdown alone never produces a new row.
-	p.currentFrameTime = effectAt(2)
+	p.CurrentFrameTime = effectAt(2)
 	if _, laterCells, laterExcluded := p.effectDisplayAudit(); laterCells != cells || laterExcluded != excluded {
 		t.Fatal("the audit signature depends on time")
 	}
@@ -58,9 +58,9 @@ func TestEffectDisplayAuditExplainsCellsAndExclusions(t *testing.T) {
 
 func TestEffectDisplayAuditWriterIsRateLimitedAndWritesOnlyChanges(t *testing.T) {
 	p := newEffectViewProcessor()
-	p.effects.ObserveApply(cellInstance(1, 500, 10, 0, 15, nil))
-	p.effects.ObserveApply(passiveApply(2, 502, 0, nil))
-	p.currentFrameTime = effectAt(1)
+	p.Effects.ObserveApply(cellInstance(1, 500, 10, 0, 15, nil))
+	p.Effects.ObserveApply(passiveApply(2, 502, 0, nil))
+	p.CurrentFrameTime = effectAt(1)
 	var out bytes.Buffer
 	writer := &effectDisplayAuditWriter{target: &out}
 	lines := func() []string { return strings.Split(strings.TrimSpace(out.String()), "\n") }
@@ -71,7 +71,7 @@ func TestEffectDisplayAuditWriterIsRateLimitedAndWritesOnlyChanges(t *testing.T)
 	if got := lines(); len(got) != 1 {
 		t.Fatalf("an unchanged view wrote %d rows", len(got))
 	}
-	p.effects.ObserveApply(cellInstance(3, 501, 10, 1, 15, nil))
+	p.Effects.ObserveApply(cellInstance(3, 501, 10, 1, 15, nil))
 	writer.observe(p, base.Add(5*time.Second+100*time.Millisecond))
 	if got := lines(); len(got) != 2 {
 		t.Fatalf("a changed view wrote %d rows", len(got))
@@ -83,7 +83,7 @@ func TestEffectDisplayAuditWriterIsRateLimitedAndWritesOnlyChanges(t *testing.T)
 	if !row.ExcludedUnchanged || row.Excluded != nil {
 		t.Fatalf("an unchanged excluded set was repeated: %+v", row)
 	}
-	p.effects.ObserveApply(cellInstance(4, 503, 10, 1, 15, nil))
+	p.Effects.ObserveApply(cellInstance(4, 503, 10, 1, 15, nil))
 	writer.observe(p, base.Add(5*time.Second+200*time.Millisecond))
 	if got := lines(); len(got) != 2 {
 		t.Fatalf("the rate limit let %d rows through", len(got))

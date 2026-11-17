@@ -7,83 +7,83 @@ import "time"
 // Public builds have no diagnostic outputs. Each function below is implemented in a wwdev file
 // and is a no-op here so that shared code can call it unconditionally.
 
-func (p *processor) writeStructuredEventJSONL(event any) {
+func (p *Processor) WriteStructuredEventJSONL(event any) {
 }
 
-func (p *processor) writeDamageEventOutputs(event *combatEvent, visible bool, sourceRelation, targetRelation playerRelation) {
+func (p *Processor) WriteDamageEventOutputs(event *CombatEvent, visible bool, sourceRelation, targetRelation PlayerRelation) {
 }
 
-func (p *processor) recordBuffSnapshotDiagnostics(frame gameFrame, record rawBuffSnapshot, request pendingActiveRequest, matched bool) {
+func (p *Processor) RecordBuffSnapshotDiagnostics(frame GameFrame, record RawBuffSnapshot, request PendingActiveRequest, matched bool) {
 }
 
-func (p *processor) archiveClientPushResearch(frame gameFrame, plain []byte) {
+func (p *Processor) ArchiveClientPushResearch(frame GameFrame, plain []byte) {
 }
 
-func (p *processor) writeBattleStateSignal(at time.Time, container string, signal playerBattleStateSignal, anchor string) {
+func (p *Processor) WriteBattleStateSignal(at time.Time, container string, signal PlayerBattleStateSignal, anchor string) {
 }
 
-func (p *processor) writeCombatEventRecord(record CombatEventRecord, assignment string) {
+func (p *Processor) WriteCombatEventRecord(record CombatEventRecord, assignment string) {
 }
 
-func (p *processor) flushEncounterTransitions() {
+func (p *Processor) FlushEncounterTransitions() {
 }
 
-func (p *processor) writeBuffLifecycleConsole(row buffLifecycleAuditRow) {
+func (p *Processor) WriteBuffLifecycleConsole(row BuffLifecycleAuditRow) {
 }
 
-func (p *processor) writeBuffLifecycleRow(row *buffLifecycleAuditRow) {
+func (p *Processor) WriteBuffLifecycleRow(row *BuffLifecycleAuditRow) {
 }
 
-func (p *processor) auditCombatNotify(frame gameFrame, notification protoField, commonEntityID, commonOriginator, commonMessageID *uint64) {
+func (p *Processor) AuditCombatNotify(frame GameFrame, notification ProtoField, commonEntityID, commonOriginator, commonMessageID *uint64) {
 }
 
-func (p *processor) observeBuffInterval(row buffLifecycleAuditRow) {
+func (p *Processor) ObserveBuffInterval(row BuffLifecycleAuditRow) {
 }
 
-func (p *processor) archiveFrame(frame gameFrame) {
+func (p *Processor) ArchiveFrame(frame GameFrame) {
 }
 
-func (p *processor) archiveUndecodedSchema(frame gameFrame) {
+func (p *Processor) ArchiveUndecodedSchema(frame GameFrame) {
 }
 
-func (p *processor) archiveSchemaDecode(frame gameFrame, plain []byte) {
+func (p *Processor) ArchiveSchemaDecode(frame GameFrame, plain []byte) {
 }
 
-func (p *processor) archiveDamageRPCSchema(frame gameFrame, plain []byte) {
+func (p *Processor) ArchiveDamageRPCSchema(frame GameFrame, plain []byte) {
 }
 
-func (p *processor) archiveHPStateFrame(frame gameFrame, plain []byte) {
+func (p *Processor) ArchiveHPStateFrame(frame GameFrame, plain []byte) {
 }
 
-func (p *processor) archiveCombatStateFrame(frame gameFrame, plain []byte) {
+func (p *Processor) ArchiveCombatStateFrame(frame GameFrame, plain []byte) {
 }
 
-func (p *processor) archiveDamagePushFrame(frame gameFrame, plain []byte) {
+func (p *Processor) ArchiveDamagePushFrame(frame GameFrame, plain []byte) {
 }
 
-func (p *processor) archiveBulletRefReceiveFrame(frame gameFrame, plain []byte) {
+func (p *Processor) ArchiveBulletRefReceiveFrame(frame GameFrame, plain []byte) {
 }
 
-func (p *processor) archiveSummonOwnerFrame(frame gameFrame, plain []byte) {
+func (p *Processor) ArchiveSummonOwnerFrame(frame GameFrame, plain []byte) {
 }
 
-func (p *processor) backfillAvailableSummaryCredits() {
+func (p *Processor) BackfillAvailableSummaryCredits() {
 }
 
-func (p *processor) resetPendingSummaryCredits() {
+func (p *Processor) ResetPendingSummaryCredits() {
 }
 
-func (p *processor) backfillEncounterSummary(sourceID, roleID uint64) {
+func (p *Processor) BackfillEncounterSummary(sourceID, roleID uint64) {
 }
 
-func (p *processor) removePendingSummaryCredits(sourceID uint64) {
+func (p *Processor) RemovePendingSummaryCredits(sourceID uint64) {
 }
 
-func (p *processor) writePartReference(frame gameFrame, rpcID uint64, request pendingDamageRequest) {
+func (p *Processor) WritePartReference(frame GameFrame, rpcID uint64, request PendingDamageRequest) {
 }
 
-func (p *processor) writeNoAmountEvent(rpcID uint64, request pendingDamageRequest, hasAmount bool, errorCode, immuneType int32, hasChangeLife bool, changeLife int32) {
+func (p *Processor) WriteNoAmountEvent(rpcID uint64, request PendingDamageRequest, hasAmount bool, errorCode, immuneType int32, hasChangeLife bool, changeLife int32) {
 }
 
-func (p *processor) observeEncounterSummary(event combatEvent) {
+func (p *Processor) ObserveEncounterSummary(event CombatEvent) {
 }

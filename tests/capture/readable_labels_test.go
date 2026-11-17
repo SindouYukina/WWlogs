@@ -35,38 +35,38 @@ func TestReadableLabelsLoadFromMasterAndFallBackToTheOriginal(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	english, err := loadGameMasterDatabase(path, "en-US")
+	english, err := LoadGameMasterDatabase(path, "en-US")
 	if err != nil {
 		t.Fatal(err)
 	}
-	translated := resolveSkillLabelText(english, 80010001)
+	translated := ResolveSkillLabelText(english, 80010001)
 	if translated == nil || translated.Text != "Horizontal Swing" || translated.Locale != "en-US" || translated.Kind != "unofficial-translation" {
 		t.Fatalf("the master locale text must be chosen: %+v", translated)
 	}
-	if original := resolveSkillLabelText(english, 80010002); original == nil || original.Text != "撞" || original.Locale != "zh-CN" || original.Kind != "developer-original" {
+	if original := ResolveSkillLabelText(english, 80010002); original == nil || original.Text != "撞" || original.Locale != "zh-CN" || original.Kind != "developer-original" {
 		t.Fatalf("a skill without a translation must fall back to the zh-CN original: %+v", original)
 	}
-	if ambiguous := resolveSkillLabelText(english, 80010003); ambiguous != nil {
+	if ambiguous := ResolveSkillLabelText(english, 80010003); ambiguous != nil {
 		t.Fatalf("a skill with conflicting SkillInfo labels must get no label text: %+v", ambiguous)
 	}
-	if unknown := resolveSkillLabelText(english, 99); unknown != nil {
+	if unknown := ResolveSkillLabelText(english, 99); unknown != nil {
 		t.Fatalf("an unknown skill must get no label text: %+v", unknown)
 	}
 
-	for damageID := range english.damage {
+	for damageID := range english.Damage {
 		element := resolveDamageElement(english, damageID, true)
-		if element == nil || element.ID != 2 || element.Name != "Fusion" || element.Status != resolutionCorrelated {
+		if element == nil || element.ID != 2 || element.Name != "Fusion" || element.Status != ResolutionCorrelated {
 			t.Fatalf("damage element must resolve to the locale name: %+v", element)
 		}
 		break
 	}
-	japanese, err := loadGameMasterDatabase(path, "ja-JP")
+	japanese, err := LoadGameMasterDatabase(path, "ja-JP")
 	if err != nil {
 		t.Fatal(err)
 	}
-	for damageID := range japanese.damage {
+	for damageID := range japanese.Damage {
 		element := resolveDamageElement(japanese, damageID, true)
-		if element == nil || element.ID != 2 || element.Name != "" || element.Status != resolutionUnknown {
+		if element == nil || element.ID != 2 || element.Name != "" || element.Status != ResolutionUnknown {
 			t.Fatalf("a missing element name must stay UNKNOWN with the raw id: %+v", element)
 		}
 		break
@@ -77,14 +77,14 @@ func TestReadableLabelsLoadFromMasterAndFallBackToTheOriginal(t *testing.T) {
 }
 
 func TestOlderMasterWithoutReadableLabelTablesStillLoads(t *testing.T) {
-	master, err := loadGameMasterDatabase(buildMasterDatabaseFixture(t), "zh-TW")
+	master, err := LoadGameMasterDatabase(buildMasterDatabaseFixture(t), "zh-TW")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resolveSkillLabelText(master, 80010001) != nil {
+	if ResolveSkillLabelText(master, 80010001) != nil {
 		t.Fatal("no label table must give no label text")
 	}
-	for damageID := range master.damage {
+	for damageID := range master.Damage {
 		if resolveDamageElement(master, damageID, true) != nil {
 			t.Fatal("a damage table without an element column must give no element")
 		}

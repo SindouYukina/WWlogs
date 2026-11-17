@@ -469,19 +469,19 @@ func diagnosticPipelineLine(runID string, stats []diagnosticSinkStats) string {
 // wrapProcessorDiagnostics moves the processor's diagnostic writers behind the pipeline and returns a function that,
 // once the pipeline is closed, restores the direct writers whose sinks exited. A writer whose sink was abandoned stays
 // behind the closed sink, so later writes are dropped and counted instead of racing the abandoned goroutine.
-func wrapProcessorDiagnostics(p *processor, d *diagnosticPipeline, flush map[io.Writer]func() error) func() {
+func wrapProcessorDiagnostics(p *Processor, d *diagnosticPipeline, flush map[io.Writer]func() error) func() {
 	type field struct {
 		name string
 		ptr  *io.Writer
 	}
 	fields := []field{
-		{"console", &p.dev.stdout}, {"diagnostic", &p.diagnostic}, {"audit", &p.dev.audit},
-		{"combat-events", &p.dev.combatEventsJSONL}, {"buff-snapshots", &p.dev.buffSnapshots}, {"buff-events", &p.dev.buffLifecycle},
-		{"combat-notify-audit", &p.dev.combatNotifyAudit}, {"frame-archive", &p.dev.frameArchive}, {"schema-decode", &p.dev.schemaDecodeOut},
-		{"part-refs", &p.dev.partRefOut}, {"role-config", &p.dev.roleConfigOut}, {"hp-state", &p.dev.hpStateOut},
-		{"damage-push", &p.dev.damagePushOut}, {"client-push", &p.dev.clientPushOut}, {"bullet-refs", &p.dev.bulletRefOut},
-		{"shield-refs", &p.dev.shieldRefOut}, {"skill-refs", &p.dev.skillRefOut}, {"summon-owner", &p.dev.summonOwnerOut},
-		{"combat-state", &p.dev.combatStateOut}, {"encounter-events", &p.dev.encounterOut},
+		{"console", &p.Dev.stdout}, {"diagnostic", &p.Diagnostic}, {"audit", &p.Dev.audit},
+		{"combat-events", &p.Dev.combatEventsJSONL}, {"buff-snapshots", &p.Dev.buffSnapshots}, {"buff-events", &p.Dev.buffLifecycle},
+		{"combat-notify-audit", &p.Dev.combatNotifyAudit}, {"frame-archive", &p.Dev.frameArchive}, {"schema-decode", &p.Dev.schemaDecodeOut},
+		{"part-refs", &p.Dev.partRefOut}, {"role-config", &p.Dev.roleConfigOut}, {"hp-state", &p.Dev.hpStateOut},
+		{"damage-push", &p.Dev.damagePushOut}, {"client-push", &p.Dev.clientPushOut}, {"bullet-refs", &p.Dev.bulletRefOut},
+		{"shield-refs", &p.Dev.shieldRefOut}, {"skill-refs", &p.Dev.skillRefOut}, {"summon-owner", &p.Dev.summonOwnerOut},
+		{"combat-state", &p.Dev.combatStateOut}, {"encounter-events", &p.Dev.encounterOut},
 	}
 	originals := make([]io.Writer, len(fields))
 	for i, f := range fields {

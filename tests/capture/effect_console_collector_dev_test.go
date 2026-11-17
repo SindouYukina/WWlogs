@@ -28,11 +28,11 @@ func TestEffectConsoleCollector(t *testing.T) {
 	if path == "" || masterPath == "" {
 		t.Fatal("WWLOGS_CONSOLE_PCAP and WWLOGS_CONSOLE_MASTER_DB are required")
 	}
-	key, err := loadEmbeddedPrivateKey()
+	key, err := LoadEmbeddedPrivateKey()
 	if err != nil {
 		t.Fatalf("embedded key payload is unavailable (build the test binary with scripts/embed-key.go -test-binary): %v", err)
 	}
-	masters, err := loadGameMasterDatabase(masterPath, "zh-TW")
+	masters, err := LoadGameMasterDatabase(masterPath, "zh-TW")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,8 +48,8 @@ func TestEffectConsoleCollector(t *testing.T) {
 			t.Fatal(err)
 		}
 		writer := bufio.NewWriter(file)
-		equivalenceReplay(t, equivalenceInputs{localIP: "192.168.1.2"}, masters, key, path, func(p *processor) {
-			p.dev.stdout, p.dev.showEffectEvents, p.dev.showAllEffectEvents = writer, true, mode.all
+		equivalenceReplay(t, equivalenceInputs{localIP: "192.168.1.2"}, masters, key, path, func(p *Processor) {
+			p.Dev.stdout, p.Dev.showEffectEvents, p.Dev.showAllEffectEvents = writer, true, mode.all
 		}, nil)
 		if err := writer.Flush(); err != nil {
 			t.Fatal(err)

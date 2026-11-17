@@ -2,9 +2,9 @@ package capture
 
 import "os"
 
-// exitIfVersionRequested prints the build identity and exits when -version is the request. It runs before
+// ExitIfVersionRequested prints the build identity and exits when -version is the request. It runs before
 // any other start-up work, so asking for the version never touches files, the network, or the capture driver.
-func exitIfVersionRequested() {
+func ExitIfVersionRequested() {
 	for _, argument := range os.Args[1:] {
 		if argument == "-version" || argument == "--version" {
 			printVersion(os.Stdout)

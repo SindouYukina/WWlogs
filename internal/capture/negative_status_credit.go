@@ -107,27 +107,27 @@ const (
 	statusSettlementUndetermined = "undetermined"
 )
 
-// negativeStatusSettlement is how an executing status Buff settles, from its Buff row.
-type negativeStatusSettlement struct {
-	// known is set when the Buff row has a period column; without it the status is taken as one without a period, the
+// NegativeStatusSettlementRule is how an executing status Buff settles, from its Buff row.
+type NegativeStatusSettlementRule struct {
+	// Known is set when the Buff row has a period column; without it the status is taken as one without a period, the
 	// stricter rule.
-	known bool
+	Known bool
 	// periodic is buff.period > 0: the status executes on its own timer.
 	periodic bool
-	// executesOnCreation is buff.b_execute_periodic_effect_on_application.
-	executesOnCreation bool
+	// ExecutesOnCreation is buff.b_execute_periodic_effect_on_application.
+	ExecutesOnCreation bool
 	// clearsOnOverflow is buff.b_clear_stack_on_overflow: an application past the stack limit removes the instance.
 	clearsOnOverflow bool
-	// instant is buff.duration_policy 0: the Buff has no instance and executes its status once when applied.
-	instant bool
+	// Instant is buff.duration_policy 0: the Buff has no instance and executes its status once when applied.
+	Instant bool
 }
 
 // negativeStatusSettlementOf returns how a status Buff settles.
-func (m *gameMaster) negativeStatusSettlementOf(effectID uint64) negativeStatusSettlement {
+func (m *GameMaster) negativeStatusSettlementOf(effectID uint64) NegativeStatusSettlementRule {
 	if m == nil {
-		return negativeStatusSettlement{}
+		return NegativeStatusSettlementRule{}
 	}
-	return m.negativeStatusSettlements[effectID]
+	return m.NegativeStatusSettlements[effectID]
 }
 
 // NegativeStatusSettlement is the product's reading of how a status Buff executes a negative-status DamageId, for the
@@ -146,8 +146,8 @@ func (m *MasterData) NegativeStatusSettlement(effectID, damageID uint64) Negativ
 	settlement := m.masters.negativeStatusSettlementOf(effectID)
 	return NegativeStatusSettlement{
 		Executes: m.masters.isNegativeStatusDamage(damageID) && m.masters.negativeStatusExecutes(effectID, damageID),
-		Known:    settlement.known, Periodic: settlement.periodic, ExecutesOnCreation: settlement.executesOnCreation,
-		ClearsOnOverflow: settlement.clearsOnOverflow, Forcible: m.masters.statusCanBeForced(effectID), Instant: settlement.instant,
+		Known:    settlement.Known, Periodic: settlement.periodic, ExecutesOnCreation: settlement.ExecutesOnCreation,
+		ClearsOnOverflow: settlement.clearsOnOverflow, Forcible: m.masters.statusCanBeForced(effectID), Instant: settlement.Instant,
 		SpreadsOnOverflow: m.masters.statusSpreadsOnOverflow(effectID),
 	}
 }
@@ -227,39 +227,39 @@ type serverSequenceState struct {
 	lastAt  time.Time
 	has     bool
 	gaps    []serverSequenceGap
-	// total counts the gaps of the run, for diagnostics.
-	total int
+	// Total counts the gaps of the run, for diagnostics.
+	Total int
 }
 
 // observeServerSequence notes one server frame's sequence and records a gap when sequenced frames are missing before it.
-func (p *processor) observeServerSequence(frame gameFrame) {
-	if p == nil || frame.direction != "in" || frame.sequence == 0 {
+func (p *Processor) observeServerSequence(frame GameFrame) {
+	if p == nil || frame.Direction != "in" || frame.Sequence == 0 {
 		return
 	}
-	state := &p.serverSequence
-	if !state.has || state.session != p.sessionNumber {
-		state.session, state.last, state.lastAt, state.has = p.sessionNumber, frame.sequence, frame.timestamp, true
+	state := &p.ServerSequence
+	if !state.has || state.session != p.SessionNumber {
+		state.session, state.last, state.lastAt, state.has = p.SessionNumber, frame.Sequence, frame.Timestamp, true
 		return
 	}
-	if frame.sequence != state.last+1 {
-		gap := serverSequenceGap{session: p.sessionNumber, from: state.lastAt, to: frame.timestamp}
+	if frame.Sequence != state.last+1 {
+		gap := serverSequenceGap{session: p.SessionNumber, from: state.lastAt, to: frame.Timestamp}
 		if len(state.gaps) >= maxServerSequenceGaps {
 			state.gaps = state.gaps[1:]
 		}
 		state.gaps = append(state.gaps, gap)
-		state.total++
+		state.Total++
 	}
-	state.last, state.lastAt = frame.sequence, frame.timestamp
+	state.last, state.lastAt = frame.Sequence, frame.Timestamp
 }
 
 // serverStreamIncomplete reports whether sequenced server frames of the current protocol session are missing between from
 // and to: a frame the server sent in that span may be lost.
-func (p *processor) serverStreamIncomplete(from, to time.Time) bool {
+func (p *Processor) serverStreamIncomplete(from, to time.Time) bool {
 	if p == nil {
 		return false
 	}
-	for _, gap := range p.serverSequence.gaps {
-		if gap.session == p.sessionNumber && !gap.to.Before(from) && !gap.from.After(to) {
+	for _, gap := range p.ServerSequence.gaps {
+		if gap.session == p.SessionNumber && !gap.to.Before(from) && !gap.from.After(to) {
 			return true
 		}
 	}
@@ -315,8 +315,8 @@ type negativeStatusExecution struct {
 
 // recordStatusTrigger remembers an instant InvokePeriod the server applied, with the named status instances it found alive,
 // and an instant status Buff, which executes its negative status by itself.
-func (p *processor) recordStatusTrigger(row buffLifecycleAuditRow, holder uint64) {
-	if p == nil || row.ID == nil || row.HandleID == nil || validEffectHandle(*row.HandleID) {
+func (p *Processor) recordStatusTrigger(row BuffLifecycleAuditRow, holder uint64) {
+	if p == nil || row.ID == nil || row.HandleID == nil || ValidEffectHandle(*row.HandleID) {
 		return
 	}
 	generation := p.effectHolderGeneration(holder)
@@ -324,30 +324,30 @@ func (p *processor) recordStatusTrigger(row buffLifecycleAuditRow, holder uint64
 	if row.InstigatorID != nil && *row.InstigatorID != 0 {
 		trigger.source, trigger.hasSource = *row.InstigatorID, true
 	}
-	if damageID, executes := p.masters.negativeStatusExecutorDamage(*row.ID); executes {
+	if damageID, executes := p.Masters.negativeStatusExecutorDamage(*row.ID); executes {
 		trigger.executes = damageID
 		p.statusTriggers.add(trigger)
-		p.notifyStats.instantStatusExecutions++
+		p.NotifyStats.InstantStatusExecutions++
 		return
 	}
-	named := p.masters.invokePeriodStatuses(*row.ID)
+	named := p.Masters.invokePeriodStatuses(*row.ID)
 	if len(named) == 0 {
 		return
 	}
-	for _, candidate := range p.effects.statusCandidates(row.SessionNumber, holder, generation, func(effectID uint64) bool { return containsID(named, effectID) }, row.Timestamp, negativeStatusLiveSlack, 0) {
+	for _, candidate := range p.Effects.statusCandidates(row.SessionNumber, holder, generation, func(effectID uint64) bool { return containsID(named, effectID) }, row.Timestamp, negativeStatusLiveSlack, 0) {
 		trigger.eligible = insertSortedID(trigger.eligible, candidate.ordinal)
 	}
 	p.statusTriggers.add(trigger)
-	p.notifyStats.statusTriggers++
+	p.NotifyStats.StatusTriggers++
 	if len(trigger.eligible) == 0 {
-		p.notifyStats.statusTriggersForcingNothing++
+		p.NotifyStats.StatusTriggersForcingNothing++
 	}
 }
 
 // negativeStatusCandidates lists the instances on target that can have executed a result of damageID at at.
-func (p *processor) negativeStatusCandidates(target, damageID uint64, at time.Time) []statusCandidate {
-	executes := func(effectID uint64) bool { return p.masters.negativeStatusExecutes(effectID, damageID) }
-	return p.effects.statusCandidates(p.sessionNumber, target, p.effectHolderGeneration(target), executes, at, negativeStatusLiveSlack, statusEndedCarry)
+func (p *Processor) negativeStatusCandidates(target, damageID uint64, at time.Time) []statusCandidate {
+	executes := func(effectID uint64) bool { return p.Masters.negativeStatusExecutes(effectID, damageID) }
+	return p.Effects.statusCandidates(p.SessionNumber, target, p.effectHolderGeneration(target), executes, at, negativeStatusLiveSlack, statusEndedCarry)
 }
 
 // statusActors is what an instance's own settlement leaves as the possible cause of a result: the entities, or the reason
@@ -363,12 +363,12 @@ type statusActors struct {
 // settlementActors returns the entities that can have caused an execution of candidate that no pending InvokePeriod
 // explains: the own execution of a timed status (ownSettlementActors), the application of a status without a period
 // (appliedSettlementActors), and both for a status whose Buff row gave no period (the strictest reading).
-func (p *processor) settlementActors(target, generation uint64, candidate statusCandidate, at time.Time) statusActors {
-	settlement := p.masters.negativeStatusSettlementOf(candidate.effectID)
+func (p *Processor) settlementActors(target, generation uint64, candidate statusCandidate, at time.Time) statusActors {
+	settlement := p.Masters.negativeStatusSettlementOf(candidate.effectID)
 	switch {
 	case settlement.periodic:
 		return p.ownSettlementActors(target, generation, candidate, at)
-	case settlement.known:
+	case settlement.Known:
 		return p.appliedSettlementActors(candidate, at)
 	}
 	own := p.ownSettlementActors(target, generation, candidate, at)
@@ -389,7 +389,7 @@ func (p *processor) settlementActors(target, generation uint64, candidate status
 // ownSettlementActors returns the entities that can have caused an own execution of candidate, an instance of a timed
 // status: its owner, and the instigator of any InvokePeriod that found the instance alive, forced nothing yet and could
 // still explain a late result.
-func (p *processor) ownSettlementActors(target, generation uint64, candidate statusCandidate, at time.Time) statusActors {
+func (p *Processor) ownSettlementActors(target, generation uint64, candidate statusCandidate, at time.Time) statusActors {
 	actors := statusActors{entities: map[uint64]struct{}{}, periodic: true}
 	if !candidate.hasSource {
 		actors.reason = "a status instance that can have executed the result names no instigator"
@@ -398,7 +398,7 @@ func (p *processor) ownSettlementActors(target, generation uint64, candidate sta
 	actors.entities[candidate.source] = struct{}{}
 	for i := range p.statusTriggers.entries {
 		trigger := &p.statusTriggers.entries[i]
-		if trigger.session != p.sessionNumber || trigger.holder != target || trigger.generation != generation || at.Before(trigger.at) ||
+		if trigger.session != p.SessionNumber || trigger.holder != target || trigger.generation != generation || at.Before(trigger.at) ||
 			!containsID(trigger.eligible, candidate.ordinal) || containsID(trigger.used, candidate.ordinal) {
 			continue
 		}
@@ -413,11 +413,11 @@ func (p *processor) ownSettlementActors(target, generation uint64, candidate sta
 
 // pendingStatusTriggers returns, oldest first, the InvokePeriods applied on target within the carry window that found
 // the instance alive and have not explained an execution of it yet.
-func (p *processor) pendingStatusTriggers(target, generation, ordinal uint64, at time.Time) []*statusTrigger {
+func (p *Processor) pendingStatusTriggers(target, generation, ordinal uint64, at time.Time) []*statusTrigger {
 	var pending []*statusTrigger
 	for i := range p.statusTriggers.entries {
 		trigger := &p.statusTriggers.entries[i]
-		if trigger.session != p.sessionNumber || trigger.holder != target || trigger.generation != generation || at.Before(trigger.at) ||
+		if trigger.session != p.SessionNumber || trigger.holder != target || trigger.generation != generation || at.Before(trigger.at) ||
 			at.Sub(trigger.at) > statusTriggerCarry || !containsID(trigger.eligible, ordinal) || containsID(trigger.used, ordinal) {
 			continue
 		}
@@ -429,11 +429,11 @@ func (p *processor) pendingStatusTriggers(target, generation, ordinal uint64, at
 // instantStatusExecutions returns, oldest first, the instant status Buffs executing damageID that the server applied on
 // target and that explained no result yet: pending ones (at most statusTriggerCarry before at) or, with doubtful, the older
 // ones of the last statusTriggerDoubt, whose result may still arrive late.
-func (p *processor) instantStatusExecutions(target, generation, damageID uint64, at time.Time, doubtful bool) []*statusTrigger {
+func (p *Processor) instantStatusExecutions(target, generation, damageID uint64, at time.Time, doubtful bool) []*statusTrigger {
 	var found []*statusTrigger
 	for i := range p.statusTriggers.entries {
 		trigger := &p.statusTriggers.entries[i]
-		if trigger.executes != damageID || trigger.consumed || trigger.session != p.sessionNumber || trigger.holder != target ||
+		if trigger.executes != damageID || trigger.consumed || trigger.session != p.SessionNumber || trigger.holder != target ||
 			trigger.generation != generation || at.Before(trigger.at) || at.Sub(trigger.at) > statusTriggerDoubt {
 			continue
 		}
@@ -447,12 +447,12 @@ func (p *processor) instantStatusExecutions(target, generation, damageID uint64,
 
 // hasInstantExecutor reports a negative-status DamageId that an instant status Buff can execute: the Master's status Buffs
 // of the DamageId with no duration (buff.duration_policy 0).
-func (m *gameMaster) hasInstantExecutor(damageID uint64) bool {
+func (m *GameMaster) hasInstantExecutor(damageID uint64) bool {
 	if m == nil {
 		return false
 	}
-	for effectID, executed := range m.negativeStatusExecutors {
-		if executed == damageID && m.negativeStatusSettlementOf(effectID).instant {
+	for effectID, executed := range m.NegativeStatusExecutors {
+		if executed == damageID && m.negativeStatusSettlementOf(effectID).Instant {
 			return true
 		}
 	}
@@ -479,7 +479,7 @@ func otherCausesNameOnly(entity uint64, instants []*statusTrigger, spread []spre
 // overflows on other enemies that can have spread it (spread) and the instant status Buffs applied on the target. It runs
 // for every such result, counted or not, so a trigger explains at most one execution of each instance it names and an
 // instant status Buff at most one result.
-func (p *processor) matchNegativeStatusExecution(target, damageID uint64, candidates []statusCandidate, spread []spreadCandidate, at time.Time) negativeStatusExecution {
+func (p *Processor) matchNegativeStatusExecution(target, damageID uint64, candidates []statusCandidate, spread []spreadCandidate, at time.Time) negativeStatusExecution {
 	generation := p.effectHolderGeneration(target)
 	p.statusTriggers.prune(at)
 	instants := p.instantStatusExecutions(target, generation, damageID, at, false)
@@ -488,7 +488,7 @@ func (p *processor) matchNegativeStatusExecution(target, damageID uint64, candid
 	}
 	instantNotLocal := false
 	for _, trigger := range instants {
-		if !trigger.hasSource || p.localRoleForEntity(trigger.source, entityIdentity{}) == nil {
+		if !trigger.hasSource || p.localRoleForEntity(trigger.source, EntityIdentity{}) == nil {
 			instantNotLocal = true
 		}
 	}
@@ -618,7 +618,7 @@ func (p *processor) matchNegativeStatusExecution(target, damageID uint64, candid
 		if own.applied {
 			applied = true
 		}
-		if p.masters.statusCanBeForced(candidate.effectID) {
+		if p.Masters.statusCanBeForced(candidate.effectID) {
 			forcible = true
 		}
 		for entity := range own.entities {
@@ -656,7 +656,7 @@ func (p *processor) matchNegativeStatusExecution(target, damageID uint64, candid
 			execution.StatusEffectID = candidates[0].effectID
 		}
 	}
-	if (forcible || p.masters.hasInstantExecutor(damageID)) && p.serverStreamIncomplete(at.Add(-statusTriggerDoubt), at) {
+	if (forcible || p.Masters.hasInstantExecutor(damageID)) && p.serverStreamIncomplete(at.Add(-statusTriggerDoubt), at) {
 		execution.Settlement, execution.Reason = statusSettlementUndetermined, "server frames before the result are missing: an InvokePeriod that forced it may be lost"
 		return execution
 	}
@@ -704,11 +704,11 @@ func allSameEffect(candidates []statusCandidate) bool {
 
 // negativeStatusRole resolves the credit entity of a local negative-status result to its local role, with the credit basis
 // in place of the entity's own role basis. Nil when the entity is no local role or summon of one.
-func (p *processor) negativeStatusRole(execution negativeStatusExecution) *CombatRole {
+func (p *Processor) negativeStatusRole(execution negativeStatusExecution) *CombatRole {
 	if execution.CreditEntity == 0 {
 		return nil
 	}
-	role := p.localRoleForEntity(execution.CreditEntity, entityIdentity{})
+	role := p.localRoleForEntity(execution.CreditEntity, EntityIdentity{})
 	if role == nil {
 		return nil
 	}
@@ -812,16 +812,16 @@ func insertSortedID(ids []uint64, id uint64) []uint64 {
 }
 
 // negativeStatusExecutorDamage returns the negative-status DamageId a status Buff executes; false for any other Buff.
-func (m *gameMaster) negativeStatusExecutorDamage(effectID uint64) (uint64, bool) {
+func (m *GameMaster) negativeStatusExecutorDamage(effectID uint64) (uint64, bool) {
 	if m == nil {
 		return 0, false
 	}
-	damageID, ok := m.negativeStatusExecutors[effectID]
+	damageID, ok := m.NegativeStatusExecutors[effectID]
 	return damageID, ok
 }
 
 // invokePeriodStatuses returns the status Buffs an InvokePeriod Buff forces, sorted; nil for any other Buff.
-func (m *gameMaster) invokePeriodStatuses(effectID uint64) []uint64 {
+func (m *GameMaster) invokePeriodStatuses(effectID uint64) []uint64 {
 	if m == nil {
 		return nil
 	}
@@ -829,7 +829,7 @@ func (m *gameMaster) invokePeriodStatuses(effectID uint64) []uint64 {
 }
 
 // statusCanBeForced reports whether some InvokePeriod Buff of the Master names the status Buff statusID.
-func (m *gameMaster) statusCanBeForced(statusID uint64) bool {
+func (m *GameMaster) statusCanBeForced(statusID uint64) bool {
 	if m == nil {
 		return false
 	}
@@ -843,7 +843,7 @@ func (m *gameMaster) statusCanBeForced(statusID uint64) bool {
 
 // NegativeStatusTerm returns the glossary name of the status behind a negative-status DamageId and the Buff whose icon
 // shows it, or false when the DamageId is no negative status or its status Buffs name no single term.
-func (m *gameMaster) negativeStatusTerm(damageID uint64) (negativeStatusTerm, bool) {
+func (m *GameMaster) negativeStatusTerm(damageID uint64) (negativeStatusTerm, bool) {
 	if m == nil {
 		return negativeStatusTerm{}, false
 	}
@@ -854,7 +854,7 @@ func (m *gameMaster) negativeStatusTerm(damageID uint64) (negativeStatusTerm, bo
 // loadSQLiteNegativeStatusTriggers reads the InvokePeriod Buffs (buff.extra_effect_id 67) and the status Buffs their first
 // extra-effect parameter names ("10041000#10051000"), keeping only names that are negative-status executors. It also names
 // each negative-status DamageId by the glossary term its executing Buffs share. Both tables are optional.
-func loadSQLiteNegativeStatusTriggers(db *sql.DB, master *gameMaster) error {
+func loadSQLiteNegativeStatusTriggers(db *sql.DB, master *GameMaster) error {
 	defer nameNegativeStatuses(master)
 	for _, table := range []string{"buff", "buff_extra_effect_parameters"} {
 		exists, err := masterTableExists(db, table)
@@ -883,7 +883,7 @@ func loadSQLiteNegativeStatusTriggers(db *sql.DB, master *gameMaster) error {
 			if err != nil {
 				continue // not a Buff id: InvokePeriod reads every part with Number(), a non-number names nothing
 			}
-			if _, executes := master.negativeStatusExecutors[status]; executes {
+			if _, executes := master.NegativeStatusExecutors[status]; executes {
 				statuses = insertSortedID(statuses, status)
 			}
 		}
@@ -895,15 +895,15 @@ func loadSQLiteNegativeStatusTriggers(db *sql.DB, master *gameMaster) error {
 }
 
 // nameNegativeStatuses names each negative-status DamageId by the one glossary term its executing status Buffs carry.
-func nameNegativeStatuses(master *gameMaster) {
+func nameNegativeStatuses(master *GameMaster) {
 	type candidate struct {
 		terms map[uint64]string
 		icon  uint64
 	}
 	byDamage := map[uint64]*candidate{}
-	for buffID, damageID := range master.negativeStatusExecutors {
-		term, ok := master.buffTerms[buffID]
-		if !ok || term.name == "" {
+	for buffID, damageID := range master.NegativeStatusExecutors {
+		term, ok := master.BuffTerms[buffID]
+		if !ok || term.Name == "" {
 			continue
 		}
 		found := byDamage[damageID]
@@ -911,7 +911,7 @@ func nameNegativeStatuses(master *gameMaster) {
 			found = &candidate{terms: map[uint64]string{}}
 			byDamage[damageID] = found
 		}
-		found.terms[term.termID] = term.name
+		found.terms[term.TermID] = term.Name
 		if found.icon == 0 || buffID < found.icon {
 			found.icon = buffID
 		}

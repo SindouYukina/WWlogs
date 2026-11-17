@@ -97,7 +97,7 @@ func newProcessorDiagnostics(stdout, audit io.Writer) processorDiagnostics {
 	return processorDiagnostics{stdout: stdout, audit: audit, combatActionRequests: make(map[combatActionRequestKey]combatActionRequest)}
 }
 
-// beginProtocolSession forgets the timer flow time of the previous protocol session at a new handshake.
-func (d *processorDiagnostics) beginProtocolSession() {
+// BeginProtocolSession forgets the timer flow time of the previous protocol session at a new handshake.
+func (d *processorDiagnostics) BeginProtocolSession() {
 	d.flowTime, d.hasFlowTime, d.flowTimeFrame = 0, false, 0
 }

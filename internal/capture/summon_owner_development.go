@@ -29,17 +29,17 @@ type summonOwnerRecord struct {
 	SummonTypeRaw *int64 `json:"summonTypeRaw,omitempty"`
 	// SummonSkillNamespace and SummonSkillStatus are the master translation of SummonSkillId (see resolveSummonSkill).
 	SummonSkillNamespace string           `json:"summonSkillNamespace,omitempty"`
-	SummonSkillStatus    resolutionStatus `json:"summonSkillStatus,omitempty"`
+	SummonSkillStatus    ResolutionStatus `json:"summonSkillStatus,omitempty"`
 	// SummonSkillDevLabel is the developer note of the Vision row the key resolves to; never an official name.
-	SummonSkillDevLabel *combatEventLabelTextJSONL `json:"summonSkillDevLabel,omitempty"`
+	SummonSkillDevLabel *CombatEventLabelTextJSONL `json:"summonSkillDevLabel,omitempty"`
 	Evidence            string                     `json:"evidence"`
 }
 
 // archiveSummonOwners writes ownership facts from one decoded join-scene or
 // entity-add message. Entities are walked through the message tree, so nested
 // entity lists in any join or add layout are covered.
-func (p *processor) archiveSummonOwners(frame gameFrame, command string, decoded *decodedMessage) {
-	if p.dev.summonOwnerOut == nil || decoded == nil {
+func (p *Processor) archiveSummonOwners(frame GameFrame, command string, decoded *decodedMessage) {
+	if p.Dev.summonOwnerOut == nil || decoded == nil {
 		return
 	}
 	walkEntities(decoded, func(entity *decodedMessage) {
@@ -81,7 +81,7 @@ func walkEntities(message *decodedMessage, visit func(*decodedMessage)) {
 	}
 }
 
-func (p *processor) writeSummonerRecord(frame gameFrame, command string, entityID uint64, component *decodedMessage) {
+func (p *Processor) writeSummonerRecord(frame GameFrame, command string, entityID uint64, component *decodedMessage) {
 	record := p.summonOwnerBase(frame, command, "summoner", entityID)
 	record.Evidence = "SummonerComponentPb on the entity; fields copied as observed, owner meaning per the client SummonCfgId/SummonerPlayerEntityId reads"
 	if value, ok := scalarValue(component, "SummonerId"); ok {
@@ -98,23 +98,23 @@ func (p *processor) writeSummonerRecord(frame gameFrame, command string, entityI
 	}
 	if value, ok := scalarValue(component, "Type"); ok {
 		record.SummonTypeRaw = &value
-		if name, known := p.dev.protocolSchema.enumName("ESummonType", value); known {
+		if name, known := p.Dev.protocolSchema.enumName("ESummonType", value); known {
 			record.SummonType = name
 		}
 	}
-	if record.SummonSkillID != nil && p.masters != nil {
-		entity := runtimeEntity{summonSkillID: uint64(*record.SummonSkillID), hasSummonSkillID: true}
+	if record.SummonSkillID != nil && p.Masters != nil {
+		entity := RuntimeEntity{SummonSkillID: uint64(*record.SummonSkillID), HasSummonSkillID: true}
 		if record.SummonTypeRaw != nil {
-			entity.summonType, entity.hasSummonType = uint64(*record.SummonTypeRaw), true
+			entity.SummonType, entity.HasSummonType = uint64(*record.SummonTypeRaw), true
 		}
-		resolution := resolveSummonSkill(p.masters, entity)
+		resolution := ResolveSummonSkill(p.Masters, entity)
 		record.SummonSkillNamespace, record.SummonSkillStatus = resolution.Namespace, resolution.Status
 		record.SummonSkillDevLabel = resolution.DevLabel
 	}
 	p.writeSummonOwnerRecord(record)
 }
 
-func (p *processor) writeRelatedRecords(frame gameFrame, command string, entityID uint64, component *decodedMessage, kind string, listFields ...string) {
+func (p *Processor) writeRelatedRecords(frame GameFrame, command string, entityID uint64, component *decodedMessage, kind string, listFields ...string) {
 	for _, list := range listFields {
 		for _, field := range component.Fields {
 			if field.Name != list {
@@ -138,41 +138,41 @@ func (p *processor) writeRelatedRecords(frame gameFrame, command string, entityI
 	}
 }
 
-func (p *processor) summonOwnerBase(frame gameFrame, command string, kind string, entityID uint64) summonOwnerRecord {
+func (p *Processor) summonOwnerBase(frame GameFrame, command string, kind string, entityID uint64) summonOwnerRecord {
 	return summonOwnerRecord{
 		SchemaVersion: summonOwnerSchemaVersion,
-		FrameOrdinal:  p.dev.frameOrdinal - 1,
-		SessionNumber: p.sessionNumber,
-		Timestamp:     formatTimestamp(frame.timestamp),
+		FrameOrdinal:  p.Dev.frameOrdinal - 1,
+		SessionNumber: p.SessionNumber,
+		Timestamp:     formatTimestamp(frame.Timestamp),
 		Command:       command,
 		Kind:          kind,
 		EntityID:      entityID,
 	}
 }
 
-func (p *processor) writeSummonOwnerRecord(record summonOwnerRecord) {
-	writeResearchRecord(p.dev.summonOwnerOut, record, &p.dev.summonOwnerErrors)
+func (p *Processor) writeSummonOwnerRecord(record summonOwnerRecord) {
+	writeResearchRecord(p.Dev.summonOwnerOut, record, &p.Dev.summonOwnerErrors)
 }
 
-// archiveSummonOwnerFrame decodes join-scene and entity-add frames for the owner
+// ArchiveSummonOwnerFrame decodes join-scene and entity-add frames for the owner
 // output when that output is enabled. It shares the plaintext with the other
 // observers.
-func (p *processor) archiveSummonOwnerFrame(frame gameFrame, plain []byte) {
-	if p.dev.summonOwnerOut == nil || p.dev.protocolSchema == nil {
+func (p *Processor) ArchiveSummonOwnerFrame(frame GameFrame, plain []byte) {
+	if p.Dev.summonOwnerOut == nil || p.Dev.protocolSchema == nil {
 		return
 	}
 	var message string
-	switch frame.commandID {
-	case cmdJoinSceneNotify:
+	switch frame.CommandID {
+	case CmdJoinSceneNotify:
 		message = "JoinSceneNotify"
-	case cmdEntityAddNotify:
+	case CmdEntityAddNotify:
 		message = "EntityAddNotify"
 	default:
 		return
 	}
-	decoded, err := decodeSchemaMessage(p.dev.protocolSchema, message, plain, 0)
+	decoded, err := decodeSchemaMessage(p.Dev.protocolSchema, message, plain, 0)
 	if err != nil {
-		p.dev.summonOwnerErrors++
+		p.Dev.summonOwnerErrors++
 		return
 	}
 	p.archiveSummonOwners(frame, message, decoded)

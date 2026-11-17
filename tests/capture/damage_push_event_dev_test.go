@@ -10,12 +10,12 @@ import (
 // A notified result is described on its development event line; the accounting itself is shared (damage_notify_test.go).
 func TestNotifiedResultEventLineUsesTheAuxiliaryNamespace(t *testing.T) {
 	var stdout, diagnostic, jsonl bytes.Buffer
-	p := newProcessor(nil, &stdout, &diagnostic, nil)
-	p.dev.combatEventsJSONL = &jsonl
-	p.masters = &gameMaster{damage: map[uint64]damageMasterRecord{1001: {ID: 1001, CalculateType: 0, SourceTable: "damage.id"}}}
+	p := NewProcessor(nil, &stdout, &diagnostic, nil)
+	p.Dev.combatEventsJSONL = &jsonl
+	p.Masters = &GameMaster{Damage: map[uint64]DamageMasterRecord{1001: {ID: 1001, CalculateType: 0, SourceTable: "damage.id"}}}
 
-	event := p.buildDamageEvent(0, pendingDamageRequest{attackerEntityID: 10, hasAttackerEntityID: true, targetEntityID: 20, hasTargetEntityID: true, damageID: 1001, hasDamageID: true}, 176, 176, true, 176)
-	event.Notify = &notifiedResult{Key: notifyEventKey(7, 1), NegativeStatus: true, NegativeStatusBasis: "no live status instance on the target executes this DamageId"}
+	event := p.BuildDamageEvent(0, PendingDamageRequest{AttackerEntityID: 10, HasAttackerEntityID: true, TargetEntityID: 20, HasTargetEntityID: true, DamageID: 1001, HasDamageID: true}, 176, 176, true, 176)
+	event.Notify = &NotifiedResult{Key: NotifyEventKey(7, 1), NegativeStatus: true, NegativeStatusBasis: "no live status instance on the target executes this DamageId"}
 	p.writeDamageEventJSONL(event, nil)
 
 	rows := decodeJSONLLines(t, jsonl.Bytes())
@@ -38,7 +38,7 @@ func TestNotifiedResultEventLineUsesTheAuxiliaryNamespace(t *testing.T) {
 func TestNotifiedSpreadResultLineNamesItsSettlement(t *testing.T) {
 	var jsonl bytes.Buffer
 	p := newCausalityTestProcessor()
-	p.dev.combatEventsJSONL = &jsonl
+	p.Dev.combatEventsJSONL = &jsonl
 	buildFusionToLimit(t, p, 1.0, 2, 200, 8, 100, 100)
 	deliverNotifyFrame(t, p, 1.5, 3, items(overflow(200, 8, 101), [][]byte{fusionTick(201, 4000)})...)
 	deliverNotifyFrame(t, p, 2.0, 4, triggerData(200, causalInstantBuff, 101), spectroTick(200, 2500))

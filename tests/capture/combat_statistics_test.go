@@ -9,22 +9,22 @@ import (
 
 func TestDamageStatisticsResetClearsSnapshot(t *testing.T) {
 	statistics := NewDamageStatistics()
-	statistics.addDamageEvent(combatEvent{
+	statistics.addDamageEvent(CombatEvent{
 		SessionNumber: 1, SourceEntityID: 100, HasSourceEntity: true, TargetEntityID: 200, HasTargetEntity: true,
 		EventTypeCandidate: "DAMAGE_CANDIDATE", Damage: 10, Timestamp: time.Unix(10, 0),
-	}, playerRelationLocal, playerRelationUnrelated)
-	statistics.addDamageEvent(combatEvent{
+	}, PlayerRelationLocal, PlayerRelationUnrelated)
+	statistics.addDamageEvent(CombatEvent{
 		SessionNumber: 1, SourceEntityID: 100, HasSourceEntity: true, TargetEntityID: 200, HasTargetEntity: true,
 		EventTypeCandidate: "DAMAGE_CANDIDATE", Damage: 20, Timestamp: time.Unix(20, 0),
-	}, playerRelationLocal, playerRelationUnrelated)
-	statistics.addDamageEvent(combatEvent{
+	}, PlayerRelationLocal, PlayerRelationUnrelated)
+	statistics.addDamageEvent(CombatEvent{
 		SessionNumber: 1, SourceEntityID: 100, HasSourceEntity: true, TargetEntityID: 201, HasTargetEntity: true,
 		EventTypeCandidate: "DAMAGE_CANDIDATE", Damage: 7,
-	}, playerRelationLocal, playerRelationUnknown)
-	statistics.addDamageEvent(combatEvent{
+	}, PlayerRelationLocal, PlayerRelationUnknown)
+	statistics.addDamageEvent(CombatEvent{
 		SessionNumber: 1, SourceEntityID: 202, HasSourceEntity: true, TargetEntityID: 100, HasTargetEntity: true,
 		EventTypeCandidate: "DAMAGE_CANDIDATE", Damage: 9,
-	}, playerRelationUnknown, playerRelationLocal)
+	}, PlayerRelationUnknown, PlayerRelationLocal)
 	before := statistics.Snapshot()
 	if before.DamageSpanDPS.Status != DPSStatusAvailable || before.CaptureSessionID == 0 || before.StatisticsIntervalID != 1 ||
 		before.UnattributedOutgoingDamage != 7 || before.UnattributedIncomingDamage != 9 {
@@ -55,8 +55,8 @@ func TestDamageStatisticsResetClearsSnapshot(t *testing.T) {
 }
 
 func TestDamageStatisticsCaptureSessionsAreIsolated(t *testing.T) {
-	firstCapture := newProcessor(nil, nil, nil, nil).damageStatistics
-	secondCapture := newProcessor(nil, nil, nil, nil).damageStatistics
+	firstCapture := NewProcessor(nil, nil, nil, nil).DamageStatistics
+	secondCapture := NewProcessor(nil, nil, nil, nil).DamageStatistics
 	addStatisticsOutgoingDamage(firstCapture, 1, 10, time.Unix(10, 0))
 	addStatisticsOutgoingDamage(secondCapture, 1, 20, time.Unix(20, 0))
 
@@ -225,9 +225,9 @@ func TestDamageStatisticsRollingUsesConfirmedOutgoingEventsOnly(t *testing.T) {
 	statistics := NewDamageStatistics()
 	base := time.Unix(600, 0)
 	addStatisticsOutgoingDamage(statistics, 1, 100, base)
-	statistics.addDamageEvent(combatEvent{SessionNumber: 1, SourceEntityID: 200, HasSourceEntity: true, TargetEntityID: 100, HasTargetEntity: true, EventTypeCandidate: "DAMAGE_CANDIDATE", Damage: 50, Timestamp: base}, playerRelationUnrelated, playerRelationLocal)
-	statistics.addDamageEvent(combatEvent{SessionNumber: 1, SourceEntityID: 300, HasSourceEntity: true, TargetEntityID: 400, HasTargetEntity: true, EventTypeCandidate: "DAMAGE_CANDIDATE", Damage: 75, Timestamp: base}, playerRelationUnrelated, playerRelationUnrelated)
-	statistics.addDamageEvent(combatEvent{SessionNumber: 1, SourceEntityID: 101, HasSourceEntity: true, TargetEntityID: 400, HasTargetEntity: true, EventTypeCandidate: "DAMAGE_CANDIDATE", Damage: 125, Timestamp: base}, playerRelationUnknown, playerRelationUnrelated)
+	statistics.addDamageEvent(CombatEvent{SessionNumber: 1, SourceEntityID: 200, HasSourceEntity: true, TargetEntityID: 100, HasTargetEntity: true, EventTypeCandidate: "DAMAGE_CANDIDATE", Damage: 50, Timestamp: base}, PlayerRelationUnrelated, PlayerRelationLocal)
+	statistics.addDamageEvent(CombatEvent{SessionNumber: 1, SourceEntityID: 300, HasSourceEntity: true, TargetEntityID: 400, HasTargetEntity: true, EventTypeCandidate: "DAMAGE_CANDIDATE", Damage: 75, Timestamp: base}, PlayerRelationUnrelated, PlayerRelationUnrelated)
+	statistics.addDamageEvent(CombatEvent{SessionNumber: 1, SourceEntityID: 101, HasSourceEntity: true, TargetEntityID: 400, HasTargetEntity: true, EventTypeCandidate: "DAMAGE_CANDIDATE", Damage: 125, Timestamp: base}, PlayerRelationUnknown, PlayerRelationUnrelated)
 	snapshot := rollingSnapshotAt(statistics, base)
 	if snapshot.Rolling5sDPS.Damage != 100 || snapshot.DamageTaken != 50 || snapshot.UnattributedOutgoingDamage != 125 {
 		t.Fatalf("rolling output included incoming, NPC-only, or unresolved damage: %+v", snapshot)
@@ -238,7 +238,7 @@ func TestDamageStatisticsRollingResetAndSnapshotAndResetPreserveCopies(t *testin
 	statistics := NewDamageStatistics()
 	base := time.Unix(700, 0)
 	addStatisticsOutgoingDamage(statistics, 1, 90, base)
-	statistics.addDamageEvent(combatEvent{SessionNumber: 1, SourceEntityID: 101, HasSourceEntity: true, TargetEntityID: 200, HasTargetEntity: true, EventTypeCandidate: "DAMAGE_CANDIDATE", Damage: 12, Timestamp: base}, playerRelationUnknown, playerRelationUnrelated)
+	statistics.addDamageEvent(CombatEvent{SessionNumber: 1, SourceEntityID: 101, HasSourceEntity: true, TargetEntityID: 200, HasTargetEntity: true, EventTypeCandidate: "DAMAGE_CANDIDATE", Damage: 12, Timestamp: base}, PlayerRelationUnknown, PlayerRelationUnrelated)
 	before := rollingSnapshotAt(statistics, base)
 	cutover := statistics.snapshotAndResetAt(CaptureQueryTime{CaptureSessionID: before.CaptureSessionID, Timestamp: base})
 	if cutover.Rolling5sDPS.Damage != 90 || cutover.StatisticsIntervalID != 1 || cutover.UnattributedOutgoingDamage != 12 {
@@ -426,10 +426,10 @@ func TestDamageStatisticsDamageSpanDPSUsesConfirmedOutgoingDamage(t *testing.T) 
 	statistics := NewDamageStatistics()
 	addStatisticsOutgoingDamage(statistics, 1, 100, time.Unix(12, 0))
 	addStatisticsOutgoingDamage(statistics, 1, 200, time.Unix(10, 0))
-	statistics.addDamageEvent(combatEvent{
+	statistics.addDamageEvent(CombatEvent{
 		SessionNumber: 1, SourceEntityID: 200, HasSourceEntity: true, TargetEntityID: 100, HasTargetEntity: true,
 		EventTypeCandidate: "DAMAGE_CANDIDATE", Damage: 9000, Timestamp: time.Unix(11, 0),
-	}, playerRelationUnrelated, playerRelationLocal)
+	}, PlayerRelationUnrelated, PlayerRelationLocal)
 
 	snapshot := statistics.Snapshot()
 	got := snapshot.DamageSpanDPS
@@ -515,8 +515,8 @@ func TestDamageStatisticsDamageSpanDPSValidityStatuses(t *testing.T) {
 }
 
 func addStatisticsOutgoingDamage(statistics *DamageStatistics, session int, amount int64, at time.Time) {
-	statistics.addDamageEvent(combatEvent{
+	statistics.addDamageEvent(CombatEvent{
 		SessionNumber: session, SourceEntityID: 100, HasSourceEntity: true, TargetEntityID: 200, HasTargetEntity: true,
 		EventTypeCandidate: "DAMAGE_CANDIDATE", Damage: amount, Timestamp: at,
-	}, playerRelationLocal, playerRelationUnrelated)
+	}, PlayerRelationLocal, PlayerRelationUnrelated)
 }

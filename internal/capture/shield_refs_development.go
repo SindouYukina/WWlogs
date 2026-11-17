@@ -5,11 +5,11 @@ package capture
 import "fmt"
 
 // hasShieldDefinition reports whether shield has a normalized row with this key.
-func hasShieldDefinition(m *gameMaster, id uint64) bool {
+func hasShieldDefinition(m *GameMaster, id uint64) bool {
 	if m == nil {
 		return false
 	}
-	_, ok := m.shieldDefinitions[id]
+	_, ok := m.ShieldDefinitions[id]
 	return ok
 }
 
@@ -30,18 +30,18 @@ type shieldConfigRefRecord struct {
 	ConfigID               *int64           `json:"configId,omitempty"`
 	ShieldValue            *int64           `json:"shieldValue,omitempty"`
 	UpdateType             *int64           `json:"updateType,omitempty"`
-	ShieldDefinitionStatus resolutionStatus `json:"shieldDefinitionStatus"`
+	ShieldDefinitionStatus ResolutionStatus `json:"shieldDefinitionStatus"`
 	ShieldDefinitionTable  string           `json:"shieldDefinitionTable,omitempty"`
 	ShieldDefinitionID     *uint64          `json:"shieldDefinitionId,omitempty"`
 	Evidence               string           `json:"evidence"`
 }
 
 // observeShieldReferences resolves only ConfigId values in the named ShieldUpdateNotify context.
-func (p *processor) observeShieldReferences(frame gameFrame, data *decodedMessage, direction string) {
+func (p *Processor) observeShieldReferences(frame GameFrame, data *decodedMessage, direction string) {
 	p.walkShieldReferences(frame, data, "Data", direction)
 }
 
-func (p *processor) walkShieldReferences(frame gameFrame, message *decodedMessage, path, direction string) {
+func (p *Processor) walkShieldReferences(frame GameFrame, message *decodedMessage, path, direction string) {
 	if message == nil {
 		return
 	}
@@ -57,18 +57,18 @@ func (p *processor) walkShieldReferences(frame gameFrame, message *decodedMessag
 	}
 }
 
-func (p *processor) writeShieldReference(frame gameFrame, message *decodedMessage, path string, index int, direction string) {
+func (p *Processor) writeShieldReference(frame GameFrame, message *decodedMessage, path string, index int, direction string) {
 	record := shieldConfigRefRecord{
 		SchemaVersion:          shieldRefSchemaVersion,
-		FrameOrdinal:           p.dev.frameOrdinal - 1,
-		SessionNumber:          p.sessionNumber,
-		Timestamp:              formatTimestamp(frame.timestamp),
-		FrameToken:             frame.token,
-		OuterCommandID:         frame.commandID,
+		FrameOrdinal:           p.Dev.frameOrdinal - 1,
+		SessionNumber:          p.SessionNumber,
+		Timestamp:              formatTimestamp(frame.Timestamp),
+		FrameToken:             frame.Token,
+		OuterCommandID:         frame.CommandID,
 		Direction:              direction,
 		FieldPath:              path + ".ConfigId",
 		ShieldIndex:            index,
-		ShieldDefinitionStatus: resolutionUnknown,
+		ShieldDefinitionStatus: ResolutionUnknown,
 		Evidence:               "ShieldUpdateInfo.ConfigId is absent; no static definition lookup was performed",
 	}
 	if value, ok := scalarValue(message, "Handle"); ok {
@@ -77,9 +77,9 @@ func (p *processor) writeShieldReference(frame gameFrame, message *decodedMessag
 	if value, ok := scalarValue(message, "ConfigId"); ok {
 		record.ConfigID = &value
 		record.Evidence = "No exact normalized shield.id row has been linked; raw ConfigId remains unchanged and no other ID namespace is substituted"
-		if value >= 0 && p.masters != nil && hasShieldDefinition(p.masters, uint64(value)) {
+		if value >= 0 && p.Masters != nil && hasShieldDefinition(p.Masters, uint64(value)) {
 			definitionID := uint64(value)
-			record.ShieldDefinitionStatus = resolutionCorrelated
+			record.ShieldDefinitionStatus = ResolutionCorrelated
 			record.ShieldDefinitionTable = "shield"
 			record.ShieldDefinitionID = &definitionID
 			record.Evidence = "Protocol schema path CombatNotifyData.ShieldUpdateNotify.Shields[].ConfigId has an exact normalized shield.id row; same-valued IDs in other namespaces remain separate"
@@ -91,5 +91,5 @@ func (p *processor) writeShieldReference(frame gameFrame, message *decodedMessag
 	if value, ok := scalarValue(message, "UpdateType"); ok {
 		record.UpdateType = &value
 	}
-	writeResearchRecord(p.dev.shieldRefOut, record, &p.dev.shieldRefErrors)
+	writeResearchRecord(p.Dev.shieldRefOut, record, &p.Dev.shieldRefErrors)
 }

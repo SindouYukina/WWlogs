@@ -122,7 +122,7 @@ type skillCoverage struct {
 
 // collectSkillCoverage reads the interval split. A Master skill-group role that differs from the runtime role is
 // listed as a conflict for review; it never changes attribution.
-func collectSkillCoverage(statistics DamageStatisticsSnapshot, masters *gameMaster) skillCoverage {
+func collectSkillCoverage(statistics DamageStatisticsSnapshot, masters *GameMaster) skillCoverage {
 	var coverage skillCoverage
 	distinct := map[uint64]bool{}
 	unnamed := map[uint64]bool{}
@@ -141,18 +141,18 @@ func collectSkillCoverage(statistics DamageStatisticsSnapshot, masters *gameMast
 			coverage.MissingSkillDamage += role.UnassignedSkill.DamageDealt
 		}
 		// A trial role reads its skills through its parent role, as the view's skill projection does.
-		staticRole := masters.staticRoleID(role.RoleID)
+		staticRole := masters.StaticRoleID(role.RoleID)
 		for _, skill := range role.Skills {
 			distinct[skill.SkillID] = true
 			coverage.SkillEvents += skill.OutgoingEvents
 			coverage.SkillDamage += skill.DamageDealt
-			record, ok := masters.damageSkill(skill.SkillID)
-			if ok && record.Name != "" && record.NameStatus == string(resolutionVerified) {
+			record, ok := masters.DamageSkill(skill.SkillID)
+			if ok && record.Name != "" && record.NameStatus == string(ResolutionVerified) {
 				coverage.NamedSkillEvents += skill.OutgoingEvents
 				coverage.NamedSkillDamage += skill.DamageDealt
 			} else {
 				unnamed[skill.SkillID] = true
-				if _, status, source, sourceID := masters.skillRowName(staticRole, skill); status == skillNameStatusDerived {
+				if _, status, source, sourceID := masters.SkillRowName(staticRole, skill); status == SkillNameStatusDerived {
 					coverage.DerivedSkillEvents += skill.OutgoingEvents
 					coverage.DerivedSkillDamage += skill.DamageDealt
 					derived[fmt.Sprintf("role %d skill %d %s %d", role.RoleID, skill.SkillID, source, sourceID)] = true
@@ -226,11 +226,11 @@ func TestEncounterReplayCollector(t *testing.T) {
 	if len(pcaps) == 0 {
 		t.Fatal("PCAP list is empty")
 	}
-	key, err := loadEmbeddedPrivateKey()
+	key, err := LoadEmbeddedPrivateKey()
 	if err != nil {
 		t.Fatalf("embedded key payload is required: %v", err)
 	}
-	masters, err := loadGameMasterDatabase(master, "zh-TW")
+	masters, err := LoadGameMasterDatabase(master, "zh-TW")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -273,42 +273,42 @@ func TestEncounterReplayCollector(t *testing.T) {
 // encounterReplayPublishEvery is the packet pace at which the second replay builds view snapshots.
 const encounterReplayPublishEvery = 37
 
-func encounterReplayOnce(t *testing.T, inputs equivalenceInputs, masters *gameMaster, key *staticRSA, capture equivalencePCAP, publishEvery int) encounterReplayResult {
+func encounterReplayOnce(t *testing.T, inputs equivalenceInputs, masters *GameMaster, key *StaticRSA, capture equivalencePCAP, publishEvery int) encounterReplayResult {
 	t.Helper()
 	var diagnostics, rawEvents bytes.Buffer
 	var lastFrame time.Time
 	var maxGap time.Duration
-	p, stats := equivalenceReplay(t, inputs, masters, key, capture.path, func(p *processor) {
-		p.dev.encounterOut = &diagnostics
-		p.dev.combatEventsJSONL = &rawEvents
+	p, stats := equivalenceReplay(t, inputs, masters, key, capture.path, func(p *Processor) {
+		p.Dev.encounterOut = &diagnostics
+		p.Dev.combatEventsJSONL = &rawEvents
 		p.recordEncounterTransitions()
-	}, func(index int, p *processor) {
-		if frame := p.currentFrameTime; frame.After(lastFrame) {
-			if active := p.damageStatistics.encounters.current; active != nil && active.state == EncounterActive && !lastFrame.IsZero() {
+	}, func(index int, p *Processor) {
+		if frame := p.CurrentFrameTime; frame.After(lastFrame) {
+			if active := p.DamageStatistics.Encounters.Current; active != nil && active.State == EncounterActive && !lastFrame.IsZero() {
 				maxGap = max(maxGap, frame.Sub(lastFrame))
 			}
 			lastFrame = frame
 		}
 		if publishEvery > 0 && index%publishEvery == 0 {
 			// Every published view must account for each tracked effect exactly once (see ViewEffectCounts).
-			view := p.viewSnapshot()
-			if err := view.Effects.Counts.accountingError(len(view.Effects.Active)); err != nil {
+			view := p.ViewSnapshot()
+			if err := view.Effects.Counts.AccountingError(len(view.Effects.Active)); err != nil {
 				t.Fatalf("effect view counts at packet %d: %v", index, err)
 			}
 		}
 	})
-	p.finishCapture()
+	p.FinishCapture()
 	var signals []encounterReplaySignal
 	var unassigned, vehicleRecords []combatEventRecordLine
 	vehicleKeys := map[CombatEventKey]bool{}
 	keys := map[CombatEventKey]bool{}
 	for _, line := range bytes.Split(diagnostics.Bytes(), []byte{10}) {
 		var row combatEventRecordLine
-		if json.Unmarshal(line, &row) == nil && row.Type == "COMBAT_EVENT_RECORD" && row.Kind == CombatEventDamage && row.Flow == CombatFlowLocalOutgoing && row.VehicleKind == vehicleKindMotorcycle {
+		if json.Unmarshal(line, &row) == nil && row.Type == "COMBAT_EVENT_RECORD" && row.Kind == CombatEventDamage && row.Flow == CombatFlowLocalOutgoing && row.VehicleKind == VehicleKindMotorcycle {
 			vehicleRecords = append(vehicleRecords, row)
 			vehicleKeys[row.Key] = true
 		}
-		if json.Unmarshal(line, &row) == nil && row.Type == "COMBAT_EVENT_RECORD" && row.Kind == CombatEventDamage && row.Flow == CombatFlowLocalOutgoing && row.SourceRole == nil && row.VehicleKind != vehicleKindMotorcycle {
+		if json.Unmarshal(line, &row) == nil && row.Type == "COMBAT_EVENT_RECORD" && row.Kind == CombatEventDamage && row.Flow == CombatFlowLocalOutgoing && row.SourceRole == nil && row.VehicleKind != VehicleKindMotorcycle {
 			unassigned = append(unassigned, row)
 			keys[row.Key] = true
 		}
@@ -356,15 +356,15 @@ func encounterReplayOnce(t *testing.T, inputs equivalenceInputs, masters *gameMa
 			vehicleRecords[i].Assignment = "1-" + rest
 		}
 	}
-	statistics := normalizer.damage(p.damageStatisticsSnapshot())
+	statistics := normalizer.damage(p.DamageStatisticsSnapshot())
 	normalizeEncounterIDs(&statistics, normalizer.base)
-	timelines := p.damageStatistics.encounterTimelines()
+	timelines := p.DamageStatistics.EncounterTimelines()
 	for i := range timelines {
 		if _, rest, found := strings.Cut(timelines[i].EncounterID, "-"); found {
 			timelines[i].EncounterID = "1-" + rest
 		}
 	}
-	finalView := p.viewSnapshot()
+	finalView := p.ViewSnapshot()
 	view, err := json.Marshal(finalView)
 	if err != nil {
 		t.Fatal(err)
@@ -373,7 +373,7 @@ func encounterReplayOnce(t *testing.T, inputs equivalenceInputs, masters *gameMa
 	if err != nil {
 		t.Fatal(err)
 	}
-	return encounterReplayResult{SkillCoverage: collectSkillCoverage(statistics, masters), ViewSnapshotBytes: len(view), ViewSnapshotSkillBytes: len(view) - len(withoutSkills), Name: capture.name, Timelines: timelines, MaxFrameGapInEncounterSeconds: maxGap.Seconds(), UDPPackets: stats.udpPackets, Statistics: statistics, Signals: signals, Unassigned: unassigned, Evidence: evidence, VehicleRecords: vehicleRecords, VehicleEvidence: vehicleEvidence, RawFactsSHA256: hex.EncodeToString(factsHash.Sum(nil)), RawFactsCount: factsCount, Pairing: p.rpcPairingSnapshot()}
+	return encounterReplayResult{SkillCoverage: collectSkillCoverage(statistics, masters), ViewSnapshotBytes: len(view), ViewSnapshotSkillBytes: len(view) - len(withoutSkills), Name: capture.name, Timelines: timelines, MaxFrameGapInEncounterSeconds: maxGap.Seconds(), UDPPackets: stats.UDPPackets, Statistics: statistics, Signals: signals, Unassigned: unassigned, Evidence: evidence, VehicleRecords: vehicleRecords, VehicleEvidence: vehicleEvidence, RawFactsSHA256: hex.EncodeToString(factsHash.Sum(nil)), RawFactsCount: factsCount, Pairing: p.RPCPairingSnapshot()}
 }
 
 // normalizeEncounterIDs removes the process-local capture session sequence from encounter identities.
@@ -405,7 +405,7 @@ func assertConfirmedEndsAtSignals(t *testing.T, result encounterReplayResult) {
 			continue
 		}
 		end := encounter.EndedAt.Format(encounterReplayTimeLayout)
-		if encounter.EndBasis != encounterEndBattleState || !exits[end] || !encounter.StartConfirmed {
+		if encounter.EndBasis != EncounterEndBattleState || !exits[end] || !encounter.StartConfirmed {
 			t.Errorf("confirmed encounter %s does not end at an accepted exit signal: end=%s basis=%s", encounter.EncounterID, end, encounter.EndBasis)
 		}
 	}

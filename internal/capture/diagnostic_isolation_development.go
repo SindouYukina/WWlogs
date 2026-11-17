@@ -17,7 +17,7 @@ import (
 
 // writeDiagnosticRow encodes one row to a diagnostic sink. Callers check the sink first: passing a row converts it to an
 // interface value, which allocates, and must not happen on the core path of a run without diagnostic outputs.
-func (p *processor) writeDiagnosticRow(sink io.Writer, name string, row any) {
+func (p *Processor) writeDiagnosticRow(sink io.Writer, name string, row any) {
 	if sink == nil {
 		return
 	}
@@ -44,22 +44,22 @@ func writeResearchRecord(sink io.Writer, record any, failures *int) bool {
 // researchOutputErrorLines reports, for every research output the run wrote, the records that could not be decoded,
 // encoded or written ("<output> errors=<n>"), so a failing research output is visible at the end of the run. The frame
 // archive, schema decode and part reference outputs report theirs in their own summary lines.
-func (p *processor) researchOutputErrorLines() []string {
+func (p *Processor) researchOutputErrorLines() []string {
 	var lines []string
 	for _, output := range []struct {
 		name   string
 		sink   io.Writer
 		errors int
 	}{
-		{"role_config", p.dev.roleConfigOut, p.dev.roleConfigErrors},
-		{"shield_reference", p.dev.shieldRefOut, p.dev.shieldRefErrors},
-		{"bullet_reference", p.dev.bulletRefOut, p.dev.bulletRefErrors},
-		{"skill_reference", p.dev.skillRefOut, p.dev.skillRefErrors},
-		{"client_push", p.dev.clientPushOut, p.dev.clientPushErrors},
-		{"summon_owner", p.dev.summonOwnerOut, p.dev.summonOwnerErrors},
-		{"damage_push", p.dev.damagePushOut, p.dev.damagePushErrors},
-		{"hp_state", p.dev.hpStateOut, p.dev.hpStateErrors},
-		{"combat_state", p.dev.combatStateOut, p.dev.combatStateErrors},
+		{"role_config", p.Dev.roleConfigOut, p.Dev.roleConfigErrors},
+		{"shield_reference", p.Dev.shieldRefOut, p.Dev.shieldRefErrors},
+		{"bullet_reference", p.Dev.bulletRefOut, p.Dev.bulletRefErrors},
+		{"skill_reference", p.Dev.skillRefOut, p.Dev.skillRefErrors},
+		{"client_push", p.Dev.clientPushOut, p.Dev.clientPushErrors},
+		{"summon_owner", p.Dev.summonOwnerOut, p.Dev.summonOwnerErrors},
+		{"damage_push", p.Dev.damagePushOut, p.Dev.damagePushErrors},
+		{"hp_state", p.Dev.hpStateOut, p.Dev.hpStateErrors},
+		{"combat_state", p.Dev.combatStateOut, p.Dev.combatStateErrors},
 	} {
 		if output.sink != nil {
 			lines = append(lines, fmt.Sprintf("%s errors=%d", output.name, output.errors))
@@ -70,37 +70,37 @@ func (p *processor) researchOutputErrorLines() []string {
 
 // noteDiagnosticFailure counts one failed diagnostic write. The first failure of each sink is also written to the
 // diagnostic stream, so a failing sink is visible without flooding the console.
-func (p *processor) noteDiagnosticFailure(name string, err error) {
-	if p.dev.diagnosticFailures == nil {
-		p.dev.diagnosticFailures = make(map[string]int)
+func (p *Processor) noteDiagnosticFailure(name string, err error) {
+	if p.Dev.diagnosticFailures == nil {
+		p.Dev.diagnosticFailures = make(map[string]int)
 	}
-	p.dev.diagnosticFailures[name]++
-	if p.dev.diagnosticFailures[name] == 1 && p.diagnostic != nil {
-		fmt.Fprintf(p.diagnostic, "diagnostic_output_error sink=%s error=%v\n", name, err)
+	p.Dev.diagnosticFailures[name]++
+	if p.Dev.diagnosticFailures[name] == 1 && p.Diagnostic != nil {
+		fmt.Fprintf(p.Diagnostic, "diagnostic_output_error sink=%s error=%v\n", name, err)
 	}
 }
 
 // diagnosticFailureLine summarizes the failed diagnostic writes of the capture by sink, or returns "" when there were none.
-func (p *processor) diagnosticFailureLine() string {
-	if len(p.dev.diagnosticFailures) == 0 {
+func (p *Processor) diagnosticFailureLine() string {
+	if len(p.Dev.diagnosticFailures) == 0 {
 		return ""
 	}
-	names := make([]string, 0, len(p.dev.diagnosticFailures))
-	for name := range p.dev.diagnosticFailures {
+	names := make([]string, 0, len(p.Dev.diagnosticFailures))
+	for name := range p.Dev.diagnosticFailures {
 		names = append(names, name)
 	}
 	sort.Strings(names)
 	parts := make([]string, 0, len(names))
 	for _, name := range names {
-		parts = append(parts, fmt.Sprintf("%s=%d", name, p.dev.diagnosticFailures[name]))
+		parts = append(parts, fmt.Sprintf("%s=%d", name, p.Dev.diagnosticFailures[name]))
 	}
 	return "diagnostic_output_errors " + strings.Join(parts, " ")
 }
 
-// writeBuffLifecycleRow writes one decoded Buff lifecycle row to the Buff event output (-buff-event-out) before the core
+// WriteBuffLifecycleRow writes one decoded Buff lifecycle row to the Buff event output (-buff-event-out) before the core
 // observes it. The row becomes an interface value only when the sink exists, so a run without the output pays nothing.
-func (p *processor) writeBuffLifecycleRow(row *buffLifecycleAuditRow) {
-	if p.dev.buffLifecycle != nil {
-		p.writeDiagnosticRow(p.dev.buffLifecycle, "buff-events", withMessagePath(*row))
+func (p *Processor) WriteBuffLifecycleRow(row *BuffLifecycleAuditRow) {
+	if p.Dev.buffLifecycle != nil {
+		p.writeDiagnosticRow(p.Dev.buffLifecycle, "buff-events", withMessagePath(*row))
 	}
 }

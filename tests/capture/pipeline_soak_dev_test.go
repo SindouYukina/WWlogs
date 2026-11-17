@@ -45,11 +45,11 @@ func TestCaptureSoakCollector(t *testing.T) {
 		duration = parsed
 	}
 	captures := loadRawCaptures(t, os.Getenv("WWLOGS_PERF_PCAPS"))
-	key, err := loadEmbeddedPrivateKey()
+	key, err := LoadEmbeddedPrivateKey()
 	if err != nil {
 		t.Fatalf("embedded key payload is required: %v", err)
 	}
-	masters, err := loadGameMasterDatabase(os.Getenv("WWLOGS_PERF_MASTER_DB"), "zh-TW")
+	masters, err := LoadGameMasterDatabase(os.Getenv("WWLOGS_PERF_MASTER_DB"), "zh-TW")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,14 +64,14 @@ func TestCaptureSoakCollector(t *testing.T) {
 	peakQueue := 0
 	for time.Since(started) < duration {
 		restarts++
-		p := newProcessor(key, io.Discard, io.Discard, nil)
-		p.masters = masters
+		p := NewProcessor(key, io.Discard, io.Discard, nil)
+		p.Masters = masters
 		pipeline := newDiagnosticPipeline(true)
 		slow := &slowWriter{delay: 200 * time.Microsecond}
-		p.dev.combatEventsJSONL = pipeline.wrap("combat-events", slow, nil, 1<<20)
-		p.dev.frameArchive = pipeline.wrap("frame-archive", io.Discard, nil, diagnosticSinkCapacityBytes)
-		p.captureLayer.diagnosticDropCount = pipeline.droppedRecords
-		streams, stats := make(map[string]*stream), captureStats{}
+		p.Dev.combatEventsJSONL = pipeline.wrap("combat-events", slow, nil, 1<<20)
+		p.Dev.frameArchive = pipeline.wrap("frame-archive", io.Discard, nil, diagnosticSinkCapacityBytes)
+		p.CaptureLayer.DiagnosticDropCount = pipeline.droppedRecords
+		streams, stats := make(map[string]*Stream), CaptureStats{}
 		var offset time.Duration
 		for i := 0; i < capturesPerSession && time.Since(started) < duration; i++ {
 			capture := captures[iteration%len(captures)]
@@ -89,7 +89,7 @@ func TestCaptureSoakCollector(t *testing.T) {
 				var memory runtime.MemStats
 				runtime.ReadMemStats(&memory)
 				health := summarizeKCPTransport(streams)
-				snapshot := p.damageStatisticsSnapshot()
+				snapshot := p.DamageStatisticsSnapshot()
 				sinks := pipeline.stats()
 				queue := 0
 				for _, sink := range sinks {
@@ -105,17 +105,17 @@ func TestCaptureSoakCollector(t *testing.T) {
 					HeapInuseMB: float64(memory.HeapInuse) / (1 << 20), Goroutines: runtime.NumGoroutine(), Streams: health.Streams,
 					PendingSegments: health.PendingSegments, Captures: capturesReplayed, Restarts: restarts, Packets: packets,
 					DiagnosticDropped: dropped + pipeline.droppedRecords(), PeakQueueBytes: queue,
-					TransportState: string(p.transportHealthSnapshot().State), Encounters: len(snapshot.Encounters.Completed),
-					ActiveEffects: len(p.effects.Snapshot().Effects),
+					TransportState: string(p.TransportHealthSnapshot().State), Encounters: len(snapshot.Encounters.Completed),
+					ActiveEffects: len(p.Effects.Snapshot().Effects),
 				})
 				nextSample = nextSample.Add(time.Minute)
 			}
-			if len(streams) > maxKCPStreams {
+			if len(streams) > MaxKCPStreams {
 				t.Fatalf("stream table grew past its bound: %d", len(streams))
 			}
 		}
-		finishTransport(streams, p, &stats)
-		p.finishCapture()
+		FinishTransport(streams, p, &stats)
+		p.FinishCapture()
 		pipeline.finishCapture()
 		for _, sink := range pipeline.close(diagnosticFlushTimeout) {
 			if sink.FlushTimedOut {

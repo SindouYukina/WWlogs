@@ -12,12 +12,12 @@ import (
 func TestEmptyBodyIsCountedSeparatelyFromDecryptFailure(t *testing.T) {
 	census := newCommandCensus(nil)
 	entry := census.entry(1651, "in")
-	p := &processor{session: make([]byte, 32), census: census}
+	p := &Processor{Session: make([]byte, 32), Census: census}
 	census.processor = p
 
-	entry.InspectUndecoded(gameFrame{commandID: 1651, direction: "in", messageType: 2}, true)
+	entry.InspectUndecoded(GameFrame{CommandID: 1651, Direction: "in", MessageType: 2}, true)
 
-	if got := entry.FailureReasons[emptyBodyFailureReason]; got != 1 {
+	if got := entry.FailureReasons[EmptyBodyFailureReason]; got != 1 {
 		t.Fatalf("empty body count = %d, want 1", got)
 	}
 	if got := entry.FailureReasons["no implemented schema; decrypt failed"]; got != 0 {
@@ -30,21 +30,21 @@ func TestEmptyBodyIsCountedSeparatelyFromDecryptFailure(t *testing.T) {
 
 func TestEmptyBodyDoesNotInflateDecryptedFrames(t *testing.T) {
 	census := newCommandCensus(nil)
-	entry := census.entry(cmdCombatSendPackRequest, "out")
-	p := &processor{session: make([]byte, 32), census: census}
+	entry := census.entry(CmdCombatSendPackRequest, "out")
+	p := &Processor{Session: make([]byte, 32), Census: census}
 	census.processor = p
-	p.protocol.beginSession()
-	p.protocol.observeVersion(CurrentGameVersion())
+	p.Protocol.BeginSession()
+	p.Protocol.ObserveVersion(CurrentGameVersion())
 
-	p.handleFrame(gameFrame{commandID: cmdCombatSendPackRequest, direction: "out", messageType: 2, body: nil})
+	p.HandleFrame(GameFrame{CommandID: CmdCombatSendPackRequest, Direction: "out", MessageType: 2, Body: nil})
 
 	if entry.DecryptedFrames != 0 {
 		t.Fatalf("DecryptedFrames = %d, want 0", entry.DecryptedFrames)
 	}
-	if got := entry.FailureReasons[emptyBodyFailureReason]; got != 1 {
+	if got := entry.FailureReasons[EmptyBodyFailureReason]; got != 1 {
 		t.Fatalf("empty body count = %d, want 1", got)
 	}
-	if p.stats.decryptErrors != 0 {
-		t.Fatalf("decryptErrors = %d, want 0 for an empty body", p.stats.decryptErrors)
+	if p.Stats.DecryptErrors != 0 {
+		t.Fatalf("decryptErrors = %d, want 0 for an empty body", p.Stats.DecryptErrors)
 	}
 }

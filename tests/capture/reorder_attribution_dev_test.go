@@ -94,11 +94,11 @@ func TestCrossDirectionReorderAudit(t *testing.T) {
 	if master == "" || listPath == "" {
 		t.Fatal("WWLOGS_PERTURBATION_MASTER_DB and WWLOGS_PERTURBATION_PCAPS are required")
 	}
-	key, err := loadEmbeddedPrivateKey()
+	key, err := LoadEmbeddedPrivateKey()
 	if err != nil {
 		t.Fatalf("embedded key payload is required: %v", err)
 	}
-	masters, err := loadGameMasterDatabase(master, "zh-TW")
+	masters, err := LoadGameMasterDatabase(master, "zh-TW")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,24 +146,24 @@ func applySwaps(packets []perturbationPacket, swaps []int) ([]perturbationPacket
 
 // replayReorder replays packets with the record and frame diagnostics enabled. Frames are attributed to the original
 // datagram index whose delivery produced them.
-func replayReorder(t *testing.T, masters *gameMaster, key *staticRSA, packets []perturbationPacket, origin []int) reorderRun {
+func replayReorder(t *testing.T, masters *GameMaster, key *StaticRSA, packets []perturbationPacket, origin []int) reorderRun {
 	t.Helper()
 	var records, frames bytes.Buffer
-	p := newProcessor(key, io.Discard, io.Discard, nil)
-	p.masters = masters
-	p.dev.encounterOut = &records
-	p.dev.frameArchive = &frames
-	streams := make(map[string]*stream)
-	stats := captureStats{}
+	p := NewProcessor(key, io.Discard, io.Discard, nil)
+	p.Masters = masters
+	p.Dev.encounterOut = &records
+	p.Dev.frameArchive = &frames
+	streams := make(map[string]*Stream)
+	stats := CaptureStats{}
 	run := reorderRun{records: make(map[string]reorderRecord), frames: make([][]reorderFrame, len(packets))}
 	for i, packet := range packets {
-		stats.udpPackets++
+		stats.UDPPackets++
 		before := frames.Len()
-		consumeDatagram(packet.payload, packet.direction, packet.at, streams, p, &stats)
+		ConsumeDatagram(packet.payload, packet.direction, packet.at, streams, p, &stats)
 		run.frames[origin[i]] = parseReorderFrames(t, frames.Bytes()[before:])
 	}
-	finishTransport(streams, p, &stats)
-	p.finishCapture()
+	FinishTransport(streams, p, &stats)
+	p.FinishCapture()
 	scanner := bufio.NewScanner(&records)
 	scanner.Buffer(make([]byte, 1<<20), 1<<24)
 	for scanner.Scan() {
@@ -234,7 +234,7 @@ func reorderDiff(base, run reorderRun) []reorderChange {
 	return changes
 }
 
-func auditCrossDirection(t *testing.T, masters *gameMaster, key *staticRSA, name string, packets []perturbationPacket) reorderReport {
+func auditCrossDirection(t *testing.T, masters *GameMaster, key *StaticRSA, name string, packets []perturbationPacket) reorderReport {
 	t.Helper()
 	identity := make([]int, len(packets))
 	for i := range identity {

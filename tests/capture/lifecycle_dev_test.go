@@ -12,24 +12,24 @@ import (
 // layers together: raw holds only the observed request values, and the
 // lifecycle appears under the normalized source entity.
 func TestCombatEventJSONLExposesRawAndNormalizedLifecycle(t *testing.T) {
-	resolver := newEntityResolver()
+	resolver := NewEntityResolver()
 	mustAdd(t, resolver, 8001, 500)
 	mustRemove(t, resolver, 8001)
 	mustAdd(t, resolver, 8001, 900)
 
 	var jsonl bytes.Buffer
-	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
-	p.dev.combatEventsJSONL = &jsonl
-	event := combatEvent{
+	p := NewProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
+	p.Dev.combatEventsJSONL = &jsonl
+	event := CombatEvent{
 		SessionNumber: 1, RPCID: 5, DamageID: 1001, HasDamageID: true,
 		SourceEntityID: 8001, HasSourceEntity: true, TargetEntityID: 8002, HasTargetEntity: true,
 		Damage: 438, ServerResultRaw: -438, HasServerResult: true, ChangeLifeRaw: -438, HasChangeLife: true,
-		CharacterStatus: resolutionUnknown, CharacterNameStatus: resolutionUnknown,
-		SkillStatus: resolutionUnknown, SkillNameStatus: resolutionUnknown, EventTypeStatus: resolutionUnknown,
-		Source: resolveEntityIdentity(resolver, nil, 8001),
-		Target: resolveEntityIdentity(resolver, nil, 8002),
+		CharacterStatus: ResolutionUnknown, CharacterNameStatus: ResolutionUnknown,
+		SkillStatus: ResolutionUnknown, SkillNameStatus: ResolutionUnknown, EventTypeStatus: ResolutionUnknown,
+		Source: ResolveEntityIdentity(resolver, nil, 8001),
+		Target: ResolveEntityIdentity(resolver, nil, 8002),
 	}
-	p.writeDamageEvent(event)
+	p.WriteDamageEvent(event)
 
 	var got struct {
 		SchemaVersion int `json:"schemaVersion"`
@@ -57,11 +57,11 @@ func TestCombatEventJSONLExposesRawAndNormalizedLifecycle(t *testing.T) {
 		t.Fatalf("raw block does not hold the observed request values: %+v", got.Raw)
 	}
 	source := got.Source.Lifecycle
-	if source.State != lifecyclePresent || source.Status != resolutionVerified || source.AddCount != 2 || source.RemoveCount != 1 || source.ReusedAfterRemove != 1 || source.Evidence != "EntityAddNotify.EntityPb.Id" {
+	if source.State != LifecyclePresent || source.Status != ResolutionVerified || source.AddCount != 2 || source.RemoveCount != 1 || source.ReusedAfterRemove != 1 || source.Evidence != "EntityAddNotify.EntityPb.Id" {
 		t.Fatalf("source lifecycle = %+v", source)
 	}
 	target := got.Target.Lifecycle
-	if target.State != lifecycleUnknown || target.Status != resolutionUnknown {
+	if target.State != LifecycleUnknown || target.Status != ResolutionUnknown {
 		t.Fatalf("unobserved target lifecycle should be UNKNOWN, got %+v", target)
 	}
 }

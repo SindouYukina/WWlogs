@@ -55,21 +55,21 @@ func TestBulletSourceCandidatesFollowThePerMessageRule(t *testing.T) {
 
 func TestBulletReferenceKeepsThePrimaryRawSourceWhenResolverCannotResolveIt(t *testing.T) {
 	var out bytes.Buffer
-	masters := &gameMaster{
-		commonBullets:  map[uint64]string{},
-		preloadBullets: map[uint64]struct{}{111: {}},
-		roleSkinMesh:   map[uint64]uint64{9001: 10},
-		modelActor:     map[uint64]string{10: "actorA"},
-		actorBullets:   map[string]map[uint64]struct{}{"actorA": {111: {}}},
-		assetPath:      map[string]string{"actorA": "/Game/A.A_C"},
+	masters := &GameMaster{
+		CommonBullets:  map[uint64]string{},
+		PreloadBullets: map[uint64]struct{}{111: {}},
+		RoleSkinMesh:   map[uint64]uint64{9001: 10},
+		ModelActor:     map[uint64]string{10: "actorA"},
+		ActorBullets:   map[string]map[uint64]struct{}{"actorA": {111: {}}},
+		AssetPath:      map[string]string{"actorA": "/Game/A.A_C"},
 	}
-	entities := newEntityResolver()
-	entities.entities[11] = runtimeEntity{entityID: 11, roleSkinID: 9001, hasRoleSkinID: true}
-	processor := &processor{
-		masters:       masters,
-		entities:      entities,
-		sessionNumber: 1,
-		dev: processorDiagnostics{
+	entities := NewEntityResolver()
+	entities.Entities[11] = RuntimeEntity{EntityID: 11, RoleSkinID: 9001, HasRoleSkinID: true}
+	processor := &Processor{
+		Masters:       masters,
+		Entities:      entities,
+		SessionNumber: 1,
+		Dev: processorDiagnostics{
 			bulletRefOut: &out,
 			frameOrdinal: 2,
 		},
@@ -79,7 +79,7 @@ func TestBulletReferenceKeepsThePrimaryRawSourceWhenResolverCannotResolveIt(t *t
 		scalarField("OwnerEntityId", 22),
 	}}
 	common := &decodedMessage{Type: "CombatCommon", Fields: []decodedField{scalarField("EntityId", 11)}}
-	processor.writeBulletReference(gameFrame{}, message, nil, "Data.Push.CreateBulletPush.BulletId", 111, common, "out")
+	processor.writeBulletReference(GameFrame{}, message, nil, "Data.Push.CreateBulletPush.BulletId", 111, common, "out")
 	var record bulletRefRecord
 	if err := json.Unmarshal(bytes.TrimSpace(out.Bytes()), &record); err != nil {
 		t.Fatalf("one JSON record expected: %v (%q)", err, out.String())
@@ -87,16 +87,16 @@ func TestBulletReferenceKeepsThePrimaryRawSourceWhenResolverCannotResolveIt(t *t
 	if record.SourceEntityID == nil || *record.SourceEntityID != 22 || record.SourceBasis != "CreateBulletPush.OwnerEntityId" {
 		t.Fatalf("the primary raw owner must be preserved even when the runtime resolver does not know it: %+v", record)
 	}
-	if record.Status != resolutionUnknown {
+	if record.Status != ResolutionUnknown {
 		t.Fatalf("a later sender candidate must not replace the unresolved primary owner: %+v", record)
 	}
 }
 
 func TestWalkBulletReferencesFindsNestedBulletIdsWithoutAMaster(t *testing.T) {
 	var out bytes.Buffer
-	p := &processor{
-		entities: newEntityResolver(),
-		dev: processorDiagnostics{
+	p := &Processor{
+		Entities: NewEntityResolver(),
+		Dev: processorDiagnostics{
 			bulletRefOut: &out,
 			frameOrdinal: 1,
 		},
@@ -106,7 +106,7 @@ func TestWalkBulletReferencesFindsNestedBulletIdsWithoutAMaster(t *testing.T) {
 		messageField("DamageContext", &decodedMessage{Type: "DamageContext", Fields: []decodedField{scalarField("BulletId", 210002005), scalarField("SkillId", 230006)}}),
 	}}
 	data := &decodedMessage{Type: "CombatSendData", Fields: []decodedField{messageField("Request", &decodedMessage{Type: "CombatRequestData", Fields: []decodedField{messageField("DamageExecuteRequest", request)}})}}
-	p.observeBulletReferences(gameFrame{}, data, "out")
+	p.observeBulletReferences(GameFrame{}, data, "out")
 	var record bulletRefRecord
 	if err := json.Unmarshal(bytes.TrimSpace(out.Bytes()), &record); err != nil {
 		t.Fatalf("one JSON record expected: %v (%q)", err, out.String())
@@ -114,17 +114,17 @@ func TestWalkBulletReferencesFindsNestedBulletIdsWithoutAMaster(t *testing.T) {
 	if record.BulletID != 210002005 || record.FieldPath != "Request.DamageExecuteRequest.DamageContext.BulletId" || record.SkillID == nil || *record.SkillID != 230006 {
 		t.Fatalf("nested BulletId and its sibling SkillId must be captured: %+v", record)
 	}
-	if record.Status != resolutionUnknown || record.Evidence != "no master database loaded" {
+	if record.Status != ResolutionUnknown || record.Evidence != "no master database loaded" {
 		t.Fatalf("without a master the reference stays unknown with a stated reason: %+v", record)
 	}
 }
 
 func TestInterruptSkillBulletIdIsResolvedAsABulletHandle(t *testing.T) {
 	var out bytes.Buffer
-	p := &processor{
-		entities:      newEntityResolver(),
-		sessionNumber: 1,
-		dev: processorDiagnostics{
+	p := &Processor{
+		Entities:      NewEntityResolver(),
+		SessionNumber: 1,
+		Dev: processorDiagnostics{
 			bulletRefOut: &out,
 			frameOrdinal: 1,
 		},
@@ -144,7 +144,7 @@ func TestInterruptSkillBulletIdIsResolvedAsABulletHandle(t *testing.T) {
 			messageField("InterruptSkillInfo", interrupt(555, 1409003)),
 		}}),
 	}})}}
-	p.observeBulletReferences(gameFrame{}, data, "out")
+	p.observeBulletReferences(GameFrame{}, data, "out")
 	var interrupts []bulletRefRecord
 	for _, line := range bytes.Split(bytes.TrimSpace(out.Bytes()), []byte("\n")) {
 		var record bulletRefRecord
@@ -161,21 +161,21 @@ func TestInterruptSkillBulletIdIsResolvedAsABulletHandle(t *testing.T) {
 	if r := interrupts[0]; r.HandleID == nil || r.ResolvedBulletID == nil || *r.ResolvedBulletID != 1409003011 || r.Namespace != "ActiveBulletHandle.HandleId" {
 		t.Fatalf("a matching handle and SkillId must resolve to the created bullet: %+v", r)
 	}
-	if r := interrupts[1]; r.ResolvedBulletID != nil || r.Status != resolutionUnknown || !strings.Contains(r.Evidence, "SkillId differs") {
+	if r := interrupts[1]; r.ResolvedBulletID != nil || r.Status != ResolutionUnknown || !strings.Contains(r.Evidence, "SkillId differs") {
 		t.Fatalf("a SkillId mismatch must reject the handle match: %+v", r)
 	}
-	if r := interrupts[2]; r.ResolvedBulletID != nil || r.Status != resolutionUnknown || !strings.Contains(r.Evidence, "not the HandleId") {
+	if r := interrupts[2]; r.ResolvedBulletID != nil || r.Status != ResolutionUnknown || !strings.Contains(r.Evidence, "not the HandleId") {
 		t.Fatalf("an unknown handle must stay unresolved and say it is not a row key: %+v", r)
 	}
-	p2 := &processor{
-		entities:      newEntityResolver(),
-		sessionNumber: 2,
-		dev: processorDiagnostics{
+	p2 := &Processor{
+		Entities:      NewEntityResolver(),
+		SessionNumber: 2,
+		Dev: processorDiagnostics{
 			bulletRefOut: &out,
 			frameOrdinal: 1,
 		},
 	}
-	if _, ok := p2.dev.bulletHandles[bulletHandleKey{2, 11272193}]; ok {
+	if _, ok := p2.Dev.bulletHandles[bulletHandleKey{2, 11272193}]; ok {
 		t.Fatal("handles must be scoped to the session")
 	}
 }

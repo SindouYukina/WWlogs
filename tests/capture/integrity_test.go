@@ -9,15 +9,15 @@ import (
 
 // Context validity and encounter integrity after transport loss.
 
-func newIntegrityProcessor() *processor {
-	return newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
+func newIntegrityProcessor() *Processor {
+	return NewProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
 }
 
 func TestInboundLossMakesAttributionSuspectUntilLocalRoleReportAfterLossEnd(t *testing.T) {
 	p := newIntegrityProcessor()
 	addTestPlayerRoleGroupEntity(p, 1001, 77, 1102)
-	p.playerRelevance.observeRoleEntity(1001)
-	p.playerRelevance.reconcileLocalPlayers(p.entities)
+	p.PlayerRelevance.ObserveRoleEntity(1001)
+	p.PlayerRelevance.ReconcileLocalPlayers(p.Entities)
 	local := testEncounterRecord(CombatFlowLocalOutgoing, 100, 5)
 	if got := p.gateAttribution(local); got.Flow != CombatFlowLocalOutgoing {
 		t.Fatalf("valid context must not downgrade: %+v", got)
@@ -39,21 +39,21 @@ func TestInboundLossMakesAttributionSuspectUntilLocalRoleReportAfterLossEnd(t *t
 	}
 
 	// A role report while the inbound loss is still ongoing proves nothing about the lost data.
-	p.currentFrameTime = encounterAt(14)
-	p.observeLocalRoleEntity(1001)
-	if !p.context.attribution.suspect {
+	p.CurrentFrameTime = encounterAt(14)
+	p.ObserveLocalRoleEntity(1001)
+	if !p.Context.attribution.suspect {
 		t.Fatal("attribution revalidated while the inbound loss was ongoing")
 	}
 	p.endTransportLoss(id, "in", encounterAt(15), transportLossDetails{Recovered: true, EstimatedLostFrames: -1})
 	// An unknown entity is no evidence either.
-	p.currentFrameTime = encounterAt(16)
-	p.observeLocalRoleEntity(4242)
-	if !p.context.attribution.suspect {
+	p.CurrentFrameTime = encounterAt(16)
+	p.ObserveLocalRoleEntity(4242)
+	if !p.Context.attribution.suspect {
 		t.Fatal("attribution revalidated by an entity the registry does not map to the local player")
 	}
-	p.currentFrameTime = encounterAt(17)
-	p.observeLocalRoleEntity(1001)
-	snapshot := p.context.snapshot()
+	p.CurrentFrameTime = encounterAt(17)
+	p.ObserveLocalRoleEntity(1001)
+	snapshot := p.Context.Snapshot()
 	var attribution ContextComponentSnapshot
 	for _, component := range snapshot.Components {
 		if component.Component == contextAttribution {
@@ -75,10 +75,10 @@ func TestInboundLossMakesAttributionSuspectUntilLocalRoleReportAfterLossEnd(t *t
 func TestOutboundLossKeepsAttributionValid(t *testing.T) {
 	p := newIntegrityProcessor()
 	p.beginTransportLoss("out", encounterAt(10), encounterAt(12), kcpSkipGapTimeout, 1)
-	if p.context.attribution.suspect || p.context.entities.suspect || p.context.battleState.suspect {
+	if p.Context.attribution.suspect || p.Context.entities.suspect || p.Context.battleState.suspect {
 		t.Fatal("outbound loss must not invalidate inbound-derived context")
 	}
-	if !p.context.effects.suspect {
+	if !p.Context.effects.suspect {
 		t.Fatal("outbound loss can drop client effect reports, so effects are suspect")
 	}
 	if got := p.gateAttribution(testEncounterRecord(CombatFlowLocalOutgoing, 100, 13)); got.Flow != CombatFlowLocalOutgoing {
@@ -91,7 +91,7 @@ func TestSceneJoinRevalidatesContextAfterInboundLossEnded(t *testing.T) {
 	id := p.beginTransportLoss("in", encounterAt(10), encounterAt(12), kcpSkipGapTimeout, 1)
 	p.endTransportLoss(id, "in", encounterAt(13), transportLossDetails{Recovered: true, EstimatedLostFrames: -1})
 	p.observeContextSceneJoin(encounterAt(20))
-	if snapshot := p.context.snapshot(); snapshot.State != ContextValid {
+	if snapshot := p.Context.Snapshot(); snapshot.State != ContextValid {
 		t.Fatalf("a scene join after the loss rebuilds every component: %+v", snapshot)
 	}
 }
@@ -100,29 +100,29 @@ func TestBattleSignalRevalidatesBattleStateOnlyAfterLossEnd(t *testing.T) {
 	p := newIntegrityProcessor()
 	id := p.beginTransportLoss("in", encounterAt(10), encounterAt(12), kcpSkipGapTimeout, 1)
 	p.observeContextBattleSignal(encounterAt(11))
-	if !p.context.battleState.suspect {
+	if !p.Context.battleState.suspect {
 		t.Fatal("a signal during the loss must not revalidate")
 	}
 	p.endTransportLoss(id, "in", encounterAt(13), transportLossDetails{Recovered: true, EstimatedLostFrames: -1})
 	p.observeContextBattleSignal(encounterAt(13))
-	if !p.context.battleState.suspect {
+	if !p.Context.battleState.suspect {
 		t.Fatal("a signal at the loss end is not after it")
 	}
 	p.observeContextBattleSignal(encounterAt(14))
-	if p.context.battleState.suspect || p.damageStatistics.encounters.battleStateUnverified {
+	if p.Context.battleState.suspect || p.DamageStatistics.Encounters.battleStateUnverified {
 		t.Fatal("a signal after the loss must revalidate the battle state")
 	}
 }
 
 // confirmedEncounter runs a battle-state encounter from 10 s to 20 s with 100 damage at 12 s and 16 s.
 func confirmedEncounter(statistics *DamageStatistics, during func()) EncounterSnapshot {
-	statistics.observeBattleState(true, encounterAt(10), 1)
+	statistics.ObserveBattleState(true, encounterAt(10), 1)
 	outgoing(statistics, 100, 12)
 	if during != nil {
 		during()
 	}
 	outgoing(statistics, 100, 16)
-	statistics.observeBattleState(false, encounterAt(20), 1)
+	statistics.ObserveBattleState(false, encounterAt(20), 1)
 	statistics.observeCaptureTime(encounterAt(21.5))
 	snapshot := statistics.Snapshot()
 	return snapshot.Encounters.Completed[len(snapshot.Encounters.Completed)-1]
@@ -215,7 +215,7 @@ func TestEncounterOpenedByActivityWhileBattleStateUnverifiedIsUnreliable(t *test
 
 func TestUnrecoveredLossAtFinishIsUnreliable(t *testing.T) {
 	statistics := NewDamageStatistics()
-	statistics.observeBattleState(true, encounterAt(10), 1)
+	statistics.ObserveBattleState(true, encounterAt(10), 1)
 	outgoing(statistics, 100, 12)
 	statistics.beginTransportLoss(1, "out", encounterAt(13))
 	statistics.failTransportLoss(1)
@@ -236,9 +236,9 @@ func TestNextEncounterAfterRecoveredLossIsIntact(t *testing.T) {
 		statistics.beginTransportLoss(1, "out", encounterAt(13))
 		statistics.endTransportLoss(1, encounterAt(14))
 	})
-	statistics.observeBattleState(true, encounterAt(30), 1)
+	statistics.ObserveBattleState(true, encounterAt(30), 1)
 	outgoing(statistics, 100, 32)
-	statistics.observeBattleState(false, encounterAt(40), 1)
+	statistics.ObserveBattleState(false, encounterAt(40), 1)
 	statistics.observeCaptureTime(encounterAt(41.5))
 	snapshot := statistics.Snapshot()
 	if len(snapshot.Encounters.Completed) != 2 || snapshot.Encounters.Completed[0].Integrity.Status != IntegrityDegraded ||
@@ -287,7 +287,7 @@ func TestRollingDPSIsLowerBoundWhenLossInWindow(t *testing.T) {
 
 func TestOpenGapMakesLiveValuesLowerBound(t *testing.T) {
 	statistics := NewDamageStatistics()
-	statistics.observeBattleState(true, encounterAt(1), 1)
+	statistics.ObserveBattleState(true, encounterAt(1), 1)
 	outgoing(statistics, 100, 2)
 	statistics.setTransportGap("00000009/out", encounterAt(3))
 	session := statistics.Snapshot().CaptureSessionID
@@ -367,16 +367,16 @@ func TestEffectSnapshotDegradedAfterTransportLoss(t *testing.T) {
 
 func TestStatisticsLineShowsTrustFields(t *testing.T) {
 	p := newIntegrityProcessor()
-	line := p.currentStatisticsReport().String()
+	line := p.CurrentStatisticsReport().String()
 	if !strings.Contains(line, " transport=healthy context=valid encounter_integrity=none data_integrity=intact kernel_drops=unavailable") {
 		t.Fatalf("statistics line without loss = %q", line)
 	}
-	p.damageStatistics.observeBattleState(true, encounterAt(10), 1)
-	p.damageStatistics.addCombatEvent(testEncounterRecord(CombatFlowLocalOutgoing, 100, 12))
+	p.DamageStatistics.ObserveBattleState(true, encounterAt(10), 1)
+	p.DamageStatistics.addCombatEvent(testEncounterRecord(CombatFlowLocalOutgoing, 100, 12))
 	id := p.beginTransportLoss("in", encounterAt(13), encounterAt(15), kcpSkipGapTimeout, 1)
 	p.endTransportLoss(id, "in", encounterAt(16), transportLossDetails{Recovered: true, EstimatedLostFrames: -1})
-	p.kcpStreams = map[string]*stream{}
-	line = p.currentStatisticsReport().String()
+	p.kcpStreams = map[string]*Stream{}
+	line = p.CurrentStatisticsReport().String()
 	for _, want := range []string{"transport=recovered", "context=suspect", "encounter_integrity=unreliable", "data_integrity=degraded", "encounter_dps=unreliable"} {
 		if !strings.Contains(line, want) {
 			t.Fatalf("statistics line after inbound loss %q lacks %q", line, want)
