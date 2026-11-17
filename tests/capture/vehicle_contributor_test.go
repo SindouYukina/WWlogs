@@ -84,7 +84,6 @@ func TestResolveVehicleDamageContributorCandidateRequiresCorrelatedChain(t *test
 
 func TestResolveVehicleDamageContributorCandidateWithoutResolvedSkillRequest(t *testing.T) {
 	resolver, master, event := vehicleDamageContributorFixture()
-	event.SkillRequest = nil
 	candidate := resolveVehicleDamageContributorCandidate(resolver, master, event)
 	if candidate == nil {
 		t.Fatal("verified runtime and static vehicle chain did not resolve without an optional request link")
@@ -95,27 +94,31 @@ func TestResolveVehicleDamageContributorCandidateWithoutResolvedSkillRequest(t *
 }
 
 // The outbound skill request exists only with a research schema (-protocol-schema); it is not core evidence, so it
-// neither confirms nor vetoes the vehicle candidate (Phase 3A R03). Every request variant gives the result of no request.
-func TestVehicleContributorDoesNotDependOnTheResearchSkillRequest(t *testing.T) {
-	resolver, master, event := vehicleDamageContributorFixture()
-	event.SkillRequest = nil
-	want := resolveVehicleDamageContributorCandidate(resolver, master, event)
-	if want == nil {
-		t.Fatal("fixture chain did not resolve without a request")
+// neither confirms nor vetoes the vehicle candidate (Phase 3A R03). The core damage event the candidate is decided from
+// cannot carry it: no field of combatEvent, at any depth, holds the research request record. The Development event line
+// makes and writes the link itself (writeDamageEventOutputs).
+func TestCoreDamageEventCarriesNoResearchSkillRequest(t *testing.T) {
+	seen := map[reflect.Type]bool{}
+	var visit func(reflect.Type, string)
+	visit = func(value reflect.Type, path string) {
+		for value.Kind() == reflect.Pointer || value.Kind() == reflect.Slice || value.Kind() == reflect.Array || value.Kind() == reflect.Map {
+			value = value.Elem()
+		}
+		if strings.Contains(value.Name(), "combatActionRequest") {
+			t.Fatalf("%s holds the research skill request (%s)", path, value)
+		}
+		if value.Kind() != reflect.Struct || seen[value] {
+			return
+		}
+		seen[value] = true
+		for i := 0; i < value.NumField(); i++ {
+			visit(value.Field(i).Type, path+"."+value.Field(i).Name)
+		}
 	}
-	for name, mutate := range map[string]func(*combatActionRequest){
-		"matching request":           func(*combatActionRequest) {},
-		"request of another entity":  func(r *combatActionRequest) { r.EntityID = 99 },
-		"request of another message": func(r *combatActionRequest) { r.MessageID = 99 },
-		"request of another kind":    func(r *combatActionRequest) { r.RequestType = "SkillRequest" },
-	} {
-		t.Run(name, func(t *testing.T) {
-			r, m, e := vehicleDamageContributorFixture()
-			mutate(e.SkillRequest)
-			if got := resolveVehicleDamageContributorCandidate(r, m, e); !reflect.DeepEqual(got, want) {
-				t.Fatalf("candidate with a research request = %+v, want the candidate without one: %+v", got, want)
-			}
-		})
+	visit(reflect.TypeOf(combatEvent{}), "combatEvent")
+	resolver, master, event := vehicleDamageContributorFixture()
+	if resolveVehicleDamageContributorCandidate(resolver, master, event) == nil {
+		t.Fatal("fixture chain did not resolve without a request")
 	}
 }
 
@@ -147,7 +150,6 @@ func vehicleDamageContributorFixture() (*entityResolver, *gameMaster, combatEven
 		Source:  entityIdentity{Runtime: source, RuntimeStatus: resolutionVerified},
 		SkillID: 10001009, SkillMessageID: 50, HasBulletID: true, BulletID: 100010101,
 		CharacterStatus: resolutionUnknown, CharacterNameStatus: resolutionUnknown,
-		SkillRequest: &combatActionRequest{SessionNumber: 1, MessageID: 50, EntityID: 10, SkillID: 10001009, RequestType: "UseSkillRequest"},
 	}
 	return resolver, master, event
 }

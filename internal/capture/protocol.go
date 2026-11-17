@@ -606,7 +606,7 @@ func (p *processor) handleFrame(frame gameFrame) {
 	p.archiveHPStateFrame(frame, plain)
 	p.archiveCombatStateFrame(frame, plain)
 	p.archiveDamagePushFrame(frame, plain)
-	p.archiveClientPushFrame(frame, plain)
+	p.observeClientPushFrame(frame, plain)
 	p.archiveBulletRefReceiveFrame(frame, plain)
 	p.archiveSummonOwnerFrame(frame, plain)
 	parseErrorsBefore := p.stats.parseErrors

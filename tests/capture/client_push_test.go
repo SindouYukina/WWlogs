@@ -26,7 +26,7 @@ func localRoleReportBody(roleID uint64, entityIDs ...uint64) []byte {
 
 func TestLocalRoleWireReportDoesNotRequireOptionalProtocolSchema(t *testing.T) {
 	p := newProcessor(nil, &strings.Builder{}, &strings.Builder{}, nil)
-	p.archiveClientPushFrame(gameFrame{commandID: cmdCombatSendPackRequest, direction: "out"}, localRoleReportBody(1409, 51522))
+	p.observeClientPushFrame(gameFrame{commandID: cmdCombatSendPackRequest, direction: "out"}, localRoleReportBody(1409, 51522))
 	if p.protocolSchema != nil {
 		t.Fatal("test requires normal mode without an optional protocol schema")
 	}
@@ -53,7 +53,7 @@ func TestProtocolSchemaKeepsTheCoreRoleDecoder(t *testing.T) {
 			run := func(schema *protocolSchema) *processor {
 				p := newProcessor(nil, &strings.Builder{}, &strings.Builder{}, nil)
 				p.protocolSchema = schema
-				p.archiveClientPushFrame(gameFrame{commandID: cmdCombatSendPackRequest, direction: "out"}, localRoleReportBody(1409, test.entityIDs...))
+				p.observeClientPushFrame(gameFrame{commandID: cmdCombatSendPackRequest, direction: "out"}, localRoleReportBody(1409, test.entityIDs...))
 				return p
 			}
 			plain, research := run(nil), run(&protocolSchema{})

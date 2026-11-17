@@ -390,11 +390,14 @@ func TestFailedConsoleAndAuditWritesKeepTheDamageCounters(t *testing.T) {
 	}
 }
 
-// Outbound skill requests are a research record (Development, -protocol-schema). Linking a damage result to one counts
-// the link on the record and changes nothing in the core result.
+// Outbound skill requests are a research record (Development, -protocol-schema). The link of a damage result to one is
+// made by the Development event line only: it counts the link on the record and appears in the line, and the core event
+// and result are the same with and without the record.
 func TestSkillRequestLinkIsOnlyAResearchRecord(t *testing.T) {
-	run := func(withRequest bool) (*processor, combatEvent) {
+	run := func(withRequest bool) (*processor, combatEvent, string) {
 		p := newPairingTestProcessor()
+		var events strings.Builder
+		p.combatEventsJSONL = &events
 		if withRequest {
 			key := combatActionRequestKey{sessionNumber: p.sessionNumber, messageID: 9001}
 			p.combatActionRequests[key] = combatActionRequest{SessionNumber: p.sessionNumber, MessageID: 9001, EntityID: 100, SkillID: 1409001, RequestType: "UseSkillRequest"}
@@ -403,17 +406,16 @@ func TestSkillRequestLinkIsOnlyAResearchRecord(t *testing.T) {
 			damageID: notifyTestDamage, hasDamageID: true, skillID: 1409001, skillMessageID: 9001}
 		event := p.buildDamageEvent(7, request, 250, 250, true, 250)
 		p.writeDamageEvent(event)
-		return p, event
+		return p, event, events.String()
 	}
-	plain, plainEvent := run(false)
-	linked, linkedEvent := run(true)
-	if plainEvent.SkillRequest != nil || linkedEvent.SkillRequest == nil || linkedEvent.SkillRequest.LinkedDamageEvents != 1 {
-		t.Fatalf("skill request links: without record %+v, with record %+v", plainEvent.SkillRequest, linkedEvent.SkillRequest)
+	plain, plainEvent, plainLine := run(false)
+	linked, linkedEvent, linkedLine := run(true)
+	if strings.Contains(plainLine, `"request":`) || !strings.Contains(linkedLine, `"request":{`) || !strings.Contains(linkedLine, `"linkedDamageEvents":1`) {
+		t.Fatalf("event lines: without record %s\nwith record %s", plainLine, linkedLine)
 	}
 	if got := linked.combatActionRequests[combatActionRequestKey{sessionNumber: linked.sessionNumber, messageID: 9001}].LinkedDamageEvents; got != 1 {
 		t.Fatalf("linked damage events on the record = %d, want 1", got)
 	}
-	plainEvent.SkillRequest, linkedEvent.SkillRequest = nil, nil
 	if got, want := withoutAllocationIDs(canonicalValue(linkedEvent)), withoutAllocationIDs(canonicalValue(plainEvent)); got != want {
 		t.Fatalf("damage event changed by the research link:\nlinked %s\nplain  %s", got, want)
 	}

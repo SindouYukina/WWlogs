@@ -78,15 +78,6 @@ func (event combatEvent) jsonlView(masters *gameMaster) combatEventJSONL {
 	view.Skill.DevLabel = resolveSkillLabelText(masters, event.SkillID)
 	view.CombatResult.Element = resolveDamageElement(masters, event.DamageID, event.HasDamageID)
 	view.Actors = projectActors(event)
-	if event.SkillRequest != nil {
-		request := event.SkillRequest
-		view.Skill.Request = &combatActionRequestJSONL{
-			SessionNumber: request.SessionNumber, MessageID: request.MessageID, EntityID: request.EntityID, SkillID: request.SkillID,
-			TargetID: request.TargetID, RequestType: request.RequestType, Timestamp: request.Timestamp, LinkedDamageEvents: request.LinkedDamageEvents,
-			LinkStatus: resolutionVerified,
-			Evidence:   "outbound CombatSendPackRequest CombatCommon.MessageId exactly equals DamageContext.SkillMessageId; damage request is separately paired with server response by RPC ID",
-		}
-	}
 	if event.HasBulletID && event.BulletID > 0 {
 		source := newBulletSource(event.Source, event.SkillID, event.SourceVisionSummonCfgs)
 		if resolution := resolveBullet(masters, uint64(event.BulletID), source); resolution != nil {
@@ -214,11 +205,26 @@ func (p *processor) writeStructuredEventJSONL(event any) {
 	p.writeEnvelopedEventJSONL(event, "")
 }
 
-// writeDamageEventJSONL writes the development line of one damage result. A server-executed DamageExecuteNotify is a
-// DAMAGE_NOTIFY_RESULT in the auxiliary "p" id namespace, so response event ids stay as they were before notified results
-// were counted.
-func (p *processor) writeDamageEventJSONL(event combatEvent) {
+// skillRequestJSONL is the research link of a damage result to the outbound skill request with its SkillMessageId
+// (linkSkillRequest), or nil without one. Only the research schema (-protocol-schema) records outbound requests.
+func skillRequestJSONL(request *combatActionRequest) *combatActionRequestJSONL {
+	if request == nil {
+		return nil
+	}
+	return &combatActionRequestJSONL{
+		SessionNumber: request.SessionNumber, MessageID: request.MessageID, EntityID: request.EntityID, SkillID: request.SkillID,
+		TargetID: request.TargetID, RequestType: request.RequestType, Timestamp: request.Timestamp, LinkedDamageEvents: request.LinkedDamageEvents,
+		LinkStatus: resolutionVerified,
+		Evidence:   "outbound CombatSendPackRequest CombatCommon.MessageId exactly equals DamageContext.SkillMessageId; damage request is separately paired with server response by RPC ID",
+	}
+}
+
+// writeDamageEventJSONL writes the development line of one damage result, with its research skill-request link. A
+// server-executed DamageExecuteNotify is a DAMAGE_NOTIFY_RESULT in the auxiliary "p" id namespace, so response event ids
+// stay as they were before notified results were counted.
+func (p *processor) writeDamageEventJSONL(event combatEvent, skillRequest *combatActionRequest) {
 	view := event.jsonlView(p.masters)
+	view.Skill.Request = skillRequestJSONL(skillRequest)
 	if event.Notify == nil {
 		p.writeStructuredEventJSONL(view)
 		return
@@ -243,14 +249,15 @@ func (p *processor) writeDamageEventJSONL(event combatEvent) {
 }
 
 // writeDamageEventOutputs writes the development forms of one damage result after writeDamageEvent has recorded it in
-// the core: the overlap record, the event line, the console line, the event audit row and the research lines. A failed
-// console or audit write is counted (diagnostic_isolation.go); it no longer returns before the core counters, and a
-// console line that failed is not flushed, so it is counted once.
+// the core: the research link to its outbound skill request, the overlap record, the event line, the console line, the
+// event audit row and the research lines. A failed console or audit write is counted (diagnostic_isolation.go); it never
+// returns before the core counters, and a console line that failed is not flushed, so it is counted once.
 func (p *processor) writeDamageEventOutputs(event *combatEvent, visible bool, sourceRelation, targetRelation playerRelation) {
+	skillRequest := p.linkSkillRequest(event.SkillMessageID)
 	if visible {
 		p.recordDamageForOverlap(*event)
 	}
-	p.writeDamageEventJSONL(*event)
+	p.writeDamageEventJSONL(*event, skillRequest)
 	consoleWritten := true
 	if visible {
 		normalOutput := event.formatNormalForSourceRelation(sourceRelation)
@@ -601,15 +608,14 @@ func optionalDamageSource(value uint64, present bool) string {
 // It reuses the identity resolution of damage events but is not printed, not counted in encounter totals and not fed to
 // the overlap statistics, so it can never add to or double-count damage.
 func (p *processor) writeNoAmountEvent(rpcID uint64, request pendingDamageRequest, hasAmount bool, errorCode, immuneType int32, hasChangeLife bool, changeLife int32) {
-	// buildDamageEvent counts the hit on the skill request; a no-amount hit is not a damage event, so the count is restored.
-	linkKey := combatActionRequestKey{sessionNumber: p.sessionNumber, messageID: request.skillMessageID}
-	before, hadRequest := p.combatActionRequests[linkKey]
 	event := p.buildDamageEvent(rpcID, request, 0, changeLife, hasChangeLife, 0)
-	if hadRequest && request.skillMessageID != 0 {
-		p.combatActionRequests[linkKey] = before
-		event.SkillRequest = &before
-	}
 	view := event.jsonlView(p.masters)
+	// A no-amount hit is not a damage event: its line shows the outbound skill request it answers, without counting a link.
+	if request.skillMessageID != 0 {
+		if action, ok := p.combatActionRequests[combatActionRequestKey{sessionNumber: p.sessionNumber, messageID: request.skillMessageID}]; ok {
+			view.Skill.Request = skillRequestJSONL(&action)
+		}
+	}
 	view.EventType = "DAMAGE_RESPONSE_WITHOUT_AMOUNT"
 	outcome := "NO_AMOUNT_FIELD"
 	evidence := "The DamageExecuteResponse omitted Damage (proto3 default 0): a server-confirmed hit whose amount is zero or not reported"

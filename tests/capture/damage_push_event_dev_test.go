@@ -16,7 +16,7 @@ func TestNotifiedResultEventLineUsesTheAuxiliaryNamespace(t *testing.T) {
 
 	event := p.buildDamageEvent(0, pendingDamageRequest{attackerEntityID: 10, hasAttackerEntityID: true, targetEntityID: 20, hasTargetEntityID: true, damageID: 1001, hasDamageID: true}, 176, 176, true, 176)
 	event.Notify = &notifiedResult{Key: notifyEventKey(7, 1), NegativeStatus: true, NegativeStatusBasis: "no live status instance on the target executes this DamageId"}
-	p.writeDamageEventJSONL(event)
+	p.writeDamageEventJSONL(event, nil)
 
 	rows := decodeJSONLLines(t, jsonl.Bytes())
 	if len(rows) != 1 {

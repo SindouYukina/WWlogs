@@ -6,6 +6,21 @@ import (
 	"encoding/json"
 )
 
+// archiveClientPushResearch decodes an outbound CombatSendPackRequest a second time with the research schema
+// (-protocol-schema) for the client-push, bullet and skill research outputs. It runs after the core role decoder
+// (observeClientPushFrame) on the same plaintext and never changes core state.
+func (p *processor) archiveClientPushResearch(frame gameFrame, plain []byte) {
+	if p.protocolSchema == nil {
+		return
+	}
+	decoded, err := decodeSchemaMessage(p.protocolSchema, "CombatSendPackRequest", plain, 0)
+	if err != nil {
+		p.clientPushErrors++
+		return
+	}
+	p.archiveClientPushes(frame, decoded)
+}
+
 // archiveClientPushes writes the role reports and skill-end pushes from one
 // decoded CombatSendPackRequest. It keeps the most recent reported role so that
 // each skill row carries the role that was active when it was reported.
@@ -117,9 +132,9 @@ func (p *processor) observeCombatActionRequest(frame gameFrame, request *decoded
 }
 
 // linkSkillRequest counts one damage result against the research record of its outbound skill request
-// (observeCombatActionRequest) and returns a copy for the event line. The core never reads the link. The returned copy
-// is a separate variable so that only a found request is allocated: a returned &action would move every lookup to
-// the heap.
+// (observeCombatActionRequest) and returns a copy for the event line. writeDamageEventOutputs calls it once per damage
+// result; the core neither calls nor reads it. The returned copy is a separate variable so that only a found request is
+// allocated: a returned &action would move every lookup to the heap.
 func (p *processor) linkSkillRequest(messageID uint64) *combatActionRequest {
 	if messageID == 0 {
 		return nil
