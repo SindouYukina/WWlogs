@@ -2,10 +2,7 @@
 
 package capture
 
-import (
-	"encoding/json"
-	"strings"
-)
+import "strings"
 
 // resolveSkillRef validates a SkillId against an available source chain or a unique static owner.
 // The skill-derived echo link remains excluded because it cannot independently validate itself.
@@ -111,12 +108,5 @@ func (p *processor) writeSkillReference(frame gameFrame, message, parent *decode
 	if label := resolveSkillLabel(p.masters, uint64(skillID)); label != nil && label.Status == resolutionCorrelated {
 		record.DevLabelZhCn = label.Label
 	}
-	line, err := json.Marshal(record)
-	if err != nil {
-		p.dev.skillRefErrors++
-		return
-	}
-	if _, err := p.dev.skillRefOut.Write(append(line, '\n')); err != nil {
-		p.dev.skillRefErrors++
-	}
+	writeResearchRecord(p.dev.skillRefOut, record, &p.dev.skillRefErrors)
 }

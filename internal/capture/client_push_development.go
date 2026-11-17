@@ -2,9 +2,7 @@
 
 package capture
 
-import (
-	"encoding/json"
-)
+import ()
 
 // archiveClientPushResearch decodes an outbound CombatSendPackRequest a second time with the research schema
 // (-protocol-schema) for the client-push, bullet and skill research outputs. It runs after the core role decoder
@@ -221,14 +219,7 @@ func (p *processor) writeClientPush(record clientPushRecord) {
 	if p.dev.clientPushOut == nil {
 		return
 	}
-	line, err := json.Marshal(record)
-	if err != nil {
-		p.dev.clientPushErrors++
-		return
-	}
-	if _, err := p.dev.clientPushOut.Write(append(line, '\n')); err != nil {
-		p.dev.clientPushErrors++
-	}
+	writeResearchRecord(p.dev.clientPushOut, record, &p.dev.clientPushErrors)
 }
 
 // floatValue reads a float field from a decoded message.

@@ -2,9 +2,7 @@
 
 package capture
 
-import (
-	"encoding/json"
-)
+import ()
 
 // archiveSummonOwners writes ownership facts from one decoded join-scene or
 // entity-add message. Entities are walked through the message tree, so nested
@@ -122,14 +120,7 @@ func (p *processor) summonOwnerBase(frame gameFrame, command string, kind string
 }
 
 func (p *processor) writeSummonOwnerRecord(record summonOwnerRecord) {
-	line, err := json.Marshal(record)
-	if err != nil {
-		p.dev.summonOwnerErrors++
-		return
-	}
-	if _, err := p.dev.summonOwnerOut.Write(append(line, '\n')); err != nil {
-		p.dev.summonOwnerErrors++
-	}
+	writeResearchRecord(p.dev.summonOwnerOut, record, &p.dev.summonOwnerErrors)
 }
 
 // archiveSummonOwnerFrame decodes join-scene and entity-add frames for the owner

@@ -3,7 +3,6 @@
 package capture
 
 import (
-	"encoding/json"
 	"strings"
 )
 
@@ -58,13 +57,9 @@ func (p *processor) archiveCombatState(frame gameFrame, decoded *decodedMessage)
 		record.Timestamp = formatTimestamp(frame.timestamp)
 		record.EventOrderInMsg = order
 		order++
-		line, err := json.Marshal(record)
-		if err != nil {
-			p.dev.combatStateErrors++
+		// A record that cannot be encoded ends the message; a failed write is only counted.
+		if !writeResearchRecord(p.dev.combatStateOut, record, &p.dev.combatStateErrors) {
 			return
-		}
-		if _, err := p.dev.combatStateOut.Write(append(line, '\n')); err != nil {
-			p.dev.combatStateErrors++
 		}
 	}
 	for _, data := range childMessages(decoded, "Data") {

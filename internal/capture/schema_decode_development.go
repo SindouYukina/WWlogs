@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"math"
 	"strings"
@@ -181,14 +180,7 @@ func (p *processor) archiveSchemaDecode(frame gameFrame, plain []byte) {
 		CommandID:     frame.commandID,
 		Decoded:       decoded,
 	}
-	line, err := json.Marshal(record)
-	if err != nil {
-		p.dev.schemaDecodeErrors++
-		return
-	}
-	if _, err := p.dev.schemaDecodeOut.Write(append(line, '\n')); err != nil {
-		p.dev.schemaDecodeErrors++
-	}
+	writeResearchRecord(p.dev.schemaDecodeOut, record, &p.dev.schemaDecodeErrors)
 }
 
 // decodePackedScalars decodes a proto3 packed repeated scalar, where all elements

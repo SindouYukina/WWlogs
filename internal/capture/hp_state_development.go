@@ -2,10 +2,7 @@
 
 package capture
 
-import (
-	"encoding/json"
-	"strconv"
-)
+import "strconv"
 
 // archiveHPState writes Life and LifeMax attribute values from one decoded
 // CombatReceivePackNotify. It reads the schema tree only, so the typed pipeline
@@ -44,14 +41,7 @@ func (p *processor) archiveHPState(frame gameFrame, decoded *decodedMessage) {
 						record.AttributeName = name
 					}
 					order++
-					line, err := json.Marshal(record)
-					if err != nil {
-						p.dev.hpStateErrors++
-						continue
-					}
-					if _, err := p.dev.hpStateOut.Write(append(line, '\n')); err != nil {
-						p.dev.hpStateErrors++
-					}
+					writeResearchRecord(p.dev.hpStateOut, record, &p.dev.hpStateErrors)
 				}
 			}
 		}

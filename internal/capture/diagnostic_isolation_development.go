@@ -26,6 +26,21 @@ func (p *processor) writeDiagnosticRow(sink io.Writer, name string, row any) {
 	}
 }
 
+// writeResearchRecord writes one record of a research output (frame archive, schema decode, role config, reference,
+// state and push outputs) as a JSON line, and counts a record that could not be encoded or written in that output's
+// error counter. It reports whether the record could be encoded.
+func writeResearchRecord(sink io.Writer, record any, failures *int) bool {
+	line, err := json.Marshal(record)
+	if err != nil {
+		*failures++
+		return false
+	}
+	if _, err := sink.Write(append(line, '\n')); err != nil {
+		*failures++
+	}
+	return true
+}
+
 // noteDiagnosticFailure counts one failed diagnostic write. The first failure of each sink is also written to the
 // diagnostic stream, so a failing sink is visible without flooding the console.
 func (p *processor) noteDiagnosticFailure(name string, err error) {

@@ -2,9 +2,7 @@
 
 package capture
 
-import (
-	"encoding/json"
-)
+import ()
 
 // archiveDamagePushes writes DamageExecuteNotify pushes from one decoded
 // CombatReceivePackNotify. It reads the schema tree only and does not change the
@@ -43,14 +41,7 @@ func (p *processor) archiveDamagePushes(frame gameFrame, decoded *decodedMessage
 				record.IsCrit = crit != 0
 				killed, _ := scalarValue(push, "KilledTarget")
 				record.KilledTarget = killed != 0
-				line, err := json.Marshal(record)
-				if err != nil {
-					p.dev.damagePushErrors++
-					continue
-				}
-				if _, err := p.dev.damagePushOut.Write(append(line, '\n')); err != nil {
-					p.dev.damagePushErrors++
-				}
+				writeResearchRecord(p.dev.damagePushOut, record, &p.dev.damagePushErrors)
 			}
 		}
 	}

@@ -3,7 +3,6 @@
 package capture
 
 import (
-	"encoding/json"
 	"strings"
 )
 
@@ -211,12 +210,5 @@ func (p *processor) writeBulletReference(frame gameFrame, message, parent *decod
 	if message.Type == "CreateBulletPush" || message.Type == "CreateBulletNotify" {
 		p.rememberBulletHandle(message, record)
 	}
-	line, err := json.Marshal(record)
-	if err != nil {
-		p.dev.bulletRefErrors++
-		return
-	}
-	if _, err := p.dev.bulletRefOut.Write(append(line, '\n')); err != nil {
-		p.dev.bulletRefErrors++
-	}
+	writeResearchRecord(p.dev.bulletRefOut, record, &p.dev.bulletRefErrors)
 }

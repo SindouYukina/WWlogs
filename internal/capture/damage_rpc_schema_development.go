@@ -2,9 +2,7 @@
 
 package capture
 
-import (
-	"encoding/json"
-)
+import ()
 
 // damageRPCPayloads extracts (rpcId, payload) pairs from a damage RPC frame: CombatSendPackRequest.Data[].Request
 // (CombatRequestData) for requests, and for responses Data[].CombatResponseData of every CombatReceivePackNotify the frame
@@ -102,13 +100,6 @@ func (p *processor) archiveDamageRPCSchema(frame gameFrame, plain []byte) {
 			Message:       message,
 			Decoded:       decoded,
 		}
-		line, err := json.Marshal(record)
-		if err != nil {
-			p.dev.schemaDecodeErrors++
-			continue
-		}
-		if _, err := p.dev.schemaDecodeOut.Write(append(line, '\n')); err != nil {
-			p.dev.schemaDecodeErrors++
-		}
+		writeResearchRecord(p.dev.schemaDecodeOut, record, &p.dev.schemaDecodeErrors)
 	}
 }

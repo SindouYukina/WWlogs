@@ -2,9 +2,7 @@
 
 package capture
 
-import (
-	"encoding/json"
-)
+import ()
 
 func (m *gameMaster) resolveRoleConfigRole(rawRoleID uint64) (roleConfigRoleResolution, bool) {
 	if m == nil {
@@ -75,13 +73,6 @@ func (p *processor) archiveRoleConfigRecords(frame gameFrame, decoded *decodedMe
 				record.Basis = "RoleConfigInfo.RoleId is not a positive role key"
 			}
 		}
-		line, err := json.Marshal(record)
-		if err != nil {
-			p.dev.roleConfigErrors++
-			continue
-		}
-		if _, err := p.dev.roleConfigOut.Write(append(line, '\n')); err != nil {
-			p.dev.roleConfigErrors++
-		}
+		writeResearchRecord(p.dev.roleConfigOut, record, &p.dev.roleConfigErrors)
 	}
 }
