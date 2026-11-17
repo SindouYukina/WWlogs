@@ -527,3 +527,37 @@ func TestEncounterSummaryCapsDistinctScopesAndKeepsOverflowTotals(t *testing.T) 
 		t.Fatalf("overflow summary lost events: %+v", overflow)
 	}
 }
+
+// Uncredited rows that tie on magnitude, class, session, skill, damage and entities (several BulletIds of one hit
+// pattern) are written in one order, the order of their remaining key fields, not in map order.
+func TestUncreditedEventRowsHaveOneOrder(t *testing.T) {
+	summary := &encounterSummary{uncreditedEvents: map[uncreditedEventKey]*uncreditedEventSummary{}}
+	for _, bulletID := range []int64{8003207108, 8003207105, 8003207106, 8003207107} {
+		key := uncreditedEventKey{sessionNumber: 1, eventType: "DAMAGE_CANDIDATE", skillID: 80032071, damageID: 8003207105,
+			hasDamageID: true, bulletID: bulletID, hasBulletID: true, sourceEntityID: 71392, hasSourceEntity: true,
+			targetEntityID: 71354, hasTargetEntity: true}
+		summary.uncreditedEvents[key] = &uncreditedEventSummary{key: key, events: 1, magnitude: 847}
+	}
+	var first string
+	for run := 0; run < 50; run++ {
+		var out strings.Builder
+		if err := writeUncreditedEvents(&out, summary); err != nil {
+			t.Fatal(err)
+		}
+		if run == 0 {
+			first = out.String()
+			continue
+		}
+		if out.String() != first {
+			t.Fatalf("run %d wrote another order:\n%s\nfirst:\n%s", run, out.String(), first)
+		}
+	}
+	last := -1
+	for _, bulletID := range []string{"8003207105", "8003207106", "8003207107", "8003207108"} {
+		at := strings.Index(first, "BulletId "+bulletID+";")
+		if at <= last {
+			t.Fatalf("BulletId %s is not after the previous row:\n%s", bulletID, first)
+		}
+		last = at
+	}
+}

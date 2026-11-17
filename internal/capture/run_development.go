@@ -1011,11 +1011,8 @@ finished:
 	}
 	fmt.Fprintf(os.Stderr, "schema_decode errors=%d skipped_without_schema=%d\n", processor.dev.schemaDecodeErrors, processor.dev.schemaDecodeSkipped)
 	fmt.Fprintln(os.Stderr, processor.protocol.report().line())
-	if processor.dev.roleConfigOut != nil {
-		fmt.Fprintf(os.Stderr, "role_config errors=%d\n", processor.dev.roleConfigErrors)
-	}
-	if processor.dev.shieldRefOut != nil {
-		fmt.Fprintf(os.Stderr, "shield_reference errors=%d\n", processor.dev.shieldRefErrors)
+	for _, line := range processor.researchOutputErrorLines() {
+		fmt.Fprintln(os.Stderr, line)
 	}
 	processor.printSummary(diagnosticTarget)
 	if line := processor.diagnosticFailureLine(); line != "" {

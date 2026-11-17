@@ -237,6 +237,12 @@ func removeUncreditedEvent(summary *encounterSummary, event combatEvent) {
 	}
 }
 
+// uncreditedEventKeyTail orders the key fields that writeUncreditedEvents does not compare first.
+func uncreditedEventKeyTail(key uncreditedEventKey) string {
+	return fmt.Sprintf("%t/%020d/%t/%020d/%t/%t/%020d/%t/%t", key.hasSourceScene, key.sourceSceneID, key.hasTargetScene,
+		key.targetSceneID, key.hasDamageID, key.hasBulletID, uint64(key.bulletID), key.hasSourceEntity, key.hasTargetEntity)
+}
+
 func makeUncreditedEventKey(event combatEvent) uncreditedEventKey {
 	return uncreditedEventKey{
 		sessionNumber: event.SessionNumber,
@@ -735,7 +741,12 @@ func writeUncreditedEvents(w io.Writer, summary *encounterSummary) error {
 		if keys[i].sourceEntityID != keys[j].sourceEntityID {
 			return keys[i].sourceEntityID < keys[j].sourceEntityID
 		}
-		return keys[i].targetEntityID < keys[j].targetEntityID
+		if keys[i].targetEntityID != keys[j].targetEntityID {
+			return keys[i].targetEntityID < keys[j].targetEntityID
+		}
+		// The remaining key fields make the order total: rows that tie on the fields above (different BulletIds or
+		// Scenes of one skill and entity pair) no longer follow map order.
+		return uncreditedEventKeyTail(keys[i]) < uncreditedEventKeyTail(keys[j])
 	})
 	if len(keys) == 0 {
 		if _, err := fmt.Fprintln(w, "\n- None."); err != nil {

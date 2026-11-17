@@ -423,3 +423,27 @@ func TestSkillRequestLinkIsOnlyAResearchRecord(t *testing.T) {
 		t.Fatalf("core damage result changed by the research link:\nlinked %s\nplain  %s", got, want)
 	}
 }
+
+// Every research output the run wrote reports its failed records at the end of the run, also the outputs whose counters
+// were not printed before (bullet, skill, client push, summon owner, damage push, HP state, combat state); an output
+// that was not requested reports nothing.
+func TestResearchOutputErrorsAreReported(t *testing.T) {
+	p := newProcessor(nil, io.Discard, io.Discard, nil)
+	if lines := p.researchOutputErrorLines(); len(lines) != 0 {
+		t.Fatalf("lines without research outputs = %q", lines)
+	}
+	var sink strings.Builder
+	p.dev.roleConfigOut, p.dev.bulletRefOut, p.dev.combatStateOut = &sink, &sink, &sink
+	p.dev.roleConfigErrors, p.dev.bulletRefErrors, p.dev.combatStateErrors, p.dev.hpStateErrors = 1, 2, 3, 4
+	want := []string{"role_config errors=1", "bullet_reference errors=2", "combat_state errors=3"}
+	if lines := p.researchOutputErrorLines(); !reflect.DeepEqual(lines, want) {
+		t.Fatalf("lines = %q, want %q (hp_state has no output and must not report)", lines, want)
+	}
+	// A record that cannot be encoded is counted and reported by its output.
+	if writeResearchRecord(&sink, map[string]float64{"x": math.NaN()}, &p.dev.bulletRefErrors) {
+		t.Fatal("an unencodable record was reported as encoded")
+	}
+	if lines := p.researchOutputErrorLines(); lines[1] != "bullet_reference errors=3" {
+		t.Fatalf("lines after a failed record = %q", lines)
+	}
+}

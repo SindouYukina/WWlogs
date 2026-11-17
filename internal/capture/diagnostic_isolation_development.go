@@ -41,6 +41,33 @@ func writeResearchRecord(sink io.Writer, record any, failures *int) bool {
 	return true
 }
 
+// researchOutputErrorLines reports, for every research output the run wrote, the records that could not be decoded,
+// encoded or written ("<output> errors=<n>"), so a failing research output is visible at the end of the run. The frame
+// archive, schema decode and part reference outputs report theirs in their own summary lines.
+func (p *processor) researchOutputErrorLines() []string {
+	var lines []string
+	for _, output := range []struct {
+		name   string
+		sink   io.Writer
+		errors int
+	}{
+		{"role_config", p.dev.roleConfigOut, p.dev.roleConfigErrors},
+		{"shield_reference", p.dev.shieldRefOut, p.dev.shieldRefErrors},
+		{"bullet_reference", p.dev.bulletRefOut, p.dev.bulletRefErrors},
+		{"skill_reference", p.dev.skillRefOut, p.dev.skillRefErrors},
+		{"client_push", p.dev.clientPushOut, p.dev.clientPushErrors},
+		{"summon_owner", p.dev.summonOwnerOut, p.dev.summonOwnerErrors},
+		{"damage_push", p.dev.damagePushOut, p.dev.damagePushErrors},
+		{"hp_state", p.dev.hpStateOut, p.dev.hpStateErrors},
+		{"combat_state", p.dev.combatStateOut, p.dev.combatStateErrors},
+	} {
+		if output.sink != nil {
+			lines = append(lines, fmt.Sprintf("%s errors=%d", output.name, output.errors))
+		}
+	}
+	return lines
+}
+
 // noteDiagnosticFailure counts one failed diagnostic write. The first failure of each sink is also written to the
 // diagnostic stream, so a failing sink is visible without flooding the console.
 func (p *processor) noteDiagnosticFailure(name string, err error) {
