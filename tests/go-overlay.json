@@ -432,6 +432,8 @@
     "tests/capture/negative_status_causality_test.go": "",
     "internal/capture/central_negative_status_causality_test.go": "tests/capture/negative_status_causality_test.go",
     "tests/history/accounting_basis_test.go": "",
-    "internal/history/central_accounting_basis_test.go": "tests/history/accounting_basis_test.go"
+    "internal/history/central_accounting_basis_test.go": "tests/history/accounting_basis_test.go",
+    "tests/devdesktop/options_test.go": "",
+    "internal/devdesktop/central_options_test.go": "tests/devdesktop/options_test.go"
   }
 }

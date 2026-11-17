@@ -9,6 +9,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -24,7 +25,8 @@ import (
 // desktopWindowName names the main window; the frontend selects its view from the URL, not from window names.
 const desktopWindowName = "desktop"
 
-// Options configure the host. Profile-specific flags fill them (options_public.go, options_development.go).
+// Options configure the host. The command line of the composed build profile fills them: ParseOptions in a Public
+// build, the Development flags (wwlogs/internal/devdesktop) in a Development build.
 type Options struct {
 	MasterDatabase string
 	Locale         string
@@ -33,9 +35,6 @@ type Options struct {
 	AutoStart bool
 	// ShowOverlay shows both Overlays at start; otherwise each restores its saved visibility.
 	ShowOverlay bool
-	// WebviewDebugPort opens the WebView2 remote debugging port. Only Development builds can set it or contain the
-	// browser argument (webviewArguments in options_development.go).
-	WebviewDebugPort int
 	// Showcase opens the Development Motion Showcase instead of the Desktop view. ShowcaseOverlays adds its real
 	// transparent windows. Public flags cannot set these, and Public frontend builds do not contain the Showcase.
 	Showcase         bool
@@ -48,7 +47,8 @@ type Options struct {
 	HistoryDatabase string
 	// PreviewFontRoot is an explicitly supplied directory for Development Showcase font candidates.
 	PreviewFontRoot string
-	// WebviewArguments are extra browser arguments for rendering experiments; only Development flags can set them.
+	// WebviewArguments are extra WebView2 browser arguments (rendering experiments, the remote debugging port for
+	// automated UI checks); only Development flags can set them.
 	WebviewArguments []string
 	// SystemLanguages replaces the Windows display-language query for controlled UI checks. Only Development sets it.
 	SystemLanguages func() []string
@@ -59,15 +59,25 @@ type Options struct {
 	OpenBrowser      func(string) error
 }
 
-// Main parses the command line and runs the host until the Desktop window closes.
-func Main() {
+// Composition is what a build profile composes into the host. The build composition boundary of the executable
+// (cmd/desktop/compose_public.go, compose_development.go) supplies it, so the host itself has no profile-specific code.
+type Composition struct {
+	// ParseOptions reads the command line: ParseOptions for Public, the Development flags of
+	// wwlogs/internal/devdesktop for Development.
+	ParseOptions func(arguments []string, output io.Writer) (Options, error)
+	// PrintVersion prints the build identity for -version.
+	PrintVersion func(io.Writer)
+}
+
+// Main parses the command line of the composed profile and runs the host until the Desktop window closes.
+func Main(composition Composition) {
 	for _, argument := range os.Args[1:] {
 		if argument == "-version" || argument == "--version" {
-			capture.PrintVersion(os.Stdout)
+			composition.PrintVersion(os.Stdout)
 			return
 		}
 	}
-	options, err := parseOptions(os.Args[1:], os.Stderr)
+	options, err := composition.ParseOptions(os.Args[1:], os.Stderr)
 	if errors.Is(err, flag.ErrHelp) {
 		return
 	}
@@ -170,7 +180,7 @@ func Run(options Options) error {
 		ShouldQuit:  shutdown.shouldQuit,
 		Windows: application.WindowsOptions{
 			WebviewUserDataPath:   webviewUserDataPath(),
-			AdditionalBrowserArgs: webviewArguments(options),
+			AdditionalBrowserArgs: options.WebviewArguments,
 			WndProcInterceptor:    keepForeground,
 		},
 	})

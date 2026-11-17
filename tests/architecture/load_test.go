@@ -53,7 +53,11 @@ var (
 // analyzedPackages are type-checked from source: the product packages that contain profile-specific files.
 // fileKinds checks every product package; a new package with profile-specific files must be added here, and
 // TestProfileFilesAreAnalyzed fails until it is.
-var analyzedPackages = []string{"internal/buildinfo", "internal/capture", "internal/desktop"}
+var analyzedPackages = []string{"cmd/desktop", "internal/buildinfo", "internal/capture"}
+
+// developmentModules are the Development-only capability packages: only a Development build composition links them,
+// so every file of theirs is Development code whatever its build constraint.
+var developmentModules = map[string]bool{"internal/devdesktop": true}
 
 // fileKind is the profile a product file belongs to, decided by its build constraint, never by its name.
 type fileKind int
@@ -250,9 +254,12 @@ func (r *repository) exportListing(t testing.TB, profile buildProfile) map[strin
 	if listing, ok := r.listings[profile.name]; ok {
 		return listing
 	}
-	patterns := make([]string, len(analyzedPackages))
-	for i, rel := range analyzedPackages {
-		patterns[i] = "./" + rel
+	var patterns []string
+	for _, rel := range analyzedPackages {
+		patterns = append(patterns, "./"+rel)
+	}
+	for rel := range developmentModules {
+		patterns = append(patterns, "./"+rel)
 	}
 	listed, err := r.goList(profile, "", []string{"-deps", "-export"}, patterns...)
 	if err != nil {

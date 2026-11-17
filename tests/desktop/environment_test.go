@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"wwlogs/internal/assets"
-	"wwlogs/internal/buildinfo"
 	"wwlogs/internal/capture"
 )
 
@@ -319,29 +318,12 @@ func TestGameAssetSourceSelection(t *testing.T) {
 	}
 }
 
-func TestEnvironmentSimulationFlagsExistOnlyInDevelopment(t *testing.T) {
-	options, err := parseOptions([]string{"-simulate-capture-environment", "npcap_missing,no_ipv4", "-simulate-npcap-offline", "-record-browser-url", "out.txt"}, io.Discard)
-	if buildinfo.Current().Profile != buildinfo.ProfileDevelopment {
-		if err == nil {
-			t.Fatal("Public accepted simulation flags")
-		}
-		return
+// The simulation flags are Development flags (tests/devdesktop); the Public command line refuses them.
+func TestPublicOptionsRefuseEnvironmentSimulation(t *testing.T) {
+	if _, err := ParseOptions([]string{"-simulate-capture-environment", "npcap_missing,no_ipv4", "-simulate-npcap-offline", "-record-browser-url", "out.txt"}, io.Discard); err == nil {
+		t.Fatal("Public accepted simulation flags")
 	}
-	if err != nil || options.EnvironmentProbe == nil || options.NpcapTransport == nil || options.OpenBrowser == nil {
-		t.Fatalf("simulation options: %+v %v", options, err)
-	}
-	if first := options.EnvironmentProbe(); first.State != capture.EnvironmentNpcapMissing {
-		t.Fatalf("first = %+v", first)
-	}
-	for range 2 {
-		if next := options.EnvironmentProbe(); next.State != capture.EnvironmentNoIPv4 {
-			t.Fatalf("the last state must repeat: %+v", next)
-		}
-	}
-	if _, err := parseOptions([]string{"-simulate-capture-environment", "guess"}, io.Discard); err == nil {
-		t.Fatal("an unknown state was accepted")
-	}
-	defaults, err := parseOptions(nil, io.Discard)
+	defaults, err := ParseOptions(nil, io.Discard)
 	if err != nil || defaults.EnvironmentProbe != nil || defaults.NpcapTransport != nil || defaults.OpenBrowser != nil {
 		t.Fatalf("defaults must use the real system: %+v %v", defaults, err)
 	}

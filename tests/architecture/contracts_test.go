@@ -282,8 +282,7 @@ var reviewedProfileValues = map[string]string{
 	"internal/capture func newProcessorDiagnostics":     "constructs the Development state of a processor; the Public form is the empty struct",
 	"internal/capture func openSessionDiagnostics":      "capability gate: Public refuses a Development diagnostics request instead of opening a spool",
 	"internal/capture method sessionDiagnostics.finish": "summary text of the Development spool for the session result; Public returns the empty string",
-	"internal/desktop func parseOptions":                "the entry point's flag parsing selects build-time capabilities; Public parses only the locale",
-	"internal/desktop func webviewArguments":            "WebView2 debugging arguments, a Development tool; Public returns none",
+	"cmd/desktop var composition":                       "the desktop build composition: the Public command line, or the Development one of internal/devdesktop",
 }
 
 // signatureShape prints a signature's receiver, parameter and result types without their names: a Public no-op
@@ -770,7 +769,7 @@ var developmentFlags = map[string][]string{
 		"pcap-out", "protocol-schema", "research", "role-config-out", "schema-decode-out", "shield-ref-out",
 		"show-all-effect-events", "show-effect-events", "skill-ref-out", "status-file", "summon-owner-out",
 	},
-	"internal/desktop": {
+	"internal/devdesktop": {
 		"asset-root", "autostart", "capture-diagnostics", "font-root", "history-db", "ip", "master-db", "overlay",
 		"record-browser-url", "replay", "replay-pacing", "showcase", "showcase-overlays", "simulate-capture-environment",
 		"simulate-npcap-offline", "simulate-ui-languages", "webview-args", "webview-debug-port",
@@ -778,7 +777,7 @@ var developmentFlags = map[string][]string{
 }
 
 // developmentOnlyDependencies are packages only Development diagnostics need: the writer of the Development PCAP.
-var developmentOnlyDependencies = []string{"github.com/google/gopacket/pcapgo"}
+var developmentOnlyDependencies = []string{"github.com/google/gopacket/pcapgo", modulePath + "/internal/devdesktop"}
 
 func developmentDependencyFindings(public, development map[string]bool) []string {
 	var findings []string
@@ -840,6 +839,11 @@ func developmentFlagFindings(public, development *checkedPackage) []string {
 	required := developmentFlags[development.rel]
 	developmentDefined := flagDefinitions(development)[developmentFile]
 	publicDefined := flagDefinitions(public)
+	if developmentModules[development.rel] {
+		// A Development module is Development code in every file, and no Public executable links it
+		// (developmentOnlyDependencies).
+		developmentDefined, publicDefined = flagDefinitions(development)[sharedFile], nil
+	}
 	for _, name := range required {
 		if _, ok := developmentDefined[name]; !ok {
 			findings = append(findings, fmt.Sprintf("%s: the Development diagnostic flag -%s is no longer defined in a Development file", development.rel, name))

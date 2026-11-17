@@ -6,8 +6,6 @@ import (
 	"net/http/httptest"
 	"testing"
 	"testing/fstest"
-
-	"wwlogs/internal/buildinfo"
 )
 
 func TestGameAssetRouteResolvesConfigurationIDsOnly(t *testing.T) {
@@ -79,25 +77,13 @@ func TestPreviewFontRouteUsesSeparateRootAndAllowsOnlyFonts(t *testing.T) {
 	}
 }
 
-func TestShowcaseFlagsExistOnlyInDevelopment(t *testing.T) {
-	options, err := parseOptions([]string{"-showcase", "-showcase-overlays", "-asset-root", "example", "-font-root", "local-fonts"}, io.Discard)
-	if buildinfo.Current().Profile != buildinfo.ProfileDevelopment {
-		if err == nil {
-			t.Fatal("Public accepted Showcase flags")
-		}
-		return
+// The Showcase flags are Development flags (tests/devdesktop); the Public command line refuses them.
+func TestPublicOptionsRefuseShowcase(t *testing.T) {
+	if _, err := ParseOptions([]string{"-showcase", "-showcase-overlays", "-asset-root", "example", "-font-root", "local-fonts"}, io.Discard); err == nil {
+		t.Fatal("Public accepted Showcase flags")
 	}
-	if err != nil || !options.Showcase || !options.ShowcaseOverlays || options.GameAssetRoot != "example" || options.PreviewFontRoot != "local-fonts" {
-		t.Fatalf("Development Showcase options: %+v %v", options, err)
-	}
-	if _, err := parseOptions([]string{"-showcase-overlays"}, io.Discard); err == nil {
-		t.Fatal("Showcase overlay windows were accepted without -showcase")
-	}
-	defaults, err := parseOptions(nil, io.Discard)
+	defaults, err := ParseOptions(nil, io.Discard)
 	if err != nil || defaults.Showcase || defaults.GameAssetRoot != "" || defaults.PreviewFontRoot != "" {
 		t.Fatalf("defaults must not enable the Showcase or find assets on their own: %+v %v", defaults, err)
-	}
-	if _, err := parseOptions([]string{"-font-root", "local-fonts"}, io.Discard); err == nil {
-		t.Fatal("font root was accepted without -showcase")
 	}
 }

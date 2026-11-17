@@ -1,6 +1,8 @@
-//go:build wwdev
-
-package desktop
+// Package devdesktop holds the Development capabilities of the desktop host: its command line (PCAP replay through
+// the full host, automatic start, the live diagnostic spool, the Motion Showcase, explicit asset, font, Master and
+// History inputs, UI-check simulations and WebView2 debugging). Only the Development build composition
+// (cmd/desktop/compose_development.go) links it; a Public executable contains none of it.
+package devdesktop
 
 import (
 	"errors"
@@ -14,12 +16,13 @@ import (
 	"time"
 
 	"wwlogs/internal/capture"
+	"wwlogs/internal/desktop"
 )
 
-// parseOptions reads the Development Build flags. Besides the Public flags they allow an automatic start, a paced
+// ParseOptions reads the Development Build flags. Besides the Public flags they allow an automatic start, a paced
 // PCAP replay through the full host (for UI work without the game), the Development diagnostic PCAP, and showing the
 // overlay at start.
-func parseOptions(arguments []string, output io.Writer) (Options, error) {
+func ParseOptions(arguments []string, output io.Writer) (desktop.Options, error) {
 	flags := flag.NewFlagSet("WWlogs-dev", flag.ContinueOnError)
 	flags.SetOutput(output)
 	masterDatabase := flags.String("master-db", "", "Development: use an explicit read-only Master SQLite database for testing (default: embedded)")
@@ -43,11 +46,11 @@ func parseOptions(arguments []string, output io.Writer) (Options, error) {
 	browserLog := flags.String("record-browser-url", "", "Development: append URLs to this file instead of opening the browser, for UI checks")
 	simulatedLanguages := flags.String("simulate-ui-languages", "", "Development: comma-separated Windows display languages in preference order, for UI checks of a first launch")
 	if err := flags.Parse(arguments); err != nil {
-		return Options{}, err
+		return desktop.Options{}, err
 	}
 	environmentProbe, err := scriptedEnvironment(*simulateEnvironment)
 	if err != nil {
-		return Options{}, err
+		return desktop.Options{}, err
 	}
 	var npcapTransport http.RoundTripper
 	if *npcapOffline {
@@ -63,18 +66,18 @@ func parseOptions(arguments []string, output io.Writer) (Options, error) {
 		systemLanguages = func() []string { return languages }
 	}
 	if *replay != "" && *diagnostics && flagsWereSet(flags, "capture-diagnostics") {
-		return Options{}, errors.New("-capture-diagnostics applies to live capture only")
+		return desktop.Options{}, errors.New("-capture-diagnostics applies to live capture only")
 	}
 	if *replay != "" {
 		*diagnostics = false
 	}
 	if *showcaseOverlays && !*showcase {
-		return Options{}, errors.New("-showcase-overlays requires -showcase")
+		return desktop.Options{}, errors.New("-showcase-overlays requires -showcase")
 	}
 	if *fontRoot != "" && !*showcase {
-		return Options{}, errors.New("-font-root requires -showcase")
+		return desktop.Options{}, errors.New("-font-root requires -showcase")
 	}
-	return Options{
+	return desktop.Options{
 		MasterDatabase: *masterDatabase,
 		Locale:         *locale,
 		Session: capture.SessionConfig{
@@ -82,13 +85,12 @@ func parseOptions(arguments []string, output io.Writer) (Options, error) {
 		},
 		AutoStart:        *autoStart || *replay != "",
 		ShowOverlay:      *showOverlay,
-		WebviewDebugPort: *debugPort,
 		Showcase:         *showcase,
 		ShowcaseOverlays: *showcaseOverlays,
 		GameAssetRoot:    *assetRoot,
 		HistoryDatabase:  *historyDatabase,
 		PreviewFontRoot:  *fontRoot,
-		WebviewArguments: strings.Fields(*webviewArgs),
+		WebviewArguments: webviewArguments(*webviewArgs, *debugPort),
 		EnvironmentProbe: environmentProbe,
 		NpcapTransport:   npcapTransport,
 		OpenBrowser:      openBrowser,
@@ -150,11 +152,12 @@ func flagsWereSet(flags *flag.FlagSet, name string) bool {
 	return set
 }
 
-// webviewArguments opens the WebView2 remote debugging port when requested, for automated UI checks.
-func webviewArguments(options Options) []string {
-	arguments := append([]string{}, options.WebviewArguments...)
-	if options.WebviewDebugPort > 0 {
-		arguments = append(arguments, fmt.Sprintf("--remote-debugging-port=%d", options.WebviewDebugPort))
+// webviewArguments are the extra WebView2 browser arguments: the requested ones, then the remote debugging port for
+// automated UI checks when one is requested.
+func webviewArguments(requested string, debugPort int) []string {
+	arguments := strings.Fields(requested)
+	if debugPort > 0 {
+		arguments = append(arguments, fmt.Sprintf("--remote-debugging-port=%d", debugPort))
 	}
 	return arguments
 }
