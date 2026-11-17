@@ -88,10 +88,10 @@ func TestCombatActionRequestCapturedWithoutClientPushOutput(t *testing.T) {
 		t.Fatalf("captured action = %+v, present=%v", got, ok)
 	}
 
-	pending := pendingDamageRequest{skillMessageID: got.MessageID}
-	event := (&processor{combatActionRequests: p.combatActionRequests, entities: newEntityResolver()}).buildDamageEvent(1, pending, 0, 0, false, 1)
-	if event.SkillRequest == nil || event.SkillRequest.SkillID != got.SkillID {
-		t.Fatalf("damage request did not link exact outbound action: %+v", event.SkillRequest)
+	// A damage result with this SkillMessageId links the exact outbound action (writeDamageEventOutputs).
+	link := (&processor{combatActionRequests: p.combatActionRequests}).linkSkillRequest(got.MessageID)
+	if link == nil || link.SkillID != got.SkillID || link.LinkedDamageEvents != 1 {
+		t.Fatalf("damage request did not link exact outbound action: %+v", link)
 	}
 }
 
@@ -163,7 +163,7 @@ func TestRoleReportWithResearchSchemaKeepsTheCoreResult(t *testing.T) {
 	p := newProcessor(nil, &strings.Builder{}, &strings.Builder{}, nil)
 	p.clientPushOut = &out
 	p.protocolSchema = &protocolSchema{}
-	p.archiveClientPushFrame(gameFrame{commandID: cmdCombatSendPackRequest, direction: "out"}, localRoleReportBody(1409, 51522))
+	p.observeClientPushFrame(gameFrame{commandID: cmdCombatSendPackRequest, direction: "out"}, localRoleReportBody(1409, 51522))
 	if !p.playerRelevance.isRoleEntity(51522) || p.stats.playerRoleReports != 1 {
 		t.Fatalf("core role decoder did not run with a research schema: role=%v stats=%+v", p.playerRelevance.isRoleEntity(51522), p.stats)
 	}

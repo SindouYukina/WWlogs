@@ -16,9 +16,10 @@ func (p *processor) writeStructuredEventJSONL(event any) {
 func (p *processor) writeDamageEventOutputs(event *combatEvent, visible bool, sourceRelation, targetRelation playerRelation) {
 }
 
-func (p *processor) linkSkillRequest(messageID uint64) *combatActionRequest {
-	var r0 *combatActionRequest
-	return r0
+func (p *processor) recordBuffSnapshotDiagnostics(frame gameFrame, record rawBuffSnapshot, request pendingActiveRequest, matched bool) {
+}
+
+func (p *processor) archiveClientPushResearch(frame gameFrame, plain []byte) {
 }
 
 func (p *processor) writeBattleStateSignal(at time.Time, container string, signal playerBattleStateSignal, anchor string) {
@@ -42,18 +43,6 @@ func writeCombatNotifyAudit(w io.Writer, frame gameFrame, notification protoFiel
 }
 
 func (p *processor) observeBuffInterval(row buffLifecycleAuditRow) {
-}
-
-func (p *processor) observeBuffSnapshot(row buffSnapshotAuditRow) {
-}
-
-func decodeSchemaMessage(schema *protocolSchema, typeName string, data []byte, depth int) (*decodedMessage, error) {
-	var r0 *decodedMessage
-	var r1 error
-	return r0, r1
-}
-
-func (p *processor) archiveClientPushes(frame gameFrame, decoded *decodedMessage) {
 }
 
 func (event combatEvent) jsonlView(masters *gameMaster) combatEventJSONL {

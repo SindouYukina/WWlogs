@@ -181,7 +181,7 @@ loop:
 		}
 		udp := udpLayer.(*layers.UDP)
 		stats.udpPackets++
-		direction := publicPacketDirection(packet, *ip, udp, *minPort, *maxPort)
+		direction := packetDirection(packet, *ip, udp, *minPort, *maxPort)
 		capturedAt := packet.Metadata().CaptureInfo.Timestamp
 		consumeDatagram(udp.Payload, direction, capturedAt, streams, processor, &stats)
 		processor.observePacketTiming(capturedAt, receivedAt, time.Now())
@@ -192,23 +192,6 @@ loop:
 	processor.finishCapture()
 	report(time.Now(), true)
 	fmt.Fprintf(os.Stderr, "capture_finished reason=%s udp=%d duration=%s\n", stopReason, stats.udpPackets, time.Since(started).Round(time.Millisecond))
-}
-
-// publicPacketDirection tells whether a packet was sent by the local host ("out") or received ("in").
-func publicPacketDirection(packet gopacket.Packet, localIPv4 string, udp *layers.UDP, minPort, maxPort int) string {
-	if network := packet.Layer(layers.LayerTypeIPv4); network != nil {
-		ipv4 := network.(*layers.IPv4)
-		if ipv4.SrcIP.String() == localIPv4 {
-			return "out"
-		}
-		if ipv4.DstIP.String() == localIPv4 {
-			return "in"
-		}
-	}
-	if int(udp.SrcPort) >= minPort && int(udp.SrcPort) <= maxPort {
-		return "in"
-	}
-	return "out"
 }
 
 // publicStatisticsLine formats confirmed aggregates only: no Entity, Handle, or RPC identifiers.

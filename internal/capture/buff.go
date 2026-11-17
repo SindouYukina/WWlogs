@@ -38,40 +38,6 @@ type rawBuffSnapshot struct {
 	UnknownFieldNums []uint64 `json:"unknownFieldNumbers,omitempty"`
 }
 
-type buffSnapshotAuditRow struct {
-	SchemaVersion     int              `json:"schemaVersion"`
-	EventType         string           `json:"eventType"`
-	SessionNumber     int              `json:"sessionNumber"`
-	MessageID         uint16           `json:"messageId"`
-	Timestamp         time.Time        `json:"timestamp"`
-	ResponseCommandID uint16           `json:"responseCommandId"`
-	ResponseDirection string           `json:"responseDirection"`
-	RequestCommandID  uint16           `json:"requestCommandId"`
-	FrameToken        uint16           `json:"frameToken"`
-	EntityID          *uint64          `json:"entityId,omitempty"`
-	EntityIDStatus    resolutionStatus `json:"entityIdStatus"`
-	ComponentPath     string           `json:"componentPath"`
-	// BuffIDStatus records the captured field mapping, not static-definition resolution.
-	BuffIDStatus resolutionStatus `json:"buffIdStatus"`
-	// BuffDefinitionStatus records an exact link from BuffId to the normalized static buff table.
-	BuffDefinitionStatus   resolutionStatus `json:"buffDefinitionStatus"`
-	BuffDefinitionTable    string           `json:"buffDefinitionTable,omitempty"`
-	BuffDefinitionID       *uint64          `json:"buffDefinitionId,omitempty"`
-	BuffDefinitionEvidence string           `json:"buffDefinitionEvidence"`
-	// BuffOwners names the features that list this BuffId in an explicit reference table; the Buff has no name of its own.
-	BuffOwners *buffOwnersJSON `json:"buffOwners,omitempty"`
-	// BuffSemanticStatus covers runtime application and effect semantics, not static row lookup.
-	BuffSemanticStatus        resolutionStatus `json:"buffSemanticStatus"`
-	BuffSemanticEvidence      string           `json:"buffSemanticEvidence"`
-	InstigatorSemantics       resolutionStatus `json:"instigatorSemantics"`
-	InstigatorEvidence        string           `json:"instigatorEvidence,omitempty"`
-	ReferenceSchema           string           `json:"referenceSchema"`
-	WindowsSchemaVerification string           `json:"windowsSchemaVerification"`
-	Buff                      rawBuffSnapshot  `json:"buff"`
-}
-
-const buffSnapshotSchemaVersion = 4
-
 type buffLifecycleAuditRow struct {
 	SchemaVersion           int              `json:"schemaVersion"`
 	EventType               string           `json:"eventType"`
@@ -755,10 +721,6 @@ func (p *processor) handleActiveRequest(token uint16, body []byte) error {
 
 const maxPendingActiveRequests = 4096
 
-// fightBuffSnapshotPath is the wire path of the buff records an EntityActiveResponse carries.
-var fightBuffSnapshotPath = fmt.Sprintf("EntityActiveResponse.field%d(ComponentPbs[])->EntityComponentPb.field%d(FightBuffComponent)->FightBuffComponentPb.field%d(FightBuffInfos[])->FightBuffInformation",
-	fieldEntityActiveResponseComponentPbs, fieldEntityComponentPbFightBuffComponent, fieldFightBuffComponentPbFightBuffInfos)
-
 func (p *processor) handleActiveResponse(frame gameFrame, body []byte) error {
 	fields, err := parseProtoFields(body)
 	if err != nil {
@@ -816,49 +778,7 @@ func (p *processor) handleActiveResponse(frame gameFrame, body []byte) error {
 				}
 				p.stats.observedBuffEvents++
 				p.observeEffectSnapshot(frame, record, request.entityID, matched && request.hasEntityID)
-				if p.buffSnapshots != nil || p.combatEventsJSONL != nil || p.encounterSummary != nil {
-					row := buffSnapshotAuditRow{
-						SchemaVersion: buffSnapshotSchemaVersion, EventType: "BUFF_SNAPSHOT", SessionNumber: p.sessionNumber,
-						MessageID: frame.commandID, Timestamp: frame.timestamp, ResponseCommandID: frame.commandID,
-						ResponseDirection: frame.direction, RequestCommandID: cmdEntityActiveRequest,
-						FrameToken: frame.token, EntityIDStatus: resolutionUnknown,
-						ComponentPath:             fightBuffSnapshotPath,
-						BuffIDStatus:              resolutionCorrelated,
-						BuffDefinitionStatus:      resolutionUnknown,
-						BuffDefinitionEvidence:    "No exact normalized buff.id row has been linked; the raw BuffId remains unchanged",
-						BuffSemanticStatus:        resolutionUnknown,
-						BuffSemanticEvidence:      "This status covers runtime application and effect semantics; static row lookup is reported separately, and snapshot presence does not establish application or uptime",
-						ReferenceSchema:           CurrentProtocol(),
-						WindowsSchemaVerification: protocolSchemaBasis() + "; client/master compatibility UNKNOWN",
-						Buff:                      record,
-					}
-					if record.HasID && p.masters != nil && p.masters.hasBuffDefinition(record.ID) {
-						definitionID := record.ID
-						row.BuffDefinitionStatus = resolutionCorrelated
-						row.BuffDefinitionTable = "buff"
-						row.BuffDefinitionID = &definitionID
-						row.BuffDefinitionEvidence = "FightBuffInformation.BuffId follows the client's BuffById lookup; exact normalized buff.id row found. This links static attributes only and does not establish runtime application or effect semantics"
-						row.BuffOwners = resolveBuffOwners(p.masters, record.ID)
-					} else if record.HasID {
-						// No static definition: only an observed-role owner can exist; the definition status stays UNKNOWN.
-						row.BuffOwners = resolveBuffOwners(p.masters, record.ID)
-					}
-					if record.HasInstigatorID {
-						row.InstigatorSemantics = resolutionCorrelated
-						row.InstigatorEvidence = "Client code (static research: CharacterBuffComponent, ActiveBuff) compares InstigatorId with CreatureDataId and resolves it through CreatureModel.GetEntity; client/master compatibility UNKNOWN"
-					}
-					if matched && request.hasEntityID {
-						entityID := request.entityID
-						row.EntityID = &entityID
-						row.EntityIDStatus = resolutionCorrelated
-					}
-					p.observeBuffSnapshot(row)
-					// A failed snapshot row must not skip the identity, FSM and part components of this response.
-					if p.buffSnapshots != nil {
-						p.writeDiagnosticRow(p.buffSnapshots, "buff-snapshots", row)
-					}
-					p.writeStructuredEventJSONL(row)
-				}
+				p.recordBuffSnapshotDiagnostics(frame, record, request, matched)
 			}
 		}
 		if len(identityComponents) > 0 {

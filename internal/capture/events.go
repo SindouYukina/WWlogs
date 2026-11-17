@@ -264,7 +264,6 @@ type combatEvent struct {
 	SkillDevLabelKind          string
 	SkillStatus                resolutionStatus
 	SkillProof                 string
-	SkillRequest               *combatActionRequest
 	HasDamageID                bool
 	DamageSourceType           uint64
 	HasDamageSourceType        bool
@@ -316,7 +315,6 @@ func (p *processor) buildDamageEvent(rpcID uint64, request pendingDamageRequest,
 		SkillNameStatus:     resolutionUnknown,
 		EventTypeStatus:     resolutionUnknown,
 	}
-	event.SkillRequest = p.linkSkillRequest(request.skillMessageID)
 	event.SummonerCharacter = resolveSummonerCharacter(p.entities, p.masters, event.Source.Runtime)
 	event.SourceVisionSummonCfgs = p.entities.visionSummonConfigs(request.attackerEntityID)
 	event.resolveEventType(p.masters)
