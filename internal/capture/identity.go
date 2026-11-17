@@ -707,7 +707,7 @@ func (r *EntityResolver) applyJoinSceneNotify(body []byte) (int, error) {
 	}
 	var sceneInfo []byte
 	for _, field := range fields {
-		if field.Number == fieldJoinSceneNotifySceneInfo && field.Wire == 2 {
+		if field.Number == FieldJoinSceneNotifySceneInfo && field.Wire == 2 {
 			sceneInfo = field.Data
 			break
 		}
@@ -797,7 +797,7 @@ func (r *EntityResolver) applyUpdateSceneGroupDataNotify(body []byte) (int, erro
 				return 0, fmt.Errorf("parse PlayerSceneGroupData: %w", err)
 			}
 			for _, groupField := range groupFields {
-				if groupField.Number != fieldPlayerSceneGroupDataFightRoleInfos || groupField.Wire != 2 { // PlayerSceneGroupData.FightRoleInfos[]
+				if groupField.Number != FieldPlayerSceneGroupDataFightRoleInfos || groupField.Wire != 2 { // PlayerSceneGroupData.FightRoleInfos[]
 					continue
 				}
 				roleFields, err := ParseProtoFields(groupField.Data)
@@ -812,9 +812,9 @@ func (r *EntityResolver) applyUpdateSceneGroupDataNotify(body []byte) (int, erro
 						continue
 					}
 					switch roleField.Number {
-					case fieldSceneRoleInformationRoleID: // SceneRoleInformation.RoleId
+					case FieldSceneRoleInformationRoleID: // SceneRoleInformation.RoleId
 						entity.RoleID, entity.HasRoleID = roleField.Value, roleField.Value != 0
-					case fieldSceneRoleInformationEntityID: // SceneRoleInformation.EntityId
+					case FieldSceneRoleInformationEntityID: // SceneRoleInformation.EntityId
 						entity.EntityID = roleField.Value
 					}
 				}
@@ -856,7 +856,7 @@ func parseSceneEntitySnapshot(sceneInfo []byte) ([]RuntimeEntity, error) {
 			continue
 		}
 		switch field.Number {
-		case fieldSceneInformationPlayerInfos: // SceneInformation.PlayerInfos[]
+		case FieldSceneInformationPlayerInfos: // SceneInformation.PlayerInfos[]
 			roleEntities, err := parseScenePlayerRoleEntities(field.Data)
 			if err != nil {
 				return nil, err
@@ -905,14 +905,14 @@ func parseScenePlayerRoleEntities(data []byte) ([]RuntimeEntity, error) {
 	}
 	var playerID uint64
 	for _, field := range fields {
-		if field.Number == fieldScenePlayerInformationPlayerID && field.Wire == 0 {
+		if field.Number == FieldScenePlayerInformationPlayerID && field.Wire == 0 {
 			playerID = field.Value
 			break
 		}
 	}
 	entities := make([]RuntimeEntity, 0)
 	for _, field := range fields {
-		if field.Number != fieldScenePlayerInformationPlayerSceneGroupData || field.Wire != 2 { // ScenePlayerInformation.PlayerSceneGroupData[]
+		if field.Number != FieldScenePlayerInformationPlayerSceneGroupData || field.Wire != 2 { // ScenePlayerInformation.PlayerSceneGroupData[]
 			continue
 		}
 		groups, err := ParseProtoFields(field.Data)
@@ -920,7 +920,7 @@ func parseScenePlayerRoleEntities(data []byte) ([]RuntimeEntity, error) {
 			return nil, fmt.Errorf("parse PlayerSceneGroupData: %w", err)
 		}
 		for _, groupField := range groups {
-			if groupField.Number != fieldPlayerSceneGroupDataFightRoleInfos || groupField.Wire != 2 { // PlayerSceneGroupData.FightRoleInfos[]
+			if groupField.Number != FieldPlayerSceneGroupDataFightRoleInfos || groupField.Wire != 2 { // PlayerSceneGroupData.FightRoleInfos[]
 				continue
 			}
 			roleFields, err := ParseProtoFields(groupField.Data)
@@ -935,9 +935,9 @@ func parseScenePlayerRoleEntities(data []byte) ([]RuntimeEntity, error) {
 					continue
 				}
 				switch roleField.Number {
-				case fieldSceneRoleInformationRoleID: // SceneRoleInformation.RoleId
+				case FieldSceneRoleInformationRoleID: // SceneRoleInformation.RoleId
 					entity.RoleID, entity.HasRoleID = roleField.Value, roleField.Value != 0
-				case fieldSceneRoleInformationEntityID: // SceneRoleInformation.EntityId; same client CreatureDataId namespace
+				case FieldSceneRoleInformationEntityID: // SceneRoleInformation.EntityId; same client CreatureDataId namespace
 					entity.EntityID = roleField.Value
 				}
 			}

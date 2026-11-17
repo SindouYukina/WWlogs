@@ -98,7 +98,7 @@ func classifyEffectKind(class EffectCombatClass, basis string, static *EffectSta
 	if basis == effectCombatBasisTerm {
 		return EffectKindElementAilment, effectKindBasisTerm
 	}
-	if class == EffectCombatClassCombat && strings.HasPrefix(basis, effectCombatBasisAttribute) {
+	if class == EffectCombatClassCombat && strings.HasPrefix(basis, EffectCombatBasisAttribute) {
 		if static == nil || len(static.HUDCueTypes) == 0 {
 			if segment := tagSegmentMatch(tags, func(s string) bool { return internalStateTagSegments[s] || strings.Contains(s, "镜头") }); segment != "" {
 				return EffectKindInternalState, effectKindBasisInternalTag + segment

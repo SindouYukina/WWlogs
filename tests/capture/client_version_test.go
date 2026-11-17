@@ -41,9 +41,9 @@ func TestExtractLoginRequestBuildUsesOnlyTheClientVersion(t *testing.T) {
 	nested := appendBytesField(nil, fieldClientBasicInfoDeviceID, []byte("00000000-0000-0000-0000-000000000000"))
 	nested = appendBytesField(nested, fieldClientBasicInfoScreenHeight, []byte("1920x1080"))
 	nested = appendBytesField(nested, fieldClientBasicInfoScreenWidth, []byte("1920x1080"))
-	nested = appendBytesField(nested, fieldClientBasicInfoClientVersion, []byte(completeBuild))
+	nested = appendBytesField(nested, FieldClientBasicInfoClientVersion, []byte(completeBuild))
 	nested = appendBytesField(nested, fieldClientBasicInfoOSVersion, []byte("GPU-MODEL-AND-DRIVER"))
-	body := appendBytesField(nil, fieldLoginRequestClientBasicInfo, nested)
+	body := appendBytesField(nil, FieldLoginRequestClientBasicInfo, nested)
 	body = appendBytesField(body, fieldLoginRequestDevLoginCheckData, []byte("ACCOUNT-UID"))
 	body = appendBytesField(body, fieldLoginRequestPublicResourceVersionInfo, []byte("0123456789abcdef0123456789abcdef"))
 
@@ -65,13 +65,13 @@ func TestClientVersionObservationWaitsForHandshakeAndKeepsFirstValues(t *testing
 	loginFields := appendBytesField(nil, fieldClientBasicInfoDeviceID, []byte("00000000-0000-0000-0000-000000000000"))
 	loginFields = appendBytesField(loginFields, fieldClientBasicInfoScreenHeight, []byte("1920x1080"))
 	loginFields = appendBytesField(loginFields, fieldClientBasicInfoScreenWidth, []byte("1920x1080"))
-	loginFields = appendBytesField(loginFields, fieldClientBasicInfoClientVersion, []byte(completeBuild))
+	loginFields = appendBytesField(loginFields, FieldClientBasicInfoClientVersion, []byte(completeBuild))
 	loginFields = appendBytesField(loginFields, fieldClientBasicInfoOSVersion, []byte("GPU-MODEL-AND-DRIVER"))
-	loginPayload := appendBytesField(nil, fieldLoginRequestClientBasicInfo, loginFields)
+	loginPayload := appendBytesField(nil, FieldLoginRequestClientBasicInfo, loginFields)
 	loginPayload = appendBytesField(loginPayload, fieldLoginRequestDevLoginCheckData, []byte("ACCOUNT-UID"))
 	loginPayload = appendBytesField(loginPayload, fieldLoginRequestPublicResourceVersionInfo, []byte("0123456789abcdef0123456789abcdef"))
 
-	p := NewProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
+	p := NewProcessor(nil, &bytes.Buffer{})
 	p.CurrentFrameTime = time.Date(2026, time.October, 27, 1, 2, 3, 0, time.UTC)
 	if err := p.observeClientVersion(CmdCheckClientPush, versions); err != nil {
 		t.Fatal(err)
@@ -86,7 +86,7 @@ func TestClientVersionObservationWaitsForHandshakeAndKeepsFirstValues(t *testing
 	if err := p.observeClientVersion(CmdLoginRequest, loginPayload); err != nil {
 		t.Fatal(err)
 	}
-	if err := p.observeClientVersion(CmdLoginRequest, appendBytesField(nil, fieldLoginRequestClientBasicInfo, appendBytesField(nil, fieldClientBasicInfoClientVersion, []byte(currentTestClientVersions[2]+".1")))); err != nil {
+	if err := p.observeClientVersion(CmdLoginRequest, appendBytesField(nil, FieldLoginRequestClientBasicInfo, appendBytesField(nil, FieldClientBasicInfoClientVersion, []byte(currentTestClientVersions[2]+".1")))); err != nil {
 		t.Fatal(err)
 	}
 	got := p.ClientVersion

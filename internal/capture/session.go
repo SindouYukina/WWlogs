@@ -32,8 +32,11 @@ type SessionConfig struct {
 	// PublishInterval is the initial minimum wall time between published snapshots; zero selects
 	// DefaultPublishInterval. SetPublishInterval changes it while the session runs. It never affects packet handling.
 	PublishInterval time.Duration
-	// Diagnostics writes the Development diagnostic PCAP for a live session. Public builds reject it.
-	Diagnostics bool
+	// Diagnostics records the Development diagnostics (PCAP, spool) of a live session with OpenDiagnostics, which the
+	// Development build composition supplies (wwlogs/internal/devdesktop); a request without it is refused, so a Public
+	// build cannot record them.
+	Diagnostics     bool
+	OpenDiagnostics SessionDiagnosticsOpener
 	// History receives the session's Combat History journal (history_journal.go); nil keeps no history. It never affects
 	// statistics or snapshots, and never holds up a live capture; a replay reads its file only as fast as the sink accepts
 	// the journal (HistorySink).
@@ -151,7 +154,7 @@ type Session struct {
 	cfg         SessionConfig
 	handle      *pcap.Handle
 	processor   *Processor
-	diagnostics *sessionDiagnostics
+	diagnostics SessionDiagnostics // nil without Development diagnostics
 	info        SessionInfo
 	used        bool
 	// publishInterval is read by the Run goroutine before every publish decision and written by SetPublishInterval.
@@ -216,23 +219,31 @@ func OpenSession(cfg SessionConfig, masters *MasterData) (*Session, error) {
 		session.handle.Close()
 		return nil, fmt.Errorf("set capture filter: %w", err)
 	}
-	session.diagnostics, err = openSessionDiagnostics(cfg.Diagnostics, session.handle.LinkType())
-	if err != nil {
-		var setupError *DiagnosticSetupError
-		if !errors.As(err, &setupError) {
+	if cfg.Diagnostics {
+		if cfg.OpenDiagnostics == nil {
 			session.handle.Close()
-			return nil, err
+			return nil, errors.New("development diagnostics are not available in this build")
 		}
-		session.info.Diagnostics = false
-		session.info.DiagnosticsWarning = "Development diagnostics are unavailable; this session cannot be replayed."
-		session.diagnostics, _ = openSessionDiagnostics(false, session.handle.LinkType())
+		session.diagnostics, err = cfg.OpenDiagnostics(session.handle.LinkType())
+		if err != nil {
+			var setupError *DiagnosticSetupError
+			if !errors.As(err, &setupError) {
+				session.handle.Close()
+				return nil, err
+			}
+			session.info.Diagnostics = false
+			session.info.DiagnosticsWarning = "Development diagnostics are unavailable; this session cannot be replayed."
+			session.diagnostics = nil
+		}
 	}
-	p := NewProcessor(key, io.Discard, io.Discard, nil)
+	p := NewProcessor(key, io.Discard)
 	p.Masters = masters.masters
 	// A host shows one protocol session at a time: a new game handshake starts a new statistics interval.
 	p.IntervalPerProtocolSession = true
 	p.ObserveCaptureSource(live)
-	session.diagnostics.Attach(p)
+	if session.diagnostics != nil {
+		session.diagnostics.Attach(p)
+	}
 	if cfg.History != nil {
 		p.DamageStatistics.ConfigureHistory(cfg.History.Level(), !cfg.HistoryPaused)
 	}
@@ -277,7 +288,9 @@ func (s *Session) Close() {
 		return
 	}
 	s.used = true
-	s.diagnostics.Finish(StopReasonRequested, CaptureCounter{})
+	if s.diagnostics != nil {
+		s.diagnostics.Finish(StopReasonRequested, CaptureCounter{})
+	}
 	s.handle.Close()
 }
 
@@ -300,7 +313,9 @@ func (s *Session) Run(ctx context.Context, publish func(ViewSnapshot)) (result S
 			result.StopReason, err = StopReasonError, fmt.Errorf("capture session failed: %v", recovered)
 		}
 		result.UDPPackets = stats.UDPPackets
-		result.DiagnosticsSummary = s.diagnostics.Finish(result.StopReason, p.CaptureLayerHealth().KernelDropped)
+		if s.diagnostics != nil {
+			result.DiagnosticsSummary = s.diagnostics.Finish(result.StopReason, p.CaptureLayerHealth().KernelDropped)
+		}
 		handle.Close()
 	}()
 
@@ -336,7 +351,9 @@ func (s *Session) Run(ctx context.Context, publish func(ViewSnapshot)) (result S
 				p.ViewClockLead, p.ViewClockStalled = viewClock.read(now, p.CurrentFrameTime)
 			}
 			publish(p.ViewSnapshot())
-			s.diagnostics.ObserveEffectDisplay(p, now)
+			if s.diagnostics != nil {
+				s.diagnostics.ObserveEffectDisplay(p, now)
+			}
 		}
 	}
 	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
@@ -391,7 +408,9 @@ loop:
 				break loop
 			}
 		}
-		s.diagnostics.Packet(packet.Metadata().CaptureInfo, packet.Data())
+		if s.diagnostics != nil {
+			s.diagnostics.Packet(packet.Metadata().CaptureInfo, packet.Data())
+		}
 		receivedAt := time.Now()
 		p.ObservePacketRead()
 		p.SampleCaptureStats(handle, receivedAt, false)

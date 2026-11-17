@@ -22,22 +22,22 @@ func encounterWireBytes(field uint64, data []byte) []byte {
 func battleStateReceivePack(inBattle bool, playerID uint64) []byte {
 	var notify []byte
 	if inBattle {
-		notify = append(notify, encounterWireVarint(fieldPlayerBattleStateChangeNotifyInBattle, 1)...)
+		notify = append(notify, encounterWireVarint(FieldPlayerBattleStateChangeNotifyInBattle, 1)...)
 	}
-	notify = append(notify, encounterWireVarint(fieldPlayerBattleStateChangeNotifyPlayerID, playerID)...)
-	notifyData := encounterWireBytes(fieldCombatNotifyDataPlayerBattleStateChangeNotify, notify)
+	notify = append(notify, encounterWireVarint(FieldPlayerBattleStateChangeNotifyPlayerID, playerID)...)
+	notifyData := encounterWireBytes(FieldCombatNotifyDataPlayerBattleStateChangeNotify, notify)
 	receiveData := encounterWireBytes(FieldCombatReceiveDataCombatNotifyData, notifyData)
 	return encounterWireBytes(FieldCombatReceivePackNotifyData, receiveData)
 }
 
 func singlePlayerJoinScene(playerID uint64) []byte {
-	playerInfo := encounterWireVarint(fieldScenePlayerInformationPlayerID, playerID)
-	sceneInfo := encounterWireBytes(fieldSceneInformationPlayerInfos, playerInfo)
-	return encounterWireBytes(fieldJoinSceneNotifySceneInfo, sceneInfo)
+	playerInfo := encounterWireVarint(FieldScenePlayerInformationPlayerID, playerID)
+	sceneInfo := encounterWireBytes(FieldSceneInformationPlayerInfos, playerInfo)
+	return encounterWireBytes(FieldJoinSceneNotifySceneInfo, sceneInfo)
 }
 
 func newEncounterTestProcessor() *Processor {
-	return NewProcessor(nil, io.Discard, io.Discard, nil)
+	return NewProcessor(nil, io.Discard)
 }
 
 func TestProcessorBattleStateNotifyDrivesEncounter(t *testing.T) {

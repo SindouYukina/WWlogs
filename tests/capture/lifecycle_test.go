@@ -9,7 +9,7 @@ import (
 func lifecycleAddNotify(entityID, configID uint64) []byte {
 	entity := appendVarintField(nil, FieldEntityPbID, entityID)
 	entity = appendVarintField(entity, FieldEntityPbConfigID, configID)
-	return appendBytesField(appendVarintField(nil, fieldEntityAddNotifyIsAdd, 1), FieldEntityAddNotifyEntityPbs, entity)
+	return appendBytesField(appendVarintField(nil, FieldEntityAddNotifyIsAdd, 1), FieldEntityAddNotifyEntityPbs, entity)
 }
 
 // lifecycleRemoveNotify builds an EntityRemoveNotify (remove flag 4, one

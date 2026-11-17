@@ -14,7 +14,7 @@ type PropertyName struct {
 // FSMNodeKey identifies a node inside one state-machine config; node uuids are only unique per machine.
 type FSMNodeKey struct {
 	Machine string
-	uuid    int64
+	UUID    int64
 }
 
 // FSMMaster indexes the AI state-machine node identities (not their behaviour logic).

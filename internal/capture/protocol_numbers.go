@@ -164,7 +164,7 @@ const (
 	FieldBuffStackCountNotifyHandleID           = 5  // i3n.cVn
 	FieldBuffStackCountNotifyNewStackCount      = 6  // i3n.Gjn
 	fieldBuffStackCountNotifyNotRefreshDuration = 7  // i3n.$L1
-	fieldBuffStackCountNotifyInstigatorID       = 10 // i3n.Rjn
+	FieldBuffStackCountNotifyInstigatorID       = 10 // i3n.Rjn
 	FieldBuffStackCountNotifyDuration           = 13 // i3n.n5n
 	fieldBuffStackCountNotifyNotRefreshPeriod   = 15 // i3n.WL1
 
@@ -184,13 +184,14 @@ const (
 	FieldChangeStateNotifyFsmID     = 12 // e3n.$4n
 
 	// ClientBasicInfo (Z9n)
-	fieldClientBasicInfoClientVersion = 19 // Z9n.cjf
+	FieldClientBasicInfoClientVersion = 19 // Z9n.cjf
 
 	// ClientCurrentRoleReportPush (Xe_)
+	FieldClientCurrentRoleReportPushCurrentRoleID   = 4  // Xe_.YHn
 	FieldClientCurrentRoleReportPushCurrentEntityID = 10 // Xe_.JHn
 
 	// CombatCommon (K8n)
-	fieldCombatCommonPreMessageID = 1 // K8n.X8n
+	FieldCombatCommonPreMessageID = 1 // K8n.X8n
 	FieldCombatCommonMessageID    = 2 // K8n.$8n
 	fieldCombatCommonOriginator   = 3 // K8n.Y8n
 	fieldCombatCommonTimeStamp    = 4 // K8n.J8n
@@ -209,7 +210,7 @@ const (
 	fieldCombatNotifyDataRemoveBuffS2CRequestNotify     = 54 // CombatMessage.KLs.C3n
 	FieldCombatNotifyDataRecoverPropChangedNotify       = 58 // CombatMessage.KLs.v3n
 	FieldCombatNotifyDataRemoveBuffByIDS2CRequestNotify = 59 // CombatMessage.KLs.M3n
-	fieldCombatNotifyDataPlayerBattleStateChangeNotify  = 62 // CombatMessage.KLs.y3n
+	FieldCombatNotifyDataPlayerBattleStateChangeNotify  = 62 // CombatMessage.KLs.y3n
 	FieldCombatNotifyDataBuffDurationNotify             = 73 // CombatMessage.KLs.W7l
 
 	// CombatPushData (CombatMessage.OFs)
@@ -218,6 +219,7 @@ const (
 	fieldCombatPushDataRemoveBuffByIDS2CResponsePush = 6  // CombatMessage.OFs.N4n
 	FieldCombatPushDataApplyGameplayEffectPush       = 9  // CombatMessage.OFs.ie_
 	FieldCombatPushDataRemoveGameplayEffectPush      = 10 // CombatMessage.OFs.re_
+	FieldCombatPushDataEndSkillPush                  = 12 // CombatMessage.OFs.ne_
 	FieldCombatPushDataBuffStackCountPush            = 37 // CombatMessage.OFs.Re_
 	fieldCombatPushDataRTimeStopPush                 = 47 // CombatMessage.OFs.Fe_
 	FieldCombatPushDataClientCurrentRoleReportPush   = 56 // CombatMessage.OFs.Xe_
@@ -286,10 +288,14 @@ const (
 	FieldDamageExecuteRequestDamageID         = 14 // U3n.Fjn
 
 	// DamageExecuteResponse (lis)
+	FieldDamageExecuteResponseIsCrit     = 3 // lis.sAs
 	FieldDamageExecuteResponseErrorCode  = 5 // lis.Q4n
 	FieldDamageExecuteResponseChangeLife = 6 // lis.jQ_
 	FieldDamageExecuteResponseImmuneType = 7 // lis.lAs
 	FieldDamageExecuteResponseDamage     = 9 // lis.nAs
+
+	// DependenceComponentPb (iI_)
+	FieldDependenceComponentPbDependenceEntityIDs = 1 // iI_.MI_
 
 	// DynamicEntityInformation (HFs)
 	fieldDynamicEntityInformationID           = 1  // HFs.s5n
@@ -300,6 +306,9 @@ const (
 	fieldDynamicEntityInformationSummonInfo   = 31 // HFs.DKn
 	fieldDynamicEntityInformationComponentPbs = 32 // HFs.zEs
 
+	// EndSkillPush (ne_)
+	FieldEndSkillPushUseSkillInfo = 10 // ne_.dVn
+
 	// EntityActiveRequest (ges)
 	FieldEntityActiveRequestEntityID = 1 // ges.F4n
 
@@ -308,6 +317,7 @@ const (
 
 	// EntityAddNotify (res)
 	FieldEntityAddNotifyEntityPbs = 1 // res.zIs
+	FieldEntityAddNotifyIsAdd     = 9 // res.lWn
 
 	// EntityCommonTagNotify (Lcs)
 	FieldEntityCommonTagNotifyID = 13 // Lcs.s5n
@@ -320,6 +330,7 @@ const (
 	fieldEntityComponentPbConcomitantsComponentPb       = 25 // m3s.Dys
 	fieldEntityComponentPbEntityFsmComponentPb          = 28 // m3s.Uys
 	fieldEntityComponentPbPlayerFollowerSelfComponentPb = 42 // m3s.tI_
+	FieldEntityComponentPbDependenceComponentPb         = 50 // m3s.iI_
 	fieldEntityComponentPbPlayerFollowersComponentPb    = 53 // m3s.nI_
 	fieldEntityComponentPbFollowEntityComponentPb       = 85 // m3s.o8m
 
@@ -354,6 +365,9 @@ const (
 	// FightBuffComponentPb (xAs)
 	FieldFightBuffComponentPbFightBuffInfos = 1 // xAs.SIs
 
+	// FightBuffEffectContext (u3s)
+	FieldFightBuffEffectContextLeftCooldown = 1 // u3s.BTs
+
 	// FightBuffInformation (_3s)
 	FieldFightBuffInformationHandleID     = 1  // _3s.cVn
 	FieldFightBuffInformationBuffID       = 2  // _3s.b6n
@@ -379,10 +393,10 @@ const (
 	FieldGameplayAttributeDataAttributeType = 3 // $ks.tSs
 
 	// JoinSceneNotify (Kus)
-	fieldJoinSceneNotifySceneInfo = 11 // Kus.$Rs
+	FieldJoinSceneNotifySceneInfo = 11 // Kus.$Rs
 
 	// LoginRequest (fss)
-	fieldLoginRequestClientBasicInfo = 8 // fss.Z9n
+	FieldLoginRequestClientBasicInfo = 8 // fss.Z9n
 
 	// MonsterCaptureComponentPb (T3s)
 	FieldMonsterCaptureComponentPbTemplateID = 1 // T3s.IIs
@@ -407,8 +421,8 @@ const (
 	FieldPartInformationPartTag   = 5 // lFs.WWn
 
 	// PlayerBattleStateChangeNotify (y3n)
-	fieldPlayerBattleStateChangeNotifyPlayerID = 3  // y3n.W5n
-	fieldPlayerBattleStateChangeNotifyInBattle = 14 // y3n.iWn
+	FieldPlayerBattleStateChangeNotifyPlayerID = 3  // y3n.W5n
+	FieldPlayerBattleStateChangeNotifyInBattle = 14 // y3n.iWn
 
 	// PlayerFollowerNotify (Summon.eJs)
 	FieldPlayerFollowerNotifyListPlayerFollowerPb = 3 // Summon.eJs.OI_
@@ -430,15 +444,15 @@ const (
 	FieldPlayerSceneAoiDataEntities          = 3 // JFs.gDs
 
 	// PlayerSceneGroupData (ERs)
-	fieldPlayerSceneGroupDataFightRoleInfos = 2 // ERs.gRs
+	FieldPlayerSceneGroupDataFightRoleInfos = 2 // ERs.gRs
 
 	// PlayerSceneGroupDataList (yRs)
 	fieldPlayerSceneGroupDataListPlayerID             = 1 // yRs.W5n
 	fieldPlayerSceneGroupDataListPlayerSceneGroupData = 2 // yRs.ERs
 
 	// ProtoKeyResponse (Lss)
-	fieldProtoKeyResponseType = 2 // Lss.h5n
-	fieldProtoKeyResponseKey  = 3 // Lss.Z4n
+	FieldProtoKeyResponseType = 2 // Lss.h5n
+	FieldProtoKeyResponseKey  = 3 // Lss.Z4n
 
 	// RTimeStopPush (Fe_)
 	fieldRTimeStopPushDuration = 1  // Fe_.n5n
@@ -482,18 +496,18 @@ const (
 
 	// SceneInformation (YFs)
 	fieldSceneInformationInstanceID        = 2  // YFs.d5n
-	fieldSceneInformationPlayerInfos       = 4  // YFs.TRs
+	FieldSceneInformationPlayerInfos       = 4  // YFs.TRs
 	fieldSceneInformationDynamicEntityList = 5  // YFs.LRs
 	fieldSceneInformationAoiData           = 11 // YFs.RRs
 	fieldSceneInformationSceneEntityID     = 24 // YFs.tla
 
 	// ScenePlayerInformation (WFs)
-	fieldScenePlayerInformationPlayerID             = 1  // WFs.W5n
-	fieldScenePlayerInformationPlayerSceneGroupData = 11 // WFs.ERs
+	FieldScenePlayerInformationPlayerID             = 1  // WFs.W5n
+	FieldScenePlayerInformationPlayerSceneGroupData = 11 // WFs.ERs
 
 	// SceneRoleInformation (KFs)
-	fieldSceneRoleInformationRoleID   = 1 // KFs.Q6n
-	fieldSceneRoleInformationEntityID = 2 // KFs.F4n
+	FieldSceneRoleInformationRoleID   = 1 // KFs.Q6n
+	FieldSceneRoleInformationEntityID = 2 // KFs.F4n
 
 	// SimpleCombatEntityBuffLayerCountNotify (J0d)
 	fieldSimpleCombatEntityBuffLayerCountNotifyLayerCount = 1 // J0d.Z0d
@@ -526,4 +540,8 @@ const (
 
 	// UpdateSceneGroupDataNotify (Hgs)
 	fieldUpdateSceneGroupDataNotifyPlayerSceneGroupDataList = 12 // Hgs.yRs
+
+	// UseSkillInformation (W3s)
+	FieldUseSkillInformationSkillID   = 3 // W3s.r5n
+	FieldUseSkillInformationTimeStamp = 7 // W3s.J8n
 )

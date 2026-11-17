@@ -122,8 +122,8 @@ type rpcPairingState struct {
 	rewound  uint64
 }
 
-// observePairingClock advances the capture clock the hold window runs on.
-func (p *Processor) observePairingClock(at time.Time) {
+// ObservePairingClock advances the capture clock the hold window runs on.
+func (p *Processor) ObservePairingClock(at time.Time) {
 	if at.After(p.pairing.frameHighWater) {
 		p.pairing.frameHighWater = at
 	}
@@ -359,9 +359,13 @@ func (p *Processor) setEntityAttributionState(id uint64, s entityAttributionStat
 // settleRemovedSource credits or drops the development summary credits held for a removed source entity.
 func (p *Processor) settleRemovedSource(id uint64) {
 	if roleID, correlated := p.SourceRoles.CorrelatedRole(id); correlated {
-		p.BackfillEncounterSummary(id, roleID)
+		if p.observer != nil {
+			p.observer.BackfillEncounterSummary(id, roleID)
+		}
 	}
-	p.RemovePendingSummaryCredits(id)
+	if p.observer != nil {
+		p.observer.RemovePendingSummaryCredits(id)
+	}
 }
 
 // discardHeldResponses ends every hold, for a protocol session change or the end of the capture.

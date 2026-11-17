@@ -1,5 +1,3 @@
-//go:build wwdev
-
 package capture
 
 import (
@@ -9,7 +7,7 @@ import (
 )
 
 func TestDamageStatisticsAccumulatesAndSeparatesPlayerEntities(t *testing.T) {
-	p, _, _ := newPlayerRelevanceTestProcessor()
+	p := newStatisticsTestProcessor()
 	p.Masters = &GameMaster{Damage: map[uint64]DamageMasterRecord{1: {ID: 1, CalculateType: 0}}}
 	observeTestLocalRole(p, 100)
 	addTestRuntimeEntity(p, 100, nil)
@@ -48,7 +46,7 @@ func TestDamageStatisticsAccumulatesAndSeparatesPlayerEntities(t *testing.T) {
 }
 
 func TestDamageStatisticsIgnoresNPCOnlyAndNonDamageEvents(t *testing.T) {
-	p, _, _ := newPlayerRelevanceTestProcessor()
+	p := newStatisticsTestProcessor()
 	observeTestLocalRole(p, 100)
 	addTestRuntimeEntity(p, 100, nil)
 	addTestRuntimeEntity(p, 200, func(entity *RuntimeEntity) { entity.MonsterID, entity.HasMonsterID = 9001, true })
@@ -68,7 +66,7 @@ func TestDamageStatisticsIgnoresNPCOnlyAndNonDamageEvents(t *testing.T) {
 }
 
 func TestDamageStatisticsKeepsUnresolvedSummonDamageUnattributed(t *testing.T) {
-	p, _, _ := newPlayerRelevanceTestProcessor()
+	p := newStatisticsTestProcessor()
 	observeTestLocalRole(p, 100)
 	addTestRuntimeEntity(p, 100, nil)
 	addTestRuntimeEntity(p, 101, func(entity *RuntimeEntity) {
@@ -99,14 +97,14 @@ func TestDamageStatisticsKeepsUnresolvedSummonDamageUnattributed(t *testing.T) {
 }
 
 func TestProcessorSnapshotAndResetReturnsOldIntervalAndPreservesProtocolState(t *testing.T) {
-	p, _, _ := newPlayerRelevanceTestProcessor()
+	p := newStatisticsTestProcessor()
 	p.SessionNumber = 5
 	p.Pending[42] = PendingDamageRequest{HasDamageID: true, DamageID: 1}
 	p.consumed[99] = consumedResponse{sequence: 1}
 	addStatisticsOutgoingDamage(p.DamageStatistics, 5, 10, time.Unix(10, 0))
 	addStatisticsOutgoingDamage(p.DamageStatistics, 5, 20, time.Unix(20, 0))
 
-	oldInterval := p.snapshotAndResetDamageStatistics()
+	oldInterval := p.SnapshotAndResetDamageStatistics()
 	newInterval := p.DamageStatisticsSnapshot()
 	if oldInterval.CaptureSessionID != newInterval.CaptureSessionID ||
 		oldInterval.StatisticsIntervalID != 1 || newInterval.StatisticsIntervalID != 2 ||
@@ -125,7 +123,7 @@ func TestProcessorSnapshotAndResetReturnsOldIntervalAndPreservesProtocolState(t 
 }
 
 func TestProcessorStatisticsAccessorsReturnCopiesAndResetSharedState(t *testing.T) {
-	p, _, _ := newPlayerRelevanceTestProcessor()
+	p := newStatisticsTestProcessor()
 	p.SessionNumber = 7
 	p.Pending[42] = PendingDamageRequest{HasDamageID: true, DamageID: 1}
 	p.consumed[99] = consumedResponse{sequence: 1}
@@ -153,8 +151,8 @@ func TestProcessorStatisticsAccessorsReturnCopiesAndResetSharedState(t *testing.
 }
 
 func TestDamageResponseDeduplicatesStatisticsThroughParser(t *testing.T) {
-	var stdout, diagnostic bytes.Buffer
-	p := NewProcessor(nil, &stdout, &diagnostic, nil)
+	var diagnostic bytes.Buffer
+	p := NewProcessor(nil, &diagnostic)
 	observeTestLocalRole(p, 100)
 	addTestRuntimeEntity(p, 100, nil)
 	addTestRuntimeEntity(p, 200, func(entity *RuntimeEntity) { entity.MonsterID, entity.HasMonsterID = 9001, true })
@@ -174,4 +172,16 @@ func TestDamageResponseDeduplicatesStatisticsThroughParser(t *testing.T) {
 	if snapshot.DamageDealt != 9001 || snapshot.OutgoingEvents != 1 || p.Stats.DuplicateResponses != 1 {
 		t.Fatalf("duplicate response changed statistics: snapshot=%+v stats=%+v", snapshot, p.Stats)
 	}
+}
+
+// newStatisticsTestProcessor is a core processor with an empty entity registry.
+func newStatisticsTestProcessor() *Processor {
+	p := NewProcessor(nil, &bytes.Buffer{})
+	p.Entities = NewEntityResolver()
+	return p
+}
+
+// observeTestLocalRole reports entityID as the current role through the core role decoder, as every build reads it.
+func observeTestLocalRole(p *Processor, entityID uint64) {
+	p.ObserveClientPushFrame(GameFrame{CommandID: CmdCombatSendPackRequest, Direction: "out"}, localRoleReportBody(1409, entityID))
 }

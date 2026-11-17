@@ -247,7 +247,7 @@ func TestReplayPipelineCollector(t *testing.T) {
 		counts := map[string]uint64{}
 		phases["pipeline"] = append(phases["pipeline"], measurePhase(total, func() {
 			for _, capture := range captures {
-				p := NewProcessor(key, io.Discard, io.Discard, nil)
+				p := NewProcessor(key, io.Discard)
 				p.Masters = masters
 				streams, stats := make(map[string]*Stream), CaptureStats{}
 				replayRawCapture(p, capture, nil, 0, streams, &stats)
@@ -283,7 +283,7 @@ func measurePipelineLatency(t *testing.T, captures []rawCapture, key *StaticRSA,
 	runtime.GC()
 	var datagrams, snapshots, snapshotBytes []float64
 	for _, capture := range captures {
-		p := NewProcessor(key, io.Discard, io.Discard, nil)
+		p := NewProcessor(key, io.Discard)
 		p.Masters = masters
 		streams, stats := make(map[string]*Stream), CaptureStats{}
 		var nextSnapshot time.Time

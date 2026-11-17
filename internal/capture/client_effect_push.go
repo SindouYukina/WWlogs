@@ -38,7 +38,7 @@ func decodeCombatCommon(body []byte) (combatCommonContext, error) {
 		}
 		value := field.Value
 		switch field.Number {
-		case fieldCombatCommonPreMessageID:
+		case FieldCombatCommonPreMessageID:
 			common.preMessageID = &value
 		case FieldCombatCommonMessageID:
 			common.messageID = &value
@@ -283,10 +283,16 @@ func (p *Processor) handleClientEffectRow(row BuffLifecycleAuditRow) error {
 	p.linkServerBuffRequest(&row)
 	p.linkBuffLifecycleGenericAndHandle(&row)
 	p.linkBuffLifecycleOwners(&row)
-	p.WriteBuffLifecycleRow(&row)
+	if p.observer != nil {
+		p.observer.WriteBuffLifecycleRow(&row)
+	}
 	p.observeEffectLifecycle(row)
-	p.WriteStructuredEventJSONL(row)
-	p.WriteBuffLifecycleConsole(row)
+	if p.observer != nil {
+		p.observer.WriteStructuredEventJSONL(row)
+	}
+	if p.observer != nil {
+		p.observer.WriteBuffLifecycleConsole(row)
+	}
 	return nil
 }
 

@@ -270,7 +270,7 @@ func decodeBuffLifecycleMessageForCommand(frame GameFrame, body []byte, schemaCo
 				floatTarget = &row.DurationSeconds
 			case FieldBuffStackCountNotifyLeftDuration:
 				floatTarget = &row.RemainingDuration
-			case fieldBuffStackCountNotifyInstigatorID:
+			case FieldBuffStackCountNotifyInstigatorID:
 				uintTarget = &row.InstigatorID
 			case fieldBuffStackCountNotifyNotRefreshDuration:
 				boolTarget = &row.NotRefreshDuration
@@ -372,10 +372,16 @@ func (p *Processor) HandleBuffLifecycleMessage(frame GameFrame, body []byte) err
 	p.linkBuffLifecycleDefinition(&row)
 	p.linkBuffLifecycleGenericAndHandle(&row)
 	p.linkBuffLifecycleOwners(&row)
-	p.WriteBuffLifecycleRow(&row)
+	if p.observer != nil {
+		p.observer.WriteBuffLifecycleRow(&row)
+	}
 	p.observeEffectLifecycle(row)
-	p.WriteStructuredEventJSONL(row)
-	p.WriteBuffLifecycleConsole(row)
+	if p.observer != nil {
+		p.observer.WriteStructuredEventJSONL(row)
+	}
+	if p.observer != nil {
+		p.observer.WriteBuffLifecycleConsole(row)
+	}
 	return nil
 }
 
@@ -423,13 +429,15 @@ func (p *Processor) HandleCombatReceivePackNotify(frame GameFrame, body []byte) 
 				if p.Census != nil {
 					p.Census.ObserveCombatNotifyField(notification.Number)
 				}
-				p.AuditCombatNotify(frame, notification, commonEntityID, commonOriginator, commonMessageID)
+				if p.observer != nil {
+					p.observer.AuditCombatNotify(frame, notification, commonEntityID, commonOriginator, commonMessageID)
+				}
 				if notification.Number == FieldCombatNotifyDataDamageExecuteNotify && notification.Wire == 2 {
 					p.handleDamageExecuteNotify(frame, notification.Data, p.frameNotifyOrdinal)
 					p.frameNotifyOrdinal++
 					continue
 				}
-				if notification.Number == fieldCombatNotifyDataPlayerBattleStateChangeNotify && notification.Wire == 2 {
+				if notification.Number == FieldCombatNotifyDataPlayerBattleStateChangeNotify && notification.Wire == 2 {
 					if err := p.handlePlayerBattleState(frame, combatNotifyContainer(frame.CommandID), notification.Data); err != nil {
 						return err
 					}
@@ -490,11 +498,19 @@ func (p *Processor) HandleInnerBuffLifecycleMessage(frame GameFrame, innerFieldN
 	p.linkBuffLifecycleDefinition(&row)
 	p.linkBuffLifecycleGenericAndHandle(&row)
 	p.linkBuffLifecycleOwners(&row)
-	p.WriteBuffLifecycleRow(&row)
-	p.ObserveBuffInterval(row)
+	if p.observer != nil {
+		p.observer.WriteBuffLifecycleRow(&row)
+	}
+	if p.observer != nil {
+		p.observer.ObserveBuffInterval(row)
+	}
 	p.observeEffectLifecycle(row)
-	p.WriteStructuredEventJSONL(row)
-	p.WriteBuffLifecycleConsole(row)
+	if p.observer != nil {
+		p.observer.WriteStructuredEventJSONL(row)
+	}
+	if p.observer != nil {
+		p.observer.WriteBuffLifecycleConsole(row)
+	}
 	return nil
 }
 
@@ -547,9 +563,9 @@ const maxBuffHandles = 1 << 16
 
 // BuffHandleKey scopes a lifecycle handle id to the session and the entity that holds the buff.
 type BuffHandleKey struct {
-	session  int
-	entityID uint64
-	handleID uint64
+	Session  int
+	EntityID uint64
+	HandleID uint64
 }
 
 type buffHandleEntry struct {
@@ -768,7 +784,9 @@ func (p *Processor) HandleActiveResponse(frame GameFrame, body []byte) error {
 				}
 				p.Stats.ObservedBuffEvents++
 				p.observeEffectSnapshot(frame, record, request.EntityID, matched && request.HasEntityID)
-				p.RecordBuffSnapshotDiagnostics(frame, record, request, matched)
+				if p.observer != nil {
+					p.observer.RecordBuffSnapshotDiagnostics(frame, record, request, matched)
+				}
 			}
 		}
 		if len(identityComponents) > 0 {

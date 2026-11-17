@@ -18,16 +18,18 @@ func appendFixed32TestField(dst []byte, number uint64, value uint32) []byte {
 
 func TestWriteBuffLifecycleConsoleCanBeDisabled(t *testing.T) {
 	var stdout bytes.Buffer
-	p := NewProcessor(nil, &stdout, &bytes.Buffer{}, nil)
+	p := NewProcessor(nil, &bytes.Buffer{})
 	row := BuffLifecycleAuditRow{EventKind: "GAMEPLAY_EFFECT_APPLY"}
-	p.WriteBuffLifecycleConsole(row)
+	if p.observer != nil {
+		p.observer.WriteBuffLifecycleConsole(row)
+	}
 	if stdout.Len() != 0 {
 		t.Fatalf("disabled effect console wrote %q", stdout.String())
 	}
 }
 
 func TestEntityActiveResponseWithoutSnapshotOutputStillParsesBuff(t *testing.T) {
-	p := NewProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
+	p := NewProcessor(nil, &bytes.Buffer{})
 	buffRecord := appendVarintField(nil, FieldFightBuffInformationBuffID, 70001)
 	response := appendBytesField(nil, FieldEntityActiveResponseComponentPbs, appendBytesField(nil, FieldEntityComponentPbFightBuffComponent, appendBytesField(nil, FieldFightBuffComponentPbFightBuffInfos, buffRecord)))
 	if err := p.HandleActiveResponse(GameFrame{CommandID: CmdEntityActiveResponse, Direction: "in", Token: 7}, response); err != nil {
@@ -39,7 +41,7 @@ func TestEntityActiveResponseWithoutSnapshotOutputStillParsesBuff(t *testing.T) 
 }
 
 func TestEntityActiveResponseCorrelatesIdentityComponentsToRequestEntity(t *testing.T) {
-	p := NewProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
+	p := NewProcessor(nil, &bytes.Buffer{})
 	const token = 55
 	const entityID = 8801
 	if err := p.HandleActiveRequest(token, appendVarintField(nil, FieldEntityActiveRequestEntityID, entityID)); err != nil {
@@ -309,7 +311,7 @@ func TestBuffLifecycleMessagesPreserveCommandSpecificFields(t *testing.T) {
 
 func TestEntityActiveResponseDoesNotAttachComponentsWithoutLiveRequestEntity(t *testing.T) {
 	t.Run("unmatched token", func(t *testing.T) {
-		p := NewProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
+		p := NewProcessor(nil, &bytes.Buffer{})
 		monster := appendVarintField(nil, FieldMonsterCaptureComponentPbMonsterID, 456789)
 		response := appendBytesField(nil, FieldEntityActiveResponseComponentPbs, appendBytesField(nil, FieldEntityComponentPbMonsterCaptureComponent, monster))
 		if err := p.HandleActiveResponse(GameFrame{CommandID: CmdEntityActiveResponse, Direction: "in", Token: 77}, response); err != nil {
@@ -321,7 +323,7 @@ func TestEntityActiveResponseDoesNotAttachComponentsWithoutLiveRequestEntity(t *
 	})
 
 	t.Run("request entity removed before response", func(t *testing.T) {
-		p := NewProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
+		p := NewProcessor(nil, &bytes.Buffer{})
 		const token = 78
 		const entityID = 8802
 		if err := p.HandleActiveRequest(token, appendVarintField(nil, FieldEntityActiveRequestEntityID, entityID)); err != nil {

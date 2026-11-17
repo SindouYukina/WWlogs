@@ -15,10 +15,10 @@ func printVersion(w io.Writer) {
 	fmt.Fprintf(w, "Build profile: %s\n", identity.Profile)
 	fmt.Fprintf(w, "Commit: %s\n", identity.Commit)
 	fmt.Fprintf(w, "Working tree modified: %s\n", identity.Dirty)
-	printVersionDetails(w)
 }
 
-// PrintVersion prints the build identity for another executable of this product, such as the desktop host.
+// PrintVersion prints the build identity of a Public executable; a Development one adds the hash of its executable
+// (wwlogs/internal/devcapture).
 func PrintVersion(w io.Writer) {
 	printVersion(w)
 }

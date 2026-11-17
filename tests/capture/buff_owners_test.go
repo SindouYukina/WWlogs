@@ -70,7 +70,7 @@ func TestBuffOwnerListIsBoundedButKeepsTheCount(t *testing.T) {
 }
 
 func TestLifecycleRowsTakeOwnersFromTheLinkedBuffId(t *testing.T) {
-	p := NewProcessor(nil, nil, nil, nil)
+	p := NewProcessor(nil, nil)
 	p.Masters = &GameMaster{
 		BuffDefinitions: map[uint64]struct{}{70001: {}, 70002: {}},
 		buffOwners:      map[uint64][]BuffOwnerText{70001: {{Kind: "weaponreson", Name: "定解", OwnerIDs: []uint64{410}}}, 70002: {{Kind: "resonantchain", Name: "身入淒雨", OwnerIDs: []uint64{367}}}},

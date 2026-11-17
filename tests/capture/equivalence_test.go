@@ -105,7 +105,7 @@ func equivalenceEnvironment(t *testing.T) (equivalenceInputs, bool) {
 // direction rule, same datagram entry point. after is called with the 1-based UDP datagram index.
 func equivalenceReplay(t *testing.T, inputs equivalenceInputs, masters *GameMaster, key *StaticRSA, path string, configure func(*Processor), after func(index int, p *Processor)) (*Processor, CaptureStats) {
 	t.Helper()
-	p := NewProcessor(key, io.Discard, io.Discard, nil)
+	p := NewProcessor(key, io.Discard)
 	p.Masters = masters
 	if configure != nil {
 		configure(p)
@@ -328,18 +328,10 @@ func TestCoreEquivalenceCollector(t *testing.T) {
 
 func collectEquivalence(t *testing.T, inputs equivalenceInputs, masters *GameMaster, key *StaticRSA, item equivalencePCAP, mode equivalenceMode) (equivalenceRecord, map[string]any) {
 	t.Helper()
-	var sinks *equivalenceSinkSet
-	configure := func(p *Processor) {
-		if mode.sinks {
-			sinks = attachEquivalenceSinks(p)
-		}
-	}
-
 	// Pass 1: read only once at the end, like an executable replay.
 	var normalizer equivalenceNormalizer
 	finalProcessor, stats := equivalenceReplay(t, inputs, masters, key, item.path, func(p *Processor) {
 		normalizer = newEquivalenceNormalizer(p)
-		configure(p)
 	}, nil)
 	record := equivalenceRecord{
 		Name:       item.name,
@@ -350,9 +342,6 @@ func collectEquivalence(t *testing.T, inputs equivalenceInputs, masters *GameMas
 		Scalars:    equivalenceScalars(finalProcessor),
 	}
 	extra := map[string]any{"diagnosticScalars": equivalenceDiagnosticScalars(finalProcessor)}
-	if sinks != nil {
-		extra["sinks"] = sinks.summary()
-	}
 	total := stats.UDPPackets
 
 	// Pass 2: query after every datagram, which is how a live display polls. The digest chain proves that
@@ -362,9 +351,6 @@ func collectEquivalence(t *testing.T, inputs equivalenceInputs, masters *GameMas
 	var normalizer2 equivalenceNormalizer
 	equivalenceReplay(t, inputs, masters, key, item.path, func(p *Processor) {
 		normalizer2 = newEquivalenceNormalizer(p)
-		if mode.sinks {
-			attachEquivalenceSinks(p)
-		}
 	}, func(index int, p *Processor) {
 		state := normalizer2.stateAtFrame(p)
 		digest := equivalenceDigest(equivalenceMarshal(t, state))
@@ -401,9 +387,6 @@ func collectEquivalence(t *testing.T, inputs equivalenceInputs, masters *GameMas
 		done := false
 		resetProcessor, _ := equivalenceReplay(t, inputs, masters, key, item.path, func(p *Processor) {
 			normalizer3 = newEquivalenceNormalizer(p)
-			if mode.sinks {
-				attachEquivalenceSinks(p)
-			}
 		}, func(index int, p *Processor) {
 			if done || index != resetAt {
 				return
@@ -412,10 +395,10 @@ func collectEquivalence(t *testing.T, inputs equivalenceInputs, masters *GameMas
 			damage := p.DamageStatisticsSnapshot()
 			query := CaptureQueryTime{CaptureSessionID: damage.CaptureSessionID, Timestamp: p.CurrentFrameTime}
 			if !p.CurrentFrameTime.IsZero() {
-				reset.Before = normalizer3.damage(p.snapshotAndResetDamageStatisticsAt(query))
+				reset.Before = normalizer3.damage(p.SnapshotAndResetDamageStatisticsAt(query))
 				reset.EffectsBefore = normalizer3.effects(p.Effects.SnapshotAndResetAt(query))
 			} else {
-				reset.Before = normalizer3.damage(p.snapshotAndResetDamageStatistics())
+				reset.Before = normalizer3.damage(p.SnapshotAndResetDamageStatistics())
 				p.Effects.Reset()
 			}
 			reset.AfterReset = normalizer3.stateAtFrame(p)
@@ -427,19 +410,13 @@ func collectEquivalence(t *testing.T, inputs equivalenceInputs, masters *GameMas
 }
 
 type equivalenceMode struct {
-	name  string
-	sinks bool
+	name string
 }
 
-// equivalenceModes lists the collector modes this build can run. "bare" attaches no diagnostic sink and
-// exists in every profile. "sinks" attaches discarding hash writers to the diagnostic sinks and exists
-// only where those sinks exist (Development and the Golden Baseline).
+// equivalenceModes lists the collector modes of the core: "bare" runs the core alone. The Development module runs the
+// same collector with its observers attached as well ("sinks", tests/devcapture/equivalence_test.go).
 func equivalenceModes() []equivalenceMode {
-	modes := []equivalenceMode{{name: "bare"}}
-	if equivalenceSinksSupported {
-		modes = append(modes, equivalenceMode{name: "sinks", sinks: true})
-	}
-	return modes
+	return []equivalenceMode{{name: "bare"}}
 }
 
 type equivalenceHashSink struct {
@@ -449,10 +426,6 @@ type equivalenceHashSink struct {
 	}
 	bytes int64
 	lines int64
-}
-
-func newEquivalenceHashSink() *equivalenceHashSink {
-	return &equivalenceHashSink{hash: sha256.New()}
 }
 
 func (s *equivalenceHashSink) Write(data []byte) (int, error) {

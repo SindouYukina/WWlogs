@@ -239,7 +239,7 @@ type Processor struct {
 	Effects                *EffectTracker
 	// Census is the Development command census (-command-census-out), nil in every other run; the frame parser and
 	// the frame dispatcher report what they read to it.
-	Census        commandCensusObserver
+	Census        CommandCensusObserver
 	SessionNumber int
 	// ScenePlayerIDs lists the players of the current scene; it anchors battle-state signals before the
 	// explicit local-player identity does.
@@ -254,12 +254,13 @@ type Processor struct {
 	// interval never mixes protocol sessions. Application hosts set it; the CLI keeps one interval per capture.
 	IntervalPerProtocolSession bool
 
-	// Dev is the Development state: the console, research and raw diagnostic outputs and the records they keep
-	// (processor_diagnostics_development.go). The core never reads it; a Public build has none of it.
-	Dev processorDiagnostics
+	// observer receives the observation points (Observe); nil without one, which is every Public processor.
+	observer Observer
 }
 
-func NewProcessor(rsaKey *StaticRSA, stdout, diagnostic, audit io.Writer) *Processor {
+// NewProcessor is a processor that decrypts with rsaKey and writes its operational diagnostics (parse errors, session
+// key readiness) to diagnostic.
+func NewProcessor(rsaKey *StaticRSA, diagnostic io.Writer) *Processor {
 	statistics := NewDamageStatistics()
 	return &Processor{
 		RSA:              rsaKey,
@@ -272,8 +273,6 @@ func NewProcessor(rsaKey *StaticRSA, stdout, diagnostic, audit io.Writer) *Proce
 		DamageStatistics: statistics,
 		Effects:          newJournaledEffectTracker(statistics),
 		Diagnostic:       diagnostic,
-		// The console (stdout) and the event audit are Development outputs; a Public build ignores both writers.
-		Dev: newProcessorDiagnostics(stdout, audit),
 	}
 }
 
@@ -438,10 +437,12 @@ func IsImplementedCommand(commandID uint16) bool {
 }
 
 func (p *Processor) HandleFrame(frame GameFrame) {
-	p.ArchiveFrame(frame)
+	if p.observer != nil {
+		p.observer.ArchiveFrame(frame)
+	}
 	p.CurrentFrameTime = frame.Timestamp
 	p.observeServerSequence(frame)
-	p.observePairingClock(frame.Timestamp)
+	p.ObservePairingClock(frame.Timestamp)
 	p.observeEncounterClock(frame.Timestamp)
 	p.sessionHealth.observeFrame(frame.Timestamp)
 	var censusEntry CensusFrameObserver
@@ -485,7 +486,9 @@ func (p *Processor) HandleFrame(frame GameFrame) {
 		if censusEntry != nil {
 			censusEntry.InspectUndecoded(frame, decodable)
 		} else if decodable {
-			p.ArchiveUndecodedSchema(frame)
+			if p.observer != nil {
+				p.observer.ArchiveUndecodedSchema(frame)
+			}
 		}
 		return
 	}
@@ -542,14 +545,28 @@ func (p *Processor) HandleFrame(frame GameFrame) {
 	if censusEntry != nil {
 		censusEntry.ObserveKnownBodyWire(plain)
 	}
-	p.ArchiveSchemaDecode(frame, plain)
-	p.ArchiveDamageRPCSchema(frame, plain)
-	p.ArchiveHPStateFrame(frame, plain)
-	p.ArchiveCombatStateFrame(frame, plain)
-	p.ArchiveDamagePushFrame(frame, plain)
+	if p.observer != nil {
+		p.observer.ArchiveSchemaDecode(frame, plain)
+	}
+	if p.observer != nil {
+		p.observer.ArchiveDamageRPCSchema(frame, plain)
+	}
+	if p.observer != nil {
+		p.observer.ArchiveHPStateFrame(frame, plain)
+	}
+	if p.observer != nil {
+		p.observer.ArchiveCombatStateFrame(frame, plain)
+	}
+	if p.observer != nil {
+		p.observer.ArchiveDamagePushFrame(frame, plain)
+	}
 	p.ObserveClientPushFrame(frame, plain)
-	p.ArchiveBulletRefReceiveFrame(frame, plain)
-	p.ArchiveSummonOwnerFrame(frame, plain)
+	if p.observer != nil {
+		p.observer.ArchiveBulletRefReceiveFrame(frame, plain)
+	}
+	if p.observer != nil {
+		p.observer.ArchiveSummonOwnerFrame(frame, plain)
+	}
 	parseErrorsBefore := p.Stats.ParseErrors
 	switch frame.CommandID {
 	case CmdBasicInfoNotify:
@@ -617,9 +634,13 @@ func (p *Processor) HandleFrame(frame GameFrame) {
 		p.observeContextSceneJoin(frame.Timestamp)
 		p.observeSceneJoin(plain, frame.Timestamp)
 		p.Effects.EndLiveStateFor(EffectUntrackedSceneChange)
-		p.BackfillAvailableSummaryCredits()
+		if p.observer != nil {
+			p.observer.BackfillAvailableSummaryCredits()
+		}
 		p.SourceRoles.reset()
-		p.ResetPendingSummaryCredits()
+		if p.observer != nil {
+			p.observer.ResetPendingSummaryCredits()
+		}
 	case CmdEntityAddNotify:
 		added, err := p.Entities.ApplyEntityAddNotify(plain)
 		if err != nil {
@@ -688,10 +709,10 @@ func (p *Processor) handleProtoKeyResponse(body []byte) error {
 	var responseType uint64
 	var encrypted []byte
 	for _, field := range fields {
-		if field.Number == fieldProtoKeyResponseType && field.Wire == 0 {
+		if field.Number == FieldProtoKeyResponseType && field.Wire == 0 {
 			responseType = field.Value
 		}
-		if field.Number == fieldProtoKeyResponseKey && field.Wire == 2 {
+		if field.Number == FieldProtoKeyResponseKey && field.Wire == 2 {
 			encrypted = field.Data
 		}
 	}
@@ -719,11 +740,17 @@ func (p *Processor) handleProtoKeyResponse(body []byte) error {
 	p.Entities.reset()
 	p.PlayerRelevance.Reset()
 	p.Effects.EndLiveStateFor(EffectUntrackedSessionChange)
-	p.BackfillAvailableSummaryCredits()
+	if p.observer != nil {
+		p.observer.BackfillAvailableSummaryCredits()
+	}
 	p.SourceRoles.reset()
-	p.ResetPendingSummaryCredits()
+	if p.observer != nil {
+		p.observer.ResetPendingSummaryCredits()
+	}
 	p.activeRequests = make(map[uint16]PendingActiveRequest)
-	p.Dev.BeginProtocolSession()
+	if p.observer != nil {
+		p.observer.BeginProtocolSession()
+	}
 	p.sessionGeneration++
 	fmt.Fprintln(p.Diagnostic, "session_key_ready bytes=32 value=redacted")
 	return nil
@@ -843,7 +870,9 @@ func (p *Processor) HandleDamageRequests(frame GameFrame, body []byte) {
 					p.SourceRoles.Observe(identity.AttackerEntityID, skill)
 				}
 			}
-			p.WritePartReference(frame, rpcID, identity)
+			if p.observer != nil {
+				p.observer.WritePartReference(frame, rpcID, identity)
+			}
 			if identity.HasAttackerEntityID || identity.HasTargetEntityID {
 				p.Context.observeClientReference(identity.AttackerEntityID, identity.TargetEntityID)
 			}
@@ -966,7 +995,9 @@ func (p *Processor) HandleOneDamageResult(rpcID uint64, payload []byte) {
 		p.Stats.InvalidResponses++
 		p.rememberConsumed(rpcID, responseDigest(payload))
 		delete(p.Pending, rpcID)
-		p.WriteNoAmountEvent(rpcID, request, hasAmount, errorCode, immuneType, hasChangeLife, changeLife)
+		if p.observer != nil {
+			p.observer.WriteNoAmountEvent(rpcID, request, hasAmount, errorCode, immuneType, hasChangeLife, changeLife)
+		}
 		return
 	}
 
@@ -1027,7 +1058,9 @@ func (p *Processor) HandleOneDamageResult(rpcID uint64, payload []byte) {
 	p.Stats.DecodedMatchedEvents++
 	p.Stats.DecodedCombatResultAbs += value
 	if p.WriteDamageEvent(event) {
-		p.ObserveEncounterSummary(event)
+		if p.observer != nil {
+			p.observer.ObserveEncounterSummary(event)
+		}
 	}
 }
 
@@ -1139,7 +1172,9 @@ func (p *Processor) startProtocolSessionStatistics(at time.Time) {
 		return
 	}
 	p.DamageStatistics.observeSessionChange(at)
-	p.FlushEncounterTransitions()
+	if p.observer != nil {
+		p.observer.FlushEncounterTransitions()
+	}
 	p.DamageStatistics.endProtocolSession()
 	if p.IntervalPerProtocolSession && p.SessionNumber > 1 {
 		p.DamageStatistics.Reset()

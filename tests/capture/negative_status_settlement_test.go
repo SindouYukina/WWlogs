@@ -47,11 +47,11 @@ func newSettlementTestProcessor() *Processor {
 	p.Masters.NegativeStatusExecutors[settleHavocBuff] = settleHavoc
 	p.Masters.NegativeStatusExecutors[settleGlacioNewBf] = settleGlacioNew
 	p.Masters.NegativeStatusSettlements = map[uint64]NegativeStatusSettlementRule{
-		notifyTestAeroBuff:    {Known: true, periodic: true, ExecutesOnCreation: true},
-		notifyTestAeroBuff2:   {Known: true, periodic: true, ExecutesOnCreation: true},
-		notifyTestSpectroBuff: {Known: true, periodic: true},
-		settleGlacioBuff:      {Known: true, ExecutesOnCreation: true, clearsOnOverflow: true},
-		settleFusionBuff:      {Known: true, ExecutesOnCreation: true, clearsOnOverflow: true},
+		notifyTestAeroBuff:    {Known: true, Periodic: true, ExecutesOnCreation: true},
+		notifyTestAeroBuff2:   {Known: true, Periodic: true, ExecutesOnCreation: true},
+		notifyTestSpectroBuff: {Known: true, Periodic: true},
+		settleGlacioBuff:      {Known: true, ExecutesOnCreation: true, ClearsOnOverflow: true},
+		settleFusionBuff:      {Known: true, ExecutesOnCreation: true, ClearsOnOverflow: true},
 		settleHavocBuff:       {Known: true, ExecutesOnCreation: true},
 		settleGlacioNewBf:     {Known: true, ExecutesOnCreation: true},
 	}
@@ -76,7 +76,7 @@ func statusApplyItem(target, handle, buff, instigator, stack uint64) []byte {
 func statusStackItem(target, handle, stack, instigator uint64) []byte {
 	payload := appendVarintField(nil, FieldBuffStackCountNotifyHandleID, handle)
 	payload = appendVarintField(payload, FieldBuffStackCountNotifyNewStackCount, stack)
-	payload = appendVarintField(payload, fieldBuffStackCountNotifyInstigatorID, instigator)
+	payload = appendVarintField(payload, FieldBuffStackCountNotifyInstigatorID, instigator)
 	notify := appendBytesField(nil, FieldCombatNotifyDataCombatCommon, appendVarintField(nil, FieldCombatCommonEntityID, target))
 	notify = appendBytesField(notify, FieldCombatNotifyDataBuffStackCountNotify, payload)
 	return appendBytesField(nil, FieldCombatReceiveDataCombatNotifyData, notify)
@@ -512,7 +512,7 @@ func TestLoadGameMasterDatabaseReadsNegativeStatusSettlement(t *testing.T) {
 	if !master.negativeStatusExecutes(10041000, 1001) || !master.negativeStatusExecutes(10011100, 1007) || master.negativeStatusExecutes(10021000, 1004) {
 		t.Fatal("status executors are the Buffs whose extra effect is a negative-status DamageId")
 	}
-	if got := master.negativeStatusSettlementOf(10041000); got != (NegativeStatusSettlementRule{Known: true, periodic: true, ExecutesOnCreation: true}) {
+	if got := master.negativeStatusSettlementOf(10041000); got != (NegativeStatusSettlementRule{Known: true, Periodic: true, ExecutesOnCreation: true}) {
 		t.Fatalf("Aero Erosion settlement %+v", got)
 	}
 	if got := master.negativeStatusSettlementOf(10011100); got != (NegativeStatusSettlementRule{Known: true, ExecutesOnCreation: true}) {

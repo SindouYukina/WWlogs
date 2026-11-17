@@ -23,7 +23,7 @@ func TestClassifyEffectKindUsesTheHUDCueOnlyWithoutAMoreSpecificKind(t *testing.
 		{"player-visible wins over an internal family", EffectCombatClassCombat, effectCombatBasisTag + "状态标识", hud("角色.R2T1ShouanrenMd10011.状态标识.x"), EffectKindHUDEffect},
 		{"runtime link with a HUD cue", EffectCombatClassCombat, effectCombatBasisMonsterOnLocal, hud(), EffectKindHUDEffect},
 		{"an ailment term stays an ailment", EffectCombatClassCombat, effectCombatBasisTerm, hud("战斗状态.异常状态.基础元素异常.风蚀效应"), EffectKindElementAilment},
-		{"an attribute modifier stays a modifier", EffectCombatClassCombat, effectCombatBasisAttribute + "CritDamage", hud(), EffectKindStatModifier},
+		{"an attribute modifier stays a modifier", EffectCombatClassCombat, EffectCombatBasisAttribute + "CritDamage", hud(), EffectKindStatModifier},
 		{"a buff marker stays a marker", EffectCombatClassCombat, effectCombatBasisTag + "buff标识", hud("角色.R2T1ShouanrenMd10011.buff标识.退场技.buff1"), EffectKindBuffMarker},
 		{"non-combat evidence still wins", EffectCombatClassNonCombat, effectCombatBasisTag + "跌落无伤", hud("功能.逻辑状态标识.跌落无伤"), EffectKindNonCombat},
 		{"no HUD cue keeps unknown", EffectCombatClassUnknown, effectCombatBasisNoEvidence, &EffectStaticInfo{}, EffectKindUnknown},

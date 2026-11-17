@@ -117,7 +117,7 @@ func TestSkillRowKeepsTheCastingRolesEchoIdentitiesBounded(t *testing.T) {
 // TestViewSkillsDecideWhetherARowShowsItsID pins the three row kinds: a verified name hides the ID, a derived name and an
 // unknown row keep it.
 func TestViewSkillsDecideWhetherARowShowsItsID(t *testing.T) {
-	p := NewProcessor(nil, io.Discard, io.Discard, nil)
+	p := NewProcessor(nil, io.Discard)
 	p.Masters = testSkillNameMaster()
 	skills := []SkillDamageSnapshot{
 		{SkillID: 1312011, DamageDealt: 3, OutgoingEvents: 1},

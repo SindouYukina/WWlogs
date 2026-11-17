@@ -112,12 +112,12 @@ type NegativeStatusSettlementRule struct {
 	// Known is set when the Buff row has a period column; without it the status is taken as one without a period, the
 	// stricter rule.
 	Known bool
-	// periodic is buff.period > 0: the status executes on its own timer.
-	periodic bool
+	// Periodic is buff.period > 0: the status executes on its own timer.
+	Periodic bool
 	// ExecutesOnCreation is buff.b_execute_periodic_effect_on_application.
 	ExecutesOnCreation bool
-	// clearsOnOverflow is buff.b_clear_stack_on_overflow: an application past the stack limit removes the instance.
-	clearsOnOverflow bool
+	// ClearsOnOverflow is buff.b_clear_stack_on_overflow: an application past the stack limit removes the instance.
+	ClearsOnOverflow bool
 	// Instant is buff.duration_policy 0: the Buff has no instance and executes its status once when applied.
 	Instant bool
 }
@@ -146,8 +146,8 @@ func (m *MasterData) NegativeStatusSettlement(effectID, damageID uint64) Negativ
 	settlement := m.masters.negativeStatusSettlementOf(effectID)
 	return NegativeStatusSettlement{
 		Executes: m.masters.isNegativeStatusDamage(damageID) && m.masters.negativeStatusExecutes(effectID, damageID),
-		Known:    settlement.Known, Periodic: settlement.periodic, ExecutesOnCreation: settlement.ExecutesOnCreation,
-		ClearsOnOverflow: settlement.clearsOnOverflow, Forcible: m.masters.statusCanBeForced(effectID), Instant: settlement.Instant,
+		Known:    settlement.Known, Periodic: settlement.Periodic, ExecutesOnCreation: settlement.ExecutesOnCreation,
+		ClearsOnOverflow: settlement.ClearsOnOverflow, Forcible: m.masters.statusCanBeForced(effectID), Instant: settlement.Instant,
 		SpreadsOnOverflow: m.masters.statusSpreadsOnOverflow(effectID),
 	}
 }
@@ -366,7 +366,7 @@ type statusActors struct {
 func (p *Processor) settlementActors(target, generation uint64, candidate statusCandidate, at time.Time) statusActors {
 	settlement := p.Masters.negativeStatusSettlementOf(candidate.effectID)
 	switch {
-	case settlement.periodic:
+	case settlement.Periodic:
 		return p.ownSettlementActors(target, generation, candidate, at)
 	case settlement.Known:
 		return p.appliedSettlementActors(candidate, at)
@@ -825,7 +825,7 @@ func (m *GameMaster) invokePeriodStatuses(effectID uint64) []uint64 {
 	if m == nil {
 		return nil
 	}
-	return m.invokePeriodTargets[effectID]
+	return m.InvokePeriodTargets[effectID]
 }
 
 // statusCanBeForced reports whether some InvokePeriod Buff of the Master names the status Buff statusID.
@@ -833,7 +833,7 @@ func (m *GameMaster) statusCanBeForced(statusID uint64) bool {
 	if m == nil {
 		return false
 	}
-	for _, statuses := range m.invokePeriodTargets {
+	for _, statuses := range m.InvokePeriodTargets {
 		if containsID(statuses, statusID) {
 			return true
 		}
@@ -888,7 +888,7 @@ func loadSQLiteNegativeStatusTriggers(db *sql.DB, master *GameMaster) error {
 			}
 		}
 		if len(statuses) > 0 {
-			master.invokePeriodTargets[buffID] = statuses
+			master.InvokePeriodTargets[buffID] = statuses
 		}
 	}
 	return rows.Err()

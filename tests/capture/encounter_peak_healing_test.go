@@ -325,7 +325,7 @@ func TestHealingRecordTakesTheAppliedHPFromChangeLife(t *testing.T) {
 }
 
 func TestHealingIsHeldBackWhileLocalAttributionIsSuspect(t *testing.T) {
-	p := NewProcessor(nil, nil, nil, nil)
+	p := NewProcessor(nil, nil)
 	record := healing(CombatFlowLocalInternal, 500, 500, 10, 1209)
 	if got := p.gateHealing(record); got.ContextDowngrade != "" {
 		t.Fatalf("healing held back without a suspect attribution: %+v", got)

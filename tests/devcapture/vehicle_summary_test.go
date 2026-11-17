@@ -1,0 +1,33 @@
+package devcapture
+
+import (
+	"bytes"
+	"strings"
+	"testing"
+
+	"wwlogs/internal/capture"
+)
+
+func TestVehicleDamageIsItsOwnSummaryRowNotACharacter(t *testing.T) {
+	summary := &encounterSummary{characters: make(map[uint64]*characterSummary)}
+	event := capture.CombatEvent{
+		EventTypeCandidate: "DAMAGE_CANDIDATE", Damage: 5248,
+		DamageContributorCandidate: &capture.DamageContributorCandidate{
+			ActorType: "Vehicle", FollowerConfigID: 290101, Status: capture.ResolutionCorrelated,
+			Name: &capture.CombatEventLabelTextJSONL{Text: "Vehicle: Motorcycle (Skill Use)", Kind: "unofficial-translation"},
+		},
+	}
+	addVehicleContributorEvent(summary, event)
+	addVehicleContributorEvent(summary, event)
+	if len(summary.characters) != 0 || summary.unknownCredit != 0 {
+		t.Fatalf("a vehicle row must not create a character or an uncredited event: %+v", summary)
+	}
+	var out bytes.Buffer
+	if err := writeVehicleContributors(&out, summary); err != nil {
+		t.Fatal(err)
+	}
+	text := out.String()
+	if !strings.Contains(text, "[internal] Vehicle: Motorcycle (Skill Use)") || !strings.Contains(text, "2 event(s), CombatResult magnitude 10496") || !strings.Contains(text, "CORRELATED") {
+		t.Fatalf("vehicle row text = %q", text)
+	}
+}

@@ -419,14 +419,14 @@ func (p *Processor) resetDamageStatistics() {
 	}
 }
 
-func (p *Processor) snapshotAndResetDamageStatistics() DamageStatisticsSnapshot {
+func (p *Processor) SnapshotAndResetDamageStatistics() DamageStatisticsSnapshot {
 	if p == nil || p.DamageStatistics == nil {
 		return emptyDamageStatisticsSnapshot()
 	}
 	return p.DamageStatistics.snapshotAndReset()
 }
 
-func (p *Processor) snapshotAndResetDamageStatisticsAt(query CaptureQueryTime) DamageStatisticsSnapshot {
+func (p *Processor) SnapshotAndResetDamageStatisticsAt(query CaptureQueryTime) DamageStatisticsSnapshot {
 	if p == nil || p.DamageStatistics == nil {
 		return emptyDamageStatisticsSnapshot()
 	}

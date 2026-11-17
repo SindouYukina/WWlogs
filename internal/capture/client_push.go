@@ -13,7 +13,9 @@ func (p *Processor) ObserveClientPushFrame(frame GameFrame, plain []byte) {
 		return
 	}
 	p.observeLocalRoleReports(plain)
-	p.ArchiveClientPushResearch(frame, plain)
+	if p.observer != nil {
+		p.observer.ArchiveClientPushResearch(frame, plain)
+	}
 }
 
 func (p *Processor) observeLocalRoleReports(plain []byte) {

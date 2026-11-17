@@ -13,7 +13,7 @@ import (
 var transportGapBase = time.Date(2026, 11, 4, 1, 0, 0, 0, time.UTC)
 
 func newTransportGapHarness() (*Processor, map[string]*Stream, *CaptureStats) {
-	return NewProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil), make(map[string]*Stream), &CaptureStats{}
+	return NewProcessor(nil, &bytes.Buffer{}), make(map[string]*Stream), &CaptureStats{}
 }
 
 func makeKCPFragmentForTest(conv, sequence uint32, fragments byte, payload []byte) []byte {

@@ -1,5 +1,3 @@
-//go:build wwdev
-
 package capture
 
 import (
@@ -155,7 +153,7 @@ type perturbationRun struct {
 // as the host does, checking the effect count partition each time.
 func replayPerturbation(t *testing.T, masters *GameMaster, key *StaticRSA, packets []perturbationPacket) perturbationRun {
 	t.Helper()
-	p := NewProcessor(key, io.Discard, io.Discard, nil)
+	p := NewProcessor(key, io.Discard)
 	p.Masters = masters
 	streams := make(map[string]*Stream)
 	stats := CaptureStats{}
@@ -375,4 +373,20 @@ func encodeEqual(t *testing.T, a, b any) bool {
 		t.Fatal(err)
 	}
 	return string(left) == string(right)
+}
+
+// normalizeEncounterIDs removes the process-local capture session sequence from encounter identities.
+func normalizeEncounterIDs(statistics *DamageStatisticsSnapshot, base uint64) {
+	fix := func(e *EncounterSnapshot) {
+		e.CaptureSessionID -= base
+		if _, rest, found := strings.Cut(e.EncounterID, "-"); found {
+			e.EncounterID = "1-" + rest
+		}
+	}
+	for i := range statistics.Encounters.Completed {
+		fix(&statistics.Encounters.Completed[i])
+	}
+	if statistics.Encounters.Current != nil {
+		fix(statistics.Encounters.Current)
+	}
 }

@@ -2,7 +2,8 @@
 
 All WWlogs product test source files, test helpers, and fixtures belong in this `tests/` directory. Do not put test code in `cmd/` or `internal/`.
 
-- `capture/` and `keyembed/` contain white-box tests. `go-overlay.json` maps these files from their physical locations under `tests/` to the product packages under test, and hides their original paths from `tests/` package discovery.
+- `capture/`, `devcapture/`, `devdesktop/` and `keyembed/` contain white-box tests. `go-overlay.json` maps these files from their physical locations under `tests/` to the product packages under test, and hides their original paths from `tests/` package discovery.
+- `capture/` tests the shared core (`internal/capture`) in both build profiles; `devcapture/` tests the Development capture module (`internal/devcapture`: research and diagnostic outputs, the command census, the live spool). A test file of one package cannot be imported by another, so `devcapture/capture_helpers_test.go` copies the `capture/` helpers the Development tests use, each group named after its original; change a copy with its original.
 - `versioninfo/` contains product tests that use exported APIs.
 - `architecture/` contains the architecture contracts: static checks of the product source of both build profiles (see below).
 - `buildrun/` tests the official Build Number allocator and the all-or-nothing installation of a build run, each against its own temporary counter directory.
@@ -24,30 +25,42 @@ The test entry point explicitly lists the required `cmd`, `internal`, and `tests
 
 ## Architecture contracts
 
-`architecture/` reads the source of both build profiles with `go/build`, `go/ast` and `go/types` and checks the
-boundaries the shared core depends on. It needs only tracked files and the Go toolchain, and runs with the other
-product tests (`scripts/test.ps1`, `scripts/verify.ps1`).
+`architecture/` reads the source of both build profiles with `go/build`, `go/ast`, `go/types` and `go list` and checks
+the architecture of the two profiles: one shared core (`internal/capture`) and one implementation of every product
+capability, Development capabilities in ordinary Development modules (`internal/devcapture`, `internal/devdesktop`)
+that only the Development composition links, and profile differences only in a few build composition boundaries
+(`cmd/capture`, `cmd/desktop`, `internal/buildinfo`). It needs only tracked files and the Go toolchain, and runs with
+the other product tests (`scripts/test.ps1`, `scripts/verify.ps1`).
 
 - **Profile files**: a file belongs to a profile by its build constraint, `wwdev` is the only profile tag, and the name
   says the same (`*_development.go`, `*_public.go`).
-- **Shared references**: shared code reaches profile code only through declarations both profiles have (a Development
-  hook and its Public no-op), and both profiles type-check.
-- **One-way hooks**: the two forms of a split declaration have the same signature and return nothing. A split value (an
-  entry point's options, a capability gate, the build profile) is listed in `reviewedProfileValues` with the reason it
-  cannot change combat results. A split type is empty in the Public profile.
+- **Composition boundaries**: profile-specific files exist only in the packages listed in `compositionBoundaries`; a
+  Development capability goes into a Development module, never into a profile split of a feature package.
+- **Wiring only**: the profile files of a boundary declare constants and variables that only name what a profile links,
+  with the same names and types in both profiles; no function, method, type or computed value.
+- **Development modules**: no Public executable links a Development module or a Development-only dependency (the PCAP
+  writer, the version resource reader), the Development executables still link them, every package only Development
+  links is declared, and only Development modules and the Development files of a boundary import a Development module.
+- **No Development implementation in the core**: every function, method and type of the core is used by the core or by
+  a package outside the Development modules; the few observation entry points only Development calls are reviewed.
+- **One-way observation**: the interfaces the core calls into Development code (`Observer`, the census observers,
+  `SessionDiagnostics`) return nothing the core could decide with; the few results they return are reviewed.
 - **Development writes**: Development code changes core memory only as a local copy; through a pointer, slice or map it
-  writes only Development and research data.
-- **Core fields**: shared code reads every field of the core `processor` in the Public profile; Development state
-  belongs in `processor.dev`.
-- **Research schema**: the research protocol schema and the generic decoder's records stay out of shared code.
-- **Development surface**: the Development diagnostic flags of v0.8.0 are still defined, and only in Development files;
-  the Development executables link the PCAP writer package and no Public executable does.
+  writes only its own data, apart from the reviewed configuration of an entry point.
+- **Core fields**: the core reads every field of the core `Processor`; Development state belongs in the Development
+  module.
+- **Research schema**: the research protocol schema and the generic decoder's records are declared in the Development
+  capture module and nowhere in the core.
+- **Development surface**: the Development diagnostic flags of v0.8.0 are still defined in their Development modules,
+  and no Public command line defines them.
 
-Each contract has a negative test that breaks it in memory (or, for the linked packages, through a temporary overlay)
-and requires the contract to report it; no file on disk changes. A static check sees
-the source text only. Core state changed through a core method call, a diagnostic failure that stops processing, and
-equal results in both profiles are covered by behavior tests (`capture/diagnostic_isolation_dev_test.go`,
-`capture/client_push_dev_test.go`, and the replay steps of `scripts/verify.ps1`).
+Each contract has a negative test that breaks it in memory (or, for a violation across packages, through a temporary
+overlay) and requires the contract to report it; no file on disk changes. A static check sees the source text only.
+Core state changed through a core method call, a diagnostic failure that stops processing, and equal results with and
+without the Development observer are covered by behavior tests (`devcapture/diagnostic_isolation_dev_test.go`,
+`devcapture/client_push_dev_test.go`, `capture/processor_state_test.go`, whose names the contracts check, and the replay
+steps of `scripts/verify.ps1`). `scripts/verify.ps1` also audits the built Public executables: no Development flag, no
+Development string and no symbol of a Development module.
 
 A failing contract is a design signal: move the code to the place its responsibility belongs. When a reviewed
 architecture change needs a different contract, change the contract in the same commit and say why; a reviewed exception
@@ -56,7 +69,7 @@ names its case and why it cannot change combat results. Never delete or relax a 
 ## Golden facts and the regression corpus
 
 Replay regression runs real captures through the product (`scripts/verify.ps1 -PcapDirectory <dir>`). The captures are
-private and never part of the repository; the facts they must show are tracked in the collectors under `tests/capture`
+private and never part of the repository; the facts they must show are tracked in the collectors under `tests/capture` and `tests/devcapture`
 (`semantic_replay_dev_test.go` and the other `*Collector` tests).
 
 - **A Golden fact needs evidence outside the product's decoders**: the generic schema decode of the client's own

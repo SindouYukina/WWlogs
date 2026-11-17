@@ -10,7 +10,7 @@ import (
 // Context validity and encounter integrity after transport loss.
 
 func newIntegrityProcessor() *Processor {
-	return NewProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
+	return NewProcessor(nil, &bytes.Buffer{})
 }
 
 func TestInboundLossMakesAttributionSuspectUntilLocalRoleReportAfterLossEnd(t *testing.T) {

@@ -18,7 +18,7 @@ const (
 // Classification bases. Each names the kind of evidence; the attribute or tag word is appended.
 const (
 	effectCombatBasisTerm              = "element_ailment_term"
-	effectCombatBasisAttribute         = "attribute_modifier:"
+	EffectCombatBasisAttribute         = "attribute_modifier:"
 	effectCombatBasisTag               = "developer_tag:"
 	effectCombatBasisLocalOnMonster    = "local_source_on_monster"
 	effectCombatBasisMonsterOnLocal    = "monster_source_on_local_team"
@@ -121,13 +121,13 @@ func classifyEffectDefinition(static BuffStaticParameters, hasDefinition, hasTer
 		attributeClass = attributeCombatClass(static.Attribute)
 	}
 	if attributeClass == EffectCombatClassCombat {
-		return EffectCombatClassCombat, effectCombatBasisAttribute + attributeTypeNames[static.Attribute]
+		return EffectCombatClassCombat, EffectCombatBasisAttribute + attributeTypeNames[static.Attribute]
 	}
 	if word := tagWordMatch(static.Tags, combatTagWords); word != "" {
 		return EffectCombatClassCombat, effectCombatBasisTag + word
 	}
 	if attributeClass == EffectCombatClassNonCombat {
-		return EffectCombatClassNonCombat, effectCombatBasisAttribute + attributeTypeNames[static.Attribute]
+		return EffectCombatClassNonCombat, EffectCombatBasisAttribute + attributeTypeNames[static.Attribute]
 	}
 	if word := tagWordMatch(static.Tags, nonCombatTagWords); word != "" {
 		return EffectCombatClassNonCombat, effectCombatBasisTag + word

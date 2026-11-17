@@ -173,7 +173,7 @@ func (t *EffectTracker) statusInstanceInfo(key effectKey) (statusInstanceInfo, b
 // period and its overflow clears the instance (the settlement of Fusion Burst).
 func (m *GameMaster) statusSpreadsOnOverflow(effectID uint64) bool {
 	settlement := m.negativeStatusSettlementOf(effectID)
-	return !settlement.periodic && settlement.clearsOnOverflow
+	return !settlement.Periodic && settlement.ClearsOnOverflow
 }
 
 // damageSpreadsOnOverflow reports a negative-status DamageId executed by a status Buff that spreads on overflow.
@@ -284,7 +284,7 @@ func (p *Processor) observeStatusCause(row BuffLifecycleAuditRow, holder uint64,
 		if kind == 0 {
 			return
 		}
-		if p.Masters.negativeStatusSettlementOf(info.effectID).periodic {
+		if p.Masters.negativeStatusSettlementOf(info.effectID).Periodic {
 			return
 		}
 		p.addStatusCause(statusCause{key: key, effectID: info.effectID, at: row.Timestamp, kind: kind, stack: next,
@@ -302,7 +302,7 @@ func (p *Processor) observeStatusCause(row BuffLifecycleAuditRow, holder uint64,
 		if _, executes := p.Masters.negativeStatusExecutorDamage(info.effectID); !executes {
 			return
 		}
-		if p.Masters.negativeStatusSettlementOf(info.effectID).periodic {
+		if p.Masters.negativeStatusSettlementOf(info.effectID).Periodic {
 			return
 		}
 		p.addStatusCause(statusCause{key: key, effectID: info.effectID, at: row.Timestamp, kind: statusCauseRemoved, stack: info.stack,
@@ -325,7 +325,7 @@ func applicationKind(before, after uint64) statusCauseKind {
 
 // addStatusCause keeps a cause of a status without a period; the causes of a timed status settle nothing.
 func (p *Processor) addStatusCause(cause statusCause, instigator *uint64) {
-	if p.Masters.negativeStatusSettlementOf(cause.effectID).periodic {
+	if p.Masters.negativeStatusSettlementOf(cause.effectID).Periodic {
 		return
 	}
 	if instigator != nil && *instigator != 0 {
@@ -435,7 +435,7 @@ func (p *Processor) appliedSettlementActors(candidate statusCandidate, at time.T
 		case statusCauseCreated, statusCauseStacked:
 			applied = append(applied, cause)
 		case statusCauseRemoved:
-			if settlement.clearsOnOverflow && p.Masters.atOrAboveStackLimit(cause.effectID, cause.stack) {
+			if settlement.ClearsOnOverflow && p.Masters.atOrAboveStackLimit(cause.effectID, cause.stack) {
 				removedAtLimit = true
 			}
 		}

@@ -7,7 +7,7 @@ import (
 
 // newEffectViewProcessor returns a processor whose view reads its own tracker.
 func newEffectViewProcessor() *Processor {
-	return NewProcessor(nil, io.Discard, io.Discard, nil)
+	return NewProcessor(nil, io.Discard)
 }
 
 func effectViewAt(p *Processor, seconds float64) ViewEffects {
@@ -29,7 +29,7 @@ func noHUDStatic() *EffectStaticInfo {
 func displayApply(handle, effectID uint64, seconds float64, mutate func(*EffectApplyEvent)) EffectApplyEvent {
 	return testEffectApply(handle, seconds, func(event *EffectApplyEvent) {
 		event.EffectID = effectID
-		event.CombatClass, event.CombatBasis = EffectCombatClassCombat, effectCombatBasisAttribute+"Atk"
+		event.CombatClass, event.CombatBasis = EffectCombatClassCombat, EffectCombatBasisAttribute+"Atk"
 		event.DefinitionLinked, event.Static = true, hudStatic()
 		if mutate != nil {
 			mutate(event)
@@ -57,10 +57,10 @@ func TestClassifyEffectKind(t *testing.T) {
 		want   EffectKind
 	}{
 		{"ailment term", EffectCombatClassCombat, effectCombatBasisTerm, tags("战斗状态.异常状态.基础元素异常.风蚀效应"), EffectKindElementAilment},
-		{"combat attribute without name or icon", EffectCombatClassCombat, effectCombatBasisAttribute + "CritDamage", nil, EffectKindStatModifier},
-		{"an internal tag wins over an attribute", EffectCombatClassCombat, effectCombatBasisAttribute + "DamageReduce", tags("功能.逻辑状态标识.霸体"), EffectKindInternalState},
-		{"a HUD cue keeps an attribute modifier with an internal tag", EffectCombatClassCombat, effectCombatBasisAttribute + "Atk", &EffectStaticInfo{DeveloperTags: []string{"角色.x.状态标识.y"}, HUDCueTypes: []int32{2}}, EffectKindStatModifier},
-		{"an unrelated tag leaves an attribute modifier", EffectCombatClassCombat, effectCombatBasisAttribute + "DamageChangeElement1", tags("装备.武器.8d690dd3.5阶"), EffectKindStatModifier},
+		{"combat attribute without name or icon", EffectCombatClassCombat, EffectCombatBasisAttribute + "CritDamage", nil, EffectKindStatModifier},
+		{"an internal tag wins over an attribute", EffectCombatClassCombat, EffectCombatBasisAttribute + "DamageReduce", tags("功能.逻辑状态标识.霸体"), EffectKindInternalState},
+		{"a HUD cue keeps an attribute modifier with an internal tag", EffectCombatClassCombat, EffectCombatBasisAttribute + "Atk", &EffectStaticInfo{DeveloperTags: []string{"角色.x.状态标识.y"}, HUDCueTypes: []int32{2}}, EffectKindStatModifier},
+		{"an unrelated tag leaves an attribute modifier", EffectCombatClassCombat, EffectCombatBasisAttribute + "DamageChangeElement1", tags("装备.武器.8d690dd3.5阶"), EffectKindStatModifier},
 		{"role buff marker", EffectCombatClassCombat, effectCombatBasisTag + "buff标识", tags("角色.R2T1ShouanrenMd10011.buff标识.退场技.buff1"), EffectKindBuffMarker},
 		{"buff marker wins over a function flag", EffectCombatClassCombat, effectCombatBasisTag + "QTE", tags("功能.功能制作.QTE.激活QTE", "角色.Common.BUFF通用标识.协奏充能完成"), EffectKindBuffMarker},
 		{"buff marker without combat class", EffectCombatClassUnknown, effectCombatBasisNoEvidence, tags("角色.Common.buff标识.x"), EffectKindBuffMarker},

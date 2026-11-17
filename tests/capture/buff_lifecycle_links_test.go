@@ -7,7 +7,7 @@ import (
 func u64(value uint64) *uint64 { return &value }
 
 func TestLifecycleGenericIDLinksOnlyApplyMessagesAndKeepsTypedFieldsEmpty(t *testing.T) {
-	p := NewProcessor(nil, nil, nil, nil)
+	p := NewProcessor(nil, nil)
 	p.Masters = &GameMaster{BuffDefinitions: map[uint64]struct{}{70001: {}}}
 	p.SessionNumber = 1
 
@@ -34,7 +34,7 @@ func TestLifecycleGenericIDLinksOnlyApplyMessagesAndKeepsTypedFieldsEmpty(t *tes
 }
 
 func TestLifecycleHandleEventsInheritTheApplyIdWithinSessionAndEntity(t *testing.T) {
-	p := NewProcessor(nil, nil, nil, nil)
+	p := NewProcessor(nil, nil)
 	p.Masters = &GameMaster{BuffDefinitions: map[uint64]struct{}{70001: {}, 70002: {}}}
 	p.SessionNumber = 1
 	apply := func(entity, handle, id uint64) {

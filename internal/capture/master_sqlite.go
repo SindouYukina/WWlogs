@@ -164,7 +164,7 @@ func loadMasterDataFromDatabase(db *sql.DB, databasePath, hash, locale string) (
 		AbnormalDamageIDs:             make(map[uint64]struct{}),
 		NegativeStatusExecutors:       make(map[uint64]uint64),
 		NegativeStatusSettlements:     make(map[uint64]NegativeStatusSettlementRule),
-		invokePeriodTargets:           make(map[uint64][]uint64),
+		InvokePeriodTargets:           make(map[uint64][]uint64),
 		negativeStatusTerms:           make(map[uint64]negativeStatusTerm),
 		ElementNames:                  make(map[int32]string),
 		Damage:                        make(map[uint64]DamageMasterRecord),

@@ -252,7 +252,9 @@ func (p *Processor) handleDamageExecuteNotify(frame GameFrame, body []byte, ordi
 	p.Stats.DecodedMatchedEvents++
 	p.Stats.DecodedCombatResultAbs += value
 	if p.WriteDamageEvent(event) {
-		p.ObserveEncounterSummary(event)
+		if p.observer != nil {
+			p.observer.ObserveEncounterSummary(event)
+		}
 	}
 }
 
@@ -497,10 +499,10 @@ func parseNegativeStatusSettlement(period, onApplication, clearOnOverflow, durat
 			return settlement, fmt.Errorf("buff.period %q: %w", period.String, err)
 		}
 		settlement.Known = true
-		settlement.periodic = value > 0
+		settlement.Periodic = value > 0
 	}
 	settlement.ExecutesOnCreation = onApplication.Valid && strings.TrimSpace(onApplication.String) == "1"
-	settlement.clearsOnOverflow = clearOnOverflow.Valid && strings.TrimSpace(clearOnOverflow.String) == "1"
+	settlement.ClearsOnOverflow = clearOnOverflow.Valid && strings.TrimSpace(clearOnOverflow.String) == "1"
 	settlement.Instant = durationPolicy.Valid && strings.TrimSpace(durationPolicy.String) == "0"
 	return settlement, nil
 }

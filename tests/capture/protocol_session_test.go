@@ -34,8 +34,8 @@ func TestCurrentProtocolNumbersMatchTheCapturedWire(t *testing.T) {
 		"DamageExecuteRequest.AttackerEntityId":    {FieldDamageExecuteRequestAttackerEntityID, 5},
 		"DamageExecuteRequest.TargetEntityId":      {FieldDamageExecuteRequestTargetEntityID, 1},
 		"DamageExecuteResponse.Damage":             {FieldDamageExecuteResponseDamage, 9},
-		"LoginRequest.ClientBasicInfo":             {fieldLoginRequestClientBasicInfo, 8},
-		"ClientBasicInfo.ClientVersion":            {fieldClientBasicInfoClientVersion, 19},
+		"LoginRequest.ClientBasicInfo":             {FieldLoginRequestClientBasicInfo, 8},
+		"ClientBasicInfo.ClientVersion":            {FieldClientBasicInfoClientVersion, 19},
 	} {
 		if pair[0] != pair[1] {
 			t.Errorf("%s = %d, the capture carried %d", name, pair[0], pair[1])

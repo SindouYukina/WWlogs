@@ -29,19 +29,6 @@ func effectApplyPayload(handle, effectID, target, instigator uint64, stack uint6
 	return effectFloatField(payload, FieldApplyGameplayEffectNotifyLeftDuration, remaining)
 }
 
-func effectStackPayload(handle, stack uint64, duration, remaining float32) []byte {
-	payload := appendVarintField(nil, FieldBuffStackCountNotifyHandleID, handle)
-	payload = appendVarintField(payload, FieldBuffStackCountNotifyNewStackCount, stack)
-	payload = effectFloatField(payload, FieldBuffStackCountNotifyDuration, duration)
-	return effectFloatField(payload, FieldBuffStackCountNotifyLeftDuration, remaining)
-}
-
-func effectDurationPayload(handle uint64, duration, remaining float32) []byte {
-	payload := appendVarintField(nil, FieldBuffDurationNotifyHandleID, handle)
-	payload = effectFloatField(payload, FieldBuffDurationNotifyDuration, duration)
-	return effectFloatField(payload, FieldBuffDurationNotifyLeftDuration, remaining)
-}
-
 func effectRemovePayload(handle, target, instigator uint64) []byte {
 	payload := appendVarintField(nil, FieldRemoveGameplayEffectNotifyHandle, handle)
 	payload = appendVarintField(payload, FieldRemoveGameplayEffectNotifyEntityID, target)
@@ -54,10 +41,6 @@ func deliverEffectMessage(t *testing.T, p *Processor, seconds float64, body []by
 	if err := p.HandleCombatReceivePackNotify(frame, body); err != nil {
 		t.Fatalf("handle CombatReceivePackNotify: %v", err)
 	}
-}
-
-func effectQueryFor(p *Processor, seconds float64) CaptureQueryTime {
-	return CaptureQueryTime{CaptureSessionID: p.Effects.CaptureSessionID, Timestamp: effectAt(seconds)}
 }
 
 func TestEffectFeedWithoutTrackerDoesNotPanic(t *testing.T) {

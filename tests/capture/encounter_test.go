@@ -414,22 +414,22 @@ func TestEncounterReplayIsDeterministic(t *testing.T) {
 }
 
 func TestDecodePlayerBattleStateChange(t *testing.T) {
-	enter := appendVarintField(appendVarintField(nil, fieldPlayerBattleStateChangeNotifyInBattle, 1), fieldPlayerBattleStateChangeNotifyPlayerID, 42)
+	enter := appendVarintField(appendVarintField(nil, FieldPlayerBattleStateChangeNotifyInBattle, 1), FieldPlayerBattleStateChangeNotifyPlayerID, 42)
 	signal, err := decodePlayerBattleStateChange(enter)
 	if err != nil || !signal.InBattle || signal.playerID != 42 || !signal.hasPlayerID {
 		t.Fatalf("unexpected enter decode: %+v err=%v", signal, err)
 	}
-	exit := appendVarintField(nil, fieldPlayerBattleStateChangeNotifyPlayerID, 42)
+	exit := appendVarintField(nil, FieldPlayerBattleStateChangeNotifyPlayerID, 42)
 	if signal, err := decodePlayerBattleStateChange(exit); err != nil || signal.InBattle || signal.playerID != 42 {
 		t.Fatalf("an exit carries only the PlayerId: %+v err=%v", signal, err)
 	}
-	if _, err := decodePlayerBattleStateChange(appendTestVarint(nil, fieldPlayerBattleStateChangeNotifyPlayerID<<3)); err == nil {
+	if _, err := decodePlayerBattleStateChange(appendTestVarint(nil, FieldPlayerBattleStateChangeNotifyPlayerID<<3)); err == nil {
 		t.Fatal("a truncated message must be reported as a decode failure")
 	}
 }
 
 func TestBattleStateAnchorRequiresLocalPlayer(t *testing.T) {
-	p := NewProcessor(nil, nil, nil, nil)
+	p := NewProcessor(nil, nil)
 	signal := PlayerBattleStateSignal{InBattle: true, playerID: 42, hasPlayerID: true}
 	if anchor := p.battleStateAnchor(signal); anchor != "" {
 		t.Fatalf("a signal with no scene or anchor must be rejected, got %q", anchor)

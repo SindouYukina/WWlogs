@@ -32,7 +32,7 @@ $env:GOTOOLCHAIN = 'local'
 $repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).ProviderPath
 $overlay = Join-Path $repoRoot 'tests/go-overlay.json'
 $results = [ordered]@{}
-$testPackages = @('./cmd/capture', './internal/buildinfo', './internal/capture', './internal/history', './internal/service', './internal/desktop', './internal/devdesktop', './internal/keyembed', './tests/architecture', './tests/assets', './tests/buildrun', './tests/readiness', './tests/versioninfo')
+$testPackages = @('./cmd/capture', './internal/buildinfo', './internal/capture', './internal/devcapture', './internal/history', './internal/service', './internal/desktop', './internal/devdesktop', './internal/keyembed', './tests/architecture', './tests/assets', './tests/buildrun', './tests/readiness', './tests/versioninfo')
 if ($EvidenceOut -ne '') {
     $EvidenceOut = [IO.Path]::GetFullPath($EvidenceOut)
     [void][IO.Directory]::CreateDirectory($EvidenceOut)
@@ -46,6 +46,19 @@ function Set-Result([string]$Name, [string]$State, [string]$Detail = '') {
 function Invoke-Go([string[]]$GoArguments) {
     $output = & go @GoArguments 2>&1
     return [pscustomobject]@{ Code = $LASTEXITCODE; Output = ($output | Out-String) }
+}
+
+# Strings of Development diagnostic, research and output code that no Public executable may contain: spool and
+# output names, Development record types, the command census, the research schema, the research wire path of Buff
+# rows and the Development summary lines.
+$developmentStrings = @('combat-events.jsonl', 'dps-effects.jsonl', 'buff-events.jsonl', 'status.json', 'capture-spool', 'LIVE_DIAGNOSTIC_SNAPSHOT', 'event-jsonl-out', 'pcapgo', 'encounter-events.jsonl', 'BATTLE_STATE_SIGNAL', 'COMBAT_EVENT_RECORD', 'ENCOUNTER_TRANSITION',
+    'PRESENT BUT UNDECODED', 'describes game version', '(CombatReceiveData[])', 'transport_health kcp_streams=')
+
+# Get-DevelopmentSymbols lists the Development module packages whose symbols an executable links (go tool nm).
+function Get-DevelopmentSymbols([string]$Executable) {
+    $symbols = & go tool nm $Executable 2>&1 | Out-String
+    if ($LASTEXITCODE -ne 0 -or $symbols.Length -lt 1000) { return @("symbol table unreadable") }
+    return @('wwlogs/internal/devcapture.', 'wwlogs/internal/devdesktop.', 'github.com/google/gopacket/pcapgo.') | Where-Object { $symbols.Contains($_) }
 }
 
 Push-Location $repoRoot
@@ -156,8 +169,11 @@ try {
                 Set-Result 'public flags' $(if ($helpRead -and -not $flagLeak) { 'PASS' } else { 'FAIL' }) $(if (-not $helpRead) { 'help text not captured' } elseif ($flagLeak) { "exposes: $($flagLeak -join ', ')" })
                 $bytes = [IO.File]::ReadAllBytes($publicExe)
                 $latin = [Text.Encoding]::GetEncoding(28591).GetString($bytes)
-                $stringLeak = @('combat-events.jsonl', 'dps-effects.jsonl', 'buff-events.jsonl', 'status.json', 'capture-spool', 'LIVE_DIAGNOSTIC_SNAPSHOT', 'event-jsonl-out', 'pcapgo', 'encounter-events.jsonl', 'BATTLE_STATE_SIGNAL', 'COMBAT_EVENT_RECORD', 'ENCOUNTER_TRANSITION') | Where-Object { $latin.Contains($_) }
+                $stringLeak = @($developmentStrings | Where-Object { $latin.Contains($_) })
                 Set-Result 'public binary strings' $(if (-not $stringLeak) { 'PASS' } else { 'FAIL' }) $(if ($stringLeak) { "contains: $($stringLeak -join ', ')" })
+                # Symbols: no function or type of a Development module is linked into the Public executable.
+                $symbolLeak = @(Get-DevelopmentSymbols $publicExe)
+                Set-Result 'public binary symbols' $(if (-not $symbolLeak) { 'PASS' } else { 'FAIL' }) $(if ($symbolLeak) { "links: $($symbolLeak -join ', ')" })
 
                 # Desktop host: the frontend is typechecked and built outside the repository with the system Node.js and npm,
                 # embedded into both profiles, and the Public desktop executable is audited like the console one.
@@ -188,11 +204,13 @@ try {
                         $desktopHelp = & $desktopPublicExe -h 2>&1 | Out-String
                         $desktopFlagLeak = @('replay', 'replay-pacing', 'autostart', 'capture-diagnostics', 'webview-debug-port', 'overlay', 'showcase', 'showcase-overlays', 'asset-root', 'font-root', 'master-db', 'webview-args', 'simulate-capture-environment', 'simulate-npcap-offline', 'record-browser-url', 'simulate-ui-languages', 'history-db') | Where-Object { $desktopHelp -match "-$_\b" }
                         $desktopLatin = [Text.Encoding]::GetEncoding(28591).GetString([IO.File]::ReadAllBytes($desktopPublicExe))
-                        $desktopStringLeak = @('combat-events.jsonl', 'dps-effects.jsonl', 'buff-events.jsonl', 'status.json', 'capture-spool', 'LIVE_DIAGNOSTIC_SNAPSHOT', 'event-jsonl-out', 'pcapgo', 'encounter-events.jsonl', 'BATTLE_STATE_SIGNAL', 'COMBAT_EVENT_RECORD', 'ENCOUNTER_TRANSITION', 'remote-debugging-port=%d') | Where-Object { $desktopLatin.Contains($_) }
+                        $desktopStringLeak = @(($developmentStrings + @('remote-debugging-port=%d')) | Where-Object { $desktopLatin.Contains($_) })
+                        $desktopSymbolLeak = @(Get-DevelopmentSymbols $desktopPublicExe)
                         $desktopProblems = @()
                         if ($desktopHelp -notmatch '(?m)^\s+-version\b') { $desktopProblems += 'help text not captured' }
                         if ($desktopFlagLeak) { $desktopProblems += "flags: $($desktopFlagLeak -join ', ')" }
                         if ($desktopStringLeak) { $desktopProblems += "strings: $($desktopStringLeak -join ', ')" }
+                        if ($desktopSymbolLeak) { $desktopProblems += "symbols: $($desktopSymbolLeak -join ', ')" }
                         Set-Result 'desktop public flags + strings' $(if ($desktopProblems.Count -eq 0) { 'PASS' } else { 'FAIL' }) ($desktopProblems -join '; ')
 
                         # Both desktop profiles must carry the same distinct manifest images.
@@ -284,8 +302,14 @@ try {
                     if ($pcaps.Count -eq 0) {
                         Set-Result 'replay: encounter determinism + partition' 'NOT RUN' 'no capture of the current game version'
                     } else {
+                        # The core collectors run from the core's test binary; the encounter collector reads the
+                        # Development encounter output, so it runs from the Development module's.
                         $testBinary = Join-Path $buildDirectory 'capture-dev.test.exe'
+                        $developmentTestBinary = Join-Path $buildDirectory 'devcapture.test.exe'
                         $testBuild = Invoke-Go @('run', './scripts/embed-key.go', '-profile', 'development', '-test-binary', './internal/capture', '-o', $testBinary)
+                        if ($testBuild.Code -eq 0) {
+                            $testBuild = Invoke-Go @('run', './scripts/embed-key.go', '-profile', 'development', '-test-binary', './internal/devcapture', '-o', $developmentTestBinary)
+                        }
                         if ($testBuild.Code -ne 0) {
                             Set-Result 'replay: encounter determinism + partition' 'FAIL' $testBuild.Output.Trim()
                         } else {
@@ -300,7 +324,7 @@ try {
                             $env:WWLOGS_ENCOUNTER_REPLAY_PCAPS = $listPath
                             $env:WWLOGS_ENCOUNTER_REPLAY_MASTER_DB = Join-Path $repoRoot 'data/master_data.db'
                             try {
-                                $encounterOut = & $testBinary '-test.run' '^TestEncounterReplayCollector$' '-test.count' '1' 2>&1
+                                $encounterOut = & $developmentTestBinary '-test.run' '^TestEncounterReplayCollector$' '-test.count' '1' 2>&1
                                 $encounterCode = $LASTEXITCODE
                             } finally {
                                 Remove-Item Env:WWLOGS_ENCOUNTER_REPLAY_OUT, Env:WWLOGS_ENCOUNTER_REPLAY_PCAPS, Env:WWLOGS_ENCOUNTER_REPLAY_MASTER_DB -ErrorAction SilentlyContinue

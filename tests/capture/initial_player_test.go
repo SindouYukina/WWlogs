@@ -23,14 +23,14 @@ func initialHandshakeWithBuild(t *testing.T, p *Processor, key *rsa.PrivateKey, 
 	if err != nil {
 		t.Fatal(err)
 	}
-	body := appendBytesField(appendVarintField(nil, fieldProtoKeyResponseType, 2), fieldProtoKeyResponseKey, ciphertext)
+	body := appendBytesField(appendVarintField(nil, FieldProtoKeyResponseType, 2), FieldProtoKeyResponseKey, ciphertext)
 	p.HandleFrame(GameFrame{CommandID: CmdProtoKeyResponse, Direction: "in", Timestamp: at, Body: body})
 	initialEncryptedFrame(t, p, CmdLoginRequest, "out", loginRequestBody(build), 0)
 }
 
 // loginRequestBody encodes LoginRequest.ClientBasicInfo with only its build string (ClientVersion).
 func loginRequestBody(build string) []byte {
-	return appendBytesField(nil, fieldLoginRequestClientBasicInfo, appendBytesField(nil, fieldClientBasicInfoClientVersion, []byte(build)))
+	return appendBytesField(nil, FieldLoginRequestClientBasicInfo, appendBytesField(nil, FieldClientBasicInfoClientVersion, []byte(build)))
 }
 
 // initialEncryptedFrame encrypts body under the session key and sends it as the client does, with the given command.
@@ -55,11 +55,11 @@ func initialEncryptedFrame(t *testing.T, p *Processor, command uint16, direction
 }
 
 func initialJoinBody() []byte {
-	player := appendVarintField(nil, fieldScenePlayerInformationPlayerID, 77)
-	role := appendVarintField(appendVarintField(nil, fieldSceneRoleInformationRoleID, 1409), fieldSceneRoleInformationEntityID, 100)
-	player = appendBytesField(player, fieldScenePlayerInformationPlayerSceneGroupData, appendBytesField(nil, fieldPlayerSceneGroupDataFightRoleInfos, role))
-	scene := appendBytesField(nil, fieldSceneInformationPlayerInfos, player)
-	return appendBytesField(nil, fieldJoinSceneNotifySceneInfo, scene)
+	player := appendVarintField(nil, FieldScenePlayerInformationPlayerID, 77)
+	role := appendVarintField(appendVarintField(nil, FieldSceneRoleInformationRoleID, 1409), FieldSceneRoleInformationEntityID, 100)
+	player = appendBytesField(player, FieldScenePlayerInformationPlayerSceneGroupData, appendBytesField(nil, FieldPlayerSceneGroupDataFightRoleInfos, role))
+	scene := appendBytesField(nil, FieldSceneInformationPlayerInfos, player)
+	return appendBytesField(nil, FieldJoinSceneNotifySceneInfo, scene)
 }
 
 func initialProcessor(t *testing.T) (*Processor, *rsa.PrivateKey) {
@@ -74,7 +74,6 @@ func initialProcessorWithBuild(t *testing.T, build string) (*Processor, *rsa.Pri
 		t.Fatal(err)
 	}
 	p := newPairingTestProcessor()
-	discardConsole(p)
 	p.Diagnostic = io.Discard
 	p.RSA = &StaticRSA{E: key.E, N: key.N, D: key.D}
 	p.IntervalPerProtocolSession = true

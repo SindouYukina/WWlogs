@@ -190,10 +190,16 @@ func (p *Processor) WriteDamageEvent(event CombatEvent) bool {
 			}
 		}
 		assignment := p.DamageStatistics.addCombatEvent(record)
-		p.WriteCombatEventRecord(record, assignment)
-		p.FlushEncounterTransitions()
+		if p.observer != nil {
+			p.observer.WriteCombatEventRecord(record, assignment)
+		}
+		if p.observer != nil {
+			p.observer.FlushEncounterTransitions()
+		}
 	}
-	p.WriteDamageEventOutputs(&event, visible, sourceRelation, targetRelation)
+	if p.observer != nil {
+		p.observer.WriteDamageEventOutputs(&event, visible, sourceRelation, targetRelation)
+	}
 	if !visible {
 		p.Stats.SuppressedUnrelatedEvents++
 		return false

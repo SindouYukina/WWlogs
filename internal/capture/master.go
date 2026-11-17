@@ -131,9 +131,9 @@ type GameMaster struct {
 	NegativeStatusExecutors map[uint64]uint64
 	// NegativeStatusSettlements holds how each executing status Buff settles (negative_status_credit.go).
 	NegativeStatusSettlements map[uint64]NegativeStatusSettlementRule
-	// invokePeriodTargets maps an InvokePeriod Buff (extra effect type 67) to the negative-status Buffs whose execution it
+	// InvokePeriodTargets maps an InvokePeriod Buff (extra effect type 67) to the negative-status Buffs whose execution it
 	// forces at once (negative_status_credit.go).
-	invokePeriodTargets map[uint64][]uint64
+	InvokePeriodTargets map[uint64][]uint64
 	// negativeStatusTerms names a negative-status DamageId by the glossary term its executing status Buffs share.
 	negativeStatusTerms map[uint64]negativeStatusTerm
 	// FSM holds the AI state-machine node identities used to name ChangeStateNotify ids.

@@ -9,7 +9,7 @@ import (
 // Capture-layer counters stay separate from KCP and diagnostic counters, and say when they cannot be read.
 
 func TestCaptureLayerHealthOfflineReplayHasNoDriverCounters(t *testing.T) {
-	p := NewProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
+	p := NewProcessor(nil, &bytes.Buffer{})
 	p.ObserveCaptureSource(false)
 	p.ObservePacketRead()
 	p.ObservePacketRead()
@@ -34,7 +34,7 @@ func TestCaptureLayerHealthOfflineReplayHasNoDriverCounters(t *testing.T) {
 }
 
 func TestCaptureLayerHealthLiveBeforeFirstSample(t *testing.T) {
-	p := NewProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
+	p := NewProcessor(nil, &bytes.Buffer{})
 	p.ObserveCaptureSource(true)
 	health := p.CaptureLayerHealth()
 	if health.Source != "live" || health.KernelDropped.Status != CaptureCounterUnavailable || health.KernelDropped.Reason != "not_sampled_yet" {

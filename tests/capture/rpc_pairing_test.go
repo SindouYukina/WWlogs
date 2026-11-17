@@ -16,7 +16,7 @@ func pairingAt(seconds float64) time.Time {
 // pairingFrame advances the processor clock the way handleFrame does for one decoded frame.
 func pairingFrame(p *Processor, seconds float64) {
 	p.CurrentFrameTime = pairingAt(seconds)
-	p.observePairingClock(p.CurrentFrameTime)
+	p.ObservePairingClock(p.CurrentFrameTime)
 }
 
 func damageRequestBody(rpcID, attackerID, targetID uint64) []byte {
@@ -40,7 +40,7 @@ func damageResponseBody(rpcID uint64, amount int32) []byte {
 
 // newPairingTestProcessor has one local role entity (100) and one monster (200).
 func newPairingTestProcessor() *Processor {
-	p := NewProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
+	p := NewProcessor(nil, &bytes.Buffer{})
 	p.Entities = NewEntityResolver()
 	p.Masters = &GameMaster{Damage: map[uint64]DamageMasterRecord{
 		70010001: {ID: 70010001, CalculateType: 0, SourceHash: strings.Repeat("a", 64), SourceTable: "damage"},

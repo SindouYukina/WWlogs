@@ -58,7 +58,7 @@ func TestAttributionIDsDoNotDependOnLocalizedMasterNames(t *testing.T) {
 				},
 			},
 		}
-		processor := NewProcessor(nil, io.Discard, io.Discard, nil)
+		processor := NewProcessor(nil, io.Discard)
 		processor.Masters = master
 		processor.SourceRoles.Observe(28006, master.Skills[1312011])
 		processor.SourceRoles.Observe(28006, master.Skills[1312012])

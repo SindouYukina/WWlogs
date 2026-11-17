@@ -30,9 +30,9 @@ func decodePlayerBattleStateChange(body []byte) (PlayerBattleStateSignal, error)
 			continue
 		}
 		switch field.Number {
-		case fieldPlayerBattleStateChangeNotifyInBattle: // PlayerBattleStateChangeNotify.InBattle
+		case FieldPlayerBattleStateChangeNotifyInBattle: // PlayerBattleStateChangeNotify.InBattle
 			signal.InBattle = field.Value != 0
-		case fieldPlayerBattleStateChangeNotifyPlayerID: // PlayerBattleStateChangeNotify.PlayerId
+		case FieldPlayerBattleStateChangeNotifyPlayerID: // PlayerBattleStateChangeNotify.PlayerId
 			signal.playerID, signal.hasPlayerID = field.Value, field.Value != 0
 		}
 	}
@@ -61,7 +61,9 @@ func (p *Processor) handlePlayerBattleState(frame GameFrame, container string, b
 		return fmt.Errorf("parse PlayerBattleStateChangeNotify: %w", err)
 	}
 	anchor := p.battleStateAnchor(signal)
-	p.WriteBattleStateSignal(frame.Timestamp, container, signal, anchor)
+	if p.observer != nil {
+		p.observer.WriteBattleStateSignal(frame.Timestamp, container, signal, anchor)
+	}
 	if p.DamageStatistics == nil {
 		return nil
 	}
@@ -71,7 +73,9 @@ func (p *Processor) handlePlayerBattleState(frame GameFrame, container string, b
 	}
 	p.observeContextBattleSignal(frame.Timestamp)
 	p.DamageStatistics.ObserveBattleState(signal.InBattle, frame.Timestamp, p.SessionNumber)
-	p.FlushEncounterTransitions()
+	if p.observer != nil {
+		p.observer.FlushEncounterTransitions()
+	}
 	return nil
 }
 
@@ -83,7 +87,7 @@ func scenePlayerIDs(body []byte) ([]uint64, error) {
 	}
 	var ids []uint64
 	for _, field := range fields {
-		if field.Number != fieldJoinSceneNotifySceneInfo || field.Wire != 2 { // JoinSceneNotify.SceneInfo
+		if field.Number != FieldJoinSceneNotifySceneInfo || field.Wire != 2 { // JoinSceneNotify.SceneInfo
 			continue
 		}
 		sceneFields, err := ParseProtoFields(field.Data)
@@ -91,7 +95,7 @@ func scenePlayerIDs(body []byte) ([]uint64, error) {
 			return nil, err
 		}
 		for _, sceneField := range sceneFields {
-			if sceneField.Number != fieldSceneInformationPlayerInfos || sceneField.Wire != 2 { // SceneInformation.PlayerInfos
+			if sceneField.Number != FieldSceneInformationPlayerInfos || sceneField.Wire != 2 { // SceneInformation.PlayerInfos
 				continue
 			}
 			playerFields, err := ParseProtoFields(sceneField.Data)
@@ -99,7 +103,7 @@ func scenePlayerIDs(body []byte) ([]uint64, error) {
 				return nil, err
 			}
 			for _, playerField := range playerFields {
-				if playerField.Number == fieldScenePlayerInformationPlayerID && playerField.Wire == 0 && playerField.Value != 0 { // ScenePlayerInformation.PlayerId
+				if playerField.Number == FieldScenePlayerInformationPlayerID && playerField.Wire == 0 && playerField.Value != 0 { // ScenePlayerInformation.PlayerId
 					ids = append(ids, playerField.Value)
 				}
 			}
@@ -118,7 +122,9 @@ func (p *Processor) observeSceneJoin(body []byte, at time.Time) {
 	if p.DamageStatistics != nil {
 		p.DamageStatistics.observeSceneTransition(at)
 		p.DamageStatistics.observeScene(p.Entities.sceneInstanceID, p.Entities.hasSceneInstanceID)
-		p.FlushEncounterTransitions()
+		if p.observer != nil {
+			p.observer.FlushEncounterTransitions()
+		}
 	}
 }
 
@@ -129,7 +135,9 @@ func (p *Processor) observeEncounterClock(at time.Time) {
 		return
 	}
 	p.DamageStatistics.observeCaptureTime(at)
-	p.FlushEncounterTransitions()
+	if p.observer != nil {
+		p.observer.FlushEncounterTransitions()
+	}
 }
 
 // FinishCapture closes the encounter tracker when a capture or replay ends.
@@ -143,7 +151,9 @@ func (p *Processor) FinishCapture() {
 		return
 	}
 	p.DamageStatistics.finishCapture()
-	p.FlushEncounterTransitions()
+	if p.observer != nil {
+		p.observer.FlushEncounterTransitions()
+	}
 }
 
 // combatNotifyContainer names the outer message that carried a CombatNotifyData entry.

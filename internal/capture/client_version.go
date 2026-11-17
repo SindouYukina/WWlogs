@@ -49,7 +49,7 @@ func extractLoginRequestBuild(data []byte) (string, error) {
 	basicInfoSeen := false
 	versionShape := "absent"
 	for _, field := range fields {
-		if field.Number != fieldLoginRequestClientBasicInfo || field.Wire != 2 {
+		if field.Number != FieldLoginRequestClientBasicInfo || field.Wire != 2 {
 			continue
 		}
 		basicInfoSeen = true
@@ -58,8 +58,8 @@ func extractLoginRequestBuild(data []byte) (string, error) {
 			return "", fmt.Errorf("parse LoginRequest.ClientBasicInfo: %w", err)
 		}
 		for _, value := range nested {
-			if value.Number != fieldClientBasicInfoClientVersion || value.Wire != 2 {
-				if value.Number == fieldClientBasicInfoClientVersion {
+			if value.Number != FieldClientBasicInfoClientVersion || value.Wire != 2 {
+				if value.Number == FieldClientBasicInfoClientVersion {
 					versionShape = fmt.Sprintf("wire=%d", value.Wire)
 				}
 				continue

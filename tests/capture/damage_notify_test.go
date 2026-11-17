@@ -280,7 +280,7 @@ func newCreditTestProcessor() *Processor {
 	p.Masters.AbnormalDamageIDs[notifyTestSpectro] = struct{}{}
 	p.Masters.NegativeStatusExecutors[notifyTestSpectroBuff] = notifyTestSpectro
 	p.Masters.NegativeStatusExecutors[notifyTestAeroBuff2] = notifyTestAero
-	p.Masters.invokePeriodTargets = map[uint64][]uint64{
+	p.Masters.InvokePeriodTargets = map[uint64][]uint64{
 		notifyTestInvokeAero: {notifyTestAeroBuff},
 		notifyTestInvokeBoth: {notifyTestAeroBuff, notifyTestSpectroBuff},
 	}

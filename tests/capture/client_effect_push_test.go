@@ -17,7 +17,7 @@ type testCombatCommon struct {
 func clientCommonBody(common testCombatCommon) []byte {
 	body := []byte(nil)
 	if common.preMessageID != 0 {
-		body = appendVarintField(body, fieldCombatCommonPreMessageID, common.preMessageID)
+		body = appendVarintField(body, FieldCombatCommonPreMessageID, common.preMessageID)
 	}
 	if common.messageID != 0 {
 		body = appendVarintField(body, FieldCombatCommonMessageID, common.messageID)
@@ -74,7 +74,7 @@ func deliverClientPush(t *testing.T, p *Processor, seconds float64, body []byte)
 // newClientEffectTestProcessor has local team roles 100, 101 and 102 of player 7 (FightRoleInfos),
 // with 100 reported as the current entity, monsters 200 and 201, and no diagnostic outputs.
 func newClientEffectTestProcessor() *Processor {
-	p := NewProcessor(nil, io.Discard, io.Discard, nil)
+	p := NewProcessor(nil, io.Discard)
 	p.SessionNumber = 1
 	addTestPlayerRoleGroupEntity(p, 100, 7, 1312)
 	addTestPlayerRoleGroupEntity(p, 101, 7, 1311)

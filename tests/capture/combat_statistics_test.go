@@ -55,8 +55,8 @@ func TestDamageStatisticsResetClearsSnapshot(t *testing.T) {
 }
 
 func TestDamageStatisticsCaptureSessionsAreIsolated(t *testing.T) {
-	firstCapture := NewProcessor(nil, nil, nil, nil).DamageStatistics
-	secondCapture := NewProcessor(nil, nil, nil, nil).DamageStatistics
+	firstCapture := NewProcessor(nil, nil).DamageStatistics
+	secondCapture := NewProcessor(nil, nil).DamageStatistics
 	addStatisticsOutgoingDamage(firstCapture, 1, 10, time.Unix(10, 0))
 	addStatisticsOutgoingDamage(secondCapture, 1, 20, time.Unix(20, 0))
 

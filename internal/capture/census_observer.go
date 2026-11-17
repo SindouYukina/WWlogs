@@ -2,12 +2,12 @@ package capture
 
 import "time"
 
-// commandCensusObserver receives what the frame parser and the frame dispatcher learn about every frame: framing
+// CommandCensusObserver receives what the frame parser and the frame dispatcher learn about every frame: framing
 // failures, each frame's command, and how far the frame was decoded. The Development command census
 // (-command-census-out) implements it; a processor without a census (every Public run, and every Development run
 // without the flag) skips each report. Nothing it returns reaches a core decision: FailedCRC returns the census's own
 // index of the observation, which the parser hands back with the next valid frame boundary.
-type commandCensusObserver interface {
+type CommandCensusObserver interface {
 	Malformed(reason string, timestamp time.Time, offset int, declaredLength uint16, available int)
 	FailedCRC(observation CRCFailureObservation) int
 	SetNextValidFrame(index int, next FrameBoundaryObservation)

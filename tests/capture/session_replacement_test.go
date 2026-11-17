@@ -33,7 +33,7 @@ func replacementProcessor(t *testing.T) (*Processor, *rsa.PrivateKey) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := NewProcessor(nil, io.Discard, io.Discard, nil)
+	p := NewProcessor(nil, io.Discard)
 	p.RSA = &StaticRSA{E: key.E, N: key.N, D: key.D}
 	p.IntervalPerProtocolSession = true
 	return p, key
@@ -45,7 +45,7 @@ func handshakeBody(t *testing.T, key *rsa.PrivateKey) []byte {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return appendBytesField(appendVarintField(nil, fieldProtoKeyResponseType, 2), fieldProtoKeyResponseKey, ciphertext)
+	return appendBytesField(appendVarintField(nil, FieldProtoKeyResponseType, 2), FieldProtoKeyResponseKey, ciphertext)
 }
 
 // A capture that began after the login sees one connection without a key. The game returns to the login screen while

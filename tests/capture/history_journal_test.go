@@ -242,7 +242,7 @@ func TestJournalNamesOnlyAConfirmedProtocolSession(t *testing.T) {
 		{"another version", []string{"3.7.0", "3.7.1", "3.7.19"}, false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			p := NewProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
+			p := NewProcessor(nil, &bytes.Buffer{})
 			p.DamageStatistics.EnableHistory(HistoryEvents)
 			p.SessionNumber = 1
 			p.Protocol.BeginSession()

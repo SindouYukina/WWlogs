@@ -17,6 +17,7 @@ import (
 
 	"wwlogs/internal/capture"
 	"wwlogs/internal/desktop"
+	"wwlogs/internal/devcapture"
 )
 
 // ParseOptions reads the Development Build flags. Besides the Public flags they allow an automatic start, a paced
@@ -82,6 +83,7 @@ func ParseOptions(arguments []string, output io.Writer) (desktop.Options, error)
 		Locale:         *locale,
 		Session: capture.SessionConfig{
 			LocalIPv4: *ip, ReplayPath: *replay, ReplayPacing: *pacing, Diagnostics: *diagnostics,
+			OpenDiagnostics: devcapture.OpenSessionDiagnostics,
 		},
 		AutoStart:        *autoStart || *replay != "",
 		ShowOverlay:      *showOverlay,

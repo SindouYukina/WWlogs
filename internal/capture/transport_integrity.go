@@ -134,7 +134,9 @@ func (p *Processor) beginTransportLoss(direction string, from, detectedAt time.T
 	}
 	if p.DamageStatistics != nil {
 		p.DamageStatistics.beginTransportLoss(id, direction, from)
-		p.FlushEncounterTransitions()
+		if p.observer != nil {
+			p.observer.FlushEncounterTransitions()
+		}
 	}
 	if p.Effects != nil {
 		p.Effects.MarkTransportLoss(from)
@@ -190,7 +192,9 @@ func (p *Processor) supersedeStreamLoss(state *Stream, at time.Time) {
 	}
 	if p.DamageStatistics != nil {
 		p.DamageStatistics.endTransportLoss(id, at)
-		p.FlushEncounterTransitions()
+		if p.observer != nil {
+			p.observer.FlushEncounterTransitions()
+		}
 	}
 }
 
@@ -228,7 +232,9 @@ func (p *Processor) endTransportLoss(id uint64, direction string, to time.Time, 
 	p.Context.observeLossEnd(direction, to)
 	if p.DamageStatistics != nil {
 		p.DamageStatistics.endTransportLoss(id, to)
-		p.FlushEncounterTransitions()
+		if p.observer != nil {
+			p.observer.FlushEncounterTransitions()
+		}
 	}
 }
 
@@ -244,7 +250,9 @@ func (p *Processor) failTransportLoss(id uint64, direction string) {
 	p.transport.counters(direction).unrecovered++
 	if p.DamageStatistics != nil {
 		p.DamageStatistics.failTransportLoss(id)
-		p.FlushEncounterTransitions()
+		if p.observer != nil {
+			p.observer.FlushEncounterTransitions()
+		}
 	}
 }
 

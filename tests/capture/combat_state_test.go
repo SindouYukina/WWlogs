@@ -4,20 +4,6 @@ import (
 	"testing"
 )
 
-func fsmFixture() *GameMaster {
-	fsm := &FSMMaster{
-		MachinesByNode: map[int64][]string{1: {"A", "B"}, 2: {"A", "B"}, 3: {"A", "B"}, 9: {"C"}},
-		Names: map[FSMNodeKey]string{
-			{"A", 1}: "root", {"A", 2}: "idle", {"A", 3}: "fight",
-			{"B", 1}: "root", {"B", 2}: "idle", {"B", 3}: "attack",
-			{"C", 9}: "lonely",
-		},
-		Children:   map[FSMNodeKey][]int64{{"A", 1}: {2, 3}, {"B", 1}: {2, 3}},
-		References: map[FSMNodeKey]int64{},
-	}
-	return &GameMaster{FSM: fsm}
-}
-
 func TestActiveResponseFsmComponentOnlyAddsTheHashes(t *testing.T) {
 	resolver := NewEntityResolver()
 	resolver.Entities[77] = RuntimeEntity{EntityID: 77, ComponentSourceMessageID: 5, ComponentSourceFieldPath: "kept"}
