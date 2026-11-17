@@ -348,15 +348,6 @@ func (m *gameMaster) buffStatic(id uint64) (buffStaticParameters, bool) {
 	return value, ok
 }
 
-// hasShieldDefinition reports whether shield has a normalized row with this key.
-func (m *gameMaster) hasShieldDefinition(id uint64) bool {
-	if m == nil {
-		return false
-	}
-	_, ok := m.shieldDefinitions[id]
-	return ok
-}
-
 // hasPhantomSkill reports whether PhantomSkill has a row with this PhantomSkillId.
 func (m *gameMaster) hasPhantomSkill(id uint64) bool {
 	_, ok := m.phantomSkills[id]
@@ -399,23 +390,4 @@ func (m *gameMaster) damageSkill(skillID uint64) (masterRecord, bool) {
 func (m *gameMaster) commonSkill(skillID uint64) (masterRecord, bool) {
 	value, ok := m.commonSkills[skillID]
 	return value, ok
-}
-
-// uniqueActorForSkill returns an actor only when a non-common SkillId belongs to exactly one
-// distinct actor asset in the loaded EntitySkillPreload rows.
-func (m *gameMaster) uniqueActorForSkill(skillID uint64) (string, bool) {
-	if m == nil || skillID == 0 {
-		return "", false
-	}
-	if _, common := m.commonSkills[skillID]; common {
-		return "", false
-	}
-	owners := m.skillActors[skillID]
-	if len(owners) != 1 {
-		return "", false
-	}
-	for actor := range owners {
-		return actor, true
-	}
-	return "", false
 }

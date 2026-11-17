@@ -5,26 +5,11 @@ import (
 	"time"
 )
 
-type combatEventCreditJSONL struct {
-	CharacterID *uint64          `json:"characterId,omitempty"`
-	Name        string           `json:"name,omitempty"`
-	Status      resolutionStatus `json:"status"`
-	NameStatus  resolutionStatus `json:"nameStatus"`
-	Evidence    string           `json:"evidence,omitempty"`
-}
-
 type combatEventLabelTextJSONL struct {
 	Locale   string `json:"locale"`
 	Text     string `json:"text"`
 	Kind     string `json:"kind"`
 	Evidence string `json:"evidence,omitempty"`
-}
-
-type combatEventElementJSONL struct {
-	ID       int32            `json:"id"`
-	Name     string           `json:"name,omitempty"`
-	Status   resolutionStatus `json:"status"`
-	Evidence string           `json:"evidence,omitempty"`
 }
 
 type combatEvent struct {

@@ -1,3 +1,5 @@
+//go:build wwdev
+
 package capture
 
 func attributeMessage(attributeType, baseValue int64, withCurrent bool) decodedField {

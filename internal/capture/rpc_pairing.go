@@ -2,7 +2,6 @@ package capture
 
 import (
 	"bytes"
-	"fmt"
 	"math"
 	"slices"
 	"time"
@@ -383,12 +382,4 @@ func (p *processor) rpcPairingSnapshot() RPCPairingSnapshot {
 		InvalidResponses: p.stats.invalidResponses, PendingRequests: len(p.pending), EvictedRequests: p.stats.evictedPending, HeldResponses: len(state.held),
 		ReusedRequestIDs: p.stats.reusedRequestIDs, SupersededRequests: p.stats.supersededRequests,
 	}
-}
-
-// rpcPairingLine formats the pairing counters for development diagnostics.
-func rpcPairingLine(s RPCPairingSnapshot) string {
-	return fmt.Sprintf("damage_rpc_pairing requests=%d responses=%d standalone_responses=%d paired=%d paired_out_of_order=%d max_out_of_order_wait_ms=%.1f unpaired_expired=%d unpaired_evicted=%d unpaired_session_change=%d unpaired_capture_end=%d rewound_entities=%d duplicate_responses=%d conflicting_responses=%d invalid_responses=%d pending_requests=%d evicted_requests=%d held_responses=%d reused_request_ids=%d superseded_requests=%d",
-		s.Requests, s.Responses, s.StandaloneResponses, s.Paired, s.PairedOutOfOrder, s.MaxOutOfOrderWaitMs, s.UnpairedExpired, s.UnpairedEvicted,
-		s.UnpairedSessionChange, s.UnpairedCaptureEnd, s.RewoundEntities, s.DuplicateResponses, s.ConflictingResponses, s.InvalidResponses, s.PendingRequests, s.EvictedRequests, s.HeldResponses,
-		s.ReusedRequestIDs, s.SupersededRequests)
 }

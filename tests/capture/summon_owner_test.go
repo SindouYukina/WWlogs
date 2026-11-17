@@ -1,3 +1,5 @@
+//go:build wwdev
+
 package capture
 
 func componentWrapper(component decodedField) decodedField {

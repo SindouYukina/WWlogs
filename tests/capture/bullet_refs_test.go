@@ -1,3 +1,5 @@
+//go:build wwdev
+
 package capture
 
 func scalarField(name string, value int64) decodedField {

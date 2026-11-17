@@ -49,13 +49,6 @@ func openMasterDatabase(path string) (*sql.DB, string, string, error) {
 	return openFileMasterDatabase(path)
 }
 
-func masterDatabaseSourceLabel(databasePath string) string {
-	if databasePath == "embedded" {
-		return "embedded"
-	}
-	return "external test override"
-}
-
 // openEmbeddedMasterDatabase opens the embedded file through the read-only VFS. immutable tells SQLite there is nothing to
 // lock or recover, and temp_store keeps sorting in memory because this file system cannot create files. The pragmas are
 // in the DSN so they hold for any connection the pool opens, and the page cache stays at SQLite's default bound.

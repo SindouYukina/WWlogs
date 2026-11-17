@@ -6,30 +6,31 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
 
 func TestCommandCensusSeparatesDecodedFramesFromUnimplementedSchemas(t *testing.T) {
-	census := newCommandCensus()
+	census := newCommandCensus(nil)
 	when := time.Date(2026, time.October, 26, 5, 0, 0, 0, time.UTC)
 	// The processor names an entry from the current protocol only for a frame its protocol session decodes.
-	entityAdd := census.observeFrame(gameFrame{commandID: cmdEntityAddNotify, direction: "in", timestamp: when}, 1)
-	entityAdd.describeCurrentProtocol()
+	entityAdd := census.ObserveFrame(gameFrame{commandID: cmdEntityAddNotify, direction: "in", timestamp: when}, 1).(*commandCensusEntry)
+	entityAdd.DescribeCurrentProtocol()
 	entityAdd.DecryptedFrames++
 	entityAdd.DecodedFrames++
-	joinScene := census.observeFrame(gameFrame{commandID: cmdJoinSceneNotify, direction: "in", timestamp: when.Add(time.Second)}, 1)
-	joinScene.describeCurrentProtocol()
+	joinScene := census.ObserveFrame(gameFrame{commandID: cmdJoinSceneNotify, direction: "in", timestamp: when.Add(time.Second)}, 1).(*commandCensusEntry)
+	joinScene.DescribeCurrentProtocol()
 	joinScene.DecryptedFrames++
 	joinScene.GenericProtoValid++
 	joinScene.DecodedFrames++
-	phantomRecommend := census.observeFrame(gameFrame{commandID: cmdPhantomAttrRecommendResponse, direction: "in", timestamp: when.Add(time.Second)}, 1)
-	phantomRecommend.describeCurrentProtocol()
+	phantomRecommend := census.ObserveFrame(gameFrame{commandID: cmdPhantomAttrRecommendResponse, direction: "in", timestamp: when.Add(time.Second)}, 1).(*commandCensusEntry)
+	phantomRecommend.DescribeCurrentProtocol()
 	phantomRecommend.DecryptedFrames++
 	phantomRecommend.GenericProtoValid++
 	phantomRecommend.FailureReasons["message schema not implemented"]++
-	census.failedCRC(crcFailureObservation{Direction: "in", CommandID: cmdEntityActiveResponse, Timestamp: when.Add(2 * time.Second), ReceivedCRC: 1, ComputedCRC: 2})
-	census.malformed("short_or_unaligned_frame_candidate", when.Add(3*time.Second), 4, 8, 32)
+	census.FailedCRC(crcFailureObservation{Direction: "in", CommandID: cmdEntityActiveResponse, Timestamp: when.Add(2 * time.Second), ReceivedCRC: 1, ComputedCRC: 2})
+	census.Malformed("short_or_unaligned_frame_candidate", when.Add(3*time.Second), 4, 8, 32)
 	census.sessions = 1
 
 	path := filepath.Join(t.TempDir(), "census.json")
@@ -175,5 +176,37 @@ func TestCommandCensusSeparatesDecodedFramesFromUnimplementedSchemas(t *testing.
 	}
 	if len(report.Malformed) != 1 || report.Malformed[0].Reason != "short_or_unaligned_frame_candidate" {
 		t.Fatalf("malformed candidate detail was not retained: %+v", report.Malformed)
+	}
+}
+
+// A fight sent in the current protocol names its census entries from the current protocol.
+func TestCensusNamesCurrentProtocolFrames(t *testing.T) {
+	p, _ := initialProcessor(t)
+	census := newCommandCensus(p)
+	p.census = census
+	sendCurrentProtocolFight(t, p)
+	if entry := census.entries[censusKey{CommandID: cmdJoinSceneNotify, Direction: "in"}]; entry == nil || entry.Name != "JoinSceneNotify" || entry.SchemaBasis != censusSchemaBasis() {
+		t.Fatalf("a current-protocol frame was not named from the current protocol: %+v", entry)
+	}
+	if text := censusSchemaBasis(); !strings.Contains(text, CurrentProtocol()) {
+		t.Fatalf("census schema basis %q does not name the current client protocol", text)
+	}
+}
+
+// The same number means another message in another version: the census must not name it from the current one.
+func TestCensusKeepsOtherGameVersionFramesUnnamed(t *testing.T) {
+	for _, build := range otherVersionBuilds {
+		p, _ := initialProcessorWithBuild(t, build)
+		census := newCommandCensus(p)
+		p.census = census
+		sendOtherVersionFight(t, p)
+		if got := census.entry(cmdCombatSendPackRequest, "out").FailureReasons[protocolUnsupportedFailureReason]; got != 1 {
+			t.Fatalf("%s: census reason = %d, want 1", build, got)
+		}
+		for _, key := range []censusKey{{CommandID: cmdJoinSceneNotify, Direction: "in"}, {CommandID: cmdCombatSendPackRequest, Direction: "out"}, {CommandID: cmdCombatSendPackResponse, Direction: "in"}} {
+			if entry := census.entries[key]; entry == nil || entry.Name != "" || entry.SchemaBasis != "" {
+				t.Fatalf("%s: a frame of another game version took a current-protocol name: %+v", build, entry)
+			}
+		}
 	}
 }

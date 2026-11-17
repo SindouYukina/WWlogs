@@ -1,3 +1,5 @@
+//go:build wwdev
+
 package capture
 
 import (
@@ -7,7 +9,7 @@ import (
 
 func TestClientVersionCensusSchemaBasisExcludesSiblingIdentifiers(t *testing.T) {
 	for _, commandID := range []uint16{103, 116} {
-		entry := newCommandCensus().entry(commandID, "out")
+		entry := newCommandCensus(nil).entry(commandID, "out")
 		if want := "Only extracted version fields are retained; command 103/116 sibling fields contain device/account identifiers and are excluded from logs and audit"; entry.SchemaBasis != want {
 			t.Fatalf("command %d schema basis = %q, want %q", commandID, entry.SchemaBasis, want)
 		}
@@ -15,11 +17,11 @@ func TestClientVersionCensusSchemaBasisExcludesSiblingIdentifiers(t *testing.T) 
 }
 
 func TestFrameErrorObservationsAreBounded(t *testing.T) {
-	census := newCommandCensus()
+	census := newCommandCensus(nil)
 	when := time.Date(2026, time.October, 26, 5, 0, 0, 0, time.UTC)
 	for i := 0; i < maxFrameErrorObservations+3; i++ {
-		census.failedCRC(crcFailureObservation{Direction: "in", CommandID: uint16(i), Timestamp: when})
-		census.malformed("candidate", when, i, 1, 2)
+		census.FailedCRC(crcFailureObservation{Direction: "in", CommandID: uint16(i), Timestamp: when})
+		census.Malformed("candidate", when, i, 1, 2)
 	}
 	if len(census.crcFailures) != maxFrameErrorObservations || census.crcOmitted != 3 {
 		t.Fatalf("CRC detail cap = %d, omitted %d", len(census.crcFailures), census.crcOmitted)
@@ -30,11 +32,11 @@ func TestFrameErrorObservationsAreBounded(t *testing.T) {
 }
 
 func TestCommandCensusLinksCRCFailureToNeighborFrames(t *testing.T) {
-	census := newCommandCensus()
+	census := newCommandCensus(nil)
 	previous := frameBoundaryObservation{Offset: 0, MessageType: 1, Sequence: 12, CommandID: 1234, FrameLength: 14}
-	index := census.failedCRC(crcFailureObservation{Direction: "in", Offset: 14, PreviousValid: &previous})
+	index := census.FailedCRC(crcFailureObservation{Direction: "in", Offset: 14, PreviousValid: &previous})
 	next := frameBoundaryObservation{Offset: 40, MessageType: 1, Sequence: 14, CommandID: 5678, FrameLength: 15}
-	census.setNextValidFrame(index, next)
+	census.SetNextValidFrame(index, next)
 
 	observation := census.crcFailures[index]
 	if observation.PreviousValid == nil || observation.PreviousValid.Sequence != 12 {
@@ -43,7 +45,7 @@ func TestCommandCensusLinksCRCFailureToNeighborFrames(t *testing.T) {
 	if observation.NextValid == nil || observation.NextValid.Sequence != 14 {
 		t.Fatalf("next valid frame context = %#v", observation.NextValid)
 	}
-	census.setNextValidFrame(index, frameBoundaryObservation{Sequence: 99})
+	census.SetNextValidFrame(index, frameBoundaryObservation{Sequence: 99})
 	if observation.NextValid.Sequence != 14 {
 		t.Fatalf("next valid frame context was overwritten: %#v", observation.NextValid)
 	}

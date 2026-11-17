@@ -281,7 +281,7 @@ func encounterReplayOnce(t *testing.T, inputs equivalenceInputs, masters *gameMa
 	p, stats := equivalenceReplay(t, inputs, masters, key, capture.path, func(p *processor) {
 		p.dev.encounterOut = &diagnostics
 		p.dev.combatEventsJSONL = &rawEvents
-		p.damageStatistics.recordEncounterTransitions(true)
+		p.recordEncounterTransitions()
 	}, func(index int, p *processor) {
 		if frame := p.currentFrameTime; frame.After(lastFrame) {
 			if active := p.damageStatistics.encounters.current; active != nil && active.state == EncounterActive && !lastFrame.IsZero() {

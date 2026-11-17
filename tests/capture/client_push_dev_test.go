@@ -9,6 +9,13 @@ import (
 	"time"
 )
 
+func pushWrapper(child decodedField) *decodedMessage {
+	push := decodedField{Number: fieldCombatSendDataPush, Name: "Push", Kind: "class", Message: &decodedMessage{Fields: []decodedField{child}}}
+	return &decodedMessage{Type: "CombatSendPackRequest", Fields: []decodedField{
+		{Number: fieldCombatSendPackRequestData, Name: "Data", Kind: "repeated", Message: &decodedMessage{Fields: []decodedField{push}}},
+	}}
+}
+
 func TestClientPushRecordsRoleSwitchAndActiveRoleOnSkill(t *testing.T) {
 	var out strings.Builder
 	p := &processor{sessionNumber: 1, dev: processorDiagnostics{clientPushOut: &out, frameOrdinal: 1}}

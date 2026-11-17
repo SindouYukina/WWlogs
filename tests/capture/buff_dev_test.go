@@ -19,7 +19,7 @@ func TestFormatBuffLifecycleConsoleUsesRawEffectEvidence(t *testing.T) {
 		BuffID: &buffID, HandleID: &handleID, TargetEntityID: &targetID, StackCount: &stack,
 		DurationSeconds: &duration, RemainingDuration: &remaining,
 		BuffDefinitionStatus: resolutionUnknown, TargetStatus: resolutionUnknown,
-	})
+	}, "", "")
 	for _, want := range []string{"BuffEvent", "kind=GAMEPLAY_EFFECT_APPLY", "buffId=70001", "handle=111", "target=8801", "targetStatus=UNKNOWN", "stack=3", "duration_s=12.500", "remaining_s=4.250", "buffIdLookup=UNKNOWN"} {
 		if !strings.Contains(line, want) {
 			t.Fatalf("effect console line %q is missing %q", line, want)
@@ -37,7 +37,7 @@ func TestFormatBuffLifecycleConsoleShowsCorrelatedStackHolder(t *testing.T) {
 		HandleLinkedID: &effectID, HandleLinkedStatus: resolutionCorrelated,
 		CombatCommonEntityID: &entityID, StackCount: &stack,
 		TargetStatus: resolutionUnknown,
-	})
+	}, "", "")
 	for _, want := range []string{"BuffEvent", "kind=BUFF_STACK_COUNT_CHANGE", "id=10061000", "handle=177", "handleLinkedId=10061000", "holder=29106", "holderStatus=CORRELATED", "handleLinkedStatus=CORRELATED", "stack=6"} {
 		if !strings.Contains(line, want) {
 			t.Fatalf("correlated stack event %q is missing %q", line, want)
@@ -54,7 +54,7 @@ func TestFormatBuffLifecycleConsoleKeepsUnlinkedHolderUnconfirmed(t *testing.T) 
 		EventKind: "BUFF_STACK_COUNT_CHANGE", HandleID: &handleID,
 		HandleLinkedStatus: resolutionUnknown, CombatCommonEntityID: &entityID,
 		StackCount: &stack,
-	})
+	}, "", "")
 	for _, want := range []string{"holderCandidate=29106", "holderStatus=UNKNOWN", "stack=6"} {
 		if !strings.Contains(line, want) {
 			t.Fatalf("unlinked stack event %q is missing %q", line, want)
@@ -70,7 +70,7 @@ func TestFormatBuffLifecycleConsoleDoesNotTreatRequestContextAsTarget(t *testing
 	line := formatBuffLifecycleConsole(buffLifecycleAuditRow{
 		EventKind: "BUFF_APPLY_REQUEST_NOTIFY", ID: &id, CombatCommonEntityID: &entityID,
 		GenericIDDefinitionStatus: resolutionCorrelated, TargetStatus: resolutionUnknown,
-	})
+	}, "", "")
 	for _, want := range []string{"kind=BUFF_APPLY_REQUEST_NOTIFY", "id=10061000", "commonEntity=90", "idReferenceStatus=CORRELATED"} {
 		if !strings.Contains(line, want) {
 			t.Fatalf("request event %q is missing %q", line, want)
@@ -87,7 +87,7 @@ func TestFormatBuffLifecycleConsoleOmitsMaxStackSentinelFromRemoveRequest(t *tes
 		EventKind: "BUFF_REMOVE_BY_ID_REQUEST_NOTIFY", BuffID: &buffID,
 		CombatCommonEntityID: &entityID, StackCount: &stack,
 		BuffDefinitionStatus: resolutionCorrelated,
-	})
+	}, "", "")
 	if !strings.Contains(line, "buffId=600100116") || !strings.Contains(line, "commonEntity=30116") {
 		t.Fatalf("remove request context was lost: %q", line)
 	}
@@ -104,7 +104,7 @@ func TestFormatBuffLifecycleConsoleMarksApplyRequestUnconfirmed(t *testing.T) {
 	line := formatBuffLifecycleConsole(buffLifecycleAuditRow{
 		EventKind: "BUFF_APPLY_REQUEST_NOTIFY", ID: &id, InstigatorID: &instigator,
 		GenericIDDefinitionStatus: resolutionCorrelated,
-	})
+	}, "", "")
 	if !strings.Contains(line, "effectState=UNCONFIRMED") || !strings.Contains(line, "idReferenceStatus=CORRELATED") {
 		t.Fatalf("apply request evidence was not labeled precisely: %q", line)
 	}
@@ -265,7 +265,8 @@ func TestCombatReceivePackNotifyDecodesInnerBuffApply(t *testing.T) {
 	var lifecycle bytes.Buffer
 	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
 	p.dev.buffLifecycle = &lifecycle
-	p.census = newCommandCensus()
+	census := newCommandCensus(p)
+	p.census = census
 	p.sessionNumber = 4
 
 	apply := appendVarintField(nil, fieldApplyGameplayEffectNotifyHandle, 501)             // Handle
@@ -293,8 +294,8 @@ func TestCombatReceivePackNotifyDecodesInnerBuffApply(t *testing.T) {
 	if row.TargetEntityID == nil || *row.TargetEntityID != 8801 || row.InstigatorID == nil || *row.InstigatorID != 99002 {
 		t.Fatalf("inner Buff target/provider raw fields = %+v", row)
 	}
-	if p.census.combatNotifyFields[5] != 1 {
-		t.Fatalf("CombatNotifyData field 5 observations = %d, want 1", p.census.combatNotifyFields[5])
+	if census.combatNotifyFields[5] != 1 {
+		t.Fatalf("CombatNotifyData field 5 observations = %d, want 1", census.combatNotifyFields[5])
 	}
 }
 
@@ -302,7 +303,8 @@ func TestCombatSendPackResponseProcessesNestedBuffApply(t *testing.T) {
 	var lifecycle bytes.Buffer
 	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
 	p.dev.buffLifecycle = &lifecycle
-	p.census = newCommandCensus()
+	census := newCommandCensus(p)
+	p.census = census
 	p.sessionNumber = 4
 
 	apply := appendVarintField(nil, fieldApplyGameplayEffectNotifyHandle, 501)             // Handle
@@ -331,8 +333,8 @@ func TestCombatSendPackResponseProcessesNestedBuffApply(t *testing.T) {
 	if row.TargetEntityID == nil || *row.TargetEntityID != 8801 || row.InstigatorID == nil || *row.InstigatorID != 99002 {
 		t.Fatalf("inner Buff target/provider raw fields = %+v", row)
 	}
-	if p.census.combatNotifyFields[5] != 1 {
-		t.Fatalf("CombatNotifyData field 5 observations = %d, want 1", p.census.combatNotifyFields[5])
+	if census.combatNotifyFields[5] != 1 {
+		t.Fatalf("CombatNotifyData field 5 observations = %d, want 1", census.combatNotifyFields[5])
 	}
 }
 
@@ -340,7 +342,6 @@ func TestCombatReceivePackNotifyCarriesCombatCommonContextWithBuffRequest(t *tes
 	var lifecycle bytes.Buffer
 	p := &processor{
 		sessionNumber: 5,
-		census:        newCommandCensus(),
 		entities: &entityResolver{entities: map[uint64]runtimeEntity{
 			8801: {
 				entityID: 8801, roleID: 771, hasRoleID: true,
@@ -352,6 +353,8 @@ func TestCombatReceivePackNotifyCarriesCombatCommonContextWithBuffRequest(t *tes
 		}},
 		dev: processorDiagnostics{buffLifecycle: &lifecycle},
 	}
+	census := newCommandCensus(p)
+	p.census = census
 	request := appendVarintField(appendVarintField(nil, fieldApplyBuffS2cRequestNotifyID, 71001), fieldApplyBuffS2cRequestNotifyInstigatorID, 8801)
 	notify := appendBytesField(nil, fieldCombatNotifyDataCombatCommon, appendVarintField(appendVarintField(nil, fieldCombatCommonMessageID, 17), fieldCombatCommonEntityID, 303))
 	notify = appendBytesField(notify, fieldCombatNotifyDataApplyBuffS2CRequestNotify, request)
@@ -379,8 +382,8 @@ func TestCombatReceivePackNotifyCarriesCombatCommonContextWithBuffRequest(t *tes
 	if row.InstigatorCharacterCandidateStatus != resolutionVerified {
 		t.Fatalf("candidate identity status = %s, want VERIFIED", row.InstigatorCharacterCandidateStatus)
 	}
-	if p.census.combatNotifyFields[53] != 1 {
-		t.Fatalf("inner request census count = %d, want 1", p.census.combatNotifyFields[53])
+	if census.combatNotifyFields[53] != 1 {
+		t.Fatalf("inner request census count = %d, want 1", census.combatNotifyFields[53])
 	}
 	lifecycle.Reset()
 	zeroContext := appendBytesField(nil, fieldCombatNotifyDataCombatCommon, appendVarintField(nil, fieldCombatCommonEntityID, 0))

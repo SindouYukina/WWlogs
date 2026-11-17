@@ -32,7 +32,7 @@ type roleConfigRoleResolution struct {
 	Basis           string
 }
 
-func (m *gameMaster) resolveRoleConfigRole(rawRoleID uint64) (roleConfigRoleResolution, bool) {
+func resolveRoleConfigRole(m *gameMaster, rawRoleID uint64) (roleConfigRoleResolution, bool) {
 	if m == nil {
 		return roleConfigRoleResolution{}, false
 	}
@@ -87,7 +87,7 @@ func (p *processor) archiveRoleConfigRecords(frame gameFrame, decoded *decodedMe
 		} else {
 			record.RawRoleID = &roleID
 			if roleID > 0 && p.masters != nil {
-				if resolution, ok := p.masters.resolveRoleConfigRole(uint64(roleID)); ok {
+				if resolution, ok := resolveRoleConfigRole(p.masters, uint64(roleID)); ok {
 					canonicalID := resolution.CanonicalRoleID
 					record.CanonicalRoleID = &canonicalID
 					record.CanonicalRoleName = resolution.Character.Name

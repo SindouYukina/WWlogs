@@ -227,8 +227,9 @@ type encounterTracker struct {
 	battleStateSignals   uint64
 	// unanchoredBattleStateSignals counts signals rejected because their PlayerId was not proven local.
 	unanchoredBattleStateSignals uint64
-	recordTransitions            bool
-	transitions                  []EncounterTransition
+	// onTransition receives every transition of the encounter state machine: the Development encounter output
+	// (-encounter-out) observes them; nil in every other run.
+	onTransition func(EncounterTransition)
 	// completedIntegrity is aligned with completed; completed snapshots hold the DPS before integrity is applied.
 	completedIntegrity []encounterIntegrityState
 	// completedTimelines is aligned with completed.
@@ -268,7 +269,7 @@ func (t *encounterTracker) nextInterval(intervalID uint64) *encounterTracker {
 	next.signalKnown, next.inBattle, next.highWater = t.signalKnown, t.inBattle, t.highWater
 	// Events observed before the reset belong to the old interval and cannot start or extend an encounter here.
 	next.boundaryFloor = t.highWater
-	next.recordTransitions = t.recordTransitions
+	next.onTransition = t.onTransition
 	// A loss still in progress keeps removing data from the new interval; a delayed stream stays delayed.
 	for _, id := range t.ongoingLossIDs() {
 		loss := *t.losses[id]
@@ -290,17 +291,11 @@ func (t *encounterTracker) encounterID(sequence uint64) string {
 	return fmt.Sprintf("%d-%d-%d", t.captureSessionID, t.intervalID, sequence)
 }
 
-func (t *encounterTracker) takeTransitions() []EncounterTransition {
-	transitions := t.transitions
-	t.transitions = nil
-	return transitions
-}
-
 func (t *encounterTracker) emit(kind string, record *encounterRecord, at time.Time, basis string, detail *EncounterSnapshot) {
-	if !t.recordTransitions {
+	if t.onTransition == nil {
 		return
 	}
-	t.transitions = append(t.transitions, EncounterTransition{
+	t.onTransition(EncounterTransition{
 		Kind: kind, EncounterID: t.encounterID(record.sequence), At: at, State: record.state, Basis: basis, Encounter: detail,
 	})
 }
@@ -890,25 +885,13 @@ func (s *DamageStatistics) finishCapture() {
 	s.encounters.finishCapture()
 }
 
-// recordEncounterTransitions turns transition recording on for development diagnostics. It stays off in public
-// builds, where nothing drains the list.
-func (s *DamageStatistics) recordEncounterTransitions(enabled bool) {
+// observeEncounterTransitions hands every later transition of the encounter state machine to observe, while the
+// statistics hold their lock (nil stops). Only the Development encounter output (-encounter-out) observes them.
+func (s *DamageStatistics) observeEncounterTransitions(observe func(EncounterTransition)) {
 	if s == nil {
 		return
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.encounters.recordTransitions = enabled
-	if !enabled {
-		s.encounters.transitions = nil
-	}
-}
-
-func (s *DamageStatistics) takeEncounterTransitions() []EncounterTransition {
-	if s == nil {
-		return nil
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.encounters.takeTransitions()
+	s.encounters.onTransition = observe
 }

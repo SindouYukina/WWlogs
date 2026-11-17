@@ -11,8 +11,6 @@ import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
-
-	"wwlogs/internal/buildinfo"
 )
 
 type captureStats struct {
@@ -57,59 +55,6 @@ type captureStats struct {
 	resyncBytesDiscarded      int
 	resyncCandidatesChecked   int
 	resyncBudgetStops         int
-}
-
-type captureRunStatus struct {
-	Build        buildinfo.Record `json:"build"`
-	PID          int              `json:"pid"`
-	State        string           `json:"state"`
-	StopReason   string           `json:"stopReason,omitempty"`
-	StartedAt    time.Time        `json:"startedAt"`
-	UpdatedAt    time.Time        `json:"updatedAt"`
-	DeadlineAt   time.Time        `json:"deadlineAt,omitempty"`
-	Adapter      string           `json:"adapter"`
-	LocalIPv4    string           `json:"localIPv4"`
-	Filter       string           `json:"filter"`
-	PCAPPath     string           `json:"pcapPath"`
-	PCAPBytes    int64            `json:"pcapBytes"`
-	MaxPCAPBytes int64            `json:"maxPcapBytes"`
-	UDPPackets   int              `json:"udpPackets"`
-	KernelDrops  int              `json:"kernelDrops"`
-	// DiagnosticDroppedRecords counts development diagnostic records dropped because a sink queue was full or its
-	// writer failed. It is unrelated to packet loss.
-	DiagnosticDroppedRecords uint64 `json:"diagnosticDroppedRecords"`
-	// RunID identifies the run; the PCAP integrity record and the diagnostic pipeline line carry the same ID.
-	RunID string `json:"runId,omitempty"`
-}
-
-type liveDiagnosticSnapshot struct {
-	Type                             string                   `json:"type"`
-	Final                            bool                     `json:"final"`
-	SampledAt                        time.Time                `json:"sampledAt"`
-	CaptureObservedAt                time.Time                `json:"captureObservedAt,omitempty"`
-	ClockDifferenceSeconds           *float64                 `json:"clockDifferenceSeconds,omitempty"`
-	LocalSampleIntervalSeconds       *float64                 `json:"localSampleIntervalSeconds,omitempty"`
-	CaptureTimestampAdvanceSeconds   *float64                 `json:"captureTimestampAdvanceSeconds,omitempty"`
-	CaptureTimeAdvanceInterpretation string                   `json:"captureTimeAdvanceInterpretation"`
-	ClockDifferenceInterpretation    string                   `json:"clockDifferenceInterpretation"`
-	DamageStatistics                 DamageStatisticsSnapshot `json:"damageStatistics"`
-	Effects                          EffectSnapshot           `json:"effects"`
-}
-
-const liveDiagnosticInterval = time.Second
-
-type liveCaptureOutputBundle struct {
-	directory        string
-	pcap             string
-	console          string
-	combatEvents     string
-	buffEvents       string
-	buffSnapshots    string
-	liveDiagnostics  string
-	effectState      string
-	status           string
-	encounterSummary string
-	encounterEvents  string
 }
 
 func findDeviceByIP(ip string) (string, error) {

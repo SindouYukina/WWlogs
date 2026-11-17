@@ -112,19 +112,3 @@ func TestClientVersionObservationWaitsForHandshakeAndKeepsFirstValues(t *testing
 		}
 	}
 }
-
-func TestClientVersionAuditFieldsContainOnlyVersionData(t *testing.T) {
-	report := &clientVersionReport{
-		ClientBuild:         currentTestBuild,
-		CheckClientVersions: currentTestClientVersions,
-		SourceCommands:      []uint16{cmdLoginRequest, cmdCheckClientPush},
-	}
-	build, versions, commands := report.auditFields()
-	expectedVersions, err := json.Marshal(currentTestClientVersions)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if build != currentTestBuild || versions != string(expectedVersions) || commands != "103,116" {
-		t.Fatalf("audit version fields = %q / %q / %q", build, versions, commands)
-	}
-}

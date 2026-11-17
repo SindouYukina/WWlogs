@@ -1,7 +1,6 @@
 package capture
 
 import (
-	"fmt"
 	"strconv"
 	"time"
 
@@ -212,15 +211,4 @@ func formatCaptureCounter(counter CaptureCounter) string {
 		return counter.Status
 	}
 	return strconv.FormatUint(counter.Value, 10)
-}
-
-// captureLatencyLine formats both delay summaries for development diagnostics.
-func captureLatencyLine(health CaptureLayerHealth) string {
-	format := func(latency CaptureLatency) string {
-		if latency.Status != CaptureCounterAvailable {
-			return latency.Status
-		}
-		return fmt.Sprintf("samples:%d/p50<=%gms/p95<=%gms/p99<=%gms/max:%.1fms", latency.Samples, latency.P50ms, latency.P95ms, latency.P99ms, latency.MaxMs)
-	}
-	return fmt.Sprintf("capture_latency source=%s delivery=%s processed=%s", health.Source, format(health.DeliveryDelay), format(health.ProcessedDelay))
 }

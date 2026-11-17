@@ -5,6 +5,7 @@ package capture
 import (
 	"encoding/json"
 	"fmt"
+	"sync"
 	"time"
 )
 
@@ -55,9 +56,8 @@ func (p *processor) writeEncounterLine(value any) {
 	if err != nil {
 		fmt.Fprintf(p.diagnostic, "encounter_diagnostic_disabled error=%v\n", err)
 		p.dev.encounterOut = nil
-		if p.damageStatistics != nil {
-			p.damageStatistics.recordEncounterTransitions(false)
-		}
+		p.damageStatistics.observeEncounterTransitions(nil)
+		p.dev.encounterTransitions = nil
 	}
 }
 
@@ -75,10 +75,10 @@ func (p *processor) writeCombatEventRecord(record CombatEventRecord, assignment 
 }
 
 func (p *processor) flushEncounterTransitions() {
-	if p.dev.encounterOut == nil || p.damageStatistics == nil {
+	if p.dev.encounterOut == nil || p.dev.encounterTransitions == nil {
 		return
 	}
-	for _, transition := range p.damageStatistics.takeEncounterTransitions() {
+	for _, transition := range p.dev.encounterTransitions.take() {
 		p.writeEncounterLine(encounterTransitionLine{
 			SchemaVersion: encounterDiagnosticSchemaVersion, Type: "ENCOUNTER_TRANSITION", EncounterTransition: transition,
 		})
@@ -93,4 +93,33 @@ func (p *processor) writeEncounterFinal() {
 	p.writeEncounterLine(encounterFinalLine{
 		SchemaVersion: encounterDiagnosticSchemaVersion, Type: "ENCOUNTER_FINAL", Encounters: p.damageStatistics.Snapshot().Encounters,
 	})
+}
+
+// recordEncounterTransitions keeps every transition of the encounter state machine for the encounter output
+// (-encounter-out); flushEncounterTransitions writes them at the next output point.
+func (p *processor) recordEncounterTransitions() {
+	log := &encounterTransitionLog{}
+	p.dev.encounterTransitions = log
+	p.damageStatistics.observeEncounterTransitions(log.add)
+}
+
+// encounterTransitionLog holds encounter transitions until the next encounter output point. The statistics report a
+// transition while they hold their own lock, from whichever goroutine advanced the encounters, so the log has its own.
+type encounterTransitionLog struct {
+	mu      sync.Mutex
+	pending []EncounterTransition
+}
+
+func (l *encounterTransitionLog) add(transition EncounterTransition) {
+	l.mu.Lock()
+	l.pending = append(l.pending, transition)
+	l.mu.Unlock()
+}
+
+func (l *encounterTransitionLog) take() []EncounterTransition {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	taken := l.pending
+	l.pending = nil
+	return taken
 }

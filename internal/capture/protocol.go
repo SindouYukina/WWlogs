@@ -237,9 +237,9 @@ type processor struct {
 	stats                  processorStats
 	damageStatistics       *DamageStatistics
 	effects                *EffectTracker
-	// census is the Development command census (-command-census-out), nil in every other run; the frame parser
-	// reports what it reads to it.
-	census        *commandCensus
+	// census is the Development command census (-command-census-out), nil in every other run; the frame parser and
+	// the frame dispatcher report what they read to it.
+	census        commandCensusObserver
 	sessionNumber int
 	// scenePlayerIDs lists the players of the current scene; it anchors battle-state signals before the
 	// explicit local-player identity does.
@@ -314,7 +314,7 @@ func parseFrameStream(buffer []byte, direction string, spans []applicationSpan, 
 		if total < 14 {
 			result.malformed++
 			if p.census != nil {
-				p.census.malformed("short_or_unaligned_frame_candidate", timestamp, applicationOffset, uint16(payloadLen), len(buffer))
+				p.census.Malformed("short_or_unaligned_frame_candidate", timestamp, applicationOffset, uint16(payloadLen), len(buffer))
 			}
 			return desync(frameDesyncMalformed)
 		}
@@ -331,7 +331,7 @@ func parseFrameStream(buffer []byte, direction string, spans []applicationSpan, 
 		if offset+6 > total {
 			result.malformed++
 			if p.census != nil {
-				p.census.malformed("truncated_command_header", timestamp, applicationOffset, uint16(payloadLen), total)
+				p.census.Malformed("truncated_command_header", timestamp, applicationOffset, uint16(payloadLen), total)
 			}
 			return desync(frameDesyncMalformed)
 		}
@@ -343,7 +343,7 @@ func parseFrameStream(buffer []byte, direction string, spans []applicationSpan, 
 			if bodyStart+4 > total {
 				result.malformed++
 				if p.census != nil {
-					p.census.malformed("truncated_compression_length", timestamp, applicationOffset, uint16(payloadLen), total)
+					p.census.Malformed("truncated_compression_length", timestamp, applicationOffset, uint16(payloadLen), total)
 				}
 				return desync(frameDesyncMalformed)
 			}
@@ -365,7 +365,7 @@ func parseFrameStream(buffer []byte, direction string, spans []applicationSpan, 
 					ReceivedCRC: receivedCRC, ComputedCRC: computedCRC, RemainingBytes: len(buffer) - total,
 					PreviousValid: previousValid,
 				}
-				if index := p.census.failedCRC(observation); index >= 0 {
+				if index := p.census.FailedCRC(observation); index >= 0 {
 					*pendingCRCIndexes = append(*pendingCRCIndexes, index)
 				}
 			}
@@ -390,7 +390,7 @@ func parseFrameStream(buffer []byte, direction string, spans []applicationSpan, 
 		boundary := frameBoundaryObservation{Offset: applicationOffset, MessageType: messageType, Sequence: current.sequence, Token: token, CommandID: commandID, FrameLength: total}
 		if p.census != nil {
 			for _, index := range *pendingCRCIndexes {
-				p.census.setNextValidFrame(index, boundary)
+				p.census.SetNextValidFrame(index, boundary)
 			}
 		}
 		*pendingCRCIndexes = nil
@@ -444,9 +444,9 @@ func (p *processor) handleFrame(frame gameFrame) {
 	p.observePairingClock(frame.timestamp)
 	p.observeEncounterClock(frame.timestamp)
 	p.sessionHealth.observeFrame(frame.timestamp)
-	var censusEntry *commandCensusEntry
+	var censusEntry censusFrameObserver
 	if p.census != nil {
-		censusEntry = p.census.observeFrame(frame, p.sessionNumber)
+		censusEntry = p.census.ObserveFrame(frame, p.sessionNumber)
 	}
 	if frame.commandID == cmdProtoKeyResponse && frame.direction == "in" {
 		p.stats.handshakeFrames++
@@ -454,7 +454,7 @@ func (p *processor) handleFrame(frame gameFrame) {
 			p.stats.handshakeErrors++
 			p.sessionHealth.lastHandshakeFailed = true
 			if censusEntry != nil {
-				censusEntry.FailureReasons["ProtoKeyResponse decode failed"]++
+				censusEntry.Fail("ProtoKeyResponse decode failed")
 			}
 			return
 		}
@@ -462,7 +462,7 @@ func (p *processor) handleFrame(frame gameFrame) {
 		p.sessionHealth.lastHandshakeFailed = false
 		p.sessionHealth.consecutiveDecryptFailures = 0
 		if censusEntry != nil {
-			censusEntry.DecodedFrames++
+			censusEntry.Decoded()
 		}
 		p.sessionNumber++
 		p.protocolSessionStartedAt = frame.timestamp
@@ -472,18 +472,18 @@ func (p *processor) handleFrame(frame gameFrame) {
 		p.scenePlayerIDs = nil
 		p.observeContextSessionStart(frame.timestamp)
 		p.startProtocolSessionStatistics(frame.timestamp)
-		if p.census != nil && p.sessionNumber > p.census.sessions {
-			p.census.sessions = p.sessionNumber
+		if p.census != nil {
+			p.census.ObserveSession(p.sessionNumber)
 		}
 		return
 	}
 	decodable := p.protocol.decodes(frame.commandID)
 	if decodable && censusEntry != nil {
-		censusEntry.describeCurrentProtocol()
+		censusEntry.DescribeCurrentProtocol()
 	}
 	if !decodable || !isImplementedCommand(frame.commandID) {
 		if censusEntry != nil {
-			p.inspectUndecodedFrame(frame, decodable, censusEntry)
+			censusEntry.InspectUndecoded(frame, decodable)
 		} else if decodable {
 			p.archiveUndecodedSchema(frame)
 		}
@@ -492,13 +492,13 @@ func (p *processor) handleFrame(frame gameFrame) {
 	if ((frame.commandID == cmdLoginRequest || frame.commandID == cmdCheckClientPush || frame.commandID == cmdCombatSendPackRequest || frame.commandID == cmdEntityActiveRequest || frame.commandID == cmdTimeStopPush || frame.commandID == cmdTimeCheckRequest) && frame.direction != "out") || ((frame.commandID == cmdBasicInfoNotify || frame.commandID == cmdCombatSendPackResponse || frame.commandID == cmdCombatReceivePackNotify || frame.commandID == cmdTimeCheckResponse || frame.commandID == cmdUpdateSceneGroupDataNotify || frame.commandID == cmdJoinSceneNotify || frame.commandID == cmdEntityAddNotify || frame.commandID == cmdEntityRemoveNotify || frame.commandID == cmdUpdateTimerInfoNotify || frame.commandID == cmdEntityActiveResponse || frame.commandID == cmdApplyGameplayEffectNotify || frame.commandID == cmdRemoveGameplayEffectNotify || frame.commandID == cmdRemoveGameplayEffectPush || frame.commandID == cmdSimpleCombatEntityBuffUpdateNotify || frame.commandID == cmdSimpleCombatEntityBuffLayerCountNotify || frame.commandID == cmdBuffStackCountNotify || frame.commandID == cmdBuffDurationNotify) && frame.direction != "in") {
 		p.stats.otherFrameDirections++
 		if censusEntry != nil {
-			censusEntry.FailureReasons["direction differs from implemented schema"]++
+			censusEntry.Fail("direction differs from implemented schema")
 		}
 		return
 	}
 	if len(p.session) != 32 {
 		if censusEntry != nil {
-			censusEntry.FailureReasons["session key unavailable"]++
+			censusEntry.Fail("session key unavailable")
 		}
 		return
 	}
@@ -506,7 +506,7 @@ func (p *processor) handleFrame(frame gameFrame) {
 		// Zero-length bodies carry no ciphertext; counting them as AES failures
 		// would misreport transport health.
 		if censusEntry != nil {
-			censusEntry.FailureReasons[emptyBodyFailureReason]++
+			censusEntry.Fail(emptyBodyFailureReason)
 		}
 		if frame.commandID == cmdTimeStopPush {
 			// proto3 leaves a 0 dilation off the wire: an empty TimeStopPush pauses every effect.
@@ -521,26 +521,26 @@ func (p *processor) handleFrame(frame gameFrame) {
 		p.stats.decryptErrors++
 		p.sessionHealth.consecutiveDecryptFailures++
 		if censusEntry != nil {
-			censusEntry.FailureReasons["decrypt failed"]++
+			censusEntry.Fail("decrypt failed")
 		}
 		return
 	}
 	p.sessionHealth.consecutiveDecryptFailures = 0
 	if censusEntry != nil {
-		censusEntry.DecryptedFrames++
+		censusEntry.Decrypted()
 	}
 	if frame.compressed {
 		plain, err = decompressBody(plain, frame.compressedLength)
 		if err != nil {
 			p.stats.compressedErrors++
 			if censusEntry != nil {
-				censusEntry.FailureReasons["decompression failed"]++
+				censusEntry.Fail("decompression failed")
 			}
 			return
 		}
 	}
 	if censusEntry != nil {
-		censusEntry.observeKnownBodyWire(plain)
+		censusEntry.ObserveKnownBodyWire(plain)
 	}
 	p.archiveSchemaDecode(frame, plain)
 	p.archiveDamageRPCSchema(frame, plain)
@@ -651,9 +651,9 @@ func (p *processor) handleFrame(frame gameFrame) {
 	}
 	if censusEntry != nil {
 		if parseErrorsBefore == p.stats.parseErrors {
-			censusEntry.DecodedFrames++
+			censusEntry.Decoded()
 		} else {
-			censusEntry.FailureReasons["protobuf or message schema decode failed"]++
+			censusEntry.Fail("protobuf or message schema decode failed")
 		}
 	}
 }
@@ -679,91 +679,6 @@ func (p *processor) handleEntityRemoveNotify(body []byte) error {
 
 // emptyBodyFailureReason labels frames whose command body is zero-length.
 const emptyBodyFailureReason = "empty body; no payload to decrypt"
-
-// Census reasons for frames the current protocol session cannot hand to a decoder.
-const (
-	protocolNoHandshakeReason        = "no handshake in this capture; protocol unknown"
-	protocolPendingFailureReason     = "client version not reported yet; protocol unknown"
-	protocolUnsupportedFailureReason = "not the current game version; not decoded"
-)
-
-// inspectUndecodedFrame counts what the census can learn about a frame no decoder reads. decodable says whether the
-// protocol session reads its numbering (protocolSession.decodes); otherwise only the top-level wire shape is counted.
-func (p *processor) inspectUndecodedFrame(frame gameFrame, decodable bool, entry *commandCensusEntry) {
-	if len(p.session) != 32 {
-		entry.FailureReasons["no implemented schema; session key unavailable"]++
-		return
-	}
-	if len(frame.body) == 0 {
-		entry.FailureReasons[emptyBodyFailureReason]++
-		return
-	}
-	plain, err := decryptGameBody(frame.sequence, frame.body, p.session)
-	if err != nil {
-		entry.FailureReasons["no implemented schema; decrypt failed"]++
-		return
-	}
-	entry.DecryptedFrames++
-	if frame.compressed {
-		plain, err = decompressBody(plain, frame.compressedLength)
-		if err != nil {
-			entry.FailureReasons["no implemented schema; decompression failed"]++
-			return
-		}
-	}
-	if !decodable {
-		if fields, err := parseProtoFields(plain); err == nil {
-			entry.GenericProtoValid++
-			entry.observeTopLevelFields(fields)
-		}
-		entry.FailureReasons[p.protocol.undecodableReason()]++
-		return
-	}
-	if fields, err := parseProtoFields(plain); err == nil {
-		entry.GenericProtoValid++
-		// The optional external schema describes the current protocol.
-		p.archiveSchemaDecode(frame, plain)
-		entry.observeTopLevelFields(fields)
-		entry.FailureReasons["message schema not implemented"]++
-		if frame.commandID == cmdMovePackagePush {
-			observation, err := extractMovePackageObservation(plain)
-			if err != nil {
-				entry.FailureReasons["MovePackagePush schema-field extraction failed"]++
-			} else {
-				p.census.observeMovePackage(observation)
-			}
-		} else if frame.commandID == cmdPlayerFollowerNotify {
-			observation, err := extractPlayerFollowerObservation(plain)
-			if err != nil {
-				entry.FailureReasons["PlayerFollowerNotify schema-field extraction failed"]++
-			} else {
-				p.census.observePlayerFollower(observation)
-			}
-		} else if fieldNumber, ok := entityNotifyKeyField(frame.commandID); ok {
-			values, err := extractVarintField(plain, fieldNumber)
-			if err != nil {
-				entry.FailureReasons["entity notify ID extraction failed"]++
-			} else {
-				p.census.observeEntityKey(frame.commandID, fieldNumber, values)
-			}
-		}
-	} else {
-		entry.FailureReasons["no implemented schema; generic protobuf parse failed"]++
-	}
-}
-
-func entityNotifyKeyField(commandID uint16) (uint64, bool) {
-	switch commandID {
-	case cmdEntityRemoveDynamicInteractNotify:
-		return fieldEntityRemoveDynamicInteractNotifyEntityID, true // EntityRemoveDynamicInteractNotify.EntityId
-	case cmdEntityCommonTagNotify:
-		return fieldEntityCommonTagNotifyID, true // EntityCommonTagNotify.Id
-	case cmdEntityStateReadyNotify:
-		return fieldEntityStateReadyNotifyEntityID, true // EntityStateReadyNotify.EntityId
-	default:
-		return 0, false
-	}
-}
 
 func (p *processor) handleProtoKeyResponse(body []byte) error {
 	fields, err := parseProtoFields(body)
@@ -907,7 +822,7 @@ func (p *processor) handleDamageRequests(frame gameFrame, body []byte) {
 				continue
 			}
 			if p.census != nil {
-				p.census.innerEntries["Client->Server DamageExecuteRequest"]++
+				p.census.ObserveInnerEntry("Client->Server DamageExecuteRequest")
 			}
 			p.stats.damageRequests++
 			identity.requestEpoch = epoch

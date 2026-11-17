@@ -22,6 +22,3 @@ func TestDevelopmentProcessorKeepsDiagnosticSinks(t *testing.T) {
 
 // discardConsole drops the console lines of a test processor that does not read them.
 func discardConsole(p *processor) { p.dev.stdout = io.Discard }
-
-// researchSchema is the research schema (-protocol-schema) of a processor, nil without one.
-func researchSchema(p *processor) *protocolSchema { return p.dev.protocolSchema }

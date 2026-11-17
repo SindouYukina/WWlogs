@@ -141,25 +141,3 @@ func resolveSkillLabelText(masters *gameMaster, skillID uint64) *combatEventLabe
 	return &combatEventLabelTextJSONL{Locale: chosen.Locale, Text: chosen.Text, Kind: chosen.Kind,
 		Evidence: "skill_dev_label_locale row for this SkillInfo skill id; an internal developer note, not an official in-game name"}
 }
-
-// resolveDamageElement names the element written in the damage master row. The row is looked up by DamageId,
-// the same basis as the damage class; the protocol's ElementType field is not used here.
-func resolveDamageElement(masters *gameMaster, damageID uint64, hasDamageID bool) *combatEventElementJSONL {
-	if masters == nil || !hasDamageID {
-		return nil
-	}
-	record, ok := masters.damage[damageID]
-	if !ok || !record.HasElement {
-		return nil
-	}
-	result := &combatEventElementJSONL{ID: record.Element}
-	if name, found := masters.elementNames[record.Element]; found {
-		result.Name = name
-		result.Status = resolutionCorrelated
-		result.Evidence = fmt.Sprintf("damage.element of the DamageId row -> elementinfo_locale (%s); client build observed, master compatibility unverified", masters.locale)
-	} else {
-		result.Status = resolutionUnknown
-		result.Evidence = "damage.element has no elementinfo_locale name for the master locale; raw element id kept"
-	}
-	return result
-}

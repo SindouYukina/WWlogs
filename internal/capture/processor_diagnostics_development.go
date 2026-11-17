@@ -50,25 +50,27 @@ type processorDiagnostics struct {
 
 	// Research records: bullet handles, outbound skill requests, timer flow time, the reported role, Buff intervals and
 	// damage overlap, and the encounter summaries with their pending credits.
-	bulletHandles             map[bulletHandleKey]bulletHandleEntry
-	bulletHandleOrder         []bulletHandleKey
-	combatActionRequests      map[combatActionRequestKey]combatActionRequest
-	combatActionOrder         []combatActionRequestKey
-	flowTime                  int64
-	hasFlowTime               bool
-	flowTimeFrame             uint64
-	timerObservations         []timerObservation
-	activeRoleID              int64
-	hasActiveRole             bool
-	buffIntervals             []*buffInterval
-	buffIntervalOpen          map[overlapKey]*buffInterval
-	buffDuplicateApplies      int
-	buffUnmatchedRemoves      int
-	buffIntervalOverflow      int
-	buffOverlapSkipped        int
-	damageOverlap             []damageOverlapRecord
-	damageOverlapOverflow     int
-	encounterSummaries        map[encounterSummaryKey]*encounterSummary
+	bulletHandles         map[bulletHandleKey]bulletHandleEntry
+	bulletHandleOrder     []bulletHandleKey
+	combatActionRequests  map[combatActionRequestKey]combatActionRequest
+	combatActionOrder     []combatActionRequestKey
+	flowTime              int64
+	hasFlowTime           bool
+	flowTimeFrame         uint64
+	timerObservations     []timerObservation
+	activeRoleID          int64
+	hasActiveRole         bool
+	buffIntervals         []*buffInterval
+	buffIntervalOpen      map[overlapKey]*buffInterval
+	buffDuplicateApplies  int
+	buffUnmatchedRemoves  int
+	buffIntervalOverflow  int
+	buffOverlapSkipped    int
+	damageOverlap         []damageOverlapRecord
+	damageOverlapOverflow int
+	encounterSummaries    map[encounterSummaryKey]*encounterSummary
+	// encounterTransitions holds the encounter transitions until the next encounter output point (-encounter-out).
+	encounterTransitions      *encounterTransitionLog
 	pendingSummaryCredits     map[uint64][]pendingSummaryCredit
 	pendingSummaryCreditCount int
 

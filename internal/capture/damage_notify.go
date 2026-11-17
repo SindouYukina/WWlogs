@@ -504,10 +504,3 @@ func parseNegativeStatusSettlement(period, onApplication, clearOnOverflow, durat
 	settlement.instant = durationPolicy.Valid && strings.TrimSpace(durationPolicy.String) == "0"
 	return settlement, nil
 }
-
-// damageNotifyLine formats the notified-result counters for development diagnostics.
-func damageNotifyLine(s damageNotifyStats, sequenceGaps int) string {
-	return fmt.Sprintf("damage_notify notifies=%d no_amount=%d malformed=%d keyless=%d negative_status=%d negative_status_local=%d credited_trigger=%d credited_owner=%d uncredited=%d status_triggers=%d status_triggers_forcing_nothing=%d settled_by_application=%d settled_across_targets=%d instant_status_executions=%d excluded_status_instances=%d server_sequence_gaps=%d",
-		s.notifies, s.noAmount, s.malformed, s.keyless, s.negativeStatus, s.negativeStatusLocal, s.creditedTrigger, s.creditedOwner, s.uncredited, s.statusTriggers,
-		s.statusTriggersForcingNothing, s.settledByApplication, s.settledAcrossTargets, s.instantStatusExecutions, s.excludedStatusInstances, sequenceGaps)
-}

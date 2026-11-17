@@ -123,22 +123,6 @@ type runtimePartInformation struct {
 	conflicted   bool
 }
 
-type runtimePartReference struct {
-	partID          int32
-	status          partReferenceStatus
-	information     *runtimePartInformation
-	informationFrom string
-	evidence        string
-}
-
-type partReferenceStatus string
-
-const (
-	partReferenceCorrelated partReferenceStatus = "CORRELATED"
-	partReferenceNoPart     partReferenceStatus = "NO_PART"
-	partReferenceUnknown    partReferenceStatus = "UNKNOWN"
-)
-
 const maxRuntimeComponentEntityRefs = 256
 const maxRuntimePartInformationRows = 256
 
@@ -288,56 +272,6 @@ func resolveSkillLabel(masters *gameMaster, skillID uint64) *skillLabel {
 	return &skillLabel{Status: resolutionUnknown, Evidence: fmt.Sprintf("SkillId has %d different developer labels across SkillInfo tables; the owning table is not selected", len(labels))}
 }
 
-// bulletResolution records which static bullet row-key namespace a BulletId belongs to.
-// BulletId alone does not name a table: it is a row key in one of several DataTable
-// families, and the same number can recur across actors. It is translated only when
-// the source chain leads to exactly one actor (or the key belongs to exactly one family).
-type bulletResolution struct {
-	BulletID       uint64
-	Namespace      string
-	ActorBlueprint string
-	Via            string
-	DevLabelZh     string
-	// DevLabel is the localized developer note of the CommonBulletData row; never an official name.
-	DevLabel *combatEventLabelTextJSONL
-	// RowDamageID is the DamageId written in the matched CDT_CommonBulletData row (0 when none).
-	RowDamageID uint64
-	Status      resolutionStatus
-	Proof       string
-}
-
-// bulletSource is what an event knows about the entity that fired a bullet.
-type bulletSource struct {
-	RoleSkinID          uint64
-	HasRoleSkin         bool
-	BlueprintTypes      []string
-	FollowerSummonCfgID uint64
-	HasFollower         bool
-	SkillID             uint64
-	// VisionSummonCfgs are SummonCfg ids of live ConcomitantVision entities summoned by the source entity.
-	VisionSummonCfgs []uint64
-	// OwnSummonCfgID is the source entity's own SummonerComponent.SummonCfgId, set when the source is itself a summon.
-	OwnSummonCfgID    uint64
-	HasOwnSummonCfgID bool
-}
-
-type bulletChain struct {
-	via   string
-	actor string
-}
-
-// newBulletSource collects what an entity identity knows about a bullet's origin.
-func newBulletSource(identity entityIdentity, skillID uint64, visionSummonCfgs []uint64) bulletSource {
-	source := bulletSource{SkillID: skillID, VisionSummonCfgs: visionSummonCfgs}
-	source.RoleSkinID, source.HasRoleSkin = identity.Runtime.roleSkinID, identity.Runtime.hasRoleSkinID
-	source.OwnSummonCfgID, source.HasOwnSummonCfgID = identity.Runtime.summonConfigID, identity.Runtime.hasSummonConfigID
-	source.FollowerSummonCfgID, source.HasFollower = identity.Runtime.followerSummonConfigID, identity.Runtime.hasFollowerSummonConfigID
-	for _, candidate := range identity.TemplateCandidates {
-		source.BlueprintTypes = append(source.BlueprintTypes, candidate.BlueprintType)
-	}
-	return source
-}
-
 func (m *gameMaster) actorOfModel(model uint64) (string, bool) {
 	actor, ok := m.modelActor[model]
 	return actor, ok
@@ -349,107 +283,6 @@ func (m *gameMaster) actorOfBlueprint(blueprint string) (string, bool) {
 		return "", false
 	}
 	return m.actorOfModel(model)
-}
-
-func (m *gameMaster) bulletChains(source bulletSource) []bulletChain {
-	var chains []bulletChain
-	if source.HasRoleSkin {
-		if mesh, ok := m.roleSkinMesh[source.RoleSkinID]; ok {
-			if actor, ok := m.actorOfModel(mesh); ok {
-				chains = append(chains, bulletChain{"EntityPb.RoleSkinId -> RoleSkin.MeshId -> ModelConfigPreload.ActorClassPath", actor})
-			}
-		}
-	}
-	for _, blueprint := range source.BlueprintTypes {
-		if actor, ok := m.actorOfBlueprint(blueprint); ok {
-			chains = append(chains, bulletChain{"scene TemplateConfig.BlueprintType -> BlueprintConfig.ModelId -> ModelConfigPreload.ActorClassPath", actor})
-		}
-	}
-	if source.HasOwnSummonCfgID {
-		if blueprint, ok := m.summonBlueprint[source.OwnSummonCfgID]; ok {
-			if actor, ok := m.actorOfBlueprint(blueprint); ok {
-				chains = append(chains, bulletChain{"source entity SummonerComponent.SummonCfgId -> SummonCfg.BlueprintType -> BlueprintConfig.ModelId -> ModelConfigPreload.ActorClassPath", actor})
-			}
-		}
-	}
-	if source.HasFollower {
-		if blueprint, ok := m.summonBlueprint[source.FollowerSummonCfgID]; ok {
-			if actor, ok := m.actorOfBlueprint(blueprint); ok {
-				chains = append(chains, bulletChain{"FollowerSummonConfigId -> SummonCfg.BlueprintType -> BlueprintConfig.ModelId -> ModelConfigPreload.ActorClassPath", actor})
-			}
-		}
-	}
-	for _, cfg := range source.VisionSummonCfgs {
-		if blueprint, ok := m.summonBlueprint[cfg]; ok {
-			if actor, ok := m.actorOfBlueprint(blueprint); ok {
-				chains = append(chains, bulletChain{"ConcomitantVision SummonerComponent(SummonerId=source entity).SummonCfgId -> SummonCfg.BlueprintType -> BlueprintConfig.ModelId -> ModelConfigPreload.ActorClassPath", actor})
-			}
-		}
-	}
-	for _, vision := range m.visionCast[source.SkillID] {
-		if blueprint, ok := m.summonBlueprint[vision]; ok {
-			if actor, ok := m.actorOfBlueprint(blueprint); ok {
-				chains = append(chains, bulletChain{"DamageContext.SkillId -> Vision.BirthCastSkillId -> SummonCfg(Vision.Id).BlueprintType -> BlueprintConfig.ModelId -> ModelConfigPreload.ActorClassPath", actor})
-			}
-		}
-	}
-	return chains
-}
-
-func resolveBullet(masters *gameMaster, bulletID uint64, source bulletSource) *bulletResolution {
-	if masters == nil {
-		return nil
-	}
-	result := &bulletResolution{BulletID: bulletID, Status: resolutionUnknown}
-	label, inCommon := masters.commonBullets[bulletID]
-	_, inPreload := masters.preloadBullets[bulletID]
-	chains := masters.bulletChains(source)
-	if len(chains) == 0 && source.SkillID != 0 {
-		if actor, ok := masters.uniqueActorForSkill(source.SkillID); ok {
-			if _, listed := masters.actorBullets[actor][bulletID]; listed {
-				chains = append(chains, bulletChain{
-					via:   "same combat reference SkillId -> unique EntitySkillPreload actor asset; BulletId -> that actor's BulletPreload.BulletId",
-					actor: actor,
-				})
-			}
-		}
-	}
-	matched := make(map[string]string)
-	for _, chain := range chains {
-		if _, ok := masters.actorBullets[chain.actor][bulletID]; ok {
-			if _, seen := matched[chain.actor]; !seen {
-				matched[chain.actor] = chain.via
-			}
-		}
-	}
-	switch {
-	case len(matched) > 1:
-		result.Proof = fmt.Sprintf("BulletId is held by %d distinct source-chain actors; the serving actor is not determined", len(matched))
-	case len(matched) == 1 && inCommon:
-		result.Proof = "BulletId is held by the source actor and by CDT_CommonBulletData; the table that served this bullet is not determined"
-	case len(matched) == 1:
-		for actor, via := range matched {
-			result.Namespace = "BulletPreload.ActorBlueprint"
-			result.ActorBlueprint = masters.assetPath[actor]
-			result.Via = via
-			result.Status = resolutionCorrelated
-			result.Proof = via + "; the actor's BulletPreload rows in the combat master list this BulletId; client build observed, master compatibility unverified"
-		}
-	case inCommon && inPreload:
-		result.Proof = "BulletId is a row key in both CDT_CommonBulletData and BulletPreload and no source-chain actor holds it; the serving table is not determined"
-	case inCommon:
-		result.Namespace = "CDT_CommonBulletData.RowKey"
-		result.DevLabelZh = label
-		result.DevLabel = masters.commonBulletDevLabels[bulletID]
-		result.RowDamageID = masters.commonBulletDamage[bulletID]
-		result.Status = resolutionCorrelated
-		result.Proof = "BulletId is a row key of CDT_CommonBulletData and of no actor-level BulletPreload family; the loader that serves this common table in normal combat is unproven, client build observed, master compatibility unverified"
-	case inPreload:
-		result.Proof = fmt.Sprintf("BulletId matches an actor-level BulletPreload row key but none of the %d source-chain actors holds it; only a numeric match is recorded", len(chains))
-	default:
-		result.Proof = "BulletId has no row in the loaded bullet definitions"
-	}
-	return result
 }
 
 type summonerCharacterIdentity struct {
@@ -1316,38 +1149,6 @@ func (r *entityResolver) invalidatePartComponents() {
 		entity.partComponentSource = ""
 		r.entities[entityID] = entity
 	}
-}
-
-func (r *entityResolver) resolvePartReference(entityID uint64, partID int32) runtimePartReference {
-	result := runtimePartReference{partID: partID, status: partReferenceUnknown}
-	if partID == -1 {
-		result.status = partReferenceNoPart
-		result.evidence = "DamageExecuteRequest.PartId=-1 is the observed no-part sentinel; raw value preserved and no PartInformation lookup attempted"
-		return result
-	}
-	if partID <= 0 {
-		result.evidence = "Non-positive DamageExecuteRequest.PartId is preserved without assigning a PartInformation row"
-		return result
-	}
-	entity, ok := r.entities[entityID]
-	if !ok || !entity.hasPartComponent {
-		result.evidence = "No current PartComponent observation is available for the exact target entity in this session"
-		return result
-	}
-	information, ok := entity.partInformation[partID]
-	if !ok {
-		result.evidence = "Current target PartComponent has no PartLifeInfos row with this exact PartId"
-		return result
-	}
-	if information.conflicted {
-		result.evidence = "Current target PartComponent has conflicting PartLifeInfos rows for this PartId"
-		return result
-	}
-	result.status = partReferenceCorrelated
-	result.information = &information
-	result.informationFrom = entity.partComponentSource
-	result.evidence = "DamageExecuteRequest.PartId exactly matches PartComponent.PartLifeInfos.PartId observed for the same TargetEntityId before this request; this is a session-scoped runtime relation, not a static Master key"
-	return result
 }
 
 func isRuntimeIdentityComponent(componentNumber uint64) bool {

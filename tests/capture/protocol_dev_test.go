@@ -10,6 +10,47 @@ import (
 	"time"
 )
 
+func TestRPCPairingLineReportsCounters(t *testing.T) {
+	line := rpcPairingLine(RPCPairingSnapshot{Requests: 3, Paired: 2, PairedOutOfOrder: 1, UnpairedExpired: 1})
+	for _, want := range []string{"damage_rpc_pairing ", "requests=3", "paired=2", "paired_out_of_order=1", "unpaired_expired=1", "rewound_entities=0"} {
+		if !bytes.Contains([]byte(line), []byte(want)) {
+			t.Fatalf("pairing line %q is missing %q", line, want)
+		}
+	}
+}
+
+func TestCaptureLatencyHistogramReportsUpperBounds(t *testing.T) {
+	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
+	base := time.Date(2026, 11, 4, 0, 0, 0, 0, time.UTC)
+	p.observePacketTiming(base, base.Add(time.Millisecond), base.Add(2*time.Millisecond))
+	if got := p.captureLayerHealth().DeliveryDelay.Status; got != CaptureCounterNotApplicable {
+		t.Fatalf("replay must not report live latency, got %s", got)
+	}
+	p.observeCaptureSource(true)
+	if got := p.captureLayerHealth().DeliveryDelay.Status; got != CaptureCounterUnavailable {
+		t.Fatalf("live latency without samples = %s", got)
+	}
+	for i := 0; i < 90; i++ {
+		p.observePacketTiming(base, base.Add(3*time.Millisecond), base.Add(4*time.Millisecond))
+	}
+	for i := 0; i < 9; i++ {
+		p.observePacketTiming(base, base.Add(80*time.Millisecond), base.Add(81*time.Millisecond))
+	}
+	p.observePacketTiming(base, base.Add(700*time.Millisecond), base.Add(701*time.Millisecond))
+	p.observePacketTiming(base, base.Add(-time.Microsecond), time.Time{}) // clock read order, counts as no delay
+	delivery := p.captureLayerHealth().DeliveryDelay
+	if delivery.Status != CaptureCounterAvailable || delivery.Samples != 101 || delivery.P50ms != 5 || delivery.P95ms != 100 ||
+		delivery.P99ms != 100 || delivery.MaxMs != 700 {
+		t.Fatalf("delivery summary = %+v", delivery)
+	}
+	if processed := p.captureLayerHealth().ProcessedDelay; processed.Samples != 100 {
+		t.Fatalf("processed samples = %+v", processed)
+	}
+	if line := captureLatencyLine(p.captureLayerHealth()); !strings.Contains(line, "delivery=samples:101/p50<=5ms/p95<=100ms/p99<=100ms/max:700.0ms") {
+		t.Fatalf("latency line = %q", line)
+	}
+}
+
 func TestDamageResponseKeepsUnresolvedEntityVisible(t *testing.T) {
 	var stdout, diagnostic, jsonl bytes.Buffer
 	p := newProcessor(nil, &stdout, &diagnostic, nil)
@@ -117,7 +158,7 @@ func TestCombatEventJSONLPreservesRawIDsAndUnknownResolution(t *testing.T) {
 
 func TestFormatNormalLabelsHealingAsCandidateResult(t *testing.T) {
 	event := combatEvent{Damage: 1311, EventTypeCandidate: "HEALING_CANDIDATE"}
-	line := event.formatNormal()
+	line := formatNormal(event)
 	if !strings.Contains(line, "1311 [Healing Candidate Result]") || strings.Contains(line, "Damage Candidate Result") {
 		t.Fatalf("healing output was not labeled separately: %s", line)
 	}
@@ -130,7 +171,7 @@ func TestFormatNormalLabelsVerifiedMonsterInsteadOfUnknownCredit(t *testing.T) {
 		},
 		Damage: 2151,
 	}
-	line := event.formatNormal()
+	line := formatNormal(event)
 	if !strings.Contains(line, "Credit:NonPlayerSource [Monster:602000019; VERIFIED]") || strings.Contains(line, "Credit:?") {
 		t.Fatalf("verified monster source was presented as unknown credit: %q", line)
 	}
@@ -144,7 +185,7 @@ func TestFormatNormalLabelsCorrelatedTemplateInsteadOfUnknownCredit(t *testing.T
 		},
 		Damage: 2151,
 	}
-	line := event.formatNormal()
+	line := formatNormal(event)
 	if !strings.Contains(line, "Credit:NonPlayerSource [Template:602000019; CORRELATED]") || strings.Contains(line, "Credit:?") {
 		t.Fatalf("correlated non-player template was presented as unknown credit: %q", line)
 	}
@@ -162,7 +203,7 @@ func TestCorrelatedRoleIsCreditNotSourceIdentity(t *testing.T) {
 		HasDamageID:         true,
 		Damage:              100,
 	}
-	got := event.formatNormal()
+	got := formatNormal(event)
 	if !strings.Contains(got, "Unknown [Entity:90]") || !strings.Contains(got, "Credit:Role [CORRELATED; name VERIFIED]") {
 		t.Fatalf("correlated role must be separate from source entity identity: %q", got)
 	}
@@ -178,7 +219,7 @@ func TestUnverifiedLocalizedSkillNameIsNotDisplayed(t *testing.T) {
 		SkillStatus:     resolutionVerified,
 		SkillNameStatus: resolutionUnknown,
 	}
-	got := event.formatNormal()
+	got := formatNormal(event)
 	if !strings.Contains(got, "SkillId:1312011") || strings.Contains(got, "Unverified label") {
 		t.Fatalf("unverified skill label was displayed: %q", got)
 	}
@@ -193,7 +234,7 @@ func TestResolvedCharacterIDRemainsVisibleWhenNameIsUnknown(t *testing.T) {
 		CharacterNameStatus: resolutionUnknown,
 		Damage:              100,
 	}
-	got := event.formatNormal()
+	got := formatNormal(event)
 	if !strings.Contains(got, "Credit:Character:1312 [CORRELATED; name UNKNOWN]") {
 		t.Fatalf("resolved character ID should remain visible without a localized name: %q", got)
 	}
@@ -239,7 +280,7 @@ func TestSummonerEntityChainResolvesCharacterSeparatelyFromDamageCredit(t *testi
 		t.Fatalf("summoner chain provenance missing: %q", got.Proof)
 	}
 	event := combatEvent{Source: resolveEntityIdentity(resolver, masters, 200), SummonerCharacter: got, Damage: 42}
-	line := event.formatNormal()
+	line := formatNormal(event)
 	if !strings.Contains(line, "Credit:?") || !strings.Contains(line, "Summoner:Test Role [CORRELATED]") {
 		t.Fatalf("summoner relation must remain separate from damage credit: %q", line)
 	}
@@ -252,7 +293,7 @@ func TestHealingCandidateJSONLSeparatesReportedMagnitudeFromUnknownEffectiveness
 		EventTypeCandidate: "HEALING_CANDIDATE", EventTypeStatus: resolutionCorrelated,
 		EventTypeProof: "CalculateType=1 uses cure/heal display; HP restoration not verified",
 	}
-	view := event.jsonlView(nil)
+	view := jsonlView(event, nil)
 	encoded, err := json.Marshal(view)
 	if err != nil {
 		t.Fatal(err)

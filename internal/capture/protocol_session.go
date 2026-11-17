@@ -1,7 +1,6 @@
 package capture
 
 import (
-	"fmt"
 	"regexp"
 	"strings"
 )
@@ -53,28 +52,6 @@ type protocolSession struct {
 	// sessionPendingFrames counts this protocol session's frames before its version report (maxPendingProtocolFrames).
 	sessionPendingFrames uint64
 	counters             protocolCounters
-}
-
-// protocolReport is the Development census and diagnostic view of the protocol sessions of a capture.
-type protocolReport struct {
-	Status            string `json:"status"`
-	GameVersion       string `json:"gameVersion,omitempty"`
-	PendingFrames     uint64 `json:"pendingFrames"`
-	UnsupportedFrames uint64 `json:"unsupportedFrames"`
-}
-
-func (s *protocolSession) report() protocolReport {
-	status, version := s.status()
-	return protocolReport{Status: status, GameVersion: version, PendingFrames: s.counters.pendingFrames, UnsupportedFrames: s.counters.unsupportedFrames}
-}
-
-// line formats the report for Development diagnostics. It carries counts and the reported major.minor only.
-func (r protocolReport) line() string {
-	version := r.GameVersion
-	if version == "" {
-		version = "none"
-	}
-	return fmt.Sprintf("protocol_session status=%s game_version=%s pending_frames=%d unsupported_frames=%d", r.Status, version, r.PendingFrames, r.UnsupportedFrames)
 }
 
 // CurrentGameVersion is the major.minor game version this build decodes.
@@ -133,18 +110,6 @@ func (s *protocolSession) decodes(command uint16) bool {
 		s.counters.unsupportedFrames++
 	}
 	return false
-}
-
-// undecodableReason is the census reason for a frame decodes refused.
-func (s *protocolSession) undecodableReason() string {
-	switch s.state {
-	case protocolPending:
-		return protocolPendingFailureReason
-	case protocolUnsupported:
-		return protocolUnsupportedFailureReason
-	default:
-		return protocolNoHandshakeReason
-	}
 }
 
 // status is the non-sensitive protocol view for ViewSessionHealth.

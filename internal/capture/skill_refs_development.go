@@ -4,6 +4,25 @@ package capture
 
 import "strings"
 
+// uniqueActorForSkill returns an actor only when a non-common SkillId belongs to exactly one
+// distinct actor asset in the loaded EntitySkillPreload rows.
+func uniqueActorForSkill(m *gameMaster, skillID uint64) (string, bool) {
+	if m == nil || skillID == 0 {
+		return "", false
+	}
+	if _, common := m.commonSkills[skillID]; common {
+		return "", false
+	}
+	owners := m.skillActors[skillID]
+	if len(owners) != 1 {
+		return "", false
+	}
+	for actor := range owners {
+		return actor, true
+	}
+	return "", false
+}
+
 const skillRefSchemaVersion = 1
 
 // skillRefRecord is one SkillId carried by a combat message with its namespace and actor-owner evidence.
@@ -32,7 +51,7 @@ func resolveSkillRef(masters *gameMaster, skillID uint64, source bulletSource) (
 		return resolutionUnknown, "", "", "no master database loaded"
 	}
 	source.SkillID = 0
-	chains := masters.bulletChains(source)
+	chains := bulletChains(masters, source)
 	for _, chain := range chains {
 		if _, ok := masters.actorSkills[chain.actor][skillID]; ok {
 			return resolutionCorrelated, "EntitySkillPreload.SkillId", masters.assetPath[chain.actor],
@@ -45,7 +64,7 @@ func resolveSkillRef(masters *gameMaster, skillID uint64, source bulletSource) (
 			"the SkillId is a CommonSkillPreload row, loaded for every actor rather than listed per actor; client build observed, master compatibility unverified"
 	}
 	if len(chains) == 0 {
-		if actor, ok := masters.uniqueActorForSkill(skillID); ok {
+		if actor, ok := uniqueActorForSkill(masters, skillID); ok {
 			return resolutionCorrelated, "EntitySkillPreload.SkillId", masters.assetPath[actor],
 				"SkillId -> exactly one distinct EntitySkillPreload.ActorAssetId -> AssetReference.Path in the loaded master; client build observed, master compatibility unverified"
 		}

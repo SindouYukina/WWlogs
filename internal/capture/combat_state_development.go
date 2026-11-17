@@ -3,8 +3,154 @@
 package capture
 
 import (
+	"fmt"
+	"sort"
 	"strings"
 )
+
+// fsmLabel returns the display text of a developer node name: the master locale text, else the zh-CN original.
+func fsmLabel(m *gameMaster, devName string) *combatEventLabelTextJSONL {
+	if m == nil || m.fsm == nil || devName == "" {
+		return nil
+	}
+	byLocale := m.fsm.labels[devName]
+	chosen, ok := byLocale[m.locale]
+	if !ok {
+		chosen, ok = byLocale["zh-CN"]
+	}
+	if !ok || chosen.Text == "" {
+		return nil
+	}
+	return &combatEventLabelTextJSONL{Locale: chosen.Locale, Text: chosen.Text, Kind: chosen.Kind,
+		Evidence: "aistatemachine_node_name_locale row for this node name; an internal developer node name, not an official in-game text"}
+}
+
+// fsmDescendants returns every node uuid reachable from a node by child links, following reference links into the
+// machines that define the referenced uuid.
+func fsmDescendants(f *fsmMaster, machine string, uuid int64) map[int64]struct{} {
+	out := make(map[int64]struct{})
+	seen := make(map[fsmNodeKey]struct{})
+	stack := []fsmNodeKey{{machine, uuid}}
+	for len(stack) > 0 {
+		key := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if _, done := seen[key]; done {
+			continue
+		}
+		seen[key] = struct{}{}
+		for _, child := range f.children[key] {
+			out[child] = struct{}{}
+			stack = append(stack, fsmNodeKey{key.machine, child})
+		}
+		if reference, ok := f.references[key]; ok {
+			for _, other := range f.machinesByNode[reference] {
+				out[reference] = struct{}{}
+				stack = append(stack, fsmNodeKey{other, reference})
+			}
+		}
+	}
+	return out
+}
+
+// fsmResolution is the outcome of naming one state transition.
+type fsmResolution struct {
+	Status       resolutionStatus
+	MachineCount int
+	Machines     []string
+	FromName     string
+	ToName       string
+	Evidence     string
+}
+
+const maxFsmMachinesShown = 5
+
+// resolveFsmTransition names the two states of a ChangeStateNotify. FsmId and the state ids are node uuids, which are
+// only unique inside one state-machine config, so the candidate machines are those that define the FsmId node and
+// contain both states beneath it (the states alone when no machine does). The developer names are given only when all
+// candidates agree on them; with several candidates that disagree, nothing is named.
+func resolveFsmTransition(m *gameMaster, fsmID, fromState, toState int64, entityHash, commonHash *int64) *fsmResolution {
+	if m == nil || m.fsm == nil {
+		return nil
+	}
+	candidates := make([]string, 0, 4)
+	basis := "state machines that define the FsmId node and hold both states beneath it"
+	allowed := map[string]struct{}(nil)
+	// The entity's own config version (HashCode) and the common machine's version (CommonHashCode) narrow the machines
+	// to the ones the entity runs; either hash alone is used when the other was not observed.
+	for _, hash := range []*int64{entityHash, commonHash} {
+		if hash == nil {
+			continue
+		}
+		for _, machine := range m.fsm.machinesByVersion[*hash] {
+			if allowed == nil {
+				allowed = make(map[string]struct{})
+				basis = "state machines whose config Version equals the entity's EntityFsmComponentPb HashCode or CommonHashCode and that hold both states beneath the FsmId node"
+			}
+			allowed[machine] = struct{}{}
+		}
+	}
+	for _, machine := range m.fsm.machinesByNode[fsmID] {
+		if allowed != nil {
+			if _, ok := allowed[machine]; !ok {
+				continue
+			}
+		}
+		below := fsmDescendants(m.fsm, machine, fsmID)
+		_, hasFrom := below[fromState]
+		_, hasTo := below[toState]
+		if hasFrom && hasTo {
+			candidates = append(candidates, machine)
+		}
+	}
+	if len(candidates) == 0 {
+		// The states may live in the entity's own machine while the FsmId names a node of the common machine.
+		pool := m.fsm.machinesByNode[fsmID]
+		basis = "state machines that define the FsmId node and both state nodes"
+		if allowed != nil {
+			pool = pool[:0:0]
+			for machine := range allowed {
+				pool = append(pool, machine)
+			}
+			basis = "state machines whose config Version equals the entity's EntityFsmComponentPb HashCode or CommonHashCode and that define both state nodes"
+		}
+		for _, machine := range pool {
+			if _, hasFrom := m.fsm.names[fsmNodeKey{machine, fromState}]; !hasFrom {
+				continue
+			}
+			if _, hasTo := m.fsm.names[fsmNodeKey{machine, toState}]; hasTo {
+				candidates = append(candidates, machine)
+			}
+		}
+	}
+	sort.Strings(candidates)
+	result := &fsmResolution{Status: resolutionUnknown, MachineCount: len(candidates)}
+	result.Machines = candidates
+	if len(result.Machines) > maxFsmMachinesShown {
+		result.Machines = result.Machines[:maxFsmMachinesShown]
+	}
+	if len(candidates) == 0 {
+		result.Evidence = "No state-machine config defines this FsmId node together with both state nodes; raw ids kept"
+		return result
+	}
+	fromNames, toNames := map[string]struct{}{}, map[string]struct{}{}
+	for _, machine := range candidates {
+		fromNames[m.fsm.names[fsmNodeKey{machine, fromState}]] = struct{}{}
+		toNames[m.fsm.names[fsmNodeKey{machine, toState}]] = struct{}{}
+	}
+	if len(fromNames) != 1 || len(toNames) != 1 {
+		result.Evidence = fmt.Sprintf("%d state-machine configs fit this transition and they name the states differently; the entity's own machine is not known, so no name is given", len(candidates))
+		return result
+	}
+	for name := range fromNames {
+		result.FromName = name
+	}
+	for name := range toNames {
+		result.ToName = name
+	}
+	result.Status = resolutionCorrelated
+	result.Evidence = fmt.Sprintf("%d %s; all agree on the developer node names (zh-CN developer labels, not localized text)", len(candidates), basis)
+	return result
+}
 
 // combatStateSchemaVersion identifies the layout of combatStateRecord.
 const combatStateSchemaVersion = 1
@@ -74,8 +220,8 @@ func optionalScalar(message *decodedMessage, name string) *int64 {
 	return &value
 }
 
-// resolveAttribute names an attribute id. The protocol enum name and the PropertyIndex key must agree (ignoring case) for the id to be named.
-func (m *gameMaster) resolveAttribute(schema *protocolSchema, attributeType int64, enum string) combatStateAttribute {
+// resolveCombatStateAttribute names an attribute id. The protocol enum name and the PropertyIndex key must agree (ignoring case) for the id to be named.
+func resolveCombatStateAttribute(m *gameMaster, schema *protocolSchema, attributeType int64, enum string) combatStateAttribute {
 	result := combatStateAttribute{Type: attributeType, Status: resolutionUnknown, Evidence: "No PropertyIndex row for this attribute id; raw id kept"}
 	if schema != nil {
 		if name, ok := schema.enumName(enum, attributeType); ok {
@@ -134,7 +280,7 @@ func (p *processor) archiveCombatState(frame gameFrame, decoded *decodedMessage)
 					if !ok {
 						continue
 					}
-					resolved := p.masters.resolveAttribute(p.dev.protocolSchema, typeValue, "EAttributeType")
+					resolved := resolveCombatStateAttribute(p.masters, p.dev.protocolSchema, typeValue, "EAttributeType")
 					resolved.BaseValue, resolved.CurrentValue = optionalScalar(attribute, "BaseValue"), optionalScalar(attribute, "CurrentValue")
 					emit(combatStateRecord{Kind: "ATTRIBUTE_CHANGED", EntityID: entityID, Attribute: &resolved})
 				}
@@ -145,7 +291,7 @@ func (p *processor) archiveCombatState(frame gameFrame, decoded *decodedMessage)
 					if !ok {
 						continue
 					}
-					resolved := p.masters.resolveAttribute(p.dev.protocolSchema, typeValue, "EAttributeType")
+					resolved := resolveCombatStateAttribute(p.masters, p.dev.protocolSchema, typeValue, "EAttributeType")
 					resolved.CurrentValue, resolved.MaxValue, resolved.Ratio = optionalScalar(attribute, "CurrentValue"), optionalScalar(attribute, "MaxValue"), optionalScalar(attribute, "Ratio")
 					emit(combatStateRecord{Kind: "RECOVER_PROP_CHANGED", EntityID: entityID, Attribute: &resolved})
 				}
@@ -213,10 +359,10 @@ func (p *processor) archiveCombatState(frame gameFrame, decoded *decodedMessage)
 						record.EntityFsmCommonHashCode = commonHash
 					}
 				}
-				if resolution := p.masters.resolveFsmTransition(fsmID, from, to, entityHash, commonHash); resolution != nil {
+				if resolution := resolveFsmTransition(p.masters, fsmID, from, to, entityHash, commonHash); resolution != nil {
 					record.Status, record.MachineCount, record.Machines = resolution.Status, resolution.MachineCount, resolution.Machines
 					record.FromName, record.ToName, record.Evidence = resolution.FromName, resolution.ToName, resolution.Evidence
-					record.FromLabel, record.ToLabel = p.masters.fsmLabel(resolution.FromName), p.masters.fsmLabel(resolution.ToName)
+					record.FromLabel, record.ToLabel = fsmLabel(p.masters, resolution.FromName), fsmLabel(p.masters, resolution.ToName)
 				}
 				emit(combatStateRecord{Kind: "FSM_STATE_CHANGED", EntityID: entityID, Fsm: &record})
 			}

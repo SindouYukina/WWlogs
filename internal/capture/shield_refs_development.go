@@ -4,6 +4,15 @@ package capture
 
 import "fmt"
 
+// hasShieldDefinition reports whether shield has a normalized row with this key.
+func hasShieldDefinition(m *gameMaster, id uint64) bool {
+	if m == nil {
+		return false
+	}
+	_, ok := m.shieldDefinitions[id]
+	return ok
+}
+
 const shieldRefSchemaVersion = 1
 
 // shieldConfigRefRecord links one typed ShieldUpdateInfo.ConfigId to the normalized shield table.
@@ -68,7 +77,7 @@ func (p *processor) writeShieldReference(frame gameFrame, message *decodedMessag
 	if value, ok := scalarValue(message, "ConfigId"); ok {
 		record.ConfigID = &value
 		record.Evidence = "No exact normalized shield.id row has been linked; raw ConfigId remains unchanged and no other ID namespace is substituted"
-		if value >= 0 && p.masters != nil && p.masters.hasShieldDefinition(uint64(value)) {
+		if value >= 0 && p.masters != nil && hasShieldDefinition(p.masters, uint64(value)) {
 			definitionID := uint64(value)
 			record.ShieldDefinitionStatus = resolutionCorrelated
 			record.ShieldDefinitionTable = "shield"

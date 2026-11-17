@@ -1,3 +1,5 @@
+//go:build wwdev
+
 package capture
 
 // actorRoleJSONL is one actor role in a combat event. Roles are kept separate

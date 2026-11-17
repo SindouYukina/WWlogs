@@ -11,7 +11,7 @@ func TestProjectActorsRetainsPlayerSceneRoleWithoutMasterName(t *testing.T) {
 	event.SourceEntityID, event.HasSourceEntity = 41001, true
 	event.Source = entityIdentity{Runtime: playerRoleRuntime(41001, 1508), RuntimeStatus: resolutionVerified}
 
-	view := event.jsonlView(nil)
+	view := jsonlView(event, nil)
 	if view.Credit.CharacterID == nil || *view.Credit.CharacterID != 1508 || view.Credit.Status != resolutionCorrelated {
 		t.Fatalf("FightRoleInfos role was disconnected from the credit block: %+v", view.Credit)
 	}
@@ -33,7 +33,7 @@ func TestCreditFallbackNeverOverwritesMasterBackedCredit(t *testing.T) {
 		CharacterID: 1409, CharacterName: "Resolved", CharacterStatus: resolutionVerified, CharacterNameStatus: resolutionVerified,
 		Source: entityIdentity{Runtime: playerRoleRuntime(41001, 1508), RuntimeStatus: resolutionVerified},
 	}
-	view := event.jsonlView(nil)
+	view := jsonlView(event, nil)
 	if view.Credit.CharacterID == nil || *view.Credit.CharacterID != 1409 || view.Credit.Name != "Resolved" || view.Credit.Status != resolutionVerified {
 		t.Fatalf("Master-backed credit was replaced by the scene role: %+v", view.Credit)
 	}
@@ -45,7 +45,7 @@ func TestProjectActorsKeepsUnresolvedRolesUnknown(t *testing.T) {
 	event.Source = entityIdentity{Runtime: runtimeEntity{entityID: 50001}, RuntimeStatus: resolutionUnknown}
 	event.Target = entityIdentity{Runtime: runtimeEntity{entityID: 50002}, RuntimeStatus: resolutionUnknown}
 
-	view := event.jsonlView(nil)
+	view := jsonlView(event, nil)
 	actors := view.Actors
 	if actors.ActualSource.ActorType != "Unknown" || actors.Target.ActorType != "Unknown" ||
 		actors.Owner.Status != resolutionUnknown || actors.Summoner.Status != resolutionUnknown || actors.CreditedCharacter.Status != resolutionUnknown {

@@ -103,13 +103,15 @@ func (p *processor) writeBuffLifecycleConsole(row buffLifecycleAuditRow) {
 	if !p.dev.showAllEffectEvents && !combatConsoleVisible(row) {
 		return
 	}
+	// The verified character names are resolved at print time.
+	var holderName, sourceName string
 	if holder, ok := lifecycleEntity(&row); ok {
-		row.holderName = p.verifiedCharacterName(holder)
+		holderName = p.verifiedCharacterName(holder)
 	}
 	if row.InstigatorID != nil {
-		row.sourceName = p.verifiedCharacterName(*row.InstigatorID)
+		sourceName = p.verifiedCharacterName(*row.InstigatorID)
 	}
-	line := formatBuffLifecycleConsole(row)
+	line := formatBuffLifecycleConsole(row, holderName, sourceName)
 	if fields := p.effectSemanticConsoleFields(row); fields != "" {
 		line += " " + fields
 	}
@@ -160,7 +162,7 @@ func combatConsoleVisible(row buffLifecycleAuditRow) bool {
 	return row.CombatClass == EffectCombatClassCombat && row.playerRelated
 }
 
-func formatBuffLifecycleConsole(row buffLifecycleAuditRow) string {
+func formatBuffLifecycleConsole(row buffLifecycleAuditRow, holderName, sourceName string) string {
 	parts := []string{"BuffEvent"}
 	if !row.Timestamp.IsZero() {
 		parts = append(parts, row.Timestamp.Local().Format("15:04:05.000"))
@@ -193,16 +195,16 @@ func formatBuffLifecycleConsole(row buffLifecycleAuditRow) string {
 	case "CLIENT_EFFECT_APPLY_REPORT", "CLIENT_EFFECT_STACK_REPORT", "CLIENT_EFFECT_REMOVE_REPORT":
 		if holder, ok := clientEffectHolder(row); ok {
 			parts = append(parts, fmt.Sprintf("holder=%d", holder), "holderStatus="+string(resolutionCorrelated))
-			if row.holderName != "" {
-				parts = append(parts, "holderName="+row.holderName)
+			if holderName != "" {
+				parts = append(parts, "holderName="+holderName)
 			}
 		} else {
 			appendID("holderCandidate", row.CombatCommonEntityID)
 			parts = append(parts, "holderStatus="+string(resolutionUnknown))
 		}
 		appendID("instigator", row.InstigatorID)
-		if row.InstigatorID != nil && row.sourceName != "" {
-			parts = append(parts, "instigatorName="+row.sourceName)
+		if row.InstigatorID != nil && sourceName != "" {
+			parts = append(parts, "instigatorName="+sourceName)
 		}
 		if row.HandleLinkedStatus != "" {
 			parts = append(parts, "handleLinkedStatus="+string(row.HandleLinkedStatus))
@@ -239,12 +241,12 @@ func formatBuffLifecycleConsole(row buffLifecycleAuditRow) string {
 		return strings.Join(parts, " ")
 	}
 	appendID("target", row.TargetEntityID)
-	if row.TargetEntityID != nil && row.holderName != "" {
-		parts = append(parts, "targetName="+row.holderName)
+	if row.TargetEntityID != nil && holderName != "" {
+		parts = append(parts, "targetName="+holderName)
 	}
 	appendID("instigator", row.InstigatorID)
-	if row.InstigatorID != nil && row.sourceName != "" {
-		parts = append(parts, "instigatorName="+row.sourceName)
+	if row.InstigatorID != nil && sourceName != "" {
+		parts = append(parts, "instigatorName="+sourceName)
 	}
 	if row.TargetEntityID != nil {
 		parts = append(parts, "targetStatus="+string(row.TargetStatus))
@@ -282,4 +284,22 @@ func formatBuffLifecycleConsole(row buffLifecycleAuditRow) string {
 		parts = append(parts, "idReferenceStatus="+string(row.GenericIDDefinitionStatus))
 	}
 	return strings.Join(parts, " ")
+}
+
+// withMessagePath is a lifecycle row with the wire path of its inner message, for the research outputs. The core
+// records only the raw facts: the outer command (CommandID) and the field of the inner message
+// (InnerMessageFieldNumber). A client report reaches the core inside CombatSendPackRequest pushes; every other inner
+// message, in CombatReceivePackNotify or nested in CombatSendPackResponse, has the notify path, as before the path
+// left the core.
+func withMessagePath(row buffLifecycleAuditRow) buffLifecycleAuditRow {
+	if row.InnerMessageFieldNumber == nil {
+		return row
+	}
+	fieldNumber := *row.InnerMessageFieldNumber
+	if row.CommandID == cmdCombatSendPackRequest {
+		row.MessagePath = fmt.Sprintf("CombatSendPackRequest.field%d(CombatSendData[]).field%d(CombatPushData).field%d", fieldCombatSendPackRequestData, fieldCombatSendDataPush, fieldNumber)
+	} else {
+		row.MessagePath = fmt.Sprintf("CombatReceivePackNotify.field%d(CombatReceiveData[]).field%d(CombatNotifyData).field%d", fieldCombatReceivePackNotifyData, fieldCombatReceiveDataCombatNotifyData, fieldNumber)
+	}
+	return row
 }

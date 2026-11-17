@@ -10,7 +10,7 @@ import (
 func TestVehicleContributorCandidateJSONKeepsRawAttacker(t *testing.T) {
 	resolver, master, event := vehicleDamageContributorFixture()
 	event.DamageContributorCandidate = resolveVehicleDamageContributorCandidate(resolver, master, event)
-	view := event.jsonlView(master)
+	view := jsonlView(event, master)
 	if view.SchemaVersion != 5 {
 		t.Fatalf("schema version = %d, want 5", view.SchemaVersion)
 	}

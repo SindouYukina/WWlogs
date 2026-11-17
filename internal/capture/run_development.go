@@ -18,9 +18,70 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 
+	_ "modernc.org/sqlite"
 	"wwlogs/internal/buildinfo"
 	"wwlogs/internal/versioninfo"
 )
+
+type captureRunStatus struct {
+	Build        buildinfo.Record `json:"build"`
+	PID          int              `json:"pid"`
+	State        string           `json:"state"`
+	StopReason   string           `json:"stopReason,omitempty"`
+	StartedAt    time.Time        `json:"startedAt"`
+	UpdatedAt    time.Time        `json:"updatedAt"`
+	DeadlineAt   time.Time        `json:"deadlineAt,omitempty"`
+	Adapter      string           `json:"adapter"`
+	LocalIPv4    string           `json:"localIPv4"`
+	Filter       string           `json:"filter"`
+	PCAPPath     string           `json:"pcapPath"`
+	PCAPBytes    int64            `json:"pcapBytes"`
+	MaxPCAPBytes int64            `json:"maxPcapBytes"`
+	UDPPackets   int              `json:"udpPackets"`
+	KernelDrops  int              `json:"kernelDrops"`
+	// DiagnosticDroppedRecords counts development diagnostic records dropped because a sink queue was full or its
+	// writer failed. It is unrelated to packet loss.
+	DiagnosticDroppedRecords uint64 `json:"diagnosticDroppedRecords"`
+	// RunID identifies the run; the PCAP integrity record and the diagnostic pipeline line carry the same ID.
+	RunID string `json:"runId,omitempty"`
+}
+
+type liveDiagnosticSnapshot struct {
+	Type                             string                   `json:"type"`
+	Final                            bool                     `json:"final"`
+	SampledAt                        time.Time                `json:"sampledAt"`
+	CaptureObservedAt                time.Time                `json:"captureObservedAt,omitempty"`
+	ClockDifferenceSeconds           *float64                 `json:"clockDifferenceSeconds,omitempty"`
+	LocalSampleIntervalSeconds       *float64                 `json:"localSampleIntervalSeconds,omitempty"`
+	CaptureTimestampAdvanceSeconds   *float64                 `json:"captureTimestampAdvanceSeconds,omitempty"`
+	CaptureTimeAdvanceInterpretation string                   `json:"captureTimeAdvanceInterpretation"`
+	ClockDifferenceInterpretation    string                   `json:"clockDifferenceInterpretation"`
+	DamageStatistics                 DamageStatisticsSnapshot `json:"damageStatistics"`
+	Effects                          EffectSnapshot           `json:"effects"`
+}
+
+const liveDiagnosticInterval = time.Second
+
+type liveCaptureOutputBundle struct {
+	directory        string
+	pcap             string
+	console          string
+	combatEvents     string
+	buffEvents       string
+	buffSnapshots    string
+	liveDiagnostics  string
+	effectState      string
+	status           string
+	encounterSummary string
+	encounterEvents  string
+}
+
+func masterDatabaseSourceLabel(databasePath string) string {
+	if databasePath == "embedded" {
+		return "embedded"
+	}
+	return "external test override"
+}
 
 func (p *processor) liveDiagnosticSnapshot(sampledAt time.Time) liveDiagnosticSnapshot {
 	statistics := p.damageStatisticsSnapshot()
@@ -409,7 +470,7 @@ func Main() {
 			}
 		}()
 		processor.dev.encounterOut = encounterWriter
-		processor.damageStatistics.recordEncounterTransitions(true)
+		processor.recordEncounterTransitions()
 	}
 	if encounterSummaryFile != nil {
 		processor.dev.encounterSummary = encounterSummaryFile
@@ -703,8 +764,10 @@ func Main() {
 		frameArchiveWriter = bufio.NewWriter(frameArchiveFile)
 		processor.dev.frameArchive = frameArchiveWriter
 	}
+	var census *commandCensus
 	if *commandCensusOut != "" {
-		processor.census = newCommandCensus()
+		census = newCommandCensus(processor)
+		processor.census = census
 	}
 	// Every per-event diagnostic sink now writes from its own goroutine; the capture loop only queues records.
 	diagnostics = newDiagnosticPipeline(*pcapIn == "")
@@ -1010,7 +1073,7 @@ finished:
 		fmt.Fprintf(os.Stderr, "effect_state applies=%d duplicate_applies=%d instant_applies=%d updates=%d updates_without_apply=%d removes=%d removes_without_instance=%d holder_removals=%d excluded_unrelated=%d\n", counters.Applies, counters.DuplicateApplies, counters.InstantApplies, counters.Updates, counters.UpdatesWithoutApply, counters.Removes, counters.RemovesWithoutInstance, counters.HolderRemovals, counters.ExcludedUnrelated)
 	}
 	fmt.Fprintf(os.Stderr, "schema_decode errors=%d skipped_without_schema=%d\n", processor.dev.schemaDecodeErrors, processor.dev.schemaDecodeSkipped)
-	fmt.Fprintln(os.Stderr, processor.protocol.report().line())
+	fmt.Fprintln(os.Stderr, protocolReportOf(&processor.protocol).line())
 	for _, line := range processor.researchOutputErrorLines() {
 		fmt.Fprintln(os.Stderr, line)
 	}
@@ -1035,7 +1098,7 @@ finished:
 				fatal("create command census directory", err)
 			}
 		}
-		if err := processor.census.write(*commandCensusOut, stats, processor.clientVersion, processor.protocol.report()); err != nil {
+		if err := census.write(*commandCensusOut, stats, processor.clientVersion, protocolReportOf(&processor.protocol)); err != nil {
 			fatal("write command census", err)
 		}
 	}

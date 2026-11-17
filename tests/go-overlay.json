@@ -434,6 +434,10 @@
     "tests/history/accounting_basis_test.go": "",
     "internal/history/central_accounting_basis_test.go": "tests/history/accounting_basis_test.go",
     "tests/devdesktop/options_test.go": "",
-    "internal/devdesktop/central_options_test.go": "tests/devdesktop/options_test.go"
+    "internal/devdesktop/central_options_test.go": "tests/devdesktop/options_test.go",
+    "tests/capture/transport_gap_dev_test.go": "",
+    "internal/capture/central_transport_gap_dev_test.go": "tests/capture/transport_gap_dev_test.go",
+    "tests/capture/client_version_dev_test.go": "",
+    "internal/capture/central_client_version_dev_test.go": "tests/capture/client_version_dev_test.go"
   }
 }

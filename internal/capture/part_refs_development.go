@@ -8,6 +8,54 @@ import (
 	"time"
 )
 
+type runtimePartReference struct {
+	partID          int32
+	status          partReferenceStatus
+	information     *runtimePartInformation
+	informationFrom string
+	evidence        string
+}
+
+type partReferenceStatus string
+
+const (
+	partReferenceCorrelated partReferenceStatus = "CORRELATED"
+	partReferenceNoPart     partReferenceStatus = "NO_PART"
+	partReferenceUnknown    partReferenceStatus = "UNKNOWN"
+)
+
+func resolvePartReference(r *entityResolver, entityID uint64, partID int32) runtimePartReference {
+	result := runtimePartReference{partID: partID, status: partReferenceUnknown}
+	if partID == -1 {
+		result.status = partReferenceNoPart
+		result.evidence = "DamageExecuteRequest.PartId=-1 is the observed no-part sentinel; raw value preserved and no PartInformation lookup attempted"
+		return result
+	}
+	if partID <= 0 {
+		result.evidence = "Non-positive DamageExecuteRequest.PartId is preserved without assigning a PartInformation row"
+		return result
+	}
+	entity, ok := r.entities[entityID]
+	if !ok || !entity.hasPartComponent {
+		result.evidence = "No current PartComponent observation is available for the exact target entity in this session"
+		return result
+	}
+	information, ok := entity.partInformation[partID]
+	if !ok {
+		result.evidence = "Current target PartComponent has no PartLifeInfos row with this exact PartId"
+		return result
+	}
+	if information.conflicted {
+		result.evidence = "Current target PartComponent has conflicting PartLifeInfos rows for this PartId"
+		return result
+	}
+	result.status = partReferenceCorrelated
+	result.information = &information
+	result.informationFrom = entity.partComponentSource
+	result.evidence = "DamageExecuteRequest.PartId exactly matches PartComponent.PartLifeInfos.PartId observed for the same TargetEntityId before this request; this is a session-scoped runtime relation, not a static Master key"
+	return result
+}
+
 const partReferenceSchemaVersion = 1
 
 type partReferenceRecord struct {
@@ -54,7 +102,7 @@ func (p *processor) writePartReference(frame gameFrame, rpcID uint64, request pe
 		if request.hasTargetEntityID {
 			targetEntityID = request.targetEntityID
 		}
-		reference = p.entities.resolvePartReference(targetEntityID, request.partID)
+		reference = resolvePartReference(p.entities, targetEntityID, request.partID)
 	}
 	row := partReferenceRecord{
 		SchemaVersion: partReferenceSchemaVersion,

@@ -101,6 +101,6 @@ func (p *processor) diagnosticFailureLine() string {
 // observes it. The row becomes an interface value only when the sink exists, so a run without the output pays nothing.
 func (p *processor) writeBuffLifecycleRow(row *buffLifecycleAuditRow) {
 	if p.dev.buffLifecycle != nil {
-		p.writeDiagnosticRow(p.dev.buffLifecycle, "buff-events", *row)
+		p.writeDiagnosticRow(p.dev.buffLifecycle, "buff-events", withMessagePath(*row))
 	}
 }

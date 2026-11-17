@@ -32,9 +32,6 @@ func TestPublicProcessorHasNoDevelopmentState(t *testing.T) {
 // discardConsole does nothing: a public processor has no console.
 func discardConsole(*processor) {}
 
-// researchSchema is nil: a public processor has no research schema.
-func researchSchema(*processor) *protocolSchema { return nil }
-
 type nopWriter struct{}
 
 func (nopWriter) Write(p []byte) (int, error) { return len(p), nil }

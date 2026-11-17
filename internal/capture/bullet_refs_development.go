@@ -3,8 +3,160 @@
 package capture
 
 import (
+	"fmt"
 	"strings"
 )
+
+// bulletResolution records which static bullet row-key namespace a BulletId belongs to.
+// BulletId alone does not name a table: it is a row key in one of several DataTable
+// families, and the same number can recur across actors. It is translated only when
+// the source chain leads to exactly one actor (or the key belongs to exactly one family).
+type bulletResolution struct {
+	BulletID       uint64
+	Namespace      string
+	ActorBlueprint string
+	Via            string
+	DevLabelZh     string
+	// DevLabel is the localized developer note of the CommonBulletData row; never an official name.
+	DevLabel *combatEventLabelTextJSONL
+	// RowDamageID is the DamageId written in the matched CDT_CommonBulletData row (0 when none).
+	RowDamageID uint64
+	Status      resolutionStatus
+	Proof       string
+}
+
+// bulletSource is what an event knows about the entity that fired a bullet.
+type bulletSource struct {
+	RoleSkinID          uint64
+	HasRoleSkin         bool
+	BlueprintTypes      []string
+	FollowerSummonCfgID uint64
+	HasFollower         bool
+	SkillID             uint64
+	// VisionSummonCfgs are SummonCfg ids of live ConcomitantVision entities summoned by the source entity.
+	VisionSummonCfgs []uint64
+	// OwnSummonCfgID is the source entity's own SummonerComponent.SummonCfgId, set when the source is itself a summon.
+	OwnSummonCfgID    uint64
+	HasOwnSummonCfgID bool
+}
+
+type bulletChain struct {
+	via   string
+	actor string
+}
+
+// newBulletSource collects what an entity identity knows about a bullet's origin.
+func newBulletSource(identity entityIdentity, skillID uint64, visionSummonCfgs []uint64) bulletSource {
+	source := bulletSource{SkillID: skillID, VisionSummonCfgs: visionSummonCfgs}
+	source.RoleSkinID, source.HasRoleSkin = identity.Runtime.roleSkinID, identity.Runtime.hasRoleSkinID
+	source.OwnSummonCfgID, source.HasOwnSummonCfgID = identity.Runtime.summonConfigID, identity.Runtime.hasSummonConfigID
+	source.FollowerSummonCfgID, source.HasFollower = identity.Runtime.followerSummonConfigID, identity.Runtime.hasFollowerSummonConfigID
+	for _, candidate := range identity.TemplateCandidates {
+		source.BlueprintTypes = append(source.BlueprintTypes, candidate.BlueprintType)
+	}
+	return source
+}
+
+func bulletChains(m *gameMaster, source bulletSource) []bulletChain {
+	var chains []bulletChain
+	if source.HasRoleSkin {
+		if mesh, ok := m.roleSkinMesh[source.RoleSkinID]; ok {
+			if actor, ok := m.actorOfModel(mesh); ok {
+				chains = append(chains, bulletChain{"EntityPb.RoleSkinId -> RoleSkin.MeshId -> ModelConfigPreload.ActorClassPath", actor})
+			}
+		}
+	}
+	for _, blueprint := range source.BlueprintTypes {
+		if actor, ok := m.actorOfBlueprint(blueprint); ok {
+			chains = append(chains, bulletChain{"scene TemplateConfig.BlueprintType -> BlueprintConfig.ModelId -> ModelConfigPreload.ActorClassPath", actor})
+		}
+	}
+	if source.HasOwnSummonCfgID {
+		if blueprint, ok := m.summonBlueprint[source.OwnSummonCfgID]; ok {
+			if actor, ok := m.actorOfBlueprint(blueprint); ok {
+				chains = append(chains, bulletChain{"source entity SummonerComponent.SummonCfgId -> SummonCfg.BlueprintType -> BlueprintConfig.ModelId -> ModelConfigPreload.ActorClassPath", actor})
+			}
+		}
+	}
+	if source.HasFollower {
+		if blueprint, ok := m.summonBlueprint[source.FollowerSummonCfgID]; ok {
+			if actor, ok := m.actorOfBlueprint(blueprint); ok {
+				chains = append(chains, bulletChain{"FollowerSummonConfigId -> SummonCfg.BlueprintType -> BlueprintConfig.ModelId -> ModelConfigPreload.ActorClassPath", actor})
+			}
+		}
+	}
+	for _, cfg := range source.VisionSummonCfgs {
+		if blueprint, ok := m.summonBlueprint[cfg]; ok {
+			if actor, ok := m.actorOfBlueprint(blueprint); ok {
+				chains = append(chains, bulletChain{"ConcomitantVision SummonerComponent(SummonerId=source entity).SummonCfgId -> SummonCfg.BlueprintType -> BlueprintConfig.ModelId -> ModelConfigPreload.ActorClassPath", actor})
+			}
+		}
+	}
+	for _, vision := range m.visionCast[source.SkillID] {
+		if blueprint, ok := m.summonBlueprint[vision]; ok {
+			if actor, ok := m.actorOfBlueprint(blueprint); ok {
+				chains = append(chains, bulletChain{"DamageContext.SkillId -> Vision.BirthCastSkillId -> SummonCfg(Vision.Id).BlueprintType -> BlueprintConfig.ModelId -> ModelConfigPreload.ActorClassPath", actor})
+			}
+		}
+	}
+	return chains
+}
+
+func resolveBullet(masters *gameMaster, bulletID uint64, source bulletSource) *bulletResolution {
+	if masters == nil {
+		return nil
+	}
+	result := &bulletResolution{BulletID: bulletID, Status: resolutionUnknown}
+	label, inCommon := masters.commonBullets[bulletID]
+	_, inPreload := masters.preloadBullets[bulletID]
+	chains := bulletChains(masters, source)
+	if len(chains) == 0 && source.SkillID != 0 {
+		if actor, ok := uniqueActorForSkill(masters, source.SkillID); ok {
+			if _, listed := masters.actorBullets[actor][bulletID]; listed {
+				chains = append(chains, bulletChain{
+					via:   "same combat reference SkillId -> unique EntitySkillPreload actor asset; BulletId -> that actor's BulletPreload.BulletId",
+					actor: actor,
+				})
+			}
+		}
+	}
+	matched := make(map[string]string)
+	for _, chain := range chains {
+		if _, ok := masters.actorBullets[chain.actor][bulletID]; ok {
+			if _, seen := matched[chain.actor]; !seen {
+				matched[chain.actor] = chain.via
+			}
+		}
+	}
+	switch {
+	case len(matched) > 1:
+		result.Proof = fmt.Sprintf("BulletId is held by %d distinct source-chain actors; the serving actor is not determined", len(matched))
+	case len(matched) == 1 && inCommon:
+		result.Proof = "BulletId is held by the source actor and by CDT_CommonBulletData; the table that served this bullet is not determined"
+	case len(matched) == 1:
+		for actor, via := range matched {
+			result.Namespace = "BulletPreload.ActorBlueprint"
+			result.ActorBlueprint = masters.assetPath[actor]
+			result.Via = via
+			result.Status = resolutionCorrelated
+			result.Proof = via + "; the actor's BulletPreload rows in the combat master list this BulletId; client build observed, master compatibility unverified"
+		}
+	case inCommon && inPreload:
+		result.Proof = "BulletId is a row key in both CDT_CommonBulletData and BulletPreload and no source-chain actor holds it; the serving table is not determined"
+	case inCommon:
+		result.Namespace = "CDT_CommonBulletData.RowKey"
+		result.DevLabelZh = label
+		result.DevLabel = masters.commonBulletDevLabels[bulletID]
+		result.RowDamageID = masters.commonBulletDamage[bulletID]
+		result.Status = resolutionCorrelated
+		result.Proof = "BulletId is a row key of CDT_CommonBulletData and of no actor-level BulletPreload family; the loader that serves this common table in normal combat is unproven, client build observed, master compatibility unverified"
+	case inPreload:
+		result.Proof = fmt.Sprintf("BulletId matches an actor-level BulletPreload row key but none of the %d source-chain actors holds it; only a numeric match is recorded", len(chains))
+	default:
+		result.Proof = "BulletId has no row in the loaded bullet definitions"
+	}
+	return result
+}
 
 const bulletRefSchemaVersion = 1
 

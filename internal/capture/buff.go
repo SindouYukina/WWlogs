@@ -39,28 +39,30 @@ type rawBuffSnapshot struct {
 }
 
 type buffLifecycleAuditRow struct {
-	SchemaVersion           int              `json:"schemaVersion"`
-	EventType               string           `json:"eventType"`
-	SessionNumber           int              `json:"sessionNumber"`
-	MessageID               uint16           `json:"messageId"`
-	Timestamp               time.Time        `json:"timestamp"`
-	CommandID               uint16           `json:"commandId"`
-	InnerMessageFieldNumber *uint64          `json:"innerMessageFieldNumber,omitempty"`
-	MessagePath             string           `json:"messagePath,omitempty"`
-	Direction               string           `json:"direction"`
-	MessageName             string           `json:"messageName"`
-	EventKind               string           `json:"eventKind"`
-	EventTypeStatus         resolutionStatus `json:"eventTypeStatus"`
-	SchemaBasis             string           `json:"schemaBasis"`
-	TargetEntityID          *uint64          `json:"targetEntityIdRaw,omitempty"`
-	TargetStatus            resolutionStatus `json:"targetSemanticsStatus"`
-	TargetEvidence          string           `json:"targetEvidence,omitempty"`
-	BuffID                  *uint64          `json:"buffId,omitempty"`
-	BuffDefinitionStatus    resolutionStatus `json:"buffDefinitionStatus,omitempty"`
-	BuffDefinitionTable     string           `json:"buffDefinitionTable,omitempty"`
-	BuffDefinitionID        *uint64          `json:"buffDefinitionId,omitempty"`
-	BuffDefinitionEvidence  string           `json:"buffDefinitionEvidence,omitempty"`
-	ID                      *uint64          `json:"id,omitempty"`
+	SchemaVersion           int       `json:"schemaVersion"`
+	EventType               string    `json:"eventType"`
+	SessionNumber           int       `json:"sessionNumber"`
+	MessageID               uint16    `json:"messageId"`
+	Timestamp               time.Time `json:"timestamp"`
+	CommandID               uint16    `json:"commandId"`
+	InnerMessageFieldNumber *uint64   `json:"innerMessageFieldNumber,omitempty"`
+	// MessagePath is the wire path of an inner message for the Development research outputs, which derive it from
+	// CommandID and InnerMessageFieldNumber when they write the row (buffMessagePath); the core leaves it empty.
+	MessagePath            string           `json:"messagePath,omitempty"`
+	Direction              string           `json:"direction"`
+	MessageName            string           `json:"messageName"`
+	EventKind              string           `json:"eventKind"`
+	EventTypeStatus        resolutionStatus `json:"eventTypeStatus"`
+	SchemaBasis            string           `json:"schemaBasis"`
+	TargetEntityID         *uint64          `json:"targetEntityIdRaw,omitempty"`
+	TargetStatus           resolutionStatus `json:"targetSemanticsStatus"`
+	TargetEvidence         string           `json:"targetEvidence,omitempty"`
+	BuffID                 *uint64          `json:"buffId,omitempty"`
+	BuffDefinitionStatus   resolutionStatus `json:"buffDefinitionStatus,omitempty"`
+	BuffDefinitionTable    string           `json:"buffDefinitionTable,omitempty"`
+	BuffDefinitionID       *uint64          `json:"buffDefinitionId,omitempty"`
+	BuffDefinitionEvidence string           `json:"buffDefinitionEvidence,omitempty"`
+	ID                     *uint64          `json:"id,omitempty"`
 	// BuffOwners names the features that list the linked Buff id (typed, apply Id or handle-inherited) in an explicit reference table.
 	BuffOwners *buffOwnersJSON `json:"buffOwners,omitempty"`
 	// GenericID* link the untyped Id of apply-type messages to buff.id. They are separate from the
@@ -126,8 +128,6 @@ type buffLifecycleAuditRow struct {
 	consoleSuppressed bool
 	// playerRelated reports that the holder or the source is a local-team entity.
 	playerRelated bool
-	// holderName and sourceName are verified character names for the console, resolved at print time.
-	holderName, sourceName string
 }
 
 // classifyLifecycleRow classifies a row from the definition class of its effect and the relations of
@@ -159,7 +159,6 @@ func decodeBuffLifecycleMessageForCommand(frame gameFrame, body []byte, schemaCo
 	if innerFieldNumber != nil {
 		fieldNumber := *innerFieldNumber
 		row.InnerMessageFieldNumber = &fieldNumber
-		row.MessagePath = fmt.Sprintf("CombatReceivePackNotify.field%d(CombatReceiveData[]).field%d(CombatNotifyData).field%d", fieldCombatReceivePackNotifyData, fieldCombatReceiveDataCombatNotifyData, fieldNumber)
 	}
 	switch schemaCommandID {
 	case cmdApplyGameplayEffectNotify:
@@ -422,7 +421,7 @@ func (p *processor) handleCombatReceivePackNotify(frame gameFrame, body []byte) 
 			}
 			for _, notification := range notifications {
 				if p.census != nil {
-					p.census.observeCombatNotifyField(notification.number)
+					p.census.ObserveCombatNotifyField(notification.number)
 				}
 				p.auditCombatNotify(frame, notification, commonEntityID, commonOriginator, commonMessageID)
 				if notification.number == fieldCombatNotifyDataDamageExecuteNotify && notification.wire == 2 {

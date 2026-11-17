@@ -169,10 +169,10 @@ func TestNegativeSplitDeclarationsCarryValues(t *testing.T) {
 
 // The core takes the research schema as an input (contract 6).
 func TestNegativeResearchSchemaEntersTheCore(t *testing.T) {
-	public, _ := probeChecks(t, overrides(file("architecture_probe.go", "",
+	_, development := probeChecks(t, overrides(file("architecture_probe.go", "",
 		"func (p *processor) architectureProbeDecodesWithSchema(schema *protocolSchema) bool { return schema != nil }")))
-	requireFinding(t, researchSchemaFindings(public), "architecture_probe.go", "research schema declaration protocolSchema")
-	requireNoFinding(t, "research schema", researchSchemaFindings(productCheck(t, publicProfile, probePackage)))
+	requireFinding(t, researchSchemaFindings(development), "architecture_probe.go", "research schema declaration protocolSchema")
+	requireNoFinding(t, "research schema", researchSchemaFindings(productCheck(t, developmentProfile, probePackage)))
 }
 
 // Development code changes core state: a core counter, the effect row a hook received, a whole core event through its

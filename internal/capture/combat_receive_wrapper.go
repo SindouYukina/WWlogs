@@ -112,7 +112,7 @@ func (p *processor) handleCombatReceivePacks(frame gameFrame, plain []byte) erro
 				p.stats.standaloneNotifyResponses++
 			}
 			if p.census != nil {
-				p.census.innerEntries["Server->Client DamageExecuteResponse"]++
+				p.census.ObserveInnerEntry("Server->Client DamageExecuteResponse")
 			}
 			p.handleOneDamageResult(response.rpcID, response.payload)
 		}

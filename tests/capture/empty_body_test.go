@@ -1,3 +1,5 @@
+//go:build wwdev
+
 package capture
 
 import (
@@ -8,11 +10,12 @@ import (
 // The 2026-10-27 replays counted 428 such frames under "decrypt failed" on the
 // Locking capture; they are empty payloads, not ciphertext errors.
 func TestEmptyBodyIsCountedSeparatelyFromDecryptFailure(t *testing.T) {
-	census := newCommandCensus()
+	census := newCommandCensus(nil)
 	entry := census.entry(1651, "in")
 	p := &processor{session: make([]byte, 32), census: census}
+	census.processor = p
 
-	p.inspectUndecodedFrame(gameFrame{commandID: 1651, direction: "in", messageType: 2}, true, entry)
+	entry.InspectUndecoded(gameFrame{commandID: 1651, direction: "in", messageType: 2}, true)
 
 	if got := entry.FailureReasons[emptyBodyFailureReason]; got != 1 {
 		t.Fatalf("empty body count = %d, want 1", got)
@@ -26,9 +29,10 @@ func TestEmptyBodyIsCountedSeparatelyFromDecryptFailure(t *testing.T) {
 }
 
 func TestEmptyBodyDoesNotInflateDecryptedFrames(t *testing.T) {
-	census := newCommandCensus()
+	census := newCommandCensus(nil)
 	entry := census.entry(cmdCombatSendPackRequest, "out")
 	p := &processor{session: make([]byte, 32), census: census}
+	census.processor = p
 	p.protocol.beginSession()
 	p.protocol.observeVersion(CurrentGameVersion())
 

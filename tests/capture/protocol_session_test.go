@@ -96,15 +96,27 @@ func TestProtocolSessionDecodesOnlyTheCurrentVersion(t *testing.T) {
 	if status, _ := session.status(); status != ProtocolStatusUnsupported {
 		t.Fatalf("a session that never reports a version stays %s", status)
 	}
-	if report := session.report(); report.PendingFrames != maxPendingProtocolFrames+1 || report.UnsupportedFrames != 2 {
-		t.Fatalf("protocol report %+v", report)
+	if pending, unsupported := session.counters.pendingFrames, session.counters.unsupportedFrames; pending != maxPendingProtocolFrames+1 || unsupported != 2 {
+		t.Fatalf("protocol counters: pending %d unsupported %d", pending, unsupported)
 	}
 }
 
 // A fight sent in the current protocol is decoded end to end: pairing, attribution and the encounter.
 func TestCurrentProtocolSessionDecodesTheFight(t *testing.T) {
 	p, _ := initialProcessor(t)
-	p.census = newCommandCensus()
+	sendCurrentProtocolFight(t, p)
+	s := p.damageStatisticsSnapshot()
+	if s.DamageDealt != 750 || s.OutgoingEvents != 2 || len(s.Roles) != 1 || s.Encounters.Current == nil || s.Encounters.Current.Totals.DamageDealt != 750 {
+		t.Fatalf("current-protocol session: dealt %d events %d roles %d", s.DamageDealt, s.OutgoingEvents, len(s.Roles))
+	}
+	if status, version := p.protocol.status(); status != ProtocolStatusSupported || version != "3.8" || p.protocol.counters.pendingFrames != 0 || p.protocol.counters.unsupportedFrames != 0 {
+		t.Fatalf("protocol session: %s %s, pending %d unsupported %d", status, version, p.protocol.counters.pendingFrames, p.protocol.counters.unsupportedFrames)
+	}
+}
+
+// sendCurrentProtocolFight sends a two-hit fight of the current protocol after the handshake of p.
+func sendCurrentProtocolFight(t *testing.T, p *processor) {
+	t.Helper()
 	initialEncryptedFrame(t, p, cmdBasicInfoNotify, "in", appendVarintField(nil, fieldBasicInfoNotifyID, 77), 0.1)
 	initialEncryptedFrame(t, p, cmdJoinSceneNotify, "in", initialJoinBody(), 0.2)
 	addTestRuntimeEntity(p, 200, func(e *runtimeEntity) { e.entityTypeCode, e.hasEntityType = entityTypeMonster, true })
@@ -113,24 +125,12 @@ func TestCurrentProtocolSessionDecodesTheFight(t *testing.T) {
 	initialEncryptedFrame(t, p, cmdCombatSendPackResponse, "in", damageResponseBody(1, 500), 2)
 	initialEncryptedFrame(t, p, cmdCombatSendPackRequest, "out", damageRequestBody(2, 100, 200), 2.1)
 	initialEncryptedFrame(t, p, cmdCombatSendPackResponse, "in", damageResponseBody(2, 250), 3)
-	s := p.damageStatisticsSnapshot()
-	if s.DamageDealt != 750 || s.OutgoingEvents != 2 || len(s.Roles) != 1 || s.Encounters.Current == nil || s.Encounters.Current.Totals.DamageDealt != 750 {
-		t.Fatalf("current-protocol session: dealt %d events %d roles %d", s.DamageDealt, s.OutgoingEvents, len(s.Roles))
-	}
-	if report := p.protocol.report(); report.Status != ProtocolStatusSupported || report.GameVersion != "3.8" || report.PendingFrames != 0 || report.UnsupportedFrames != 0 {
-		t.Fatalf("protocol report %+v", report)
-	}
-	if entry := p.census.entries[censusKey{CommandID: cmdJoinSceneNotify, Direction: "in"}]; entry == nil || entry.Name != "JoinSceneNotify" || entry.SchemaBasis != censusSchemaBasis() {
-		t.Fatalf("a current-protocol frame was not named from the current protocol: %+v", entry)
-	}
 }
 
 // Evidence names the protocol a message was read with, the current client's, and the version gate that admitted it.
 func TestEvidenceNamesTheCurrentProtocol(t *testing.T) {
-	for name, text := range map[string]string{"message schema basis": protocolSchemaBasis(), "census schema basis": censusSchemaBasis()} {
-		if !strings.Contains(text, CurrentProtocol()) {
-			t.Fatalf("%s %q does not name the current client protocol", name, text)
-		}
+	if text := protocolSchemaBasis(); !strings.Contains(text, CurrentProtocol()) {
+		t.Fatalf("message schema basis %q does not name the current client protocol", text)
 	}
 	if !strings.HasSuffix(protocolSchemaBasis(), "game version "+CurrentGameVersion()) {
 		t.Fatalf("message schema basis %q does not name the version gate", protocolSchemaBasis())
@@ -139,21 +139,9 @@ func TestEvidenceNamesTheCurrentProtocol(t *testing.T) {
 
 // A session of any other game version is never decoded, even when its frames happen to parse under the current numbers.
 func TestOtherGameVersionsAreNeverDecoded(t *testing.T) {
-	for _, build := range []string{"OS_Windows_Product_3.7.0_9052414_3.7.18_9350105", "OS_Windows_Product_3.9.0_9999999_3.9.1_9999999"} {
+	for _, build := range otherVersionBuilds {
 		p, _ := initialProcessorWithBuild(t, build)
-		p.census = newCommandCensus()
-		for _, frame := range []struct {
-			command   uint16
-			direction string
-			body      []byte
-			seconds   float64
-		}{
-			{cmdJoinSceneNotify, "in", initialJoinBody(), 0.2},
-			{cmdCombatSendPackRequest, "out", damageRequestBody(1, 100, 200), 1.1},
-			{cmdCombatSendPackResponse, "in", damageResponseBody(1, 500), 2},
-		} {
-			initialEncryptedFrame(t, p, frame.command, frame.direction, frame.body, frame.seconds)
-		}
+		sendOtherVersionFight(t, p)
 		s := p.damageStatisticsSnapshot()
 		if s.DamageDealt != 0 || s.UnattributedOutgoingDamage != 0 || p.stats.damageRequests != 0 || p.stats.candidateResponses != 0 {
 			t.Fatalf("%s: a session of another game version produced combat data", build)
@@ -162,14 +150,25 @@ func TestOtherGameVersionsAreNeverDecoded(t *testing.T) {
 		if health := p.sessionHealthSnapshot(); health.Protocol.Status != ProtocolStatusUnsupported || health.Protocol.GameVersion != want {
 			t.Fatalf("%s: session health protocol %+v", build, health.Protocol)
 		}
-		if got := p.census.entry(cmdCombatSendPackRequest, "out").FailureReasons[protocolUnsupportedFailureReason]; got != 1 {
-			t.Fatalf("%s: census reason = %d, want 1", build, got)
-		}
-		// The same number means another message in another version: the census must not name it from the current one.
-		for _, key := range []censusKey{{CommandID: cmdJoinSceneNotify, Direction: "in"}, {CommandID: cmdCombatSendPackRequest, Direction: "out"}, {CommandID: cmdCombatSendPackResponse, Direction: "in"}} {
-			if entry := p.census.entries[key]; entry == nil || entry.Name != "" || entry.SchemaBasis != "" {
-				t.Fatalf("%s: a frame of another game version took a current-protocol name: %+v", build, entry)
-			}
-		}
+	}
+}
+
+// otherVersionBuilds are client builds of other game versions, whose frames parse under the current numbers.
+var otherVersionBuilds = []string{"OS_Windows_Product_3.7.0_9052414_3.7.18_9350105", "OS_Windows_Product_3.9.0_9999999_3.9.1_9999999"}
+
+// sendOtherVersionFight sends a one-hit fight after the handshake of p.
+func sendOtherVersionFight(t *testing.T, p *processor) {
+	t.Helper()
+	for _, frame := range []struct {
+		command   uint16
+		direction string
+		body      []byte
+		seconds   float64
+	}{
+		{cmdJoinSceneNotify, "in", initialJoinBody(), 0.2},
+		{cmdCombatSendPackRequest, "out", damageRequestBody(1, 100, 200), 1.1},
+		{cmdCombatSendPackResponse, "in", damageResponseBody(1, 500), 2},
+	} {
+		initialEncryptedFrame(t, p, frame.command, frame.direction, frame.body, frame.seconds)
 	}
 }

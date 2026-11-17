@@ -731,7 +731,22 @@ func researchSchemaFiles(c *checkedPackage) (files map[string]bool, findings []s
 }
 
 func researchSchemaFindings(public *checkedPackage) []string {
+	if public.profile.name == publicProfile.name {
+		// The research schema is Development code: a Public build has none of it.
+		var findings []string
+		for _, anchor := range researchSchemaAnchors {
+			if obj, ok := public.pkg.Scope().Lookup(anchor).(*types.TypeName); ok {
+				findings = append(findings, fmt.Sprintf("%s: the research schema type %s is compiled into the Public build", public.where(obj.Pos()), anchor))
+			}
+		}
+		return findings
+	}
 	researchFiles, findings := researchSchemaFiles(public)
+	for name := range researchFiles {
+		if public.kinds[name] == sharedFile {
+			findings = append(findings, fmt.Sprintf("%s/%s: the research schema is declared in a shared file", public.rel, name))
+		}
+	}
 	for _, name := range public.sortedFileNames() {
 		if public.kinds[name] != sharedFile || researchFiles[name] {
 			continue
@@ -743,6 +758,10 @@ func researchSchemaFindings(public *checkedPackage) []string {
 			}
 			obj := public.info.Uses[ident]
 			if obj == nil || obj.Pkg() != public.pkg || !researchFiles[public.fileOf(obj.Pos())] {
+				return true
+			}
+			// A Development hook of the processor is the observation boundary (contracts 2 and 3), not schema data.
+			if function, ok := obj.(*types.Func); ok && strings.HasPrefix(objectKey(function, nil), "method "+coreStateType+".") {
 				return true
 			}
 			findings = append(findings, fmt.Sprintf("%s: shared code uses the research schema declaration %s (%s); research schema evidence is not runtime authority", public.where(ident.Pos()), obj.Name(), public.where(obj.Pos())))
@@ -954,7 +973,9 @@ func reportStaleEntries(t *testing.T, list string, entries map[string]string, se
 }
 
 func TestResearchSchemaStaysOutOfTheCore(t *testing.T) {
-	reportFindings(t, "research schema", researchSchemaFindings(productCheck(t, publicProfile, "internal/capture")))
+	for _, profile := range bothProfiles {
+		reportFindings(t, profile.name+" research schema", researchSchemaFindings(productCheck(t, profile, "internal/capture")))
+	}
 }
 
 func TestDevelopmentDiagnosticFlagsArePreserved(t *testing.T) {

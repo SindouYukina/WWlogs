@@ -9,6 +9,87 @@ import (
 	"time"
 )
 
+func clientVersionAuditFields(report *clientVersionReport) (build, versions, commands string) {
+	if report == nil {
+		return "", "", ""
+	}
+	encoded, _ := json.Marshal(report.CheckClientVersions)
+	commandIDs := make([]string, 0, len(report.SourceCommands))
+	for _, commandID := range report.SourceCommands {
+		commandIDs = append(commandIDs, fmt.Sprint(commandID))
+	}
+	return report.ClientBuild, string(encoded), strings.Join(commandIDs, ",")
+}
+
+// resolveDamageElement names the element written in the damage master row. The row is looked up by DamageId,
+// the same basis as the damage class; the protocol's ElementType field is not used here.
+func resolveDamageElement(masters *gameMaster, damageID uint64, hasDamageID bool) *combatEventElementJSONL {
+	if masters == nil || !hasDamageID {
+		return nil
+	}
+	record, ok := masters.damage[damageID]
+	if !ok || !record.HasElement {
+		return nil
+	}
+	result := &combatEventElementJSONL{ID: record.Element}
+	if name, found := masters.elementNames[record.Element]; found {
+		result.Name = name
+		result.Status = resolutionCorrelated
+		result.Evidence = fmt.Sprintf("damage.element of the DamageId row -> elementinfo_locale (%s); client build observed, master compatibility unverified", masters.locale)
+	} else {
+		result.Status = resolutionUnknown
+		result.Evidence = "damage.element has no elementinfo_locale name for the master locale; raw element id kept"
+	}
+	return result
+}
+
+type combatEventCreditJSONL struct {
+	CharacterID *uint64          `json:"characterId,omitempty"`
+	Name        string           `json:"name,omitempty"`
+	Status      resolutionStatus `json:"status"`
+	NameStatus  resolutionStatus `json:"nameStatus"`
+	Evidence    string           `json:"evidence,omitempty"`
+}
+
+type combatEventElementJSONL struct {
+	ID       int32            `json:"id"`
+	Name     string           `json:"name,omitempty"`
+	Status   resolutionStatus `json:"status"`
+	Evidence string           `json:"evidence,omitempty"`
+}
+
+// combatEventPushJSONL is what a server-executed DamageExecuteNotify adds to the common event fields of a development event
+// line. The result itself went through the shared accounting (damage_notify.go); these fields only describe it.
+type combatEventPushJSONL struct {
+	Stream        string `json:"stream"`
+	PairedWithRPC bool   `json:"pairedWithRpc"`
+	// NotifyKey is the deduplication key of the result (notifyEventKey); zero when the frame had no sequence.
+	NotifyKey      uint64 `json:"notifyKey"`
+	NegativeStatus bool   `json:"negativeStatus"`
+	// NegativeStatusLocal and NegativeStatusBasis are negativeStatusOwnership's decision for a negative-status result.
+	NegativeStatusLocal bool   `json:"negativeStatusLocal,omitempty"`
+	NegativeStatusBasis string `json:"negativeStatusBasis,omitempty"`
+	// Credit* describe the role credit of a local negative-status result (negative_status_credit.go): the settlement
+	// (forced, instant, own, applied, spread or undetermined), how many entities the evidence leaves as its cause, how many
+	// overflows on other enemies can have spread it and whether an instant status Buff of its moment can be it, the basis
+	// (negative_status_trigger or negative_status_owner), the credited role, the executing status Buff, the InvokePeriod or
+	// instant status Buff that caused it, the instance owner, and why there is no credit.
+	Settlement          string `json:"settlement,omitempty"`
+	CreditCandidates    int    `json:"creditCandidates,omitempty"`
+	SpreadCandidates    int    `json:"spreadCandidates,omitempty"`
+	InstantTrigger      bool   `json:"instantTrigger,omitempty"`
+	CreditBasis         string `json:"creditBasis,omitempty"`
+	CreditRoleID        uint64 `json:"creditRoleId,omitempty"`
+	CreditEntityID      uint64 `json:"creditEntityId,omitempty"`
+	StatusEffectID      uint64 `json:"statusEffectId,omitempty"`
+	TriggerEffectID     uint64 `json:"triggerEffectId,omitempty"`
+	StatusOwnerEntityID uint64 `json:"statusOwnerEntityId,omitempty"`
+	CreditReason        string `json:"creditReason,omitempty"`
+	DamageRaw           int32  `json:"damageRaw"`
+	ChangeLifeRaw       int32  `json:"changeLifeRaw"`
+	HasChangeLife       bool   `json:"hasChangeLife"`
+}
+
 type combatEventJSONL struct {
 	SchemaVersion              int                         `json:"schemaVersion"`
 	EventType                  string                      `json:"eventType"`
@@ -319,7 +400,7 @@ func lifecycleEvidence(source string) string {
 	}
 }
 
-func (event combatEvent) jsonlView(masters *gameMaster) combatEventJSONL {
+func jsonlView(event combatEvent, masters *gameMaster) combatEventJSONL {
 	view := combatEventJSONL{
 		SchemaVersion: 5,
 		EventType:     combatEventJSONLType(event.EventTypeCandidate),
@@ -470,6 +551,9 @@ func optionalInt32(value int32, present bool) *int32 {
 }
 
 func (p *processor) writeStructuredEventJSONL(event any) {
+	if row, ok := event.(buffLifecycleAuditRow); ok {
+		event = withMessagePath(row)
+	}
 	p.writeEnvelopedEventJSONL(event, "")
 }
 
@@ -491,7 +575,7 @@ func skillRequestJSONL(request *combatActionRequest) *combatActionRequestJSONL {
 // server-executed DamageExecuteNotify is a DAMAGE_NOTIFY_RESULT in the auxiliary "p" id namespace, so response event ids
 // stay as they were before notified results were counted.
 func (p *processor) writeDamageEventJSONL(event combatEvent, skillRequest *combatActionRequest) {
-	view := event.jsonlView(p.masters)
+	view := jsonlView(event, p.masters)
 	view.Skill.Request = skillRequestJSONL(skillRequest)
 	if event.Notify == nil {
 		p.writeStructuredEventJSONL(view)
@@ -528,7 +612,7 @@ func (p *processor) writeDamageEventOutputs(event *combatEvent, visible bool, so
 	p.writeDamageEventJSONL(*event, skillRequest)
 	consoleWritten := true
 	if visible {
-		normalOutput := event.formatNormalForSourceRelation(sourceRelation)
+		normalOutput := formatNormalForSourceRelation(*event, sourceRelation)
 		switch {
 		case sourceRelation == playerRelationLocal && targetRelation == playerRelationLocal:
 			normalOutput += " [PlayerTeamSide: BOTH]"
@@ -589,7 +673,7 @@ func (p *processor) writeDamageEventOutputs(event *combatEvent, visible bool, so
 			string(event.EventTypeStatus), event.EventTypeProof,
 			string(event.CharacterNameStatus), string(event.SkillNameStatus),
 		}
-		build, versionFields, versionCommands := p.clientVersion.auditFields()
+		build, versionFields, versionCommands := clientVersionAuditFields(p.clientVersion)
 		fields = append(fields, build, versionFields, versionCommands)
 		for i := range fields {
 			fields[i] = strings.NewReplacer("\t", " ", "\r", " ", "\n", " ").Replace(fields[i])
@@ -673,11 +757,11 @@ func (p *processor) writeEnvelopedEventJSONL(event any, kind string) {
 	}
 }
 
-func (event combatEvent) formatNormal() string {
-	return event.formatNormalForSourceRelation(playerRelationUnknown)
+func formatNormal(event combatEvent) string {
+	return formatNormalForSourceRelation(event, playerRelationUnknown)
 }
 
-func (event combatEvent) formatNormalForSourceRelation(sourceRelation playerRelation) string {
+func formatNormalForSourceRelation(event combatEvent, sourceRelation playerRelation) string {
 	timestamp := "--:--:--.---"
 	if !event.Timestamp.IsZero() {
 		timestamp = event.Timestamp.Local().Format("15:04:05.000")
@@ -877,7 +961,7 @@ func optionalDamageSource(value uint64, present bool) string {
 // the overlap statistics, so it can never add to or double-count damage.
 func (p *processor) writeNoAmountEvent(rpcID uint64, request pendingDamageRequest, hasAmount bool, errorCode, immuneType int32, hasChangeLife bool, changeLife int32) {
 	event := p.buildDamageEvent(rpcID, request, 0, changeLife, hasChangeLife, 0)
-	view := event.jsonlView(p.masters)
+	view := jsonlView(event, p.masters)
 	// A no-amount hit is not a damage event: its line shows the outbound skill request it answers, without counting a link.
 	if request.skillMessageID != 0 {
 		if action, ok := p.dev.combatActionRequests[combatActionRequestKey{sessionNumber: p.sessionNumber, messageID: request.skillMessageID}]; ok {

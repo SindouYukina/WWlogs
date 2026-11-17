@@ -1,7 +1,6 @@
 package capture
 
 import (
-	"encoding/json"
 	"fmt"
 	"regexp"
 	"sort"
@@ -131,16 +130,4 @@ func (p *processor) observeClientVersion(commandID uint16, data []byte) error {
 	report.SourceCommands = append(report.SourceCommands, commandID)
 	sort.Slice(report.SourceCommands, func(i, j int) bool { return report.SourceCommands[i] < report.SourceCommands[j] })
 	return nil
-}
-
-func (report *clientVersionReport) auditFields() (build, versions, commands string) {
-	if report == nil {
-		return "", "", ""
-	}
-	encoded, _ := json.Marshal(report.CheckClientVersions)
-	commandIDs := make([]string, 0, len(report.SourceCommands))
-	for _, commandID := range report.SourceCommands {
-		commandIDs = append(commandIDs, fmt.Sprint(commandID))
-	}
-	return report.ClientBuild, string(encoded), strings.Join(commandIDs, ",")
 }

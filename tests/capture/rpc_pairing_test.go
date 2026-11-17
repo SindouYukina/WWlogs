@@ -228,15 +228,6 @@ func TestInvalidHeldResponseStaysInvalid(t *testing.T) {
 	}
 }
 
-func TestRPCPairingLineReportsCounters(t *testing.T) {
-	line := rpcPairingLine(RPCPairingSnapshot{Requests: 3, Paired: 2, PairedOutOfOrder: 1, UnpairedExpired: 1})
-	for _, want := range []string{"damage_rpc_pairing ", "requests=3", "paired=2", "paired_out_of_order=1", "unpaired_expired=1", "rewound_entities=0"} {
-		if !bytes.Contains([]byte(line), []byte(want)) {
-			t.Fatalf("pairing line %q is missing %q", line, want)
-		}
-	}
-}
-
 func entityRemoveBody(ids ...uint64) []byte {
 	body := appendVarintField(nil, fieldEntityRemoveNotifyIsRemove, 1)
 	for _, id := range ids {

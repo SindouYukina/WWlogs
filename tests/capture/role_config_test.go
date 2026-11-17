@@ -35,11 +35,11 @@ func TestLoadGameMasterDatabaseLoadsTrialRoleParents(t *testing.T) {
 	if parentID, ok := master.trialRoleParents[13120001]; !ok || parentID != 1312 {
 		t.Fatalf("TrialRoleInfo parent = %d, ok=%t; want 1312", parentID, ok)
 	}
-	resolution, ok := master.resolveRoleConfigRole(13120001)
+	resolution, ok := resolveRoleConfigRole(master, 13120001)
 	if !ok || resolution.CanonicalRoleID != 1312 || resolution.Status != "CORRELATED_TRIALROLEINFO_PARENT" {
 		t.Fatalf("TrialRoleInfo ID resolution = %+v, ok=%t", resolution, ok)
 	}
-	if _, ok := master.resolveRoleConfigRole(999999); ok {
+	if _, ok := resolveRoleConfigRole(master, 999999); ok {
 		t.Fatal("unknown role config ID unexpectedly resolved")
 	}
 }

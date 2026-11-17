@@ -117,7 +117,6 @@ func decodeClientEffectPush(frame gameFrame, fieldNumber uint64, body []byte, co
 		SchemaVersion: buffLifecycleSchemaVersion, EventType: "BUFF_LIFECYCLE", MessageID: frame.commandID,
 		Timestamp: frame.timestamp, CommandID: frame.commandID, Direction: frame.direction,
 		InnerMessageFieldNumber: &number,
-		MessagePath:             fmt.Sprintf("CombatSendPackRequest.field%d(CombatSendData[]).field%d(CombatPushData).field%d", fieldCombatSendPackRequestData, fieldCombatSendDataPush, fieldNumber),
 		EventTypeStatus:         resolutionCorrelated, TargetStatus: resolutionUnknown, InstigatorStatus: resolutionUnknown,
 		InstigatorCharacterCandidateStatus: resolutionUnknown, InstigatorCharacterCandidateNameStatus: resolutionUnknown,
 		ProviderStatus: resolutionUnknown, ProviderNameStatus: resolutionUnknown,
