@@ -62,16 +62,18 @@ func TestArchiveRoleConfigRecordsPreservesRawAndCanonicalRoleIDs(t *testing.T) {
 	body = appendBytesField(body, 7, nil)
 	var out strings.Builder
 	p := &processor{
-		protocolSchema: schema,
-		roleConfigOut:  &out,
-		frameOrdinal:   10,
-		sessionNumber:  2,
+		sessionNumber: 2,
 		masters: &gameMaster{
 			locale: "zh-TW",
 			characters: map[uint64]masterRecord{
 				1312: {ID: 1312, Name: "測試角色", NameStatus: string(resolutionVerified), Language: "zh-TW"},
 			},
 			trialRoleParents: map[uint64]uint64{12117004: 1312},
+		},
+		dev: processorDiagnostics{
+			protocolSchema: schema,
+			roleConfigOut:  &out,
+			frameOrdinal:   10,
 		},
 	}
 	p.archiveSchemaDecode(gameFrame{commandID: 18250, direction: "in"}, body)

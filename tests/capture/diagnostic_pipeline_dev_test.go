@@ -202,18 +202,18 @@ func TestDiagnosticPipelineStopsAllGoroutines(t *testing.T) {
 func TestWrapProcessorDiagnosticsRestoresDirectWriters(t *testing.T) {
 	var console, events bytes.Buffer
 	p := newProcessor(nil, &console, &bytes.Buffer{}, nil)
-	p.combatEventsJSONL = &events
+	p.dev.combatEventsJSONL = &events
 	pipeline := newDiagnosticPipeline(false)
 	restore := wrapProcessorDiagnostics(p, pipeline, nil)
-	if p.stdout == &console || p.combatEventsJSONL == &events || p.audit != nil || p.frameArchive != nil {
+	if p.dev.stdout == &console || p.dev.combatEventsJSONL == &events || p.dev.audit != nil || p.dev.frameArchive != nil {
 		t.Fatal("writers were not wrapped, or nil writers were wrapped")
 	}
-	p.stdout.Write([]byte("console line\n"))
-	p.combatEventsJSONL.Write([]byte("{}\n"))
+	p.dev.stdout.Write([]byte("console line\n"))
+	p.dev.combatEventsJSONL.Write([]byte("{}\n"))
 	pipeline.finishCapture()
 	pipeline.close(5 * time.Second)
 	restore()
-	if p.stdout != &console || p.combatEventsJSONL != &events {
+	if p.dev.stdout != &console || p.dev.combatEventsJSONL != &events {
 		t.Fatal("restore did not reinstate the direct writers")
 	}
 	if console.String() != "console line\n" || events.String() != "{}\n" {

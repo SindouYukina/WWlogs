@@ -3,7 +3,6 @@
 package capture
 
 import (
-	"encoding/json"
 	"strings"
 )
 
@@ -13,21 +12,21 @@ func (p *processor) rememberBulletHandle(message *decodedMessage, record bulletR
 	if !ok || handleID <= 0 {
 		return
 	}
-	if p.bulletHandles == nil {
-		p.bulletHandles = make(map[bulletHandleKey]bulletHandleEntry)
+	if p.dev.bulletHandles == nil {
+		p.dev.bulletHandles = make(map[bulletHandleKey]bulletHandleEntry)
 	}
 	key := bulletHandleKey{p.sessionNumber, handleID}
-	if _, exists := p.bulletHandles[key]; !exists {
-		p.bulletHandleOrder = append(p.bulletHandleOrder, key)
+	if _, exists := p.dev.bulletHandles[key]; !exists {
+		p.dev.bulletHandleOrder = append(p.dev.bulletHandleOrder, key)
 	}
 	entry := bulletHandleEntry{bulletID: record.BulletID, status: record.Status, namespace: record.Namespace, actor: record.ActorBlueprint, via: record.Via, label: record.DevLabelZhCn}
 	if record.SkillID != nil {
 		entry.skillID, entry.hasSkill = *record.SkillID, true
 	}
-	p.bulletHandles[key] = entry
-	for len(p.bulletHandleOrder) > maxBulletHandles {
-		delete(p.bulletHandles, p.bulletHandleOrder[0])
-		p.bulletHandleOrder = p.bulletHandleOrder[1:]
+	p.dev.bulletHandles[key] = entry
+	for len(p.dev.bulletHandleOrder) > maxBulletHandles {
+		delete(p.dev.bulletHandles, p.dev.bulletHandleOrder[0])
+		p.dev.bulletHandleOrder = p.dev.bulletHandleOrder[1:]
 	}
 }
 
@@ -36,7 +35,7 @@ func (p *processor) rememberBulletHandle(message *decodedMessage, record bulletR
 func (p *processor) resolveBulletHandle(record *bulletRefRecord) {
 	handleID := record.BulletID
 	record.HandleID = &handleID
-	entry, ok := p.bulletHandles[bulletHandleKey{p.sessionNumber, handleID}]
+	entry, ok := p.dev.bulletHandles[bulletHandleKey{p.sessionNumber, handleID}]
 	switch {
 	case !ok:
 		record.Evidence = "InterruptSkillInfo.BulletId is not the HandleId of any earlier CreateBullet in this session; the value is not a static bullet row key"
@@ -64,44 +63,44 @@ func (p *processor) observeBulletReferences(frame gameFrame, data *decodedMessag
 
 // archiveBulletRefReceiveFrame handles standalone and response-embedded inbound combat notifications.
 func (p *processor) archiveBulletRefReceiveFrame(frame gameFrame, plain []byte) {
-	if (p.bulletRefOut == nil && p.skillRefOut == nil && p.shieldRefOut == nil) || p.protocolSchema == nil || (frame.commandID != cmdCombatReceivePackNotify && frame.commandID != cmdCombatSendPackResponse) {
+	if (p.dev.bulletRefOut == nil && p.dev.skillRefOut == nil && p.dev.shieldRefOut == nil) || p.dev.protocolSchema == nil || (frame.commandID != cmdCombatReceivePackNotify && frame.commandID != cmdCombatSendPackResponse) {
 		return
 	}
 	payloads, err := receivePackNotifyBodies(frame.commandID, plain)
 	if err != nil {
-		if p.bulletRefOut != nil {
-			p.bulletRefErrors++
+		if p.dev.bulletRefOut != nil {
+			p.dev.bulletRefErrors++
 		}
-		if p.skillRefOut != nil {
-			p.skillRefErrors++
+		if p.dev.skillRefOut != nil {
+			p.dev.skillRefErrors++
 		}
-		if p.shieldRefOut != nil {
-			p.shieldRefErrors++
+		if p.dev.shieldRefOut != nil {
+			p.dev.shieldRefErrors++
 		}
 		return
 	}
 	for _, payload := range payloads {
-		decoded, err := decodeSchemaMessage(p.protocolSchema, "CombatReceivePackNotify", payload, 0)
+		decoded, err := decodeSchemaMessage(p.dev.protocolSchema, "CombatReceivePackNotify", payload, 0)
 		if err != nil {
-			if p.bulletRefOut != nil {
-				p.bulletRefErrors++
+			if p.dev.bulletRefOut != nil {
+				p.dev.bulletRefErrors++
 			}
-			if p.skillRefOut != nil {
-				p.skillRefErrors++
+			if p.dev.skillRefOut != nil {
+				p.dev.skillRefErrors++
 			}
-			if p.shieldRefOut != nil {
-				p.shieldRefErrors++
+			if p.dev.shieldRefOut != nil {
+				p.dev.shieldRefErrors++
 			}
 			continue
 		}
 		for _, data := range childMessages(decoded, "Data") {
-			if p.bulletRefOut != nil {
+			if p.dev.bulletRefOut != nil {
 				p.observeBulletReferences(frame, data, "in")
 			}
-			if p.skillRefOut != nil {
+			if p.dev.skillRefOut != nil {
 				p.observeSkillReferences(frame, data, "in")
 			}
-			if p.shieldRefOut != nil {
+			if p.dev.shieldRefOut != nil {
 				p.observeShieldReferences(frame, data, "in")
 			}
 		}
@@ -164,7 +163,7 @@ func bulletSourceCandidates(message, parent, common *decodedMessage) []bulletSou
 func (p *processor) writeBulletReference(frame gameFrame, message, parent *decodedMessage, fieldPath string, bulletID int64, common *decodedMessage, direction string) {
 	record := bulletRefRecord{
 		SchemaVersion: bulletRefSchemaVersion,
-		FrameOrdinal:  p.frameOrdinal - 1,
+		FrameOrdinal:  p.dev.frameOrdinal - 1,
 		SessionNumber: p.sessionNumber,
 		Timestamp:     formatTimestamp(frame.timestamp),
 		Direction:     direction,
@@ -211,12 +210,5 @@ func (p *processor) writeBulletReference(frame gameFrame, message, parent *decod
 	if message.Type == "CreateBulletPush" || message.Type == "CreateBulletNotify" {
 		p.rememberBulletHandle(message, record)
 	}
-	line, err := json.Marshal(record)
-	if err != nil {
-		p.bulletRefErrors++
-		return
-	}
-	if _, err := p.bulletRefOut.Write(append(line, '\n')); err != nil {
-		p.bulletRefErrors++
-	}
+	writeResearchRecord(p.dev.bulletRefOut, record, &p.dev.bulletRefErrors)
 }

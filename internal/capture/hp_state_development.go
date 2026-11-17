@@ -2,16 +2,13 @@
 
 package capture
 
-import (
-	"encoding/json"
-	"strconv"
-)
+import "strconv"
 
 // archiveHPState writes Life and LifeMax attribute values from one decoded
 // CombatReceivePackNotify. It reads the schema tree only, so the typed pipeline
 // is unaffected.
 func (p *processor) archiveHPState(frame gameFrame, decoded *decodedMessage) {
-	if p.hpStateOut == nil || decoded == nil {
+	if p.dev.hpStateOut == nil || decoded == nil {
 		return
 	}
 	order := 0
@@ -31,7 +28,7 @@ func (p *processor) archiveHPState(frame gameFrame, decoded *decodedMessage) {
 					currentValue, _ := scalarValue(attribute, "CurrentValue")
 					record := hpStateRecord{
 						SchemaVersion:   hpStateSchemaVersion,
-						FrameOrdinal:    p.frameOrdinal - 1,
+						FrameOrdinal:    p.dev.frameOrdinal - 1,
 						SessionNumber:   p.sessionNumber,
 						Timestamp:       formatTimestamp(frame.timestamp),
 						EntityID:        entityID,
@@ -40,18 +37,11 @@ func (p *processor) archiveHPState(frame gameFrame, decoded *decodedMessage) {
 						CurrentValue:    currentValue,
 						EventOrderInMsg: order,
 					}
-					if name, known := p.protocolSchema.enumName("EAttributeType", typeValue); known {
+					if name, known := p.dev.protocolSchema.enumName("EAttributeType", typeValue); known {
 						record.AttributeName = name
 					}
 					order++
-					line, err := json.Marshal(record)
-					if err != nil {
-						p.hpStateErrors++
-						continue
-					}
-					if _, err := p.hpStateOut.Write(append(line, '\n')); err != nil {
-						p.hpStateErrors++
-					}
+					writeResearchRecord(p.dev.hpStateOut, record, &p.dev.hpStateErrors)
 				}
 			}
 		}
@@ -125,18 +115,18 @@ func combatCommonEntityID(notify *decodedMessage) (uint64, bool) {
 // archiveHPStateFrame decodes a combat frame for HP output when that output is
 // enabled. It runs on the same plaintext as the other observers.
 func (p *processor) archiveHPStateFrame(frame gameFrame, plain []byte) {
-	if p.hpStateOut == nil || p.protocolSchema == nil || (frame.commandID != cmdCombatReceivePackNotify && frame.commandID != cmdCombatSendPackResponse) {
+	if p.dev.hpStateOut == nil || p.dev.protocolSchema == nil || (frame.commandID != cmdCombatReceivePackNotify && frame.commandID != cmdCombatSendPackResponse) {
 		return
 	}
 	payloads, err := receivePackNotifyBodies(frame.commandID, plain)
 	if err != nil {
-		p.hpStateErrors++
+		p.dev.hpStateErrors++
 		return
 	}
 	for _, payload := range payloads {
-		decoded, err := decodeSchemaMessage(p.protocolSchema, "CombatReceivePackNotify", payload, 0)
+		decoded, err := decodeSchemaMessage(p.dev.protocolSchema, "CombatReceivePackNotify", payload, 0)
 		if err != nil {
-			p.hpStateErrors++
+			p.dev.hpStateErrors++
 			continue
 		}
 		p.archiveHPState(frame, decoded)

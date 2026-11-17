@@ -68,8 +68,8 @@ func TestCaptureSoakCollector(t *testing.T) {
 		p.masters = masters
 		pipeline := newDiagnosticPipeline(true)
 		slow := &slowWriter{delay: 200 * time.Microsecond}
-		p.combatEventsJSONL = pipeline.wrap("combat-events", slow, nil, 1<<20)
-		p.frameArchive = pipeline.wrap("frame-archive", io.Discard, nil, diagnosticSinkCapacityBytes)
+		p.dev.combatEventsJSONL = pipeline.wrap("combat-events", slow, nil, 1<<20)
+		p.dev.frameArchive = pipeline.wrap("frame-archive", io.Discard, nil, diagnosticSinkCapacityBytes)
 		p.captureLayer.diagnosticDropCount = pipeline.droppedRecords
 		streams, stats := make(map[string]*stream), captureStats{}
 		var offset time.Duration

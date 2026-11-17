@@ -5,7 +5,6 @@ package capture
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 )
 
 // frameDecodeStatus classifies a frame for the archive. Handshake and empty
@@ -37,9 +36,9 @@ func (p *processor) archivedFrameStatus(frame gameFrame) string {
 // counter. The counter advances even without an archive writer so that
 // frameOrdinal stays stable when the archive flag is toggled.
 func (p *processor) archiveFrame(frame gameFrame) {
-	ordinal := p.frameOrdinal
-	p.frameOrdinal++
-	if p.frameArchive == nil {
+	ordinal := p.dev.frameOrdinal
+	p.dev.frameOrdinal++
+	if p.dev.frameArchive == nil {
 		return
 	}
 	digest := sha256.Sum256(frame.body)
@@ -60,13 +59,5 @@ func (p *processor) archiveFrame(frame gameFrame) {
 		DecodeStatus:     p.archivedFrameStatus(frame),
 		Timestamp:        frame.timestamp.Format("2006-01-02T15:04:05.000000000Z07:00"),
 	}
-	line, err := json.Marshal(record)
-	if err != nil {
-		p.frameArchiveErrors++
-		return
-	}
-	line = append(line, '\n')
-	if _, err := p.frameArchive.Write(line); err != nil {
-		p.frameArchiveErrors++
-	}
+	writeResearchRecord(p.dev.frameArchive, record, &p.dev.frameArchiveErrors)
 }

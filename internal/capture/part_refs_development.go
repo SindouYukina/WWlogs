@@ -8,12 +8,12 @@ import (
 )
 
 func (p *processor) writePartReference(frame gameFrame, rpcID uint64, request pendingDamageRequest) {
-	if p.partRefOut == nil {
+	if p.dev.partRefOut == nil {
 		return
 	}
 	ordinal := uint64(0)
-	if p.frameOrdinal > 0 {
-		ordinal = p.frameOrdinal - 1
+	if p.dev.frameOrdinal > 0 {
+		ordinal = p.dev.frameOrdinal - 1
 	}
 	reference := runtimePartReference{
 		status:   partReferenceUnknown,
@@ -58,12 +58,12 @@ func (p *processor) writePartReference(frame gameFrame, rpcID uint64, request pe
 	}
 	line, err := json.Marshal(row)
 	if err != nil {
-		p.partRefErrors++
+		p.dev.partRefErrors++
 		fmt.Fprintf(p.diagnostic, "part_reference_encode_error=%v\n", err)
 		return
 	}
-	if _, err := p.partRefOut.Write(append(line, '\n')); err != nil {
-		p.partRefErrors++
+	if _, err := p.dev.partRefOut.Write(append(line, '\n')); err != nil {
+		p.dev.partRefErrors++
 		fmt.Fprintf(p.diagnostic, "part_reference_write_error=%v\n", err)
 	}
 }

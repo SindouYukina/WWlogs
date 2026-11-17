@@ -14,7 +14,7 @@ func TestEffectFeedLeavesLifecycleJSONLUnchanged(t *testing.T) {
 	run := func(disable bool) []byte {
 		p := newEffectTestProcessor()
 		var lifecycle bytes.Buffer
-		p.buffLifecycle = &lifecycle
+		p.dev.buffLifecycle = &lifecycle
 		if disable {
 			p.effects = nil
 		}

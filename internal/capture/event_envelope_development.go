@@ -12,15 +12,15 @@ import (
 // current frame. The order counter resets whenever the frame ordinal changes.
 func (p *processor) nextEventEnvelope() eventEnvelope {
 	var frame uint64
-	if p.frameOrdinal > 0 {
-		frame = p.frameOrdinal - 1
+	if p.dev.frameOrdinal > 0 {
+		frame = p.dev.frameOrdinal - 1
 	}
-	if p.eventOrderFrame != frame {
-		p.eventOrderFrame = frame
-		p.eventOrder = 0
+	if p.dev.eventOrderFrame != frame {
+		p.dev.eventOrderFrame = frame
+		p.dev.eventOrder = 0
 	}
-	order := p.eventOrder
-	p.eventOrder++
+	order := p.dev.eventOrder
+	p.dev.eventOrder++
 	return eventEnvelope{
 		EventID:          fmt.Sprintf("s%d-f%d-e%d", p.sessionNumber, frame, order),
 		EmitFrameOrdinal: frame,
@@ -33,16 +33,16 @@ func (p *processor) nextEventEnvelope() eventEnvelope {
 // shifts the ids of events consumers already key on.
 func (p *processor) nextAuxEventEnvelope(kind string) eventEnvelope {
 	var frame uint64
-	if p.frameOrdinal > 0 {
-		frame = p.frameOrdinal - 1
+	if p.dev.frameOrdinal > 0 {
+		frame = p.dev.frameOrdinal - 1
 	}
-	if p.auxEventOrders == nil {
-		p.auxEventOrders = make(map[string]*auxEventOrder)
+	if p.dev.auxEventOrders == nil {
+		p.dev.auxEventOrders = make(map[string]*auxEventOrder)
 	}
-	counter := p.auxEventOrders[kind]
+	counter := p.dev.auxEventOrders[kind]
 	if counter == nil {
 		counter = &auxEventOrder{}
-		p.auxEventOrders[kind] = counter
+		p.dev.auxEventOrders[kind] = counter
 	}
 	if counter.frame != frame {
 		counter.frame = frame

@@ -12,10 +12,12 @@ import (
 func TestObserveShieldReferencesUsesOnlyTheTypedConfigIDNamespace(t *testing.T) {
 	var out bytes.Buffer
 	p := &processor{
-		shieldRefOut:  &out,
 		masters:       &gameMaster{shieldDefinitions: map[uint64]struct{}{1409404003: {}, 1508990003: {}}, buffDefinitions: map[uint64]struct{}{1409404003: {}}},
-		frameOrdinal:  9,
 		sessionNumber: 2,
+		dev: processorDiagnostics{
+			shieldRefOut: &out,
+			frameOrdinal: 9,
+		},
 	}
 	shieldNotify := &decodedMessage{Type: "ShieldUpdateNotify", Fields: []decodedField{
 		messageField("Shields", &decodedMessage{Type: "ShieldUpdateInfo", Fields: []decodedField{scalarField("Handle", 31), scalarField("ConfigId", 1409404003), scalarField("ShieldValue", 720), scalarField("UpdateType", 1)}}),

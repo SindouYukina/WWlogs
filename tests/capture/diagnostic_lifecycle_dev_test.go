@@ -127,21 +127,21 @@ func TestRestoreKeepsAbandonedTargetsBehindTheClosedSink(t *testing.T) {
 	gate := newGateWriter(io.Discard)
 	var events bytes.Buffer
 	p := newProcessor(nil, gate, &bytes.Buffer{}, nil)
-	p.combatEventsJSONL = &events
+	p.dev.combatEventsJSONL = &events
 	pipeline := newDiagnosticPipeline(true)
 	restore := wrapProcessorDiagnostics(p, pipeline, nil)
-	p.stdout.Write([]byte("console\n"))
+	p.dev.stdout.Write([]byte("console\n"))
 	<-gate.entered
-	p.combatEventsJSONL.Write([]byte("{}\n"))
+	p.dev.combatEventsJSONL.Write([]byte("{}\n"))
 	pipeline.close(100 * time.Millisecond)
 	restore()
-	if p.combatEventsJSONL != &events {
+	if p.dev.combatEventsJSONL != &events {
 		t.Fatal("a drained sink's writer must be restored")
 	}
-	if p.stdout == io.Writer(gate) {
+	if p.dev.stdout == io.Writer(gate) {
 		t.Fatal("a writer still owned by an abandoned goroutine must not be handed back")
 	}
-	p.stdout.Write([]byte("late\n")) // dropped by the closed sink, never written concurrently
+	p.dev.stdout.Write([]byte("late\n")) // dropped by the closed sink, never written concurrently
 	close(gate.release)
 }
 
@@ -348,7 +348,7 @@ func TestDiagnosticDropsDoNotTouchStatisticsOrIntegrity(t *testing.T) {
 		})
 		p.playerRelevance.observeRoleEntity(1001)
 		p.playerRelevance.reconcileLocalPlayers(p.entities)
-		p.combatEventsJSONL = diagnostic
+		p.dev.combatEventsJSONL = diagnostic
 		p.damageStatistics.observeBattleState(true, encounterAt(1), 0)
 		for i := 0; i < 200; i++ {
 			event := testDamageEvent(p, 1001, 2002)

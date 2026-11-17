@@ -209,97 +209,38 @@ type processor struct {
 	protocol protocolSession
 	// protocolSessionStartedAt is the capture time of the latest handshake; retiredKCP holds the conversations of the
 	// connections it superseded (retireSupersededStreams).
-	protocolSessionStartedAt  time.Time
-	retiredKCP                retiredConversations
-	pending                   map[uint64]pendingDamageRequest
-	pendingOrder              []pendingRef
-	pendingHead               int
-	pendingSequence           uint64
-	consumed                  map[uint64]consumedResponse
-	consumedOrder             []consumedRef
-	consumedSequence          uint64
-	requestCounter            combatRequestCounter
-	entities                  *entityResolver
-	sourceRoles               *sourceRoleResolver
-	playerRelevance           *playerRelevanceResolver
-	masters                   *gameMaster
-	research                  bool
-	encounterSummaries        map[encounterSummaryKey]*encounterSummary
-	pendingSummaryCredits     map[uint64][]pendingSummaryCredit
-	pendingSummaryCreditCount int
-	currentFrameTime          time.Time
-	viewClockLead             time.Duration // how far past currentFrameTime the Effects view reads countdowns; only a live session sets it
-	viewClockStalled          bool          // a live session has seen no game frame for LiveFrameSilenceLimit
-	clientVersion             *clientVersionReport
-	stdout                    io.Writer
-	diagnostic                io.Writer
-	showEffectEvents          bool
-	showAllEffectEvents       bool
-	audit                     io.Writer
-	encounterSummary          diagWriter
-	combatEventsJSONL         diagWriter
-	buffSnapshots             diagWriter
-	buffLifecycle             diagWriter
-	combatNotifyAudit         diagWriter
-	frameArchive              diagWriter
-	frameOrdinal              uint64
-	frameArchiveErrors        int
-	protocolSchema            *protocolSchema
-	schemaDecodeOut           diagWriter
-	schemaDecodeErrors        int
-	schemaDecodeSkipped       int
-	partRefOut                diagWriter
-	partRefErrors             int
-	roleConfigOut             diagWriter
-	roleConfigErrors          int
-	eventOrderFrame           uint64
-	auxEventOrders            map[string]*auxEventOrder
-	eventOrder                int
-	hpStateOut                diagWriter
-	damagePushOut             diagWriter
-	clientPushOut             diagWriter
-	bulletRefOut              diagWriter
-	bulletRefErrors           int
-	shieldRefOut              diagWriter
-	shieldRefErrors           int
-	skillRefOut               diagWriter
-	skillRefErrors            int
-	bulletHandles             map[bulletHandleKey]bulletHandleEntry
-	buffHandles               map[buffHandleKey]buffHandleEntry
-	buffHandleOrder           []buffHandleKey
-	serverBuffRequests        map[serverBuffRequestKey]serverBuffRequest
-	serverBuffRequestOrder    []serverBuffRequestKey
-	bulletHandleOrder         []bulletHandleKey
-	combatActionRequests      map[combatActionRequestKey]combatActionRequest
-	combatActionOrder         []combatActionRequestKey
-	flowTime                  int64
-	hasFlowTime               bool
-	flowTimeFrame             uint64
-	timerObservations         []timerObservation
-	summonOwnerOut            diagWriter
-	summonOwnerErrors         int
-	clientPushErrors          int
-	activeRoleID              int64
-	hasActiveRole             bool
-	damagePushErrors          int
-	hpStateErrors             int
-	combatStateOut            diagWriter
-	combatStateErrors         int
-	buffIntervals             []*buffInterval
-	buffIntervalOpen          map[overlapKey]*buffInterval
-	buffDuplicateApplies      int
-	buffUnmatchedRemoves      int
-	buffIntervalOverflow      int
-	buffOverlapSkipped        int
-	damageOverlap             []damageOverlapRecord
-	damageOverlapOverflow     int
-	activeRequests            map[uint16]pendingActiveRequest
-	stats                     processorStats
-	damageStatistics          *DamageStatistics
-	effects                   *EffectTracker
-	census                    *commandCensus
-	sessionNumber             int
-	encounterOut              diagWriter
+	protocolSessionStartedAt time.Time
+	retiredKCP               retiredConversations
+	pending                  map[uint64]pendingDamageRequest
+	pendingOrder             []pendingRef
+	pendingHead              int
+	pendingSequence          uint64
+	consumed                 map[uint64]consumedResponse
+	consumedOrder            []consumedRef
+	consumedSequence         uint64
+	requestCounter           combatRequestCounter
+	entities                 *entityResolver
+	sourceRoles              *sourceRoleResolver
+	playerRelevance          *playerRelevanceResolver
+	masters                  *gameMaster
+	currentFrameTime         time.Time
+	viewClockLead            time.Duration // how far past currentFrameTime the Effects view reads countdowns; only a live session sets it
+	viewClockStalled         bool          // a live session has seen no game frame for LiveFrameSilenceLimit
+	clientVersion            *clientVersionReport
+	// diagnostic is the operational diagnostic stream (parse errors, session key readiness) in every build.
+	diagnostic             io.Writer
+	buffHandles            map[buffHandleKey]buffHandleEntry
+	buffHandleOrder        []buffHandleKey
+	serverBuffRequests     map[serverBuffRequestKey]serverBuffRequest
+	serverBuffRequestOrder []serverBuffRequestKey
+	activeRequests         map[uint16]pendingActiveRequest
+	stats                  processorStats
+	damageStatistics       *DamageStatistics
+	effects                *EffectTracker
+	// census is the Development command census (-command-census-out), nil in every other run; the frame parser
+	// reports what it reads to it.
+	census        *commandCensus
+	sessionNumber int
 	// scenePlayerIDs lists the players of the current scene; it anchors battle-state signals before the
 	// explicit local-player identity does.
 	scenePlayerIDs []uint64
@@ -313,26 +254,26 @@ type processor struct {
 	// interval never mixes protocol sessions. Application hosts set it; the CLI keeps one interval per capture.
 	intervalPerProtocolSession bool
 
-	// diagnosticFailures counts failed diagnostic writes by sink (diagnostic_isolation.go); they never affect the core.
-	diagnosticFailures map[string]int
+	// dev is the Development state: the console, research and raw diagnostic outputs and the records they keep
+	// (processor_diagnostics_development.go). The core never reads it; a Public build has none of it.
+	dev processorDiagnostics
 }
 
 func newProcessor(rsaKey *staticRSA, stdout, diagnostic, audit io.Writer) *processor {
 	statistics := NewDamageStatistics()
 	return &processor{
-		rsa:                  rsaKey,
-		pending:              make(map[uint64]pendingDamageRequest),
-		consumed:             make(map[uint64]consumedResponse),
-		activeRequests:       make(map[uint16]pendingActiveRequest),
-		combatActionRequests: make(map[combatActionRequestKey]combatActionRequest),
-		entities:             newEntityResolver(),
-		sourceRoles:          newSourceRoleResolver(),
-		playerRelevance:      newPlayerRelevanceResolver(),
-		damageStatistics:     statistics,
-		effects:              newJournaledEffectTracker(statistics),
-		stdout:               stdout,
-		diagnostic:           diagnostic,
-		audit:                audit,
+		rsa:              rsaKey,
+		pending:          make(map[uint64]pendingDamageRequest),
+		consumed:         make(map[uint64]consumedResponse),
+		activeRequests:   make(map[uint16]pendingActiveRequest),
+		entities:         newEntityResolver(),
+		sourceRoles:      newSourceRoleResolver(),
+		playerRelevance:  newPlayerRelevanceResolver(),
+		damageStatistics: statistics,
+		effects:          newJournaledEffectTracker(statistics),
+		diagnostic:       diagnostic,
+		// The console (stdout) and the event audit are Development outputs; a Public build ignores both writers.
+		dev: newProcessorDiagnostics(stdout, audit),
 	}
 }
 
@@ -867,9 +808,7 @@ func (p *processor) handleProtoKeyResponse(body []byte) error {
 	p.sourceRoles.reset()
 	p.resetPendingSummaryCredits()
 	p.activeRequests = make(map[uint16]pendingActiveRequest)
-	p.flowTime = 0
-	p.hasFlowTime = false
-	p.flowTimeFrame = 0
+	p.dev.beginProtocolSession()
 	p.sessionGeneration++
 	fmt.Fprintln(p.diagnostic, "session_key_ready bytes=32 value=redacted")
 	return nil

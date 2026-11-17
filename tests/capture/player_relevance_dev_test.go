@@ -13,7 +13,7 @@ func newPlayerRelevanceTestProcessor() (*processor, *bytes.Buffer, *bytes.Buffer
 	var stdout, jsonl bytes.Buffer
 	p := newProcessor(nil, &stdout, &bytes.Buffer{}, nil)
 	p.entities = newEntityResolver()
-	p.combatEventsJSONL = &jsonl
+	p.dev.combatEventsJSONL = &jsonl
 	return p, &stdout, &jsonl
 }
 
@@ -26,7 +26,7 @@ func TestPlayerRelevanceDoesNotFilterPlayerBuffSnapshots(t *testing.T) {
 	p, _, jsonl := newPlayerRelevanceTestProcessor()
 	observeTestLocalRole(p, 100)
 	addTestRuntimeEntity(p, 100, nil)
-	p.encounterSummary = &bytes.Buffer{}
+	p.dev.encounterSummary = &bytes.Buffer{}
 	entityID, buffID := uint64(100), uint64(3000001001)
 	row := buffSnapshotAuditRow{
 		SchemaVersion: buffSnapshotSchemaVersion,
@@ -41,10 +41,10 @@ func TestPlayerRelevanceDoesNotFilterPlayerBuffSnapshots(t *testing.T) {
 	if !strings.Contains(jsonl.String(), `"eventType":"BUFF_SNAPSHOT"`) {
 		t.Fatalf("player Buff snapshot was filtered: %q", jsonl.String())
 	}
-	if len(p.encounterSummaries) != 1 {
-		t.Fatalf("player Buff snapshot missing from encounter summary: %+v", p.encounterSummaries)
+	if len(p.dev.encounterSummaries) != 1 {
+		t.Fatalf("player Buff snapshot missing from encounter summary: %+v", p.dev.encounterSummaries)
 	}
-	for _, summary := range p.encounterSummaries {
+	for _, summary := range p.dev.encounterSummaries {
 		if summary.buffObservations[buffObservationKey{buffID: buffID, hasBuffID: true, targetID: entityID, hasTargetID: true}] != 1 {
 			t.Fatalf("player Buff observation missing: %+v", summary.buffObservations)
 		}

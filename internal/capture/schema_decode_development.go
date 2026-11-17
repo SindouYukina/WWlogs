@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"math"
 	"strings"
@@ -148,47 +147,40 @@ func decodeSchemaValue(schema *protocolSchema, kind schemaType, raw protoField, 
 // schema is loaded and the command name has a schema message. It reads the same
 // plaintext as the typed decoder and does not change typed results.
 func (p *processor) archiveSchemaDecode(frame gameFrame, plain []byte) {
-	if p.protocolSchema == nil {
+	if p.dev.protocolSchema == nil {
 		return
 	}
 	// Commands 103 and 116 carry device and account identifiers beside the client
 	// version fields. The census keeps only the version fields; this output does not
 	// decode them at all.
 	if frame.commandID == cmdLoginRequest || frame.commandID == cmdCheckClientPush {
-		p.schemaDecodeSkipped++
+		p.dev.schemaDecodeSkipped++
 		return
 	}
 	name, known := p.schemaMessageFor(frame.commandID)
 	if !known {
-		p.schemaDecodeSkipped++
+		p.dev.schemaDecodeSkipped++
 		return
 	}
-	decoded, err := decodeSchemaMessage(p.protocolSchema, name, plain, 0)
+	decoded, err := decodeSchemaMessage(p.dev.protocolSchema, name, plain, 0)
 	if err != nil {
-		p.schemaDecodeErrors++
+		p.dev.schemaDecodeErrors++
 		return
 	}
 	p.observeTimerSchema(frame, name, decoded)
 	p.archiveRoleConfigRecords(frame, decoded)
-	if p.schemaDecodeOut == nil {
+	if p.dev.schemaDecodeOut == nil {
 		return
 	}
 	record := schemaDecodeRecord{
 		SchemaVersion: schemaDecodeSchemaVersion,
-		FrameOrdinal:  p.frameOrdinal - 1,
+		FrameOrdinal:  p.dev.frameOrdinal - 1,
 		SessionNumber: p.sessionNumber,
 		Direction:     frame.direction,
 		CommandID:     frame.commandID,
 		Decoded:       decoded,
 	}
-	line, err := json.Marshal(record)
-	if err != nil {
-		p.schemaDecodeErrors++
-		return
-	}
-	if _, err := p.schemaDecodeOut.Write(append(line, '\n')); err != nil {
-		p.schemaDecodeErrors++
-	}
+	writeResearchRecord(p.dev.schemaDecodeOut, record, &p.dev.schemaDecodeErrors)
 }
 
 // decodePackedScalars decodes a proto3 packed repeated scalar, where all elements
@@ -292,16 +284,16 @@ func schemaMessageName(commandName string) string {
 // schema's message-ID enums, which map every observed ID to its message name.
 func (p *processor) schemaMessageFor(commandID uint16) (string, bool) {
 	if name := schemaMessageName(commandName(commandID)); name != "" {
-		if _, known := p.protocolSchema.Messages[name]; known {
+		if _, known := p.dev.protocolSchema.Messages[name]; known {
 			return name, true
 		}
 	}
 	for _, enum := range []string{"EMessageId", "EPushMessageId", "ENotifyMessageId"} {
-		name, found := p.protocolSchema.enumName(enum, int64(commandID))
+		name, found := p.dev.protocolSchema.enumName(enum, int64(commandID))
 		if !found {
 			continue
 		}
-		if _, known := p.protocolSchema.Messages[name]; known {
+		if _, known := p.dev.protocolSchema.Messages[name]; known {
 			return name, true
 		}
 	}
@@ -314,7 +306,7 @@ func (p *processor) schemaMessageFor(commandID uint16) (string, bool) {
 // schema describes. It decrypts and decompresses the frame the same way the
 // census path does and writes only frames that parse as top-level Protobuf.
 func (p *processor) archiveUndecodedSchema(frame gameFrame) {
-	if p.protocolSchema == nil || (p.schemaDecodeOut == nil && p.roleConfigOut == nil) || len(p.session) != 32 || len(frame.body) == 0 {
+	if p.dev.protocolSchema == nil || (p.dev.schemaDecodeOut == nil && p.dev.roleConfigOut == nil) || len(p.session) != 32 || len(frame.body) == 0 {
 		return
 	}
 	plain, err := decryptGameBody(frame.sequence, frame.body, p.session)

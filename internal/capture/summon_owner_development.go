@@ -2,15 +2,13 @@
 
 package capture
 
-import (
-	"encoding/json"
-)
+import ()
 
 // archiveSummonOwners writes ownership facts from one decoded join-scene or
 // entity-add message. Entities are walked through the message tree, so nested
 // entity lists in any join or add layout are covered.
 func (p *processor) archiveSummonOwners(frame gameFrame, command string, decoded *decodedMessage) {
-	if p.summonOwnerOut == nil || decoded == nil {
+	if p.dev.summonOwnerOut == nil || decoded == nil {
 		return
 	}
 	walkEntities(decoded, func(entity *decodedMessage) {
@@ -69,7 +67,7 @@ func (p *processor) writeSummonerRecord(frame gameFrame, command string, entityI
 	}
 	if value, ok := scalarValue(component, "Type"); ok {
 		record.SummonTypeRaw = &value
-		if name, known := p.protocolSchema.enumName("ESummonType", value); known {
+		if name, known := p.dev.protocolSchema.enumName("ESummonType", value); known {
 			record.SummonType = name
 		}
 	}
@@ -112,7 +110,7 @@ func (p *processor) writeRelatedRecords(frame gameFrame, command string, entityI
 func (p *processor) summonOwnerBase(frame gameFrame, command string, kind string, entityID uint64) summonOwnerRecord {
 	return summonOwnerRecord{
 		SchemaVersion: summonOwnerSchemaVersion,
-		FrameOrdinal:  p.frameOrdinal - 1,
+		FrameOrdinal:  p.dev.frameOrdinal - 1,
 		SessionNumber: p.sessionNumber,
 		Timestamp:     formatTimestamp(frame.timestamp),
 		Command:       command,
@@ -122,21 +120,14 @@ func (p *processor) summonOwnerBase(frame gameFrame, command string, kind string
 }
 
 func (p *processor) writeSummonOwnerRecord(record summonOwnerRecord) {
-	line, err := json.Marshal(record)
-	if err != nil {
-		p.summonOwnerErrors++
-		return
-	}
-	if _, err := p.summonOwnerOut.Write(append(line, '\n')); err != nil {
-		p.summonOwnerErrors++
-	}
+	writeResearchRecord(p.dev.summonOwnerOut, record, &p.dev.summonOwnerErrors)
 }
 
 // archiveSummonOwnerFrame decodes join-scene and entity-add frames for the owner
 // output when that output is enabled. It shares the plaintext with the other
 // observers.
 func (p *processor) archiveSummonOwnerFrame(frame gameFrame, plain []byte) {
-	if p.summonOwnerOut == nil || p.protocolSchema == nil {
+	if p.dev.summonOwnerOut == nil || p.dev.protocolSchema == nil {
 		return
 	}
 	var message string
@@ -148,9 +139,9 @@ func (p *processor) archiveSummonOwnerFrame(frame gameFrame, plain []byte) {
 	default:
 		return
 	}
-	decoded, err := decodeSchemaMessage(p.protocolSchema, message, plain, 0)
+	decoded, err := decodeSchemaMessage(p.dev.protocolSchema, message, plain, 0)
 	if err != nil {
-		p.summonOwnerErrors++
+		p.dev.summonOwnerErrors++
 		return
 	}
 	p.archiveSummonOwners(frame, message, decoded)

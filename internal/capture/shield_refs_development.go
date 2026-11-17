@@ -2,10 +2,7 @@
 
 package capture
 
-import (
-	"encoding/json"
-	"fmt"
-)
+import "fmt"
 
 // observeShieldReferences resolves only ConfigId values in the named ShieldUpdateNotify context.
 func (p *processor) observeShieldReferences(frame gameFrame, data *decodedMessage, direction string) {
@@ -31,7 +28,7 @@ func (p *processor) walkShieldReferences(frame gameFrame, message *decodedMessag
 func (p *processor) writeShieldReference(frame gameFrame, message *decodedMessage, path string, index int, direction string) {
 	record := shieldConfigRefRecord{
 		SchemaVersion:          shieldRefSchemaVersion,
-		FrameOrdinal:           p.frameOrdinal - 1,
+		FrameOrdinal:           p.dev.frameOrdinal - 1,
 		SessionNumber:          p.sessionNumber,
 		Timestamp:              formatTimestamp(frame.timestamp),
 		FrameToken:             frame.token,
@@ -62,12 +59,5 @@ func (p *processor) writeShieldReference(frame gameFrame, message *decodedMessag
 	if value, ok := scalarValue(message, "UpdateType"); ok {
 		record.UpdateType = &value
 	}
-	line, err := json.Marshal(record)
-	if err != nil {
-		p.shieldRefErrors++
-		return
-	}
-	if _, err := p.shieldRefOut.Write(append(line, '\n')); err != nil {
-		p.shieldRefErrors++
-	}
+	writeResearchRecord(p.dev.shieldRefOut, record, &p.dev.shieldRefErrors)
 }

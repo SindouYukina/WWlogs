@@ -11,6 +11,18 @@ import (
 	"sort"
 )
 
+// auditCombatNotify writes the de-identified audit row of one CombatNotifyData field (-combat-notify-audit-out) while the
+// core reads the frame. A failed audit row must not skip the rest of the frame (its damage and effect notifies), so it is
+// counted (diagnostic_isolation_development.go) and the frame continues.
+func (p *processor) auditCombatNotify(frame gameFrame, notification protoField, commonEntityID, commonOriginator, commonMessageID *uint64) {
+	if p.dev.combatNotifyAudit == nil || notification.number == fieldCombatNotifyDataCombatCommon {
+		return
+	}
+	if err := writeCombatNotifyAudit(p.dev.combatNotifyAudit, frame, notification, commonEntityID, commonOriginator, commonMessageID, p.sessionNumber); err != nil {
+		p.noteDiagnosticFailure("combat-notify-audit", err)
+	}
+}
+
 func writeCombatNotifyAudit(w io.Writer, frame gameFrame, notification protoField, commonEntityID, commonOriginator, commonMessageID *uint64, sessionNumber int) error {
 	fields, err := parseProtoFields(notification.data)
 	if err != nil {

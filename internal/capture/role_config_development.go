@@ -2,9 +2,7 @@
 
 package capture
 
-import (
-	"encoding/json"
-)
+import ()
 
 func (m *gameMaster) resolveRoleConfigRole(rawRoleID uint64) (roleConfigRoleResolution, bool) {
 	if m == nil {
@@ -36,14 +34,14 @@ func (m *gameMaster) resolveRoleConfigRole(rawRoleID uint64) (roleConfigRoleReso
 
 // archiveRoleConfigRecords writes one result per RoleConfigInfo in a decoded notify.
 func (p *processor) archiveRoleConfigRecords(frame gameFrame, decoded *decodedMessage) {
-	if p == nil || p.roleConfigOut == nil || decoded == nil || decoded.Type != "RoleConfigInfoNotify" {
+	if p == nil || p.dev.roleConfigOut == nil || decoded == nil || decoded.Type != "RoleConfigInfoNotify" {
 		return
 	}
 	for index, config := range childMessages(decoded, "RoleConfigs") {
 		roleID, hasRoleID := scalarValue(config, "RoleId")
 		record := roleConfigRecord{
 			SchemaVersion:           roleConfigRecordSchemaVersion,
-			FrameOrdinal:            p.frameOrdinal - 1,
+			FrameOrdinal:            p.dev.frameOrdinal - 1,
 			SessionNumber:           p.sessionNumber,
 			Direction:               frame.direction,
 			CommandID:               frame.commandID,
@@ -75,13 +73,6 @@ func (p *processor) archiveRoleConfigRecords(frame gameFrame, decoded *decodedMe
 				record.Basis = "RoleConfigInfo.RoleId is not a positive role key"
 			}
 		}
-		line, err := json.Marshal(record)
-		if err != nil {
-			p.roleConfigErrors++
-			continue
-		}
-		if _, err := p.roleConfigOut.Write(append(line, '\n')); err != nil {
-			p.roleConfigErrors++
-		}
+		writeResearchRecord(p.dev.roleConfigOut, record, &p.dev.roleConfigErrors)
 	}
 }

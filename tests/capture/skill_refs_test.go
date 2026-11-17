@@ -67,7 +67,13 @@ func TestSkillSourceCandidatesAndWalk(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	p := &processor{skillRefOut: &out, entities: newEntityResolver(), frameOrdinal: 1}
+	p := &processor{
+		entities: newEntityResolver(),
+		dev: processorDiagnostics{
+			skillRefOut:  &out,
+			frameOrdinal: 1,
+		},
+	}
 	info := &decodedMessage{Type: "UseSkillInformation", Fields: []decodedField{scalarField("SkillId", 1409003), messageField("CombatCommon", common)}}
 	data := &decodedMessage{Type: "CombatSendData", Fields: []decodedField{messageField("Request", &decodedMessage{Type: "CombatRequestData", Fields: []decodedField{
 		messageField("UseSkillRequest", &decodedMessage{Type: "UseSkillRequest", Fields: []decodedField{messageField("UseSkillInfo", info)}}),

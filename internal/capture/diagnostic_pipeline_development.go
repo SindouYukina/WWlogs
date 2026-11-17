@@ -475,13 +475,13 @@ func wrapProcessorDiagnostics(p *processor, d *diagnosticPipeline, flush map[io.
 		ptr  *io.Writer
 	}
 	fields := []field{
-		{"console", &p.stdout}, {"diagnostic", &p.diagnostic}, {"audit", &p.audit},
-		{"combat-events", &p.combatEventsJSONL}, {"buff-snapshots", &p.buffSnapshots}, {"buff-events", &p.buffLifecycle},
-		{"combat-notify-audit", &p.combatNotifyAudit}, {"frame-archive", &p.frameArchive}, {"schema-decode", &p.schemaDecodeOut},
-		{"part-refs", &p.partRefOut}, {"role-config", &p.roleConfigOut}, {"hp-state", &p.hpStateOut},
-		{"damage-push", &p.damagePushOut}, {"client-push", &p.clientPushOut}, {"bullet-refs", &p.bulletRefOut},
-		{"shield-refs", &p.shieldRefOut}, {"skill-refs", &p.skillRefOut}, {"summon-owner", &p.summonOwnerOut},
-		{"combat-state", &p.combatStateOut}, {"encounter-events", &p.encounterOut},
+		{"console", &p.dev.stdout}, {"diagnostic", &p.diagnostic}, {"audit", &p.dev.audit},
+		{"combat-events", &p.dev.combatEventsJSONL}, {"buff-snapshots", &p.dev.buffSnapshots}, {"buff-events", &p.dev.buffLifecycle},
+		{"combat-notify-audit", &p.dev.combatNotifyAudit}, {"frame-archive", &p.dev.frameArchive}, {"schema-decode", &p.dev.schemaDecodeOut},
+		{"part-refs", &p.dev.partRefOut}, {"role-config", &p.dev.roleConfigOut}, {"hp-state", &p.dev.hpStateOut},
+		{"damage-push", &p.dev.damagePushOut}, {"client-push", &p.dev.clientPushOut}, {"bullet-refs", &p.dev.bulletRefOut},
+		{"shield-refs", &p.dev.shieldRefOut}, {"skill-refs", &p.dev.skillRefOut}, {"summon-owner", &p.dev.summonOwnerOut},
+		{"combat-state", &p.dev.combatStateOut}, {"encounter-events", &p.dev.encounterOut},
 	}
 	originals := make([]io.Writer, len(fields))
 	for i, f := range fields {

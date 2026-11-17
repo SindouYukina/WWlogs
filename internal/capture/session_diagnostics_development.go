@@ -79,10 +79,10 @@ func (d *sessionDiagnostics) attach(p *processor) {
 	if d.pipeline != nil {
 		p.captureLayer.diagnosticDropCount = d.pipeline.droppedRecords
 		d.processor = p
-		p.stdout, p.diagnostic = d.outputs["console.log"], d.outputs["console.log"]
-		p.combatEventsJSONL = d.outputs["combat-events.jsonl"]
-		p.buffLifecycle, p.buffSnapshots = d.outputs["buff-events.jsonl"], d.outputs["buff-snapshots.jsonl"]
-		p.encounterOut = d.outputs["encounter-events.jsonl"]
+		p.dev.stdout, p.diagnostic = d.outputs["console.log"], d.outputs["console.log"]
+		p.dev.combatEventsJSONL = d.outputs["combat-events.jsonl"]
+		p.dev.buffLifecycle, p.dev.buffSnapshots = d.outputs["buff-events.jsonl"], d.outputs["buff-snapshots.jsonl"]
+		p.dev.encounterOut = d.outputs["encounter-events.jsonl"]
 		d.effectDisplay = &effectDisplayAuditWriter{target: d.outputs["effect-display.jsonl"]}
 	}
 }

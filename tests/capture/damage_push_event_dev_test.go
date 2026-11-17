@@ -11,7 +11,7 @@ import (
 func TestNotifiedResultEventLineUsesTheAuxiliaryNamespace(t *testing.T) {
 	var stdout, diagnostic, jsonl bytes.Buffer
 	p := newProcessor(nil, &stdout, &diagnostic, nil)
-	p.combatEventsJSONL = &jsonl
+	p.dev.combatEventsJSONL = &jsonl
 	p.masters = &gameMaster{damage: map[uint64]damageMasterRecord{1001: {ID: 1001, CalculateType: 0, SourceTable: "damage.id"}}}
 
 	event := p.buildDamageEvent(0, pendingDamageRequest{attackerEntityID: 10, hasAttackerEntityID: true, targetEntityID: 20, hasTargetEntityID: true, damageID: 1001, hasDamageID: true}, 176, 176, true, 176)
@@ -38,7 +38,7 @@ func TestNotifiedResultEventLineUsesTheAuxiliaryNamespace(t *testing.T) {
 func TestNotifiedSpreadResultLineNamesItsSettlement(t *testing.T) {
 	var jsonl bytes.Buffer
 	p := newCausalityTestProcessor()
-	p.combatEventsJSONL = &jsonl
+	p.dev.combatEventsJSONL = &jsonl
 	buildFusionToLimit(t, p, 1.0, 2, 200, 8, 100, 100)
 	deliverNotifyFrame(t, p, 1.5, 3, items(overflow(200, 8, 101), [][]byte{fusionTick(201, 4000)})...)
 	deliverNotifyFrame(t, p, 2.0, 4, triggerData(200, causalInstantBuff, 101), spectroTick(200, 2500))

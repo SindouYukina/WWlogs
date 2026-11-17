@@ -273,7 +273,7 @@ func segmentDropReplay(t *testing.T, masters *gameMaster, key *staticRSA, path s
 	var archive bytes.Buffer
 	p := newProcessor(key, io.Discard, io.Discard, nil)
 	p.masters = masters
-	p.frameArchive = &archive
+	p.dev.frameArchive = &archive
 	handle, err := pcap.OpenOffline(path)
 	if err != nil {
 		t.Fatalf("open %s: %v", path, err)

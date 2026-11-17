@@ -72,13 +72,13 @@ func TestBuffIntervalsUseOnlyCorrelatedApplyAndRemove(t *testing.T) {
 	p.observeBuffInterval(overlapRow("ApplyBuffS2cRequestNotify", resolutionCorrelated, 27472, 71, base))                // request, not applied state
 	p.observeBuffInterval(overlapRow("GAMEPLAY_EFFECT_APPLY", resolutionCorrelated, 27472, 72, base.Add(3*time.Second))) // open at end
 
-	if len(p.buffIntervals) != 2 {
-		t.Fatalf("intervals = %d, want 2 (handles 69 and 72)", len(p.buffIntervals))
+	if len(p.dev.buffIntervals) != 2 {
+		t.Fatalf("intervals = %d, want 2 (handles 69 and 72)", len(p.dev.buffIntervals))
 	}
-	if p.buffDuplicateApplies != 1 || p.buffUnmatchedRemoves != 1 || p.buffOverlapSkipped != 1 {
-		t.Fatalf("duplicates=%d unmatched=%d skipped=%d, want 1,1,1", p.buffDuplicateApplies, p.buffUnmatchedRemoves, p.buffOverlapSkipped)
+	if p.dev.buffDuplicateApplies != 1 || p.dev.buffUnmatchedRemoves != 1 || p.dev.buffOverlapSkipped != 1 {
+		t.Fatalf("duplicates=%d unmatched=%d skipped=%d, want 1,1,1", p.dev.buffDuplicateApplies, p.dev.buffUnmatchedRemoves, p.dev.buffOverlapSkipped)
 	}
-	if !p.buffIntervals[0].closed || p.buffIntervals[1].closed {
-		t.Fatalf("closed flags = %v,%v, want true,false", p.buffIntervals[0].closed, p.buffIntervals[1].closed)
+	if !p.dev.buffIntervals[0].closed || p.dev.buffIntervals[1].closed {
+		t.Fatalf("closed flags = %v,%v, want true,false", p.dev.buffIntervals[0].closed, p.dev.buffIntervals[1].closed)
 	}
 }

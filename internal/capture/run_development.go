@@ -381,15 +381,15 @@ func Main() {
 		defer combatNotifyAuditFile.Close()
 	}
 	processor := newProcessor(rsaKey, stdout, diagnosticTarget, auditWriter)
-	processor.showEffectEvents = *showEffectEvents && *pcapIn == ""
-	processor.showAllEffectEvents = *showAllEffectEvents
+	processor.dev.showEffectEvents = *showEffectEvents && *pcapIn == ""
+	processor.dev.showAllEffectEvents = *showAllEffectEvents
 	processor.masters = masters
-	processor.research = *research
+	processor.dev.research = *research
 	if buffSnapshotFile != nil {
-		processor.buffSnapshots = buffSnapshotFile
+		processor.dev.buffSnapshots = buffSnapshotFile
 	}
 	if buffEventFile != nil {
-		processor.buffLifecycle = buffEventFile
+		processor.dev.buffLifecycle = buffEventFile
 	}
 	if *encounterOut != "" {
 		if dir := filepath.Dir(*encounterOut); dir != "." {
@@ -408,23 +408,23 @@ func Main() {
 				encounterWriter.Flush()
 			}
 		}()
-		processor.encounterOut = encounterWriter
+		processor.dev.encounterOut = encounterWriter
 		processor.damageStatistics.recordEncounterTransitions(true)
 	}
 	if encounterSummaryFile != nil {
-		processor.encounterSummary = encounterSummaryFile
+		processor.dev.encounterSummary = encounterSummaryFile
 	}
-	processor.combatEventsJSONL = optionalFileWriter(combatEventsJSONLFile)
-	processor.combatNotifyAudit = optionalFileWriter(combatNotifyAuditFile)
+	processor.dev.combatEventsJSONL = optionalFileWriter(combatEventsJSONLFile)
+	processor.dev.combatNotifyAudit = optionalFileWriter(combatNotifyAuditFile)
 	if *protocolSchemaPath != "" {
 		schema, err := loadProtocolSchema(*protocolSchemaPath)
 		if err != nil {
 			fatal("load protocol schema", err)
 		}
-		processor.protocolSchema = schema
+		processor.dev.protocolSchema = schema
 	}
 	if *summonOwnerOutPath != "" {
-		if processor.protocolSchema == nil {
+		if processor.dev.protocolSchema == nil {
 			fatal("summon owner output", fmt.Errorf("-summon-owner-out requires -protocol-schema"))
 		}
 		if dir := filepath.Dir(*summonOwnerOutPath); dir != "." {
@@ -438,7 +438,7 @@ func Main() {
 		}
 		defer ownerFile.Close()
 		ownerWriter := bufio.NewWriter(ownerFile)
-		processor.summonOwnerOut = ownerWriter
+		processor.dev.summonOwnerOut = ownerWriter
 		defer func() {
 			if !diagnostics.released(ownerWriter) {
 				return
@@ -449,7 +449,7 @@ func Main() {
 		}()
 	}
 	if *skillRefOutPath != "" {
-		if processor.protocolSchema == nil {
+		if processor.dev.protocolSchema == nil {
 			fatal("skill reference output", fmt.Errorf("-skill-ref-out requires -protocol-schema"))
 		}
 		if dir := filepath.Dir(*skillRefOutPath); dir != "." {
@@ -463,7 +463,7 @@ func Main() {
 		}
 		defer skillFile.Close()
 		skillWriter := bufio.NewWriter(skillFile)
-		processor.skillRefOut = skillWriter
+		processor.dev.skillRefOut = skillWriter
 		defer func() {
 			if !diagnostics.released(skillWriter) {
 				return
@@ -474,7 +474,7 @@ func Main() {
 		}()
 	}
 	if *bulletRefOutPath != "" {
-		if processor.protocolSchema == nil {
+		if processor.dev.protocolSchema == nil {
 			fatal("bullet reference output", fmt.Errorf("-bullet-ref-out requires -protocol-schema"))
 		}
 		if dir := filepath.Dir(*bulletRefOutPath); dir != "." {
@@ -488,7 +488,7 @@ func Main() {
 		}
 		defer bulletFile.Close()
 		bulletWriter := bufio.NewWriter(bulletFile)
-		processor.bulletRefOut = bulletWriter
+		processor.dev.bulletRefOut = bulletWriter
 		defer func() {
 			if !diagnostics.released(bulletWriter) {
 				return
@@ -499,7 +499,7 @@ func Main() {
 		}()
 	}
 	if *shieldRefOutPath != "" {
-		if processor.protocolSchema == nil || masters == nil {
+		if processor.dev.protocolSchema == nil || masters == nil {
 			fatal("shield reference output", fmt.Errorf("-shield-ref-out requires -protocol-schema and -master-db"))
 		}
 		if dir := filepath.Dir(*shieldRefOutPath); dir != "." {
@@ -513,7 +513,7 @@ func Main() {
 		}
 		defer shieldFile.Close()
 		shieldWriter := bufio.NewWriter(shieldFile)
-		processor.shieldRefOut = shieldWriter
+		processor.dev.shieldRefOut = shieldWriter
 		defer func() {
 			if !diagnostics.released(shieldWriter) {
 				return
@@ -524,7 +524,7 @@ func Main() {
 		}()
 	}
 	if *partRefOutPath != "" {
-		if processor.protocolSchema == nil {
+		if processor.dev.protocolSchema == nil {
 			fatal("part reference output", fmt.Errorf("-part-ref-out requires -protocol-schema"))
 		}
 		if dir := filepath.Dir(*partRefOutPath); dir != "." {
@@ -538,7 +538,7 @@ func Main() {
 		}
 		defer partFile.Close()
 		partWriter := bufio.NewWriter(partFile)
-		processor.partRefOut = partWriter
+		processor.dev.partRefOut = partWriter
 		defer func() {
 			if !diagnostics.released(partWriter) {
 				return
@@ -549,7 +549,7 @@ func Main() {
 		}()
 	}
 	if *clientPushOutPath != "" {
-		if processor.protocolSchema == nil {
+		if processor.dev.protocolSchema == nil {
 			fatal("client push output", fmt.Errorf("-client-push-out requires -protocol-schema"))
 		}
 		if dir := filepath.Dir(*clientPushOutPath); dir != "." {
@@ -563,7 +563,7 @@ func Main() {
 		}
 		defer clientFile.Close()
 		clientWriter := bufio.NewWriter(clientFile)
-		processor.clientPushOut = clientWriter
+		processor.dev.clientPushOut = clientWriter
 		defer func() {
 			if !diagnostics.released(clientWriter) {
 				return
@@ -574,7 +574,7 @@ func Main() {
 		}()
 	}
 	if *damagePushOutPath != "" {
-		if processor.protocolSchema == nil {
+		if processor.dev.protocolSchema == nil {
 			fatal("damage push output", fmt.Errorf("-damage-push-out requires -protocol-schema"))
 		}
 		if dir := filepath.Dir(*damagePushOutPath); dir != "." {
@@ -588,7 +588,7 @@ func Main() {
 		}
 		defer pushFile.Close()
 		pushWriter := bufio.NewWriter(pushFile)
-		processor.damagePushOut = pushWriter
+		processor.dev.damagePushOut = pushWriter
 		defer func() {
 			if !diagnostics.released(pushWriter) {
 				return
@@ -599,7 +599,7 @@ func Main() {
 		}()
 	}
 	if *combatStateOutPath != "" {
-		if processor.protocolSchema == nil {
+		if processor.dev.protocolSchema == nil {
 			fatal("combat state output", fmt.Errorf("-combat-state-out requires -protocol-schema"))
 		}
 		if dir := filepath.Dir(*combatStateOutPath); dir != "." {
@@ -613,7 +613,7 @@ func Main() {
 		}
 		defer stateFile.Close()
 		stateWriter := bufio.NewWriter(stateFile)
-		processor.combatStateOut = stateWriter
+		processor.dev.combatStateOut = stateWriter
 		defer func() {
 			if !diagnostics.released(stateWriter) {
 				return
@@ -624,7 +624,7 @@ func Main() {
 		}()
 	}
 	if *hpStateOutPath != "" {
-		if processor.protocolSchema == nil {
+		if processor.dev.protocolSchema == nil {
 			fatal("hp state output", fmt.Errorf("-hp-state-out requires -protocol-schema"))
 		}
 		if dir := filepath.Dir(*hpStateOutPath); dir != "." {
@@ -638,7 +638,7 @@ func Main() {
 		}
 		defer hpFile.Close()
 		hpWriter := bufio.NewWriter(hpFile)
-		processor.hpStateOut = hpWriter
+		processor.dev.hpStateOut = hpWriter
 		defer func() {
 			if !diagnostics.released(hpWriter) {
 				return
@@ -649,7 +649,7 @@ func Main() {
 		}()
 	}
 	if *schemaDecodeOut != "" {
-		if processor.protocolSchema == nil {
+		if processor.dev.protocolSchema == nil {
 			fatal("schema decode output", fmt.Errorf("-schema-decode-out requires -protocol-schema"))
 		}
 		if dir := filepath.Dir(*schemaDecodeOut); dir != "." {
@@ -663,7 +663,7 @@ func Main() {
 		}
 		defer schemaFile.Close()
 		schemaWriter := bufio.NewWriter(schemaFile)
-		processor.schemaDecodeOut = schemaWriter
+		processor.dev.schemaDecodeOut = schemaWriter
 		defer func() {
 			if !diagnostics.released(schemaWriter) {
 				return
@@ -674,7 +674,7 @@ func Main() {
 		}()
 	}
 	if *roleConfigOutPath != "" {
-		if processor.protocolSchema == nil || masters == nil {
+		if processor.dev.protocolSchema == nil || masters == nil {
 			fatal("role config output", fmt.Errorf("-role-config-out requires -protocol-schema and -master-db"))
 		}
 		if dir := filepath.Dir(*roleConfigOutPath); dir != "." {
@@ -688,7 +688,7 @@ func Main() {
 		}
 		defer roleConfigFile.Close()
 		roleConfigWriter := bufio.NewWriter(roleConfigFile)
-		processor.roleConfigOut = roleConfigWriter
+		processor.dev.roleConfigOut = roleConfigWriter
 		defer func() {
 			if !diagnostics.released(roleConfigWriter) {
 				return
@@ -701,7 +701,7 @@ func Main() {
 	var frameArchiveWriter *bufio.Writer
 	if frameArchiveFile != nil {
 		frameArchiveWriter = bufio.NewWriter(frameArchiveFile)
-		processor.frameArchive = frameArchiveWriter
+		processor.dev.frameArchive = frameArchiveWriter
 	}
 	if *commandCensusOut != "" {
 		processor.census = newCommandCensus()
@@ -968,7 +968,7 @@ finished:
 		if err := frameArchiveWriter.Flush(); err != nil {
 			fatal("flush frame archive", err)
 		}
-		fmt.Fprintf(os.Stderr, "frame_archive frames=%d write_errors=%d\n", processor.frameOrdinal, processor.frameArchiveErrors)
+		fmt.Fprintf(os.Stderr, "frame_archive frames=%d write_errors=%d\n", processor.dev.frameOrdinal, processor.dev.frameArchiveErrors)
 	}
 	if *buffOverlapOut != "" {
 		if dir := filepath.Dir(*buffOverlapOut); dir != "." {
@@ -988,7 +988,7 @@ finished:
 			fatal("flush buff overlap", err)
 		}
 		overlapFile.Close()
-		fmt.Fprintf(os.Stderr, "buff_overlap damage_results=%d intervals=%d duplicate_applies=%d unmatched_removes=%d skipped=%d interval_overflow=%d damage_overflow=%d\n", len(processor.damageOverlap), len(processor.buffIntervals), processor.buffDuplicateApplies, processor.buffUnmatchedRemoves, processor.buffOverlapSkipped, processor.buffIntervalOverflow, processor.damageOverlapOverflow)
+		fmt.Fprintf(os.Stderr, "buff_overlap damage_results=%d intervals=%d duplicate_applies=%d unmatched_removes=%d skipped=%d interval_overflow=%d damage_overflow=%d\n", len(processor.dev.damageOverlap), len(processor.dev.buffIntervals), processor.dev.buffDuplicateApplies, processor.dev.buffUnmatchedRemoves, processor.dev.buffOverlapSkipped, processor.dev.buffIntervalOverflow, processor.dev.damageOverlapOverflow)
 	}
 	if *effectStateOut != "" {
 		if dir := filepath.Dir(*effectStateOut); dir != "." {
@@ -1009,13 +1009,10 @@ finished:
 		counters := processor.effects.Snapshot().Counters
 		fmt.Fprintf(os.Stderr, "effect_state applies=%d duplicate_applies=%d instant_applies=%d updates=%d updates_without_apply=%d removes=%d removes_without_instance=%d holder_removals=%d excluded_unrelated=%d\n", counters.Applies, counters.DuplicateApplies, counters.InstantApplies, counters.Updates, counters.UpdatesWithoutApply, counters.Removes, counters.RemovesWithoutInstance, counters.HolderRemovals, counters.ExcludedUnrelated)
 	}
-	fmt.Fprintf(os.Stderr, "schema_decode errors=%d skipped_without_schema=%d\n", processor.schemaDecodeErrors, processor.schemaDecodeSkipped)
+	fmt.Fprintf(os.Stderr, "schema_decode errors=%d skipped_without_schema=%d\n", processor.dev.schemaDecodeErrors, processor.dev.schemaDecodeSkipped)
 	fmt.Fprintln(os.Stderr, processor.protocol.report().line())
-	if processor.roleConfigOut != nil {
-		fmt.Fprintf(os.Stderr, "role_config errors=%d\n", processor.roleConfigErrors)
-	}
-	if processor.shieldRefOut != nil {
-		fmt.Fprintf(os.Stderr, "shield_reference errors=%d\n", processor.shieldRefErrors)
+	for _, line := range processor.researchOutputErrorLines() {
+		fmt.Fprintln(os.Stderr, line)
 	}
 	processor.printSummary(diagnosticTarget)
 	if line := processor.diagnosticFailureLine(); line != "" {
