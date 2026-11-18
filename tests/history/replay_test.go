@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -796,11 +797,18 @@ func replayIntoHistory(t *testing.T, store *Store, masters *capture.MasterData, 
 		t.Fatalf("stored %d encounters, the engine finished %d", len(stored), len(finished))
 	}
 	summary.ListedEncounters = len(stored)
-	for key, engine := range finished {
-		id, ok := stored[key]
-		if !ok {
+	// finished is a map: visit the encounters in the order the History stored them, so the identification lists of the
+	// summary come out in one order and two runs, and the two profiles, write the same summary.
+	keys := make([]string, 0, len(finished))
+	for key := range finished {
+		if _, ok := stored[key]; !ok {
 			t.Fatalf("encounter %s is not stored", key)
 		}
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(i, j int) bool { return stored[keys[i]] < stored[keys[j]] })
+	for _, key := range keys {
+		engine, id := finished[key], stored[key]
 		detail, err := store.Encounter(ctx, id, time.Local)
 		if err != nil {
 			t.Fatal(err)
