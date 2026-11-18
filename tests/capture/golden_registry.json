@@ -46,6 +46,18 @@
           "reason": "InstanceDungeon 82110 (InstSubType 40, a character trial instance, MapName resolves) has no entrance and no Adventure Guide or tutorial detection row; the kind of play stays UNKNOWN (Global 3.8.9 and 3.8.11 db_adventure_detect.db)"
         }
       ]
+    },
+    {
+      "name": "LIVE_20261118_194306",
+      "required": false,
+      "note": "Owner's v0.8.0 LIVE acceptance capture (unofficial Development build of bf1f7a5) on Global 3.8.12, IPv6 traffic: 17 encounters, 15 of them in the event stage 9105; supplementary, no Golden facts",
+      "identificationLimits": [
+        {
+          "kind": "mode",
+          "scene": 9105,
+          "reason": "InstanceDungeon 9105 (InstSubType 29, an event stage of the same event as 9101-9108, MapName resolves) is reached only by entrance 9105, which no Adventure Guide detection row (DungeonDetection, SilentAreaDetection, SecondaryGuideData) and no ShipTower relation names; the kind of play is the Adventure Guide category, so it stays UNKNOWN (Global 3.8.9 Master, 3.8.11 and 3.8.12 db_adventure_detect.db, unchanged since 3.8.9)"
+        }
+      ]
     }
   ]
 }
