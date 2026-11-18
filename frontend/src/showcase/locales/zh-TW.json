@@ -235,7 +235,7 @@
       "partial": "部分缺字",
       "partialNote": "{{count}} 個字元改由系統字型繪製：",
       "coverageUnknown": "清單未記錄字元覆蓋範圍。",
-      "no-rootNote": "無法比較：讀不到候選字體目錄。請以 -font-root 啟動 Showcase，或使用 work/dev/Start-Showcase.ps1。",
+      "no-rootNote": "無法比較：讀不到候選字體目錄。請以 -font-root 啟動 Showcase，或使用 work/tools/showcase/Start-Showcase.ps1。",
       "missingNote": "無法比較：缺少必要的字體檔。此處不顯示任何內容，避免 Fallback 字型被當成此方案。",
       "failedNote": "無法比較：字體檔無法請求或解碼。此處不顯示任何內容，避免 Fallback 字型被當成此方案。",
       "loadingNote": "正在載入字體檔。",

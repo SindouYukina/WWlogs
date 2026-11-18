@@ -116,7 +116,7 @@ try {
     $unlistedAssets = @($trackedAssets | Where-Object { $_ -notin $listedAssets })
     if ($untrackedAssets.Count -gt 0) { $assetProblems += "$($untrackedAssets.Count) listed files are not tracked, first $($untrackedAssets[0])" }
     if ($unlistedAssets.Count -gt 0) { $assetProblems += "$($unlistedAssets.Count) tracked files are not listed, first $($unlistedAssets[0])" }
-    foreach ($local in @('assets/game/local.tmp', 'assets/game/local.png', 'work/fonts/candidates/misans/local.ttf', 'work/fonts/src/misans/local.zip')) {
+    foreach ($local in @('assets/game/local.tmp', 'assets/game/local.png', 'work/tools/fonts/candidates/misans/local.ttf', 'work/tools/fonts/src/misans/local.zip')) {
         & git check-ignore -q -- $local
         if ($LASTEXITCODE -ne 0) { $assetProblems += "$local is not ignored" }
     }

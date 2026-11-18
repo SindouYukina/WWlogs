@@ -413,7 +413,7 @@ type analysisTiming struct {
 // 3.8.9 the HUD draws Lily's (role 1512) statuses and Xin's type-24 statuses with their icon and without an arrow (cue
 // Parameters empty in the 3.8.9 hotfix db_buffeffect.db; BuffItem.Activate), and the local client's own
 // ApplyGameplayEffectPush puts them on team role entities or the local PlayerEntity
-// (work/live-build31/client_status_crosscheck.py).
+// (work/tools/combat-audit/live-build31/client_status_crosscheck.py).
 var historyHUDFacts = map[string]map[int64]capture.EffectPolarity{
 	"LIVE_20261113_224240": {
 		1512310003: capture.EffectPolarityNeutral, 1512800104: capture.EffectPolarityNeutral, 1512999015: capture.EffectPolarityNeutral,
@@ -423,7 +423,7 @@ var historyHUDFacts = map[string]map[int64]capture.EffectPolarity{
 
 // historySceneFacts are the scene InstanceIds a stored capture's finished encounters must keep, by encounter sequence. In the
 // Build 31 LIVE capture each is the InstanceId of the last server JoinSceneNotify before the encounter started, read from the
-// generic schema decode (work/live-build31/encounter_scenes.py): Tower of Adversity stages 20016..20024, the ShipTower's
+// generic schema decode (work/tools/combat-audit/live-build31/encounter_scenes.py): Tower of Adversity stages 20016..20024, the ShipTower's
 // Endless Torrents halves 40286 and 40287, Lily's tutorial 5067, a Tactical Hologram 3925, a Tacet field 210404021 and the
 // open world 8. The game mode and stage names are resolved from these ids when the history is read (instance_display.go).
 var historySceneFacts = map[string]map[uint64]uint64{
