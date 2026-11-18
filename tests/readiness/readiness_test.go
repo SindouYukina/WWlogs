@@ -294,6 +294,55 @@ func TestCurrentRepositoryHasNoStaticGap(t *testing.T) {
 	}
 	wantStatus(t, report, "protocol.schema-keys", readiness.StatusUnverified)
 	wantStatus(t, report, "verification.live-acceptance", readiness.StatusUnverified)
+	wantStatus(t, report, "verification.client-impact", readiness.StatusUnverified)
+}
+
+// impactReport writes a client update impact report (hotfix_impact.py, schema 1) of the Windows Global client.
+func impactReport(t *testing.T, overall, base, target string, change func(map[string]any)) string {
+	t.Helper()
+	report := map[string]any{"schema": 1, "platform": "windows", "region": "Global",
+		"base":    map[string]any{"label": "base", "gameVersion": base, "clientRegion": "Global"},
+		"target":  map[string]any{"label": "target", "gameVersion": target, "clientRegion": "Global"},
+		"overall": overall, "domains": map[string]any{"stage": map[string]any{"classification": overall, "reasons": []any{map[string]any{"level": overall, "reason": "fixture"}}}}}
+	if change != nil {
+		change(report)
+	}
+	return writeJSON(t, filepath.Join(t.TempDir(), "impact.json"), report)
+}
+
+// The impact report connects the client the product decodes (Global 3.8.9) with the client an update brought: only an
+// update without runtime impact, or one the product was adapted to, passes; a pending investigation is no pass, and a
+// report about other clients or another region proves nothing.
+func TestGateClientImpactConnectsTheDecodedClient(t *testing.T) {
+	cases := []struct {
+		name, overall, base, target string
+		change                      func(map[string]any)
+		want                        readiness.Status
+		finding                     string
+	}{
+		{"hot patch without runtime impact", "NO_RUNTIME_IMPACT", "3.8.9", "3.8.11", nil, readiness.StatusPass, ""},
+		{"no change after an adaptation", "NO_CHANGE", "3.8.8", "3.8.9", nil, readiness.StatusPass, ""},
+		{"adapted to the relevant update", "RUNTIME_RELEVANT", "3.8.8", "3.8.9", nil, readiness.StatusPass, ""},
+		{"relevant update not adapted", "RUNTIME_RELEVANT", "3.8.9", "3.8.12", nil, readiness.StatusFail, "the product still decodes Global 3.8.9"},
+		{"investigation pending", "INVESTIGATION_REQUIRED", "3.8.9", "3.8.12", nil, readiness.StatusUnverified, ""},
+		{"blocked", "BLOCKED", "3.8.9", "3.8.12", nil, readiness.StatusFail, "BLOCKED"},
+		{"other clients", "NO_RUNTIME_IMPACT", "3.8.0", "3.8.1", nil, readiness.StatusFail, "the decoder reads Global 3.8.9"},
+		{"another region", "NO_RUNTIME_IMPACT", "3.8.9", "3.8.11", func(r map[string]any) { r["base"].(map[string]any)["clientRegion"] = "CN" }, readiness.StatusFail, "regions"},
+		{"another schema", "NO_RUNTIME_IMPACT", "3.8.9", "3.8.11", func(r map[string]any) { r["schema"] = 2 }, readiness.StatusFail, "schema 2"},
+		{"unknown classification", "COMPATIBLE", "3.8.9", "3.8.11", nil, readiness.StatusFail, "COMPATIBLE"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			in := baseInputs(t)
+			in.ClientImpact = impactReport(t, tc.overall, tc.base, tc.target, tc.change)
+			report := run(t, in)
+			if tc.want == readiness.StatusFail {
+				wantFail(t, report, "verification.client-impact", tc.finding)
+				return
+			}
+			wantStatus(t, report, "verification.client-impact", tc.want)
+		})
+	}
 }
 
 // A complete passing run is STATIC_READY, and only the owner's Live record makes it LIVE_VERIFIED: the two states never
@@ -304,6 +353,7 @@ func TestStaticReadyAndLiveVerifiedAreSeparate(t *testing.T) {
 	in.ProtocolSchema = schemaFromConstants(t, "")
 	in.ClientReferences = clientInventory(t, manifestPaths(t))
 	in.ClientContent = contentInventory(t, nil)
+	in.ClientImpact = impactReport(t, "NO_RUNTIME_IMPACT", "3.8.9", "3.8.11", nil)
 	passingEvidence(t, &in)
 	report := run(t, in)
 	if !report.StaticReady || report.LiveVerified {

@@ -171,6 +171,8 @@ type Inputs struct {
 	ClientReferences string
 	// ClientContent is the client content inventory (client_content_inventory.py); master.client-content compares it.
 	ClientContent string
+	// ClientImpact is the client update impact report (hotfix_impact.py); verification.client-impact reads it.
+	ClientImpact string
 
 	// Evidence of a verification run (optional).
 	VerifyResults  string
@@ -240,6 +242,7 @@ func Run(in Inputs) (*Report, error) {
 	in.defaults()
 	g := &gate{in: in, report: &Report{Generated: in.Now().UTC()}, checks: map[string]*Check{}}
 	g.protocolChecks()
+	g.clientImpactCheck()
 	g.assetChecks()
 	g.masterChecks()
 	g.runtimeChecks()
