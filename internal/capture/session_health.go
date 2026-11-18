@@ -61,17 +61,17 @@ func (s *sessionHealthState) observeClock(at time.Time) {
 	}
 }
 
-func (p *processor) sessionHealthSnapshot() ViewSessionHealth {
+func (p *Processor) sessionHealthSnapshot() ViewSessionHealth {
 	s := &p.sessionHealth
 	view := ViewSessionHealth{
-		KeyReady:                   len(p.session) == 32 && !s.lastHandshakeFailed,
-		Handshakes:                 p.stats.handshakeOK,
-		HandshakeErrors:            p.stats.handshakeErrors,
+		KeyReady:                   len(p.Session) == 32 && !s.lastHandshakeFailed,
+		Handshakes:                 p.Stats.HandshakeOK,
+		HandshakeErrors:            p.Stats.HandshakeErrors,
 		LastHandshakeFailed:        s.lastHandshakeFailed,
 		FramesObserved:             s.framesObserved,
 		ConsecutiveDecryptFailures: s.consecutiveDecryptFailures,
 	}
-	view.Protocol.Status, view.Protocol.GameVersion = p.protocol.status()
+	view.Protocol.Status, view.Protocol.GameVersion = p.Protocol.Status()
 	if !s.firstFrameAt.IsZero() {
 		first := max(s.clock.Sub(s.firstFrameAt).Seconds(), 0)
 		idle := max(s.clock.Sub(s.lastFrameAt).Seconds(), 0)

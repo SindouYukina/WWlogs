@@ -11,9 +11,9 @@ func benchmarkEffectView(b *testing.B, count uint64) {
 		if handle%2 == 0 {
 			polarity = EffectPolarityDebuff
 		}
-		p.effects.ObserveApply(rowApply(handle, 1000+handle, polarity, float64(handle%60)+5))
+		p.Effects.ObserveApply(rowApply(handle, 1000+handle, polarity, float64(handle%60)+5))
 	}
-	p.currentFrameTime = effectAt(1)
+	p.CurrentFrameTime = effectAt(1)
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -34,9 +34,9 @@ func BenchmarkEffectViewMostlyNonHUD(b *testing.B) {
 		if handle%20 != 0 {
 			event.Static = noHUDStatic()
 		}
-		p.effects.ObserveApply(event)
+		p.Effects.ObserveApply(event)
 	}
-	p.currentFrameTime = effectAt(1)
+	p.CurrentFrameTime = effectAt(1)
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -54,12 +54,12 @@ func BenchmarkSkillRowNameMixedDamageList(b *testing.B) {
 	names.uiSkillTypes = map[uint64]int64{10: 5, 11: uiSkillTypeForte}
 	names.uiSkillNames = map[uint64]string{10: "x"}
 	names.skillGenres = map[uint64]int64{100: 4}
-	master := &gameMaster{skills: map[uint64]masterRecord{}, skillNames: names}
+	master := &GameMaster{Skills: map[uint64]MasterRecord{}, skillNames: names}
 	row := SkillDamageSnapshot{SkillID: 100, DamageIDs: []uint64{1, 2}}
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if name, _, _, _ := master.skillRowName(7, row); name != "x" {
+		if name, _, _, _ := master.SkillRowName(7, row); name != "x" {
 			b.Fatal(name)
 		}
 	}

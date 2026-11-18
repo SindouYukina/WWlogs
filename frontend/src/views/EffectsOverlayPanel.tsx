@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next"
 import { EffectCell, EffectMore, StackRow, effectFill, effectSeconds, lowEffectSeconds } from "@/design"
 import { isFrozen, type CombatData } from "@/lib/combat-data"
 import { countdownFraction, effectRow, type EffectRowModel } from "@/lib/combat-view"
-import { effectRemaining, fitEffectStrip, type EffectStripLayout } from "@/lib/effects"
+import { effectRemaining, effectsOverlayMode, fitEffectStrip, type EffectStripLayout } from "@/lib/effects"
 import type { Connection, Effect, Snapshot } from "@/lib/snapshot"
 
 type StripItem =
@@ -94,6 +94,8 @@ export interface EffectsOverlayPanelProps {
   data: CombatData
   /** Surface opacity, 0 to 1. */
   alpha?: number
+  /** Edit Mode: the window is being placed or sized, so an empty strip shows a preview of its area. */
+  editing?: boolean
 }
 
 /**
@@ -101,8 +103,9 @@ export interface EffectsOverlayPanelProps {
  * stacks and time and never as names or IDs. The holder, source and instance of every effect stay in the engine's data;
  * this view only stops grouping by them. Cells pass the production trust gate: a stale or suspect snapshot yields no
  * countdown. The listening status lives on the Combat Overlay; the two are used together, so it is not repeated here.
+ * Outside Edit Mode an Overlay without cells draws nothing at all (effectsOverlayMode).
  */
-export function EffectsOverlayPanel({ data, alpha }: EffectsOverlayPanelProps) {
+export function EffectsOverlayPanel({ data, alpha, editing = false }: EffectsOverlayPanelProps) {
   const { t } = useTranslation(["overlay", "common"])
   const { snapshot, connection, now } = data
   const view = snapshot?.view
@@ -113,12 +116,14 @@ export function EffectsOverlayPanel({ data, alpha }: EffectsOverlayPanelProps) {
   const buffCells = (buffs?.effects.length ?? 0) + (buffs?.truncated ?? 0)
   const debuffCells = (debuffs?.effects.length ?? 0) + (debuffs?.truncated ?? 0)
   const cells = buffCells + debuffCells
+  const mode = effectsOverlayMode(cells, editing)
   const { rows, layout } = useStripLayout()
   const style = alpha === undefined ? undefined : { "--ww-alpha-overlay": alpha, "--ww-alpha-overlay-strong": Math.min(1, alpha + 0.12) } as CSSProperties
-  return <div className="ww-effects" style={style} data-field="effects" data-count={cells}>
+  // The rows stay mounted in every mode, so their measured width is ready when the first effect arrives.
+  return <div className="ww-effects" style={style} data-field="effects" data-mode={mode} data-count={cells}>
     <div ref={rows} className="ww-effects-rows" data-field="effect-rows">
-      {cells === 0
-        ? <div className="ww-combat-empty ww-effects-empty"><span className="ww-truncate">{t("noEffects")}</span></div>
+      {mode === "edit-preview" && cells === 0
+        ? <div className="ww-combat-empty ww-effects-preview" data-field="effects-preview"><span className="ww-truncate">{t("preview")}</span></div>
         : <>
           <EffectRow polarity="buff" effects={buffs?.effects ?? noEffects} cells={buffCells} layout={layout} frozen={frozen} snapshot={snapshot} connection={connection} now={now} />
           <EffectRow polarity="debuff" effects={debuffs?.effects ?? noEffects} cells={debuffCells} layout={layout} frozen={frozen} snapshot={snapshot} connection={connection} now={now} />

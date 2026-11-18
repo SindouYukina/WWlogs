@@ -1,13 +1,18 @@
 import { useEffect, useMemo, useState } from "react"
 import { displayedEncounter, type CombatData } from "./combat-data"
 import { skillBreakdowns } from "./combat-view"
+import { liveClockActive } from "./effects"
 import { timelineFromView } from "./timeline"
 import { useSnapshot } from "./useSnapshot"
 
-/** A 1 Hz clock that stops while the window is hidden and catches up the moment it is shown again. */
-export function useClock(): number {
+/**
+ * A 1 Hz clock that ticks only while it is active and the window is shown. It keeps its last value otherwise and
+ * catches up the moment both hold again.
+ */
+export function useClock(active: boolean): number {
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
+    if (!active) return
     let timer: ReturnType<typeof setInterval> | undefined
     const sync = () => {
       clearInterval(timer)
@@ -22,7 +27,7 @@ export function useClock(): number {
       clearInterval(timer)
       document.removeEventListener("visibilitychange", sync)
     }
-  }, [])
+  }, [active])
   return now
 }
 
@@ -33,7 +38,7 @@ export function useClock(): number {
  */
 export function useLiveCombatData() {
   const { snapshot, connection, changeLocale } = useSnapshot()
-  const now = useClock()
+  const now = useClock(liveClockActive(snapshot))
   const view = snapshot?.view
   const timeline = useMemo(() => timelineFromView(view, displayedEncounter(view)?.encounterId), [view])
   const skillsOf = useMemo(() => {

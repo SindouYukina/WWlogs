@@ -29,14 +29,14 @@ type liveCaptureConfig struct {
 	BufferBytes         int
 }
 
-// defaultLiveCaptureConfig is the configuration both executables use. The read timeout only paces idle wakeups (stop
+// DefaultLiveCaptureConfig is the configuration both executables use. The read timeout only paces idle wakeups (stop
 // checks and status updates) once immediate mode is on.
-func defaultLiveCaptureConfig() liveCaptureConfig {
+func DefaultLiveCaptureConfig() liveCaptureConfig {
 	return liveCaptureConfig{ReadTimeout: time.Second, Immediate: true, FallbackReadTimeout: 100 * time.Millisecond}
 }
 
-// liveCaptureApplied records what the opened handle actually uses, including options the driver refused.
-type liveCaptureApplied struct {
+// LiveCaptureApplied records what the opened handle actually uses, including options the driver refused.
+type LiveCaptureApplied struct {
 	ReadTimeout    time.Duration
 	Immediate      bool
 	ImmediateError string
@@ -44,7 +44,7 @@ type liveCaptureApplied struct {
 	BufferError    string
 }
 
-func (a liveCaptureApplied) String() string {
+func (a LiveCaptureApplied) String() string {
 	immediate := "off"
 	switch {
 	case a.Immediate:
@@ -61,8 +61,8 @@ func (a liveCaptureApplied) String() string {
 	return fmt.Sprintf("read_timeout=%s immediate=%s kernel_buffer=%s", a.ReadTimeout, immediate, buffer)
 }
 
-// liveCaptureSnapLen keeps whole packets: game datagrams are at most about 1 KB, and the snap length only bounds copying.
-const liveCaptureSnapLen = 65535
+// LiveCaptureSnapLen keeps whole packets: game datagrams are at most about 1 KB, and the snap length only bounds copying.
+const LiveCaptureSnapLen = 65535
 
 // fallbackTimeout is the read timeout to use when immediate mode was requested but is not in effect.
 func (cfg liveCaptureConfig) fallbackTimeout() time.Duration {
@@ -72,17 +72,17 @@ func (cfg liveCaptureConfig) fallbackTimeout() time.Duration {
 	return cfg.ReadTimeout
 }
 
-// openLiveCapture opens a non-promiscuous live handle with cfg. An option the driver refuses is recorded and skipped;
+// OpenLiveCapture opens a non-promiscuous live handle with cfg. An option the driver refuses is recorded and skipped;
 // the handle is still opened, because a capture with default buffering is better than no capture.
-func openLiveCapture(device string, cfg liveCaptureConfig) (*pcap.Handle, liveCaptureApplied, error) {
-	var applied liveCaptureApplied
+func OpenLiveCapture(device string, cfg liveCaptureConfig) (*pcap.Handle, LiveCaptureApplied, error) {
+	var applied LiveCaptureApplied
 	open := func(immediate bool, buffer int) (*pcap.Handle, error) {
 		inactive, err := pcap.NewInactiveHandle(device)
 		if err != nil {
 			return nil, err
 		}
 		defer inactive.CleanUp()
-		if err := inactive.SetSnapLen(liveCaptureSnapLen); err != nil {
+		if err := inactive.SetSnapLen(LiveCaptureSnapLen); err != nil {
 			return nil, err
 		}
 		if err := inactive.SetPromisc(false); err != nil {

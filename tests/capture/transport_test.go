@@ -46,16 +46,16 @@ func makeKCPSegmentForTest(conv, sequence uint32, payload []byte) []byte {
 func TestConsumeDatagramReassemblesApplicationFrameAcrossKCPMessages(t *testing.T) {
 	frame := makeTransportTestFrame(false, false)
 	cut := len(frame) / 2
-	var stdout, diagnostic bytes.Buffer
-	processor := newProcessor(nil, &stdout, &diagnostic, nil)
-	streams := make(map[string]*stream)
-	stats := captureStats{}
+	var diagnostic bytes.Buffer
+	processor := NewProcessor(nil, &diagnostic)
+	streams := make(map[string]*Stream)
+	stats := CaptureStats{}
 	firstTime := time.Date(2026, 10, 27, 1, 2, 3, 0, time.UTC)
 	secondTime := firstTime.Add(time.Second)
 
-	consumeDatagram(makeKCPSegmentForTest(9, 0, frame[:cut]), "in", firstTime, streams, processor, &stats)
-	if stats.frames != 0 {
-		t.Fatalf("frames after first partial KCP message = %d, want 0", stats.frames)
+	ConsumeDatagram(makeKCPSegmentForTest(9, 0, frame[:cut]), "in", firstTime, streams, processor, &stats)
+	if stats.Frames != 0 {
+		t.Fatalf("frames after first partial KCP message = %d, want 0", stats.Frames)
 	}
 	state := streams["00000009/in"]
 	if state == nil {
@@ -65,8 +65,8 @@ func TestConsumeDatagramReassemblesApplicationFrameAcrossKCPMessages(t *testing.
 		t.Fatalf("buffer after first partial KCP message = %x, want %x", state.applicationBuffer, frame[:cut])
 	}
 
-	consumeDatagram(makeKCPSegmentForTest(9, 1, frame[cut:]), "in", secondTime, streams, processor, &stats)
-	if stats.frames != 1 || stats.badCRC != 0 || stats.malformed != 0 {
+	ConsumeDatagram(makeKCPSegmentForTest(9, 1, frame[cut:]), "in", secondTime, streams, processor, &stats)
+	if stats.Frames != 1 || stats.BadCRC != 0 || stats.Malformed != 0 {
 		t.Fatalf("transport stats = %+v, want one valid frame and no errors", stats)
 	}
 	if len(state.applicationBuffer) != 0 || len(state.applicationSpans) != 0 {
@@ -76,7 +76,7 @@ func TestConsumeDatagramReassemblesApplicationFrameAcrossKCPMessages(t *testing.
 
 func TestParseFramesChecksCompressedCRCAfterLengthPrefix(t *testing.T) {
 	frame := makeTransportTestFrame(true, false)
-	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
+	p := NewProcessor(nil, &bytes.Buffer{})
 	span := []applicationSpan{{length: len(frame), timestamp: time.Unix(1, 0)}}
 
 	frames, badCRC, malformed, consumed := parseFrames(frame, "in", span, p)
@@ -89,7 +89,7 @@ func TestParseFramesChecksCompressedCRCAfterLengthPrefix(t *testing.T) {
 // reports a desync so the stream resynchronizes (Phase 1B; earlier the whole declared length was skipped).
 func TestParseFramesRejectsCompressedCRCIncludingLengthPrefix(t *testing.T) {
 	frame := makeTransportTestFrame(true, true)
-	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
+	p := NewProcessor(nil, &bytes.Buffer{})
 	span := []applicationSpan{{length: len(frame)}}
 
 	result := parseFrameStream(frame, "in", span, p, nil)

@@ -2,25 +2,24 @@ package history
 
 import (
 	"bytes"
-	"crypto/rand"
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
 )
 
-// The history key.
+// The key of a WWlogs v0.7.0 history.
 //
-// The database key is 64 random bytes from crypto/rand: the two AES-256 keys of AES-256-XTS. It is never written in the
-// clear and never derived from anything the build or the repository contains. A KeyProvider seals it; only the sealed form
-// is stored, in a key file next to the history file. The key file is written once, atomically, and never replaced: a key
-// that cannot be unsealed leaves the history unreadable rather than overwritten.
+// WWlogs v0.7.0 and earlier gave every history 64 random bytes from crypto/rand as its key and stored them only sealed by a
+// KeyProvider (DPAPI for the current Windows user), in a key file next to the history file. No history gets such a key any
+// more: a new history derives its key (keyderive.go), and a v0.7.0 history is opened with its sealed key only to be moved
+// to a derived key. The key file is never written or replaced here; a key that cannot be unsealed leaves the history
+// unreadable rather than overwritten.
 
-// KeyProvider seals and unseals the history key. The Windows provider uses DPAPI for the current user (keys_windows.go).
-// A provider backed by other hardware, such as a TPM, implements the same interface; the database format does not change.
+// KeyProvider is what sealed the key of a v0.7.0 history. The Windows provider uses DPAPI for the current user
+// (keys_windows.go). WWlogs only unseals with it now; nothing seals a new key.
 type KeyProvider interface {
 	// ID names the provider in the key file; a key file sealed by another provider is refused.
 	ID() string
@@ -48,14 +47,10 @@ func keyPath(historyPath string) string {
 	return strings.TrimSuffix(historyPath, filepath.Ext(historyPath)) + ".key"
 }
 
-// loadKey unseals the key of path. create allows a new key when no key file exists; it is false whenever an encrypted file
-// already exists, so a lost key file never gets a new key that would hide the old one.
-func loadKey(path string, provider KeyProvider, create bool) ([]byte, error) {
-	file := keyPath(path)
-	data, err := os.ReadFile(file)
+// loadKey unseals the key of the v0.7.0 history at path. A missing key file is errKeyMissing: no new key is ever made.
+func loadKey(path string, provider KeyProvider) ([]byte, error) {
+	data, err := os.ReadFile(keyPath(path))
 	switch {
-	case errors.Is(err, os.ErrNotExist) && create:
-		return createKey(file, provider)
 	case errors.Is(err, os.ErrNotExist):
 		return nil, errKeyMissing
 	case err != nil:
@@ -79,23 +74,6 @@ func loadKey(path string, provider KeyProvider, create bool) ([]byte, error) {
 	return key, nil
 }
 
-func createKey(file string, provider KeyProvider) ([]byte, error) {
-	key := make([]byte, historyKeySize)
-	if _, err := io.ReadFull(rand.Reader, key); err != nil {
-		return nil, fmt.Errorf("create history key: %w", err)
-	}
-	sealed, err := provider.Seal(key)
-	if err != nil {
-		clear(key)
-		return nil, fmt.Errorf("%w: %v", errKeyUnavailable, err)
-	}
-	if err := writeKeyFile(file, provider.ID(), sealed); err != nil {
-		clear(key)
-		return nil, err
-	}
-	return key, nil
-}
-
 func parseKeyFile(data []byte) (string, []byte, error) {
 	if !bytes.HasPrefix(data, []byte(keyFileMagic)) || len(data) < len(keyFileMagic)+1 {
 		return "", nil, errors.New("not a history key file")
@@ -114,48 +92,4 @@ func parseKeyFile(data []byte) (string, []byte, error) {
 		return "", nil, errors.New("malformed history key file")
 	}
 	return id, rest, nil
-}
-
-// writeKeyFile writes the key file atomically and refuses to replace an existing one.
-func writeKeyFile(file, id string, sealed []byte) error {
-	if len(id) > 255 || len(sealed) == 0 || len(sealed) > maxSealedKey {
-		return errors.New("invalid sealed history key")
-	}
-	var data bytes.Buffer
-	data.WriteString(keyFileMagic)
-	data.WriteByte(byte(len(id)))
-	data.WriteString(id)
-	var length [4]byte
-	binary.LittleEndian.PutUint32(length[:], uint32(len(sealed)))
-	data.Write(length[:])
-	data.Write(sealed)
-	temp := file + ".tmp"
-	_ = os.Remove(temp)
-	out, err := os.OpenFile(temp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
-	if err != nil {
-		return fmt.Errorf("write history key: %w", err)
-	}
-	if _, err := out.Write(data.Bytes()); err != nil {
-		out.Close()
-		os.Remove(temp)
-		return fmt.Errorf("write history key: %w", err)
-	}
-	if err := out.Sync(); err != nil {
-		out.Close()
-		os.Remove(temp)
-		return fmt.Errorf("write history key: %w", err)
-	}
-	if err := out.Close(); err != nil {
-		os.Remove(temp)
-		return fmt.Errorf("write history key: %w", err)
-	}
-	if _, err := os.Stat(file); err == nil {
-		os.Remove(temp)
-		return errors.New("a history key file already exists")
-	}
-	if err := os.Rename(temp, file); err != nil {
-		os.Remove(temp)
-		return fmt.Errorf("write history key: %w", err)
-	}
-	return nil
 }

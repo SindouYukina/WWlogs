@@ -13,7 +13,6 @@ import (
 	"testing"
 
 	"wwlogs/internal/assets"
-	"wwlogs/internal/buildinfo"
 )
 
 func TestFrontendFallbackWithoutArchive(t *testing.T) {
@@ -55,37 +54,24 @@ func TestFrontendArchiveIsServed(t *testing.T) {
 	}
 }
 
-func TestDiagnosticDefaultsFollowProfileWithoutAutostart(t *testing.T) {
-	options, err := parseOptions(nil, io.Discard)
+// The Public command line has no diagnostics, automatic start or external Master; the Development defaults are tested
+// with their parser (tests/devdesktop).
+func TestPublicOptionsHaveNoDiagnosticsOrAutostart(t *testing.T) {
+	options, err := ParseOptions(nil, io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := buildinfo.Current().Profile == buildinfo.ProfileDevelopment
 	if options.MasterDatabase != "" {
 		t.Fatalf("default Master source = %q, want embedded", options.MasterDatabase)
 	}
-	if options.AutoStart || options.Session.Diagnostics != want {
-		t.Fatalf("defaults: autostart=%v diagnostics=%v want=%v", options.AutoStart, options.Session.Diagnostics, want)
+	if options.AutoStart || options.Session.Diagnostics {
+		t.Fatalf("defaults: autostart=%v diagnostics=%v", options.AutoStart, options.Session.Diagnostics)
 	}
-	if want {
-		override, err := parseOptions([]string{"-master-db", "test-master.db"}, io.Discard)
-		if err != nil || override.MasterDatabase != "test-master.db" {
-			t.Fatalf("Development Master override = %+v, %v", override, err)
-		}
-		replay, err := parseOptions([]string{"-replay", "sample.pcap"}, io.Discard)
-		if err != nil || replay.Session.Diagnostics || !replay.AutoStart {
-			t.Fatalf("replay defaults: %+v %v", replay, err)
-		}
-		if _, err := parseOptions([]string{"-replay", "sample.pcap", "-capture-diagnostics=true"}, io.Discard); err == nil {
-			t.Fatal("explicit replay recording accepted")
-		}
-	} else {
-		if _, err := parseOptions([]string{"-master-db", "test-master.db"}, io.Discard); err == nil {
-			t.Fatal("Public accepted an external Master database")
-		}
-		if _, err := parseOptions([]string{"-capture-diagnostics=true"}, io.Discard); err == nil {
-			t.Fatal("Public accepted recording switch")
-		}
+	if _, err := ParseOptions([]string{"-master-db", "test-master.db"}, io.Discard); err == nil {
+		t.Fatal("Public accepted an external Master database")
+	}
+	if _, err := ParseOptions([]string{"-capture-diagnostics=true"}, io.Discard); err == nil {
+		t.Fatal("Public accepted recording switch")
 	}
 }
 

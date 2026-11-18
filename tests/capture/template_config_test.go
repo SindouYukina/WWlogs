@@ -6,18 +6,18 @@ import (
 )
 
 func TestTemplateConfigTypeNamesDynamicallySpawnedEntities(t *testing.T) {
-	resolver := newEntityResolver()
-	resolver.entities[500] = runtimeEntity{entityID: 500, configID: 650000050, hasConfigID: true, configType: 4, hasConfigType: true, sourceMessageID: cmdEntityAddNotify}
-	resolver.entities[501] = runtimeEntity{entityID: 501, configID: 650000050, hasConfigID: true, configType: 1, hasConfigType: true, sourceMessageID: cmdEntityAddNotify}
-	masters := &gameMaster{locale: "zh-TW", sceneIdentity: &sceneIdentityMaster{
-		templateCatalog: map[uint64]sceneTemplateCandidate{650000050: {TemplateID: 650000050, Name: "Boss", NameStatus: "VERIFIED"}},
+	resolver := NewEntityResolver()
+	resolver.Entities[500] = RuntimeEntity{EntityID: 500, ConfigID: 650000050, HasConfigID: true, ConfigType: 4, HasConfigType: true, SourceMessageID: CmdEntityAddNotify}
+	resolver.Entities[501] = RuntimeEntity{EntityID: 501, ConfigID: 650000050, HasConfigID: true, ConfigType: 1, HasConfigType: true, SourceMessageID: CmdEntityAddNotify}
+	masters := &GameMaster{Locale: "zh-TW", SceneIdentity: &SceneIdentityMaster{
+		TemplateCatalog: map[uint64]SceneTemplateCandidate{650000050: {TemplateID: 650000050, Name: "Boss", NameStatus: "VERIFIED"}},
 	}}
 
-	named := resolveEntityIdentity(resolver, masters, 500)
-	if len(named.TemplateCandidates) != 1 || named.TemplateCandidates[0].Name != "Boss" || named.TemplateStatus != resolutionCorrelated {
+	named := ResolveEntityIdentity(resolver, masters, 500)
+	if len(named.TemplateCandidates) != 1 || named.TemplateCandidates[0].Name != "Boss" || named.TemplateStatus != ResolutionCorrelated {
 		t.Fatalf("a Template(4) ConfigId must resolve to its TemplateConfig row: %+v", named)
 	}
-	level := resolveEntityIdentity(resolver, masters, 501)
+	level := ResolveEntityIdentity(resolver, masters, 501)
 	if len(level.TemplateCandidates) != 0 {
 		t.Fatalf("a Level(1) ConfigId is not a TemplateConfig id and must not be named this way: %+v", level)
 	}
@@ -43,7 +43,7 @@ func TestTemplateWithoutOfficialNameCarriesDeveloperLabel(t *testing.T) {
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
-	master, err := loadGameMasterDatabase(path, "en-US")
+	master, err := LoadGameMasterDatabase(path, "en-US")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,11 +57,11 @@ func TestTemplateWithoutOfficialNameCarriesDeveloperLabel(t *testing.T) {
 }
 
 func TestCommonBulletDevLabelTravelsWithTheBulletResolution(t *testing.T) {
-	master := &gameMaster{
-		locale:                "en-US",
-		commonBulletDevLabels: map[uint64]*combatEventLabelTextJSONL{210002002: {Locale: "en-US", Text: "Ultimate Pull", Kind: "unofficial-translation"}},
+	master := &GameMaster{
+		Locale:                "en-US",
+		CommonBulletDevLabels: map[uint64]*CombatEventLabelTextJSONL{210002002: {Locale: "en-US", Text: "Ultimate Pull", Kind: "unofficial-translation"}},
 	}
-	if got := master.commonBulletDevLabels[210002002]; got == nil || got.Text != "Ultimate Pull" {
+	if got := master.CommonBulletDevLabels[210002002]; got == nil || got.Text != "Ultimate Pull" {
 		t.Fatalf("bullet developer label must be addressable by BulletId: %+v", got)
 	}
 }

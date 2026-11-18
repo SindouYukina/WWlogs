@@ -20,52 +20,52 @@ const (
 
 // damageResponseData is one CombatReceiveData item: CombatResponseData{RequestId, DamageExecuteResponse{Damage}}.
 func damageResponseData(rpcID uint64, amount int32) []byte {
-	lis := appendVarintField(nil, fieldDamageExecuteResponseErrorCode, 0)
-	lis = appendVarintField(lis, fieldDamageExecuteResponseImmuneType, 0)
-	lis = appendVarintField(lis, fieldDamageExecuteResponseDamage, uint64(uint32(amount)))
-	response := appendVarintField(nil, fieldCombatResponseDataRequestID, rpcID)
-	response = appendBytesField(response, fieldCombatResponseDataDamageExecuteResponse, lis)
-	return appendBytesField(nil, fieldCombatReceiveDataCombatResponseData, response)
+	lis := appendVarintField(nil, FieldDamageExecuteResponseErrorCode, 0)
+	lis = appendVarintField(lis, FieldDamageExecuteResponseImmuneType, 0)
+	lis = appendVarintField(lis, FieldDamageExecuteResponseDamage, uint64(uint32(amount)))
+	response := appendVarintField(nil, FieldCombatResponseDataRequestID, rpcID)
+	response = appendBytesField(response, FieldCombatResponseDataDamageExecuteResponse, lis)
+	return appendBytesField(nil, FieldCombatReceiveDataCombatResponseData, response)
 }
 
 // receivePackBody is a CombatReceivePackNotify body with the given CombatReceiveData items.
 func receivePackBody(items ...[]byte) []byte {
 	var body []byte
 	for _, item := range items {
-		body = appendBytesField(body, fieldCombatReceivePackNotifyData, item)
+		body = appendBytesField(body, FieldCombatReceivePackNotifyData, item)
 	}
 	return body
 }
 
 // deliverReceivePack hands one frame of the chosen container to the dispatcher handleFrame uses for both.
-func deliverReceivePack(t *testing.T, p *processor, seconds float64, container responseContainer, items ...[]byte) {
+func deliverReceivePack(t *testing.T, p *Processor, seconds float64, container responseContainer, items ...[]byte) {
 	t.Helper()
 	pairingFrame(p, seconds)
 	notify := receivePackBody(items...)
-	frame := gameFrame{direction: "in", commandID: cmdCombatReceivePackNotify, timestamp: pairingAt(seconds)}
+	frame := GameFrame{Direction: "in", CommandID: CmdCombatReceivePackNotify, Timestamp: pairingAt(seconds)}
 	body := notify
 	if container == inSendPackResponse {
-		frame.commandID = cmdCombatSendPackResponse
-		body = appendBytesField(nil, fieldCombatSendPackResponseReceivePackNotify, notify)
+		frame.CommandID = CmdCombatSendPackResponse
+		body = appendBytesField(nil, FieldCombatSendPackResponseReceivePackNotify, notify)
 	}
-	if err := p.handleCombatReceivePacks(frame, body); err != nil {
+	if err := p.HandleCombatReceivePacks(frame, body); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func sendDamageRequestFrom(p *processor, seconds float64, rpcID, attacker, target uint64) {
+func sendDamageRequestFrom(p *Processor, seconds float64, rpcID, attacker, target uint64) {
 	pairingFrame(p, seconds)
-	p.handleDamageRequests(gameFrame{direction: "out", commandID: cmdCombatSendPackRequest, timestamp: pairingAt(seconds)}, damageRequestBody(rpcID, attacker, target))
+	p.HandleDamageRequests(GameFrame{Direction: "out", CommandID: CmdCombatSendPackRequest, Timestamp: pairingAt(seconds)}, damageRequestBody(rpcID, attacker, target))
 }
 
 // newContainerTestProcessor has two local role entities (100 and 101), two monsters (200 and 201) and nothing for 999.
-func newContainerTestProcessor() *processor {
+func newContainerTestProcessor() *Processor {
 	p := newPairingTestProcessor()
 	addTestPlayerRoleGroupEntity(p, 101, 77, 1508)
-	p.observeLocalRoleEntity(101)
-	addTestRuntimeEntity(p, 201, func(entity *runtimeEntity) {
-		entity.entityTypeCode, entity.hasEntityType = entityTypeMonster, true
-		entity.monsterID, entity.hasMonsterID = 9002, true
+	p.ObserveLocalRoleEntity(101)
+	addTestRuntimeEntity(p, 201, func(entity *RuntimeEntity) {
+		entity.EntityTypeCode, entity.HasEntityType = EntityTypeMonster, true
+		entity.MonsterID, entity.HasMonsterID = 9002, true
 	})
 	return p
 }
@@ -73,9 +73,9 @@ func newContainerTestProcessor() *processor {
 var processLocalIDs = regexp.MustCompile(`"captureSessionId":\d+|"\d+-(\d+-\d+)"`)
 
 // containerStatistics is the statistics snapshot without the process-local capture session number.
-func containerStatistics(t *testing.T, p *processor) string {
+func containerStatistics(t *testing.T, p *Processor) string {
 	t.Helper()
-	encoded, err := json.Marshal(p.damageStatistics.Snapshot())
+	encoded, err := json.Marshal(p.DamageStatistics.Snapshot())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +107,7 @@ var containerScenario = []containerStep{
 	{seconds: 2.4, request: true, rpcID: 6, attacker: 100, target: 201},
 }
 
-func runContainerScenario(t *testing.T, containerOf func(rpcID uint64) responseContainer) *processor {
+func runContainerScenario(t *testing.T, containerOf func(rpcID uint64) responseContainer) *Processor {
 	t.Helper()
 	p := newContainerTestProcessor()
 	for _, step := range containerScenario {
@@ -132,18 +132,18 @@ func TestDamageResponseContainerDoesNotChangeStatistics(t *testing.T) {
 	if got := containerStatistics(t, mixed); got != want {
 		t.Fatalf("mixed containers changed the statistics:\n got %s\nwant %s", got, want)
 	}
-	got := standalone.damageStatistics.Snapshot()
+	got := standalone.DamageStatistics.Snapshot()
 	// Dealt: 1000 + 2500 + 650 from the local roles; taken: 40. The unknown attacker's 300 stays unattributed, apart
 	// from confirmed local damage, and the monster-on-monster 77 is in no total.
 	if got.DamageDealt != 4150 || got.OutgoingEvents != 3 || got.DamageTaken != 40 || got.IncomingEvents != 1 ||
 		got.UnattributedOutgoingDamage != 300 || got.UnattributedOutgoingEvents != 1 {
 		t.Fatalf("standalone totals = dealt %d/%d taken %d/%d unattributed %d/%d", got.DamageDealt, got.OutgoingEvents, got.DamageTaken, got.IncomingEvents, got.UnattributedOutgoingDamage, got.UnattributedOutgoingEvents)
 	}
-	pairing := standalone.rpcPairingSnapshot()
+	pairing := standalone.RPCPairingSnapshot()
 	if pairing.Requests != 6 || pairing.Responses != 6 || pairing.StandaloneResponses != 6 || pairing.Paired != 6 || pairing.PairedOutOfOrder != 1 || pairing.PendingRequests != 0 {
 		t.Fatalf("standalone pairing = %+v", pairing)
 	}
-	if mixedPairing := mixed.rpcPairingSnapshot(); mixedPairing.StandaloneResponses != 3 || mixedPairing.Responses != 6 {
+	if mixedPairing := mixed.RPCPairingSnapshot(); mixedPairing.StandaloneResponses != 3 || mixedPairing.Responses != 6 {
 		t.Fatalf("mixed pairing = %+v", mixedPairing)
 	}
 }
@@ -152,14 +152,14 @@ func TestDamageResponseContainerDoesNotChangeStatistics(t *testing.T) {
 func TestStandaloneNotifyResponseIsCounted(t *testing.T) {
 	p := newContainerTestProcessor()
 	sendDamageRequestFrom(p, 1, 7, 100, 200)
-	if got := p.damageStatistics.Snapshot(); got.DamageDealt != 0 || p.rpcPairingSnapshot().PendingRequests != 1 {
+	if got := p.DamageStatistics.Snapshot(); got.DamageDealt != 0 || p.RPCPairingSnapshot().PendingRequests != 1 {
 		t.Fatalf("a request alone was counted: %+v", got)
 	}
 	deliverReceivePack(t, p, 1.4, inStandaloneNotify, damageResponseData(7, 71224))
-	if got := p.damageStatistics.Snapshot(); got.DamageDealt != 71224 || got.OutgoingEvents != 1 {
+	if got := p.DamageStatistics.Snapshot(); got.DamageDealt != 71224 || got.OutgoingEvents != 1 {
 		t.Fatalf("standalone response = %+v", got)
 	}
-	if pairing := p.rpcPairingSnapshot(); pairing.PendingRequests != 0 || pairing.Paired != 1 || pairing.StandaloneResponses != 1 {
+	if pairing := p.RPCPairingSnapshot(); pairing.PendingRequests != 0 || pairing.Paired != 1 || pairing.StandaloneResponses != 1 {
 		t.Fatalf("pairing = %+v", pairing)
 	}
 }
@@ -173,10 +173,10 @@ func TestDamageResponseCopiesAcrossContainersCountOnce(t *testing.T) {
 		deliverReceivePack(t, p, 1.1, order[0], damageResponseData(8, 5000))
 		deliverReceivePack(t, p, 1.2, order[1], damageResponseData(8, 5000))
 		deliverReceivePack(t, p, 1.3, order[1], damageResponseData(8, 6000))
-		if got := p.damageStatistics.Snapshot(); got.DamageDealt != 5000 || got.OutgoingEvents != 1 || got.DuplicateEvents != 0 {
+		if got := p.DamageStatistics.Snapshot(); got.DamageDealt != 5000 || got.OutgoingEvents != 1 || got.DuplicateEvents != 0 {
 			t.Fatalf("%v: copies changed the totals: %+v", order, got)
 		}
-		if pairing := p.rpcPairingSnapshot(); pairing.DuplicateResponses != 1 || pairing.ConflictingResponses != 1 || pairing.Paired != 1 {
+		if pairing := p.RPCPairingSnapshot(); pairing.DuplicateResponses != 1 || pairing.ConflictingResponses != 1 || pairing.Paired != 1 {
 			t.Fatalf("%v: pairing = %+v", order, pairing)
 		}
 	}
@@ -189,10 +189,10 @@ func TestHeldStandaloneResponseCopies(t *testing.T) {
 	deliverReceivePack(t, p, 1.1, inSendPackResponse, damageResponseData(9, 300))
 	deliverReceivePack(t, p, 1.2, inStandaloneNotify, damageResponseData(9, 301))
 	sendDamageRequestFrom(p, 1.5, 9, 100, 200)
-	if got := p.damageStatistics.Snapshot(); got.DamageDealt != 300 || got.OutgoingEvents != 1 {
+	if got := p.DamageStatistics.Snapshot(); got.DamageDealt != 300 || got.OutgoingEvents != 1 {
 		t.Fatalf("held copies = %+v", got)
 	}
-	if pairing := p.rpcPairingSnapshot(); pairing.DuplicateResponses != 1 || pairing.ConflictingResponses != 1 || pairing.PairedOutOfOrder != 1 {
+	if pairing := p.RPCPairingSnapshot(); pairing.DuplicateResponses != 1 || pairing.ConflictingResponses != 1 || pairing.PairedOutOfOrder != 1 {
 		t.Fatalf("pairing = %+v", pairing)
 	}
 }
@@ -203,11 +203,11 @@ func TestUnpairedStandaloneResponseIsNotCounted(t *testing.T) {
 	p := newContainerTestProcessor()
 	deliverReceivePack(t, p, 1, inStandaloneNotify, damageResponseData(10, 900))
 	deliverReceivePack(t, p, 1+damageResponseHoldWindow.Seconds()+0.5, inStandaloneNotify)
-	pairing := p.rpcPairingSnapshot()
+	pairing := p.RPCPairingSnapshot()
 	if pairing.UnpairedExpired != 1 || pairing.HeldResponses != 0 || pairing.Paired != 0 {
 		t.Fatalf("pairing = %+v", pairing)
 	}
-	if got := p.damageStatistics.Snapshot(); got.DamageDealt != 0 || got.OutgoingEvents != 0 {
+	if got := p.DamageStatistics.Snapshot(); got.DamageDealt != 0 || got.OutgoingEvents != 0 {
 		t.Fatalf("an unpaired response was counted: %+v", got)
 	}
 }
@@ -220,14 +220,14 @@ func TestStandaloneResponseNeverPairsAcrossSessions(t *testing.T) {
 	p.discardHeldResponses(&p.pairing.sessionChange)
 	p.sessionGeneration++
 	sendDamageRequestFrom(p, 1.5, 11, 100, 200)
-	if got := p.damageStatistics.Snapshot(); got.DamageDealt != 0 {
+	if got := p.DamageStatistics.Snapshot(); got.DamageDealt != 0 {
 		t.Fatalf("a response of the previous session was paired: %+v", got)
 	}
 	deliverReceivePack(t, p, 1.6, inStandaloneNotify, damageResponseData(11, 120))
-	if got := p.damageStatistics.Snapshot(); got.DamageDealt != 120 || got.OutgoingEvents != 1 {
+	if got := p.DamageStatistics.Snapshot(); got.DamageDealt != 120 || got.OutgoingEvents != 1 {
 		t.Fatalf("the new session's own response = %+v", got)
 	}
-	if pairing := p.rpcPairingSnapshot(); pairing.UnpairedSessionChange != 1 || pairing.Paired != 1 {
+	if pairing := p.RPCPairingSnapshot(); pairing.UnpairedSessionChange != 1 || pairing.Paired != 1 {
 		t.Fatalf("pairing = %+v", pairing)
 	}
 }
@@ -235,17 +235,17 @@ func TestStandaloneResponseNeverPairsAcrossSessions(t *testing.T) {
 // A standalone notify may carry responses and notifications together; both are read, responses first.
 func TestStandaloneNotifyCarriesResponsesAndNotifications(t *testing.T) {
 	p := newContainerTestProcessor()
-	p.sessionNumber = 1
+	p.SessionNumber = 1
 	p.observeSceneJoin(singlePlayerJoinScene(77), pairingAt(0.5))
 	sendDamageRequestFrom(p, 1, 12, 100, 200)
 	sendDamageRequestFrom(p, 1, 13, 101, 201)
 	// battleStateReceivePack is a whole notify body with one Data item; the two response items follow it in the same body.
 	pairingFrame(p, 1.2)
 	body := append(battleStateReceivePack(true, 77), receivePackBody(damageResponseData(12, 800), damageResponseData(13, 450))...)
-	if err := p.handleCombatReceivePacks(gameFrame{direction: "in", commandID: cmdCombatReceivePackNotify, timestamp: pairingAt(1.2)}, body); err != nil {
+	if err := p.HandleCombatReceivePacks(GameFrame{Direction: "in", CommandID: CmdCombatReceivePackNotify, Timestamp: pairingAt(1.2)}, body); err != nil {
 		t.Fatal(err)
 	}
-	got := p.damageStatistics.Snapshot()
+	got := p.DamageStatistics.Snapshot()
 	if got.DamageDealt != 1250 || got.OutgoingEvents != 2 {
 		t.Fatalf("responses of a mixed pack = %+v", got)
 	}
@@ -258,13 +258,13 @@ func TestStandaloneNotifyCarriesResponsesAndNotifications(t *testing.T) {
 func TestMalformedStandaloneResponseItemIsSkipped(t *testing.T) {
 	p := newContainerTestProcessor()
 	sendDamageRequestFrom(p, 1, 14, 100, 200)
-	broken := appendBytesField(nil, fieldCombatReceiveDataCombatResponseData, []byte{0x0a, 0x05, 0x01})
-	before := p.stats.parseErrors
+	broken := appendBytesField(nil, FieldCombatReceiveDataCombatResponseData, []byte{0x0a, 0x05, 0x01})
+	before := p.Stats.ParseErrors
 	deliverReceivePack(t, p, 1.2, inStandaloneNotify, broken, damageResponseData(14, 64))
-	if p.stats.parseErrors != before+1 {
-		t.Fatalf("parse errors = %d, want %d", p.stats.parseErrors, before+1)
+	if p.Stats.ParseErrors != before+1 {
+		t.Fatalf("parse errors = %d, want %d", p.Stats.ParseErrors, before+1)
 	}
-	if got := p.damageStatistics.Snapshot(); got.DamageDealt != 64 {
+	if got := p.DamageStatistics.Snapshot(); got.DamageDealt != 64 {
 		t.Fatalf("the valid item was lost: %+v", got)
 	}
 }

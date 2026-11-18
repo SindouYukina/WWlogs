@@ -103,10 +103,10 @@ func equivalenceEnvironment(t *testing.T) (equivalenceInputs, bool) {
 
 // equivalenceReplay replays one PCAP exactly like the executables' offline loop: same BPF filter, same
 // direction rule, same datagram entry point. after is called with the 1-based UDP datagram index.
-func equivalenceReplay(t *testing.T, inputs equivalenceInputs, masters *gameMaster, key *staticRSA, path string, configure func(*processor), after func(index int, p *processor)) (*processor, captureStats) {
+func equivalenceReplay(t *testing.T, inputs equivalenceInputs, masters *GameMaster, key *StaticRSA, path string, configure func(*Processor), after func(index int, p *Processor)) (*Processor, CaptureStats) {
 	t.Helper()
-	p := newProcessor(key, io.Discard, io.Discard, nil)
-	p.masters = masters
+	p := NewProcessor(key, io.Discard)
+	p.Masters = masters
 	if configure != nil {
 		configure(p)
 	}
@@ -119,8 +119,8 @@ func equivalenceReplay(t *testing.T, inputs equivalenceInputs, masters *gameMast
 		t.Fatal(err)
 	}
 	source := gopacket.NewPacketSource(handle, handle.LinkType())
-	streams := make(map[string]*stream)
-	stats := captureStats{}
+	streams := make(map[string]*Stream)
+	stats := CaptureStats{}
 	for {
 		packet, err := source.NextPacket()
 		if err != nil {
@@ -135,15 +135,15 @@ func equivalenceReplay(t *testing.T, inputs equivalenceInputs, masters *gameMast
 			continue
 		}
 		udp := udpLayer.(*layers.UDP)
-		stats.udpPackets++
-		direction := packetDirection(packet, inputs.localIP, udp, 13100, 13120)
-		consumeDatagram(udp.Payload, direction, packet.Metadata().CaptureInfo.Timestamp, streams, p, &stats)
+		stats.UDPPackets++
+		direction := PacketDirection(packet, inputs.localIP, udp, 13100, 13120)
+		ConsumeDatagram(udp.Payload, direction, packet.Metadata().CaptureInfo.Timestamp, streams, p, &stats)
 		if after != nil {
-			after(stats.udpPackets, p)
+			after(stats.UDPPackets, p)
 		}
 	}
 	// The executables flush open KCP gaps when a capture ends; replays do the same.
-	finishTransport(streams, p, &stats)
+	FinishTransport(streams, p, &stats)
 	return p, stats
 }
 
@@ -156,8 +156,8 @@ type equivalenceState struct {
 // PCAPs replayed in one process) compare equal. Everything else is kept exactly as produced.
 type equivalenceNormalizer struct{ base uint64 }
 
-func newEquivalenceNormalizer(p *processor) equivalenceNormalizer {
-	return equivalenceNormalizer{base: p.damageStatistics.Snapshot().CaptureSessionID - 1}
+func newEquivalenceNormalizer(p *Processor) equivalenceNormalizer {
+	return equivalenceNormalizer{base: p.DamageStatistics.Snapshot().CaptureSessionID - 1}
 }
 
 func (n equivalenceNormalizer) damage(s DamageStatisticsSnapshot) DamageStatisticsSnapshot {
@@ -172,12 +172,12 @@ func (n equivalenceNormalizer) effects(s EffectSnapshot) EffectSnapshot {
 
 // stateAtFrame reads the statistics exactly like the live report: unqualified totals first, then the
 // capture-clock query at the last observed frame time.
-func (n equivalenceNormalizer) stateAtFrame(p *processor) equivalenceState {
-	damage := p.damageStatisticsSnapshot()
-	if observedAt := p.currentFrameTime; !observedAt.IsZero() {
-		damage = p.damageStatisticsSnapshotAt(CaptureQueryTime{CaptureSessionID: damage.CaptureSessionID, Timestamp: observedAt})
+func (n equivalenceNormalizer) stateAtFrame(p *Processor) equivalenceState {
+	damage := p.DamageStatisticsSnapshot()
+	if observedAt := p.CurrentFrameTime; !observedAt.IsZero() {
+		damage = p.DamageStatisticsSnapshotAt(CaptureQueryTime{CaptureSessionID: damage.CaptureSessionID, Timestamp: observedAt})
 	}
-	return equivalenceState{Damage: n.damage(damage), Effects: n.effects(p.effectSnapshotAtLastFrame())}
+	return equivalenceState{Damage: n.damage(damage), Effects: n.effects(p.EffectSnapshotAtLastFrame())}
 }
 
 func equivalenceMarshal(t *testing.T, value any) []byte {
@@ -215,7 +215,7 @@ func equivalenceInts(value any) map[string]int64 {
 }
 
 // equivalenceContainerSizes records the size of the bounded request, handle, and pairing tables.
-func equivalenceContainerSizes(p *processor) map[string]int {
+func equivalenceContainerSizes(p *Processor) map[string]int {
 	out := map[string]int{}
 	v := reflect.ValueOf(p).Elem()
 	for _, name := range []string{"pending", "pendingOrder", "consumed", "consumedOrder", "activeRequests", "combatActionRequests", "combatActionOrder", "bulletHandles", "buffHandles", "buffHandleOrder", "bulletHandleOrder"} {
@@ -227,7 +227,7 @@ func equivalenceContainerSizes(p *processor) map[string]int {
 	return out
 }
 
-func equivalenceScalars(p *processor) map[string]string {
+func equivalenceScalars(p *Processor) map[string]string {
 	out := map[string]string{}
 	v := reflect.ValueOf(p).Elem()
 	for _, name := range []string{"activeRoleID", "hasActiveRole", "sessionNumber", "sessionGeneration", "flowTime", "hasFlowTime"} {
@@ -236,14 +236,14 @@ func equivalenceScalars(p *processor) map[string]string {
 			out[name] = fmt.Sprint(field)
 		}
 	}
-	out["currentFrameTime"] = p.currentFrameTime.Format(time.RFC3339Nano)
+	out["currentFrameTime"] = p.CurrentFrameTime.Format(time.RFC3339Nano)
 	return out
 }
 
 // equivalenceDiagnosticScalars holds counters that exist only to label diagnostic records. frameOrdinal is
 // advanced by the frame archive path, which the public profile does not contain, so it is compared between
 // the profiles that have it and reported (not compared) for the public profile.
-func equivalenceDiagnosticScalars(p *processor) map[string]string {
+func equivalenceDiagnosticScalars(p *Processor) map[string]string {
 	out := map[string]string{}
 	v := reflect.ValueOf(p).Elem()
 	for _, name := range []string{"frameOrdinal", "eventOrderFrame", "eventOrder"} {
@@ -301,11 +301,11 @@ func TestCoreEquivalenceCollector(t *testing.T) {
 	if !enabled {
 		t.Skip("WWLOGS_EQUIVALENCE_OUT is not set")
 	}
-	key, err := loadEmbeddedPrivateKey()
+	key, err := LoadEmbeddedPrivateKey()
 	if err != nil {
 		t.Fatalf("embedded key payload is unavailable (build the test binary with scripts/embed-key.go -test-binary): %v", err)
 	}
-	masters, err := loadGameMasterDatabase(inputs.master, inputs.locale)
+	masters, err := LoadGameMasterDatabase(inputs.master, inputs.locale)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -326,46 +326,32 @@ func TestCoreEquivalenceCollector(t *testing.T) {
 	}
 }
 
-func collectEquivalence(t *testing.T, inputs equivalenceInputs, masters *gameMaster, key *staticRSA, item equivalencePCAP, mode equivalenceMode) (equivalenceRecord, map[string]any) {
+func collectEquivalence(t *testing.T, inputs equivalenceInputs, masters *GameMaster, key *StaticRSA, item equivalencePCAP, mode equivalenceMode) (equivalenceRecord, map[string]any) {
 	t.Helper()
-	var sinks *equivalenceSinkSet
-	configure := func(p *processor) {
-		if mode.sinks {
-			sinks = attachEquivalenceSinks(p)
-		}
-	}
-
 	// Pass 1: read only once at the end, like an executable replay.
 	var normalizer equivalenceNormalizer
-	finalProcessor, stats := equivalenceReplay(t, inputs, masters, key, item.path, func(p *processor) {
+	finalProcessor, stats := equivalenceReplay(t, inputs, masters, key, item.path, func(p *Processor) {
 		normalizer = newEquivalenceNormalizer(p)
-		configure(p)
 	}, nil)
 	record := equivalenceRecord{
 		Name:       item.name,
 		Final:      normalizer.stateAtFrame(finalProcessor),
 		Capture:    equivalenceInts(&stats),
-		Processor:  equivalenceInts(&finalProcessor.stats),
+		Processor:  equivalenceInts(&finalProcessor.Stats),
 		Containers: equivalenceContainerSizes(finalProcessor),
 		Scalars:    equivalenceScalars(finalProcessor),
 	}
 	extra := map[string]any{"diagnosticScalars": equivalenceDiagnosticScalars(finalProcessor)}
-	if sinks != nil {
-		extra["sinks"] = sinks.summary()
-	}
-	total := stats.udpPackets
+	total := stats.UDPPackets
 
 	// Pass 2: query after every datagram, which is how a live display polls. The digest chain proves that
 	// the state evolved identically, not just that it ended identically.
 	chain := sha256.New()
 	previous := ""
 	var normalizer2 equivalenceNormalizer
-	equivalenceReplay(t, inputs, masters, key, item.path, func(p *processor) {
+	equivalenceReplay(t, inputs, masters, key, item.path, func(p *Processor) {
 		normalizer2 = newEquivalenceNormalizer(p)
-		if mode.sinks {
-			attachEquivalenceSinks(p)
-		}
-	}, func(index int, p *processor) {
+	}, func(index int, p *Processor) {
 		state := normalizer2.stateAtFrame(p)
 		digest := equivalenceDigest(equivalenceMarshal(t, state))
 		chain.Write([]byte(digest))
@@ -376,7 +362,7 @@ func collectEquivalence(t *testing.T, inputs equivalenceInputs, masters *gameMas
 		previous = digest
 		record.Timeline = append(record.Timeline, equivalenceTimelinePoint{
 			Datagram:    index,
-			FrameTime:   p.currentFrameTime,
+			FrameTime:   p.CurrentFrameTime,
 			Digest:      digest,
 			DamageDealt: state.Damage.DamageDealt,
 			DamageTaken: state.Damage.DamageTaken,
@@ -399,24 +385,21 @@ func collectEquivalence(t *testing.T, inputs equivalenceInputs, masters *gameMas
 		var normalizer3 equivalenceNormalizer
 		reset := equivalenceReset{AtDatagram: resetAt}
 		done := false
-		resetProcessor, _ := equivalenceReplay(t, inputs, masters, key, item.path, func(p *processor) {
+		resetProcessor, _ := equivalenceReplay(t, inputs, masters, key, item.path, func(p *Processor) {
 			normalizer3 = newEquivalenceNormalizer(p)
-			if mode.sinks {
-				attachEquivalenceSinks(p)
-			}
-		}, func(index int, p *processor) {
+		}, func(index int, p *Processor) {
 			if done || index != resetAt {
 				return
 			}
 			done = true
-			damage := p.damageStatisticsSnapshot()
-			query := CaptureQueryTime{CaptureSessionID: damage.CaptureSessionID, Timestamp: p.currentFrameTime}
-			if !p.currentFrameTime.IsZero() {
-				reset.Before = normalizer3.damage(p.snapshotAndResetDamageStatisticsAt(query))
-				reset.EffectsBefore = normalizer3.effects(p.effects.SnapshotAndResetAt(query))
+			damage := p.DamageStatisticsSnapshot()
+			query := CaptureQueryTime{CaptureSessionID: damage.CaptureSessionID, Timestamp: p.CurrentFrameTime}
+			if !p.CurrentFrameTime.IsZero() {
+				reset.Before = normalizer3.damage(p.SnapshotAndResetDamageStatisticsAt(query))
+				reset.EffectsBefore = normalizer3.effects(p.Effects.SnapshotAndResetAt(query))
 			} else {
-				reset.Before = normalizer3.damage(p.snapshotAndResetDamageStatistics())
-				p.effects.Reset()
+				reset.Before = normalizer3.damage(p.SnapshotAndResetDamageStatistics())
+				p.Effects.Reset()
 			}
 			reset.AfterReset = normalizer3.stateAtFrame(p)
 		})
@@ -427,19 +410,13 @@ func collectEquivalence(t *testing.T, inputs equivalenceInputs, masters *gameMas
 }
 
 type equivalenceMode struct {
-	name  string
-	sinks bool
+	name string
 }
 
-// equivalenceModes lists the collector modes this build can run. "bare" attaches no diagnostic sink and
-// exists in every profile. "sinks" attaches discarding hash writers to the diagnostic sinks and exists
-// only where those sinks exist (Development and the Golden Baseline).
+// equivalenceModes lists the collector modes of the core: "bare" runs the core alone. The Development module runs the
+// same collector with its observers attached as well ("sinks", tests/devcapture/equivalence_test.go).
 func equivalenceModes() []equivalenceMode {
-	modes := []equivalenceMode{{name: "bare"}}
-	if equivalenceSinksSupported {
-		modes = append(modes, equivalenceMode{name: "sinks", sinks: true})
-	}
-	return modes
+	return []equivalenceMode{{name: "bare"}}
 }
 
 type equivalenceHashSink struct {
@@ -449,10 +426,6 @@ type equivalenceHashSink struct {
 	}
 	bytes int64
 	lines int64
-}
-
-func newEquivalenceHashSink() *equivalenceHashSink {
-	return &equivalenceHashSink{hash: sha256.New()}
 }
 
 func (s *equivalenceHashSink) Write(data []byte) (int, error) {
@@ -490,7 +463,7 @@ func TestMasterEquivalenceDigest(t *testing.T) {
 	if !enabled {
 		t.Skip("WWLOGS_EQUIVALENCE_OUT is not set")
 	}
-	masters, err := loadGameMasterDatabase(inputs.master, inputs.locale)
+	masters, err := LoadGameMasterDatabase(inputs.master, inputs.locale)
 	if err != nil {
 		t.Fatal(err)
 	}

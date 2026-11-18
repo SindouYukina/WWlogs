@@ -53,10 +53,10 @@ const combatEvidenceNegativeStatusNotify = CombatEvidenceNegativeStatusNotify
 // notified tick: the server's last tick and its REMOVE arrive around the estimated end.
 const negativeStatusLiveSlack = time.Second
 
-// notifyEventKey numbers a notified result inside its protocol session: the server frame's sequence (strictly
+// NotifyEventKey numbers a notified result inside its protocol session: the server frame's sequence (strictly
 // increasing for combat frames in every capture, never zero) and the result's position in that frame. A frame without
 // a sequence gives no key, and such a result is counted without deduplication, like a response without a RequestId.
-func notifyEventKey(sequence uint32, ordinal int) uint64 {
+func NotifyEventKey(sequence uint32, ordinal int) uint64 {
 	if sequence == 0 || ordinal < 0 || ordinal > 0xffff {
 		return 0
 	}
@@ -90,39 +90,39 @@ type damageContext struct {
 
 func parseDamageExecuteNotify(body []byte) (damageExecuteNotify, error) {
 	var notify damageExecuteNotify
-	fields, err := parseProtoFields(body)
+	fields, err := ParseProtoFields(body)
 	if err != nil {
 		return notify, fmt.Errorf("parse DamageExecuteNotify: %w", err)
 	}
 	for _, field := range fields {
-		if field.number == fieldDamageExecuteNotifyDamageContext && field.wire == 2 {
-			context, err := parseDamageContext(field.data)
+		if field.Number == FieldDamageExecuteNotifyDamageContext && field.Wire == 2 {
+			context, err := parseDamageContext(field.Data)
 			if err != nil {
 				return notify, err
 			}
 			notify.context = context
 			continue
 		}
-		if field.wire != 0 {
+		if field.Wire != 0 {
 			continue
 		}
-		switch field.number {
-		case fieldDamageExecuteNotifyAttackerEntityID:
-			notify.attacker, notify.hasAttacker = field.value, true
-		case fieldDamageExecuteNotifyTargetEntityID:
-			notify.target, notify.hasTarget = field.value, true
-		case fieldDamageExecuteNotifyDamageID:
-			notify.damageID, notify.hasDamageID = field.value, true
-		case fieldDamageExecuteNotifyDamage:
-			notify.damage, notify.hasDamage = int32(uint32(field.value)), true
-		case fieldDamageExecuteNotifyChangeLife:
-			notify.changeLife, notify.hasChangeLife = int32(uint32(field.value)), true
-		case fieldDamageExecuteNotifyImmuneType:
-			notify.immuneType = int32(uint32(field.value))
-		case fieldDamageExecuteNotifyPartID:
-			notify.partID, notify.hasPartID = int32(uint32(field.value)), true
-		case fieldDamageExecuteNotifySkillLevel:
-			notify.skillLevel = field.value
+		switch field.Number {
+		case FieldDamageExecuteNotifyAttackerEntityID:
+			notify.attacker, notify.hasAttacker = field.Value, true
+		case FieldDamageExecuteNotifyTargetEntityID:
+			notify.target, notify.hasTarget = field.Value, true
+		case FieldDamageExecuteNotifyDamageID:
+			notify.damageID, notify.hasDamageID = field.Value, true
+		case FieldDamageExecuteNotifyDamage:
+			notify.damage, notify.hasDamage = int32(uint32(field.Value)), true
+		case FieldDamageExecuteNotifyChangeLife:
+			notify.changeLife, notify.hasChangeLife = int32(uint32(field.Value)), true
+		case FieldDamageExecuteNotifyImmuneType:
+			notify.immuneType = int32(uint32(field.Value))
+		case FieldDamageExecuteNotifyPartID:
+			notify.partID, notify.hasPartID = int32(uint32(field.Value)), true
+		case FieldDamageExecuteNotifySkillLevel:
+			notify.skillLevel = field.Value
 		}
 	}
 	return notify, nil
@@ -130,134 +130,136 @@ func parseDamageExecuteNotify(body []byte) (damageExecuteNotify, error) {
 
 func parseDamageContext(body []byte) (damageContext, error) {
 	var context damageContext
-	fields, err := parseProtoFields(body)
+	fields, err := ParseProtoFields(body)
 	if err != nil {
 		return context, fmt.Errorf("parse DamageContext: %w", err)
 	}
 	for _, field := range fields {
-		if field.wire != 0 {
+		if field.Wire != 0 {
 			continue
 		}
-		switch field.number {
-		case fieldDamageContextSourceType:
-			context.sourceType, context.hasSourceType = field.value, true
-		case fieldDamageContextSkillID:
-			context.skillID = field.value
-		case fieldDamageContextSkillMessageID:
-			context.skillMessageID = field.value
-		case fieldDamageContextBulletID:
-			context.bulletID, context.hasBulletID = int64(field.value), true
+		switch field.Number {
+		case FieldDamageContextSourceType:
+			context.sourceType, context.hasSourceType = field.Value, true
+		case FieldDamageContextSkillID:
+			context.skillID = field.Value
+		case FieldDamageContextSkillMessageID:
+			context.skillMessageID = field.Value
+		case FieldDamageContextBulletID:
+			context.bulletID, context.hasBulletID = int64(field.Value), true
 		}
 	}
 	return context, nil
 }
 
-// damageNotifyStats counts notified results for diagnostics; the statistics own what was counted.
-type damageNotifyStats struct {
-	notifies            int
-	noAmount            int // no Damage, Damage 0 or a nonzero ImmuneType: nothing to count
-	malformed           int
-	keyless             int // counted without a deduplication key
-	negativeStatus      int // negative-status results seen
-	negativeStatusLocal int // of those, credited to the local team
-	creditedTrigger     int // of those, credited to the role whose InvokePeriod forced the execution
-	creditedOwner       int // of those, credited to the role that owns the executing instance
-	uncredited          int // of those, credited to no role
-	statusTriggers      int // InvokePeriod Buffs the server applied on a holder
-	// statusTriggersForcingNothing counts InvokePeriods that found no named status alive on the holder.
-	statusTriggersForcingNothing int
-	// settledByApplication counts local results of statuses without a period (caused by an application).
-	settledByApplication int
-	// settledAcrossTargets counts local results an overflow on another enemy can have spread.
-	settledAcrossTargets int
-	// instantStatusExecutions counts instant status Buffs the server applied (they execute their status by themselves).
-	instantStatusExecutions int
-	// excludedStatusInstances counts status instances whose holder and source are unrelated to every player.
-	excludedStatusInstances int
+// DamageNotifyStats counts notified results for diagnostics; the statistics own what was counted.
+type DamageNotifyStats struct {
+	Notifies            int
+	NoAmount            int // no Damage, Damage 0 or a nonzero ImmuneType: nothing to count
+	Malformed           int
+	Keyless             int // counted without a deduplication key
+	NegativeStatus      int // negative-status results seen
+	NegativeStatusLocal int // of those, credited to the local team
+	CreditedTrigger     int // of those, credited to the role whose InvokePeriod forced the execution
+	CreditedOwner       int // of those, credited to the role that owns the executing instance
+	Uncredited          int // of those, credited to no role
+	StatusTriggers      int // InvokePeriod Buffs the server applied on a holder
+	// StatusTriggersForcingNothing counts InvokePeriods that found no named status alive on the holder.
+	StatusTriggersForcingNothing int
+	// SettledByApplication counts local results of statuses without a period (caused by an application).
+	SettledByApplication int
+	// SettledAcrossTargets counts local results an overflow on another enemy can have spread.
+	SettledAcrossTargets int
+	// InstantStatusExecutions counts instant status Buffs the server applied (they execute their status by themselves).
+	InstantStatusExecutions int
+	// ExcludedStatusInstances counts status instances whose holder and source are unrelated to every player.
+	ExcludedStatusInstances int
 }
 
 // handleDamageExecuteNotify reads one DamageExecuteNotify of a CombatNotifyData; ordinal is its position among the
 // notified results of the frame.
-func (p *processor) handleDamageExecuteNotify(frame gameFrame, body []byte, ordinal int) {
-	p.notifyStats.notifies++
+func (p *Processor) handleDamageExecuteNotify(frame GameFrame, body []byte, ordinal int) {
+	p.NotifyStats.Notifies++
 	notify, err := parseDamageExecuteNotify(body)
 	if err != nil {
-		p.notifyStats.malformed++
-		p.stats.parseErrors++
+		p.NotifyStats.Malformed++
+		p.Stats.ParseErrors++
 		return
 	}
 	// Every negative-status execution the scene combat entity reports uses up the trigger that forced it, also one that
 	// deals nothing, so a trigger never explains a later execution of the same instance.
-	negativeStatus := notify.hasDamageID && p.masters.isNegativeStatusDamage(notify.damageID)
+	negativeStatus := notify.hasDamageID && p.Masters.isNegativeStatusDamage(notify.damageID)
 	var execution negativeStatusExecution
 	var candidates []statusCandidate
 	var spread []spreadCandidate
 	if negativeStatus && notify.hasAttacker && notify.hasTarget && notify.attacker == p.sceneCombatEntity() && notify.attacker != 0 {
-		candidates = p.negativeStatusCandidates(notify.target, notify.damageID, frame.timestamp)
-		p.statusCauses.prune(frame.timestamp)
-		spread = p.spreadCandidates(notify.target, notify.damageID, frame.timestamp)
-		execution = p.matchNegativeStatusExecution(notify.target, notify.damageID, candidates, spread, frame.timestamp)
+		candidates = p.negativeStatusCandidates(notify.target, notify.damageID, frame.Timestamp)
+		p.statusCauses.prune(frame.Timestamp)
+		spread = p.spreadCandidates(notify.target, notify.damageID, frame.Timestamp)
+		execution = p.matchNegativeStatusExecution(notify.target, notify.damageID, candidates, spread, frame.Timestamp)
 	}
 	if !notify.hasDamage || notify.damage == 0 || notify.immuneType != 0 {
-		p.notifyStats.noAmount++
+		p.NotifyStats.NoAmount++
 		return
 	}
 	value := int64(notify.damage)
 	if value < 0 {
 		value = -value
 	}
-	request := pendingDamageRequest{
-		attackerEntityID: notify.attacker, hasAttackerEntityID: notify.hasAttacker,
-		targetEntityID: notify.target, hasTargetEntityID: notify.hasTarget,
-		partID: notify.partID, hasPartID: notify.hasPartID, skillLevel: notify.skillLevel,
-		damageID: notify.damageID, hasDamageID: notify.hasDamageID,
-		skillID: notify.context.skillID, skillMessageID: notify.context.skillMessageID,
-		damageSourceType: notify.context.sourceType, hasDamageSourceType: notify.context.hasSourceType,
-		bulletID: notify.context.bulletID, hasBulletID: notify.context.hasBulletID,
+	request := PendingDamageRequest{
+		AttackerEntityID: notify.attacker, HasAttackerEntityID: notify.hasAttacker,
+		TargetEntityID: notify.target, HasTargetEntityID: notify.hasTarget,
+		PartID: notify.partID, HasPartID: notify.hasPartID, skillLevel: notify.skillLevel,
+		DamageID: notify.damageID, HasDamageID: notify.hasDamageID,
+		SkillID: notify.context.skillID, SkillMessageID: notify.context.skillMessageID,
+		DamageSourceType: notify.context.sourceType, HasDamageSourceType: notify.context.hasSourceType,
+		BulletID: notify.context.bulletID, HasBulletID: notify.context.hasBulletID,
 	}
-	event := p.buildDamageEvent(0, request, notify.damage, notify.changeLife, notify.hasChangeLife, value)
-	event.Notify = &notifiedResult{Key: notifyEventKey(frame.sequence, ordinal)}
+	event := p.BuildDamageEvent(0, request, notify.damage, notify.changeLife, notify.hasChangeLife, value)
+	event.Notify = &NotifiedResult{Key: NotifyEventKey(frame.Sequence, ordinal)}
 	if event.Notify.Key == 0 {
-		p.notifyStats.keyless++
+		p.NotifyStats.Keyless++
 	}
 	if negativeStatus {
-		p.notifyStats.negativeStatus++
+		p.NotifyStats.NegativeStatus++
 		event.Notify.NegativeStatus = true
-		event.Notify.NegativeStatusLocal, event.Notify.NegativeStatusBasis = p.negativeStatusOwnership(event, notify.damageID, candidates, spread, execution, frame.timestamp)
+		event.Notify.NegativeStatusLocal, event.Notify.NegativeStatusBasis = p.negativeStatusOwnership(event, notify.damageID, candidates, spread, execution, frame.Timestamp)
 		if event.Notify.NegativeStatusLocal {
-			p.notifyStats.negativeStatusLocal++
+			p.NotifyStats.NegativeStatusLocal++
 			event.Notify.Execution = execution
 			if role := p.negativeStatusRole(execution); role != nil {
 				event.Notify.Credit = role
 				if role.Basis == roleBasisNegativeStatusTrigger {
-					p.notifyStats.creditedTrigger++
+					p.NotifyStats.CreditedTrigger++
 				} else {
-					p.notifyStats.creditedOwner++
+					p.NotifyStats.CreditedOwner++
 				}
 			} else {
-				p.notifyStats.uncredited++
+				p.NotifyStats.Uncredited++
 				if execution.Reason == "" {
 					event.Notify.Execution.Reason = "the credited entity is no local role or summon of one"
 				}
 			}
 			switch execution.Settlement {
 			case statusSettlementApplied:
-				p.notifyStats.settledByApplication++
+				p.NotifyStats.SettledByApplication++
 			case statusSettlementSpread:
-				p.notifyStats.settledByApplication++
-				p.notifyStats.settledAcrossTargets++
+				p.NotifyStats.SettledByApplication++
+				p.NotifyStats.SettledAcrossTargets++
 			}
 		}
 	}
-	p.stats.decodedMatchedEvents++
-	p.stats.decodedCombatResultAbs += value
-	if p.writeDamageEvent(event) {
-		p.observeEncounterSummary(event)
+	p.Stats.DecodedMatchedEvents++
+	p.Stats.DecodedCombatResultAbs += value
+	if p.WriteDamageEvent(event) {
+		if p.observer != nil {
+			p.observer.ObserveEncounterSummary(event)
+		}
 	}
 }
 
-// notifiedResult marks a combatEvent read from a DamageExecuteNotify.
-type notifiedResult struct {
+// NotifiedResult marks a combatEvent read from a DamageExecuteNotify.
+type NotifiedResult struct {
 	// Key is notifyEventKey; zero when the frame had no sequence.
 	Key uint64
 	// NegativeStatus is set for a DamageId named by AbnormalDamageConfig; NegativeStatusLocal when negativeStatusOwnership
@@ -285,14 +287,14 @@ type notifiedResult struct {
 //   - every such instance was applied by the local team, or the result was credited to a local role whose action caused
 //     it (execution: forced, instant, applied or spread) and no such instance was applied by an enemy: the instance names
 //     no instigator the processor can place, but the action that caused this result is the local team's.
-func (p *processor) negativeStatusOwnership(event combatEvent, damageID uint64, candidates []statusCandidate, spread []spreadCandidate, execution negativeStatusExecution, at time.Time) (bool, string) {
+func (p *Processor) negativeStatusOwnership(event CombatEvent, damageID uint64, candidates []statusCandidate, spread []spreadCandidate, execution negativeStatusExecution, at time.Time) (bool, string) {
 	if scene := p.sceneCombatEntity(); scene == 0 || event.SourceEntityID != scene {
 		return false, "attacker is not the scene's combat entity"
 	}
-	if p.playerRelationForEntity(event.TargetEntityID, event.Target) != playerRelationUnrelated {
+	if p.playerRelationForEntity(event.TargetEntityID, event.Target) != PlayerRelationUnrelated {
 		return false, "target is not an enemy"
 	}
-	if len(p.scenePlayerIDs) != 1 || p.playerRelevance == nil || !p.playerRelevance.isLocalPlayerID(p.scenePlayerIDs[0]) {
+	if len(p.ScenePlayerIDs) != 1 || p.PlayerRelevance == nil || !p.PlayerRelevance.IsLocalPlayerID(p.ScenePlayerIDs[0]) {
 		return false, "the scene does not list the local player alone"
 	}
 	if p.excludedStatusExecutes(event.TargetEntityID, damageID, at) {
@@ -335,26 +337,26 @@ func (p *processor) negativeStatusOwnership(event combatEvent, damageID uint64, 
 			return true, "every live status instance on the target that executes this DamageId was applied by the local team"
 		}
 	}
-	if execution.CreditBasis == roleBasisNegativeStatusTrigger && p.localRoleForEntity(execution.CreditEntity, entityIdentity{}) != nil {
+	if execution.CreditBasis == roleBasisNegativeStatusTrigger && p.localRoleForEntity(execution.CreditEntity, EntityIdentity{}) != nil {
 		return true, "a local role's action caused the execution of a status instance whose instigator is unknown"
 	}
 	return false, "a status instance that can have executed this DamageId was not applied by the local team"
 }
 
 // sceneCombatEntity is the current scene's combat entity, or 0 when the scene named none.
-func (p *processor) sceneCombatEntity() uint64 {
-	if p == nil || p.entities == nil || !p.entities.hasSceneCombatEntityID {
+func (p *Processor) sceneCombatEntity() uint64 {
+	if p == nil || p.Entities == nil || !p.Entities.HasSceneCombatEntityID {
 		return 0
 	}
-	return p.entities.sceneCombatEntityID
+	return p.Entities.SceneCombatEntityID
 }
 
 // isNegativeStatusDamage reports a DamageId named by an Abnormal<id> column of AbnormalDamageConfig.
-func (m *gameMaster) isNegativeStatusDamage(damageID uint64) bool {
+func (m *GameMaster) isNegativeStatusDamage(damageID uint64) bool {
 	if m == nil || damageID == 0 {
 		return false
 	}
-	_, ok := m.abnormalDamageIDs[damageID]
+	_, ok := m.AbnormalDamageIDs[damageID]
 	return ok
 }
 
@@ -363,11 +365,11 @@ func (m *gameMaster) isNegativeStatusDamage(damageID uint64) bool {
 // periodic execution is empty on the client; the server executes them with the DamageId of the same number, whose damage
 // row reads the AbnormalDamageConfig column Abnormal<id>. In the captures every such notified result had a live instance of
 // a Buff of that type on its target (CORRELATED: the relation is the shared number, not a stated reference).
-func (m *gameMaster) negativeStatusExecutes(effectID, damageID uint64) bool {
+func (m *GameMaster) negativeStatusExecutes(effectID, damageID uint64) bool {
 	if m == nil {
 		return false
 	}
-	executed, ok := m.negativeStatusExecutors[effectID]
+	executed, ok := m.NegativeStatusExecutors[effectID]
 	return ok && executed == damageID
 }
 
@@ -379,7 +381,7 @@ const negativeStatusFormula = 9
 // how each such Buff settles. AbnormalDamageConfig names 1001-1006 through its Abnormal<id> columns; the damage rows of
 // FormulaType 9 add the DamageIds it has no column for (Global 3.8: 1007, executed by the Glacio Chafe variant 10011100
 // that replaces 10011000 for some appliers, buff.replace_buff_ids).
-func loadSQLiteNegativeStatusDamage(db *sql.DB, master *gameMaster) error {
+func loadSQLiteNegativeStatusDamage(db *sql.DB, master *GameMaster) error {
 	exists, err := masterTableExists(db, "abnormaldamageconfig")
 	if err != nil {
 		return err
@@ -403,7 +405,7 @@ func loadSQLiteNegativeStatusDamage(db *sql.DB, master *gameMaster) error {
 					rows.Close()
 					return fmt.Errorf("abnormaldamageconfig column %q: %w", name, err)
 				}
-				master.abnormalDamageIDs[id] = struct{}{}
+				master.AbnormalDamageIDs[id] = struct{}{}
 			}
 		}
 		if err := rows.Close(); err != nil {
@@ -428,13 +430,13 @@ func loadSQLiteNegativeStatusDamage(db *sql.DB, master *gameMaster) error {
 				rows.Close()
 				return err
 			}
-			master.abnormalDamageIDs[id] = struct{}{}
+			master.AbnormalDamageIDs[id] = struct{}{}
 		}
 		if err := rows.Close(); err != nil {
 			return err
 		}
 	}
-	if len(master.abnormalDamageIDs) == 0 {
+	if len(master.AbnormalDamageIDs) == 0 {
 		return nil
 	}
 	present, err := masterColumnExists(db, "buff", "extra_effect_id")
@@ -454,8 +456,8 @@ func loadSQLiteNegativeStatusDamage(db *sql.DB, master *gameMaster) error {
 			columns = append(columns, "NULL")
 		}
 	}
-	ids := make([]string, 0, len(master.abnormalDamageIDs))
-	for id := range master.abnormalDamageIDs {
+	ids := make([]string, 0, len(master.AbnormalDamageIDs))
+	for id := range master.AbnormalDamageIDs {
 		ids = append(ids, strconv.FormatUint(id, 10))
 	}
 	executors, err := db.Query("SELECT " + strings.Join(columns, ", ") + " FROM buff WHERE CAST(extra_effect_id AS TEXT) IN ('" + strings.Join(ids, "','") + "')")
@@ -477,37 +479,30 @@ func loadSQLiteNegativeStatusDamage(db *sql.DB, master *gameMaster) error {
 		if err != nil {
 			return err
 		}
-		master.negativeStatusExecutors[buffID] = statusType
+		master.NegativeStatusExecutors[buffID] = statusType
 		settlement, err := parseNegativeStatusSettlement(period, onApplication, clearOnOverflow, durationPolicy)
 		if err != nil {
 			return fmt.Errorf("negative-status Buff %d: %w", buffID, err)
 		}
-		master.negativeStatusSettlements[buffID] = settlement
+		master.NegativeStatusSettlements[buffID] = settlement
 	}
 	return executors.Err()
 }
 
 // parseNegativeStatusSettlement reads buff.period, buff.b_execute_periodic_effect_on_application,
 // buff.b_clear_stack_on_overflow and buff.duration_policy of an executing status Buff; any of them may be absent.
-func parseNegativeStatusSettlement(period, onApplication, clearOnOverflow, durationPolicy sql.NullString) (negativeStatusSettlement, error) {
-	var settlement negativeStatusSettlement
+func parseNegativeStatusSettlement(period, onApplication, clearOnOverflow, durationPolicy sql.NullString) (NegativeStatusSettlementRule, error) {
+	var settlement NegativeStatusSettlementRule
 	if period.Valid && strings.TrimSpace(period.String) != "" {
 		value, err := strconv.ParseFloat(strings.TrimSpace(period.String), 64)
 		if err != nil {
 			return settlement, fmt.Errorf("buff.period %q: %w", period.String, err)
 		}
-		settlement.known = true
-		settlement.periodic = value > 0
+		settlement.Known = true
+		settlement.Periodic = value > 0
 	}
-	settlement.executesOnCreation = onApplication.Valid && strings.TrimSpace(onApplication.String) == "1"
-	settlement.clearsOnOverflow = clearOnOverflow.Valid && strings.TrimSpace(clearOnOverflow.String) == "1"
-	settlement.instant = durationPolicy.Valid && strings.TrimSpace(durationPolicy.String) == "0"
+	settlement.ExecutesOnCreation = onApplication.Valid && strings.TrimSpace(onApplication.String) == "1"
+	settlement.ClearsOnOverflow = clearOnOverflow.Valid && strings.TrimSpace(clearOnOverflow.String) == "1"
+	settlement.Instant = durationPolicy.Valid && strings.TrimSpace(durationPolicy.String) == "0"
 	return settlement, nil
-}
-
-// damageNotifyLine formats the notified-result counters for development diagnostics.
-func damageNotifyLine(s damageNotifyStats, sequenceGaps int) string {
-	return fmt.Sprintf("damage_notify notifies=%d no_amount=%d malformed=%d keyless=%d negative_status=%d negative_status_local=%d credited_trigger=%d credited_owner=%d uncredited=%d status_triggers=%d status_triggers_forcing_nothing=%d settled_by_application=%d settled_across_targets=%d instant_status_executions=%d excluded_status_instances=%d server_sequence_gaps=%d",
-		s.notifies, s.noAmount, s.malformed, s.keyless, s.negativeStatus, s.negativeStatusLocal, s.creditedTrigger, s.creditedOwner, s.uncredited, s.statusTriggers,
-		s.statusTriggersForcingNothing, s.settledByApplication, s.settledAcrossTargets, s.instantStatusExecutions, s.excludedStatusInstances, sequenceGaps)
 }

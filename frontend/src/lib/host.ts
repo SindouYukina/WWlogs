@@ -1,6 +1,6 @@
 import { Call } from "@wailsio/runtime"
 import type { CaptureEnvironment, NpcapDownload } from "./capture-environment"
-import type { HistoryChange, HistoryDay, HistoryEncounterDetail, HistoryYear } from "./history"
+import type { HistoryChange, HistoryDay, HistoryEncounterDetail, HistoryRecoveryResult, HistoryYear } from "./history"
 import type { HistoryLibrary, HistoryLibraryQuery } from "./history-library"
 import type { HistoryCareer, HistoryCareerQuery } from "./history-career"
 import type { HistoryComparison } from "./history-compare"
@@ -83,4 +83,8 @@ export const host = {
   /** Deletes all of the chosen encounters in one deletion, or none when one of them is unknown or still being recorded. */
   deleteHistoryEncounters: (ids: number[]) => call<HistoryChange>("DeleteHistoryEncounters", ids),
   clearHistory: () => call<HistoryChange>("ClearHistory"),
+  /** Opens the history again after it could not be opened. */
+  retryHistory: () => call<HistoryRecoveryResult>("RetryHistory"),
+  /** Deletes the history that cannot be opened and creates a new one; only after the user confirmed it twice. */
+  rebuildHistory: () => call<HistoryRecoveryResult>("RebuildHistory"),
 }

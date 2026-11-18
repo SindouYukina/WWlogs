@@ -28,9 +28,9 @@ func journalKinds(entries []HistoryEntry) []HistoryEntryKind {
 
 func enemyRecord(flow CombatFlow, amount int64, seconds float64, enemy uint64, monster uint64) CombatEventRecord {
 	record := testEncounterRecord(flow, amount, seconds)
-	actor := &CombatActorType{MonsterID: monster, MonsterStatus: string(resolutionCorrelated), TemplateStatus: string(resolutionUnknown)}
+	actor := &CombatActorType{MonsterID: monster, MonsterStatus: string(ResolutionCorrelated), TemplateStatus: string(ResolutionUnknown)}
 	if monster == 0 {
-		actor.MonsterStatus = string(resolutionUnknown)
+		actor.MonsterStatus = string(ResolutionUnknown)
 	}
 	switch flow {
 	case CombatFlowLocalOutgoing:
@@ -45,7 +45,7 @@ func enemyRecord(flow CombatFlow, amount int64, seconds float64, enemy uint64, m
 
 func TestHistoryJournalIsOffByDefault(t *testing.T) {
 	statistics := NewDamageStatistics()
-	statistics.observeBattleState(true, encounterAt(1), 1)
+	statistics.ObserveBattleState(true, encounterAt(1), 1)
 	outgoing(statistics, 100, 2)
 	statistics.finishCapture()
 	if entries, dropped := statistics.TakeHistory(); len(entries) != 0 || dropped != 0 {
@@ -57,13 +57,13 @@ func TestHistoryJournalRepeatsTheEncounterLifecycle(t *testing.T) {
 	statistics := NewDamageStatistics()
 	statistics.EnableHistory(HistoryEvents)
 	statistics.observeScene(2117, true)
-	statistics.observeBattleState(true, encounterAt(10), 1)
+	statistics.ObserveBattleState(true, encounterAt(10), 1)
 	// An unattributed hit joins the open encounter but is no confirmed activity.
 	statistics.addCombatEvent(testEncounterRecord(CombatFlowUnattributedOutgoing, 5, 10.5))
 	statistics.addCombatEvent(enemyRecord(CombatFlowLocalOutgoing, 100, 11, 501, 340000040))
 	statistics.addCombatEvent(enemyRecord(CombatFlowLocalOutgoing, 40, 12, 502, 340000040))
 	statistics.addCombatEvent(enemyRecord(CombatFlowLocalIncoming, 30, 13, 501, 340000040))
-	statistics.observeBattleState(false, encounterAt(20), 1)
+	statistics.ObserveBattleState(false, encounterAt(20), 1)
 	statistics.observeCaptureTime(encounterAt(22))
 	entries, dropped := takeSpan(t, statistics)
 	if dropped != 0 {
@@ -112,7 +112,7 @@ func TestHistoryJournalRepeatsTheEncounterLifecycle(t *testing.T) {
 		t.Fatalf("two enemies of the same type must stay two instances: %+v", finished.Enemies)
 	}
 	timeline, ok := finished.Timeline.Render("x", snapshot.StartedAt, snapshot.EndedAt, 0)
-	live := statistics.encounterTimelines()[0]
+	live := statistics.EncounterTimelines()[0]
 	live.EncounterID = "x"
 	if !ok || !reflect.DeepEqual(timeline, live) {
 		t.Fatalf("the stored timeline does not render as the engine's:\n%+v\n%+v", timeline, live)
@@ -122,9 +122,9 @@ func TestHistoryJournalRepeatsTheEncounterLifecycle(t *testing.T) {
 func TestHistoryJournalDiscardsAnEmptyEncounter(t *testing.T) {
 	statistics := NewDamageStatistics()
 	statistics.EnableHistory(HistoryEncounters)
-	statistics.observeBattleState(true, encounterAt(10), 1)
+	statistics.ObserveBattleState(true, encounterAt(10), 1)
 	statistics.addCombatEvent(testEncounterRecord(CombatFlowUnattributedOutgoing, 5, 11))
-	statistics.observeBattleState(false, encounterAt(12), 1)
+	statistics.ObserveBattleState(false, encounterAt(12), 1)
 	statistics.observeCaptureTime(encounterAt(20))
 	entries, _ := takeSpan(t, statistics)
 	// The encounter level journals no event entries.
@@ -136,9 +136,9 @@ func TestHistoryJournalDiscardsAnEmptyEncounter(t *testing.T) {
 func TestHistoryJournalFollowsALateLossIntoAFinishedEncounter(t *testing.T) {
 	statistics := NewDamageStatistics()
 	statistics.EnableHistory(HistoryEncounters)
-	statistics.observeBattleState(true, encounterAt(10), 1)
+	statistics.ObserveBattleState(true, encounterAt(10), 1)
 	outgoing(statistics, 100, 11)
-	statistics.observeBattleState(false, encounterAt(20), 1)
+	statistics.ObserveBattleState(false, encounterAt(20), 1)
 	statistics.observeCaptureTime(encounterAt(25))
 	statistics.TakeHistory()
 	// A loss detected after the end, but starting inside the encounter, marks it; a failure raises it further.
@@ -160,12 +160,12 @@ func TestHistoryJournalSurvivesAnIntervalReset(t *testing.T) {
 	statistics := NewDamageStatistics()
 	statistics.EnableHistory(HistoryEncounters)
 	statistics.observeScene(8, true)
-	statistics.observeBattleState(true, encounterAt(10), 1)
+	statistics.ObserveBattleState(true, encounterAt(10), 1)
 	outgoing(statistics, 100, 11)
 	// A new protocol session ends the encounter and forgets the scene; the reset keeps the undrained journal.
 	statistics.observeSessionChange(encounterAt(12))
 	statistics.Reset()
-	statistics.observeBattleState(true, encounterAt(30), 2)
+	statistics.ObserveBattleState(true, encounterAt(30), 2)
 	record := testEncounterRecord(CombatFlowLocalOutgoing, 50, 31)
 	record.Key.ProtocolSession = 2
 	statistics.addCombatEvent(record)
@@ -242,22 +242,22 @@ func TestJournalNamesOnlyAConfirmedProtocolSession(t *testing.T) {
 		{"another version", []string{"3.7.0", "3.7.1", "3.7.19"}, false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
-			p.damageStatistics.EnableHistory(HistoryEvents)
-			p.sessionNumber = 1
-			p.protocol.beginSession()
+			p := NewProcessor(nil, &bytes.Buffer{})
+			p.DamageStatistics.EnableHistory(HistoryEvents)
+			p.SessionNumber = 1
+			p.Protocol.BeginSession()
 			var payload []byte
 			for index, field := range []uint64{fieldCheckClientPushAppVersion, fieldCheckClientPushLauncherVersion, fieldCheckClientPushResourceVersion} {
 				payload = appendBytesField(payload, field, []byte(test.versions[index]))
 			}
-			if err := p.observeClientVersion(cmdCheckClientPush, payload); err != nil {
+			if err := p.observeClientVersion(CmdCheckClientPush, payload); err != nil {
 				t.Fatal(err)
 			}
 			// A later report of the same session confirms nothing again.
-			if err := p.observeClientVersion(cmdCheckClientPush, payload); err != nil {
+			if err := p.observeClientVersion(CmdCheckClientPush, payload); err != nil {
 				t.Fatal(err)
 			}
-			entries, _ := takeSpan(t, p.damageStatistics)
+			entries, _ := takeSpan(t, p.DamageStatistics)
 			if !test.named {
 				if len(entries) != 0 {
 					t.Fatalf("an undecoded session was journaled: %v", journalKinds(entries))

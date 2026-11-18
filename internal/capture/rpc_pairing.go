@@ -2,7 +2,6 @@ package capture
 
 import (
 	"bytes"
-	"fmt"
 	"math"
 	"slices"
 	"time"
@@ -55,7 +54,7 @@ type heldResponseRef struct {
 // entityAttributionState is what a damage pair reads about one entity: its runtime record, its lifecycle, whether it is
 // a local role entity, and its correlated source role.
 type entityAttributionState struct {
-	entity        runtimeEntity
+	entity        RuntimeEntity
 	present       bool
 	lifecycle     entityLifecycle
 	hasLifecycle  bool
@@ -123,21 +122,21 @@ type rpcPairingState struct {
 	rewound  uint64
 }
 
-// observePairingClock advances the capture clock the hold window runs on.
-func (p *processor) observePairingClock(at time.Time) {
+// ObservePairingClock advances the capture clock the hold window runs on.
+func (p *Processor) ObservePairingClock(at time.Time) {
 	if at.After(p.pairing.frameHighWater) {
 		p.pairing.frameHighWater = at
 	}
 }
 
 // holdDamageResponse keeps a response whose request has not been seen yet.
-func (p *processor) holdDamageResponse(rpcID uint64, payload []byte) {
+func (p *Processor) holdDamageResponse(rpcID uint64, payload []byte) {
 	state := &p.pairing
 	if held, exists := state.held[rpcID]; exists {
 		if bytes.Equal(held.payload, payload) {
-			p.stats.duplicateResponses++
+			p.Stats.DuplicateResponses++
 		} else {
-			p.stats.conflictingResponses++
+			p.Stats.conflictingResponses++
 		}
 		return
 	}
@@ -146,7 +145,7 @@ func (p *processor) holdDamageResponse(rpcID uint64, payload []byte) {
 	}
 	state.sequence++
 	state.held[rpcID] = heldDamageResponse{
-		payload: append([]byte(nil), payload...), frameTime: p.currentFrameTime, generation: p.sessionGeneration, sequence: state.sequence,
+		payload: append([]byte(nil), payload...), frameTime: p.CurrentFrameTime, generation: p.sessionGeneration, sequence: state.sequence,
 	}
 	state.order = append(state.order, heldResponseRef{rpcID: rpcID, sequence: state.sequence})
 	state.bytes += len(payload)
@@ -158,7 +157,7 @@ func (p *processor) holdDamageResponse(rpcID uint64, payload []byte) {
 }
 
 // dropOldestHeldResponse ends the oldest hold as unpaired and counts it under reason.
-func (p *processor) dropOldestHeldResponse(reason *uint64) bool {
+func (p *Processor) dropOldestHeldResponse(reason *uint64) bool {
 	state := &p.pairing
 	for state.head < len(state.order) {
 		ref := state.order[state.head]
@@ -170,7 +169,7 @@ func (p *processor) dropOldestHeldResponse(reason *uint64) bool {
 		delete(state.held, ref.rpcID)
 		state.bytes -= len(held.payload)
 		*reason++
-		p.stats.unpairedResponses++
+		p.Stats.UnpairedResponses++
 		p.compactHeldOrder()
 		p.pruneRemovals()
 		return true
@@ -178,7 +177,7 @@ func (p *processor) dropOldestHeldResponse(reason *uint64) bool {
 	return false
 }
 
-func (p *processor) compactHeldOrder() {
+func (p *Processor) compactHeldOrder() {
 	state := &p.pairing
 	if state.head < 1024 || state.head*2 < len(state.order) {
 		return
@@ -188,7 +187,7 @@ func (p *processor) compactHeldOrder() {
 }
 
 // expireHeldResponses ends holds older than the hold window on the capture clock.
-func (p *processor) expireHeldResponses() {
+func (p *Processor) expireHeldResponses() {
 	state := &p.pairing
 	for state.head < len(state.order) {
 		ref := state.order[state.head]
@@ -206,7 +205,7 @@ func (p *processor) expireHeldResponses() {
 
 // pairHeldResponse processes a held response once its request has been registered. The pair is evaluated at the
 // response's own frame time, so the event is the one an in-order arrival would have produced.
-func (p *processor) pairHeldResponse(rpcID uint64) {
+func (p *Processor) pairHeldResponse(rpcID uint64) {
 	state := &p.pairing
 	held, ok := state.held[rpcID]
 	if !ok {
@@ -217,7 +216,7 @@ func (p *processor) pairHeldResponse(rpcID uint64) {
 	if held.generation != p.sessionGeneration {
 		// Cannot happen while holds are discarded at session changes; never pair across sessions.
 		state.sessionChange++
-		p.stats.unpairedResponses++
+		p.Stats.UnpairedResponses++
 		return
 	}
 	state.outOfOrder++
@@ -225,18 +224,18 @@ func (p *processor) pairHeldResponse(rpcID uint64) {
 	if wait := state.frameHighWater.Sub(held.frameTime); wait > state.maxWait {
 		state.maxWait = wait
 	}
-	saved := p.currentFrameTime
-	p.currentFrameTime = held.frameTime
+	saved := p.CurrentFrameTime
+	p.CurrentFrameTime = held.frameTime
 	restore := p.rewindRemovals(held.sequence)
-	p.handleOneDamageResult(rpcID, held.payload)
+	p.HandleOneDamageResult(rpcID, held.payload)
 	restore()
-	p.currentFrameTime = saved
+	p.CurrentFrameTime = saved
 	p.pruneRemovals()
 }
 
 // rememberRemovalsForHeldResponses keeps, while any response is held, the state of the entities an EntityRemoveNotify is
 // about to remove. Without held responses nothing is kept and nothing is parsed twice.
-func (p *processor) rememberRemovalsForHeldResponses(body []byte) {
+func (p *Processor) rememberRemovalsForHeldResponses(body []byte) {
 	state := &p.pairing
 	if len(state.held) == 0 {
 		return
@@ -253,7 +252,7 @@ func (p *processor) rememberRemovalsForHeldResponses(body []byte) {
 
 // rewindRemovals puts the entities removed after the held response with this sequence back into their state before the
 // first such removal, and returns the function that restores the current state.
-func (p *processor) rewindRemovals(sequence uint64) func() {
+func (p *Processor) rewindRemovals(sequence uint64) func() {
 	state := &p.pairing
 	type rewound struct {
 		entityID uint64
@@ -281,7 +280,7 @@ func (p *processor) rewindRemovals(sequence uint64) func() {
 }
 
 // pruneRemovals forgets removals that no held response predates.
-func (p *processor) pruneRemovals() {
+func (p *Processor) pruneRemovals() {
 	state := &p.pairing
 	if len(state.removals) == 0 {
 		return
@@ -297,12 +296,12 @@ func (p *processor) pruneRemovals() {
 	state.removals = slices.DeleteFunc(state.removals, func(r heldRemoval) bool { return r.afterHold < oldest })
 }
 
-func (p *processor) entityAttributionState(id uint64) entityAttributionState {
+func (p *Processor) entityAttributionState(id uint64) entityAttributionState {
 	var s entityAttributionState
-	s.entity, s.present = p.entities.entities[id]
-	s.lifecycle, s.hasLifecycle = p.entities.lifecycles[id]
-	s.roleEntity = p.playerRelevance.isRoleEntity(id)
-	s.sourceRole, s.hasSourceRole = p.sourceRoles.bySource[id]
+	s.entity, s.present = p.Entities.Entities[id]
+	s.lifecycle, s.hasLifecycle = p.Entities.lifecycles[id]
+	s.roleEntity = p.PlayerRelevance.IsRoleEntity(id)
+	s.sourceRole, s.hasSourceRole = p.SourceRoles.bySource[id]
 	return s
 }
 
@@ -332,63 +331,59 @@ func (s entityAttributionState) withLaterSourceRoles(later entityAttributionStat
 }
 
 // setEntityAttributionState writes the maps directly: a temporary rewind must not evict other entries or reorder them.
-func (p *processor) setEntityAttributionState(id uint64, s entityAttributionState) {
+func (p *Processor) setEntityAttributionState(id uint64, s entityAttributionState) {
 	if s.present {
-		p.entities.entities[id] = s.entity
+		p.Entities.Entities[id] = s.entity
 	} else {
-		delete(p.entities.entities, id)
+		delete(p.Entities.Entities, id)
 	}
 	if s.hasLifecycle {
-		p.entities.lifecycles[id] = s.lifecycle
+		p.Entities.lifecycles[id] = s.lifecycle
 	} else {
-		delete(p.entities.lifecycles, id)
+		delete(p.Entities.lifecycles, id)
 	}
-	if p.playerRelevance != nil {
+	if p.PlayerRelevance != nil {
 		if s.roleEntity {
-			p.playerRelevance.roleEntities[id] = struct{}{}
+			p.PlayerRelevance.RoleEntities[id] = struct{}{}
 		} else {
-			delete(p.playerRelevance.roleEntities, id)
+			delete(p.PlayerRelevance.RoleEntities, id)
 		}
 	}
 	if s.hasSourceRole {
-		p.sourceRoles.bySource[id] = s.sourceRole
+		p.SourceRoles.bySource[id] = s.sourceRole
 	} else {
-		delete(p.sourceRoles.bySource, id)
+		delete(p.SourceRoles.bySource, id)
 	}
 }
 
 // settleRemovedSource credits or drops the development summary credits held for a removed source entity.
-func (p *processor) settleRemovedSource(id uint64) {
-	if roleID, correlated := p.sourceRoles.correlatedRole(id); correlated {
-		p.backfillEncounterSummary(id, roleID)
+func (p *Processor) settleRemovedSource(id uint64) {
+	if roleID, correlated := p.SourceRoles.CorrelatedRole(id); correlated {
+		if p.observer != nil {
+			p.observer.BackfillEncounterSummary(id, roleID)
+		}
 	}
-	p.removePendingSummaryCredits(id)
+	if p.observer != nil {
+		p.observer.RemovePendingSummaryCredits(id)
+	}
 }
 
 // discardHeldResponses ends every hold, for a protocol session change or the end of the capture.
-func (p *processor) discardHeldResponses(reason *uint64) {
+func (p *Processor) discardHeldResponses(reason *uint64) {
 	state := &p.pairing
 	*reason += uint64(len(state.held))
-	p.stats.unpairedResponses += len(state.held)
+	p.Stats.UnpairedResponses += len(state.held)
 	state.held, state.order, state.head, state.bytes, state.removals = nil, nil, 0, 0, nil
 }
 
-func (p *processor) rpcPairingSnapshot() RPCPairingSnapshot {
+func (p *Processor) RPCPairingSnapshot() RPCPairingSnapshot {
 	state := p.pairing
 	return RPCPairingSnapshot{
-		Requests: p.stats.damageRequests, Responses: p.stats.candidateResponses, StandaloneResponses: p.stats.standaloneNotifyResponses,
+		Requests: p.Stats.DamageRequests, Responses: p.Stats.CandidateResponses, StandaloneResponses: p.Stats.standaloneNotifyResponses,
 		Paired: state.paired, PairedOutOfOrder: state.outOfOrder, MaxOutOfOrderWaitMs: float64(state.maxWait) / float64(time.Millisecond),
 		UnpairedExpired: state.expired, UnpairedEvicted: state.evicted, UnpairedSessionChange: state.sessionChange, UnpairedCaptureEnd: state.captureEnd,
-		RewoundEntities: state.rewound, DuplicateResponses: p.stats.duplicateResponses, ConflictingResponses: p.stats.conflictingResponses,
-		InvalidResponses: p.stats.invalidResponses, PendingRequests: len(p.pending), EvictedRequests: p.stats.evictedPending, HeldResponses: len(state.held),
-		ReusedRequestIDs: p.stats.reusedRequestIDs, SupersededRequests: p.stats.supersededRequests,
+		RewoundEntities: state.rewound, DuplicateResponses: p.Stats.DuplicateResponses, ConflictingResponses: p.Stats.conflictingResponses,
+		InvalidResponses: p.Stats.InvalidResponses, PendingRequests: len(p.Pending), EvictedRequests: p.Stats.EvictedPending, HeldResponses: len(state.held),
+		ReusedRequestIDs: p.Stats.reusedRequestIDs, SupersededRequests: p.Stats.supersededRequests,
 	}
-}
-
-// rpcPairingLine formats the pairing counters for development diagnostics.
-func rpcPairingLine(s RPCPairingSnapshot) string {
-	return fmt.Sprintf("damage_rpc_pairing requests=%d responses=%d standalone_responses=%d paired=%d paired_out_of_order=%d max_out_of_order_wait_ms=%.1f unpaired_expired=%d unpaired_evicted=%d unpaired_session_change=%d unpaired_capture_end=%d rewound_entities=%d duplicate_responses=%d conflicting_responses=%d invalid_responses=%d pending_requests=%d evicted_requests=%d held_responses=%d reused_request_ids=%d superseded_requests=%d",
-		s.Requests, s.Responses, s.StandaloneResponses, s.Paired, s.PairedOutOfOrder, s.MaxOutOfOrderWaitMs, s.UnpairedExpired, s.UnpairedEvicted,
-		s.UnpairedSessionChange, s.UnpairedCaptureEnd, s.RewoundEntities, s.DuplicateResponses, s.ConflictingResponses, s.InvalidResponses, s.PendingRequests, s.EvictedRequests, s.HeldResponses,
-		s.ReusedRequestIDs, s.SupersededRequests)
 }

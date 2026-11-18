@@ -1,5 +1,3 @@
-//go:build wwdev
-
 package capture
 
 import (
@@ -25,11 +23,11 @@ func TestEffectClockReplayCollector(t *testing.T) {
 	if list == "" {
 		t.Skip("WWLOGS_EFFECT_CLOCK_REPLAY_PCAPS is not set")
 	}
-	key, err := loadEmbeddedPrivateKey()
+	key, err := LoadEmbeddedPrivateKey()
 	if err != nil {
 		t.Fatal(err)
 	}
-	masters, err := loadGameMasterDatabase(os.Getenv("WWLOGS_EFFECT_CLOCK_REPLAY_MASTER_DB"), "zh-TW")
+	masters, err := LoadGameMasterDatabase(os.Getenv("WWLOGS_EFFECT_CLOCK_REPLAY_MASTER_DB"), "zh-TW")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,23 +39,23 @@ func TestEffectClockReplayCollector(t *testing.T) {
 			hiddenOnWall := map[effectKey]bool{}
 			hiddenOnEffect := map[effectKey]bool{}
 			last := time.Time{}
-			p, _ := equivalenceReplay(t, equivalenceInputs{localIP: "192.168.1.2"}, masters, key, capture.path, nil, func(index int, p *processor) {
-				at := p.currentFrameTime
+			p, _ := equivalenceReplay(t, equivalenceInputs{localIP: "192.168.1.2"}, masters, key, capture.path, nil, func(index int, p *Processor) {
+				at := p.CurrentFrameTime
 				if at.IsZero() || (!last.IsZero() && at.Sub(last) < step) {
 					return
 				}
 				last = at
 				samples++
-				tracker := p.effects
+				tracker := p.Effects
 				tracker.mu.RLock()
 				defer tracker.mu.RUnlock()
-				query := CaptureQueryTime{CaptureSessionID: tracker.captureSessionID, Timestamp: at}
+				query := CaptureQueryTime{CaptureSessionID: tracker.CaptureSessionID, Timestamp: at}
 				for key, instance := range tracker.instances {
 					if !instance.timeKnown {
 						continue
 					}
 					snapshot := tracker.instanceSnapshotLocked(instance, query, "")
-					display := effectDisplayFor(snapshot)
+					display := EffectDisplayFor(snapshot)
 					if display.Eligibility == EffectDisplayPredictedExpired {
 						effectHidden++
 						hiddenOnEffect[key] = true
@@ -67,14 +65,14 @@ func TestEffectClockReplayCollector(t *testing.T) {
 						continue
 					}
 					wallOverdue := at.Sub(instance.basisAt).Seconds() - instance.basisRemaining
-					if wallOverdue > effectDisplayExpiryGrace.Seconds() {
+					if wallOverdue > EffectDisplayExpiryGrace.Seconds() {
 						wallHidden++
 						hiddenOnWall[key] = true
 					}
 				}
 			})
-			p.finishCapture()
-			counters := p.effects.SnapshotAt(CaptureQueryTime{CaptureSessionID: p.effects.captureSessionID, Timestamp: p.currentFrameTime}).Counters.Clock
+			p.FinishCapture()
+			counters := p.Effects.SnapshotAt(CaptureQueryTime{CaptureSessionID: p.Effects.CaptureSessionID, Timestamp: p.CurrentFrameTime}).Counters.Clock
 			t.Logf("samples %d (every %s)", samples, step)
 			t.Logf("predicted_expired HUD instance-seconds: capture clock %.1f s over %d instances, effect clock %.1f s over %d instances",
 				float64(wallHidden)*step.Seconds(), len(hiddenOnWall), float64(effectHidden)*step.Seconds(), len(hiddenOnEffect))

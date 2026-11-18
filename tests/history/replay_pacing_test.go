@@ -71,7 +71,7 @@ func TestHistoryReplayPacingCollector(t *testing.T) {
 			}
 			for _, pacing := range factors {
 				path := filepath.Join(out, fmt.Sprintf("%s-pacing-%g.db", item.name, pacing))
-				for _, leftover := range []string{path, path + "-wal", path + "-shm", path + ".key", path + ".lock"} {
+				for _, leftover := range []string{path, path + "-wal", path + "-shm", keyPath(path), keyRecordPath(path), path + ".lock"} {
 					_ = os.Remove(leftover)
 				}
 				store, err := Open(Options{Path: path, MasterSHA256: masters.SHA256()})

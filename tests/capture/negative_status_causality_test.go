@@ -32,23 +32,23 @@ const (
 
 // newCausalityTestProcessor is the settlement test processor with a third enemy, an enemy that applies statuses, the
 // stack limits of the statuses without a period and an instant Spectro Frazzle Buff.
-func newCausalityTestProcessor() *processor {
+func newCausalityTestProcessor() *Processor {
 	p := newSettlementTestProcessor()
 	for _, id := range []uint64{causalEnemy3, causalEnemyActor} {
 		id := id
-		addTestRuntimeEntity(p, id, func(entity *runtimeEntity) {
-			entity.entityTypeCode, entity.hasEntityType = entityTypeMonster, true
-			entity.monsterID, entity.hasMonsterID = 9000+id, true
+		addTestRuntimeEntity(p, id, func(entity *RuntimeEntity) {
+			entity.EntityTypeCode, entity.HasEntityType = EntityTypeMonster, true
+			entity.MonsterID, entity.HasMonsterID = 9000+id, true
 		})
 	}
-	if p.masters.buffStatics == nil {
-		p.masters.buffStatics = map[uint64]buffStaticParameters{}
+	if p.Masters.BuffStatics == nil {
+		p.Masters.BuffStatics = map[uint64]BuffStaticParameters{}
 	}
 	for _, buff := range []uint64{settleFusionBuff, settleGlacioBuff} {
-		p.masters.buffStatics[buff] = buffStaticParameters{stackLimit: fusionLimit, hasStackLimit: true}
+		p.Masters.BuffStatics[buff] = BuffStaticParameters{StackLimit: fusionLimit, HasStackLimit: true}
 	}
-	p.masters.negativeStatusExecutors[causalInstantBuff] = notifyTestSpectro
-	p.masters.negativeStatusSettlements[causalInstantBuff] = negativeStatusSettlement{known: true, executesOnCreation: true, instant: true}
+	p.Masters.NegativeStatusExecutors[causalInstantBuff] = notifyTestSpectro
+	p.Masters.NegativeStatusSettlements[causalInstantBuff] = NegativeStatusSettlementRule{Known: true, ExecutesOnCreation: true, Instant: true}
 	return p
 }
 
@@ -60,7 +60,7 @@ func spectroTick(target uint64, damage int32) []byte {
 
 // buildFusionToLimit puts a Fusion Burst instance at its stack limit on holder: created by creator with nine stacks, the
 // tenth applied by tenth.
-func buildFusionToLimit(t *testing.T, p *processor, seconds float64, sequence uint32, holder, handle, creator, tenth uint64) {
+func buildFusionToLimit(t *testing.T, p *Processor, seconds float64, sequence uint32, holder, handle, creator, tenth uint64) {
 	t.Helper()
 	deliverNotifyFrame(t, p, seconds, sequence, statusApplyItem(holder, handle, settleFusionBuff, creator, 9), statusStackItem(holder, handle, fusionLimit, tenth))
 }
@@ -78,16 +78,16 @@ func items(groups ...[][]byte) [][]byte {
 	return out
 }
 
-func assertDealt(t *testing.T, p *processor, want int64, why string) {
+func assertDealt(t *testing.T, p *Processor, want int64, why string) {
 	t.Helper()
-	snapshot := p.damageStatistics.Snapshot()
+	snapshot := p.DamageStatistics.Snapshot()
 	if snapshot.DamageDealt != want {
 		t.Fatalf("dealt %d, want %d: %s (roles %+v, unassigned %+v)", snapshot.DamageDealt, want, why, snapshot.Roles, snapshot.UnassignedRole)
 	}
 	assertRoleTotalsReconcile(t, snapshot)
 }
 
-func assertStatus(t *testing.T, p *processor, roleID, damageID uint64, want StatusDamageSnapshot, why string) {
+func assertStatus(t *testing.T, p *Processor, roleID, damageID uint64, want StatusDamageSnapshot, why string) {
 	t.Helper()
 	if got := statusRow(t, p, roleID, damageID); got != want {
 		t.Fatalf("role %d status %+v, want %+v: %s", roleID, got, want, why)
@@ -107,8 +107,8 @@ func TestFusionBurstSplashOnEnemiesWithoutTheStatusIsTheTeams(t *testing.T) {
 	assertDealt(t, p, 12000, "the burst on its holder and its splash on two enemies without the status")
 	assertStatus(t, p, 1409, settleFusion, triggered(settleFusion, 12000, 3), "A applied every stack and overflowed the instance")
 	assertUnassignedStatus(t, p, 0)
-	if p.notifyStats.settledAcrossTargets != 2 || p.notifyStats.negativeStatusLocal != 3 {
-		t.Fatalf("notify stats %+v; two results came from another enemy's overflow", p.notifyStats)
+	if p.NotifyStats.SettledAcrossTargets != 2 || p.NotifyStats.NegativeStatusLocal != 3 {
+		t.Fatalf("notify stats %+v; two results came from another enemy's overflow", p.NotifyStats)
 	}
 	// The same frame delivered again (a retransmission) adds nothing: every result keeps its server key.
 	deliverNotifyFrame(t, p, 1.5, 3, items(overflow(200, 8, 100), [][]byte{fusionTick(200, 5000), fusionTick(201, 4000), fusionTick(causalEnemy3, 3000)})...)
@@ -227,8 +227,8 @@ func TestAnEnemysOverflowKeepsTheMomentsResultsOutOfTheTeam(t *testing.T) {
 	deliverNotifyFrame(t, both, 1.5, 4, items(overflow(200, 8, 100), overflow(201, 9, causalEnemyActor),
 		[][]byte{fusionTick(200, 5000), fusionTick(201, 4500), fusionTick(causalEnemy3, 3000)})...)
 	assertDealt(t, both, 0, "every result of the moment can be the enemy's settlement")
-	if both.notifyStats.excludedStatusInstances != 1 {
-		t.Fatalf("notify stats %+v; the enemy's status is the one the tracker leaves out", both.notifyStats)
+	if both.NotifyStats.ExcludedStatusInstances != 1 {
+		t.Fatalf("notify stats %+v; the enemy's status is the one the tracker leaves out", both.NotifyStats)
 	}
 
 	alone := newCausalityTestProcessor()
@@ -273,7 +273,7 @@ func TestOverflowOfAnEarlierSessionSpreadsNothing(t *testing.T) {
 	p := newCausalityTestProcessor()
 	buildFusionToLimit(t, p, 1.0, 2, 200, 8, 100, 100)
 	deliverNotifyFrame(t, p, 1.5, 3, overflow(200, 8, 100)...)
-	p.sessionNumber++ // reconnect
+	p.SessionNumber++ // reconnect
 	deliverNotifyFrame(t, p, 1.55, 4, fusionTick(201, 4000))
 	assertDealt(t, p, 0, "the new session has no cause for the result")
 }

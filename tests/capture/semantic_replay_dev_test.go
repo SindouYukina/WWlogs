@@ -1,5 +1,3 @@
-//go:build wwdev
-
 package capture
 
 import (
@@ -115,7 +113,7 @@ var semanticEffectFacts = append(currentGoldenFacts(func(capture string) []seman
 	// them (Global 3.8.9: type 2 or 24 cues with a Path and an empty Parameters vector in the hotfix db_buffeffect.db;
 	// BuffItem.Activate draws the icon and only an arrow for "1" or "2"). In the capture they come in the local client's
 	// own ApplyGameplayEffectPush, checked outside the product's effect decoder
-	// (work/live-build31/client_status_crosscheck.py): holder by CombatCommon.EntityId against the role entities of the
+	// (work/tools/combat-audit/live-build31/client_status_crosscheck.py): holder by CombatCommon.EntityId against the role entities of the
 	// server's JoinSceneNotify and EntityAddNotify, stacks from the apply and BuffStackCountPush.NewStackCount on the same
 	// HandleId, instigator role 1512. 1512310003 is on teammates 1311 and 1312 (stack 2 at most), 1512999015 on Lily
 	// herself, 2002205502 on every team member, 1512800104 on the local player's PlayerEntity (EntityType 11, which
@@ -205,7 +203,7 @@ const negativeStatusRole = 1409
 //
 // Server-executed damage (DamageExecuteNotify, counted since 2026-11-14) is in every total below. Each notified result is
 // checked outside the product's decoders (research/runs/2026-11-14/v0.7.0-damage-execute-notify-client-re,
-// work/damage-execute-notify/push_audit.py and classify_pushes.py): its value is the generic schema decode's Damage; its
+// work/experiments/combat/damage-execute-notify/push_audit.py and classify_pushes.py): its value is the generic schema decode's Damage; its
 // attacker is a role entity of the server's JoinSceneNotify FightRoleInfos or the scene's SceneInformation.SceneEntityId,
 // its target an EntityType 2 monster; no counted response explains it (no equal value on the target or equal attacker and
 // DamageId within 2 s whose Life step is not its own, and no notified DamageId ever appears in a client request); a
@@ -216,7 +214,7 @@ const negativeStatusRole = 1409
 // roles 13127004, 15127004 and 13117004, DamageId 1000009900).
 //
 // Role credit of the negative-status results (2026-11-14, research/runs/2026-11-14/v0.7.0-causal-damage-attribution,
-// corrected by research/runs/2026-11-14/v0.7.0-anomaly-attribution-verification; work/causal-attribution/causal_audit.py
+// corrected by research/runs/2026-11-14/v0.7.0-anomaly-attribution-verification; work/tools/combat-audit/causal-attribution/causal_audit.py
 // on the generic schema decode, independent of the product's decoders): every executing status instance on the target
 // (server ApplyGameplayEffectNotify by handle, the client's StackingType 2 shared instance) was created by role 1409's
 // entity and every one of its stack changes (BuffStackCountNotify.InstigatorId) names that entity; a result is a forced
@@ -229,7 +227,7 @@ const negativeStatusRole = 1409
 // the result's frame or the next two) in 1,033 of its 1,047 results, always role 1409's entity; the other 14 results
 // killed their target (EntityLivingStatusNotify in the same frame), which then takes no echo. Of the 1,216 results
 // (12,946,888), 663 were forced (8,899,657), 170 the first execution of a new instance and 383 the instance's own period.
-// The product's per-result credit equals the audit for all 1,216 (work/causal-attribution/compare_product.py).
+// The product's per-result credit equals the audit for all 1,216 (work/tools/combat-audit/causal-attribution/compare_product.py).
 var semanticCompletenessFacts = append(append(currentGoldenFacts(func(capture string) []semanticCompletenessFact {
 	return []semanticCompletenessFact{
 		{capture, 1, 355025, 78716, 0, 0, 746, 0},
@@ -288,7 +286,7 @@ var semanticCompletenessFacts = append(append(currentGoldenFacts(func(capture st
 	semanticCompletenessFact{build28LiveCapture, 29, 778104, 0, 0, 0, 0, 0},
 	semanticCompletenessFact{build28LiveCapture, 30, 774638, 0, 0, 0, 0, 0},
 	// The 18 encounters the engine finished in the Build 31 capture (it discarded a 19th, sequence 18). Checked outside the
-	// product's combat decoders with work/live-build31/completeness_audit_wrap.py on the generic schema decode: all 9,069
+	// product's combat decoders with work/tools/combat-audit/live-build31/completeness_audit_wrap.py on the generic schema decode: all 9,069
 	// responses of both containers keyed by their RequestId continued past the wrap of the client's counter and paired
 	// with the latest request of that RequestId; every value, attacker and target equal to the decode and the request; the
 	// direction from the server's EntityType; every outgoing attacker a role entity of the server's JoinSceneNotify or
@@ -537,11 +535,11 @@ func TestSemanticReplayCollector(t *testing.T) {
 		t.Skip("WWLOGS_SEMANTIC_REPLAY_PCAPS is not set")
 	}
 	pcaps := readReplayPCAPList(t, list)
-	key, err := loadEmbeddedPrivateKey()
+	key, err := LoadEmbeddedPrivateKey()
 	if err != nil {
 		t.Fatal(err)
 	}
-	masters, err := loadGameMasterDatabase(os.Getenv("WWLOGS_SEMANTIC_REPLAY_MASTER_DB"), "zh-TW")
+	masters, err := LoadGameMasterDatabase(os.Getenv("WWLOGS_SEMANTIC_REPLAY_MASTER_DB"), "zh-TW")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -566,20 +564,20 @@ func TestSemanticReplayCollector(t *testing.T) {
 			seen := map[uint64]*semanticEffectSeen{}
 			last := time.Time{}
 			var rowsErr error
-			p, _ := equivalenceReplay(t, inputs, masters, key, capture.path, nil, func(index int, p *processor) {
-				if p.currentFrameTime.IsZero() || (!last.IsZero() && p.currentFrameTime.Sub(last) < 250*time.Millisecond) {
+			p, _ := equivalenceReplay(t, inputs, masters, key, capture.path, nil, func(index int, p *Processor) {
+				if p.CurrentFrameTime.IsZero() || (!last.IsZero() && p.CurrentFrameTime.Sub(last) < 250*time.Millisecond) {
 					return
 				}
-				last = p.currentFrameTime
-				if err := semanticCheckRanking(p.viewSnapshot()); err != nil && rowsErr == nil {
-					rowsErr = fmt.Errorf("ranking at %s: %w", p.currentFrameTime.UTC().Format(time.RFC3339Nano), err)
+				last = p.CurrentFrameTime
+				if err := semanticCheckRanking(p.ViewSnapshot()); err != nil && rowsErr == nil {
+					rowsErr = fmt.Errorf("ranking at %s: %w", p.CurrentFrameTime.UTC().Format(time.RFC3339Nano), err)
 				}
 				view := p.viewEffects()
-				if err := view.Counts.accountingError(len(view.Active)); err != nil && rowsErr == nil {
+				if err := view.Counts.AccountingError(len(view.Active)); err != nil && rowsErr == nil {
 					rowsErr = err
 				}
 				if err := semanticCheckRows(view); err != nil && rowsErr == nil {
-					rowsErr = fmt.Errorf("at %s: %w", p.currentFrameTime.UTC().Format(time.RFC3339Nano), err)
+					rowsErr = fmt.Errorf("at %s: %w", p.CurrentFrameTime.UTC().Format(time.RFC3339Nano), err)
 				}
 				record := func(row ViewEffectRow, polarity EffectPolarity) {
 					for _, effect := range row.Effects {
@@ -600,7 +598,7 @@ func TestSemanticReplayCollector(t *testing.T) {
 				record(view.Buffs, EffectPolarityBuff)
 				record(view.Debuffs, EffectPolarityDebuff)
 			})
-			p.finishCapture()
+			p.FinishCapture()
 			if rowsErr != nil {
 				t.Fatal(rowsErr)
 			}
@@ -630,7 +628,7 @@ func TestSemanticReplayCollector(t *testing.T) {
 					t.Errorf("effect %d = %+v, want row %s polarity %s target %s max stack %d", fact.effectID, *got, fact.row, polarity, fact.target, fact.maxStack)
 				}
 			}
-			statistics := p.damageStatisticsSnapshot()
+			statistics := p.DamageStatisticsSnapshot()
 			if got := intervalDamageCompleteness(statistics); !got.Conserved {
 				t.Errorf("interval damage is not conserved: %+v", got)
 			}
@@ -684,7 +682,7 @@ func TestSemanticReplayCollector(t *testing.T) {
 					t.Errorf("encounter %d negative-status credit = %d (role %d: %d), forced %d, want %d forced %d", fact.sequence, status, negativeStatusRole, credited, statusTrigger, fact.status, fact.statusTrigger)
 				}
 			}
-			view := p.viewSnapshot()
+			view := p.ViewSnapshot()
 			if err := semanticCheckRanking(view); err != nil {
 				t.Errorf("final ranking: %v", err)
 			}

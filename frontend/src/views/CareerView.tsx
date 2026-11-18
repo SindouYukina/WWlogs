@@ -12,6 +12,7 @@ import { StatCard } from "./DashboardView"
 import { LinkedName } from "./HistoryAnalysis"
 import { ClassChip } from "./HistoryLibrary"
 import { HistoryIndicatorChip, statusNote, useDateFormats, ZoneNote } from "./HistoryView"
+import { HistoryRecovery } from "./HistoryRecovery"
 
 // The Career Overview: totals, activity, characters, places and personal records across the stored encounters. Go selects,
 // classifies, sums and ranks everything (internal/history/career.go); this view lays out what it returned, and every number
@@ -225,6 +226,8 @@ export function CareerView({ theme, refreshKey, indicator, state, onState, onOpe
   const settledKey = useSettledKey(refreshKey)
   const [career, setCareer] = useState<HistoryCareer | null>(null)
   const [failed, setFailed] = useState(false)
+  // A retry or a rebuild that opened the history counts as a refresh of its own.
+  const [reopened, setReopened] = useState(0)
   const [allRoles, setAllRoles] = useState(false)
   const [allCombos, setAllCombos] = useState(false)
   const [trend, setTrend] = useState<TrendKind>("encounters")
@@ -240,7 +243,7 @@ export function CareerView({ theme, refreshKey, indicator, state, onState, onOpe
       setCareer(view)
     }).catch(() => { if (current) setFailed(true) })
     return () => { current = false }
-  }, [query, zone, settledKey])
+  }, [query, zone, settledKey, reopened])
 
   const set = (change: Partial<CareerState>) => onState({ ...state, ...change })
   const known = useMemo(() => new Map((career?.roles ?? []).map(role => [role.roleId, role])), [career])
@@ -287,7 +290,9 @@ export function CareerView({ theme, refreshKey, indicator, state, onState, onOpe
 
   const totals = career?.totals
   const filtered = state.preset !== "all" || state.gameVersion !== undefined || state.mode !== undefined || state.stage !== undefined
-  const empty = career !== null && totals?.encounters === 0
+  // A history that cannot be opened is no empty history: it shows the recovery prompt, never the first-run text.
+  const unavailable = career?.status.state === "unavailable"
+  const empty = career !== null && totals?.encounters === 0 && !unavailable
   const note = statusNote(career?.status)
   const roles = career?.roles ?? []
   const combos = career?.combos ?? []
@@ -300,7 +305,8 @@ export function CareerView({ theme, refreshKey, indicator, state, onState, onOpe
       <h2 className="ww-history-title">{t("career.title")}</h2>
       <HistoryIndicatorChip indicator={indicator} />
     </Reveal>
-    <Reveal index={1}><Card className="ww-history-filters">
+    {/* A history that cannot be opened has no totals to filter or show: the page shows the recovery prompt only. */}
+    {!unavailable && <Reveal index={1}><Card className="ww-history-filters">
       <div className="ww-career-filters" data-field="career-filters">
         <div className="ww-history-filter"><span>{t("career.rangeLabel")}</span>
           <span data-field="career-preset" data-preset={state.preset}><Segmented label={t("career.rangeLabel")} value={state.preset} options={presetOptions} onChange={(preset: CareerPreset) => set({ preset })} /></span>
@@ -319,7 +325,8 @@ export function CareerView({ theme, refreshKey, indicator, state, onState, onOpe
       </div>
       {note && <p className="ww-history-note" data-tone={note.tone} data-field="history-status" data-reason={career?.status.reason}>{t(note.key)}</p>}
       {failed && <p className="ww-history-note" data-tone="critical" role="alert">{t("loadFailed")}</p>}
-    </Card></Reveal>
+    </Card></Reveal>}
+    {unavailable && <Reveal index={2}><Card className="ww-history-recovery-card"><HistoryRecovery rebuildable={career?.status.rebuildable === true} retry={host.retryHistory} rebuild={host.rebuildHistory} onRecovered={() => { setFailed(false); setReopened(count => count + 1) }} /></Card></Reveal>}
 
     {empty && <Reveal index={2}><Card className="ww-history-context ww-career-empty" data-field="career-empty" data-filtered={filtered}>
       <Icon name="chart" size={22} />
@@ -329,7 +336,7 @@ export function CareerView({ theme, refreshKey, indicator, state, onState, onOpe
       </div>
     </Card></Reveal>}
 
-    {career && totals && !empty && <>
+    {career && totals && !empty && !unavailable && <>
       <div className="ww-history-stats" data-field="career-totals">
         <StatCard index={2} hero icon="list" label={t("career.encounters")} field="career-encounters" value={totals.encounters} format={format.integer} note={t("career.encountersNote", { counted: format.integer(totals.counted) })} scope="career" stale={false} numberMode="tween" />
         <StatCard index={3} icon="spark" label={t("career.damage")} field="career-damage" status={totals.damageLowerBound ? "lower_bound" : "available"} value={totals.damage} format={value => formats.damage(value, totals.damageLowerBound)} note={t(totals.damageLowerBound ? "career.damageLowerBound" : "career.damageNote")} scope="career" stale={false} numberMode="tween" />

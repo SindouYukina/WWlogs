@@ -15,13 +15,13 @@ const (
 	rsaWidth = 256
 )
 
-type staticRSA struct {
-	e int
-	n *big.Int
-	d *big.Int
+type StaticRSA struct {
+	E int
+	N *big.Int
+	D *big.Int
 }
 
-func parsePrivateKeyPEM(data []byte) (*staticRSA, error) {
+func parsePrivateKeyPEM(data []byte) (*StaticRSA, error) {
 	block, rest := pem.Decode(data)
 	if block == nil || block.Type != "RSA PRIVATE KEY" || len(bytes.TrimSpace(rest)) != 0 {
 		return nil, errors.New("expected one PKCS#1 RSA PRIVATE KEY PEM block")
@@ -37,10 +37,23 @@ func parsePrivateKeyPEM(data []byte) (*staticRSA, error) {
 	if privateKey.N.BitLen() != rsaWidth*8 {
 		return nil, errors.New("local RSA PEM has an unexpected modulus size")
 	}
-	return &staticRSA{e: privateKey.E, n: new(big.Int).Set(privateKey.N), d: new(big.Int).Set(privateKey.D)}, nil
+	return &StaticRSA{E: privateKey.E, N: new(big.Int).Set(privateKey.N), D: new(big.Int).Set(privateKey.D)}, nil
 }
 
-func loadEmbeddedPrivateKey() (*staticRSA, error) {
+func LoadEmbeddedPrivateKey() (*StaticRSA, error) {
+	data, err := ProtocolKeyMaterial()
+	if err != nil {
+		return nil, err
+	}
+	defer clear(data)
+	return parsePrivateKeyPEM(data)
+}
+
+// ProtocolKeyMaterial returns the game protocol RSA private key this build embeds, decrypted in memory exactly as the build
+// embedded it (a PKCS#1 PEM block). It is the one copy of the key in the executable: the traffic decoder reads it here, and
+// so does the Combat History, which derives its key from it. Nothing is read from disk. The caller owns the returned bytes
+// and clears them; a build without the embedded key returns an error.
+func ProtocolKeyMaterial() ([]byte, error) {
 	data, err := keyembed.Decrypt(keyembed.Payload{
 		Ciphertext:    embeddedKeyCiphertext,
 		EncryptionKey: embeddedKeyEncryptionKey,
@@ -48,22 +61,21 @@ func loadEmbeddedPrivateKey() (*staticRSA, error) {
 	if err != nil {
 		return nil, fmt.Errorf("decrypt embedded RSA key: %w", err)
 	}
-	defer clear(data)
-	return parsePrivateKeyPEM(data)
+	return data, nil
 }
 
-func (key *staticRSA) decryptSessionKey(ciphertext []byte) ([]byte, error) {
-	if key == nil || key.n == nil || key.d == nil {
+func (key *StaticRSA) decryptSessionKey(ciphertext []byte) ([]byte, error) {
+	if key == nil || key.N == nil || key.D == nil {
 		return nil, errors.New("RSA material is unavailable")
 	}
 	if len(ciphertext) != rsaWidth {
 		return nil, fmt.Errorf("RSA ciphertext length %d, expected %d", len(ciphertext), rsaWidth)
 	}
 	c := new(big.Int).SetBytes(ciphertext)
-	if c.Cmp(key.n) >= 0 {
+	if c.Cmp(key.N) >= 0 {
 		return nil, errors.New("RSA ciphertext is out of range")
 	}
-	m := new(big.Int).Exp(c, key.d, key.n)
+	m := new(big.Int).Exp(c, key.D, key.N)
 	em := make([]byte, rsaWidth)
 	encoded := m.Bytes()
 	if len(encoded) > len(em) {

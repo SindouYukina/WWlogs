@@ -49,37 +49,37 @@ type CombatRole struct {
 // used: it reflects the last message that touched the record, and an EntityActiveRequest update marks a role entity
 // CORRELATED (seen for every local role entity in the archived captures) without changing its mapping. A record that
 // does not exist (UNKNOWN) never credits a role.
-func (p *processor) localRoleForEntity(entityID uint64, identity entityIdentity) *CombatRole {
-	if p == nil || p.entities == nil || p.playerRelevance == nil || entityID == 0 {
+func (p *Processor) localRoleForEntity(entityID uint64, identity EntityIdentity) *CombatRole {
+	if p == nil || p.Entities == nil || p.PlayerRelevance == nil || entityID == 0 {
 		return nil
 	}
-	current, ok := identity.Runtime, identity.RuntimeStatus != resolutionUnknown && identity.Runtime.entityID == entityID
+	current, ok := identity.Runtime, identity.RuntimeStatus != ResolutionUnknown && identity.Runtime.EntityID == entityID
 	if !ok {
-		resolved, status := p.entities.resolve(entityID)
-		if status == resolutionUnknown || resolved.entityID != entityID {
+		resolved, status := p.Entities.Resolve(entityID)
+		if status == ResolutionUnknown || resolved.EntityID != entityID {
 			return nil
 		}
 		current = resolved
 	}
 	seen := make(map[uint64]struct{}, maxSummonerEntityDepth)
 	for depth := 0; depth < maxSummonerEntityDepth; depth++ {
-		if hasPlayerSceneRoleMapping(current) && p.playerRelevance.isLocalPlayerRoleEntity(current) {
+		if HasPlayerSceneRoleMapping(current) && p.PlayerRelevance.isLocalPlayerRoleEntity(current) {
 			basis := roleBasisRoleEntity
 			if depth > 0 {
 				basis = roleBasisSummonerChain
 			}
-			return &CombatRole{PlayerID: current.playerID, RoleID: current.roleID, Basis: basis}
+			return &CombatRole{PlayerID: current.PlayerID, RoleID: current.RoleID, Basis: basis}
 		}
-		if !current.hasSummonerID || current.summonerID == 0 {
+		if !current.HasSummonerID || current.SummonerID == 0 {
 			return nil
 		}
-		parentID := current.summonerID
+		parentID := current.SummonerID
 		if _, loop := seen[parentID]; loop {
 			return nil
 		}
 		seen[parentID] = struct{}{}
-		parent, status := p.entities.resolve(parentID)
-		if status == resolutionUnknown || parent.entityID != parentID {
+		parent, status := p.Entities.Resolve(parentID)
+		if status == ResolutionUnknown || parent.EntityID != parentID {
 			return nil
 		}
 		current = parent
@@ -231,13 +231,13 @@ func (a *roleAggregate) entry(role *CombatRole) *roleEntry {
 func (a *roleAggregate) add(record CombatEventRecord) (TimelineContributor, bool) {
 	switch record.Flow {
 	case CombatFlowLocalOutgoing:
-		if record.VehicleKind == vehicleKindMotorcycle {
-			a.vehicle.Kind = vehicleKindMotorcycle
-			a.vehicle.Evidence = string(resolutionCorrelated)
+		if record.VehicleKind == VehicleKindMotorcycle {
+			a.vehicle.Kind = VehicleKindMotorcycle
+			a.vehicle.Evidence = string(ResolutionCorrelated)
 			a.vehicle.DamageDealt += record.Amount
 			a.vehicle.OutgoingEvents++
 			a.vehicleSkills.add(record.SkillID, record.DamageID, record.Amount, nil)
-			return TimelineContributor{Kind: TimelineContributorVehicle, VehicleKind: vehicleKindMotorcycle}, true
+			return TimelineContributor{Kind: TimelineContributorVehicle, VehicleKind: VehicleKindMotorcycle}, true
 		}
 		entry := a.entry(record.SourceRole)
 		if entry == nil {

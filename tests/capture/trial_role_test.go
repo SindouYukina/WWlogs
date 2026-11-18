@@ -10,13 +10,13 @@ import (
 // A trial character plays its parent role: names, Outro and skill rows come from the parent, statistics keep its RoleId.
 func TestTrialRoleReadsItsParentRole(t *testing.T) {
 	master := testSkillNameMaster()
-	master.trialRoleParents = map[uint64]uint64{13127004: 1312}
-	master.characters = map[uint64]masterRecord{1312: {ID: 1312, Name: "鎖暝", NameStatus: string(resolutionVerified)}}
-	if master.staticRoleID(13127004) != 1312 || master.staticRoleID(1312) != 1312 || master.staticRoleID(0) != 0 {
+	master.TrialRoleParents = map[uint64]uint64{13127004: 1312}
+	master.Characters = map[uint64]MasterRecord{1312: {ID: 1312, Name: "鎖暝", NameStatus: string(ResolutionVerified)}}
+	if master.StaticRoleID(13127004) != 1312 || master.StaticRoleID(1312) != 1312 || master.StaticRoleID(0) != 0 {
 		t.Fatal("staticRoleID does not follow TrialRoleInfo.ParentId")
 	}
-	var none *gameMaster
-	if none.staticRoleID(13127004) != 13127004 {
+	var none *GameMaster
+	if none.StaticRoleID(13127004) != 13127004 {
 		t.Fatal("without a Master a RoleId must stay as it is")
 	}
 	skills := []SkillDamageSnapshot{{SkillID: 1312050, DamageDealt: 80, OutgoingEvents: 2, DamageIDs: []uint64{9001, 9002}}}
@@ -24,7 +24,7 @@ func TestTrialRoleReadsItsParentRole(t *testing.T) {
 	if view[0].Name != "暝傘形·重鎖獄瘴" || view[0].NameStatus != "DERIVED" || view[0].NameSource != "damage_list" || view[0].DamageDealt != 80 {
 		t.Fatalf("trial role skill row = %+v, want the parent role's UI skill", view[0])
 	}
-	if name, status := roleDisplayName(master, 13127004); name != "鎖暝" || status != string(resolutionVerified) {
+	if name, status := roleDisplayName(master, 13127004); name != "鎖暝" || status != string(ResolutionVerified) {
 		t.Fatalf("trial role name = %q %s", name, status)
 	}
 	// A role that is not a trial keeps its own lookups: another role's UI skill still never names its rows.

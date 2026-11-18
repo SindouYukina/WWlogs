@@ -35,7 +35,7 @@ const (
 const (
 	encounterStartBattleState   = "battle_state_enter"
 	encounterStartFirstActivity = "first_confirmed_activity"
-	encounterEndBattleState     = "battle_state_exit"
+	EncounterEndBattleState     = "battle_state_exit"
 	encounterEndInactivity      = "inactivity_timeout"
 	encounterEndSceneTransition = "scene_transition"
 	encounterEndSessionChange   = "protocol_session_change"
@@ -70,7 +70,7 @@ type EncounterTotals struct {
 	UnattributedIncomingEvents uint64 `json:"unattributedIncomingEvents"`
 }
 
-func (t *EncounterTotals) merge(other EncounterTotals) {
+func (t *EncounterTotals) Merge(other EncounterTotals) {
 	t.DamageDealt += other.DamageDealt
 	t.DamageTaken += other.DamageTaken
 	t.OutgoingEvents += other.OutgoingEvents
@@ -173,7 +173,7 @@ type EncounterTransition struct {
 type encounterRecord struct {
 	sequence        uint64
 	protocolSession int
-	state           EncounterState
+	State           EncounterState
 	startAt         time.Time
 	startBasis      string
 	startConfirmed  bool
@@ -206,7 +206,7 @@ type encounterTracker struct {
 	captureSessionID uint64
 	intervalID       uint64
 	nextSequence     uint64
-	current          *encounterRecord
+	Current          *encounterRecord
 	completed        []EncounterSnapshot
 	completedDropped uint64
 	droppedTotals    EncounterTotals
@@ -227,8 +227,9 @@ type encounterTracker struct {
 	battleStateSignals   uint64
 	// unanchoredBattleStateSignals counts signals rejected because their PlayerId was not proven local.
 	unanchoredBattleStateSignals uint64
-	recordTransitions            bool
-	transitions                  []EncounterTransition
+	// onTransition receives every transition of the encounter state machine: the Development encounter output
+	// (-encounter-out) observes them; nil in every other run.
+	onTransition func(EncounterTransition)
 	// completedIntegrity is aligned with completed; completed snapshots hold the DPS before integrity is applied.
 	completedIntegrity []encounterIntegrityState
 	// completedTimelines is aligned with completed.
@@ -268,7 +269,7 @@ func (t *encounterTracker) nextInterval(intervalID uint64) *encounterTracker {
 	next.signalKnown, next.inBattle, next.highWater = t.signalKnown, t.inBattle, t.highWater
 	// Events observed before the reset belong to the old interval and cannot start or extend an encounter here.
 	next.boundaryFloor = t.highWater
-	next.recordTransitions = t.recordTransitions
+	next.onTransition = t.onTransition
 	// A loss still in progress keeps removing data from the new interval; a delayed stream stays delayed.
 	for _, id := range t.ongoingLossIDs() {
 		loss := *t.losses[id]
@@ -290,18 +291,12 @@ func (t *encounterTracker) encounterID(sequence uint64) string {
 	return fmt.Sprintf("%d-%d-%d", t.captureSessionID, t.intervalID, sequence)
 }
 
-func (t *encounterTracker) takeTransitions() []EncounterTransition {
-	transitions := t.transitions
-	t.transitions = nil
-	return transitions
-}
-
 func (t *encounterTracker) emit(kind string, record *encounterRecord, at time.Time, basis string, detail *EncounterSnapshot) {
-	if !t.recordTransitions {
+	if t.onTransition == nil {
 		return
 	}
-	t.transitions = append(t.transitions, EncounterTransition{
-		Kind: kind, EncounterID: t.encounterID(record.sequence), At: at, State: record.state, Basis: basis, Encounter: detail,
+	t.onTransition(EncounterTransition{
+		Kind: kind, EncounterID: t.encounterID(record.sequence), At: at, State: record.State, Basis: basis, Encounter: detail,
 	})
 }
 
@@ -312,13 +307,13 @@ func (t *encounterTracker) observeTime(at time.Time) {
 		return
 	}
 	t.highWater = at
-	if t.current != nil {
+	if t.Current != nil {
 		switch {
-		case t.current.state == EncounterEndingCandidate && at.Sub(t.current.endAt) > encounterReentryGrace:
+		case t.Current.State == EncounterEndingCandidate && at.Sub(t.Current.endAt) > encounterReentryGrace:
 			t.finish(at, "")
-		case t.current.state == EncounterActive && !t.inBattle && t.current.battleEntered.IsZero() &&
-			at.Sub(t.current.lastActivity) > encounterInactivityTimeout:
-			t.current.endAt, t.current.endBasis = t.current.lastActivity, encounterEndInactivity
+		case t.Current.State == EncounterActive && !t.inBattle && t.Current.battleEntered.IsZero() &&
+			at.Sub(t.Current.lastActivity) > encounterInactivityTimeout:
+			t.Current.endAt, t.Current.endBasis = t.Current.lastActivity, encounterEndInactivity
 			t.finish(at, "")
 		}
 	}
@@ -327,7 +322,7 @@ func (t *encounterTracker) observeTime(at time.Time) {
 
 // expirePrelude moves prelude events that can no longer join an encounter to the outside totals.
 func (t *encounterTracker) expirePrelude(now time.Time) {
-	if t.current != nil && t.current.state == EncounterEndingCandidate {
+	if t.Current != nil && t.Current.State == EncounterEndingCandidate {
 		return
 	}
 	kept := t.prelude[:0]
@@ -373,7 +368,7 @@ func (t *encounterTracker) observeEvent(record CombatEventRecord) string {
 		return encounterAssignmentNoTime
 	}
 	t.observeTime(record.ObservedAt)
-	if t.current != nil && t.current.protocolSession != record.Key.ProtocolSession {
+	if t.Current != nil && t.Current.protocolSession != record.Key.ProtocolSession {
 		t.interrupt(record.ObservedAt, encounterEndSessionChange)
 	}
 	confirmed := isConfirmedActivity(record.Flow)
@@ -382,20 +377,20 @@ func (t *encounterTracker) observeEvent(record CombatEventRecord) string {
 		t.outside.add(record)
 		return encounterAssignmentOutside
 	}
-	if t.current != nil && (t.current.state == EncounterActive || !record.ObservedAt.After(t.current.endAt)) {
-		if record.ObservedAt.Before(t.current.startAt) {
-			if t.current.startAt.Sub(record.ObservedAt) > encounterPreRollWindow {
+	if t.Current != nil && (t.Current.State == EncounterActive || !record.ObservedAt.After(t.Current.endAt)) {
+		if record.ObservedAt.Before(t.Current.startAt) {
+			if t.Current.startAt.Sub(record.ObservedAt) > encounterPreRollWindow {
 				t.outside.add(record)
 				return encounterAssignmentOutside
 			}
 			if confirmed {
-				t.current.startAt, t.current.startBasis = record.ObservedAt, encounterStartFirstActivity
+				t.Current.startAt, t.Current.startBasis = record.ObservedAt, encounterStartFirstActivity
 			}
 		}
 		t.addToCurrent(record)
-		return t.encounterID(t.current.sequence)
+		return t.encounterID(t.Current.sequence)
 	}
-	if t.current != nil || (t.signalKnown && !t.inBattle) {
+	if t.Current != nil || (t.signalKnown && !t.inBattle) {
 		// After an exit (ENDING_CANDIDATE) or out of battle, an event waits for a re-entry or a new enter.
 		t.addPrelude(record)
 		return encounterAssignmentPrelude
@@ -406,7 +401,7 @@ func (t *encounterTracker) observeEvent(record CombatEventRecord) string {
 	}
 	t.open(record.ObservedAt, record.Key.ProtocolSession, encounterStartFirstActivity, false)
 	t.addToCurrent(record)
-	return t.encounterID(t.current.sequence)
+	return t.encounterID(t.Current.sequence)
 }
 
 // belowBoundaryFloor reports whether an event falls at or before the end of an earlier encounter of its own
@@ -427,65 +422,65 @@ func (t *encounterTracker) addPrelude(record CombatEventRecord) {
 }
 
 func (t *encounterTracker) addToCurrent(record CombatEventRecord) {
-	t.current.totals.add(record)
-	if contributor, ok := t.current.roles.add(record); ok {
-		t.current.timeline.add(record.ObservedAt, record.Amount, contributor)
+	t.Current.totals.add(record)
+	if contributor, ok := t.Current.roles.add(record); ok {
+		t.Current.timeline.add(record.ObservedAt, record.Amount, contributor)
 	}
 	if record.ContextDowngrade != "" {
-		t.current.integrity.contextDowngraded++
+		t.Current.integrity.contextDowngraded++
 	}
 	if t.history.on() {
-		t.current.enemies.add(record)
-		key := historyKey(t.intervalID, t.current.sequence)
+		t.Current.enemies.add(record)
+		key := historyKey(t.intervalID, t.Current.sequence)
 		t.history.assign(record.historySequence, key)
-		if isConfirmedActivity(record.Flow) && !t.current.historyActive {
-			t.current.historyActive = true
+		if isConfirmedActivity(record.Flow) && !t.Current.historyActive {
+			t.Current.historyActive = true
 			t.history.add(HistoryEntry{Kind: HistoryEncounterActive, Encounter: key})
 		}
 	}
 	if !isConfirmedActivity(record.Flow) {
 		return
 	}
-	if t.current.firstActivity.IsZero() || record.ObservedAt.Before(t.current.firstActivity) {
-		t.current.firstActivity = record.ObservedAt
+	if t.Current.firstActivity.IsZero() || record.ObservedAt.Before(t.Current.firstActivity) {
+		t.Current.firstActivity = record.ObservedAt
 	}
-	if record.ObservedAt.After(t.current.lastActivity) {
-		t.current.lastActivity = record.ObservedAt
+	if record.ObservedAt.After(t.Current.lastActivity) {
+		t.Current.lastActivity = record.ObservedAt
 	}
 }
 
 func (t *encounterTracker) open(at time.Time, protocolSession int, basis string, confirmed bool) {
 	t.nextSequence++
-	t.current = &encounterRecord{
-		sequence: t.nextSequence, protocolSession: protocolSession, state: EncounterActive,
+	t.Current = &encounterRecord{
+		sequence: t.nextSequence, protocolSession: protocolSession, State: EncounterActive,
 		startAt: at, startBasis: basis, startConfirmed: confirmed, timeline: newEncounterTimeline(at), scene: t.scene,
 	}
 	t.history.add(HistoryEntry{Kind: HistoryEncounterOpened, Encounter: historyKey(t.intervalID, t.nextSequence), Opened: &HistoryEncounterOpening{
 		ProtocolSession: protocolSession, StatisticsInterval: t.intervalID, Sequence: t.nextSequence, StartedAt: at, StartBasis: basis, Scene: t.scene,
 	}})
 	if basis == encounterStartBattleState {
-		t.current.battleEntered = at
+		t.Current.battleEntered = at
 	} else if t.battleStateUnverified {
 		// An inbound loss may have hidden the signal that actually started this fight.
-		t.current.integrity.battleStateUnverified = true
+		t.Current.integrity.battleStateUnverified = true
 	}
 	for _, id := range t.ongoingLossIDs() {
-		t.current.integrity.addLoss(id)
+		t.Current.integrity.addLoss(id)
 	}
-	t.emit("opened", t.current, at, basis, nil)
+	t.emit("opened", t.Current, at, basis, nil)
 }
 
 // absorbPrelude moves prelude events into the open encounter. Confirmed activity within the pre-roll window
 // before the start moves the start back to that activity; older events go to the outside totals.
 func (t *encounterTracker) absorbPrelude() {
 	for _, record := range t.prelude {
-		if t.current.startAt.Sub(record.ObservedAt) > encounterPreRollWindow || record.Key.ProtocolSession != t.current.protocolSession ||
+		if t.Current.startAt.Sub(record.ObservedAt) > encounterPreRollWindow || record.Key.ProtocolSession != t.Current.protocolSession ||
 			t.belowBoundaryFloor(record) {
 			t.outside.add(record)
 			continue
 		}
-		if record.ObservedAt.Before(t.current.startAt) && isConfirmedActivity(record.Flow) {
-			t.current.startAt, t.current.startBasis = record.ObservedAt, encounterStartFirstActivity
+		if record.ObservedAt.Before(t.Current.startAt) && isConfirmedActivity(record.Flow) {
+			t.Current.startAt, t.Current.startBasis = record.ObservedAt, encounterStartFirstActivity
 		}
 		t.addToCurrent(record)
 	}
@@ -500,40 +495,40 @@ func (t *encounterTracker) observeBattleState(inBattle bool, at time.Time, proto
 	t.observeTime(at)
 	t.signalKnown = true
 	t.battleStateSignals++
-	if t.current != nil && t.current.protocolSession != protocolSession {
+	if t.Current != nil && t.Current.protocolSession != protocolSession {
 		t.interrupt(at, encounterEndSessionChange)
 	}
 	if !inBattle {
 		t.inBattle = false
-		if t.current != nil && t.current.state == EncounterActive {
-			t.current.state = EncounterEndingCandidate
-			t.current.endAt, t.current.endBasis = at, encounterEndBattleState
-			t.emit("ending_candidate", t.current, at, encounterEndBattleState, nil)
+		if t.Current != nil && t.Current.State == EncounterActive {
+			t.Current.State = EncounterEndingCandidate
+			t.Current.endAt, t.Current.endBasis = at, EncounterEndBattleState
+			t.emit("ending_candidate", t.Current, at, EncounterEndBattleState, nil)
 		}
 		return
 	}
 	t.inBattle = true
-	if t.current != nil {
+	if t.Current != nil {
 		switch {
-		case t.current.state == EncounterEndingCandidate:
+		case t.Current.State == EncounterEndingCandidate:
 			// observeTime has already finished the encounter if the grace window had passed.
-			t.current.state = EncounterActive
-			t.current.endAt, t.current.endBasis = time.Time{}, ""
-			t.current.reentries++
-			t.emit("resumed", t.current, at, encounterStartBattleState, nil)
+			t.Current.State = EncounterActive
+			t.Current.endAt, t.Current.endBasis = time.Time{}, ""
+			t.Current.reentries++
+			t.emit("resumed", t.Current, at, encounterStartBattleState, nil)
 			t.absorbPrelude()
 			return
-		case !t.current.battleEntered.IsZero():
+		case !t.Current.battleEntered.IsZero():
 			return
-		case !t.current.firstActivity.Before(at.Add(-encounterPreRollWindow)):
+		case !t.Current.firstActivity.Before(at.Add(-encounterPreRollWindow)):
 			// The activity that opened this encounter is the same fight the signal now confirms.
-			t.current.battleEntered, t.current.startConfirmed = at, true
-			if at.Before(t.current.startAt) {
-				t.current.startAt, t.current.startBasis = at, encounterStartBattleState
+			t.Current.battleEntered, t.Current.startConfirmed = at, true
+			if at.Before(t.Current.startAt) {
+				t.Current.startAt, t.Current.startBasis = at, encounterStartBattleState
 			}
 			return
 		default:
-			t.current.endAt, t.current.endBasis = t.current.lastActivity, encounterEndInactivity
+			t.Current.endAt, t.Current.endBasis = t.Current.lastActivity, encounterEndInactivity
 			t.finish(at, "")
 		}
 	}
@@ -565,13 +560,13 @@ func (t *encounterTracker) observeScene(instanceID uint64, known bool) {
 
 func (t *encounterTracker) interrupt(at time.Time, basis string) {
 	t.inBattle = false
-	if t.current != nil {
-		if t.current.state == EncounterActive {
+	if t.Current != nil {
+		if t.Current.State == EncounterActive {
 			end := at
-			if end.IsZero() || end.Before(t.current.lastActivity) {
-				end = t.current.lastActivity
+			if end.IsZero() || end.Before(t.Current.lastActivity) {
+				end = t.Current.lastActivity
 			}
-			t.current.endAt, t.current.endBasis = end, basis
+			t.Current.endAt, t.Current.endBasis = end, basis
 		}
 		t.finish(at, basis)
 	}
@@ -581,13 +576,13 @@ func (t *encounterTracker) interrupt(at time.Time, basis string) {
 // finishCapture closes the tracker at the end of a capture or replay.
 func (t *encounterTracker) finishCapture() {
 	at := t.highWater
-	if t.current != nil {
-		if t.current.state == EncounterActive {
+	if t.Current != nil {
+		if t.Current.State == EncounterActive {
 			end := at
-			if end.Before(t.current.lastActivity) {
-				end = t.current.lastActivity
+			if end.Before(t.Current.lastActivity) {
+				end = t.Current.lastActivity
 			}
-			t.current.endAt, t.current.endBasis = end, encounterEndCaptureEnd
+			t.Current.endAt, t.Current.endBasis = end, encounterEndCaptureEnd
 		}
 		t.finish(at, encounterEndCaptureEnd)
 	}
@@ -603,10 +598,10 @@ func (t *encounterTracker) flushPrelude() {
 
 // finish moves the open encounter to FINISHED and decides its outcome. interruptBasis is empty for a normal end.
 func (t *encounterTracker) finish(decidedAt time.Time, interruptBasis string) {
-	record := t.current
-	t.current = nil
-	wasCandidate := record.state == EncounterEndingCandidate
-	record.state = EncounterFinished
+	record := t.Current
+	t.Current = nil
+	wasCandidate := record.State == EncounterEndingCandidate
+	record.State = EncounterFinished
 	record.endDecidedAt = decidedAt
 	if record.endAt.After(t.boundaryFloor) {
 		t.boundaryFloor, t.boundaryFloorSession = record.endAt, record.protocolSession
@@ -629,7 +624,7 @@ func (t *encounterTracker) finish(decidedAt time.Time, interruptBasis string) {
 	key := historyKey(t.intervalID, record.sequence)
 	if !record.totals.confirmedActivity() {
 		// Unattributed events seen during an empty battle interval stay counted, outside any encounter.
-		t.outside.merge(record.totals)
+		t.outside.Merge(record.totals)
 		t.discardedEmpty++
 		t.emit("discarded", record, decidedAt, record.endBasis, nil)
 		t.history.add(HistoryEntry{Kind: HistoryEncounterDiscarded, Encounter: key})
@@ -641,7 +636,7 @@ func (t *encounterTracker) finish(decidedAt time.Time, interruptBasis string) {
 	base.PeakDPS = encounterPeakDPS(record, record.endAt, outcomeConfidence(outcome))
 	base.Healing = t.encounterHealing(record, record.endAt)
 	if len(t.completed) >= maxCompletedEncounters {
-		t.droppedTotals.merge(t.completed[0].Totals)
+		t.droppedTotals.Merge(t.completed[0].Totals)
 		t.completed = t.completed[1:]
 		t.completedIntegrity = t.completedIntegrity[1:]
 		t.completedTimelines = t.completedTimelines[1:]
@@ -671,7 +666,7 @@ func (t *encounterTracker) finish(decidedAt time.Time, interruptBasis string) {
 func (t *encounterTracker) snapshotOf(record *encounterRecord, outcome EncounterOutcome, query time.Time) EncounterSnapshot {
 	snapshot := EncounterSnapshot{
 		EncounterID: t.encounterID(record.sequence), CaptureSessionID: t.captureSessionID, StatisticsIntervalID: t.intervalID,
-		Sequence: record.sequence, ProtocolSession: record.protocolSession, State: record.state, Outcome: outcome,
+		Sequence: record.sequence, ProtocolSession: record.protocolSession, State: record.State, Outcome: outcome,
 		StartedAt: record.startAt, StartBasis: record.startBasis, StartConfirmed: record.startConfirmed,
 		BattleEntered: record.battleEntered, EndedAt: record.endAt, EndBasis: record.endBasis, EndDecidedAt: record.endDecidedAt,
 		FirstActivityAt: record.firstActivity, LastActivityAt: record.lastActivity, Reentries: record.reentries, Totals: record.totals,
@@ -679,7 +674,7 @@ func (t *encounterTracker) snapshotOf(record *encounterRecord, outcome Encounter
 	snapshot.Roles, snapshot.UnassignedRole = record.roles.snapshot()
 	snapshot.Vehicle = record.roles.vehicleSnapshot()
 	var extra []string
-	switch record.state {
+	switch record.State {
 	case EncounterActive:
 		// A query older than the newest observed capture time cannot shorten a live encounter: the damage already
 		// counted was observed by then, so the end is never placed before it.
@@ -771,9 +766,9 @@ func (t *encounterTracker) snapshot(query time.Time) EncounterTrackerSnapshot {
 	for _, record := range t.prelude {
 		snapshot.OutsideEncounters.add(record)
 	}
-	if t.current != nil {
-		current := t.snapshotOf(t.current, EncounterOutcomeOpen, query)
-		snapshot.Current, snapshot.State = &current, t.current.state
+	if t.Current != nil {
+		current := t.snapshotOf(t.Current, EncounterOutcomeOpen, query)
+		snapshot.Current, snapshot.State = &current, t.Current.State
 	}
 	return snapshot
 }
@@ -832,16 +827,16 @@ func (s *DamageStatistics) observeCaptureTime(at time.Time) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.encounters.observeTime(at)
+	s.Encounters.observeTime(at)
 }
 
-func (s *DamageStatistics) observeBattleState(inBattle bool, at time.Time, protocolSession int) {
+func (s *DamageStatistics) ObserveBattleState(inBattle bool, at time.Time, protocolSession int) {
 	if s == nil {
 		return
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.encounters.observeBattleState(inBattle, at, protocolSession)
+	s.Encounters.observeBattleState(inBattle, at, protocolSession)
 }
 
 func (s *DamageStatistics) observeUnanchoredBattleState() {
@@ -850,7 +845,7 @@ func (s *DamageStatistics) observeUnanchoredBattleState() {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.encounters.unanchoredBattleStateSignals++
+	s.Encounters.unanchoredBattleStateSignals++
 }
 
 func (s *DamageStatistics) observeSceneTransition(at time.Time) {
@@ -859,7 +854,7 @@ func (s *DamageStatistics) observeSceneTransition(at time.Time) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.encounters.observeSceneTransition(at)
+	s.Encounters.observeSceneTransition(at)
 }
 
 // observeScene records the scene a JoinSceneNotify reported, for the encounters that open in it.
@@ -869,7 +864,7 @@ func (s *DamageStatistics) observeScene(instanceID uint64, known bool) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.encounters.observeScene(instanceID, known)
+	s.Encounters.observeScene(instanceID, known)
 }
 
 func (s *DamageStatistics) observeSessionChange(at time.Time) {
@@ -878,7 +873,7 @@ func (s *DamageStatistics) observeSessionChange(at time.Time) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.encounters.observeSessionChange(at)
+	s.Encounters.observeSessionChange(at)
 }
 
 func (s *DamageStatistics) finishCapture() {
@@ -887,28 +882,16 @@ func (s *DamageStatistics) finishCapture() {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.encounters.finishCapture()
+	s.Encounters.finishCapture()
 }
 
-// recordEncounterTransitions turns transition recording on for development diagnostics. It stays off in public
-// builds, where nothing drains the list.
-func (s *DamageStatistics) recordEncounterTransitions(enabled bool) {
+// ObserveEncounterTransitions hands every later transition of the encounter state machine to observe, while the
+// statistics hold their lock (nil stops). Only the Development encounter output (-encounter-out) observes them.
+func (s *DamageStatistics) ObserveEncounterTransitions(observe func(EncounterTransition)) {
 	if s == nil {
 		return
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.encounters.recordTransitions = enabled
-	if !enabled {
-		s.encounters.transitions = nil
-	}
-}
-
-func (s *DamageStatistics) takeEncounterTransitions() []EncounterTransition {
-	if s == nil {
-		return nil
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.encounters.takeTransitions()
+	s.Encounters.onTransition = observe
 }

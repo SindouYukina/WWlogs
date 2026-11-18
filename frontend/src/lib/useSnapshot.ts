@@ -3,6 +3,7 @@ import { host } from "./host"
 import type { Connection, Snapshot } from "./snapshot"
 import { shellChanged, snapshotSupersedes, withShell } from "./snapshot"
 import i18n, { manifest } from "@/i18n"
+import { applyUiLocale, snapshotLocale } from "@/i18n/ui-language"
 import { applyAppearance } from "@/design/appearance"
 
 /** Resolves when the window is visible. A hidden window holds no long-poll, so it costs the host nothing. */
@@ -34,10 +35,8 @@ export function useSnapshot() {
       setSnapshot(current=>current&&next.sequence===current.sequence&&shellChanged(next,current)?withShell(current,next):current)
       return
     }
-    const locale=manifest.supportedLocales.includes(next.locale) ? next.locale : manifest.fallbackLocale
     // All resources are eager; language and names become visible in the same React batch.
-    void i18n.changeLanguage(locale)
-    document.documentElement.lang=locale
+    applyUiLocale(i18n,document.documentElement,snapshotLocale(next.locale,manifest.supportedLocales,manifest.fallbackLocale))
     latest.current={sequence:next.sequence,localeRevision:next.localeRevision}
     setSnapshot(next)
   },[])

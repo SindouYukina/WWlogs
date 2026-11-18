@@ -10,6 +10,7 @@ import { defaultUpdateInterval, normalizeUpdateInterval, updateIntervals, type O
 import { useThemeDescriptions } from "@/lib/useListeningLabels"
 import { indicatorText, type HistoryChange } from "@/lib/history"
 import { HistoryIndicatorChip } from "./HistoryView"
+import { HistoryRecovery } from "./HistoryRecovery"
 import { LicensesPage } from "./LicensesPage"
 
 type Page = "general" | "history" | "appearance" | "combatOverlay" | "effectsOverlay" | "about" | "licenses"
@@ -74,8 +75,9 @@ function GeneralPage({ controller }: { controller: SettingsController }) {
 }
 
 /**
- * Combat History: the recording switch, what the history is doing now, how it is stored, and clearing it. The state and
- * every reason come from the host's indicator.
+ * Combat History: the recording switch, what the history is doing now, and clearing it, or, when it cannot be opened, the
+ * recovery prompt. The state comes from the host's indicator. How the history is stored is WWlogs' own concern and is not a
+ * setting.
  */
 function HistoryPage({ controller }: { controller: SettingsController }) {
   const { t } = useTranslation(["settings", "history"])
@@ -93,6 +95,7 @@ function HistoryPage({ controller }: { controller: SettingsController }) {
     }).catch(() => setOutcome({ key: "delete.failed", tone: "critical" })).finally(() => { setBusy(false); setAsking(false) })
   }
   const writable = indicator !== undefined && indicator.state !== "unavailable" && indicator.state !== "read_only"
+  const unavailable = indicator?.state === "unavailable"
   return <>
     <SettingsSection title={t("historySettings.sections.recording")}>
       <SettingsRow title={t("historySettings.recording")} description={t("historySettings.recordingHint")}>
@@ -102,20 +105,16 @@ function HistoryPage({ controller }: { controller: SettingsController }) {
       {indicator?.lost ? <p className="ww-settings-notice" data-tone="warn" data-field="history-lost">{h("indicator.lost", { n: indicator.lost })}</p> : null}
       <SettingsRow title={t("historySettings.coverage")} description={t("historySettings.coverageHint")}><span className="ww-history-unknown">{t("historySettings.coverageValue")}</span></SettingsRow>
     </SettingsSection>
-    <SettingsSection title={t("historySettings.sections.storage")}>
-      <SettingsRow title={t("historySettings.encryption")} description={t(indicator?.encrypted ? "historySettings.encryptedHint" : "historySettings.notEncryptedHint")}>
-        <span data-field="history-encryption" data-encrypted={indicator?.encrypted === true}>{t(indicator?.encrypted ? "historySettings.encrypted" : "historySettings.notEncrypted")}</span>
-      </SettingsRow>
-    </SettingsSection>
     <SettingsSection title={t("historySettings.sections.data")}>
-      <SettingsRow title={t("historySettings.clear")} description={t("historySettings.clearHint")}>
+      {unavailable && <div className="ww-row-block"><HistoryRecovery rebuildable={indicator?.rebuildable === true} retry={controller.retryHistory} rebuild={controller.rebuildHistory} onRecovered={() => setOutcome(null)} /></div>}
+      {!unavailable && <SettingsRow title={t("historySettings.clear")} description={t("historySettings.clearHint")}>
         {!asking
           ? <Button size="sm" variant="ghost" disabled={!controller.connected || !writable || busy} data-field="history-clear-start" onClick={() => { setOutcome(null); setAsking(true) }}>{t("historySettings.clearAction")}</Button>
           : <span className="ww-row-pair" role="group" aria-label={t("historySettings.clearConfirm")} data-field="history-clear-confirm-group">
             <Button size="sm" variant="danger" disabled={busy} data-field="history-clear-confirm" onClick={clear}>{t("historySettings.clearConfirmAction")}</Button>
             <Button size="sm" disabled={busy} data-field="history-clear-cancel" onClick={() => setAsking(false)}>{h("delete.cancel")}</Button>
           </span>}
-      </SettingsRow>
+      </SettingsRow>}
       {asking && <p className="ww-settings-notice" data-tone="critical" role="alert" data-field="history-clear-warning">{t("historySettings.clearConfirm")}</p>}
       {outcome && <p className="ww-settings-notice" data-tone={outcome.tone} role="status" data-field="history-clear-outcome">{h(outcome.key, { n: outcome.n ?? 0 })}</p>}
     </SettingsSection>
@@ -207,6 +206,7 @@ function EffectsLegend() {
     <p className="ww-effects-legend-note">{t("effectsLegend.rows")}</p>
     <p className="ww-effects-legend-note">{t("effectsLegend.order")}</p>
     <p className="ww-effects-legend-note">{t("effectsLegend.onlyHud")}</p>
+    <p className="ww-effects-legend-note" data-field="effects-legend-empty">{t("effectsLegend.empty")}</p>
     <p className="ww-effects-legend-note">{t("effectsLegend.noNames")}</p>
   </SettingsSection>
 }

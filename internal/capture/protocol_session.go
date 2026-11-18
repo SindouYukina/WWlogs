@@ -1,7 +1,6 @@
 package capture
 
 import (
-	"fmt"
 	"regexp"
 	"strings"
 )
@@ -23,13 +22,13 @@ import (
 // this many frames comes from a client whose version report WWlogs cannot read: it is unsupported.
 const maxPendingProtocolFrames = 64
 
-type protocolState uint8
+type ProtocolState uint8
 
 const (
-	protocolNone        protocolState = iota // no handshake in this capture yet: nothing is decryptable
-	protocolPending                          // handshake seen; the client version is not reported yet
-	protocolCurrent                          // the session reported the current game version
-	protocolUnsupported                      // another game version, or no readable version report
+	ProtocolNone        ProtocolState = iota // no handshake in this capture yet: nothing is decryptable
+	ProtocolPending                          // handshake seen; the client version is not reported yet
+	ProtocolCurrent                          // the session reported the current game version
+	ProtocolUnsupported                      // another game version, or no readable version report
 )
 
 // Protocol status values reported in ViewSessionHealth.
@@ -42,39 +41,17 @@ const (
 
 // protocolCounters count, over the whole capture, the frames that were not decoded because of the protocol state.
 type protocolCounters struct {
-	pendingFrames     uint64
-	unsupportedFrames uint64
+	PendingFrames     uint64
+	UnsupportedFrames uint64
 }
 
-// protocolSession is the wire protocol of the current protocol session. Its counters cover the whole capture.
-type protocolSession struct {
-	state       protocolState
+// ProtocolSession is the wire protocol of the current protocol session. Its counters cover the whole capture.
+type ProtocolSession struct {
+	State       ProtocolState
 	gameVersion string // major.minor the session reported; empty when not reported
 	// sessionPendingFrames counts this protocol session's frames before its version report (maxPendingProtocolFrames).
 	sessionPendingFrames uint64
-	counters             protocolCounters
-}
-
-// protocolReport is the Development census and diagnostic view of the protocol sessions of a capture.
-type protocolReport struct {
-	Status            string `json:"status"`
-	GameVersion       string `json:"gameVersion,omitempty"`
-	PendingFrames     uint64 `json:"pendingFrames"`
-	UnsupportedFrames uint64 `json:"unsupportedFrames"`
-}
-
-func (s *protocolSession) report() protocolReport {
-	status, version := s.status()
-	return protocolReport{Status: status, GameVersion: version, PendingFrames: s.counters.pendingFrames, UnsupportedFrames: s.counters.unsupportedFrames}
-}
-
-// line formats the report for Development diagnostics. It carries counts and the reported major.minor only.
-func (r protocolReport) line() string {
-	version := r.GameVersion
-	if version == "" {
-		version = "none"
-	}
-	return fmt.Sprintf("protocol_session status=%s game_version=%s pending_frames=%d unsupported_frames=%d", r.Status, version, r.PendingFrames, r.UnsupportedFrames)
+	Counters             protocolCounters
 }
 
 // CurrentGameVersion is the major.minor game version this build decodes.
@@ -87,74 +64,62 @@ func CurrentProtocol() string {
 	return currentProtocolClient + " client protocol"
 }
 
-// protocolSchemaBasis is the evidence text for a message the decoders read: the current client protocol's numbers,
+// ProtocolSchemaBasis is the evidence text for a message the decoders read: the current client protocol's numbers,
 // applied only after the protocol session reported the current game version.
-func protocolSchemaBasis() string {
+func ProtocolSchemaBasis() string {
 	return CurrentProtocol() + "; decoded only in a session that reported game version " + currentGameVersion
 }
 
-// beginSession starts the protocol of a new protocol session: unknown until the session reports its client version.
-func (s *protocolSession) beginSession() {
-	s.state, s.gameVersion, s.sessionPendingFrames = protocolPending, "", 0
+// BeginSession starts the protocol of a new protocol session: unknown until the session reports its client version.
+func (s *ProtocolSession) BeginSession() {
+	s.State, s.gameVersion, s.sessionPendingFrames = ProtocolPending, "", 0
 }
 
-// observeVersion decides the protocol session from the version it reported. Only the first report of a session counts.
-func (s *protocolSession) observeVersion(gameVersion string) {
-	if s.state != protocolPending || gameVersion == "" {
+// ObserveVersion decides the protocol session from the version it reported. Only the first report of a session counts.
+func (s *ProtocolSession) ObserveVersion(gameVersion string) {
+	if s.State != ProtocolPending || gameVersion == "" {
 		return
 	}
 	s.gameVersion = gameVersion
 	if gameVersion == currentGameVersion {
-		s.state = protocolCurrent
+		s.State = ProtocolCurrent
 	} else {
-		s.state = protocolUnsupported
+		s.State = ProtocolUnsupported
 	}
 }
 
-// readable reports whether a frame of this command can be decoded in the protocol session's current state. The version
+// Readable reports whether a frame of this command can be decoded in the protocol session's current state. The version
 // reports themselves are always read, because they decide the session.
-func (s *protocolSession) readable(command uint16) bool {
-	return command == cmdLoginRequest || command == cmdCheckClientPush || s.state == protocolCurrent
+func (s *ProtocolSession) Readable(command uint16) bool {
+	return command == CmdLoginRequest || command == CmdCheckClientPush || s.State == ProtocolCurrent
 }
 
 // decodes is readable for the frame being handled, and counts the frames the session cannot decode for its state.
-func (s *protocolSession) decodes(command uint16) bool {
-	if s.readable(command) {
+func (s *ProtocolSession) decodes(command uint16) bool {
+	if s.Readable(command) {
 		return true
 	}
-	switch s.state {
-	case protocolPending:
-		s.counters.pendingFrames++
+	switch s.State {
+	case ProtocolPending:
+		s.Counters.PendingFrames++
 		s.sessionPendingFrames++
 		if s.sessionPendingFrames >= maxPendingProtocolFrames {
-			s.state = protocolUnsupported
+			s.State = ProtocolUnsupported
 		}
-	case protocolUnsupported:
-		s.counters.unsupportedFrames++
+	case ProtocolUnsupported:
+		s.Counters.UnsupportedFrames++
 	}
 	return false
 }
 
-// undecodableReason is the census reason for a frame decodes refused.
-func (s *protocolSession) undecodableReason() string {
-	switch s.state {
-	case protocolPending:
-		return protocolPendingFailureReason
-	case protocolUnsupported:
-		return protocolUnsupportedFailureReason
-	default:
-		return protocolNoHandshakeReason
-	}
-}
-
-// status is the non-sensitive protocol view for ViewSessionHealth.
-func (s *protocolSession) status() (string, string) {
-	switch s.state {
-	case protocolPending:
+// Status is the non-sensitive protocol view for ViewSessionHealth.
+func (s *ProtocolSession) Status() (string, string) {
+	switch s.State {
+	case ProtocolPending:
 		return ProtocolStatusPending, ""
-	case protocolCurrent:
+	case ProtocolCurrent:
 		return ProtocolStatusSupported, s.gameVersion
-	case protocolUnsupported:
+	case ProtocolUnsupported:
 		return ProtocolStatusUnsupported, s.gameVersion
 	default:
 		return ProtocolStatusNone, ""

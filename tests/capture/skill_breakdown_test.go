@@ -7,10 +7,10 @@ import (
 )
 
 // writeTestSkillDamage writes one paired damage result whose request carried DamageContext.SkillId skillID.
-func writeTestSkillDamage(p *processor, sourceID, targetID, rpcID, skillID uint64, amount int64) {
+func writeTestSkillDamage(p *Processor, sourceID, targetID, rpcID, skillID uint64, amount int64) {
 	event := testDamageEvent(p, sourceID, targetID)
 	event.EventTypeCandidate, event.Damage, event.RPCID, event.SkillID = "DAMAGE_CANDIDATE", amount, rpcID, skillID
-	p.writeDamageEvent(event)
+	p.WriteDamageEvent(event)
 }
 
 func skillOf(t *testing.T, skills []SkillDamageSnapshot, skillID uint64) SkillDamageSnapshot {
@@ -30,7 +30,7 @@ func TestSkillBreakdownGroupsRepeatedHitsOfOneSkill(t *testing.T) {
 	writeTestSkillDamage(p, 100, 200, 1, 1409011, 100)
 	writeTestSkillDamage(p, 100, 200, 2, 1409011, 150)
 	writeTestSkillDamage(p, 100, 200, 3, 1409011, 50)
-	got := p.damageStatistics.Snapshot()
+	got := p.DamageStatistics.Snapshot()
 	assertRoleTotalsReconcile(t, got)
 	role := roleOf(t, got, 1409)
 	if len(role.Skills) != 1 || !reflect.DeepEqual(role.Skills[0], SkillDamageSnapshot{SkillID: 1409011, DamageDealt: 300, OutgoingEvents: 3, DamageIDsIncomplete: true}) {
@@ -47,7 +47,7 @@ func TestSkillBreakdownOrdersSkillsByDamageThenSkillID(t *testing.T) {
 	writeTestSkillDamage(p, 100, 200, 2, 20, 90)
 	writeTestSkillDamage(p, 100, 200, 3, 10, 40)
 	writeTestSkillDamage(p, 100, 200, 4, 40, 5)
-	got := p.damageStatistics.Snapshot()
+	got := p.DamageStatistics.Snapshot()
 	assertRoleTotalsReconcile(t, got)
 	var order []uint64
 	for _, skill := range roleOf(t, got, 1409).Skills {
@@ -67,7 +67,7 @@ func TestSkillBreakdownKeepsRolesApartWithInterleavedAndSharedSkillIDs(t *testin
 	writeTestSkillDamage(p, 100, 200, 3, 1409001, 30)
 	writeTestSkillDamage(p, 101, 200, 4, 1508001, 40)
 	writeTestSkillDamage(p, 100, 200, 5, 555, 1)
-	got := p.damageStatistics.Snapshot()
+	got := p.DamageStatistics.Snapshot()
 	assertRoleTotalsReconcile(t, got)
 	first, second := roleOf(t, got, 1409), roleOf(t, got, 1508)
 	if skill := skillOf(t, first.Skills, 555); skill.DamageDealt != 11 || skill.OutgoingEvents != 2 {
@@ -88,8 +88,8 @@ func TestSkillBreakdownKeepsDamageWithoutSkillIDOnItsRole(t *testing.T) {
 	// A BulletId alone does not prove a skill.
 	event := testDamageEvent(p, 100, 200)
 	event.EventTypeCandidate, event.Damage, event.RPCID, event.BulletID, event.HasBulletID = "DAMAGE_CANDIDATE", 7, 3, 1409011001, true
-	p.writeDamageEvent(event)
-	got := p.damageStatistics.Snapshot()
+	p.WriteDamageEvent(event)
+	got := p.DamageStatistics.Snapshot()
 	assertRoleTotalsReconcile(t, got)
 	role := roleOf(t, got, 1409)
 	if role.DamageDealt != 132 || role.OutgoingEvents != 3 {
@@ -132,11 +132,11 @@ func TestUnassignedSkillEchoVisionsKeepOnlyWhatEveryHitHeld(t *testing.T) {
 
 func TestSkillBreakdownCreditsVerifiedSummonAndExcludesUnverifiedSummon(t *testing.T) {
 	p := newPairingTestProcessor()
-	addTestRuntimeEntity(p, 300, func(entity *runtimeEntity) { entity.summonerID, entity.hasSummonerID = 100, true })
-	addTestRuntimeEntity(p, 400, func(entity *runtimeEntity) { entity.summonerID, entity.hasSummonerID = 999, true })
+	addTestRuntimeEntity(p, 300, func(entity *RuntimeEntity) { entity.SummonerID, entity.HasSummonerID = 100, true })
+	addTestRuntimeEntity(p, 400, func(entity *RuntimeEntity) { entity.SummonerID, entity.HasSummonerID = 999, true })
 	writeTestSkillDamage(p, 300, 200, 1, 1409050, 60)
 	writeTestSkillDamage(p, 400, 200, 2, 1409050, 70)
-	got := p.damageStatistics.Snapshot()
+	got := p.DamageStatistics.Snapshot()
 	assertRoleTotalsReconcile(t, got)
 	role := roleOf(t, got, 1409)
 	if role.SummonDamage != 60 || len(role.Skills) != 1 || !reflect.DeepEqual(role.Skills[0], SkillDamageSnapshot{SkillID: 1409050, DamageDealt: 60, OutgoingEvents: 1, DamageIDsIncomplete: true}) {
@@ -155,10 +155,10 @@ func TestSkillBreakdownIgnoresDuplicateResponses(t *testing.T) {
 	record := testEncounterRecord(CombatFlowLocalOutgoing, 40, 1)
 	record.SourceRole, record.SkillID = &CombatRole{PlayerID: 77, RoleID: 1409, Basis: roleBasisRoleEntity}, 1409011
 	statistics.addCombatEvent(record)
-	if assignment := statistics.addCombatEvent(record); assignment != statisticsAssignmentDuplicate {
+	if assignment := statistics.addCombatEvent(record); assignment != StatisticsAssignmentDuplicate {
 		t.Fatalf("replayed record assignment = %q", assignment)
 	}
-	for _, got := range []DamageStatisticsSnapshot{p.damageStatistics.Snapshot(), statistics.Snapshot()} {
+	for _, got := range []DamageStatisticsSnapshot{p.DamageStatistics.Snapshot(), statistics.Snapshot()} {
 		assertRoleTotalsReconcile(t, got)
 		if role := roleOf(t, got, 1409); len(role.Skills) != 1 || role.Skills[0].OutgoingEvents != 1 {
 			t.Fatalf("a duplicate response was counted twice: %+v", role.Skills)
@@ -168,14 +168,14 @@ func TestSkillBreakdownIgnoresDuplicateResponses(t *testing.T) {
 
 func TestSkillBreakdownExcludesIncomingAndNonLocalDamage(t *testing.T) {
 	p := newPairingTestProcessor()
-	addTestRuntimeEntity(p, 201, func(entity *runtimeEntity) {
-		entity.entityTypeCode, entity.hasEntityType = entityTypeMonster, true
-		entity.monsterID, entity.hasMonsterID = 9002, true
+	addTestRuntimeEntity(p, 201, func(entity *RuntimeEntity) {
+		entity.EntityTypeCode, entity.HasEntityType = EntityTypeMonster, true
+		entity.MonsterID, entity.HasMonsterID = 9002, true
 	})
 	writeTestSkillDamage(p, 200, 100, 1, 9001001, 30) // the role takes damage
 	writeTestSkillDamage(p, 200, 201, 2, 9001001, 50) // monster versus monster
 	writeTestSkillDamage(p, 100, 200, 3, 1409011, 10)
-	got := p.damageStatistics.Snapshot()
+	got := p.DamageStatistics.Snapshot()
 	assertRoleTotalsReconcile(t, got)
 	role := roleOf(t, got, 1409)
 	if role.DamageTaken != 30 || len(role.Skills) != 1 || role.Skills[0].SkillID != 1409011 {
@@ -186,7 +186,7 @@ func TestSkillBreakdownExcludesIncomingAndNonLocalDamage(t *testing.T) {
 func TestSkillBreakdownKeepsVehicleAndUnassignedLocalDamageOffRoles(t *testing.T) {
 	statistics := NewDamageStatistics()
 	vehicle := testEncounterRecord(CombatFlowLocalOutgoing, 80, 1)
-	vehicle.VehicleKind, vehicle.SkillID = vehicleKindMotorcycle, 10001009
+	vehicle.VehicleKind, vehicle.SkillID = VehicleKindMotorcycle, 10001009
 	unassigned := testEncounterRecord(CombatFlowLocalOutgoing, 15, 2)
 	unassigned.SkillID = 1409011
 	role := testEncounterRecord(CombatFlowLocalOutgoing, 5, 3)
@@ -215,13 +215,13 @@ func TestSkillBreakdownIsPerEncounterAndResets(t *testing.T) {
 		r.SourceRole, r.SkillID = role, skillID
 		return r
 	}
-	statistics.observeBattleState(true, encounterAt(1), 1)
+	statistics.ObserveBattleState(true, encounterAt(1), 1)
 	statistics.addCombatEvent(record(2, 100, 11))
-	statistics.observeBattleState(false, encounterAt(3), 1)
-	statistics.observeBattleState(true, encounterAt(20), 1)
+	statistics.ObserveBattleState(false, encounterAt(3), 1)
+	statistics.ObserveBattleState(true, encounterAt(20), 1)
 	statistics.addCombatEvent(record(21, 40, 22))
 	statistics.observeSessionChange(encounterAt(25))
-	statistics.observeBattleState(true, encounterAt(30), 2)
+	statistics.ObserveBattleState(true, encounterAt(30), 2)
 	second := record(31, 9, 33)
 	second.Key.ProtocolSession = 2
 	statistics.addCombatEvent(second)
@@ -282,15 +282,15 @@ func TestSkillSnapshotsAreIndependentCopies(t *testing.T) {
 func TestViewSkillsUseRoleDenominatorAndOfficialNamesOnly(t *testing.T) {
 	p := newPairingTestProcessor()
 	addTestPlayerRoleGroupEntity(p, 101, 77, 1508, true)
-	p.masters.skills = map[uint64]masterRecord{
-		1409011: {ID: 1409011, Name: "Official", NameStatus: string(resolutionVerified), Status: string(resolutionVerified)},
-		1409012: {ID: 1409012, NameStatus: string(resolutionUnknown), Status: string(resolutionVerified)},
+	p.Masters.Skills = map[uint64]MasterRecord{
+		1409011: {ID: 1409011, Name: "Official", NameStatus: string(ResolutionVerified), Status: string(ResolutionVerified)},
+		1409012: {ID: 1409012, NameStatus: string(ResolutionUnknown), Status: string(ResolutionVerified)},
 	}
 	writeTestSkillDamage(p, 100, 200, 1, 1409011, 300)
 	writeTestSkillDamage(p, 100, 200, 2, 1409012, 100)
 	writeTestSkillDamage(p, 100, 200, 3, 0, 100)
 	writeTestSkillDamage(p, 101, 200, 4, 1508001, 500)
-	view := p.viewSnapshot()
+	view := p.ViewSnapshot()
 	var role ViewRole
 	for _, candidate := range view.Roles {
 		if candidate.RoleID == 1409 {

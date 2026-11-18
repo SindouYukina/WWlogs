@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import type { AppIdentity } from "./build-identity"
 import { captureBusy, environmentNotice, type Adapter, type EnvironmentState, type NpcapDownload } from "./capture-environment"
-import type { HistoryChange, HistoryIndicator } from "./history"
+import type { HistoryChange, HistoryIndicator, HistoryRecoveryResult } from "./history"
 import { host, type OverlayChange } from "./host"
 import { normalizeUpdateInterval, type OverlayKind, type OverlayStates, type Snapshot, type UpdateInterval } from "./snapshot"
 
@@ -44,6 +44,10 @@ export interface SettingsController {
   history: HistoryIndicator | undefined
   /** Deletes every stored encounter; the caller has asked the user to confirm. */
   clearHistory: () => Promise<HistoryChange>
+  /** Opens the history again after it could not be opened. */
+  retryHistory: () => Promise<HistoryRecoveryResult>
+  /** Deletes the history that cannot be opened and creates a new one; the caller has asked the user to confirm twice. */
+  rebuildHistory: () => Promise<HistoryRecoveryResult>
   /** A capture is starting, running or stopping, so its interface cannot be changed now. */
   captureBusy: boolean
   /** The last finished check, or null before the first one. */
@@ -165,6 +169,8 @@ export function useLiveSettings(snapshot: Snapshot | null, connected: boolean, c
     setHistoryRecording: enabled => guard(host.setHistoryRecording(enabled)),
     history: snapshot?.history,
     clearHistory: host.clearHistory,
+    retryHistory: host.retryHistory,
+    rebuildHistory: host.rebuildHistory,
     captureBusy: captureBusy(snapshot?.service.state),
     environment,
     checking,

@@ -181,24 +181,24 @@ func (j *historyJournal) effectRejected() {
 
 // newJournaledEffectTracker creates the effect tracker of a processor, journaling into its statistics' history.
 func newJournaledEffectTracker(statistics *DamageStatistics) *EffectTracker {
-	tracker := NewEffectTracker(statistics.captureSessionID)
+	tracker := NewEffectTracker(statistics.CaptureSessionID)
 	tracker.history = statistics.history
 	return tracker
 }
 
 // effectActor resolves the history-only identity of an effect holder or source with the rules combat events use. It runs on
 // the processing goroutine, the owner of the entity resolver.
-func (p *processor) effectActor(entityID uint64) *EffectActorIdentity {
-	if p == nil || p.entities == nil || entityID == 0 {
+func (p *Processor) effectActor(entityID uint64) *EffectActorIdentity {
+	if p == nil || p.Entities == nil || entityID == 0 {
 		return nil
 	}
-	identity := resolveEntityIdentity(p.entities, p.masters, entityID)
+	identity := ResolveEntityIdentity(p.Entities, p.Masters, entityID)
 	return &EffectActorIdentity{Role: p.localRoleForEntity(entityID, identity), Type: combatActorTypeOf(identity)}
 }
 
 // withHistoryActors adds the history-only identities to an APPLY or snapshot while Combat History records effects.
-func (p *processor) withHistoryActors(event *EffectApplyEvent) {
-	if !p.effects.recordsEffects() {
+func (p *Processor) withHistoryActors(event *EffectApplyEvent) {
+	if !p.Effects.recordsEffects() {
 		return
 	}
 	event.HolderActor = p.effectActor(event.HolderEntityID)

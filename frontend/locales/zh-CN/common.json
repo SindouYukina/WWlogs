@@ -98,7 +98,7 @@
       "awaiting_login": "游戏已重新启动，等待登录",
       "handshake_failed": "无法读取登录握手",
       "unsupported_game_version": "此游戏版本尚未支持，请更新 WWlogs",
-      "decrypt_failing": "无法解密游戏数据",
+      "decrypt_failing": "无法读取游戏数据",
       "transport_unrecoverable": "数据包恢复失败",
       "receiving": "正在接收游戏数据",
       "transport_recovering": "正在从数据包丢失中恢复",

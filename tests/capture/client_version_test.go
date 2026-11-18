@@ -41,9 +41,9 @@ func TestExtractLoginRequestBuildUsesOnlyTheClientVersion(t *testing.T) {
 	nested := appendBytesField(nil, fieldClientBasicInfoDeviceID, []byte("00000000-0000-0000-0000-000000000000"))
 	nested = appendBytesField(nested, fieldClientBasicInfoScreenHeight, []byte("1920x1080"))
 	nested = appendBytesField(nested, fieldClientBasicInfoScreenWidth, []byte("1920x1080"))
-	nested = appendBytesField(nested, fieldClientBasicInfoClientVersion, []byte(completeBuild))
+	nested = appendBytesField(nested, FieldClientBasicInfoClientVersion, []byte(completeBuild))
 	nested = appendBytesField(nested, fieldClientBasicInfoOSVersion, []byte("GPU-MODEL-AND-DRIVER"))
-	body := appendBytesField(nil, fieldLoginRequestClientBasicInfo, nested)
+	body := appendBytesField(nil, FieldLoginRequestClientBasicInfo, nested)
 	body = appendBytesField(body, fieldLoginRequestDevLoginCheckData, []byte("ACCOUNT-UID"))
 	body = appendBytesField(body, fieldLoginRequestPublicResourceVersionInfo, []byte("0123456789abcdef0123456789abcdef"))
 
@@ -65,35 +65,35 @@ func TestClientVersionObservationWaitsForHandshakeAndKeepsFirstValues(t *testing
 	loginFields := appendBytesField(nil, fieldClientBasicInfoDeviceID, []byte("00000000-0000-0000-0000-000000000000"))
 	loginFields = appendBytesField(loginFields, fieldClientBasicInfoScreenHeight, []byte("1920x1080"))
 	loginFields = appendBytesField(loginFields, fieldClientBasicInfoScreenWidth, []byte("1920x1080"))
-	loginFields = appendBytesField(loginFields, fieldClientBasicInfoClientVersion, []byte(completeBuild))
+	loginFields = appendBytesField(loginFields, FieldClientBasicInfoClientVersion, []byte(completeBuild))
 	loginFields = appendBytesField(loginFields, fieldClientBasicInfoOSVersion, []byte("GPU-MODEL-AND-DRIVER"))
-	loginPayload := appendBytesField(nil, fieldLoginRequestClientBasicInfo, loginFields)
+	loginPayload := appendBytesField(nil, FieldLoginRequestClientBasicInfo, loginFields)
 	loginPayload = appendBytesField(loginPayload, fieldLoginRequestDevLoginCheckData, []byte("ACCOUNT-UID"))
 	loginPayload = appendBytesField(loginPayload, fieldLoginRequestPublicResourceVersionInfo, []byte("0123456789abcdef0123456789abcdef"))
 
-	p := newProcessor(nil, &bytes.Buffer{}, &bytes.Buffer{}, nil)
-	p.currentFrameTime = time.Date(2026, time.October, 27, 1, 2, 3, 0, time.UTC)
-	if err := p.observeClientVersion(cmdCheckClientPush, versions); err != nil {
+	p := NewProcessor(nil, &bytes.Buffer{})
+	p.CurrentFrameTime = time.Date(2026, time.October, 27, 1, 2, 3, 0, time.UTC)
+	if err := p.observeClientVersion(CmdCheckClientPush, versions); err != nil {
 		t.Fatal(err)
 	}
-	if p.clientVersion != nil {
-		t.Fatalf("version was accepted before handshake: %+v", p.clientVersion)
+	if p.ClientVersion != nil {
+		t.Fatalf("version was accepted before handshake: %+v", p.ClientVersion)
 	}
-	p.sessionNumber = 1
-	if err := p.observeClientVersion(cmdCheckClientPush, versions); err != nil {
+	p.SessionNumber = 1
+	if err := p.observeClientVersion(CmdCheckClientPush, versions); err != nil {
 		t.Fatal(err)
 	}
-	if err := p.observeClientVersion(cmdLoginRequest, loginPayload); err != nil {
+	if err := p.observeClientVersion(CmdLoginRequest, loginPayload); err != nil {
 		t.Fatal(err)
 	}
-	if err := p.observeClientVersion(cmdLoginRequest, appendBytesField(nil, fieldLoginRequestClientBasicInfo, appendBytesField(nil, fieldClientBasicInfoClientVersion, []byte(currentTestClientVersions[2]+".1")))); err != nil {
+	if err := p.observeClientVersion(CmdLoginRequest, appendBytesField(nil, FieldLoginRequestClientBasicInfo, appendBytesField(nil, FieldClientBasicInfoClientVersion, []byte(currentTestClientVersions[2]+".1")))); err != nil {
 		t.Fatal(err)
 	}
-	got := p.clientVersion
+	got := p.ClientVersion
 	if got.SessionNumber != 1 || got.ClientBuild != completeBuild || strings.Join(got.CheckClientVersions, ",") != strings.Join(currentTestClientVersions, ",") {
 		t.Fatalf("client version report = %+v", got)
 	}
-	if len(got.SourceCommands) != 2 || got.SourceCommands[0] != cmdLoginRequest || got.SourceCommands[1] != cmdCheckClientPush {
+	if len(got.SourceCommands) != 2 || got.SourceCommands[0] != CmdLoginRequest || got.SourceCommands[1] != CmdCheckClientPush {
 		t.Fatalf("source command IDs = %v", got.SourceCommands)
 	}
 	encoded, err := json.Marshal(got)
@@ -110,21 +110,5 @@ func TestClientVersionObservationWaitsForHandshakeAndKeepsFirstValues(t *testing
 		if bytes.Contains(encoded, sensitiveSibling) {
 			t.Fatalf("version report contains non-version request data: %s", encoded)
 		}
-	}
-}
-
-func TestClientVersionAuditFieldsContainOnlyVersionData(t *testing.T) {
-	report := &clientVersionReport{
-		ClientBuild:         currentTestBuild,
-		CheckClientVersions: currentTestClientVersions,
-		SourceCommands:      []uint16{cmdLoginRequest, cmdCheckClientPush},
-	}
-	build, versions, commands := report.auditFields()
-	expectedVersions, err := json.Marshal(currentTestClientVersions)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if build != currentTestBuild || versions != string(expectedVersions) || commands != "103,116" {
-		t.Fatalf("audit version fields = %q / %q / %q", build, versions, commands)
 	}
 }

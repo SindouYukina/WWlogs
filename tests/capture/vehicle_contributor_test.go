@@ -3,6 +3,7 @@ package capture
 import (
 	"database/sql"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -18,61 +19,55 @@ func TestLoadSQLiteBlueprintEntityTypesPreservesAmbiguity(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	master := &gameMaster{}
+	master := &GameMaster{}
 	if err := loadSQLiteBlueprintEntityTypes(db, master); err != nil {
 		t.Fatal(err)
 	}
-	if len(master.blueprintEntityTypes["MotorcycleBP"]) != 2 {
-		t.Fatalf("blueprint entity types = %v, want both conflicting values retained", master.blueprintEntityTypes["MotorcycleBP"])
+	if len(master.BlueprintEntityTypes["MotorcycleBP"]) != 2 {
+		t.Fatalf("blueprint entity types = %v, want both conflicting values retained", master.BlueprintEntityTypes["MotorcycleBP"])
 	}
-	if _, ok := master.blueprintEntityTypes["MotorcycleBP"]["BattleVehicle"]; !ok {
+	if _, ok := master.BlueprintEntityTypes["MotorcycleBP"]["BattleVehicle"]; !ok {
 		t.Fatal("BattleVehicle evidence was lost")
 	}
 }
 
 func TestResolveVehicleDamageContributorCandidateRequiresCorrelatedChain(t *testing.T) {
 	resolver, master, event := vehicleDamageContributorFixture()
-	candidate := resolveVehicleDamageContributorCandidate(resolver, master, event)
+	candidate := ResolveVehicleDamageContributorCandidate(resolver, master, event)
 	if candidate == nil {
 		t.Fatal("complete motorcycle chain did not resolve a contributor candidate")
 	}
-	if candidate.ActorType != "Vehicle" || candidate.EntityType != "BattleVehicle" || candidate.FollowerConfigID != 290101 || candidate.BlueprintType != "branch3.0_Motorcycle_Skill" || candidate.Status != resolutionCorrelated {
+	if candidate.ActorType != "Vehicle" || candidate.EntityType != "BattleVehicle" || candidate.FollowerConfigID != 290101 || candidate.BlueprintType != "branch3.0_Motorcycle_Skill" || candidate.Status != ResolutionCorrelated {
 		t.Fatalf("candidate = %+v", candidate)
 	}
 
-	cases := map[string]func(*entityResolver, *gameMaster, *combatEvent){
-		"no linked motorcycle": func(r *entityResolver, _ *gameMaster, e *combatEvent) {
-			delete(r.entities, 11)
+	cases := map[string]func(*EntityResolver, *GameMaster, *CombatEvent){
+		"no linked motorcycle": func(r *EntityResolver, _ *GameMaster, e *CombatEvent) {
+			delete(r.Entities, 11)
 		},
-		"wrong linked entity type": func(r *entityResolver, _ *gameMaster, _ *combatEvent) {
-			entity := r.entities[11]
-			entity.summonType = summonTypeConcomitantVision
-			r.entities[11] = entity
+		"wrong linked entity type": func(r *EntityResolver, _ *GameMaster, _ *CombatEvent) {
+			entity := r.Entities[11]
+			entity.SummonType = SummonTypeConcomitantVision
+			r.Entities[11] = entity
 		},
-		"wrong linked summoner": func(r *entityResolver, _ *gameMaster, _ *combatEvent) {
-			entity := r.entities[11]
-			entity.summonerID = 99
-			r.entities[11] = entity
+		"wrong linked summoner": func(r *EntityResolver, _ *GameMaster, _ *CombatEvent) {
+			entity := r.Entities[11]
+			entity.SummonerID = 99
+			r.Entities[11] = entity
 		},
-		"unmatched bullet": func(_ *entityResolver, _ *gameMaster, e *combatEvent) {
+		"unmatched bullet": func(_ *EntityResolver, _ *GameMaster, e *CombatEvent) {
 			e.BulletID = 100010111
 		},
-		"skill not listed for vehicle actor": func(_ *entityResolver, m *gameMaster, _ *combatEvent) {
-			m.actorSkills["motorcycle-actor"] = map[uint64]struct{}{10001010: {}}
+		"skill not listed for vehicle actor": func(_ *EntityResolver, m *GameMaster, _ *CombatEvent) {
+			m.ActorSkills["motorcycle-actor"] = map[uint64]struct{}{10001010: {}}
 		},
-		"unlinked request source": func(_ *entityResolver, _ *gameMaster, e *combatEvent) {
-			e.SkillRequest.EntityID = 99
-		},
-		"mismatched request message": func(_ *entityResolver, _ *gameMaster, e *combatEvent) {
-			e.SkillRequest.MessageID = 99
-		},
-		"missing skill message id": func(_ *entityResolver, _ *gameMaster, e *combatEvent) {
+		"missing skill message id": func(_ *EntityResolver, _ *GameMaster, e *CombatEvent) {
 			e.SkillMessageID = 0
 		},
-		"ambiguous blueprint entity type": func(_ *entityResolver, m *gameMaster, _ *combatEvent) {
-			m.blueprintEntityTypes["branch3.0_Motorcycle_Skill"]["OtherType"] = struct{}{}
+		"ambiguous blueprint entity type": func(_ *EntityResolver, m *GameMaster, _ *CombatEvent) {
+			m.BlueprintEntityTypes["branch3.0_Motorcycle_Skill"]["OtherType"] = struct{}{}
 		},
-		"non-damage result": func(_ *entityResolver, _ *gameMaster, e *combatEvent) {
+		"non-damage result": func(_ *EntityResolver, _ *GameMaster, e *CombatEvent) {
 			e.EventTypeCandidate = "HEALING_CANDIDATE"
 		},
 	}
@@ -80,7 +75,7 @@ func TestResolveVehicleDamageContributorCandidateRequiresCorrelatedChain(t *test
 		t.Run(name, func(t *testing.T) {
 			r, m, e := vehicleDamageContributorFixture()
 			mutate(r, m, &e)
-			if got := resolveVehicleDamageContributorCandidate(r, m, e); got != nil {
+			if got := ResolveVehicleDamageContributorCandidate(r, m, e); got != nil {
 				t.Fatalf("unexpected candidate: %+v", got)
 			}
 		})
@@ -89,45 +84,72 @@ func TestResolveVehicleDamageContributorCandidateRequiresCorrelatedChain(t *test
 
 func TestResolveVehicleDamageContributorCandidateWithoutResolvedSkillRequest(t *testing.T) {
 	resolver, master, event := vehicleDamageContributorFixture()
-	event.SkillRequest = nil
-	candidate := resolveVehicleDamageContributorCandidate(resolver, master, event)
+	candidate := ResolveVehicleDamageContributorCandidate(resolver, master, event)
 	if candidate == nil {
 		t.Fatal("verified runtime and static vehicle chain did not resolve without an optional request link")
 	}
-	if candidate.Status != resolutionCorrelated || !strings.Contains(candidate.Evidence, "no matching outbound UseSkillRequest was resolved") {
+	if candidate.Status != ResolutionCorrelated || !strings.Contains(candidate.Evidence, "no matching outbound UseSkillRequest was resolved") {
 		t.Fatalf("missing request evidence was not kept explicit: %+v", candidate)
 	}
 }
 
-func vehicleDamageContributorFixture() (*entityResolver, *gameMaster, combatEvent) {
-	source := runtimeEntity{
-		entityID: 10, followerSummonConfigID: 290101, hasFollowerSummonConfigID: true,
-		followEntityID: 11, hasFollowEntityID: true, sourceMessageID: cmdEntityAddNotify,
+// The outbound skill request exists only with a research schema (-protocol-schema); it is not core evidence, so it
+// neither confirms nor vetoes the vehicle candidate (Phase 3A R03). The core damage event the candidate is decided from
+// cannot carry it: no field of combatEvent, at any depth, holds the research request record. The Development event line
+// makes and writes the link itself (writeDamageEventOutputs).
+func TestCoreDamageEventCarriesNoResearchSkillRequest(t *testing.T) {
+	seen := map[reflect.Type]bool{}
+	var visit func(reflect.Type, string)
+	visit = func(value reflect.Type, path string) {
+		for value.Kind() == reflect.Pointer || value.Kind() == reflect.Slice || value.Kind() == reflect.Array || value.Kind() == reflect.Map {
+			value = value.Elem()
+		}
+		if strings.Contains(value.Name(), "combatActionRequest") {
+			t.Fatalf("%s holds the research skill request (%s)", path, value)
+		}
+		if value.Kind() != reflect.Struct || seen[value] {
+			return
+		}
+		seen[value] = true
+		for i := 0; i < value.NumField(); i++ {
+			visit(value.Field(i).Type, path+"."+value.Field(i).Name)
+		}
 	}
-	motorcycle := runtimeEntity{
-		entityID: 11, summonerID: 10, hasSummonerID: true,
-		summonType: summonTypeConcomitantMotorcycle, hasSummonType: true,
-		summonSkillID: 6013, hasSummonSkillID: true, sourceMessageID: cmdEntityAddNotify,
+	visit(reflect.TypeOf(CombatEvent{}), "combatEvent")
+	resolver, master, event := vehicleDamageContributorFixture()
+	if ResolveVehicleDamageContributorCandidate(resolver, master, event) == nil {
+		t.Fatal("fixture chain did not resolve without a request")
 	}
-	resolver := &entityResolver{entities: map[uint64]runtimeEntity{10: source, 11: motorcycle}}
-	master := &gameMaster{
-		visions:         map[uint64]struct{}{6013: {}},
-		summonBlueprint: map[uint64]string{290101: "branch3.0_Motorcycle_Skill"},
-		blueprintEntityTypes: map[string]map[string]struct{}{
+}
+
+func vehicleDamageContributorFixture() (*EntityResolver, *GameMaster, CombatEvent) {
+	source := RuntimeEntity{
+		EntityID: 10, FollowerSummonConfigID: 290101, HasFollowerSummonConfigID: true,
+		FollowEntityID: 11, HasFollowEntityID: true, SourceMessageID: CmdEntityAddNotify,
+	}
+	motorcycle := RuntimeEntity{
+		EntityID: 11, SummonerID: 10, HasSummonerID: true,
+		SummonType: SummonTypeConcomitantMotorcycle, HasSummonType: true,
+		SummonSkillID: 6013, HasSummonSkillID: true, SourceMessageID: CmdEntityAddNotify,
+	}
+	resolver := &EntityResolver{Entities: map[uint64]RuntimeEntity{10: source, 11: motorcycle}}
+	master := &GameMaster{
+		Visions:         map[uint64]struct{}{6013: {}},
+		SummonBlueprint: map[uint64]string{290101: "branch3.0_Motorcycle_Skill"},
+		BlueprintEntityTypes: map[string]map[string]struct{}{
 			"branch3.0_Motorcycle_Skill": {"BattleVehicle": {}},
 		},
-		blueprintModel: map[string]uint64{"branch3.0_Motorcycle_Skill": 900000},
-		modelActor:     map[uint64]string{900000: "motorcycle-actor"},
-		assetPath:      map[string]string{"motorcycle-actor": "/Game/Vehicle/BP_Motorcycle_C"},
-		actorBullets:   map[string]map[uint64]struct{}{"motorcycle-actor": {100010101: {}}},
-		actorSkills:    map[string]map[uint64]struct{}{"motorcycle-actor": {10001009: {}}},
+		BlueprintModel: map[string]uint64{"branch3.0_Motorcycle_Skill": 900000},
+		ModelActor:     map[uint64]string{900000: "motorcycle-actor"},
+		AssetPath:      map[string]string{"motorcycle-actor": "/Game/Vehicle/BP_Motorcycle_C"},
+		ActorBullets:   map[string]map[uint64]struct{}{"motorcycle-actor": {100010101: {}}},
+		ActorSkills:    map[string]map[uint64]struct{}{"motorcycle-actor": {10001009: {}}},
 	}
-	event := combatEvent{
+	event := CombatEvent{
 		SessionNumber: 1, EventTypeCandidate: "DAMAGE_CANDIDATE", SourceEntityID: 10, HasSourceEntity: true,
-		Source:  entityIdentity{Runtime: source, RuntimeStatus: resolutionVerified},
+		Source:  EntityIdentity{Runtime: source, RuntimeStatus: ResolutionVerified},
 		SkillID: 10001009, SkillMessageID: 50, HasBulletID: true, BulletID: 100010101,
-		CharacterStatus: resolutionUnknown, CharacterNameStatus: resolutionUnknown,
-		SkillRequest: &combatActionRequest{SessionNumber: 1, MessageID: 50, EntityID: 10, SkillID: 10001009, RequestType: "UseSkillRequest"},
+		CharacterStatus: ResolutionUnknown, CharacterNameStatus: ResolutionUnknown,
 	}
 	return resolver, master, event
 }

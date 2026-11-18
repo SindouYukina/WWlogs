@@ -6,12 +6,19 @@
   Runs formatting, vet, and unit tests for the Public and Development profiles, builds both executables with
   embed-key, audits the public executable's output surface, and checks the build identity. These throw-away builds
   are Unofficial: verification never reads or advances the owner's official build counter.
-  Every step reports PASS, FAIL, NOT RUN, or BLOCKED. Nothing is reported as PASS unless it executed.
+  The steps are declared below ($declaredSteps), and every run reports every one of them as PASS (it executed and
+  passed), FAIL (it executed and failed), BLOCKED (it was required but could not run: a missing tool or input, or a
+  failed step it depends on) or NOT RUN. Nothing is reported as PASS unless it executed; a test collector counts as
+  executed only when its test ran and passed and wrote its outputs.
 
-  Steps that need local-only material (the owner-local key input, archived PCAP captures) are NOT RUN, not PASS, when
-  that material is missing. Pass -PcapDirectory to add the replay regression, the public output audit, the
-  encounter replay (determinism and partition), the host session equivalence and the transport perturbation replay
-  through an embedded-key development test binary.
+  NOT RUN is reserved for the local-only material a checkout may lack: the owner-local key input, and the archived PCAP
+  captures when -PcapDirectory is not given. Pass -PcapDirectory to add the replay regression, the public output
+  audit, the encounter replay (determinism and partition), the host session equivalence and the transport
+  perturbation replay through an embedded-key development test binary; a given directory without a capture of the
+  current game version blocks those steps.
+
+  Exit code 0: every declared step passed. 1: a step failed or was blocked. 2: nothing failed, but steps were NOT RUN,
+  so the verification is incomplete.
 
   -EvidenceOut writes what the run executed for the version readiness gate (scripts/readiness.ps1):
   verify-results.json (every step's state), golden-coverage.json (the Golden captures the semantic regression ran)
@@ -32,20 +39,68 @@ $env:GOTOOLCHAIN = 'local'
 $repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).ProviderPath
 $overlay = Join-Path $repoRoot 'tests/go-overlay.json'
 $results = [ordered]@{}
-$testPackages = @('./cmd/capture', './internal/buildinfo', './internal/capture', './internal/history', './internal/service', './internal/desktop', './internal/keyembed', './tests/assets', './tests/buildrun', './tests/readiness', './tests/versioninfo')
+$testPackages = @('./cmd/capture', './internal/buildinfo', './internal/capture', './internal/devcapture', './internal/history', './internal/service', './internal/desktop', './internal/devdesktop', './internal/keyembed', './tests/architecture', './tests/assets', './tests/buildrun', './tests/readiness', './tests/versioninfo')
 if ($EvidenceOut -ne '') {
     $EvidenceOut = [IO.Path]::GetFullPath($EvidenceOut)
     [void][IO.Directory]::CreateDirectory($EvidenceOut)
 }
 
+# Every step of a complete verification, in report order. A step a run did not reach is still reported (Set-Unreached).
+$buildSteps = @('build (Public)', 'build (Development)', 'build identity', 'public flags', 'public binary strings', 'public binary symbols')
+$desktopSteps = @('frontend typecheck + build', 'desktop build (Public + Development)', 'desktop public flags + strings', 'desktop embedded images', 'master: embedded bytes + profile lookup parity')
+$replaySteps = @('replay: public output audit + statistics equality', 'replay: encounter determinism + partition', 'replay: host session equivalence', 'replay: transport perturbation', 'replay: effect and skill semantics', 'replay: combat history fidelity')
+$declaredSteps = @('gofmt', 'go vet (Public)', 'go test (Public)', 'go vet (Development)', 'go test (Development)', 'game assets: version control') + $buildSteps + $desktopSteps + $replaySteps
+
 function Set-Result([string]$Name, [string]$State, [string]$Detail = '') {
+    if ($Name -notin $declaredSteps) { throw "verify.ps1 reports an undeclared step: $Name" }
     $results[$Name] = "$State$(if ($Detail) { " - $Detail" })"
     Write-Host ("{0,-9} {1}{2}" -f $State, $Name, $(if ($Detail) { "  ($Detail)" } else { '' }))
+}
+
+# Set-Unreached reports the steps that cannot run after this point (NOT RUN for absent local-only material, BLOCKED
+# otherwise); a step that already has a result keeps it.
+function Set-Unreached([string[]]$Names, [string]$State, [string]$Reason) {
+    foreach ($name in $Names) {
+        if (-not $results.Contains($name)) { Set-Result $name $State $Reason }
+    }
+}
+
+# Invoke-Collector runs one replay collector of a test binary and reports what it actually executed: a collector skips
+# itself without its environment, and a test filter that matches nothing exits 0 too, so the exit code alone is no proof.
+# Problem is empty only when the test ran, passed, and wrote at least ExpectedOutputs files into OutputDirectory.
+function Invoke-Collector([string]$Binary, [string]$Test, [string]$OutputDirectory = '', [int]$ExpectedOutputs = 0, [string]$OutputFilter = '*') {
+    $output = @(& $Binary '-test.run' "^$Test$" '-test.count' '1' '-test.v' 2>&1 | ForEach-Object { "$_" })
+    $code = $LASTEXITCODE
+    $text = $output -join "`n"
+    $problem = ''
+    if ($code -ne 0) {
+        $problem = "exit code $code"
+    } elseif ($text -notmatch "(?m)^--- PASS: $Test \(" -or $text -match "(?m)^--- SKIP: $Test \(" -or $text -match 'no tests to run') {
+        $problem = "$Test did not run"
+    } elseif ($OutputDirectory -ne '') {
+        $written = @(Get-ChildItem -LiteralPath $OutputDirectory -Filter $OutputFilter -File -ErrorAction SilentlyContinue).Count
+        if ($written -lt $ExpectedOutputs) { $problem = "$Test wrote $written of $ExpectedOutputs outputs" }
+    }
+    $summary = @($output | Where-Object { $_ -notmatch '^(=== (RUN|PAUSE|CONT)|\s+--- PASS)' })
+    return [pscustomobject]@{ Problem = $problem; Tail = (($summary | Select-Object -Last 20) -join ' ') }
 }
 
 function Invoke-Go([string[]]$GoArguments) {
     $output = & go @GoArguments 2>&1
     return [pscustomobject]@{ Code = $LASTEXITCODE; Output = ($output | Out-String) }
+}
+
+# Strings of Development diagnostic, research and output code that no Public executable may contain: spool and
+# output names, Development record types, the command census, the research schema, the research wire path of Buff
+# rows and the Development summary lines.
+$developmentStrings = @('combat-events.jsonl', 'dps-effects.jsonl', 'buff-events.jsonl', 'status.json', 'capture-spool', 'LIVE_DIAGNOSTIC_SNAPSHOT', 'event-jsonl-out', 'pcapgo', 'encounter-events.jsonl', 'BATTLE_STATE_SIGNAL', 'COMBAT_EVENT_RECORD', 'ENCOUNTER_TRANSITION',
+    'PRESENT BUT UNDECODED', 'describes game version', '(CombatReceiveData[])', 'transport_health kcp_streams=')
+
+# Get-DevelopmentSymbols lists the Development module packages whose symbols an executable links (go tool nm).
+function Get-DevelopmentSymbols([string]$Executable) {
+    $symbols = & go tool nm $Executable 2>&1 | Out-String
+    if ($LASTEXITCODE -ne 0 -or $symbols.Length -lt 1000) { return @("symbol table unreadable") }
+    return @('wwlogs/internal/devcapture.', 'wwlogs/internal/devdesktop.', 'github.com/google/gopacket/pcapgo.') | Where-Object { $symbols.Contains($_) }
 }
 
 Push-Location $repoRoot
@@ -103,7 +158,7 @@ try {
     $unlistedAssets = @($trackedAssets | Where-Object { $_ -notin $listedAssets })
     if ($untrackedAssets.Count -gt 0) { $assetProblems += "$($untrackedAssets.Count) listed files are not tracked, first $($untrackedAssets[0])" }
     if ($unlistedAssets.Count -gt 0) { $assetProblems += "$($unlistedAssets.Count) tracked files are not listed, first $($unlistedAssets[0])" }
-    foreach ($local in @('assets/game/local.tmp', 'assets/game/local.png', 'work/fonts/candidates/misans/local.ttf', 'work/fonts/src/misans/local.zip')) {
+    foreach ($local in @('assets/game/local.tmp', 'assets/game/local.png', 'work/tools/fonts/candidates/misans/local.ttf', 'work/tools/fonts/src/misans/local.zip')) {
         & git check-ignore -q -- $local
         if ($LASTEXITCODE -ne 0) { $assetProblems += "$local is not ignored" }
     }
@@ -116,9 +171,9 @@ try {
     $missingKeyMessage = 'owner-local private key is not present'
     if ($keyStatus.Code -ne 0) {
         if ($keyStatus.Output.Contains($missingKeyMessage)) {
-            Set-Result 'build + output audit' 'NOT RUN' $missingKeyMessage
+            Set-Unreached ($buildSteps + $desktopSteps + $replaySteps) 'NOT RUN' $missingKeyMessage
         } else {
-            Set-Result 'build + output audit' 'FAIL' $keyStatus.Output.Trim()
+            Set-Unreached ($buildSteps + $desktopSteps + $replaySteps) 'BLOCKED' "the key check failed: $($keyStatus.Output.Trim())"
         }
     } else {
         $buildDirectory = Join-Path ([IO.Path]::GetTempPath()) ("wwlogs-verify-" + [Guid]::NewGuid().ToString('N'))
@@ -130,11 +185,13 @@ try {
             $developmentBuild = Invoke-Go @('run', './scripts/embed-key.go', '-unofficial', '-profile', 'development', '-o', $developmentExe)
             $publicKeyMissing = $publicBuild.Output.Contains($missingKeyMessage)
             $developmentKeyMissing = $developmentBuild.Output.Contains($missingKeyMessage)
-            if ($publicKeyMissing -or $developmentKeyMissing) {
-                Set-Result 'build + output audit' 'NOT RUN' $missingKeyMessage
-            }
             Set-Result 'build (Public)' $(if ($publicKeyMissing) { 'NOT RUN' } elseif ($publicBuild.Code -eq 0) { 'PASS' } else { 'FAIL' }) $(if ($publicKeyMissing) { $missingKeyMessage } elseif ($publicBuild.Code -ne 0) { $publicBuild.Output.Trim() })
             Set-Result 'build (Development)' $(if ($developmentKeyMissing) { 'NOT RUN' } elseif ($developmentBuild.Code -eq 0) { 'PASS' } else { 'FAIL' }) $(if ($developmentKeyMissing) { $missingKeyMessage } elseif ($developmentBuild.Code -ne 0) { $developmentBuild.Output.Trim() })
+            if ($publicKeyMissing -or $developmentKeyMissing) {
+                Set-Unreached ($buildSteps + $desktopSteps + $replaySteps) 'NOT RUN' $missingKeyMessage
+            } elseif ($publicBuild.Code -ne 0 -or $developmentBuild.Code -ne 0) {
+                Set-Unreached ($buildSteps + $desktopSteps + $replaySteps) 'BLOCKED' 'blocked: a console build failed'
+            }
 
             if ($publicBuild.Code -eq 0 -and $developmentBuild.Code -eq 0) {
                 # Build identity: profile from compiled constants, SHA-256 against an independent tool.
@@ -156,8 +213,11 @@ try {
                 Set-Result 'public flags' $(if ($helpRead -and -not $flagLeak) { 'PASS' } else { 'FAIL' }) $(if (-not $helpRead) { 'help text not captured' } elseif ($flagLeak) { "exposes: $($flagLeak -join ', ')" })
                 $bytes = [IO.File]::ReadAllBytes($publicExe)
                 $latin = [Text.Encoding]::GetEncoding(28591).GetString($bytes)
-                $stringLeak = @('combat-events.jsonl', 'dps-effects.jsonl', 'buff-events.jsonl', 'status.json', 'capture-spool', 'LIVE_DIAGNOSTIC_SNAPSHOT', 'event-jsonl-out', 'pcapgo', 'encounter-events.jsonl', 'BATTLE_STATE_SIGNAL', 'COMBAT_EVENT_RECORD', 'ENCOUNTER_TRANSITION') | Where-Object { $latin.Contains($_) }
+                $stringLeak = @($developmentStrings | Where-Object { $latin.Contains($_) })
                 Set-Result 'public binary strings' $(if (-not $stringLeak) { 'PASS' } else { 'FAIL' }) $(if ($stringLeak) { "contains: $($stringLeak -join ', ')" })
+                # Symbols: no function or type of a Development module is linked into the Public executable.
+                $symbolLeak = @(Get-DevelopmentSymbols $publicExe)
+                Set-Result 'public binary symbols' $(if (-not $symbolLeak) { 'PASS' } else { 'FAIL' }) $(if ($symbolLeak) { "links: $($symbolLeak -join ', ')" })
 
                 # Desktop host: the frontend is typechecked and built outside the repository with the system Node.js and npm,
                 # embedded into both profiles, and the Public desktop executable is audited like the console one.
@@ -174,9 +234,10 @@ try {
                     $frontendStopped = $true
                 }
                 if ($frontendStopped -or -not (Test-Path -LiteralPath (Join-Path $frontendDist 'index.html')) -or -not (Test-Path -LiteralPath (Join-Path $frontendDevelopmentDist 'index.html'))) {
-                    $state = if ($frontendOutput -match 'was not found on PATH') { 'NOT RUN' } else { 'FAIL' }
+                    # A missing Node.js or npm blocks the desktop steps: the product cannot be built without them.
+                    $state = if ($frontendOutput -match 'was not found on PATH') { 'BLOCKED' } else { 'FAIL' }
                     Set-Result 'frontend typecheck + build' $state $frontendOutput.Trim()
-                    Set-Result 'desktop build + audit' 'NOT RUN' 'frontend build did not complete'
+                    Set-Unreached $desktopSteps 'BLOCKED' 'blocked: the frontend build did not complete'
                 } else {
                     Set-Result 'frontend typecheck + build' 'PASS'
                     $desktopPublicExe = Join-Path $buildDirectory 'WWlogs-Desktop.exe'
@@ -188,11 +249,13 @@ try {
                         $desktopHelp = & $desktopPublicExe -h 2>&1 | Out-String
                         $desktopFlagLeak = @('replay', 'replay-pacing', 'autostart', 'capture-diagnostics', 'webview-debug-port', 'overlay', 'showcase', 'showcase-overlays', 'asset-root', 'font-root', 'master-db', 'webview-args', 'simulate-capture-environment', 'simulate-npcap-offline', 'record-browser-url', 'simulate-ui-languages', 'history-db') | Where-Object { $desktopHelp -match "-$_\b" }
                         $desktopLatin = [Text.Encoding]::GetEncoding(28591).GetString([IO.File]::ReadAllBytes($desktopPublicExe))
-                        $desktopStringLeak = @('combat-events.jsonl', 'dps-effects.jsonl', 'buff-events.jsonl', 'status.json', 'capture-spool', 'LIVE_DIAGNOSTIC_SNAPSHOT', 'event-jsonl-out', 'pcapgo', 'encounter-events.jsonl', 'BATTLE_STATE_SIGNAL', 'COMBAT_EVENT_RECORD', 'ENCOUNTER_TRANSITION', 'remote-debugging-port=%d') | Where-Object { $desktopLatin.Contains($_) }
+                        $desktopStringLeak = @(($developmentStrings + @('remote-debugging-port=%d')) | Where-Object { $desktopLatin.Contains($_) })
+                        $desktopSymbolLeak = @(Get-DevelopmentSymbols $desktopPublicExe)
                         $desktopProblems = @()
                         if ($desktopHelp -notmatch '(?m)^\s+-version\b') { $desktopProblems += 'help text not captured' }
                         if ($desktopFlagLeak) { $desktopProblems += "flags: $($desktopFlagLeak -join ', ')" }
                         if ($desktopStringLeak) { $desktopProblems += "strings: $($desktopStringLeak -join ', ')" }
+                        if ($desktopSymbolLeak) { $desktopProblems += "symbols: $($desktopSymbolLeak -join ', ')" }
                         Set-Result 'desktop public flags + strings' $(if ($desktopProblems.Count -eq 0) { 'PASS' } else { 'FAIL' }) ($desktopProblems -join '; ')
 
                         # Both desktop profiles must carry the same distinct manifest images.
@@ -240,12 +303,16 @@ try {
                         )
                         $digestText = if ($digests[0].Length -gt 16) { $digests[0].Substring(0, 16) } else { $digests[0] }
                         Set-Result 'master: embedded bytes + profile lookup parity' $(if ($masterProblems.Count -eq 0) { 'PASS' } else { 'FAIL' }) "SHA-256 $($masterHash.Substring(0, 16)); lookup digest $digestText$(if ($masterProblems.Count) { '; ' + ($masterProblems -join '; ') })"
+                    } else {
+                        Set-Unreached $desktopSteps 'BLOCKED' 'blocked: the Public desktop build failed'
                     }
                 }
 
                 # 4. Optional replay regression against private archived captures.
                 if ($PcapDirectory -eq '') {
-                    Set-Result 'replay: public output audit + statistics equality' 'NOT RUN' 'no -PcapDirectory'
+                    Set-Unreached $replaySteps 'NOT RUN' 'no -PcapDirectory'
+                } elseif (-not (Test-Path -LiteralPath $PcapDirectory -PathType Container)) {
+                    Set-Unreached $replaySteps 'BLOCKED' "-PcapDirectory $PcapDirectory is not a directory"
                 } else {
                     $allPcaps = @(Get-ChildItem -LiteralPath $PcapDirectory -Filter *.pcap -Recurse)
                     $failures = @()
@@ -261,12 +328,14 @@ try {
                         Push-Location $isolated
                         try {
                             $publicOut = & $publicExe -ip $ReplayIp -pcap-in $pcap.FullName 2>&1
+                            $publicCode = $LASTEXITCODE
                             $developmentOut = & $developmentExe -ip $ReplayIp -pcap-in $pcap.FullName 2>&1
+                            $developmentCode = $LASTEXITCODE
                         } finally { Pop-Location }
                         $created = @(Get-ChildItem -LiteralPath $isolated -Force -Recurse).Count - $before
                         $publicLine = ($publicOut | Where-Object { "$_" -like 'statistics_final *' }) -replace '^statistics_final ', ''
                         $developmentLine = ($developmentOut | Where-Object { "$_" -like 'statistics_final *' }) -replace '^statistics_final ', ''
-                        if ($created -ne 0 -or -not $publicLine -or $publicLine -ne $developmentLine) { $failures += $pcap.Name }
+                        if ($publicCode -ne 0 -or $developmentCode -ne 0) { $failures += "$($pcap.Name) (exit codes $publicCode/$developmentCode)" } elseif ($created -ne 0 -or -not $publicLine -or $publicLine -ne $developmentLine) { $failures += $pcap.Name }
                         $protocolLine = "$($developmentOut | Where-Object { "$_" -like 'protocol_session *' } | Select-Object -Last 1)"
                         $protocolStatus = if ($protocolLine -match 'status=(\S+) game_version=(\S+)') { "$($Matches[1]) $($Matches[2])" } else { 'missing' }
                         if ($protocolStatus -like 'supported *') {
@@ -277,17 +346,25 @@ try {
                         }
                     }
                     $excludedText = ($excluded.GetEnumerator() | Sort-Object Name | ForEach-Object { "$($_.Value) $($_.Name)" }) -join ', '
-                    Set-Result 'replay: public output audit + statistics equality' $(if ($allPcaps.Count -gt 0 -and $failures.Count -eq 0) { 'PASS' } elseif ($allPcaps.Count -eq 0) { 'NOT RUN' } else { 'FAIL' }) "$($allPcaps.Count) captures; current game version corpus $($pcaps.Count)$(if ($excludedText) { "; not decoded: $excludedText" })$(if ($failures) { "; failed: $($failures -join ', ')" })"
+                    # A given capture directory without captures is a missing required input, not an optional one.
+                    Set-Result 'replay: public output audit + statistics equality' $(if ($allPcaps.Count -gt 0 -and $failures.Count -eq 0) { 'PASS' } elseif ($allPcaps.Count -eq 0) { 'BLOCKED' } else { 'FAIL' }) "$($allPcaps.Count) captures; current game version corpus $($pcaps.Count)$(if ($excludedText) { "; not decoded: $excludedText" })$(if ($failures) { "; failed: $($failures -join ', ')" })"
 
                     # 5. Encounter replay: every capture twice through the development test binary; segmentation and
                     # statistics must repeat exactly and the encounter partition must add up to the interval totals.
                     if ($pcaps.Count -eq 0) {
-                        Set-Result 'replay: encounter determinism + partition' 'NOT RUN' 'no capture of the current game version'
+                        Set-Unreached $replaySteps 'BLOCKED' 'no capture of the current game version under -PcapDirectory'
                     } else {
+                        # The core collectors run from the core's test binary; the encounter collector reads the
+                        # Development encounter output, so it runs from the Development module's.
                         $testBinary = Join-Path $buildDirectory 'capture-dev.test.exe'
+                        $developmentTestBinary = Join-Path $buildDirectory 'devcapture.test.exe'
                         $testBuild = Invoke-Go @('run', './scripts/embed-key.go', '-profile', 'development', '-test-binary', './internal/capture', '-o', $testBinary)
+                        if ($testBuild.Code -eq 0) {
+                            $testBuild = Invoke-Go @('run', './scripts/embed-key.go', '-profile', 'development', '-test-binary', './internal/devcapture', '-o', $developmentTestBinary)
+                        }
                         if ($testBuild.Code -ne 0) {
                             Set-Result 'replay: encounter determinism + partition' 'FAIL' $testBuild.Output.Trim()
+                            Set-Unreached $replaySteps 'BLOCKED' 'blocked: the replay test binaries did not build'
                         } else {
                             $listPath = Join-Path $buildDirectory 'encounter-pcaps.txt'
                             $root = (Resolve-Path -LiteralPath $PcapDirectory).ProviderPath
@@ -300,12 +377,11 @@ try {
                             $env:WWLOGS_ENCOUNTER_REPLAY_PCAPS = $listPath
                             $env:WWLOGS_ENCOUNTER_REPLAY_MASTER_DB = Join-Path $repoRoot 'data/master_data.db'
                             try {
-                                $encounterOut = & $testBinary '-test.run' '^TestEncounterReplayCollector$' '-test.count' '1' 2>&1
-                                $encounterCode = $LASTEXITCODE
+                                $encounter = Invoke-Collector $developmentTestBinary 'TestEncounterReplayCollector' $env:WWLOGS_ENCOUNTER_REPLAY_OUT $pcaps.Count '*.encounters.json'
                             } finally {
                                 Remove-Item Env:WWLOGS_ENCOUNTER_REPLAY_OUT, Env:WWLOGS_ENCOUNTER_REPLAY_PCAPS, Env:WWLOGS_ENCOUNTER_REPLAY_MASTER_DB -ErrorAction SilentlyContinue
                             }
-                            Set-Result 'replay: encounter determinism + partition' $(if ($encounterCode -eq 0) { 'PASS' } else { 'FAIL' }) "$($pcaps.Count) captures$(if ($encounterCode -ne 0) { '; ' + (($encounterOut | Select-Object -Last 20) -join ' ') })"
+                            Set-Result 'replay: encounter determinism + partition' $(if (-not $encounter.Problem) { 'PASS' } else { 'FAIL' }) "$($pcaps.Count) captures$(if ($encounter.Problem) { "; $($encounter.Problem): $($encounter.Tail)" })"
 
                             # 6. Host session equivalence: the application host path (per-protocol-session intervals,
                             # capture.Session, view snapshots) must leave every total, encounter, and integrity unchanged.
@@ -313,12 +389,11 @@ try {
                             $env:WWLOGS_SESSION_REPLAY_PCAPS = $listPath
                             $env:WWLOGS_SESSION_REPLAY_MASTER_DB = Join-Path $repoRoot 'data/master_data.db'
                             try {
-                                $sessionOut = & $testBinary '-test.run' '^TestSessionReplayCollector$' '-test.count' '1' 2>&1
-                                $sessionCode = $LASTEXITCODE
+                                $session = Invoke-Collector $testBinary 'TestSessionReplayCollector' $env:WWLOGS_SESSION_REPLAY_OUT $pcaps.Count '*.session.json'
                             } finally {
                                 Remove-Item Env:WWLOGS_SESSION_REPLAY_OUT, Env:WWLOGS_SESSION_REPLAY_PCAPS, Env:WWLOGS_SESSION_REPLAY_MASTER_DB -ErrorAction SilentlyContinue
                             }
-                            Set-Result 'replay: host session equivalence' $(if ($sessionCode -eq 0) { 'PASS' } else { 'FAIL' }) "$($pcaps.Count) captures$(if ($sessionCode -ne 0) { '; ' + (($sessionOut | Select-Object -Last 20) -join ' ') })"
+                            Set-Result 'replay: host session equivalence' $(if (-not $session.Problem) { 'PASS' } else { 'FAIL' }) "$($pcaps.Count) captures$(if ($session.Problem) { "; $($session.Problem): $($session.Tail)" })"
 
                             # 7. Transport perturbation: duplicated, reordered, truncated and late-started deliveries of
                             # every capture, derived in memory; totals and splits must hold (see the test's header).
@@ -326,12 +401,11 @@ try {
                             $env:WWLOGS_PERTURBATION_PCAPS = $listPath
                             $env:WWLOGS_PERTURBATION_MASTER_DB = Join-Path $repoRoot 'data/master_data.db'
                             try {
-                                $perturbationOut = & $testBinary '-test.run' '^TestTransportPerturbationCollector$' '-test.count' '1' 2>&1
-                                $perturbationCode = $LASTEXITCODE
+                                $perturbation = Invoke-Collector $testBinary 'TestTransportPerturbationCollector' $env:WWLOGS_PERTURBATION_OUT $pcaps.Count '*.perturbation.json'
                             } finally {
                                 Remove-Item Env:WWLOGS_PERTURBATION_OUT, Env:WWLOGS_PERTURBATION_PCAPS, Env:WWLOGS_PERTURBATION_MASTER_DB -ErrorAction SilentlyContinue
                             }
-                            Set-Result 'replay: transport perturbation' $(if ($perturbationCode -eq 0) { 'PASS' } else { 'FAIL' }) "$($pcaps.Count) captures$(if ($perturbationCode -ne 0) { '; ' + (($perturbationOut | Select-Object -Last 20) -join ' ') })"
+                            Set-Result 'replay: transport perturbation' $(if (-not $perturbation.Problem) { 'PASS' } else { 'FAIL' }) "$($pcaps.Count) captures$(if ($perturbation.Problem) { "; $($perturbation.Problem): $($perturbation.Tail)" })"
 
                             # 8. Semantic regression: real captures must list the right statuses in the right rows and name the
                             # right skills. Totals alone cannot catch a status shown in the wrong row or a skill losing its name.
@@ -339,12 +413,11 @@ try {
                             $env:WWLOGS_SEMANTIC_REPLAY_MASTER_DB = Join-Path $repoRoot 'data/master_data.db'
                             if ($EvidenceOut -ne '') { $env:WWLOGS_SEMANTIC_REPLAY_COVERAGE = Join-Path $EvidenceOut 'golden-coverage.json' }
                             try {
-                                $semanticOut = & $testBinary '-test.run' '^TestSemanticReplayCollector$' '-test.count' '1' 2>&1
-                                $semanticCode = $LASTEXITCODE
+                                $semantic = Invoke-Collector $testBinary 'TestSemanticReplayCollector'
                             } finally {
                                 Remove-Item Env:WWLOGS_SEMANTIC_REPLAY_PCAPS, Env:WWLOGS_SEMANTIC_REPLAY_MASTER_DB, Env:WWLOGS_SEMANTIC_REPLAY_COVERAGE -ErrorAction SilentlyContinue
                             }
-                            Set-Result 'replay: effect and skill semantics' $(if ($semanticCode -eq 0) { 'PASS' } else { 'FAIL' }) "$($pcaps.Count) captures$(if ($semanticCode -ne 0) { '; ' + (($semanticOut | Select-Object -Last 12) -join ' ') })"
+                            Set-Result 'replay: effect and skill semantics' $(if (-not $semantic.Problem) { 'PASS' } else { 'FAIL' }) "$($pcaps.Count) captures$(if ($semantic.Problem) { "; $($semantic.Problem): $($semantic.Tail)" })"
 
                             # 9. Combat History: every capture through the host session path into a fresh history file, in both
                             # profiles. History must not change the final view, must store every finished encounter and accepted
@@ -361,12 +434,11 @@ try {
                                 $env:WWLOGS_HISTORY_REPLAY_PCAPS = $listPath
                                 $env:WWLOGS_HISTORY_REPLAY_MASTER_DB = Join-Path $repoRoot 'data/master_data.db'
                                 try {
-                                    $historyRun = & $historyBinary '-test.run' '^TestHistoryReplayCollector$' '-test.count' '1' 2>&1
-                                    $historyCode = $LASTEXITCODE
+                                    $historyRun = Invoke-Collector $historyBinary 'TestHistoryReplayCollector' $historyOut 1 'summary.json'
                                 } finally {
                                     Remove-Item Env:WWLOGS_HISTORY_REPLAY_OUT, Env:WWLOGS_HISTORY_REPLAY_PCAPS, Env:WWLOGS_HISTORY_REPLAY_MASTER_DB -ErrorAction SilentlyContinue
                                 }
-                                if ($historyCode -ne 0) { $historyFailures += "$historyProfile`: $(($historyRun | Select-Object -Last 12) -join ' ')"; continue }
+                                if ($historyRun.Problem) { $historyFailures += "$historyProfile`: $($historyRun.Problem): $($historyRun.Tail)"; continue }
                                 $historySummaries[$historyProfile] = Get-Content -LiteralPath (Join-Path $historyOut 'summary.json') -Raw
                                 if ($EvidenceOut -ne '' -and $historyProfile -eq 'public') { Copy-Item -LiteralPath (Join-Path $historyOut 'summary.json') -Destination (Join-Path $EvidenceOut 'history-summary.json') -Force }
                             }
@@ -385,20 +457,27 @@ try {
     Pop-Location
 }
 
+# A declared step that no branch above reported is a defect of this script, never a pass.
+Set-Unreached $declaredSteps 'BLOCKED' 'not reached: verify.ps1 reported no result for this step'
+$counts = [ordered]@{ 'PASS' = 0; 'FAIL' = 0; 'BLOCKED' = 0; 'NOT RUN' = 0 }
+foreach ($name in $declaredSteps) { $counts[@($results[$name] -split ' - ', 2)[0]]++ }
+$overall = if ($counts['FAIL'] + $counts['BLOCKED'] -gt 0) { 'FAIL' } elseif ($counts['NOT RUN'] -gt 0) { 'INCOMPLETE' } else { 'PASS' }
+
 if ($EvidenceOut -ne '') {
-    # The states exactly as reported above, with the commit and working tree they describe.
+    # The states exactly as reported above, in declared order, with the commit and working tree they describe.
     $commit = "$(& git -C $repoRoot rev-parse HEAD 2>$null)".Trim()
     $dirty = @(& git -C $repoRoot status --porcelain 2>$null).Count -gt 0
-    $steps = foreach ($entry in $results.GetEnumerator()) {
-        $parts = @($entry.Value -split ' - ', 2)
-        [ordered]@{ name = $entry.Key; state = $parts[0]; detail = $(if ($parts.Count -gt 1) { $parts[1] } else { '' }) }
+    $steps = foreach ($name in $declaredSteps) {
+        $parts = @($results[$name] -split ' - ', 2)
+        [ordered]@{ name = $name; state = $parts[0]; detail = $(if ($parts.Count -gt 1) { $parts[1] } else { '' }) }
     }
-    $evidence = [ordered]@{ commit = $commit; dirty = $dirty; pcapDirectory = ($PcapDirectory -ne ''); packages = $testPackages; results = @($steps) }
+    $evidence = [ordered]@{ commit = $commit; dirty = $dirty; pcapDirectory = ($PcapDirectory -ne ''); packages = $testPackages; overall = $overall; results = @($steps) }
     $evidence | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $EvidenceOut 'verify-results.json') -Encoding utf8
 }
 
 Write-Host ''
-$failed = @($results.GetEnumerator() | Where-Object { $_.Value -like 'FAIL*' -or $_.Value -like 'BLOCKED*' })
-Write-Host "Summary: $($results.Count) checks, $($failed.Count) failed"
-if ($failed.Count -gt 0) { exit 1 }
+Write-Host "Summary: $($declaredSteps.Count) steps: $(($counts.GetEnumerator() | ForEach-Object { "$($_.Value) $($_.Key)" }) -join ', ')"
+Write-Host "Overall: $overall$(if ($overall -eq 'INCOMPLETE') { ' (steps NOT RUN: the verification is not complete)' })"
+if ($overall -eq 'FAIL') { exit 1 }
+if ($overall -eq 'INCOMPLETE') { exit 2 }
 exit 0

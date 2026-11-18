@@ -92,10 +92,10 @@ func roleOf(t *testing.T, snapshot DamageStatisticsSnapshot, roleID uint64) Role
 	return RoleDamageSnapshot{}
 }
 
-func writeTestDamage(p *processor, sourceID, targetID, rpcID uint64, amount int64) {
+func writeTestDamage(p *Processor, sourceID, targetID, rpcID uint64, amount int64) {
 	event := testDamageEvent(p, sourceID, targetID)
 	event.EventTypeCandidate, event.Damage, event.RPCID = "DAMAGE_CANDIDATE", amount, rpcID
-	p.writeDamageEvent(event)
+	p.WriteDamageEvent(event)
 }
 
 func TestRoleAggregationCreditsTeamRolesByPlayerSceneGroup(t *testing.T) {
@@ -107,7 +107,7 @@ func TestRoleAggregationCreditsTeamRolesByPlayerSceneGroup(t *testing.T) {
 	writeTestDamage(p, 100, 200, 3, 25)
 	writeTestDamage(p, 200, 101, 4, 30)
 	writeTestDamage(p, 102, 200, 5, 999)
-	got := p.damageStatistics.Snapshot()
+	got := p.DamageStatistics.Snapshot()
 	assertRoleTotalsReconcile(t, got)
 	if len(got.Roles) != 2 {
 		t.Fatalf("roles = %+v, want the two local roles only", got.Roles)
@@ -126,16 +126,16 @@ func TestRoleAggregationCreditsTeamRolesByPlayerSceneGroup(t *testing.T) {
 
 func TestRoleAggregationCreditsSummonThroughVerifiedChain(t *testing.T) {
 	p := newPairingTestProcessor()
-	addTestRuntimeEntity(p, 300, func(entity *runtimeEntity) {
-		entity.summonerID, entity.hasSummonerID = 100, true
+	addTestRuntimeEntity(p, 300, func(entity *RuntimeEntity) {
+		entity.SummonerID, entity.HasSummonerID = 100, true
 	})
-	addTestRuntimeEntity(p, 301, func(entity *runtimeEntity) {
-		entity.summonerID, entity.hasSummonerID = 300, true
+	addTestRuntimeEntity(p, 301, func(entity *RuntimeEntity) {
+		entity.SummonerID, entity.HasSummonerID = 300, true
 	})
 	writeTestDamage(p, 300, 200, 1, 60)
 	writeTestDamage(p, 301, 200, 2, 15)
 	writeTestDamage(p, 100, 200, 3, 10)
-	got := p.damageStatistics.Snapshot()
+	got := p.DamageStatistics.Snapshot()
 	assertRoleTotalsReconcile(t, got)
 	role := roleOf(t, got, 1409)
 	if role.DamageDealt != 85 || role.SummonDamage != 75 || role.DirectDamage != 10 || role.OutgoingEvents != 3 {
@@ -147,9 +147,9 @@ func TestRoleAggregationKeepsRoleReportOnlyEntityUnassigned(t *testing.T) {
 	p := newPairingTestProcessor()
 	// Local by the client's role report, but without a PlayerSceneGroup RoleId mapping.
 	addTestRuntimeEntity(p, 150, nil)
-	p.observeLocalRoleEntity(150)
+	p.ObserveLocalRoleEntity(150)
 	writeTestDamage(p, 150, 200, 1, 50)
-	got := p.damageStatistics.Snapshot()
+	got := p.DamageStatistics.Snapshot()
 	assertRoleTotalsReconcile(t, got)
 	if got.DamageDealt != 50 || got.UnassignedRole.DamageDealt != 50 || got.UnassignedRole.OutgoingEvents != 1 || len(got.Roles) != 0 {
 		t.Fatalf("damage without role evidence must stay unassigned: %+v", got)
@@ -158,11 +158,11 @@ func TestRoleAggregationKeepsRoleReportOnlyEntityUnassigned(t *testing.T) {
 
 func TestRoleAggregationExcludesUnattributedDamage(t *testing.T) {
 	p := newPairingTestProcessor()
-	addTestRuntimeEntity(p, 400, func(entity *runtimeEntity) { entity.summonerID, entity.hasSummonerID = 999, true })
+	addTestRuntimeEntity(p, 400, func(entity *RuntimeEntity) { entity.SummonerID, entity.HasSummonerID = 999, true })
 	writeTestDamage(p, 400, 200, 1, 70) // unknown summoner
-	p.context.invalidate("in", pairingAt(1), "test_gap")
+	p.Context.invalidate("in", pairingAt(1), "test_gap")
 	writeTestDamage(p, 100, 200, 2, 30) // downgraded
-	got := p.damageStatistics.Snapshot()
+	got := p.DamageStatistics.Snapshot()
 	assertRoleTotalsReconcile(t, got)
 	if len(got.Roles) != 0 || got.UnassignedRole.DamageDealt != 0 || got.DamageDealt != 0 {
 		t.Fatalf("unattributed damage reached the role aggregation: %+v", got)
@@ -173,14 +173,14 @@ func TestRoleAggregationFollowsRoleAcrossEntityChanges(t *testing.T) {
 	p := newPairingTestProcessor()
 	writeTestDamage(p, 100, 200, 1, 10)
 	// A new scene gives the same role a new EntityId.
-	p.playerRelevance.resetSceneEntities()
+	p.PlayerRelevance.ResetSceneEntities()
 	addTestPlayerRoleGroupEntity(p, 500, 77, 1409)
-	p.observeLocalRoleEntity(500)
+	p.ObserveLocalRoleEntity(500)
 	writeTestDamage(p, 500, 200, 2, 20)
 	// The old EntityId comes back for a different role: the role follows the new mapping.
 	addTestPlayerRoleGroupEntity(p, 100, 77, 1508)
 	writeTestDamage(p, 100, 200, 3, 5)
-	got := p.damageStatistics.Snapshot()
+	got := p.DamageStatistics.Snapshot()
 	assertRoleTotalsReconcile(t, got)
 	if role := roleOf(t, got, 1409); role.DamageDealt != 30 || role.OutgoingEvents != 2 {
 		t.Fatalf("role 1409 did not follow its new EntityId: %+v", role)
@@ -198,10 +198,10 @@ func TestRoleAggregationIsPerEncounterAndResetsWithInterval(t *testing.T) {
 		r.SourceRole = role
 		return r
 	}
-	statistics.observeBattleState(true, encounterAt(1), 1)
+	statistics.ObserveBattleState(true, encounterAt(1), 1)
 	statistics.addCombatEvent(record(2, 100))
-	statistics.observeBattleState(false, encounterAt(3), 1)
-	statistics.observeBattleState(true, encounterAt(20), 1)
+	statistics.ObserveBattleState(false, encounterAt(3), 1)
+	statistics.ObserveBattleState(true, encounterAt(20), 1)
 	statistics.addCombatEvent(record(21, 40))
 	statistics.addCombatEvent(testEncounterRecord(CombatFlowLocalOutgoing, 7, 22))
 	got := statistics.Snapshot()
@@ -295,16 +295,16 @@ func TestConcurrentQueriesSeeConsistentRoleTotals(t *testing.T) {
 func TestRoleAggregationCreditsRoleEntityTouchedByActiveRequest(t *testing.T) {
 	p := newPairingTestProcessor()
 	// An EntityActiveRequest update marks the record CORRELATED but keeps its PlayerSceneGroup mapping.
-	if err := p.entities.observeActiveRequest(appendVarintField(nil, fieldEntityActiveRequestEntityID, 100)); err != nil {
+	if err := p.Entities.observeActiveRequest(appendVarintField(nil, FieldEntityActiveRequestEntityID, 100)); err != nil {
 		t.Fatal(err)
 	}
-	if _, status := p.entities.resolve(100); status != resolutionCorrelated {
+	if _, status := p.Entities.Resolve(100); status != ResolutionCorrelated {
 		t.Fatalf("fixture status = %s, want CORRELATED", status)
 	}
-	addTestRuntimeEntity(p, 300, func(entity *runtimeEntity) { entity.summonerID, entity.hasSummonerID = 100, true })
+	addTestRuntimeEntity(p, 300, func(entity *RuntimeEntity) { entity.SummonerID, entity.HasSummonerID = 100, true })
 	writeTestDamage(p, 100, 200, 1, 10)
 	writeTestDamage(p, 300, 200, 2, 5)
-	got := p.damageStatistics.Snapshot()
+	got := p.DamageStatistics.Snapshot()
 	assertRoleTotalsReconcile(t, got)
 	if role := roleOf(t, got, 1409); role.DirectDamage != 10 || role.SummonDamage != 5 {
 		t.Fatalf("role entity with an active-request update was not credited: %+v unassigned=%+v", role, got.UnassignedRole)
@@ -313,7 +313,7 @@ func TestRoleAggregationCreditsRoleEntityTouchedByActiveRequest(t *testing.T) {
 
 func TestRoleAggregationNeverCreditsUnknownEntity(t *testing.T) {
 	p := newPairingTestProcessor()
-	if role := p.localRoleForEntity(999, entityIdentity{}); role != nil {
+	if role := p.localRoleForEntity(999, EntityIdentity{}); role != nil {
 		t.Fatalf("an entity without a record was credited: %+v", role)
 	}
 }
@@ -322,29 +322,29 @@ func TestMotorcycleContributionIsIndependentOfCharacterCredit(t *testing.T) {
 	p := newPairingTestProcessor()
 	event := testDamageEvent(p, 100, 200)
 	event.EventTypeCandidate, event.Damage, event.RPCID = "DAMAGE_CANDIDATE", 100, 1
-	event.DamageContributorCandidate = &damageContributorCandidate{Kind: vehicleKindMotorcycle, ActorType: "Vehicle", EntityType: "BattleVehicle", Status: resolutionCorrelated}
-	p.writeDamageEvent(event)
-	p.writeDamageEvent(event)
+	event.DamageContributorCandidate = &DamageContributorCandidate{Kind: VehicleKindMotorcycle, ActorType: "Vehicle", EntityType: "BattleVehicle", Status: ResolutionCorrelated}
+	p.WriteDamageEvent(event)
+	p.WriteDamageEvent(event)
 	writeTestDamage(p, 100, 200, 2, 50)
-	got := p.damageStatistics.Snapshot()
+	got := p.DamageStatistics.Snapshot()
 	assertRoleTotalsReconcile(t, got)
 	role := roleOf(t, got, 1409)
 	if got.DamageDealt != 150 || got.OutgoingEvents != 2 || got.DuplicateEvents != 1 || got.Vehicle == nil || got.Vehicle.DamageDealt != 100 || got.Vehicle.OutgoingEvents != 1 || role.DamageDealt != 50 || got.UnassignedRole.DamageDealt != 0 {
 		t.Fatal("vehicle duplicated or replaced character damage")
 	}
-	if event.SourceEntityID != 100 || event.DamageContributorCandidate.Status != resolutionCorrelated {
+	if event.SourceEntityID != 100 || event.DamageContributorCandidate.Status != ResolutionCorrelated {
 		t.Fatal("vehicle classification changed raw source or evidence")
 	}
-	view := p.viewSnapshot()
+	view := p.ViewSnapshot()
 	if view.Vehicle == nil || view.Vehicle.DamageShare == nil || *view.Vehicle.DamageShare != 100.0/150.0 || *view.Roles[0].DamageShare != 50.0/150.0 {
 		t.Fatal("vehicle changed the share denominator")
 	}
 	got.Vehicle.DamageDealt = 999
-	if p.damageStatistics.Snapshot().Vehicle.DamageDealt != 100 {
+	if p.DamageStatistics.Snapshot().Vehicle.DamageDealt != 100 {
 		t.Fatal("vehicle snapshot aliases mutable state")
 	}
-	p.damageStatistics.Reset()
-	if p.damageStatistics.Snapshot().Vehicle != nil {
+	p.DamageStatistics.Reset()
+	if p.DamageStatistics.Snapshot().Vehicle != nil {
 		t.Fatal("vehicle survived interval reset")
 	}
 }
@@ -354,25 +354,25 @@ func TestMotorcycleContributionRequiresLocalFlowAndRecognizedEvidence(t *testing
 		t.Run(scenario, func(t *testing.T) {
 			p := newPairingTestProcessor()
 			addTestRuntimeEntity(p, 150, nil)
-			p.observeLocalRoleEntity(150)
+			p.ObserveLocalRoleEntity(150)
 			event := testDamageEvent(p, 150, 200)
 			event.EventTypeCandidate, event.Damage, event.RPCID = "DAMAGE_CANDIDATE", 70, 1
-			event.DamageContributorCandidate = &damageContributorCandidate{Kind: vehicleKindMotorcycle, ActorType: "Vehicle", EntityType: "BattleVehicle", Status: resolutionCorrelated}
+			event.DamageContributorCandidate = &DamageContributorCandidate{Kind: VehicleKindMotorcycle, ActorType: "Vehicle", EntityType: "BattleVehicle", Status: ResolutionCorrelated}
 			switch scenario {
 			case "unknown_class":
 				event.DamageContributorCandidate.Kind = "unresolved"
 			case "unknown_evidence":
-				event.DamageContributorCandidate.Status = resolutionUnknown
+				event.DamageContributorCandidate.Status = ResolutionUnknown
 			case "suspect_context":
-				p.context.invalidate("in", pairingAt(1), "test_gap")
+				p.Context.invalidate("in", pairingAt(1), "test_gap")
 			case "other_player":
 				addTestPlayerRoleGroupEntity(p, 102, 88, 1312)
 				event = testDamageEvent(p, 102, 200)
 				event.EventTypeCandidate, event.Damage, event.RPCID = "DAMAGE_CANDIDATE", 70, 1
-				event.DamageContributorCandidate = &damageContributorCandidate{Kind: vehicleKindMotorcycle, ActorType: "Vehicle", EntityType: "BattleVehicle", Status: resolutionCorrelated}
+				event.DamageContributorCandidate = &DamageContributorCandidate{Kind: VehicleKindMotorcycle, ActorType: "Vehicle", EntityType: "BattleVehicle", Status: ResolutionCorrelated}
 			}
-			p.writeDamageEvent(event)
-			got := p.damageStatistics.Snapshot()
+			p.WriteDamageEvent(event)
+			got := p.DamageStatistics.Snapshot()
 			assertRoleTotalsReconcile(t, got)
 			if got.Vehicle != nil {
 				t.Fatal("unsupported or nonlocal event entered motorcycle totals")
@@ -390,17 +390,17 @@ func TestMotorcycleContributionRequiresLocalFlowAndRecognizedEvidence(t *testing
 
 func TestMotorcycleContributionIsScopedToEncounters(t *testing.T) {
 	statistics := NewDamageStatistics()
-	statistics.observeBattleState(true, encounterAt(0), 1)
+	statistics.ObserveBattleState(true, encounterAt(0), 1)
 	record := testEncounterRecord(CombatFlowLocalOutgoing, 40, 1)
-	record.VehicleKind = vehicleKindMotorcycle
+	record.VehicleKind = VehicleKindMotorcycle
 	statistics.addCombatEvent(record)
-	statistics.observeBattleState(false, encounterAt(2), 1)
-	statistics.observeBattleState(true, encounterAt(20), 1)
+	statistics.ObserveBattleState(false, encounterAt(2), 1)
+	statistics.ObserveBattleState(true, encounterAt(20), 1)
 	record = testEncounterRecord(CombatFlowLocalOutgoing, 60, 21)
-	record.VehicleKind = vehicleKindMotorcycle
+	record.VehicleKind = VehicleKindMotorcycle
 	record.ObservedAt = encounterAt(21)
 	statistics.addCombatEvent(record)
-	got := statistics.SnapshotAt(CaptureQueryTime{CaptureSessionID: statistics.captureSessionID, Timestamp: encounterAt(21)})
+	got := statistics.SnapshotAt(CaptureQueryTime{CaptureSessionID: statistics.CaptureSessionID, Timestamp: encounterAt(21)})
 	assertRoleTotalsReconcile(t, got)
 	if got.Vehicle == nil || got.Vehicle.DamageDealt != 100 || len(got.Encounters.Completed) != 1 || got.Encounters.Completed[0].Vehicle == nil || got.Encounters.Completed[0].Vehicle.DamageDealt != 40 || got.Encounters.Current == nil || got.Encounters.Current.Vehicle == nil || got.Encounters.Current.Vehicle.DamageDealt != 60 {
 		t.Fatal("motorcycle totals leaked across encounters")

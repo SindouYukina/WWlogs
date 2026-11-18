@@ -1,5 +1,3 @@
-//go:build wwdev
-
 package capture
 
 import (
@@ -37,7 +35,7 @@ func TestListeningReplayCollector(t *testing.T) {
 		t.Skip("WWLOGS_LISTENING_REPLAY_OUT is not set")
 	}
 	master, listPath := os.Getenv("WWLOGS_SESSION_REPLAY_MASTER_DB"), os.Getenv("WWLOGS_SESSION_REPLAY_PCAPS")
-	key, err := loadEmbeddedPrivateKey()
+	key, err := LoadEmbeddedPrivateKey()
 	if err != nil {
 		t.Fatalf("embedded key payload is required: %v", err)
 	}
@@ -53,33 +51,33 @@ func TestListeningReplayCollector(t *testing.T) {
 			var first, previous time.Time
 			gaps := []float64{}
 			lastOK := 0
-			observe := func(p *processor) {
-				at := p.currentFrameTime
+			observe := func(p *Processor) {
+				at := p.CurrentFrameTime
 				if at.IsZero() || at.Equal(previous) {
 					return
 				}
 				if first.IsZero() {
 					first = at
 				}
-				if p.stats.handshakeOK == 0 {
+				if p.Stats.HandshakeOK == 0 {
 					report.FramesBeforeKey++
 				}
-				if p.stats.handshakeOK != lastOK {
-					lastOK = p.stats.handshakeOK
+				if p.Stats.HandshakeOK != lastOK {
+					lastOK = p.Stats.HandshakeOK
 					report.SecondsToKey = append(report.SecondsToKey, at.Sub(first).Seconds())
 					if !previous.IsZero() {
 						report.HandshakeGapSeconds = append(report.HandshakeGapSeconds, at.Sub(previous).Seconds())
 					}
-				} else if !previous.IsZero() && p.stats.handshakeOK > 0 {
+				} else if !previous.IsZero() && p.Stats.HandshakeOK > 0 {
 					gaps = append(gaps, at.Sub(previous).Seconds())
 				}
 				previous = at
 			}
-			p, stats := equivalenceReplay(t, equivalenceInputs{localIP: "192.168.1.2"}, masters.masters, key, capture.path, nil, func(_ int, p *processor) { observe(p) })
-			report.Frames = stats.frames
-			report.Handshakes = p.stats.handshakeOK
-			report.HandshakeErrors = p.stats.handshakeErrors
-			report.DecryptErrors = p.stats.decryptErrors
+			p, stats := equivalenceReplay(t, equivalenceInputs{localIP: "192.168.1.2"}, masters.masters, key, capture.path, nil, func(_ int, p *Processor) { observe(p) })
+			report.Frames = stats.Frames
+			report.Handshakes = p.Stats.HandshakeOK
+			report.HandshakeErrors = p.Stats.HandshakeErrors
+			report.DecryptErrors = p.Stats.DecryptErrors
 			report.DurationSeconds = previous.Sub(first).Seconds()
 			sort.Float64s(gaps)
 			if len(gaps) > 0 {

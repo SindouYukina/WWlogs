@@ -31,21 +31,21 @@ type rTimeStop struct {
 }
 
 func decodeRTimeStopPush(body []byte) (rTimeStop, error) {
-	fields, err := parseProtoFields(body)
+	fields, err := ParseProtoFields(body)
 	if err != nil {
 		return rTimeStop{}, fmt.Errorf("parse RTimeStopPush: %w", err)
 	}
 	var duration, dilation uint64
 	var hasDuration, hasDilation bool
 	for _, field := range fields {
-		if field.wire != 0 {
+		if field.Wire != 0 {
 			continue
 		}
-		switch field.number {
+		switch field.Number {
 		case fieldRTimeStopPushDuration:
-			duration, hasDuration = field.value, true
+			duration, hasDuration = field.Value, true
 		case fieldRTimeStopPushDilation:
-			dilation, hasDilation = field.value, true
+			dilation, hasDilation = field.Value, true
 		}
 	}
 	durationMs := int64(int32(uint32(duration)))
@@ -66,37 +66,37 @@ func decodeRTimeStopPush(body []byte) (rTimeStop, error) {
 }
 
 // observeRTimeStopPush feeds one RTimeStopPush of the local client to the effect clock.
-func (p *processor) observeRTimeStopPush(frame gameFrame, body []byte, common combatCommonContext) error {
+func (p *Processor) observeRTimeStopPush(frame GameFrame, body []byte, common combatCommonContext) error {
 	stop, err := decodeRTimeStopPush(body)
 	if err != nil {
 		return err
 	}
 	if !stop.known {
-		p.stats.timeStopPushesWithoutState++
+		p.Stats.timeStopPushesWithoutState++
 		return nil
 	}
 	var caster uint64
 	if common.entityID != nil {
 		caster = *common.entityID
 	}
-	p.effects.ObserveTimeStop(p.sessionNumber, caster, stop.begin, stop.duration, stop.scale, frame.timestamp)
+	p.Effects.ObserveTimeStop(p.SessionNumber, caster, stop.begin, stop.duration, stop.scale, frame.Timestamp)
 	return nil
 }
 
 // decodeFloatFields reads the float32 fields of a message by number; an absent field reads 0, as proto3 leaves it off.
 func decodeFloatFields(body []byte, numbers ...uint64) ([]float64, error) {
-	fields, err := parseProtoFields(body)
+	fields, err := ParseProtoFields(body)
 	if err != nil {
 		return nil, err
 	}
 	values := make([]float64, len(numbers))
 	for _, field := range fields {
-		if field.wire != 5 || len(field.data) != 4 {
+		if field.Wire != 5 || len(field.Data) != 4 {
 			continue
 		}
 		for i, number := range numbers {
-			if field.number == number {
-				values[i] = float64(math.Float32frombits(binary.LittleEndian.Uint32(field.data)))
+			if field.Number == number {
+				values[i] = float64(math.Float32frombits(binary.LittleEndian.Uint32(field.Data)))
 			}
 		}
 	}
@@ -104,27 +104,27 @@ func decodeFloatFields(body []byte, numbers ...uint64) ([]float64, error) {
 }
 
 // observeTimeStopPush feeds the local client's new global time dilation to the effect clock.
-func (p *processor) observeTimeStopPush(frame gameFrame, body []byte) error {
-	if frame.direction != "out" {
+func (p *Processor) observeTimeStopPush(frame GameFrame, body []byte) error {
+	if frame.Direction != "out" {
 		return nil
 	}
 	values, err := decodeFloatFields(body, fieldTimeStopPushTimeDilation)
 	if err != nil {
 		return fmt.Errorf("parse TimeStopPush: %w", err)
 	}
-	p.effects.ObserveTimeDilation(p.sessionNumber, values[0], frame.timestamp)
+	p.Effects.ObserveTimeDilation(p.SessionNumber, values[0], frame.Timestamp)
 	return nil
 }
 
 // observeTimeCheckRequest reconciles the effect clock with the local client's periodic time check.
-func (p *processor) observeTimeCheckRequest(frame gameFrame, body []byte) error {
-	if frame.direction != "out" {
+func (p *Processor) observeTimeCheckRequest(frame GameFrame, body []byte) error {
+	if frame.Direction != "out" {
 		return nil
 	}
 	values, err := decodeFloatFields(body, fieldTimeCheckRequestFlowTimeDilation, fieldTimeCheckRequestTimeDilation)
 	if err != nil {
 		return fmt.Errorf("parse TimeCheckRequest: %w", err)
 	}
-	p.effects.ObserveTimeCheck(p.sessionNumber, values[0], values[1], frame.timestamp)
+	p.Effects.ObserveTimeCheck(p.SessionNumber, values[0], values[1], frame.Timestamp)
 	return nil
 }

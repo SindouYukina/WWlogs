@@ -6,8 +6,8 @@ import (
 	"strconv"
 )
 
-// localizedSkillLabel is one row of skill_dev_label_locale for the master locale (or the zh-CN original).
-type localizedSkillLabel struct {
+// LocalizedSkillLabel is one row of skill_dev_label_locale for the master locale (or the zh-CN original).
+type LocalizedSkillLabel struct {
 	Text   string
 	Locale string
 	Kind   string
@@ -15,7 +15,7 @@ type localizedSkillLabel struct {
 
 // loadSQLiteSkillLabelText reads the optional skill_dev_label_locale table. Only the requested locale and the
 // zh-CN original are kept, so an older master without the table still loads.
-func loadSQLiteSkillLabelText(db *sql.DB, locale string, master *gameMaster) error {
+func loadSQLiteSkillLabelText(db *sql.DB, locale string, master *GameMaster) error {
 	exists, err := masterTableExists(db, "skill_dev_label_locale")
 	if err != nil || !exists {
 		return err
@@ -27,7 +27,7 @@ func loadSQLiteSkillLabelText(db *sql.DB, locale string, master *gameMaster) err
 	defer rows.Close()
 	for rows.Next() {
 		var raw string
-		var label localizedSkillLabel
+		var label LocalizedSkillLabel
 		if err := rows.Scan(&raw, &label.Locale, &label.Text, &label.Kind); err != nil {
 			return fmt.Errorf("read skill developer label text: %w", err)
 		}
@@ -37,7 +37,7 @@ func loadSQLiteSkillLabelText(db *sql.DB, locale string, master *gameMaster) err
 		}
 		byLocale := master.skillLabelText[id]
 		if byLocale == nil {
-			byLocale = make(map[string]localizedSkillLabel)
+			byLocale = make(map[string]LocalizedSkillLabel)
 			master.skillLabelText[id] = byLocale
 		}
 		byLocale[label.Locale] = label
@@ -61,13 +61,13 @@ func queryDevLabels(db *sql.DB, namespace, locale string) (*sql.Rows, error) {
 
 // loadSQLiteVisionDevLabels reads the developer note text of every Vision row, so any summon that points at a Vision
 // row is readable and not only the rows seen in a capture.
-func loadSQLiteVisionDevLabels(db *sql.DB, locale string, master *gameMaster) error {
-	return loadSQLiteDevLabelMap(db, "vision", locale, master.visionDevLabels)
+func loadSQLiteVisionDevLabels(db *sql.DB, locale string, master *GameMaster) error {
+	return loadSQLiteDevLabelMap(db, "vision", locale, master.VisionDevLabels)
 }
 
 // loadSQLiteDevLabelMap fills target with the dev_label_locale text of one ID namespace. The master locale wins over
 // the zh-CN original; the text is a developer note and never an official name.
-func loadSQLiteDevLabelMap(db *sql.DB, namespace, locale string, target map[uint64]*combatEventLabelTextJSONL) error {
+func loadSQLiteDevLabelMap(db *sql.DB, namespace, locale string, target map[uint64]*CombatEventLabelTextJSONL) error {
 	rows, err := queryDevLabels(db, namespace, locale)
 	if err != nil || rows == nil {
 		return err
@@ -75,7 +75,7 @@ func loadSQLiteDevLabelMap(db *sql.DB, namespace, locale string, target map[uint
 	defer rows.Close()
 	for rows.Next() {
 		var raw string
-		label := &combatEventLabelTextJSONL{Evidence: "dev_label_locale row (" + namespace + ") for this id; an internal developer note, not an official in-game name"}
+		label := &CombatEventLabelTextJSONL{Evidence: "dev_label_locale row (" + namespace + ") for this id; an internal developer note, not an official in-game name"}
 		if err := rows.Scan(&raw, &label.Locale, &label.Text, &label.Kind); err != nil {
 			return fmt.Errorf("read %s developer label: %w", namespace, err)
 		}
@@ -91,7 +91,7 @@ func loadSQLiteDevLabelMap(db *sql.DB, namespace, locale string, target map[uint
 }
 
 // loadSQLiteElementNames reads the localized element names (ElementInfo) for the master locale.
-func loadSQLiteElementNames(db *sql.DB, locale string, master *gameMaster) error {
+func loadSQLiteElementNames(db *sql.DB, locale string, master *GameMaster) error {
 	exists, err := masterTableExists(db, "elementinfo_locale")
 	if err != nil || !exists {
 		return err
@@ -111,24 +111,24 @@ func loadSQLiteElementNames(db *sql.DB, locale string, master *gameMaster) error
 		if err != nil {
 			return fmt.Errorf("invalid elementinfo_locale.id %q: %w", raw, err)
 		}
-		master.elementNames[int32(id)] = name
+		master.ElementNames[int32(id)] = name
 	}
 	return rows.Err()
 }
 
-// resolveSkillLabelText returns the display text of the developer label for a skill that has an
+// ResolveSkillLabelText returns the display text of the developer label for a skill that has an
 // unambiguous SkillInfo label. The master locale text wins; the zh-CN original is the fallback.
 // The text is never an official name: Kind says whether it is the original note or an unofficial translation.
-func resolveSkillLabelText(masters *gameMaster, skillID uint64) *combatEventLabelTextJSONL {
+func ResolveSkillLabelText(masters *GameMaster, skillID uint64) *CombatEventLabelTextJSONL {
 	if masters == nil {
 		return nil
 	}
-	label := resolveSkillLabel(masters, skillID)
-	if label == nil || label.Status != resolutionCorrelated {
+	label := ResolveSkillLabel(masters, skillID)
+	if label == nil || label.Status != ResolutionCorrelated {
 		return nil
 	}
 	byLocale := masters.skillLabelText[skillID]
-	chosen, ok := byLocale[masters.locale]
+	chosen, ok := byLocale[masters.Locale]
 	if !ok {
 		chosen, ok = byLocale["zh-CN"]
 	}
@@ -138,28 +138,6 @@ func resolveSkillLabelText(masters *gameMaster, skillID uint64) *combatEventLabe
 	if chosen.Kind == "developer-original" && chosen.Text != label.Label {
 		return nil
 	}
-	return &combatEventLabelTextJSONL{Locale: chosen.Locale, Text: chosen.Text, Kind: chosen.Kind,
+	return &CombatEventLabelTextJSONL{Locale: chosen.Locale, Text: chosen.Text, Kind: chosen.Kind,
 		Evidence: "skill_dev_label_locale row for this SkillInfo skill id; an internal developer note, not an official in-game name"}
-}
-
-// resolveDamageElement names the element written in the damage master row. The row is looked up by DamageId,
-// the same basis as the damage class; the protocol's ElementType field is not used here.
-func resolveDamageElement(masters *gameMaster, damageID uint64, hasDamageID bool) *combatEventElementJSONL {
-	if masters == nil || !hasDamageID {
-		return nil
-	}
-	record, ok := masters.damage[damageID]
-	if !ok || !record.HasElement {
-		return nil
-	}
-	result := &combatEventElementJSONL{ID: record.Element}
-	if name, found := masters.elementNames[record.Element]; found {
-		result.Name = name
-		result.Status = resolutionCorrelated
-		result.Evidence = fmt.Sprintf("damage.element of the DamageId row -> elementinfo_locale (%s); client build observed, master compatibility unverified", masters.locale)
-	} else {
-		result.Status = resolutionUnknown
-		result.Evidence = "damage.element has no elementinfo_locale name for the master locale; raw element id kept"
-	}
-	return result
 }

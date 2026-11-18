@@ -1,5 +1,3 @@
-//go:build wwdev
-
 package capture
 
 import (
@@ -157,11 +155,11 @@ func TestEffectInventoryCollector(t *testing.T) {
 		t.Fatal("WWLOGS_EFFECT_INVENTORY_MASTER_DB and WWLOGS_EFFECT_INVENTORY_PCAPS are required")
 	}
 	pcaps := readReplayPCAPList(t, listPath)
-	key, err := loadEmbeddedPrivateKey()
+	key, err := LoadEmbeddedPrivateKey()
 	if err != nil {
 		t.Fatalf("embedded key payload is required: %v", err)
 	}
-	masters, err := loadGameMasterDatabase(master, "zh-TW")
+	masters, err := LoadGameMasterDatabase(master, "zh-TW")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,7 +182,7 @@ func TestEffectInventoryCollector(t *testing.T) {
 	}
 }
 
-func effectInventoryReplay(t *testing.T, inputs equivalenceInputs, masters *gameMaster, key *staticRSA, capture equivalencePCAP) effectInventoryResult {
+func effectInventoryReplay(t *testing.T, inputs equivalenceInputs, masters *GameMaster, key *StaticRSA, capture equivalencePCAP) effectInventoryResult {
 	t.Helper()
 	entries := map[uint64]*effectInventoryEntry{}
 	type seenInstance struct {
@@ -214,35 +212,35 @@ func effectInventoryReplay(t *testing.T, inputs equivalenceInputs, masters *game
 		}
 		if static, ok := masters.buffStatic(id); ok {
 			entry.Definition = true
-			if static.hasDurationPolicy {
-				policy := static.durationPolicy
+			if static.HasDurationPolicy {
+				policy := static.DurationPolicy
 				entry.DurationPolicy = &policy
 			}
-			if static.hasDuration {
-				duration := static.durationSeconds
+			if static.HasDuration {
+				duration := static.DurationSeconds
 				entry.StaticDuration = &duration
 			}
-			if static.hasStackLimit {
-				limit := static.stackLimit
+			if static.HasStackLimit {
+				limit := static.StackLimit
 				entry.StackLimit = &limit
 			}
-			if static.hasAttribute && static.hasModifier {
-				entry.Attribute = attributeTypeNames[static.attribute]
+			if static.HasAttribute && static.HasModifier {
+				entry.Attribute = attributeTypeNames[static.Attribute]
 				if entry.Attribute == "" {
-					entry.Attribute = "attribute_" + formatUint(static.attribute)
+					entry.Attribute = "attribute_" + formatUint(static.Attribute)
 				}
 			}
-			entry.DeveloperTags = append([]string(nil), static.tags...)
+			entry.DeveloperTags = append([]string(nil), static.Tags...)
 		}
 		if term, ok := masters.buffTerm(id); ok {
-			entry.Term = term.name
+			entry.Term = term.Name
 		}
 		entries[id] = entry
 		return entry
 	}
 	// Relations, classes, kinds and roles are read once per instance, at the end of its life or of the capture, when the
 	// tracker's relation evidence is most complete.
-	classify := func(p *processor, effect EffectInstanceSnapshot) {
+	classify := func(p *Processor, effect EffectInstanceSnapshot) {
 		if effect.EffectID == nil {
 			return
 		}
@@ -255,16 +253,16 @@ func effectInventoryReplay(t *testing.T, inputs equivalenceInputs, masters *game
 		// An ended record is classified as it was while active, as the view does for its recent-ended rows.
 		whileActive := effect
 		whileActive.Lifecycle = EffectLifecycleActive
-		display := effectDisplayFor(whileActive)
+		display := EffectDisplayFor(whileActive)
 		entry.DisplayCategory[string(display.Eligibility)+":"+string(display.Target)]++
 		if effect.HolderRelation == EffectRelationLocalRole || effect.HolderRelation == EffectRelationLocalOwned {
-			if role := p.localRoleForEntity(effect.HolderEntityID, entityIdentity{}); role != nil && !entry.extra[role.RoleID] {
+			if role := p.localRoleForEntity(effect.HolderEntityID, EntityIdentity{}); role != nil && !entry.extra[role.RoleID] {
 				entry.extra[role.RoleID] = true
 				entry.HolderRoles = append(entry.HolderRoles, role.RoleID)
 			}
 		}
 	}
-	recordEnded := func(p *processor, record EffectEndedSnapshot) {
+	recordEnded := func(p *Processor, record EffectEndedSnapshot) {
 		if record.EffectID == nil {
 			return
 		}
@@ -275,11 +273,11 @@ func effectInventoryReplay(t *testing.T, inputs equivalenceInputs, masters *game
 			entry.LifetimeSeconds = append(entry.LifetimeSeconds, math.Round(record.EndedAt.Sub(record.FirstObservedAt).Seconds()*1000)/1000)
 		}
 	}
-	sample := func(p *processor) effectInventorySample {
-		view := p.viewSnapshot()
+	sample := func(p *Processor) effectInventorySample {
+		view := p.ViewSnapshot()
 		counts := view.Effects.Counts
-		if err := counts.accountingError(len(view.Effects.Active)); err != nil {
-			t.Fatalf("view effect counts at %s: %v (%+v)", p.currentFrameTime.UTC().Format(time.RFC3339Nano), err, counts)
+		if err := counts.AccountingError(len(view.Effects.Active)); err != nil {
+			t.Fatalf("view effect counts at %s: %v (%+v)", p.CurrentFrameTime.UTC().Format(time.RFC3339Nano), err, counts)
 		}
 		for _, effect := range view.Effects.Active {
 			if effect.Lifecycle != EffectLifecycleActive || effect.Display.Eligibility != EffectDisplayEligible {
@@ -295,10 +293,10 @@ func effectInventoryReplay(t *testing.T, inputs equivalenceInputs, masters *game
 			listed[string(effect.Kind)+"|"+timed+"|"+string(effect.Evidence)+"|"+string(effect.Display.Target)]++
 		}
 		measureEffectViewCost(p, &cost, &costTotals)
-		return effectInventorySample{At: p.currentFrameTime.UTC().Format(time.RFC3339Nano), Counts: counts, Old: legacyEffectCount(p), Listed: listed}
+		return effectInventorySample{At: p.CurrentFrameTime.UTC().Format(time.RFC3339Nano), Counts: counts, Old: legacyEffectCount(p), Listed: listed}
 	}
-	observe := func(p *processor) {
-		tracker = p.effects
+	observe := func(p *Processor) {
+		tracker = p.Effects
 		tracker.mu.RLock()
 		current := make(map[effectKey]seenInstance, len(tracker.instances))
 		perEffect := map[uint64]int{}
@@ -342,7 +340,7 @@ func effectInventoryReplay(t *testing.T, inputs equivalenceInputs, masters *game
 		ended := append([]EffectEndedSnapshot(nil), tracker.ended...)
 		tracker.mu.RUnlock()
 		for id, count := range perEffect {
-			entry := entryFor(id, p.currentFrameTime)
+			entry := entryFor(id, p.CurrentFrameTime)
 			entry.MaxConcurrent = max(entry.MaxConcurrent, count)
 		}
 		// Every instance that left the live set since the previous packet has an ended record near the tail of the
@@ -368,7 +366,7 @@ func effectInventoryReplay(t *testing.T, inputs equivalenceInputs, masters *game
 		live = current
 	}
 	var peak *effectInventorySample
-	p, stats := equivalenceReplay(t, inputs, masters, key, capture.path, nil, func(index int, p *processor) {
+	p, stats := equivalenceReplay(t, inputs, masters, key, capture.path, nil, func(index int, p *Processor) {
 		observe(p)
 		if index%effectInventoryPublishEvery == 0 {
 			s := sample(p)
@@ -388,13 +386,13 @@ func effectInventoryReplay(t *testing.T, inputs equivalenceInputs, masters *game
 			}
 		}
 	})
-	p.finishCapture()
+	p.FinishCapture()
 	observe(p)
 	final := sample(p)
 	result.FinalSample, result.PeakSample = &final, peak
 	result.ViewCost = cost.finish(costTotals)
-	result.UDPPackets = stats.udpPackets
-	snapshot := p.effectSnapshotAtLastFrame()
+	result.UDPPackets = stats.UDPPackets
+	snapshot := p.EffectSnapshotAtLastFrame()
 	result.Counters = snapshot.Counters
 	for _, effect := range snapshot.Effects {
 		if effect.EffectID == nil {
@@ -423,8 +421,8 @@ func effectInventoryReplay(t *testing.T, inputs equivalenceInputs, masters *game
 }
 
 // legacyEffectCount recomputes the pre-2B.3 overlay title and engine bound from the tracker snapshot.
-func legacyEffectCount(p *processor) effectLegacyCount {
-	snapshot := p.effectSnapshotAtLastFrame()
+func legacyEffectCount(p *Processor) effectLegacyCount {
+	snapshot := p.EffectSnapshotAtLastFrame()
 	priority := func(effect EffectInstanceSnapshot) int {
 		local := localEffectRelation(effect.HolderRelation) || localEffectRelation(effect.SourceRelation)
 		switch {
@@ -455,14 +453,14 @@ func legacyEffectCount(p *processor) effectLegacyCount {
 }
 
 // measureEffectViewCost times one current and one legacy Effects view build, each with its own tracker snapshot.
-func measureEffectViewCost(p *processor, cost *effectViewCost, totals *[5]float64) {
+func measureEffectViewCost(p *Processor, cost *effectViewCost, totals *[5]float64) {
 	start := time.Now()
 	current := p.viewEffects()
 	currentData, _ := json.Marshal(current)
 	currentElapsed := time.Since(start)
 
 	start = time.Now()
-	snapshot := p.effectSnapshotAtLastFrame()
+	snapshot := p.EffectSnapshotAtLastFrame()
 	priority := func(effect EffectInstanceSnapshot) int {
 		local := localEffectRelation(effect.HolderRelation) || localEffectRelation(effect.SourceRelation)
 		switch {

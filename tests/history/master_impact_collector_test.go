@@ -17,17 +17,29 @@ import (
 
 // TestHistoryMasterImpactCollector is a collector, not a regular test. Stored history keeps raw IDs and is named at view
 // time with the Master the build embeds, so a Master update can change what an old encounter shows. With
-// WWLOGS_HISTORY_MASTER_FIXTURE naming a history fixture directory (combat-history.db with its key), and
+// WWLOGS_HISTORY_MASTER_FIXTURE naming a history fixture directory (combat-history.db with its key record), and
 // WWLOGS_HISTORY_MASTER_OLD and WWLOGS_HISTORY_MASTER_NEW naming two Master files, it reads every finished encounter on a
 // fresh copy and renders every History view the desktop shows (the projected encounter, analysis, effect lanes, hit
 // timeline, event pages, enemy and contributor names in every locale) once with each Master, and writes to
-// WWLOGS_HISTORY_MASTER_OUT which views differ and how. The fixture is never changed.
+// WWLOGS_HISTORY_MASTER_OUT which views differ and how, with what the History names under each Master (identification:
+// enemies, main enemies, stages and modes). The fixture is never changed. With WWLOGS_HISTORY_MASTER_REAL_INPUTS=1 it opens
+// the copy with the real inputs of a build (this computer's SMBIOS table and the protocol key the build embeds), so a copy
+// of the owner's history can be compared; that needs a test binary from scripts/embed-key.go -test-binary ./internal/history.
 func TestHistoryMasterImpactCollector(t *testing.T) {
 	fixture, oldPath, newPath, out := os.Getenv("WWLOGS_HISTORY_MASTER_FIXTURE"), os.Getenv("WWLOGS_HISTORY_MASTER_OLD"), os.Getenv("WWLOGS_HISTORY_MASTER_NEW"), os.Getenv("WWLOGS_HISTORY_MASTER_OUT")
 	if fixture == "" || oldPath == "" || newPath == "" || out == "" {
 		t.Skip("set WWLOGS_HISTORY_MASTER_FIXTURE, _OLD, _NEW and _OUT to compare stored history under two Masters")
 	}
-	store, err := Open(Options{Path: copyFixture(t, fixture), Location: time.UTC, Build: &testBuild, MasterSHA256: "test-master"})
+	var inputs KeyInputs
+	if os.Getenv("WWLOGS_HISTORY_MASTER_REAL_INPUTS") == "1" {
+		material, err := capture.ProtocolKeyMaterial()
+		if err != nil {
+			t.Skip("this test binary carries no embedded protocol key")
+		}
+		clear(material)
+		inputs = KeyInputs{ProtocolKey: capture.ProtocolKeyMaterial}
+	}
+	store, err := Open(Options{Path: copyFixture(t, fixture), Location: time.UTC, Build: &testBuild, MasterSHA256: "test-master", KeyInputs: inputs})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +152,25 @@ func TestHistoryMasterImpactCollector(t *testing.T) {
 		d.Samples = paths
 		differences = append(differences, d)
 	}
-	result := map[string]any{"encounters": len(ids), "locales": locales, "views": len(before), "identical": identical, "differences": differences}
+	// What the History names under each Master, with the desktop History view's rules (replay_test.go identify).
+	identified := func(masterPath string) identification {
+		names, err := capture.OpenDisplayResolver(masterPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer names.Close()
+		var counted identification
+		for _, id := range ids {
+			detail, err := store.Encounter(ctx, id, time.UTC)
+			if err != nil {
+				t.Fatal(err)
+			}
+			identify(t, names, "history", fmt.Sprintf("encounter-%d", id), detail, &counted)
+		}
+		return counted
+	}
+	result := map[string]any{"encounters": len(ids), "locales": locales, "views": len(before), "identical": identical, "differences": differences,
+		"identification": map[string]identification{"old": identified(oldPath), "new": identified(newPath)}}
 	data, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
 		t.Fatal(err)

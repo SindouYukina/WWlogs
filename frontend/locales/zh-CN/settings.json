@@ -135,12 +135,12 @@
     "rows": "第一行是增益，第二行是减益，方向直接来自游戏 HUD 对此状态的设置。",
     "order": "每行从左到右按到期时间排列：最快到期的在最左边，没有时间的在最后。",
     "onlyHud": "只显示游戏 HUD 会绘制、带有官方图标与方向的状态，内部状态不显示。",
+    "empty": "没有可显示的效果时，状态条完全隐藏，鼠标也会穿透；编辑模式会显示预览框，方便调整位置与大小。",
     "noNames": "效果不显示名称，与游戏相同；游戏数据中多数效果没有名称。"
   },
   "historySettings": {
     "sections": {
       "recording": "记录",
-      "storage": "存储",
       "data": "数据"
     },
     "recording": "记录战斗历史",
@@ -149,13 +149,8 @@
     "coverage": "记录内容",
     "coverageHint": "不记录技能释放：目前没有可靠的来源。",
     "coverageValue": "战斗、伤害与治疗结果、效果生命周期变化",
-    "encryption": "加密",
-    "encrypted": "已加密（AES-256-XTS）",
-    "encryptedHint": "密钥由 Windows（DPAPI）为你的用户账户保护，并非 TPM 硬件保护。以你的身份运行的程序仍可读取。",
-    "notEncrypted": "未加密",
-    "notEncryptedHint": "历史文件未打开，或是较早版本的未加密文件。",
     "clear": "清除全部历史",
-    "clearHint": "删除所有保存的战斗及其备份副本。采集正在记录时无法使用。",
+    "clearHint": "删除所有保存的战斗。采集正在记录时无法使用。",
     "clearAction": "清除历史",
     "clearConfirm": "要永久删除全部战斗历史吗？此操作无法撤销。",
     "clearConfirmAction": "全部删除"

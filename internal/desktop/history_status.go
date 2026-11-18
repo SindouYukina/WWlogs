@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"os"
 	"sync"
 	"time"
 
@@ -48,9 +50,8 @@ type historyIndicator struct {
 	// so the encounters they belong to are stored as incomplete.
 	Capturing bool   `json:"capturing"`
 	Lost      uint64 `json:"lost,omitempty"`
-	// Encrypted and KeyProtection describe the open file.
-	Encrypted     bool   `json:"encrypted"`
-	KeyProtection string `json:"keyProtection,omitempty"`
+	// Rebuildable says the unavailable history may be replaced by a new one at the user's request (history.Status).
+	Rebuildable bool `json:"rebuildable,omitempty"`
 }
 
 // recorderTracker remembers the recorder of the running capture, so the indicator can read its health.
@@ -81,7 +82,7 @@ func (t *recorderTracker) health() history.RecorderHealth {
 // historyIndicatorOf decides the indicator. A store problem outranks the setting, which outranks the capture's state. begin is
 // how the running capture's history began (service.Status.History).
 func historyIndicatorOf(enabled bool, store history.Status, running bool, begin string, journal capture.HistoryRecordingState, health history.RecorderHealth) historyIndicator {
-	indicator := historyIndicator{Enabled: enabled, Capturing: running, Encrypted: store.Encrypted, KeyProtection: store.KeyProtection}
+	indicator := historyIndicator{Enabled: enabled, Capturing: running, Rebuildable: store.State == history.StateUnavailable && store.Rebuildable}
 	if running {
 		indicator.Lost = health.Lost
 	}
@@ -130,6 +131,43 @@ func (b *Bridge) SetHistoryRecording(enabled bool) (SettingsState, error) {
 	b.capture.SetHistoryRecording(enabled)
 	b.shell.fire()
 	return state, nil
+}
+
+// historyRecovery answers a retry or a rebuild: the history's status afterwards, whether it is open now, and a refusal.
+type historyRecovery struct {
+	Status  history.Status `json:"status"`
+	Open    bool           `json:"open"`
+	Refused string         `json:"refused,omitempty"`
+}
+
+func recoveryResult(status history.Status, err error) historyRecovery {
+	result := historyRecovery{Status: status, Open: status.State == history.StateReady || status.State == history.StateReadOnly}
+	if errors.Is(err, history.ErrNotRebuildable) {
+		result.Refused = "not_rebuildable"
+	}
+	return result
+}
+
+// RetryHistory opens the Combat History again after it could not be opened. What went wrong is the store's to keep: the
+// UI only learns whether the history is open now.
+func (b *Bridge) RetryHistory() historyRecovery {
+	status, err := b.history.Retry()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "WWlogs desktop: combat history retry: %v\n", err)
+	}
+	b.shell.fire()
+	return recoveryResult(status, err)
+}
+
+// RebuildHistory deletes the Combat History that cannot be opened and creates a new, empty one, after the user confirmed it
+// twice in the UI. The store refuses it for a history that opens or that a new one would not replace (Status.Rebuildable).
+func (b *Bridge) RebuildHistory() historyRecovery {
+	status, err := b.history.Rebuild()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "WWlogs desktop: combat history rebuild: %v\n", err)
+	}
+	b.shell.fire()
+	return recoveryResult(status, err)
 }
 
 // historyChangeLimit bounds one deletion, including a compaction of the file.

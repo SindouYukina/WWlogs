@@ -21,7 +21,7 @@ func summonOutgoing(statistics *DamageStatistics, roleID uint64, amount int64, s
 
 func vehicleOutgoing(statistics *DamageStatistics, amount int64, seconds float64) {
 	record := testEncounterRecord(CombatFlowLocalOutgoing, amount, seconds)
-	record.VehicleKind = vehicleKindMotorcycle
+	record.VehicleKind = VehicleKindMotorcycle
 	statistics.addCombatEvent(record)
 }
 
@@ -106,12 +106,12 @@ func pointDPS(t *testing.T, point TimelinePoint) float64 {
 
 func TestTimelineOneSecondIntervalsZeroGapsAndFinalPartial(t *testing.T) {
 	statistics := NewDamageStatistics()
-	statistics.observeBattleState(true, encounterAt(10), 1)
+	statistics.ObserveBattleState(true, encounterAt(10), 1)
 	roleOutgoing(statistics, 1102, 100, 10.2)
 	roleOutgoing(statistics, 1102, 50, 10.9) // same second
 	roleOutgoing(statistics, 1102, 30, 11.0) // exactly on a boundary: the next interval
 	roleOutgoing(statistics, 1102, 70, 13.3)
-	statistics.observeBattleState(false, encounterAt(13.4), 1)
+	statistics.ObserveBattleState(false, encounterAt(13.4), 1)
 	statistics.observeCaptureTime(encounterAt(15))
 
 	encounter := requireOneCompleted(t, statistics.Snapshot())
@@ -139,7 +139,7 @@ func TestTimelineOneSecondIntervalsZeroGapsAndFinalPartial(t *testing.T) {
 
 func TestTimelineSplitsRolesVehicleAndUnassignedLikeTheRoleTotals(t *testing.T) {
 	statistics := NewDamageStatistics()
-	statistics.observeBattleState(true, encounterAt(0), 1)
+	statistics.ObserveBattleState(true, encounterAt(0), 1)
 	roleOutgoing(statistics, 1102, 100, 0.5)
 	roleOutgoing(statistics, 1409, 200, 0.6)
 	summonOutgoing(statistics, 1409, 40, 1.5) // a verified summon is credited to its role
@@ -147,7 +147,7 @@ func TestTimelineSplitsRolesVehicleAndUnassignedLikeTheRoleTotals(t *testing.T) 
 	outgoing(statistics, 25, 3.5) // confirmed local, no role evidence: unassigned
 	statistics.addCombatEvent(testEncounterRecord(CombatFlowUnattributedOutgoing, 999, 1.2))
 	statistics.addCombatEvent(testEncounterRecord(CombatFlowLocalIncoming, 77, 1.3))
-	statistics.observeBattleState(false, encounterAt(5), 1)
+	statistics.ObserveBattleState(false, encounterAt(5), 1)
 	statistics.observeCaptureTime(encounterAt(7))
 
 	encounter := requireOneCompleted(t, statistics.Snapshot())
@@ -193,16 +193,16 @@ func TestTimelineOfAnOpenEncounterAdvancesWithTheCaptureClock(t *testing.T) {
 
 func TestTimelineIgnoresDuplicatesAndKeepsEncountersApart(t *testing.T) {
 	statistics := NewDamageStatistics()
-	statistics.observeBattleState(true, encounterAt(0), 1)
+	statistics.ObserveBattleState(true, encounterAt(0), 1)
 	record := testEncounterRecord(CombatFlowLocalOutgoing, 500, 0.5)
 	statistics.addCombatEvent(record)
 	statistics.addCombatEvent(record) // a repeated response
-	statistics.observeBattleState(false, encounterAt(2), 1)
+	statistics.ObserveBattleState(false, encounterAt(2), 1)
 	statistics.observeCaptureTime(encounterAt(5))
-	statistics.observeBattleState(true, encounterAt(10), 1)
+	statistics.ObserveBattleState(true, encounterAt(10), 1)
 	outgoing(statistics, 80, 10.5)
 
-	all := statistics.encounterTimelines()
+	all := statistics.EncounterTimelines()
 	if len(all) != 2 || all[0].DamageDealt != 500 || all[1].DamageDealt != 80 || all[0].EncounterID == all[1].EncounterID || !all[0].Final || all[1].Final {
 		t.Fatalf("timelines = %+v", all)
 	}
@@ -215,7 +215,7 @@ func TestTimelineIgnoresDuplicatesAndKeepsEncountersApart(t *testing.T) {
 	if focus := timelineNow(statistics, 12); focus != nil {
 		t.Fatalf("a reset interval kept a timeline: %+v", focus)
 	}
-	statistics.observeBattleState(true, encounterAt(13), 1)
+	statistics.ObserveBattleState(true, encounterAt(13), 1)
 	outgoing(statistics, 9, 13.2)
 	if focus := timelineNow(statistics, 14); focus == nil || focus.DamageDealt != 9 || focus.EncounterID == all[1].EncounterID {
 		t.Fatalf("timeline after reset = %+v", focus)
@@ -224,11 +224,11 @@ func TestTimelineIgnoresDuplicatesAndKeepsEncountersApart(t *testing.T) {
 
 func TestTimelineEndsWithAProtocolSessionChange(t *testing.T) {
 	statistics := NewDamageStatistics()
-	statistics.observeBattleState(true, encounterAt(0), 1)
+	statistics.ObserveBattleState(true, encounterAt(0), 1)
 	outgoing(statistics, 100, 1.5)
 	statistics.observeSessionChange(encounterAt(3.25))
 	encounter := requireOneCompleted(t, statistics.Snapshot())
-	timeline := statistics.encounterTimelines()[0]
+	timeline := statistics.EncounterTimelines()[0]
 	requireTimelineConservation(t, timeline, encounter)
 	if !timeline.Final || len(timeline.Points) != 4 || timeline.Points[3].State != TimelinePointPartial {
 		t.Fatalf("interrupted timeline = %+v", timeline)
@@ -237,13 +237,13 @@ func TestTimelineEndsWithAProtocolSessionChange(t *testing.T) {
 
 func TestTimelineAbsorbsAStartMovedBackWithoutLosingDamage(t *testing.T) {
 	statistics := NewDamageStatistics()
-	statistics.observeBattleState(true, encounterAt(10), 1)
+	statistics.ObserveBattleState(true, encounterAt(10), 1)
 	outgoing(statistics, 100, 10.5)
 	outgoing(statistics, 60, 9.4) // a late response observed shortly before the enter signal moves the start back
-	statistics.observeBattleState(false, encounterAt(12), 1)
+	statistics.ObserveBattleState(false, encounterAt(12), 1)
 	statistics.observeCaptureTime(encounterAt(14))
 	encounter := requireOneCompleted(t, statistics.Snapshot())
-	timeline := statistics.encounterTimelines()[0]
+	timeline := statistics.EncounterTimelines()[0]
 	requireTimelineConservation(t, timeline, encounter)
 	if timeline.Points[0].State != TimelinePointPartial || timeline.Points[0].Damage != 60 || math.Abs(timeline.Points[0].DurationSeconds-0.6) > 1e-9 {
 		t.Fatalf("first point after a moved start = %+v", timeline.Points[0])
@@ -252,7 +252,7 @@ func TestTimelineAbsorbsAStartMovedBackWithoutLosingDamage(t *testing.T) {
 
 func TestTimelineLongEncounterStaysBoundedAndExact(t *testing.T) {
 	statistics := NewDamageStatistics()
-	statistics.observeBattleState(true, encounterAt(0), 1)
+	statistics.ObserveBattleState(true, encounterAt(0), 1)
 	seconds := maxTimelineBuckets + 50
 	var total int64
 	for i := 0; i < seconds; i++ {
@@ -260,10 +260,10 @@ func TestTimelineLongEncounterStaysBoundedAndExact(t *testing.T) {
 		roleOutgoing(statistics, 1102, amount, float64(i)+0.5)
 		total += amount
 	}
-	statistics.observeBattleState(false, encounterAt(float64(seconds)), 1)
+	statistics.ObserveBattleState(false, encounterAt(float64(seconds)), 1)
 	statistics.observeCaptureTime(encounterAt(float64(seconds) + 2))
 	encounter := requireOneCompleted(t, statistics.Snapshot())
-	full := statistics.encounterTimelines()[0]
+	full := statistics.EncounterTimelines()[0]
 	requireTimelineConservation(t, full, encounter)
 	if full.IntervalSeconds != 2 || full.DamageDealt != total {
 		t.Fatalf("long timeline interval %.0f s, damage %d of %d", full.IntervalSeconds, full.DamageDealt, total)
@@ -277,11 +277,11 @@ func TestTimelineLongEncounterStaysBoundedAndExact(t *testing.T) {
 
 func TestTimelineDisplayBoundUsesRoundExactIntervals(t *testing.T) {
 	statistics := NewDamageStatistics()
-	statistics.observeBattleState(true, encounterAt(0), 1)
+	statistics.ObserveBattleState(true, encounterAt(0), 1)
 	for i := 0; i < 600; i++ {
 		roleOutgoing(statistics, 1102, 10, float64(i)+0.25)
 	}
-	statistics.observeBattleState(false, encounterAt(600), 1)
+	statistics.ObserveBattleState(false, encounterAt(600), 1)
 	statistics.observeCaptureTime(encounterAt(602))
 	encounter := requireOneCompleted(t, statistics.Snapshot())
 	view := statistics.TimelineAt(CaptureQueryTime{}, 120)
@@ -315,16 +315,16 @@ func TestTimelineIsTheSameForEveryArrivalPacing(t *testing.T) {
 	build := func(queries bool) []EncounterTimelineSnapshot {
 		encounterTestRPC = 1000
 		statistics := NewDamageStatistics()
-		statistics.observeBattleState(true, encounterAt(0), 1)
+		statistics.ObserveBattleState(true, encounterAt(0), 1)
 		for i := 0; i < 40; i++ {
 			roleOutgoing(statistics, uint64(1102+i%3), int64(10+i), float64(i)*0.37)
 			if queries {
 				_ = timelineNow(statistics, float64(i)*0.37+0.1)
 			}
 		}
-		statistics.observeBattleState(false, encounterAt(16), 1)
+		statistics.ObserveBattleState(false, encounterAt(16), 1)
 		statistics.observeCaptureTime(encounterAt(20))
-		return statistics.encounterTimelines()
+		return statistics.EncounterTimelines()
 	}
 	a, b := build(false), build(true)
 	if left, right := timelineText(stripTimelineIDs(a)), timelineText(stripTimelineIDs(b)); left != right {

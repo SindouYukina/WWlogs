@@ -2,7 +2,6 @@ package capture
 
 import (
 	"encoding/binary"
-	"encoding/json"
 	"fmt"
 	"math"
 )
@@ -24,82 +23,82 @@ type combatCommonContext struct {
 
 func decodeCombatCommon(body []byte) (combatCommonContext, error) {
 	var common combatCommonContext
-	fields, err := parseProtoFields(body)
+	fields, err := ParseProtoFields(body)
 	if err != nil {
 		return common, err
 	}
 	for _, field := range fields {
-		if field.number == fieldCombatCommonTimeStamp && field.wire == 5 && len(field.data) == 4 {
-			value := math.Float32frombits(binary.LittleEndian.Uint32(field.data))
+		if field.Number == fieldCombatCommonTimeStamp && field.Wire == 5 && len(field.Data) == 4 {
+			value := math.Float32frombits(binary.LittleEndian.Uint32(field.Data))
 			common.timeStamp = &value
 			continue
 		}
-		if field.wire != 0 {
+		if field.Wire != 0 {
 			continue
 		}
-		value := field.value
-		switch field.number {
-		case fieldCombatCommonPreMessageID:
+		value := field.Value
+		switch field.Number {
+		case FieldCombatCommonPreMessageID:
 			common.preMessageID = &value
-		case fieldCombatCommonMessageID:
+		case FieldCombatCommonMessageID:
 			common.messageID = &value
 		case fieldCombatCommonOriginator:
 			common.originatorID = &value
-		case fieldCombatCommonEntityID:
+		case FieldCombatCommonEntityID:
 			common.entityID = &value
 		}
 	}
 	return common, nil
 }
 
-// handleClientEffectPushes decodes the effect reports of one outbound CombatSendPackRequest.
-func (p *processor) handleClientEffectPushes(frame gameFrame, body []byte) error {
-	outer, err := parseProtoFields(body)
+// HandleClientEffectPushes decodes the effect reports of one outbound CombatSendPackRequest.
+func (p *Processor) HandleClientEffectPushes(frame GameFrame, body []byte) error {
+	outer, err := ParseProtoFields(body)
 	if err != nil {
 		return fmt.Errorf("parse CombatSendPackRequest: %w", err)
 	}
 	for _, dataField := range outer {
-		if dataField.number != fieldCombatSendPackRequestData || dataField.wire != 2 {
+		if dataField.Number != FieldCombatSendPackRequestData || dataField.Wire != 2 {
 			continue
 		}
-		dataFields, err := parseProtoFields(dataField.data)
+		dataFields, err := ParseProtoFields(dataField.Data)
 		if err != nil {
 			return fmt.Errorf("parse CombatSendPackRequest.Data item: %w", err)
 		}
 		for _, pushField := range dataFields {
-			if pushField.number != fieldCombatSendDataPush || pushField.wire != 2 {
+			if pushField.Number != FieldCombatSendDataPush || pushField.Wire != 2 {
 				continue
 			}
-			pushes, err := parseProtoFields(pushField.data)
+			pushes, err := ParseProtoFields(pushField.Data)
 			if err != nil {
 				return fmt.Errorf("parse CombatSendData.Push: %w", err)
 			}
 			var common combatCommonContext
 			for _, push := range pushes {
-				if push.number == fieldCombatPushDataCombatCommon && push.wire == 2 {
-					if common, err = decodeCombatCommon(push.data); err != nil {
+				if push.Number == FieldCombatPushDataCombatCommon && push.Wire == 2 {
+					if common, err = decodeCombatCommon(push.Data); err != nil {
 						return fmt.Errorf("parse CombatCommon: %w", err)
 					}
 				}
 			}
 			for _, push := range pushes {
-				if push.wire != 2 {
+				if push.Wire != 2 {
 					continue
 				}
-				if push.number == fieldCombatPushDataRTimeStopPush {
+				if push.Number == fieldCombatPushDataRTimeStopPush {
 					// A time stop of the local client: it moves the effect clock, not an effect.
-					if err := p.observeRTimeStopPush(frame, push.data, common); err != nil {
+					if err := p.observeRTimeStopPush(frame, push.Data, common); err != nil {
 						return err
 					}
 					continue
 				}
-				switch push.number {
-				case fieldCombatPushDataApplyGameplayEffectPush, fieldCombatPushDataRemoveGameplayEffectPush, fieldCombatPushDataBuffStackCountPush,
+				switch push.Number {
+				case FieldCombatPushDataApplyGameplayEffectPush, FieldCombatPushDataRemoveGameplayEffectPush, FieldCombatPushDataBuffStackCountPush,
 					fieldCombatPushDataApplyBuffS2CResponsePush, fieldCombatPushDataRemoveBuffByIDS2CResponsePush:
 				default:
 					continue
 				}
-				row, err := decodeClientEffectPush(frame, push.number, push.data, common)
+				row, err := decodeClientEffectPush(frame, push.Number, push.Data, common)
 				if err != nil {
 					return err
 				}
@@ -112,27 +111,26 @@ func (p *processor) handleClientEffectPushes(frame gameFrame, body []byte) error
 	return nil
 }
 
-func decodeClientEffectPush(frame gameFrame, fieldNumber uint64, body []byte, common combatCommonContext) (buffLifecycleAuditRow, error) {
+func decodeClientEffectPush(frame GameFrame, fieldNumber uint64, body []byte, common combatCommonContext) (BuffLifecycleAuditRow, error) {
 	number := fieldNumber
-	row := buffLifecycleAuditRow{
-		SchemaVersion: buffLifecycleSchemaVersion, EventType: "BUFF_LIFECYCLE", MessageID: frame.commandID,
-		Timestamp: frame.timestamp, CommandID: frame.commandID, Direction: frame.direction,
+	row := BuffLifecycleAuditRow{
+		SchemaVersion: BuffLifecycleSchemaVersion, EventType: "BUFF_LIFECYCLE", MessageID: frame.CommandID,
+		Timestamp: frame.Timestamp, CommandID: frame.CommandID, Direction: frame.Direction,
 		InnerMessageFieldNumber: &number,
-		MessagePath:             fmt.Sprintf("CombatSendPackRequest.field%d(CombatSendData[]).field%d(CombatPushData).field%d", fieldCombatSendPackRequestData, fieldCombatSendDataPush, fieldNumber),
-		EventTypeStatus:         resolutionCorrelated, TargetStatus: resolutionUnknown, InstigatorStatus: resolutionUnknown,
-		InstigatorCharacterCandidateStatus: resolutionUnknown, InstigatorCharacterCandidateNameStatus: resolutionUnknown,
-		ProviderStatus: resolutionUnknown, ProviderNameStatus: resolutionUnknown,
-		SchemaBasis:          protocolSchemaBasis(),
+		EventTypeStatus:         ResolutionCorrelated, TargetStatus: ResolutionUnknown, InstigatorStatus: ResolutionUnknown,
+		InstigatorCharacterCandidateStatus: ResolutionUnknown, InstigatorCharacterCandidateNameStatus: ResolutionUnknown,
+		ProviderStatus: ResolutionUnknown, ProviderNameStatus: ResolutionUnknown,
+		SchemaBasis:          ProtocolSchemaBasis(),
 		EvidenceSource:       EffectEvidenceClientReport,
 		CombatCommonEntityID: common.entityID, CombatCommonOriginator: common.originatorID, CombatCommonMessageID: common.messageID,
 		CombatCommonPreMessageID: common.preMessageID, ClientTimeStamp: common.timeStamp,
 	}
 	switch fieldNumber {
-	case fieldCombatPushDataApplyGameplayEffectPush:
+	case FieldCombatPushDataApplyGameplayEffectPush:
 		row.MessageName, row.EventKind = "ApplyGameplayEffectPush", "CLIENT_EFFECT_APPLY_REPORT"
-	case fieldCombatPushDataRemoveGameplayEffectPush:
+	case FieldCombatPushDataRemoveGameplayEffectPush:
 		row.MessageName, row.EventKind = "RemoveGameplayEffectPush", "CLIENT_EFFECT_REMOVE_REPORT"
-	case fieldCombatPushDataBuffStackCountPush:
+	case FieldCombatPushDataBuffStackCountPush:
 		row.MessageName, row.EventKind = "BuffStackCountPush", "CLIENT_EFFECT_STACK_REPORT"
 	case fieldCombatPushDataApplyBuffS2CResponsePush:
 		row.MessageName, row.EventKind = "ApplyBuffS2cResponsePush", "BUFF_APPLY_REQUEST_RESPONSE"
@@ -141,7 +139,7 @@ func decodeClientEffectPush(frame gameFrame, fieldNumber uint64, body []byte, co
 	default:
 		return row, fmt.Errorf("unsupported client effect push field %d", fieldNumber)
 	}
-	fields, err := parseProtoFields(body)
+	fields, err := ParseProtoFields(body)
 	if err != nil {
 		return row, fmt.Errorf("parse %s: %w", row.MessageName, err)
 	}
@@ -151,23 +149,23 @@ func decodeClientEffectPush(frame gameFrame, fieldNumber uint64, body []byte, co
 		var floatTarget **float32
 		var stringTarget *string
 		switch fieldNumber {
-		case fieldCombatPushDataApplyGameplayEffectPush:
-			switch field.number {
-			case fieldApplyGameplayEffectPushReason:
+		case FieldCombatPushDataApplyGameplayEffectPush:
+			switch field.Number {
+			case FieldApplyGameplayEffectPushReason:
 				stringTarget = &row.ClientReasonRaw
-			case fieldApplyGameplayEffectPushHandle:
+			case FieldApplyGameplayEffectPushHandle:
 				uintTarget = &row.HandleID
-			case fieldApplyGameplayEffectPushStackCount:
+			case FieldApplyGameplayEffectPushStackCount:
 				uintTarget = &row.StackCount
-			case fieldApplyGameplayEffectPushID:
+			case FieldApplyGameplayEffectPushID:
 				uintTarget = &row.ID
 			case fieldApplyGameplayEffectPushIsActive:
 				boolTarget = &row.IsActive
 			case fieldApplyGameplayEffectPushLevel:
 				uintTarget = &row.Level
-			case fieldApplyGameplayEffectPushDuration:
+			case FieldApplyGameplayEffectPushDuration:
 				floatTarget = &row.DurationSeconds
-			case fieldApplyGameplayEffectPushInstigatorID:
+			case FieldApplyGameplayEffectPushInstigatorID:
 				uintTarget = &row.InstigatorID
 			case fieldApplyGameplayEffectPushConfBuffID:
 				uintTarget = &row.ConfBuffID
@@ -176,40 +174,40 @@ func decodeClientEffectPush(frame gameFrame, fieldNumber uint64, body []byte, co
 			case fieldApplyGameplayEffectPushServerID:
 				uintTarget = &row.ServerID
 			}
-		case fieldCombatPushDataRemoveGameplayEffectPush:
-			switch field.number {
+		case FieldCombatPushDataRemoveGameplayEffectPush:
+			switch field.Number {
 			case fieldRemoveGameplayEffectPushReason:
 				stringTarget = &row.ClientReasonRaw
 			case fieldRemoveGameplayEffectPushInstigatorID:
 				uintTarget = &row.InstigatorID
-			case fieldRemoveGameplayEffectPushIsPrematureRemoval:
+			case FieldRemoveGameplayEffectPushIsPrematureRemoval:
 				boolTarget = &row.IsPrematureRemoval
-			case fieldRemoveGameplayEffectPushHandle:
+			case FieldRemoveGameplayEffectPushHandle:
 				uintTarget = &row.HandleID
-			case fieldRemoveGameplayEffectPushEntityID:
+			case FieldRemoveGameplayEffectPushEntityID:
 				uintTarget = &row.TargetEntityID
 			}
-		case fieldCombatPushDataBuffStackCountPush:
-			switch field.number {
-			case fieldBuffStackCountPushHandleID:
+		case FieldCombatPushDataBuffStackCountPush:
+			switch field.Number {
+			case FieldBuffStackCountPushHandleID:
 				uintTarget = &row.HandleID
 			case fieldBuffStackCountPushReason:
 				stringTarget = &row.ClientReasonRaw
-			case fieldBuffStackCountPushNotRefreshDuration:
+			case FieldBuffStackCountPushNotRefreshDuration:
 				boolTarget = &row.NotRefreshDuration
 			case fieldBuffStackCountPushNotRefreshPeriod:
 				boolTarget = &row.NotRefreshPeriod
 			case fieldBuffStackCountPushIsPrematureRemoval:
 				boolTarget = &row.IsPrematureRemoval
-			case fieldBuffStackCountPushInstigatorID:
+			case FieldBuffStackCountPushInstigatorID:
 				uintTarget = &row.InstigatorID
-			case fieldBuffStackCountPushDuration:
+			case FieldBuffStackCountPushDuration:
 				floatTarget = &row.DurationSeconds
-			case fieldBuffStackCountPushNewStackCount:
+			case FieldBuffStackCountPushNewStackCount:
 				uintTarget = &row.StackCount
 			}
 		case fieldCombatPushDataApplyBuffS2CResponsePush:
-			switch field.number {
+			switch field.Number {
 			case fieldApplyBuffS2cResponsePushErrorCode:
 				uintTarget = &row.ErrorCode
 			case fieldApplyBuffS2cResponsePushIsActive:
@@ -218,36 +216,36 @@ func decodeClientEffectPush(frame gameFrame, fieldNumber uint64, body []byte, co
 				uintTarget = &row.HandleID
 			}
 		case fieldCombatPushDataRemoveBuffByIDS2CResponsePush:
-			if field.number == fieldRemoveBuffByIDS2cResponsePushErrorCode {
+			if field.Number == fieldRemoveBuffByIDS2cResponsePushErrorCode {
 				uintTarget = &row.ErrorCode
 			}
 		}
 		switch {
 		case uintTarget != nil:
-			if field.wire != 0 {
-				return row, fmt.Errorf("%s field %d has wire type %d, want varint", row.MessageName, field.number, field.wire)
+			if field.Wire != 0 {
+				return row, fmt.Errorf("%s field %d has wire type %d, want varint", row.MessageName, field.Number, field.Wire)
 			}
-			value := field.value
+			value := field.Value
 			*uintTarget = &value
 		case boolTarget != nil:
-			if field.wire != 0 {
-				return row, fmt.Errorf("%s field %d has wire type %d, want varint bool", row.MessageName, field.number, field.wire)
+			if field.Wire != 0 {
+				return row, fmt.Errorf("%s field %d has wire type %d, want varint bool", row.MessageName, field.Number, field.Wire)
 			}
-			value := field.value != 0
+			value := field.Value != 0
 			*boolTarget = &value
 		case floatTarget != nil:
-			if field.wire != 5 || len(field.data) != 4 {
-				return row, fmt.Errorf("%s field %d has wire type %d, want fixed32 float", row.MessageName, field.number, field.wire)
+			if field.Wire != 5 || len(field.Data) != 4 {
+				return row, fmt.Errorf("%s field %d has wire type %d, want fixed32 float", row.MessageName, field.Number, field.Wire)
 			}
-			value := math.Float32frombits(binary.LittleEndian.Uint32(field.data))
+			value := math.Float32frombits(binary.LittleEndian.Uint32(field.Data))
 			*floatTarget = &value
 		case stringTarget != nil:
-			if field.wire != 2 {
-				return row, fmt.Errorf("%s field %d has wire type %d, want string", row.MessageName, field.number, field.wire)
+			if field.Wire != 2 {
+				return row, fmt.Errorf("%s field %d has wire type %d, want string", row.MessageName, field.Number, field.Wire)
 			}
-			*stringTarget = string(field.data)
+			*stringTarget = string(field.Data)
 		default:
-			row.UnknownFieldNumbers = append(row.UnknownFieldNumbers, field.number)
+			row.UnknownFieldNumbers = append(row.UnknownFieldNumbers, field.Number)
 		}
 	}
 	if row.InstigatorID != nil {
@@ -257,42 +255,44 @@ func decodeClientEffectPush(frame gameFrame, fieldNumber uint64, body []byte, co
 	if row.TargetEntityID != nil {
 		row.TargetEvidence = "RemoveGameplayEffectPush.EntityId differs from CombatCommon.EntityId; the holder is not established"
 		if common.entityID != nil && *common.entityID == *row.TargetEntityID {
-			row.TargetStatus = resolutionCorrelated
+			row.TargetStatus = ResolutionCorrelated
 			row.TargetEvidence = "RemoveGameplayEffectPush.EntityId matches CombatCommon.EntityId on this push"
 		}
 	}
 	return row, nil
 }
 
-// clientEffectHolder returns the entity that holds the effect a client push reports.
+// ClientEffectHolder returns the entity that holds the effect a client push reports.
 // An apply or stack push names no target of its own, so the holder is CombatCommon.EntityId;
 // a remove push also carries EntityId, which must agree with it.
-func clientEffectHolder(row buffLifecycleAuditRow) (uint64, bool) {
+func ClientEffectHolder(row BuffLifecycleAuditRow) (uint64, bool) {
 	if row.CombatCommonEntityID == nil || *row.CombatCommonEntityID == 0 {
 		return 0, false
 	}
-	if row.TargetEntityID != nil && row.TargetStatus != resolutionCorrelated {
+	if row.TargetEntityID != nil && row.TargetStatus != ResolutionCorrelated {
 		return 0, false
 	}
 	return *row.CombatCommonEntityID, true
 }
 
-func (p *processor) handleClientEffectRow(row buffLifecycleAuditRow) error {
-	row.SessionNumber = p.sessionNumber
-	_, hasHolder := clientEffectHolder(row)
+func (p *Processor) handleClientEffectRow(row BuffLifecycleAuditRow) error {
+	row.SessionNumber = p.SessionNumber
+	_, hasHolder := ClientEffectHolder(row)
 	p.linkLifecycleInstigator(&row, row.EventKind == "CLIENT_EFFECT_APPLY_REPORT" && hasHolder,
 		"the holder is CombatCommon.EntityId of this client apply report")
 	p.linkServerBuffRequest(&row)
 	p.linkBuffLifecycleGenericAndHandle(&row)
 	p.linkBuffLifecycleOwners(&row)
-	if p.buffLifecycle != nil {
-		if err := json.NewEncoder(p.buffLifecycle).Encode(row); err != nil {
-			return fmt.Errorf("write Buff lifecycle row: %w", err)
-		}
+	if p.observer != nil {
+		p.observer.WriteBuffLifecycleRow(row)
 	}
 	p.observeEffectLifecycle(row)
-	p.writeStructuredEventJSONL(row)
-	p.writeBuffLifecycleConsole(row)
+	if p.observer != nil {
+		p.observer.WriteStructuredEventJSONL(row)
+	}
+	if p.observer != nil {
+		p.observer.WriteBuffLifecycleConsole(row)
+	}
 	return nil
 }
 
@@ -312,7 +312,7 @@ type serverBuffRequest struct {
 	id   uint64
 }
 
-func (p *processor) rememberServerBuffRequest(row buffLifecycleAuditRow) {
+func (p *Processor) rememberServerBuffRequest(row BuffLifecycleAuditRow) {
 	var id *uint64
 	switch row.EventKind {
 	case "BUFF_APPLY_REQUEST_NOTIFY":
@@ -341,7 +341,7 @@ func (p *processor) rememberServerBuffRequest(row buffLifecycleAuditRow) {
 
 // linkServerBuffRequest ties a client response push to the server request it answers.
 // The pending request is kept so that a response split over several pushes links each one.
-func (p *processor) linkServerBuffRequest(row *buffLifecycleAuditRow) {
+func (p *Processor) linkServerBuffRequest(row *BuffLifecycleAuditRow) {
 	var wantKind string
 	switch row.EventKind {
 	case "BUFF_APPLY_REQUEST_RESPONSE":
@@ -351,7 +351,7 @@ func (p *processor) linkServerBuffRequest(row *buffLifecycleAuditRow) {
 	default:
 		return
 	}
-	row.RequestLinkStatus = resolutionUnknown
+	row.RequestLinkStatus = ResolutionUnknown
 	row.RequestLinkEvidence = "No server request with CombatCommon.MessageId equal to this push's PreMessageId on the same entity was observed"
 	if row.CombatCommonPreMessageID == nil || row.CombatCommonEntityID == nil {
 		row.RequestLinkEvidence = "The response push carries no PreMessageId or EntityId"
@@ -365,7 +365,7 @@ func (p *processor) linkServerBuffRequest(row *buffLifecycleAuditRow) {
 	default:
 		id := request.id
 		row.RequestLinkedID = &id
-		row.RequestLinkStatus = resolutionCorrelated
+		row.RequestLinkStatus = ResolutionCorrelated
 		row.RequestLinkEvidence = "CombatCommon.PreMessageId equals the CombatCommon.MessageId of the server request on the same entity"
 	}
 }

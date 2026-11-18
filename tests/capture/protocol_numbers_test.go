@@ -19,30 +19,6 @@ const (
 	fieldClientBasicInfoScreenWidth  = 16 // Z9n.ljf
 	fieldClientBasicInfoOSVersion    = 20 // Z9n.iyg
 
-	// ClientCurrentRoleReportPush (Xe_)
-	fieldClientCurrentRoleReportPushCurrentRoleID = 4 // Xe_.YHn
-
-	// CombatPushData (CombatMessage.OFs)
-	fieldCombatPushDataEndSkillPush = 12 // CombatMessage.OFs.ne_
-
-	// DamageExecuteResponse (lis)
-	fieldDamageExecuteResponseIsCrit = 3 // lis.sAs
-
-	// DependenceComponentPb (iI_)
-	fieldDependenceComponentPbDependenceEntityIDs = 1 // iI_.MI_
-
-	// EndSkillPush (ne_)
-	fieldEndSkillPushUseSkillInfo = 10 // ne_.dVn
-
-	// EntityAddNotify (res)
-	fieldEntityAddNotifyIsAdd = 9 // res.lWn
-
-	// EntityComponentPb (m3s)
-	fieldEntityComponentPbDependenceComponentPb = 50 // m3s.iI_
-
-	// FightBuffEffectContext (u3s)
-	fieldFightBuffEffectContextLeftCooldown = 1 // u3s.BTs
-
 	// LoginRequest (fss)
 	fieldLoginRequestDevLoginCheckData         = 9  // fss.e7n
 	fieldLoginRequestPublicResourceVersionInfo = 10 // fss.c7n
@@ -59,8 +35,4 @@ const (
 
 	// SceneRoleInformation (KFs)
 	fieldSceneRoleInformationOnStageOutOfControl = 3 // KFs.eT_
-
-	// UseSkillInformation (W3s)
-	fieldUseSkillInformationSkillID   = 3 // W3s.r5n
-	fieldUseSkillInformationTimeStamp = 7 // W3s.J8n
 )

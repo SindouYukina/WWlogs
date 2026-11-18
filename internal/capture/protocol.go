@@ -12,17 +12,17 @@ import (
 	"time"
 )
 
-type gameFrame struct {
-	direction   string
-	messageType byte
-	sequence    uint32
-	token       uint16
-	// commandID is the command number on the wire, which the decoders read as it is (protocol_numbers.go).
-	commandID        uint16
-	compressed       bool
-	compressedLength uint32
-	body             []byte
-	timestamp        time.Time
+type GameFrame struct {
+	Direction   string
+	MessageType byte
+	Sequence    uint32
+	Token       uint16
+	// CommandID is the command number on the wire, which the decoders read as it is (protocol_numbers.go).
+	CommandID        uint16
+	Compressed       bool
+	CompressedLength uint32
+	Body             []byte
+	Timestamp        time.Time
 }
 
 type applicationSpan struct {
@@ -30,29 +30,29 @@ type applicationSpan struct {
 	timestamp time.Time
 }
 
-type protoField struct {
-	number uint64
-	wire   uint64
-	value  uint64
-	data   []byte
+type ProtoField struct {
+	Number uint64
+	Wire   uint64
+	Value  uint64
+	Data   []byte
 }
 
-type pendingDamageRequest struct {
-	attackerEntityID    uint64 // DamageExecuteRequest.AttackerEntityId
-	hasAttackerEntityID bool
-	targetEntityID      uint64 // DamageExecuteRequest.TargetEntityId
-	hasTargetEntityID   bool
-	partID              int32 // DamageExecuteRequest.PartId
-	hasPartID           bool
+type PendingDamageRequest struct {
+	AttackerEntityID    uint64 // DamageExecuteRequest.AttackerEntityId
+	HasAttackerEntityID bool
+	TargetEntityID      uint64 // DamageExecuteRequest.TargetEntityId
+	HasTargetEntityID   bool
+	PartID              int32 // DamageExecuteRequest.PartId
+	HasPartID           bool
 	skillLevel          uint64 // DamageExecuteRequest.SkillLevel
-	skillID             uint64 // DamageContext.SkillId
-	skillMessageID      uint64 // DamageContext.SkillMessageId
-	damageID            uint64 // DamageExecuteRequest.DamageId
-	hasDamageID         bool
-	damageSourceType    uint64 // DamageContext.SourceType
-	hasDamageSourceType bool
-	bulletID            int64 // DamageContext.BulletId
-	hasBulletID         bool
+	SkillID             uint64 // DamageContext.SkillId
+	SkillMessageID      uint64 // DamageContext.SkillMessageId
+	DamageID            uint64 // DamageExecuteRequest.DamageId
+	HasDamageID         bool
+	DamageSourceType    uint64 // DamageContext.SourceType
+	HasDamageSourceType bool
+	BulletID            int64 // DamageContext.BulletId
+	HasBulletID         bool
 	// requestEpoch is how many times the combat RequestId counter had wrapped in this protocol session when the request
 	// was sent (combatRequestCounter); with the RequestId it names the result (extendedRequestID).
 	requestEpoch uint64
@@ -126,71 +126,71 @@ func responseDigest(payload []byte) uint64 {
 	return hash
 }
 
-type pendingActiveRequest struct {
-	entityID    uint64
-	hasEntityID bool
+type PendingActiveRequest struct {
+	EntityID    uint64
+	HasEntityID bool
 }
 
 type processorStats struct {
-	handshakeFrames                  int
-	handshakeOK                      int
-	handshakeErrors                  int
-	damageRequests                   int
-	candidateResponses               int
+	HandshakeFrames                  int
+	HandshakeOK                      int
+	HandshakeErrors                  int
+	DamageRequests                   int
+	CandidateResponses               int
 	standaloneNotifyResponses        int // of candidateResponses, those a standalone CombatReceivePackNotify carried
-	printed                          int
-	unpairedResponses                int
-	invalidResponses                 int
-	duplicateResponses               int // a further copy of a response already seen, byte for byte
+	Printed                          int
+	UnpairedResponses                int
+	InvalidResponses                 int
+	DuplicateResponses               int // a further copy of a response already seen, byte for byte
 	conflictingResponses             int // a further response with the RequestId of one already seen but other content
 	reusedRequestIDs                 int // a completed RequestId taken by a later request after the counter wrapped
 	timeStopPushesWithoutState       int // RTimeStopPush that stated neither a duration nor a dilation
 	supersededRequests               int // an unanswered request whose RequestId a later request took (never answered)
-	missingAttackerEntityID          int
-	evictedPending                   int
-	entityAdds                       int
-	entityRemoves                    int
-	entityActiveRequests             int
-	observedSourceEntity             int
-	observedTargetEntity             int
+	MissingAttackerEntityID          int
+	EvictedPending                   int
+	EntityAdds                       int
+	EntityRemoves                    int
+	EntityActiveRequests             int
+	ObservedSourceEntity             int
+	ObservedTargetEntity             int
 	characterResolved                int
-	verifiedCharacters               int
-	correlatedCharacters             int
-	monsterResolved                  int
-	skillResolved                    int
-	unknownDamageEvents              int
-	damageCandidateEvents            int
-	damageCandidateResult            int64
-	healingCandidateEvents           int
-	otherCandidateEvents             int
-	otherCandidateResult             int64
-	unclassifiedEvents               int
-	unclassifiedResult               int64
-	observedBuffEvents               int
-	verifiedBuffEvents               int
-	buffSnapshotResponses            int
-	activeResponseIdentityComponents int
-	activeResponseSummonerComponents int
-	activeResponseMonsterComponents  int
-	activeResponseFollowerComponents int
-	decryptErrors                    int
-	compressedErrors                 int
-	parseErrors                      int
+	VerifiedCharacters               int
+	CorrelatedCharacters             int
+	MonsterResolved                  int
+	SkillResolved                    int
+	UnknownDamageEvents              int
+	DamageCandidateEvents            int
+	DamageCandidateResult            int64
+	HealingCandidateEvents           int
+	OtherCandidateEvents             int
+	OtherCandidateResult             int64
+	UnclassifiedEvents               int
+	UnclassifiedResult               int64
+	ObservedBuffEvents               int
+	VerifiedBuffEvents               int
+	BuffSnapshotResponses            int
+	ActiveResponseIdentityComponents int
+	ActiveResponseSummonerComponents int
+	ActiveResponseMonsterComponents  int
+	ActiveResponseFollowerComponents int
+	DecryptErrors                    int
+	CompressedErrors                 int
+	ParseErrors                      int
 	otherFrameDirections             int
-	matchedCombatResultAbs           int64
-	decodedMatchedEvents             int
-	decodedCombatResultAbs           int64
-	playerRelatedEvents              int
-	includedUnresolvedRelations      int
-	suppressedUnrelatedEvents        int
-	playerRoleReports                int
-	playerRoleReportParseErrors      int
-	healingCandidateResult           int64
+	MatchedCombatResultAbs           int64
+	DecodedMatchedEvents             int
+	DecodedCombatResultAbs           int64
+	PlayerRelatedEvents              int
+	IncludedUnresolvedRelations      int
+	SuppressedUnrelatedEvents        int
+	PlayerRoleReports                int
+	PlayerRoleReportParseErrors      int
+	HealingCandidateResult           int64
 }
 
-type processor struct {
-	// notifyStats counts DamageExecuteNotify results; frameNotifyOrdinal numbers them within the frame being read.
-	notifyStats        damageNotifyStats
+type Processor struct {
+	// NotifyStats counts DamageExecuteNotify results; frameNotifyOrdinal numbers them within the frame being read.
+	NotifyStats        DamageNotifyStats
 	frameNotifyOrdinal int
 	// statusTriggers remembers the InvokePeriod Buffs and instant status Buffs the server applied recently, for the
 	// negative-status results that follow them (negative_status_credit.go).
@@ -199,137 +199,80 @@ type processor struct {
 	// status instances the effect tracker leaves out (negative_status_causes.go).
 	statusCauses     statusCauseLog
 	excludedStatuses excludedStatusIndex
-	// serverSequence follows the sequence of the server's frames, so a missing frame is known (negative_status_credit.go).
-	serverSequence    serverSequenceState
-	rsa               *staticRSA
-	session           []byte
+	// ServerSequence follows the sequence of the server's frames, so a missing frame is known (negative_status_credit.go).
+	ServerSequence    serverSequenceState
+	RSA               *StaticRSA
+	Session           []byte
 	sessionGeneration uint64
 	sessionHealth     sessionHealthState
-	// protocol is the wire protocol of the current protocol session: decoded only once it reports the current game version.
-	protocol protocolSession
+	// Protocol is the wire protocol of the current protocol session: decoded only once it reports the current game version.
+	Protocol ProtocolSession
 	// protocolSessionStartedAt is the capture time of the latest handshake; retiredKCP holds the conversations of the
 	// connections it superseded (retireSupersededStreams).
-	protocolSessionStartedAt  time.Time
-	retiredKCP                retiredConversations
-	pending                   map[uint64]pendingDamageRequest
-	pendingOrder              []pendingRef
-	pendingHead               int
-	pendingSequence           uint64
-	consumed                  map[uint64]consumedResponse
-	consumedOrder             []consumedRef
-	consumedSequence          uint64
-	requestCounter            combatRequestCounter
-	entities                  *entityResolver
-	sourceRoles               *sourceRoleResolver
-	playerRelevance           *playerRelevanceResolver
-	masters                   *gameMaster
-	research                  bool
-	encounterSummaries        map[encounterSummaryKey]*encounterSummary
-	pendingSummaryCredits     map[uint64][]pendingSummaryCredit
-	pendingSummaryCreditCount int
-	currentFrameTime          time.Time
-	viewClockLead             time.Duration // how far past currentFrameTime the Effects view reads countdowns; only a live session sets it
-	viewClockStalled          bool          // a live session has seen no game frame for LiveFrameSilenceLimit
-	clientVersion             *clientVersionReport
-	stdout                    io.Writer
-	diagnostic                io.Writer
-	showEffectEvents          bool
-	showAllEffectEvents       bool
-	audit                     io.Writer
-	encounterSummary          diagWriter
-	combatEventsJSONL         diagWriter
-	buffSnapshots             diagWriter
-	buffLifecycle             diagWriter
-	combatNotifyAudit         diagWriter
-	frameArchive              diagWriter
-	frameOrdinal              uint64
-	frameArchiveErrors        int
-	protocolSchema            *protocolSchema
-	schemaDecodeOut           diagWriter
-	schemaDecodeErrors        int
-	schemaDecodeSkipped       int
-	partRefOut                diagWriter
-	partRefErrors             int
-	roleConfigOut             diagWriter
-	roleConfigErrors          int
-	eventOrderFrame           uint64
-	auxEventOrders            map[string]*auxEventOrder
-	eventOrder                int
-	hpStateOut                diagWriter
-	damagePushOut             diagWriter
-	clientPushOut             diagWriter
-	bulletRefOut              diagWriter
-	bulletRefErrors           int
-	shieldRefOut              diagWriter
-	shieldRefErrors           int
-	skillRefOut               diagWriter
-	skillRefErrors            int
-	bulletHandles             map[bulletHandleKey]bulletHandleEntry
-	buffHandles               map[buffHandleKey]buffHandleEntry
-	buffHandleOrder           []buffHandleKey
-	serverBuffRequests        map[serverBuffRequestKey]serverBuffRequest
-	serverBuffRequestOrder    []serverBuffRequestKey
-	bulletHandleOrder         []bulletHandleKey
-	combatActionRequests      map[combatActionRequestKey]combatActionRequest
-	combatActionOrder         []combatActionRequestKey
-	flowTime                  int64
-	hasFlowTime               bool
-	flowTimeFrame             uint64
-	timerObservations         []timerObservation
-	summonOwnerOut            diagWriter
-	summonOwnerErrors         int
-	clientPushErrors          int
-	activeRoleID              int64
-	hasActiveRole             bool
-	damagePushErrors          int
-	hpStateErrors             int
-	combatStateOut            diagWriter
-	combatStateErrors         int
-	buffIntervals             []*buffInterval
-	buffIntervalOpen          map[overlapKey]*buffInterval
-	buffDuplicateApplies      int
-	buffUnmatchedRemoves      int
-	buffIntervalOverflow      int
-	buffOverlapSkipped        int
-	damageOverlap             []damageOverlapRecord
-	damageOverlapOverflow     int
-	activeRequests            map[uint16]pendingActiveRequest
-	stats                     processorStats
-	damageStatistics          *DamageStatistics
-	effects                   *EffectTracker
-	census                    *commandCensus
-	sessionNumber             int
-	encounterOut              diagWriter
-	// scenePlayerIDs lists the players of the current scene; it anchors battle-state signals before the
+	protocolSessionStartedAt time.Time
+	retiredKCP               retiredConversations
+	Pending                  map[uint64]PendingDamageRequest
+	pendingOrder             []pendingRef
+	pendingHead              int
+	pendingSequence          uint64
+	consumed                 map[uint64]consumedResponse
+	consumedOrder            []consumedRef
+	consumedSequence         uint64
+	requestCounter           combatRequestCounter
+	Entities                 *EntityResolver
+	SourceRoles              *sourceRoleResolver
+	PlayerRelevance          *playerRelevanceResolver
+	Masters                  *GameMaster
+	CurrentFrameTime         time.Time
+	ViewClockLead            time.Duration // how far past currentFrameTime the Effects view reads countdowns; only a live session sets it
+	ViewClockStalled         bool          // a live session has seen no game frame for LiveFrameSilenceLimit
+	ClientVersion            *ClientVersionReport
+	// Diagnostic is the operational diagnostic stream (parse errors, session key readiness) in every build.
+	Diagnostic             io.Writer
+	BuffHandles            map[BuffHandleKey]buffHandleEntry
+	buffHandleOrder        []BuffHandleKey
+	serverBuffRequests     map[serverBuffRequestKey]serverBuffRequest
+	serverBuffRequestOrder []serverBuffRequestKey
+	activeRequests         map[uint16]PendingActiveRequest
+	Stats                  processorStats
+	DamageStatistics       *DamageStatistics
+	Effects                *EffectTracker
+	// Census is the Development command census (-command-census-out), nil in every other run; the frame parser and
+	// the frame dispatcher report what they read to it.
+	Census        CommandCensusObserver
+	SessionNumber int
+	// ScenePlayerIDs lists the players of the current scene; it anchors battle-state signals before the
 	// explicit local-player identity does.
-	scenePlayerIDs []uint64
+	ScenePlayerIDs []uint64
 	// kcpStreams is the capture loop's KCP stream table, read for transport health snapshots.
-	kcpStreams   map[string]*stream
+	kcpStreams   map[string]*Stream
 	transport    transportMonitor
-	context      contextValidity
-	captureLayer captureLayerState
+	Context      contextValidity
+	CaptureLayer captureLayerState
 	pairing      rpcPairingState
-	// intervalPerProtocolSession starts a new statistics interval at every game handshake after the first, so one
+	// IntervalPerProtocolSession starts a new statistics interval at every game handshake after the first, so one
 	// interval never mixes protocol sessions. Application hosts set it; the CLI keeps one interval per capture.
-	intervalPerProtocolSession bool
+	IntervalPerProtocolSession bool
+
+	// observer receives the observation points (Observe); nil without one, which is every Public processor.
+	observer Observer
 }
 
-func newProcessor(rsaKey *staticRSA, stdout, diagnostic, audit io.Writer) *processor {
+// NewProcessor is a processor that decrypts with rsaKey and writes its operational diagnostics (parse errors, session
+// key readiness) to diagnostic.
+func NewProcessor(rsaKey *StaticRSA, diagnostic io.Writer) *Processor {
 	statistics := NewDamageStatistics()
-	return &processor{
-		rsa:                  rsaKey,
-		pending:              make(map[uint64]pendingDamageRequest),
-		consumed:             make(map[uint64]consumedResponse),
-		activeRequests:       make(map[uint16]pendingActiveRequest),
-		combatActionRequests: make(map[combatActionRequestKey]combatActionRequest),
-		entities:             newEntityResolver(),
-		sourceRoles:          newSourceRoleResolver(),
-		playerRelevance:      newPlayerRelevanceResolver(),
-		damageStatistics:     statistics,
-		effects:              newJournaledEffectTracker(statistics),
-		stdout:               stdout,
-		diagnostic:           diagnostic,
-		audit:                audit,
+	return &Processor{
+		RSA:              rsaKey,
+		Pending:          make(map[uint64]PendingDamageRequest),
+		consumed:         make(map[uint64]consumedResponse),
+		activeRequests:   make(map[uint16]PendingActiveRequest),
+		Entities:         NewEntityResolver(),
+		SourceRoles:      newSourceRoleResolver(),
+		PlayerRelevance:  newPlayerRelevanceResolver(),
+		DamageStatistics: statistics,
+		Effects:          newJournaledEffectTracker(statistics),
+		Diagnostic:       diagnostic,
 	}
 }
 
@@ -343,15 +286,15 @@ type frameParseResult struct {
 }
 
 // parseFrames parses complete frames from buffer. It stops at the first framing failure; see frameParseResult.
-func parseFrames(buffer []byte, direction string, spans []applicationSpan, p *processor) (int, int, int, int) {
+func parseFrames(buffer []byte, direction string, spans []applicationSpan, p *Processor) (int, int, int, int) {
 	result := parseFrameStream(buffer, direction, spans, p, nil)
 	return result.frames, result.badCRC, result.malformed, result.consumed
 }
 
-func parseFrameStream(buffer []byte, direction string, spans []applicationSpan, p *processor, state *stream) frameParseResult {
+func parseFrameStream(buffer []byte, direction string, spans []applicationSpan, p *Processor, state *Stream) frameParseResult {
 	var result frameParseResult
 	applicationOffset := 0
-	var previousValid *frameBoundaryObservation
+	var previousValid *FrameBoundaryObservation
 	var localCRCIndexes []int
 	pendingCRCIndexes := &localCRCIndexes
 	if state != nil {
@@ -369,8 +312,8 @@ func parseFrameStream(buffer []byte, direction string, spans []applicationSpan, 
 		total := payloadLen + 3
 		if total < 14 {
 			result.malformed++
-			if p.census != nil {
-				p.census.malformed("short_or_unaligned_frame_candidate", timestamp, applicationOffset, uint16(payloadLen), len(buffer))
+			if p.Census != nil {
+				p.Census.Malformed("short_or_unaligned_frame_candidate", timestamp, applicationOffset, uint16(payloadLen), len(buffer))
 			}
 			return desync(frameDesyncMalformed)
 		}
@@ -386,8 +329,8 @@ func parseFrameStream(buffer []byte, direction string, spans []applicationSpan, 
 		}
 		if offset+6 > total {
 			result.malformed++
-			if p.census != nil {
-				p.census.malformed("truncated_command_header", timestamp, applicationOffset, uint16(payloadLen), total)
+			if p.Census != nil {
+				p.Census.Malformed("truncated_command_header", timestamp, applicationOffset, uint16(payloadLen), total)
 			}
 			return desync(frameDesyncMalformed)
 		}
@@ -398,8 +341,8 @@ func parseFrameStream(buffer []byte, direction string, spans []applicationSpan, 
 		if compressed {
 			if bodyStart+4 > total {
 				result.malformed++
-				if p.census != nil {
-					p.census.malformed("truncated_compression_length", timestamp, applicationOffset, uint16(payloadLen), total)
+				if p.Census != nil {
+					p.Census.Malformed("truncated_compression_length", timestamp, applicationOffset, uint16(payloadLen), total)
 				}
 				return desync(frameDesyncMalformed)
 			}
@@ -408,12 +351,12 @@ func parseFrameStream(buffer []byte, direction string, spans []applicationSpan, 
 		}
 		computedCRC := crc32IEEE(frame[bodyStart:total])
 		if computedCRC != receivedCRC {
-			if p.census != nil {
+			if p.Census != nil {
 				var token uint16
 				if messageType != 4 {
 					token = binary.LittleEndian.Uint16(frame[8:10])
 				}
-				observation := crcFailureObservation{
+				observation := CRCFailureObservation{
 					Direction: direction, Timestamp: timestamp, Offset: applicationOffset,
 					MessageType: messageType, Sequence: binary.LittleEndian.Uint32(frame[4:8]),
 					Token: token, CommandID: commandID, DeclaredLength: uint16(payloadLen),
@@ -421,7 +364,7 @@ func parseFrameStream(buffer []byte, direction string, spans []applicationSpan, 
 					ReceivedCRC: receivedCRC, ComputedCRC: computedCRC, RemainingBytes: len(buffer) - total,
 					PreviousValid: previousValid,
 				}
-				if index := p.census.failedCRC(observation); index >= 0 {
+				if index := p.Census.FailedCRC(observation); index >= 0 {
 					*pendingCRCIndexes = append(*pendingCRCIndexes, index)
 				}
 			}
@@ -432,28 +375,28 @@ func parseFrameStream(buffer []byte, direction string, spans []applicationSpan, 
 		if messageType != 4 {
 			token = binary.LittleEndian.Uint16(frame[8:10])
 		}
-		current := gameFrame{
-			direction:        direction,
-			messageType:      messageType,
-			sequence:         binary.LittleEndian.Uint32(frame[4:8]),
-			token:            token,
-			commandID:        commandID,
-			compressed:       compressed,
-			compressedLength: compressedLength,
-			body:             append([]byte(nil), frame[bodyStart:total]...),
-			timestamp:        applicationTimestampAt(spans, consumed),
+		current := GameFrame{
+			Direction:        direction,
+			MessageType:      messageType,
+			Sequence:         binary.LittleEndian.Uint32(frame[4:8]),
+			Token:            token,
+			CommandID:        commandID,
+			Compressed:       compressed,
+			CompressedLength: compressedLength,
+			Body:             append([]byte(nil), frame[bodyStart:total]...),
+			Timestamp:        applicationTimestampAt(spans, consumed),
 		}
-		boundary := frameBoundaryObservation{Offset: applicationOffset, MessageType: messageType, Sequence: current.sequence, Token: token, CommandID: commandID, FrameLength: total}
-		if p.census != nil {
+		boundary := FrameBoundaryObservation{Offset: applicationOffset, MessageType: messageType, Sequence: current.Sequence, Token: token, CommandID: commandID, FrameLength: total}
+		if p.Census != nil {
 			for _, index := range *pendingCRCIndexes {
-				p.census.setNextValidFrame(index, boundary)
+				p.Census.SetNextValidFrame(index, boundary)
 			}
 		}
 		*pendingCRCIndexes = nil
 		if state != nil {
-			state.lastFrameSequence, state.hasFrameSequence = current.sequence, true
+			state.lastFrameSequence, state.hasFrameSequence = current.Sequence, true
 		}
-		p.handleFrame(current)
+		p.HandleFrame(current)
 		result.frames++
 		previousValid = &boundary
 		buffer = buffer[total:]
@@ -483,233 +426,255 @@ func crc32IEEE(data []byte) uint32 {
 	return crc32.ChecksumIEEE(data)
 }
 
-// isImplementedCommand reports whether the outer command has a decoder path in
+// IsImplementedCommand reports whether the outer command has a decoder path in
 // handleFrame. Other commands are only counted and inspected by the census.
-func isImplementedCommand(commandID uint16) bool {
+func IsImplementedCommand(commandID uint16) bool {
 	switch commandID {
-	case cmdLoginRequest, cmdCheckClientPush, cmdBasicInfoNotify, cmdCombatSendPackRequest, cmdCombatSendPackResponse, cmdCombatReceivePackNotify, cmdTimeCheckResponse, cmdTimeStopPush, cmdTimeCheckRequest, cmdUpdateSceneGroupDataNotify, cmdJoinSceneNotify, cmdEntityAddNotify, cmdEntityRemoveNotify, cmdUpdateTimerInfoNotify, cmdEntityActiveRequest, cmdEntityActiveResponse, cmdApplyGameplayEffectNotify, cmdRemoveGameplayEffectNotify, cmdRemoveGameplayEffectPush, cmdSimpleCombatEntityBuffUpdateNotify, cmdSimpleCombatEntityBuffLayerCountNotify, cmdBuffStackCountNotify, cmdBuffDurationNotify:
+	case CmdLoginRequest, CmdCheckClientPush, CmdBasicInfoNotify, CmdCombatSendPackRequest, CmdCombatSendPackResponse, CmdCombatReceivePackNotify, cmdTimeCheckResponse, cmdTimeStopPush, cmdTimeCheckRequest, CmdUpdateSceneGroupDataNotify, CmdJoinSceneNotify, CmdEntityAddNotify, CmdEntityRemoveNotify, cmdUpdateTimerInfoNotify, CmdEntityActiveRequest, CmdEntityActiveResponse, CmdApplyGameplayEffectNotify, CmdRemoveGameplayEffectNotify, CmdRemoveGameplayEffectPush, CmdSimpleCombatEntityBuffUpdateNotify, CmdSimpleCombatEntityBuffLayerCountNotify, CmdBuffStackCountNotify, CmdBuffDurationNotify:
 		return true
 	}
 	return false
 }
 
-func (p *processor) handleFrame(frame gameFrame) {
-	p.archiveFrame(frame)
-	p.currentFrameTime = frame.timestamp
-	p.observeServerSequence(frame)
-	p.observePairingClock(frame.timestamp)
-	p.observeEncounterClock(frame.timestamp)
-	p.sessionHealth.observeFrame(frame.timestamp)
-	var censusEntry *commandCensusEntry
-	if p.census != nil {
-		censusEntry = p.census.observeFrame(frame, p.sessionNumber)
+func (p *Processor) HandleFrame(frame GameFrame) {
+	if p.observer != nil {
+		p.observer.ArchiveFrame(frame)
 	}
-	if frame.commandID == cmdProtoKeyResponse && frame.direction == "in" {
-		p.stats.handshakeFrames++
-		if err := p.handleProtoKeyResponse(frame.body); err != nil {
-			p.stats.handshakeErrors++
+	p.CurrentFrameTime = frame.Timestamp
+	p.observeServerSequence(frame)
+	p.ObservePairingClock(frame.Timestamp)
+	p.observeEncounterClock(frame.Timestamp)
+	p.sessionHealth.observeFrame(frame.Timestamp)
+	var censusEntry CensusFrameObserver
+	if p.Census != nil {
+		censusEntry = p.Census.ObserveFrame(frame, p.SessionNumber)
+	}
+	if frame.CommandID == CmdProtoKeyResponse && frame.Direction == "in" {
+		p.Stats.HandshakeFrames++
+		if err := p.handleProtoKeyResponse(frame.Body); err != nil {
+			p.Stats.HandshakeErrors++
 			p.sessionHealth.lastHandshakeFailed = true
 			if censusEntry != nil {
-				censusEntry.FailureReasons["ProtoKeyResponse decode failed"]++
+				censusEntry.Fail("ProtoKeyResponse decode failed")
 			}
 			return
 		}
-		p.stats.handshakeOK++
+		p.Stats.HandshakeOK++
 		p.sessionHealth.lastHandshakeFailed = false
 		p.sessionHealth.consecutiveDecryptFailures = 0
 		if censusEntry != nil {
-			censusEntry.DecodedFrames++
+			censusEntry.Decoded()
 		}
-		p.sessionNumber++
-		p.protocolSessionStartedAt = frame.timestamp
+		p.SessionNumber++
+		p.protocolSessionStartedAt = frame.Timestamp
 		// A new protocol session may come from another client build: its protocol is known only once it reports it.
-		p.protocol.beginSession()
-		p.playerRelevance.reset()
-		p.scenePlayerIDs = nil
-		p.observeContextSessionStart(frame.timestamp)
-		p.startProtocolSessionStatistics(frame.timestamp)
-		if p.census != nil && p.sessionNumber > p.census.sessions {
-			p.census.sessions = p.sessionNumber
+		p.Protocol.BeginSession()
+		p.PlayerRelevance.Reset()
+		p.ScenePlayerIDs = nil
+		p.observeContextSessionStart(frame.Timestamp)
+		p.startProtocolSessionStatistics(frame.Timestamp)
+		if p.Census != nil {
+			p.Census.ObserveSession(p.SessionNumber)
 		}
 		return
 	}
-	decodable := p.protocol.decodes(frame.commandID)
+	decodable := p.Protocol.decodes(frame.CommandID)
 	if decodable && censusEntry != nil {
-		censusEntry.describeCurrentProtocol()
+		censusEntry.DescribeCurrentProtocol()
 	}
-	if !decodable || !isImplementedCommand(frame.commandID) {
+	if !decodable || !IsImplementedCommand(frame.CommandID) {
 		if censusEntry != nil {
-			p.inspectUndecodedFrame(frame, decodable, censusEntry)
+			censusEntry.InspectUndecoded(frame, decodable)
 		} else if decodable {
-			p.archiveUndecodedSchema(frame)
-		}
-		return
-	}
-	if ((frame.commandID == cmdLoginRequest || frame.commandID == cmdCheckClientPush || frame.commandID == cmdCombatSendPackRequest || frame.commandID == cmdEntityActiveRequest || frame.commandID == cmdTimeStopPush || frame.commandID == cmdTimeCheckRequest) && frame.direction != "out") || ((frame.commandID == cmdBasicInfoNotify || frame.commandID == cmdCombatSendPackResponse || frame.commandID == cmdCombatReceivePackNotify || frame.commandID == cmdTimeCheckResponse || frame.commandID == cmdUpdateSceneGroupDataNotify || frame.commandID == cmdJoinSceneNotify || frame.commandID == cmdEntityAddNotify || frame.commandID == cmdEntityRemoveNotify || frame.commandID == cmdUpdateTimerInfoNotify || frame.commandID == cmdEntityActiveResponse || frame.commandID == cmdApplyGameplayEffectNotify || frame.commandID == cmdRemoveGameplayEffectNotify || frame.commandID == cmdRemoveGameplayEffectPush || frame.commandID == cmdSimpleCombatEntityBuffUpdateNotify || frame.commandID == cmdSimpleCombatEntityBuffLayerCountNotify || frame.commandID == cmdBuffStackCountNotify || frame.commandID == cmdBuffDurationNotify) && frame.direction != "in") {
-		p.stats.otherFrameDirections++
-		if censusEntry != nil {
-			censusEntry.FailureReasons["direction differs from implemented schema"]++
-		}
-		return
-	}
-	if len(p.session) != 32 {
-		if censusEntry != nil {
-			censusEntry.FailureReasons["session key unavailable"]++
-		}
-		return
-	}
-	if len(frame.body) == 0 {
-		// Zero-length bodies carry no ciphertext; counting them as AES failures
-		// would misreport transport health.
-		if censusEntry != nil {
-			censusEntry.FailureReasons[emptyBodyFailureReason]++
-		}
-		if frame.commandID == cmdTimeStopPush {
-			// proto3 leaves a 0 dilation off the wire: an empty TimeStopPush pauses every effect.
-			if err := p.observeTimeStopPush(frame, nil); err != nil {
-				p.stats.parseErrors++
+			if p.observer != nil {
+				p.observer.ArchiveUndecodedSchema(frame)
 			}
 		}
 		return
 	}
-	plain, err := decryptGameBody(frame.sequence, frame.body, p.session)
+	if ((frame.CommandID == CmdLoginRequest || frame.CommandID == CmdCheckClientPush || frame.CommandID == CmdCombatSendPackRequest || frame.CommandID == CmdEntityActiveRequest || frame.CommandID == cmdTimeStopPush || frame.CommandID == cmdTimeCheckRequest) && frame.Direction != "out") || ((frame.CommandID == CmdBasicInfoNotify || frame.CommandID == CmdCombatSendPackResponse || frame.CommandID == CmdCombatReceivePackNotify || frame.CommandID == cmdTimeCheckResponse || frame.CommandID == CmdUpdateSceneGroupDataNotify || frame.CommandID == CmdJoinSceneNotify || frame.CommandID == CmdEntityAddNotify || frame.CommandID == CmdEntityRemoveNotify || frame.CommandID == cmdUpdateTimerInfoNotify || frame.CommandID == CmdEntityActiveResponse || frame.CommandID == CmdApplyGameplayEffectNotify || frame.CommandID == CmdRemoveGameplayEffectNotify || frame.CommandID == CmdRemoveGameplayEffectPush || frame.CommandID == CmdSimpleCombatEntityBuffUpdateNotify || frame.CommandID == CmdSimpleCombatEntityBuffLayerCountNotify || frame.CommandID == CmdBuffStackCountNotify || frame.CommandID == CmdBuffDurationNotify) && frame.Direction != "in") {
+		p.Stats.otherFrameDirections++
+		if censusEntry != nil {
+			censusEntry.Fail("direction differs from implemented schema")
+		}
+		return
+	}
+	if len(p.Session) != 32 {
+		if censusEntry != nil {
+			censusEntry.Fail("session key unavailable")
+		}
+		return
+	}
+	if len(frame.Body) == 0 {
+		// Zero-length bodies carry no ciphertext; counting them as AES failures
+		// would misreport transport health.
+		if censusEntry != nil {
+			censusEntry.Fail(EmptyBodyFailureReason)
+		}
+		if frame.CommandID == cmdTimeStopPush {
+			// proto3 leaves a 0 dilation off the wire: an empty TimeStopPush pauses every effect.
+			if err := p.observeTimeStopPush(frame, nil); err != nil {
+				p.Stats.ParseErrors++
+			}
+		}
+		return
+	}
+	plain, err := DecryptGameBody(frame.Sequence, frame.Body, p.Session)
 	if err != nil {
-		p.stats.decryptErrors++
+		p.Stats.DecryptErrors++
 		p.sessionHealth.consecutiveDecryptFailures++
 		if censusEntry != nil {
-			censusEntry.FailureReasons["decrypt failed"]++
+			censusEntry.Fail("decrypt failed")
 		}
 		return
 	}
 	p.sessionHealth.consecutiveDecryptFailures = 0
 	if censusEntry != nil {
-		censusEntry.DecryptedFrames++
+		censusEntry.Decrypted()
 	}
-	if frame.compressed {
-		plain, err = decompressBody(plain, frame.compressedLength)
+	if frame.Compressed {
+		plain, err = DecompressBody(plain, frame.CompressedLength)
 		if err != nil {
-			p.stats.compressedErrors++
+			p.Stats.CompressedErrors++
 			if censusEntry != nil {
-				censusEntry.FailureReasons["decompression failed"]++
+				censusEntry.Fail("decompression failed")
 			}
 			return
 		}
 	}
 	if censusEntry != nil {
-		censusEntry.observeKnownBodyWire(plain)
+		censusEntry.ObserveKnownBodyWire(plain)
 	}
-	p.archiveSchemaDecode(frame, plain)
-	p.archiveDamageRPCSchema(frame, plain)
-	p.archiveHPStateFrame(frame, plain)
-	p.archiveCombatStateFrame(frame, plain)
-	p.archiveDamagePushFrame(frame, plain)
-	p.archiveClientPushFrame(frame, plain)
-	p.archiveBulletRefReceiveFrame(frame, plain)
-	p.archiveSummonOwnerFrame(frame, plain)
-	parseErrorsBefore := p.stats.parseErrors
-	switch frame.commandID {
-	case cmdBasicInfoNotify:
+	if p.observer != nil {
+		p.observer.ArchiveSchemaDecode(frame, plain)
+	}
+	if p.observer != nil {
+		p.observer.ArchiveDamageRPCSchema(frame, plain)
+	}
+	if p.observer != nil {
+		p.observer.ArchiveHPStateFrame(frame, plain)
+	}
+	if p.observer != nil {
+		p.observer.ArchiveCombatStateFrame(frame, plain)
+	}
+	if p.observer != nil {
+		p.observer.ArchiveDamagePushFrame(frame, plain)
+	}
+	p.ObserveClientPushFrame(frame, plain)
+	if p.observer != nil {
+		p.observer.ArchiveBulletRefReceiveFrame(frame, plain)
+	}
+	if p.observer != nil {
+		p.observer.ArchiveSummonOwnerFrame(frame, plain)
+	}
+	parseErrorsBefore := p.Stats.ParseErrors
+	switch frame.CommandID {
+	case CmdBasicInfoNotify:
 		if err := p.observeLocalPlayerInfo(plain); err != nil {
-			p.stats.parseErrors++
-			fmt.Fprintf(p.diagnostic, "local_player_info_parse_error=%v\n", err)
+			p.Stats.ParseErrors++
+			fmt.Fprintf(p.Diagnostic, "local_player_info_parse_error=%v\n", err)
 			return
 		}
-	case cmdLoginRequest, cmdCheckClientPush:
-		if err := p.observeClientVersion(frame.commandID, plain); err != nil {
-			p.stats.parseErrors++
-			fmt.Fprintf(p.diagnostic, "client_version_parse_error command=%d reason=%v\n", frame.commandID, err)
+	case CmdLoginRequest, CmdCheckClientPush:
+		if err := p.observeClientVersion(frame.CommandID, plain); err != nil {
+			p.Stats.ParseErrors++
+			fmt.Fprintf(p.Diagnostic, "client_version_parse_error command=%d reason=%v\n", frame.CommandID, err)
 			return
 		}
-	case cmdCombatSendPackRequest:
-		p.handleDamageRequests(frame, plain)
-		if err := p.handleClientEffectPushes(frame, plain); err != nil {
-			p.stats.parseErrors++
-			fmt.Fprintf(p.diagnostic, "client_effect_push_parse_error=%v\n", err)
+	case CmdCombatSendPackRequest:
+		p.HandleDamageRequests(frame, plain)
+		if err := p.HandleClientEffectPushes(frame, plain); err != nil {
+			p.Stats.ParseErrors++
+			fmt.Fprintf(p.Diagnostic, "client_effect_push_parse_error=%v\n", err)
 		}
-	case cmdCombatSendPackResponse, cmdCombatReceivePackNotify:
-		if err := p.handleCombatReceivePacks(frame, plain); err != nil {
-			p.stats.parseErrors++
+	case CmdCombatSendPackResponse, CmdCombatReceivePackNotify:
+		if err := p.HandleCombatReceivePacks(frame, plain); err != nil {
+			p.Stats.ParseErrors++
 			label := "combat_receive_pack_parse_error"
-			if frame.commandID == cmdCombatSendPackResponse {
+			if frame.CommandID == CmdCombatSendPackResponse {
 				label = "combat_response_notify_parse_error"
 			}
-			fmt.Fprintf(p.diagnostic, "%s=%v\n", label, err)
+			fmt.Fprintf(p.Diagnostic, "%s=%v\n", label, err)
 			return
 		}
 	case cmdTimeStopPush:
 		if err := p.observeTimeStopPush(frame, plain); err != nil {
-			p.stats.parseErrors++
-			fmt.Fprintf(p.diagnostic, "time_stop_push_parse_error=%v\n", err)
+			p.Stats.ParseErrors++
+			fmt.Fprintf(p.Diagnostic, "time_stop_push_parse_error=%v\n", err)
 		}
 	case cmdTimeCheckRequest:
 		if err := p.observeTimeCheckRequest(frame, plain); err != nil {
-			p.stats.parseErrors++
-			fmt.Fprintf(p.diagnostic, "time_check_request_parse_error=%v\n", err)
+			p.Stats.ParseErrors++
+			fmt.Fprintf(p.Diagnostic, "time_check_request_parse_error=%v\n", err)
 		}
 	case cmdTimeCheckResponse, cmdUpdateTimerInfoNotify:
 		// TimeCheckResponse and UpdateTimerInfoNotify are interpreted by the
 		// schema-directed observer to preserve their observed field provenance.
-	case cmdUpdateSceneGroupDataNotify:
-		if _, err := p.entities.applyUpdateSceneGroupDataNotify(plain); err != nil {
-			p.stats.parseErrors++
-			fmt.Fprintf(p.diagnostic, "scene_group_update_parse_error=%v\n", err)
+	case CmdUpdateSceneGroupDataNotify:
+		if _, err := p.Entities.applyUpdateSceneGroupDataNotify(plain); err != nil {
+			p.Stats.ParseErrors++
+			fmt.Fprintf(p.Diagnostic, "scene_group_update_parse_error=%v\n", err)
 			return
 		}
-		p.playerRelevance.reconcileLocalPlayers(p.entities)
+		p.PlayerRelevance.ReconcileLocalPlayers(p.Entities)
 		p.refreshEffectRelations()
-	case cmdApplyGameplayEffectNotify, cmdRemoveGameplayEffectNotify, cmdRemoveGameplayEffectPush, cmdSimpleCombatEntityBuffUpdateNotify, cmdSimpleCombatEntityBuffLayerCountNotify, cmdBuffStackCountNotify, cmdBuffDurationNotify:
-		if err := p.handleBuffLifecycleMessage(frame, plain); err != nil {
-			p.stats.parseErrors++
-			fmt.Fprintf(p.diagnostic, "buff_lifecycle_parse_error=%v\n", err)
+	case CmdApplyGameplayEffectNotify, CmdRemoveGameplayEffectNotify, CmdRemoveGameplayEffectPush, CmdSimpleCombatEntityBuffUpdateNotify, CmdSimpleCombatEntityBuffLayerCountNotify, CmdBuffStackCountNotify, CmdBuffDurationNotify:
+		if err := p.HandleBuffLifecycleMessage(frame, plain); err != nil {
+			p.Stats.ParseErrors++
+			fmt.Fprintf(p.Diagnostic, "buff_lifecycle_parse_error=%v\n", err)
 			return
 		}
-	case cmdJoinSceneNotify:
-		if _, err := p.entities.applyJoinSceneNotify(plain); err != nil {
-			p.stats.parseErrors++
-			fmt.Fprintf(p.diagnostic, "join_scene_parse_error=%v\n", err)
+	case CmdJoinSceneNotify:
+		if _, err := p.Entities.applyJoinSceneNotify(plain); err != nil {
+			p.Stats.ParseErrors++
+			fmt.Fprintf(p.Diagnostic, "join_scene_parse_error=%v\n", err)
 			return
 		}
-		p.playerRelevance.resetSceneEntities()
-		p.observeContextSceneJoin(frame.timestamp)
-		p.observeSceneJoin(plain, frame.timestamp)
-		p.effects.EndLiveStateFor(EffectUntrackedSceneChange)
-		p.backfillAvailableSummaryCredits()
-		p.sourceRoles.reset()
-		p.resetPendingSummaryCredits()
-	case cmdEntityAddNotify:
-		added, err := p.entities.applyEntityAddNotify(plain)
+		p.PlayerRelevance.ResetSceneEntities()
+		p.observeContextSceneJoin(frame.Timestamp)
+		p.observeSceneJoin(plain, frame.Timestamp)
+		p.Effects.EndLiveStateFor(EffectUntrackedSceneChange)
+		if p.observer != nil {
+			p.observer.BackfillAvailableSummaryCredits()
+		}
+		p.SourceRoles.reset()
+		if p.observer != nil {
+			p.observer.ResetPendingSummaryCredits()
+		}
+	case CmdEntityAddNotify:
+		added, err := p.Entities.ApplyEntityAddNotify(plain)
 		if err != nil {
-			p.stats.parseErrors++
-			fmt.Fprintf(p.diagnostic, "entity_add_parse_error=%v\n", err)
+			p.Stats.ParseErrors++
+			fmt.Fprintf(p.Diagnostic, "entity_add_parse_error=%v\n", err)
 			return
 		}
-		p.stats.entityAdds += added
+		p.Stats.EntityAdds += added
 		p.refreshEffectRelations()
-	case cmdEntityRemoveNotify:
+	case CmdEntityRemoveNotify:
 		if err := p.handleEntityRemoveNotify(plain); err != nil {
-			p.stats.parseErrors++
-			fmt.Fprintf(p.diagnostic, "entity_remove_parse_error=%v\n", err)
+			p.Stats.ParseErrors++
+			fmt.Fprintf(p.Diagnostic, "entity_remove_parse_error=%v\n", err)
 			return
 		}
-	case cmdEntityActiveRequest:
-		if err := p.handleActiveRequest(frame.token, plain); err != nil {
-			p.stats.parseErrors++
-			fmt.Fprintf(p.diagnostic, "entity_active_parse_error=%v\n", err)
+	case CmdEntityActiveRequest:
+		if err := p.HandleActiveRequest(frame.Token, plain); err != nil {
+			p.Stats.ParseErrors++
+			fmt.Fprintf(p.Diagnostic, "entity_active_parse_error=%v\n", err)
 			return
 		}
-		p.stats.entityActiveRequests++
-	case cmdEntityActiveResponse:
-		if err := p.handleActiveResponse(frame, plain); err != nil {
-			p.stats.parseErrors++
-			fmt.Fprintf(p.diagnostic, "entity_active_response_parse_error=%v\n", err)
+		p.Stats.EntityActiveRequests++
+	case CmdEntityActiveResponse:
+		if err := p.HandleActiveResponse(frame, plain); err != nil {
+			p.Stats.ParseErrors++
+			fmt.Fprintf(p.Diagnostic, "entity_active_response_parse_error=%v\n", err)
 			return
 		}
 	}
 	if censusEntry != nil {
-		if parseErrorsBefore == p.stats.parseErrors {
-			censusEntry.DecodedFrames++
+		if parseErrorsBefore == p.Stats.ParseErrors {
+			censusEntry.Decoded()
 		} else {
-			censusEntry.FailureReasons["protobuf or message schema decode failed"]++
+			censusEntry.Fail("protobuf or message schema decode failed")
 		}
 	}
 }
@@ -717,137 +682,52 @@ func (p *processor) handleFrame(frame gameFrame) {
 // handleEntityRemoveNotify applies an EntityRemoveNotify. A held damage response may name an entity removed here, so the
 // state an in-order pair would have seen is kept first (see rpc_pairing.go). On a parse error nothing but the registry
 // removal of the IDs read before the fault is applied.
-func (p *processor) handleEntityRemoveNotify(body []byte) error {
+func (p *Processor) handleEntityRemoveNotify(body []byte) error {
 	p.rememberRemovalsForHeldResponses(body)
-	removed, removedIDs, err := p.entities.applyEntityRemoveNotify(body)
+	removed, removedIDs, err := p.Entities.ApplyEntityRemoveNotify(body)
 	if err != nil {
 		return err
 	}
-	p.stats.entityRemoves += removed
+	p.Stats.EntityRemoves += removed
 	for _, id := range removedIDs {
-		p.effects.ObserveHolderRemoved(p.sessionNumber, id, p.currentFrameTime)
-		p.playerRelevance.removeEntity(id)
+		p.Effects.ObserveHolderRemoved(p.SessionNumber, id, p.CurrentFrameTime)
+		p.PlayerRelevance.RemoveEntity(id)
 		p.settleRemovedSource(id)
-		p.sourceRoles.remove(id)
+		p.SourceRoles.remove(id)
 	}
 	return nil
 }
 
-// emptyBodyFailureReason labels frames whose command body is zero-length.
-const emptyBodyFailureReason = "empty body; no payload to decrypt"
+// EmptyBodyFailureReason labels frames whose command body is zero-length.
+const EmptyBodyFailureReason = "empty body; no payload to decrypt"
 
-// Census reasons for frames the current protocol session cannot hand to a decoder.
-const (
-	protocolNoHandshakeReason        = "no handshake in this capture; protocol unknown"
-	protocolPendingFailureReason     = "client version not reported yet; protocol unknown"
-	protocolUnsupportedFailureReason = "not the current game version; not decoded"
-)
-
-// inspectUndecodedFrame counts what the census can learn about a frame no decoder reads. decodable says whether the
-// protocol session reads its numbering (protocolSession.decodes); otherwise only the top-level wire shape is counted.
-func (p *processor) inspectUndecodedFrame(frame gameFrame, decodable bool, entry *commandCensusEntry) {
-	if len(p.session) != 32 {
-		entry.FailureReasons["no implemented schema; session key unavailable"]++
-		return
-	}
-	if len(frame.body) == 0 {
-		entry.FailureReasons[emptyBodyFailureReason]++
-		return
-	}
-	plain, err := decryptGameBody(frame.sequence, frame.body, p.session)
-	if err != nil {
-		entry.FailureReasons["no implemented schema; decrypt failed"]++
-		return
-	}
-	entry.DecryptedFrames++
-	if frame.compressed {
-		plain, err = decompressBody(plain, frame.compressedLength)
-		if err != nil {
-			entry.FailureReasons["no implemented schema; decompression failed"]++
-			return
-		}
-	}
-	if !decodable {
-		if fields, err := parseProtoFields(plain); err == nil {
-			entry.GenericProtoValid++
-			entry.observeTopLevelFields(fields)
-		}
-		entry.FailureReasons[p.protocol.undecodableReason()]++
-		return
-	}
-	if fields, err := parseProtoFields(plain); err == nil {
-		entry.GenericProtoValid++
-		// The optional external schema describes the current protocol.
-		p.archiveSchemaDecode(frame, plain)
-		entry.observeTopLevelFields(fields)
-		entry.FailureReasons["message schema not implemented"]++
-		if frame.commandID == cmdMovePackagePush {
-			observation, err := extractMovePackageObservation(plain)
-			if err != nil {
-				entry.FailureReasons["MovePackagePush schema-field extraction failed"]++
-			} else {
-				p.census.observeMovePackage(observation)
-			}
-		} else if frame.commandID == cmdPlayerFollowerNotify {
-			observation, err := extractPlayerFollowerObservation(plain)
-			if err != nil {
-				entry.FailureReasons["PlayerFollowerNotify schema-field extraction failed"]++
-			} else {
-				p.census.observePlayerFollower(observation)
-			}
-		} else if fieldNumber, ok := entityNotifyKeyField(frame.commandID); ok {
-			values, err := extractVarintField(plain, fieldNumber)
-			if err != nil {
-				entry.FailureReasons["entity notify ID extraction failed"]++
-			} else {
-				p.census.observeEntityKey(frame.commandID, fieldNumber, values)
-			}
-		}
-	} else {
-		entry.FailureReasons["no implemented schema; generic protobuf parse failed"]++
-	}
-}
-
-func entityNotifyKeyField(commandID uint16) (uint64, bool) {
-	switch commandID {
-	case cmdEntityRemoveDynamicInteractNotify:
-		return fieldEntityRemoveDynamicInteractNotifyEntityID, true // EntityRemoveDynamicInteractNotify.EntityId
-	case cmdEntityCommonTagNotify:
-		return fieldEntityCommonTagNotifyID, true // EntityCommonTagNotify.Id
-	case cmdEntityStateReadyNotify:
-		return fieldEntityStateReadyNotifyEntityID, true // EntityStateReadyNotify.EntityId
-	default:
-		return 0, false
-	}
-}
-
-func (p *processor) handleProtoKeyResponse(body []byte) error {
-	fields, err := parseProtoFields(body)
+func (p *Processor) handleProtoKeyResponse(body []byte) error {
+	fields, err := ParseProtoFields(body)
 	if err != nil {
 		return fmt.Errorf("parse ProtoKeyResponse: %w", err)
 	}
 	var responseType uint64
 	var encrypted []byte
 	for _, field := range fields {
-		if field.number == fieldProtoKeyResponseType && field.wire == 0 {
-			responseType = field.value
+		if field.Number == FieldProtoKeyResponseType && field.Wire == 0 {
+			responseType = field.Value
 		}
-		if field.number == fieldProtoKeyResponseKey && field.wire == 2 {
-			encrypted = field.data
+		if field.Number == FieldProtoKeyResponseKey && field.Wire == 2 {
+			encrypted = field.Data
 		}
 	}
 	if responseType != 2 {
 		return fmt.Errorf("ProtoKeyResponse type %d is not AES mode", responseType)
 	}
-	key, err := p.rsa.decryptSessionKey(encrypted)
+	key, err := p.RSA.decryptSessionKey(encrypted)
 	if err != nil {
 		return fmt.Errorf("unwrap ProtoKeyResponse key: %w", err)
 	}
-	if len(p.session) > 0 {
-		clear(p.session)
+	if len(p.Session) > 0 {
+		clear(p.Session)
 	}
-	p.session = key
-	p.pending = make(map[uint64]pendingDamageRequest)
+	p.Session = key
+	p.Pending = make(map[uint64]PendingDamageRequest)
 	p.pendingOrder = nil
 	p.pendingHead = 0
 	p.pendingSequence = 0
@@ -857,106 +737,110 @@ func (p *processor) handleProtoKeyResponse(body []byte) error {
 	p.requestCounter = combatRequestCounter{}
 	// RPC ids restart with the session: a held response can never pair with a request of the new session.
 	p.discardHeldResponses(&p.pairing.sessionChange)
-	p.entities.reset()
-	p.playerRelevance.reset()
-	p.effects.EndLiveStateFor(EffectUntrackedSessionChange)
-	p.backfillAvailableSummaryCredits()
-	p.sourceRoles.reset()
-	p.resetPendingSummaryCredits()
-	p.activeRequests = make(map[uint16]pendingActiveRequest)
-	p.flowTime = 0
-	p.hasFlowTime = false
-	p.flowTimeFrame = 0
+	p.Entities.reset()
+	p.PlayerRelevance.Reset()
+	p.Effects.EndLiveStateFor(EffectUntrackedSessionChange)
+	if p.observer != nil {
+		p.observer.BackfillAvailableSummaryCredits()
+	}
+	p.SourceRoles.reset()
+	if p.observer != nil {
+		p.observer.ResetPendingSummaryCredits()
+	}
+	p.activeRequests = make(map[uint16]PendingActiveRequest)
+	if p.observer != nil {
+		p.observer.BeginProtocolSession()
+	}
 	p.sessionGeneration++
-	fmt.Fprintln(p.diagnostic, "session_key_ready bytes=32 value=redacted")
+	fmt.Fprintln(p.Diagnostic, "session_key_ready bytes=32 value=redacted")
 	return nil
 }
 
-func (p *processor) handleDamageRequests(frame gameFrame, body []byte) {
+func (p *Processor) HandleDamageRequests(frame GameFrame, body []byte) {
 	p.expireHeldResponses()
-	outer, err := parseProtoFields(body)
+	outer, err := ParseProtoFields(body)
 	if err != nil {
-		p.stats.parseErrors++
+		p.Stats.ParseErrors++
 		return
 	}
 	for _, field := range outer {
-		if field.number != fieldCombatSendPackRequestData || field.wire != 2 { // sZn.VFs
+		if field.Number != FieldCombatSendPackRequestData || field.Wire != 2 { // sZn.VFs
 			continue
 		}
-		variants, err := parseProtoFields(field.data)
+		variants, err := ParseProtoFields(field.Data)
 		if err != nil {
-			p.stats.parseErrors++
+			p.Stats.ParseErrors++
 			continue
 		}
 		for _, variant := range variants {
-			if variant.number != fieldCombatSendDataRequest || variant.wire != 2 { // VFs.FFs RequestData; field 5 is U3n
+			if variant.Number != FieldCombatSendDataRequest || variant.Wire != 2 { // VFs.FFs RequestData; field 5 is U3n
 				continue
 			}
-			requestFields, err := parseProtoFields(variant.data)
+			requestFields, err := ParseProtoFields(variant.Data)
 			if err != nil {
-				p.stats.parseErrors++
+				p.Stats.ParseErrors++
 				continue
 			}
 			// An absent RequestId is the proto3 default 0, which the client's counter sends once per wrap.
 			var rpcID uint64
 			var u3n []byte
 			for _, requestField := range requestFields {
-				if requestField.number == fieldCombatRequestDataRequestID && requestField.wire == 0 {
-					rpcID = requestField.value
+				if requestField.Number == FieldCombatRequestDataRequestID && requestField.Wire == 0 {
+					rpcID = requestField.Value
 				}
-				if requestField.number == fieldCombatRequestDataDamageExecuteRequest && requestField.wire == 2 {
-					u3n = requestField.data
+				if requestField.Number == FieldCombatRequestDataDamageExecuteRequest && requestField.Wire == 2 {
+					u3n = requestField.Data
 				}
 			}
 			epoch := p.requestCounter.observe(rpcID)
 			if u3n == nil {
 				continue
 			}
-			damageFields, err := parseProtoFields(u3n)
+			damageFields, err := ParseProtoFields(u3n)
 			if err != nil {
-				p.stats.parseErrors++
+				p.Stats.ParseErrors++
 				continue
 			}
 			var damageIDPresent bool
-			identity := pendingDamageRequest{}
+			identity := PendingDamageRequest{}
 			for _, damageField := range damageFields {
 				switch {
-				case damageField.number == fieldDamageExecuteRequestDamageID && damageField.wire == 0: // U3n.Fjn DamageId
+				case damageField.Number == FieldDamageExecuteRequestDamageID && damageField.Wire == 0: // U3n.Fjn DamageId
 					damageIDPresent = true
-					identity.damageID = damageField.value
-					identity.hasDamageID = true
-				case damageField.number == fieldDamageExecuteRequestTargetEntityID && damageField.wire == 0: // DamageExecuteRequest.TargetEntityId
-					identity.targetEntityID = damageField.value
-					identity.hasTargetEntityID = true
-				case damageField.number == fieldDamageExecuteRequestPartID && damageField.wire == 0: // DamageExecuteRequest.PartId
-					identity.partID = int32(uint32(damageField.value))
-					identity.hasPartID = true
-				case damageField.number == fieldDamageExecuteRequestSkillLevel && damageField.wire == 0: // DamageExecuteRequest.SkillLevel
-					identity.skillLevel = damageField.value
-				case damageField.number == fieldDamageExecuteRequestAttackerEntityID && damageField.wire == 0: // DamageExecuteRequest.AttackerEntityId
-					identity.attackerEntityID = damageField.value
-					identity.hasAttackerEntityID = true
-				case damageField.number == fieldDamageExecuteRequestDamageContext && damageField.wire == 2: // DamageExecuteRequest.DamageContext
-					context, err := parseProtoFields(damageField.data)
+					identity.DamageID = damageField.Value
+					identity.HasDamageID = true
+				case damageField.Number == FieldDamageExecuteRequestTargetEntityID && damageField.Wire == 0: // DamageExecuteRequest.TargetEntityId
+					identity.TargetEntityID = damageField.Value
+					identity.HasTargetEntityID = true
+				case damageField.Number == FieldDamageExecuteRequestPartID && damageField.Wire == 0: // DamageExecuteRequest.PartId
+					identity.PartID = int32(uint32(damageField.Value))
+					identity.HasPartID = true
+				case damageField.Number == fieldDamageExecuteRequestSkillLevel && damageField.Wire == 0: // DamageExecuteRequest.SkillLevel
+					identity.skillLevel = damageField.Value
+				case damageField.Number == FieldDamageExecuteRequestAttackerEntityID && damageField.Wire == 0: // DamageExecuteRequest.AttackerEntityId
+					identity.AttackerEntityID = damageField.Value
+					identity.HasAttackerEntityID = true
+				case damageField.Number == fieldDamageExecuteRequestDamageContext && damageField.Wire == 2: // DamageExecuteRequest.DamageContext
+					context, err := ParseProtoFields(damageField.Data)
 					if err != nil {
-						p.stats.parseErrors++
+						p.Stats.ParseErrors++
 						continue
 					}
 					for _, contextField := range context {
-						if contextField.wire != 0 {
+						if contextField.Wire != 0 {
 							continue
 						}
-						switch contextField.number {
-						case fieldDamageContextSourceType: // DamageContext.SourceType
-							identity.damageSourceType = contextField.value
-							identity.hasDamageSourceType = true
-						case fieldDamageContextBulletID: // DamageContext.BulletId
-							identity.bulletID = int64(contextField.value)
-							identity.hasBulletID = true
-						case fieldDamageContextSkillID: // DamageContext.SkillId
-							identity.skillID = contextField.value
-						case fieldDamageContextSkillMessageID: // DamageContext.SkillMessageId
-							identity.skillMessageID = contextField.value
+						switch contextField.Number {
+						case FieldDamageContextSourceType: // DamageContext.SourceType
+							identity.DamageSourceType = contextField.Value
+							identity.HasDamageSourceType = true
+						case FieldDamageContextBulletID: // DamageContext.BulletId
+							identity.BulletID = int64(contextField.Value)
+							identity.HasBulletID = true
+						case FieldDamageContextSkillID: // DamageContext.SkillId
+							identity.SkillID = contextField.Value
+						case FieldDamageContextSkillMessageID: // DamageContext.SkillMessageId
+							identity.SkillMessageID = contextField.Value
 						}
 					}
 				}
@@ -964,31 +848,33 @@ func (p *processor) handleDamageRequests(frame gameFrame, body []byte) {
 			if !damageIDPresent {
 				continue
 			}
-			if p.census != nil {
-				p.census.innerEntries["Client->Server DamageExecuteRequest"]++
+			if p.Census != nil {
+				p.Census.ObserveInnerEntry("Client->Server DamageExecuteRequest")
 			}
-			p.stats.damageRequests++
+			p.Stats.DamageRequests++
 			identity.requestEpoch = epoch
 			if _, alreadyConsumed := p.consumed[rpcID]; alreadyConsumed {
 				// The counter wrapped: the RequestId now names this request. The earlier result keeps its own extended id,
 				// and this request's response is paired with this request instead of being taken for a copy.
 				delete(p.consumed, rpcID)
-				p.stats.reusedRequestIDs++
-				fmt.Fprintf(p.diagnostic, "rpc_id_reused_after_completion rpc_id=%d epoch=%d\n", rpcID, epoch)
+				p.Stats.reusedRequestIDs++
+				fmt.Fprintf(p.Diagnostic, "rpc_id_reused_after_completion rpc_id=%d epoch=%d\n", rpcID, epoch)
 			}
-			if _, exists := p.pending[rpcID]; exists {
+			if _, exists := p.Pending[rpcID]; exists {
 				// The earlier request with this RequestId was never answered; it stays unanswered, now superseded.
-				p.stats.supersededRequests++
-				fmt.Fprintf(p.diagnostic, "duplicate_pending_damage_rpc rpc_id=%d epoch=%d\n", rpcID, epoch)
+				p.Stats.supersededRequests++
+				fmt.Fprintf(p.Diagnostic, "duplicate_pending_damage_rpc rpc_id=%d epoch=%d\n", rpcID, epoch)
 			}
-			if p.masters != nil && identity.hasAttackerEntityID {
-				if skill, ok := p.masters.skills[identity.skillID]; ok {
-					p.sourceRoles.observe(identity.attackerEntityID, skill)
+			if p.Masters != nil && identity.HasAttackerEntityID {
+				if skill, ok := p.Masters.Skills[identity.SkillID]; ok {
+					p.SourceRoles.Observe(identity.AttackerEntityID, skill)
 				}
 			}
-			p.writePartReference(frame, rpcID, identity)
-			if identity.hasAttackerEntityID || identity.hasTargetEntityID {
-				p.context.observeClientReference(identity.attackerEntityID, identity.targetEntityID)
+			if p.observer != nil {
+				p.observer.WritePartReference(frame, rpcID, identity)
+			}
+			if identity.HasAttackerEntityID || identity.HasTargetEntityID {
+				p.Context.observeClientReference(identity.AttackerEntityID, identity.TargetEntityID)
 			}
 			p.rememberPending(rpcID, identity)
 			// A response that arrived before this request (the outbound stream was delayed) is paired now.
@@ -1002,23 +888,23 @@ const (
 	maxConsumedRPCIDs        = 8192
 )
 
-func (p *processor) rememberPending(rpcID uint64, request pendingDamageRequest) {
+func (p *Processor) rememberPending(rpcID uint64, request PendingDamageRequest) {
 	p.pendingSequence++
 	request.sequence = p.pendingSequence
-	p.pending[rpcID] = request
+	p.Pending[rpcID] = request
 	p.pendingOrder = append(p.pendingOrder, pendingRef{rpcID: rpcID, sequence: request.sequence})
-	for len(p.pending) > maxPendingDamageRequests && p.pendingHead < len(p.pendingOrder) {
+	for len(p.Pending) > maxPendingDamageRequests && p.pendingHead < len(p.pendingOrder) {
 		ref := p.pendingOrder[p.pendingHead]
 		p.pendingHead++
-		if current, ok := p.pending[ref.rpcID]; ok && current.sequence == ref.sequence {
-			delete(p.pending, ref.rpcID)
-			p.stats.evictedPending++
+		if current, ok := p.Pending[ref.rpcID]; ok && current.sequence == ref.sequence {
+			delete(p.Pending, ref.rpcID)
+			p.Stats.EvictedPending++
 		}
 	}
 	p.compactPendingOrder()
 }
 
-func (p *processor) compactPendingOrder() {
+func (p *Processor) compactPendingOrder() {
 	if p.pendingHead < 1024 || p.pendingHead*2 < len(p.pendingOrder) {
 		return
 	}
@@ -1026,9 +912,9 @@ func (p *processor) compactPendingOrder() {
 	p.pendingHead = 0
 }
 
-func (p *processor) rememberConsumed(rpcID, digest uint64) {
+func (p *Processor) rememberConsumed(rpcID, digest uint64) {
 	p.consumedSequence++
-	p.consumed[rpcID] = consumedResponse{sequence: p.consumedSequence, digest: digest, at: p.currentFrameTime}
+	p.consumed[rpcID] = consumedResponse{sequence: p.consumedSequence, digest: digest, at: p.CurrentFrameTime}
 	p.consumedOrder = append(p.consumedOrder, consumedRef{rpcID: rpcID, sequence: p.consumedSequence})
 	for len(p.consumed) > maxConsumedRPCIDs && len(p.consumedOrder) > 0 {
 		ref := p.consumedOrder[0]
@@ -1049,37 +935,37 @@ func (p *processor) rememberConsumed(rpcID, digest uint64) {
 	}
 }
 
-// handleOneDamageResult takes one server DamageExecuteResponse, from either container (handleCombatReceivePacks). A result
+// HandleOneDamageResult takes one server DamageExecuteResponse, from either container (handleCombatReceivePacks). A result
 // is named by its RequestId within the protocol session and by the wrap of the client's RequestId counter it was sent in
 // (extendedRequestID): a response is processed once, with the request of that RequestId, and every further copy is
 // counted as a duplicate (same bytes) or a conflicting response (other bytes), never as a second result. Copies arrive
 // within consumedCopyWindow of the response they repeat; a response with the RequestId of one processed earlier than that
 // answers a later request that reused the RequestId. Equal values never make two responses one.
-func (p *processor) handleOneDamageResult(rpcID uint64, payload []byte) {
+func (p *Processor) HandleOneDamageResult(rpcID uint64, payload []byte) {
 	if consumed, already := p.consumed[rpcID]; already {
-		if p.currentFrameTime.Sub(consumed.at) <= consumedCopyWindow {
+		if p.CurrentFrameTime.Sub(consumed.at) <= consumedCopyWindow {
 			if consumed.digest == responseDigest(payload) {
-				p.stats.duplicateResponses++
+				p.Stats.DuplicateResponses++
 			} else {
-				p.stats.conflictingResponses++
+				p.Stats.conflictingResponses++
 			}
 			return
 		}
 		// The response of a later request with this RequestId, ahead of its request: the earlier result keeps its own
 		// extended id, and this one is held for its request like any response that arrives first.
 		delete(p.consumed, rpcID)
-		p.stats.reusedRequestIDs++
+		p.Stats.reusedRequestIDs++
 	}
-	request, matched := p.pending[rpcID]
+	request, matched := p.Pending[rpcID]
 	if !matched {
 		// The request may still be on its way on the other stream; hold the response instead of dropping it.
 		p.holdDamageResponse(rpcID, payload)
 		return
 	}
 	p.pairing.paired++
-	fields, err := parseProtoFields(payload)
+	fields, err := ParseProtoFields(payload)
 	if err != nil {
-		p.stats.parseErrors++
+		p.Stats.ParseErrors++
 		return
 	}
 	var amount int32
@@ -1089,92 +975,96 @@ func (p *processor) handleOneDamageResult(rpcID uint64, payload []byte) {
 	var errorCode int32
 	var immuneType int32
 	for _, field := range fields {
-		if field.wire != 0 {
+		if field.Wire != 0 {
 			continue
 		}
-		switch field.number {
-		case fieldDamageExecuteResponseErrorCode: // lis.Q4n
-			errorCode = int32(uint32(field.value))
-		case fieldDamageExecuteResponseImmuneType: // lis.lAs
-			immuneType = int32(uint32(field.value))
-		case fieldDamageExecuteResponseChangeLife: // lis.jQ_, client-mapped ChangeLife
-			changeLife = int32(uint32(field.value))
+		switch field.Number {
+		case FieldDamageExecuteResponseErrorCode: // lis.Q4n
+			errorCode = int32(uint32(field.Value))
+		case FieldDamageExecuteResponseImmuneType: // lis.lAs
+			immuneType = int32(uint32(field.Value))
+		case FieldDamageExecuteResponseChangeLife: // lis.jQ_, client-mapped ChangeLife
+			changeLife = int32(uint32(field.Value))
 			hasChangeLife = true
-		case fieldDamageExecuteResponseDamage: // lis.nAs
-			amount = int32(uint32(field.value))
+		case FieldDamageExecuteResponseDamage: // lis.nAs
+			amount = int32(uint32(field.Value))
 			hasAmount = true
 		}
 	}
 	if !hasAmount || errorCode != 0 || immuneType != 0 {
-		p.stats.invalidResponses++
+		p.Stats.InvalidResponses++
 		p.rememberConsumed(rpcID, responseDigest(payload))
-		delete(p.pending, rpcID)
-		p.writeNoAmountEvent(rpcID, request, hasAmount, errorCode, immuneType, hasChangeLife, changeLife)
+		delete(p.Pending, rpcID)
+		if p.observer != nil {
+			p.observer.WriteNoAmountEvent(rpcID, request, hasAmount, errorCode, immuneType, hasChangeLife, changeLife)
+		}
 		return
 	}
 
 	p.rememberConsumed(rpcID, responseDigest(payload))
-	delete(p.pending, rpcID)
+	delete(p.Pending, rpcID)
 	value := int64(amount)
 	if value < 0 {
 		value = -value
 	}
-	attackerStatus := resolutionUnknown
-	if request.hasAttackerEntityID && request.attackerEntityID != 0 {
-		_, attackerStatus = p.entities.resolve(request.attackerEntityID)
-		if attackerStatus == resolutionVerified || attackerStatus == resolutionCorrelated {
-			p.stats.observedSourceEntity++
+	attackerStatus := ResolutionUnknown
+	if request.HasAttackerEntityID && request.AttackerEntityID != 0 {
+		_, attackerStatus = p.Entities.Resolve(request.AttackerEntityID)
+		if attackerStatus == ResolutionVerified || attackerStatus == ResolutionCorrelated {
+			p.Stats.ObservedSourceEntity++
 		}
 	}
-	targetStatus := resolutionUnknown
-	if request.hasTargetEntityID && request.targetEntityID != 0 {
-		_, targetStatus = p.entities.resolve(request.targetEntityID)
-		if targetStatus == resolutionVerified || targetStatus == resolutionCorrelated {
-			p.stats.observedTargetEntity++
+	targetStatus := ResolutionUnknown
+	if request.HasTargetEntityID && request.TargetEntityID != 0 {
+		_, targetStatus = p.Entities.Resolve(request.TargetEntityID)
+		if targetStatus == ResolutionVerified || targetStatus == ResolutionCorrelated {
+			p.Stats.ObservedTargetEntity++
 		}
 	}
-	if !request.hasAttackerEntityID || request.attackerEntityID == 0 {
-		p.stats.missingAttackerEntityID++
+	if !request.HasAttackerEntityID || request.AttackerEntityID == 0 {
+		p.Stats.MissingAttackerEntityID++
 	}
-	event := p.buildDamageEvent(rpcID, request, amount, changeLife, hasChangeLife, value)
+	event := p.BuildDamageEvent(rpcID, request, amount, changeLife, hasChangeLife, value)
 	switch event.EventTypeCandidate {
 	case "DAMAGE_CANDIDATE":
-		p.stats.damageCandidateEvents++
-		p.stats.damageCandidateResult += value
+		p.Stats.DamageCandidateEvents++
+		p.Stats.DamageCandidateResult += value
 	case "HEALING_CANDIDATE":
-		p.stats.healingCandidateEvents++
-		p.stats.healingCandidateResult += value
+		p.Stats.HealingCandidateEvents++
+		p.Stats.HealingCandidateResult += value
 	case "OTHER_COMBAT_RESULT_CANDIDATE":
-		p.stats.otherCandidateEvents++
-		p.stats.otherCandidateResult += value
+		p.Stats.OtherCandidateEvents++
+		p.Stats.OtherCandidateResult += value
 	default:
-		p.stats.unclassifiedEvents++
-		p.stats.unclassifiedResult += value
+		p.Stats.UnclassifiedEvents++
+		p.Stats.UnclassifiedResult += value
 	}
-	if event.CharacterStatus == resolutionVerified {
-		p.stats.verifiedCharacters++
-		p.stats.characterResolved++
-	} else if event.CharacterStatus == resolutionCorrelated {
-		p.stats.correlatedCharacters++
-		p.stats.characterResolved++
+	if event.CharacterStatus == ResolutionVerified {
+		p.Stats.VerifiedCharacters++
+		p.Stats.characterResolved++
+	} else if event.CharacterStatus == ResolutionCorrelated {
+		p.Stats.CorrelatedCharacters++
+		p.Stats.characterResolved++
 	}
 	if event.Target.HasMonster {
-		p.stats.monsterResolved++
+		p.Stats.MonsterResolved++
 	}
-	if event.SkillStatus == resolutionVerified || event.SkillStatus == resolutionCorrelated {
-		p.stats.skillResolved++
+	if event.SkillStatus == ResolutionVerified || event.SkillStatus == ResolutionCorrelated {
+		p.Stats.SkillResolved++
 	}
-	if event.CharacterStatus == resolutionUnknown || event.Target.MonsterStatus == resolutionUnknown || event.SkillStatus == resolutionUnknown {
-		p.stats.unknownDamageEvents++
+	if event.CharacterStatus == ResolutionUnknown || event.Target.MonsterStatus == ResolutionUnknown || event.SkillStatus == ResolutionUnknown {
+		p.Stats.UnknownDamageEvents++
 	}
-	p.stats.decodedMatchedEvents++
-	p.stats.decodedCombatResultAbs += value
-	if p.writeDamageEvent(event) {
-		p.observeEncounterSummary(event)
+	p.Stats.DecodedMatchedEvents++
+	p.Stats.DecodedCombatResultAbs += value
+	if p.WriteDamageEvent(event) {
+		if p.observer != nil {
+			p.observer.ObserveEncounterSummary(event)
+		}
 	}
 }
 
-func decryptGameBody(sequence uint32, body, sessionKey []byte) ([]byte, error) {
+func DecryptGameBody(sequence uint32, body, sessionKey []byte) ([]byte, error) {
 	if len(sessionKey) != 32 || len(body) == 0 || len(body)%16 != 0 {
 		return nil, errors.New("invalid AES body or session key length")
 	}
@@ -1207,7 +1097,7 @@ func decryptGameBody(sequence uint32, body, sessionKey []byte) ([]byte, error) {
 	return plain, nil
 }
 
-func decompressBody(compressed []byte, expected uint32) ([]byte, error) {
+func DecompressBody(compressed []byte, expected uint32) ([]byte, error) {
 	reader, err := zlib.NewReader(bytes.NewReader(compressed))
 	if err != nil {
 		return nil, err
@@ -1230,28 +1120,28 @@ func decompressBody(compressed []byte, expected uint32) ([]byte, error) {
 	return plain, nil
 }
 
-func parseProtoFields(data []byte) ([]protoField, error) {
-	fields := make([]protoField, 0, 8)
+func ParseProtoFields(data []byte) ([]ProtoField, error) {
+	fields := make([]ProtoField, 0, 8)
 	for offset := 0; offset < len(data); {
 		tag, n := binary.Uvarint(data[offset:])
 		if n <= 0 || tag>>3 == 0 {
 			return nil, errors.New("invalid Protobuf tag")
 		}
 		offset += n
-		field := protoField{number: tag >> 3, wire: tag & 7}
-		switch field.wire {
+		field := ProtoField{Number: tag >> 3, Wire: tag & 7}
+		switch field.Wire {
 		case 0:
 			value, n := binary.Uvarint(data[offset:])
 			if n <= 0 {
 				return nil, errors.New("invalid Protobuf varint")
 			}
-			field.value = value
+			field.Value = value
 			offset += n
 		case 1:
 			if len(data)-offset < 8 {
 				return nil, errors.New("truncated Protobuf fixed64")
 			}
-			field.data = data[offset : offset+8]
+			field.Data = data[offset : offset+8]
 			offset += 8
 		case 2:
 			length, n := binary.Uvarint(data[offset:])
@@ -1259,16 +1149,16 @@ func parseProtoFields(data []byte) ([]protoField, error) {
 				return nil, errors.New("invalid Protobuf byte length")
 			}
 			offset += n
-			field.data = data[offset : offset+int(length)]
+			field.Data = data[offset : offset+int(length)]
 			offset += int(length)
 		case 5:
 			if len(data)-offset < 4 {
 				return nil, errors.New("truncated Protobuf fixed32")
 			}
-			field.data = data[offset : offset+4]
+			field.Data = data[offset : offset+4]
 			offset += 4
 		default:
-			return nil, fmt.Errorf("unsupported Protobuf wire type %d", field.wire)
+			return nil, fmt.Errorf("unsupported Protobuf wire type %d", field.Wire)
 		}
 		fields = append(fields, field)
 	}
@@ -1277,14 +1167,16 @@ func parseProtoFields(data []byte) ([]protoField, error) {
 
 // startProtocolSessionStatistics closes the previous protocol session's encounters at a game handshake and, for an
 // application host, starts a new statistics interval for the new protocol session.
-func (p *processor) startProtocolSessionStatistics(at time.Time) {
-	if p.damageStatistics == nil {
+func (p *Processor) startProtocolSessionStatistics(at time.Time) {
+	if p.DamageStatistics == nil {
 		return
 	}
-	p.damageStatistics.observeSessionChange(at)
-	p.flushEncounterTransitions()
-	p.damageStatistics.endProtocolSession()
-	if p.intervalPerProtocolSession && p.sessionNumber > 1 {
-		p.damageStatistics.Reset()
+	p.DamageStatistics.observeSessionChange(at)
+	if p.observer != nil {
+		p.observer.FlushEncounterTransitions()
+	}
+	p.DamageStatistics.endProtocolSession()
+	if p.IntervalPerProtocolSession && p.SessionNumber > 1 {
+		p.DamageStatistics.Reset()
 	}
 }

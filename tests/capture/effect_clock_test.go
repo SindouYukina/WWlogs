@@ -148,7 +148,7 @@ func TestEffectCountdownStandsStillDuringATimeStop(t *testing.T) {
 	if after.RemainingStatus != EffectRemainingEstimated || after.OverdueSeconds != nil {
 		t.Fatalf("after the stop = %s overdue %v", after.RemainingStatus, after.OverdueSeconds)
 	}
-	if display := effectDisplayFor(after); display.Eligibility != EffectDisplayEligible {
+	if display := EffectDisplayFor(after); display.Eligibility != EffectDisplayEligible {
 		t.Fatalf("a frozen status is not listed: %+v", display)
 	}
 	if want := effectAt(15); !after.ExpectedExpiry.Equal(want) {
@@ -157,7 +157,7 @@ func TestEffectCountdownStandsStillDuringATimeStop(t *testing.T) {
 	// On the capture clock the status would be 3.5 s overdue here; on the effect clock it runs out at 15 s.
 	overdue := onlyEffect(t, tracker.SnapshotAt(effectQuery(17.5)))
 	requireNear(t, "overdue after its effect-time expiry", overdue.OverdueSeconds, 2.5)
-	if display := effectDisplayFor(overdue); display.Eligibility != EffectDisplayPredictedExpired {
+	if display := EffectDisplayFor(overdue); display.Eligibility != EffectDisplayPredictedExpired {
 		t.Fatalf("an expired status is still listed: %+v", display)
 	}
 	if counters := tracker.SnapshotAt(effectQuery(17.5)).Counters.Clock; counters.StopsBegun != 1 || counters.StopsEnded != 1 {
@@ -198,14 +198,14 @@ func TestEffectClockStopLimitWaitsOutAGlobalPause(t *testing.T) {
 // proto3 leaves a 0 dilation off the wire: an empty TimeStopPush pauses the effect clock.
 func TestEmptyTimeStopPushPausesTheEffectClock(t *testing.T) {
 	p := newPairingTestProcessor()
-	p.session = make([]byte, 32)
-	p.protocol.beginSession()
-	p.protocol.observeVersion(CurrentGameVersion())
-	p.handleFrame(gameFrame{commandID: cmdTimeStopPush, direction: "out", messageType: 2, body: nil, timestamp: effectAt(5)})
-	if counters := p.effects.SnapshotAt(effectQuery(6)).Counters.Clock; counters.DilationChanges != 1 {
+	p.Session = make([]byte, 32)
+	p.Protocol.BeginSession()
+	p.Protocol.ObserveVersion(CurrentGameVersion())
+	p.HandleFrame(GameFrame{CommandID: cmdTimeStopPush, Direction: "out", MessageType: 2, Body: nil, Timestamp: effectAt(5)})
+	if counters := p.Effects.SnapshotAt(effectQuery(6)).Counters.Clock; counters.DilationChanges != 1 {
 		t.Fatalf("clock counters = %+v", counters)
 	}
-	requireSeconds(t, "paused", p.effects.clock.at(effectAt(9))-p.effects.clock.at(effectAt(5)), 0)
+	requireSeconds(t, "paused", p.Effects.clock.at(effectAt(9))-p.Effects.clock.at(effectAt(5)), 0)
 }
 
 // A TimeStopRequest with a scale above 0 slows effect timers to that scale instead of stopping them; concurrent requests

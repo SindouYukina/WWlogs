@@ -1,7 +1,7 @@
 // Package history keeps the player's Combat History: a local SQLite file, separate from the read-only Master, that stores
 // capture sessions and the encounters the engine segmented in them. It receives the engine's journal through a Recorder
 // (one per capture session) on its own goroutine, so storage never slows, stalls or changes a live capture and analysis, and
-// it answers the History view's queries. The file is local and encrypted at rest (encryption.go, keys.go).
+// it answers the History view's queries. The file is local and encrypted at rest (encryption.go, keyderive.go).
 package history
 
 import (
@@ -32,10 +32,13 @@ const (
 
 // Reasons a Store is not ready. They are stable codes for the UI; none of them carries a path.
 const (
-	ReasonNewerSchema    = "newer_schema"
-	ReasonLocked         = "locked_by_other_process"
-	ReasonNotHistory     = "not_a_history_file"
-	ReasonCorrupt        = "integrity_check_failed"
+	ReasonNewerSchema = "newer_schema"
+	ReasonLocked      = "locked_by_other_process"
+	ReasonNotHistory  = "not_a_history_file"
+	// ReasonCorrupt: the file is damaged and its own key is known: it fails quick_check, SQLite cannot read it as a database,
+	// a rollback journal beside it is not one, or its first sector does not decrypt while the rest of it does.
+	ReasonCorrupt = "integrity_check_failed"
+	// ReasonOpenFailed: the file or its directory could not be read or written (storage and I/O errors).
 	ReasonOpenFailed     = "open_failed"
 	ReasonNoHistoryFile  = "no_history_file"
 	ReasonStorageStopped = "storage_stopped"
@@ -43,9 +46,28 @@ const (
 	ReasonKeyMissing = "key_missing"
 	// ReasonKeyUnavailable: the key file cannot be read or unsealed (for example DPAPI refused it for this user).
 	ReasonKeyUnavailable = "key_unavailable"
-	// ReasonKeyMismatch: the unsealed key does not open the history file, or the file is not an encrypted history.
+	// ReasonKeyMismatch: a v0.7.0 history whose unsealed key, like every key derived here, decrypts no part of the file, or a
+	// file that is not an encrypted history. The preflight decides it before SQLite sees the key (preflight.go).
 	ReasonKeyMismatch = "key_mismatch"
+	// ReasonWALIntegrity: the history file decrypts with its key, but its write-ahead log does not, or a log is left beside a
+	// history file that is missing or empty; the log is kept as it is rather than handed to SQLite, which would drop it.
+	ReasonWALIntegrity = "wal_integrity_failure"
+	// ReasonHardwareIdentity: the motherboard identity the history key derives from cannot be read, or names no usable
+	// identifier (keysource.go).
+	ReasonHardwareIdentity = "hardware_identity_unavailable"
+	// ReasonKeyMaterial: the protocol key the history key derives from is not in this build.
+	ReasonKeyMaterial = "key_material_unavailable"
+	// ReasonKeyVerification: no key derived on this computer with this build opens the history, and none decrypts any part
+	// of it: it was made on another computer, before the motherboard identity changed, or with another protocol key, whatever
+	// key record lies beside it.
+	ReasonKeyVerification = "key_verification_failed"
+	// ReasonFormatUnsupported: the history is of a format or a key derivation version this build does not know.
+	ReasonFormatUnsupported = "history_format_unsupported"
 )
+
+// Key protection of an open history (Status.KeyProtection): a key derived from the machine and the protocol key, version 2,
+// or the DPAPI-sealed key of a history WWlogs v0.7.0 made (KeyProvider.ID).
+const keyProtectionDerived = "machine-derived-v2"
 
 // Status is the Store's state for the UI.
 type Status struct {
@@ -59,11 +81,18 @@ type Status struct {
 	RecoveredSessions   int `json:"recoveredSessions"`
 	RecoveredEncounters int `json:"recoveredEncounters"`
 	RemovedReplays      int `json:"removedReplays,omitempty"`
-	// Encrypted is true when the open file is encrypted at rest with Encryption (aes-256-xts) and a key KeyProtection seals
-	// (dpapi-user).
-	Encrypted     bool   `json:"encrypted"`
-	Encryption    string `json:"encryption,omitempty"`
-	KeyProtection string `json:"keyProtection,omitempty"`
+	// Migration says whether this open moved a WWlogs v0.7.0 history to a derived key (migrate.go).
+	Migration string `json:"-"`
+	// Rebuildable is true when the store is unavailable for a reason only a new, empty history solves, and one can be
+	// created on this computer: the UI may then offer to delete the history and start a new one (Rebuild). A history that is
+	// busy, briefly unreadable or whose key inputs are missing is never offered for deletion.
+	Rebuildable bool `json:"rebuildable,omitempty"`
+	// Encrypted is true when the open file is encrypted at rest with Encryption (aes-256-xts) and a key that KeyProtection
+	// names (machine-derived-v2, or dpapi-user for a v0.7.0 history). The encryption is how the history is stored, never a
+	// feature of it: these facts stay in Go for diagnostics and tests and are not sent to the UI.
+	Encrypted     bool   `json:"-"`
+	Encryption    string `json:"-"`
+	KeyProtection string `json:"-"`
 }
 
 // Options configure a Store. Zero values use the running build and the host clock and time zone.
@@ -76,7 +105,10 @@ type Options struct {
 	// Build and MasterSHA256 identify the analyser that recorded a session; they are stored with it.
 	Build        *buildinfo.Identity
 	MasterSHA256 string
-	// KeyProvider seals the history key; nil uses the platform's (DPAPI for the current user on Windows).
+	// KeyInputs supply what the key of a history derives from; zero uses this computer and this build (keysource.go).
+	KeyInputs KeyInputs
+	// KeyProvider unseals the key of a history WWlogs v0.7.0 or earlier made; nil uses the platform's (DPAPI for the current
+	// user on Windows). No history is ever given such a key again.
 	KeyProvider KeyProvider
 }
 
@@ -89,9 +121,22 @@ type Store struct {
 	now      func() time.Time
 	build    buildinfo.Identity
 	master   string
+	inputs   KeyInputs
 	provider KeyProvider
-	// key is the unsealed database key, kept for the connections the pool opens; Close clears it.
-	key []byte
+	// key is the database key, kept for the connections the pool opens; Close clears it. protection says where it came from.
+	key        []byte
+	protection string
+	// repair is the record to write beside a derived history that was opened without a readable one (keyformat.go);
+	// repairReplace allows it to replace a damaged record.
+	repair        *keyRecord
+	repairReplace bool
+	// finishMigration removes what a migration left once the moved history is open (migrate.go).
+	finishMigration bool
+	// options reopen the history (Retry, Rebuild); reopening serializes them with Close. rebuildErr is the failure of a
+	// rebuild this open ran (rebuild.go).
+	options    Options
+	reopening  sync.Mutex
+	rebuildErr error
 
 	// models caches the analysis models of recently analysed encounters (analysis.go).
 	models modelCache
@@ -119,9 +164,12 @@ func DefaultPath() (string, error) {
 // Open opens or creates the history file at options.Path. It always returns a Store: when the file cannot be recorded into,
 // the Store says why in Status and, where it can, still answers queries. The error describes the same problem.
 func Open(options Options) (*Store, error) {
-	store := &Store{path: options.Path, location: options.Location, now: options.Now, master: options.MasterSHA256, provider: options.KeyProvider}
+	store := &Store{path: options.Path, location: options.Location, now: options.Now, master: options.MasterSHA256, inputs: options.KeyInputs, provider: options.KeyProvider, options: options}
 	if store.provider == nil {
 		store.provider = defaultKeyProvider()
+	}
+	if store.inputs.zero() {
+		store.inputs = platformKeyInputs
 	}
 	store.status.LatestSchemaVersion = schemaVersion
 	if store.location == nil {
@@ -139,6 +187,7 @@ func Open(options Options) (*Store, error) {
 	if err != nil && store.status.State == StateUnavailable {
 		// A read-only Store keeps its handle for queries; an unavailable one keeps nothing open.
 		store.closeHandles()
+		store.status.Rebuildable = rebuildableReason(store.status.Reason) && store.canCreate()
 	}
 	return store, err
 }
@@ -149,7 +198,8 @@ func (s *Store) setStatus(state State, reason string) {
 
 // open opens the file for recording, or creates it. A file this build cannot use as its history is never modified: a
 // plaintext SQLite file (the history is never written unencrypted), a file of another application or of another layout, a
-// file whose key is missing or does not open it, and a file another WWlogs records into, which is opened read-only.
+// file no key of this computer and build opens, and a file another WWlogs records into, which is opened read-only. The key
+// is proven against the file before SQLite sees it (unlock).
 func (s *Store) open() error {
 	if s.path == "" {
 		s.setStatus(StateUnavailable, ReasonOpenFailed)
@@ -175,6 +225,10 @@ func (s *Store) open() error {
 	s.lock = lock
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
+	s.rebuildErr = s.resumeRebuild(ctx)
+	if err := s.resumeMigration(); err != nil {
+		return err
+	}
 	kind, err := inspectFile(s.path)
 	if err != nil {
 		s.setStatus(StateUnavailable, ReasonOpenFailed)
@@ -184,7 +238,7 @@ func (s *Store) open() error {
 		s.setStatus(StateUnavailable, ReasonNotHistory)
 		return errors.New("the file is an unencrypted SQLite file, not a WWlogs history")
 	}
-	if err := s.unlockKey(kind != fileOpaque); err != nil {
+	if err := s.unlock(kind, false); err != nil {
 		return err
 	}
 	db, err := openEncrypted(s.path, s.key, false)
@@ -196,13 +250,14 @@ func (s *Store) open() error {
 	identity, err := readIdentity(ctx, db)
 	if err != nil {
 		if isNotADatabase(err) {
-			s.setStatus(StateUnavailable, ReasonKeyMismatch)
-			return errors.New("the history key does not open the history file")
+			// The preflight showed the key to be the file's, so SQLite refusing it as a database is damage, not a wrong key.
+			s.setStatus(StateUnavailable, ReasonCorrupt)
+			return errors.New("the history file decrypts with its key but is not a readable database")
 		}
 		s.setStatus(StateUnavailable, ReasonOpenFailed)
 		return err
 	}
-	s.status.Encrypted, s.status.Encryption, s.status.KeyProtection = true, encryptionName, s.provider.ID()
+	s.status.Encrypted, s.status.Encryption, s.status.KeyProtection = true, encryptionName, s.protection
 	if identity.empty() {
 		if err := s.create(ctx); err != nil {
 			s.setStatus(StateUnavailable, ReasonOpenFailed)
@@ -215,8 +270,14 @@ func (s *Store) open() error {
 	} else if err := quickCheck(ctx, db); err != nil {
 		s.setStatus(StateUnavailable, ReasonCorrupt)
 		return err
+	} else if s.protection != keyProtectionDerived {
+		// A WWlogs v0.7.0 history moves to a derived key now; s.db is then the moved history.
+		if err := s.migrateLegacy(ctx); err != nil {
+			return err
+		}
+		s.status.KeyProtection = s.protection
 	}
-	if _, err := db.ExecContext(ctx, "PRAGMA journal_mode=WAL"); err != nil {
+	if _, err := s.db.ExecContext(ctx, "PRAGMA journal_mode=WAL"); err != nil {
 		s.setStatus(StateUnavailable, ReasonOpenFailed)
 		return fmt.Errorf("enable history write-ahead log: %w", err)
 	}
@@ -225,14 +286,27 @@ func (s *Store) open() error {
 		s.setStatus(StateUnavailable, ReasonOpenFailed)
 		return err
 	}
+	if s.repair != nil {
+		// The history opened without a readable record of its key; it gets one again. A failure only means the next open
+		// finds its key the same way.
+		_ = writeKeyRecord(s.path, *s.repair, s.repairReplace)
+		s.repair = nil
+	}
+	if s.finishMigration {
+		s.cleanUpMigration()
+		s.finishMigration = false
+	}
 	s.setStatus(StateReady, "")
 	return nil
 }
 
-// create lays the schema out in a new, empty file: the whole layout and its identity in one transaction, so a file is either
-// empty or a complete history.
-func (s *Store) create(ctx context.Context) error {
-	tx, err := s.db.BeginTx(ctx, nil)
+// create lays the schema out in a new, empty file.
+func (s *Store) create(ctx context.Context) error { return createSchema(ctx, s.db) }
+
+// createSchema lays the schema out in a new, empty file: the whole layout and its identity in one transaction, so a file is
+// either empty or a complete history.
+func createSchema(ctx context.Context, db *sql.DB) error {
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("create history: %w", err)
 	}
@@ -245,21 +319,6 @@ func (s *Store) create(ctx context.Context) error {
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("create history: %w", err)
 	}
-	return nil
-}
-
-// unlockKey unseals the history key, creating one only when allowed: never for an encrypted file that lost its key file.
-func (s *Store) unlockKey(create bool) error {
-	key, err := loadKey(s.path, s.provider, create)
-	switch {
-	case errors.Is(err, errKeyMissing):
-		s.setStatus(StateUnavailable, ReasonKeyMissing)
-		return err
-	case err != nil:
-		s.setStatus(StateUnavailable, ReasonKeyUnavailable)
-		return err
-	}
-	s.key = key
 	return nil
 }
 
@@ -276,13 +335,19 @@ func (s *Store) openReadOnly() error {
 		s.setStatus(StateUnavailable, ReasonNotHistory)
 		return errors.New("the file is an unencrypted SQLite file, not a WWlogs history")
 	}
-	key, err := loadKey(s.path, s.provider, false)
-	if err != nil {
+	// The recording process may be moving a v0.7.0 history to a derived key or rebuilding it: its files are not read until it
+	// has.
+	moving, _ := fileExists(s.migrationPath())
+	rebuilding, _ := fileExists(s.rebuildPath())
+	if moving || rebuilding {
+		s.setStatus(StateUnavailable, ReasonLocked)
+		return errors.New("the process that records into the history is moving it to another key")
+	}
+	if err := s.unlock(kind, true); err != nil {
 		s.setStatus(StateUnavailable, ReasonLocked)
 		return errors.Join(err, errors.New("the history file cannot be read"))
 	}
-	s.key = key
-	db, err := openEncrypted(s.path, key, true)
+	db, err := openEncrypted(s.path, s.key, true)
 	if err != nil {
 		s.setStatus(StateUnavailable, ReasonLocked)
 		return fmt.Errorf("open history read-only: %w", err)
@@ -298,7 +363,7 @@ func (s *Store) openReadOnly() error {
 		return errors.Join(err, errors.New("the history file cannot be read"))
 	}
 	s.status.SchemaVersion = identity.version
-	s.status.Encrypted, s.status.Encryption, s.status.KeyProtection = true, encryptionName, s.provider.ID()
+	s.status.Encrypted, s.status.Encryption, s.status.KeyProtection = true, encryptionName, s.protection
 	s.setStatus(StateReadOnly, ReasonLocked)
 	return errLocked
 }
@@ -402,9 +467,12 @@ func (s *Store) Status() Status {
 	return s.status
 }
 
+// readable reports whether queries may read the history. It reads the handle and the state together: Retry and Rebuild may
+// give an unavailable store its handle while queries run.
 func (s *Store) readable() bool {
-	status := s.Status()
-	return s.db != nil && (status.State == StateReady || status.State == StateReadOnly || status.Reason == ReasonStorageStopped)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.db != nil && (s.status.State == StateReady || s.status.State == StateReadOnly || s.status.Reason == ReasonStorageStopped)
 }
 
 // closeWaitLimit bounds how long Close waits for sessions still storing their history.
@@ -417,6 +485,8 @@ func (s *Store) Close() error {
 	if s == nil {
 		return nil
 	}
+	s.reopening.Lock()
+	defer s.reopening.Unlock()
 	s.mu.Lock()
 	if s.closed {
 		s.mu.Unlock()

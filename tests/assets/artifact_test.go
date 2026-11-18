@@ -114,7 +114,7 @@ func TestPackResolverMatchesTrackedAssetsForEveryID(t *testing.T) {
 	t.Logf("resolved all %d manifest image IDs with byte parity", len(manifest.Entries))
 }
 
-// The artifact test reads the pack extracted from a built executable (work/ui-perf/extract_pack.py). It proves that every
+// The artifact test reads the pack extracted from a built executable (work/perf/ui/ui-perf/extract_pack.py). It proves that every
 // image of a built artifact resolves through the shared Resolver, by ID, to the bytes the manifest lists.
 func TestBuiltArtifactPackMatchesTheManifest(t *testing.T) {
 	packPath := os.Getenv("WWLOGS_ASSET_PACK")

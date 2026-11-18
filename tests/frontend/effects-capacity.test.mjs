@@ -35,11 +35,35 @@ test("the drawn effects do not change while only time passes", () => {
   for (let tick = 0; tick < 50; tick++) assert.deepEqual(fitEffectStrip(list, 25, layout(300)), first)
 })
 
-test("the empty state covers exactly the area both rows draw in, with its text in the middle", () => {
+test("the Edit Mode preview covers the visible part of both rows' area, with its text in the middle", () => {
   const panel = read("frontend/src/views/EffectsOverlayPanel.tsx")
   const views = read("frontend/src/design/views.css")
-  assert.match(views, /\.ww-effects-empty \{ grid-row: 1 \/ -1; min-width: 0; display: flex; align-items: center; justify-content: center;/)
-  assert.match(panel, /ww-effects-empty"><span className="ww-truncate">\{t\("noEffects"\)\}<\/span>/, "a long label shortens inside the block instead of widening it")
+  // The Edit Mode bar shortens the strip, so the rows' box is capped at its height and the preview fills that box: the
+  // text stays centered on screen instead of in a box clipped at the bar.
+  assert.match(views, /\.ww-effects-rows:has\(> \.ww-effects-preview\) \{ position: relative; max-height: 100%; \}/)
+  assert.match(views, /\.ww-effects-preview \{ position: absolute; inset: 0; min-width: 0; display: flex; align-items: center; justify-content: center;/)
+  assert.match(panel, /ww-effects-preview" data-field="effects-preview"><span className="ww-truncate">\{t\("preview"\)\}<\/span>/, "a long label shortens inside the block instead of widening it")
+})
+
+test("outside Edit Mode an Effects Overlay without cells draws no box, no text and no background", () => {
+  const panel = read("frontend/src/views/EffectsOverlayPanel.tsx")
+  const views = read("frontend/src/design/views.css")
+  assert.match(panel, /const mode = effectsOverlayMode\(cells, editing\)/, "the mode takes content and Edit Mode as separate inputs")
+  assert.match(panel, /data-mode=\{mode\}/)
+  // The only box drawn without cells is the preview, and only in Edit Mode.
+  assert.match(panel, /\{mode === "edit-preview" && cells === 0\n\s+\? <div className="ww-combat-empty ww-effects-preview"/)
+  assert.equal((panel.match(/ww-combat-empty/g) ?? []).length, 1, "no other placeholder")
+  assert.match(views, /\.ww-effects\[data-mode="hidden"\] \{ visibility: hidden; \}/, "a hidden strip paints nothing, whatever a child would draw")
+  // The rows stay mounted in every mode, so the width is measured before the first effect arrives.
+  assert.match(panel, /<div ref=\{rows\} className="ww-effects-rows" data-field="effect-rows">/)
+  for (const source of [panel, views]) assert.doesNotMatch(source, /ww-effects-empty|t\("noEffects"\)/, "the old empty state is gone")
+  for (const locale of ["en", "ja", "ko", "zh-CN", "zh-TW"]) {
+    const overlay = JSON.parse(read(`frontend/locales/${locale}/overlay.json`))
+    assert.equal(overlay.noEffects, undefined, `${locale} keeps no unused empty-state text`)
+    assert.ok(overlay.preview, `${locale} has the Edit Mode preview text`)
+    assert.ok(JSON.parse(read(`frontend/locales/${locale}/settings.json`)).effectsLegend.empty, `${locale} explains the hidden strip`)
+  }
+  assert.match(read("frontend/src/views/SettingsView.tsx"), /t\("effectsLegend\.empty"\)/)
 })
 
 test("a cell keeps its frame line unbroken and its art off the frame", () => {
@@ -64,7 +88,7 @@ test("the production strip orders the engine's set, never filters it, and never 
   assert.ok(!/title=/.test(cell), "no hover text on a cell")
   assert.ok(cell.includes('effectId !== undefined ? gameAssetUrl("buff", effectId)'), "only this effect's own game icon is requested")
   assert.ok(!cell.includes("ww-effect-mark"), "no neutral mark stands in for an icon")
-  assert.match(read("frontend/src/views/OverlayWindow.tsx"), /<EffectsOverlayPanel data=\{data\} alpha=\{alpha\} \/>/)
+  assert.match(read("frontend/src/views/OverlayWindow.tsx"), /<EffectsOverlayPanel data=\{data\} alpha=\{alpha\} editing=\{editing\} \/>/, "Edit Mode, not a review window's dragging, opens the preview")
   for (const locale of ["en", "ja", "ko", "zh-CN", "zh-TW"]) {
     const overlay = JSON.parse(read(`frontend/locales/${locale}/overlay.json`))
     assert.equal(overlay.unknownEffect, undefined, `${locale} has no unknown-effect label`)

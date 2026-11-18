@@ -15,10 +15,16 @@ export interface HistoryStatus {
   latestSchemaVersion: number
   recoveredSessions: number
   recoveredEncounters: number
-  /** True when the open file is encrypted at rest (encryption names the cipher, keyProtection what seals its key). */
-  encrypted: boolean
-  encryption?: string
-  keyProtection?: string
+  /** True when the history cannot be opened and a new, empty one may replace it at the user's request (Go decides). */
+  rebuildable?: boolean
+}
+
+/** The answer to a retry or a rebuild of a history that could not be opened. */
+export interface HistoryRecoveryResult {
+  status: HistoryStatus
+  /** True when the history is open now. */
+  open: boolean
+  refused?: "not_rebuildable"
 }
 
 export interface HistoryDayCount {
@@ -176,8 +182,8 @@ export interface HistoryIndicator {
   capturing: boolean
   /** Journal entries of the running capture that never reached storage. */
   lost?: number
-  encrypted: boolean
-  keyProtection?: string
+  /** True when the unavailable history may be replaced by a new one at the user's request. */
+  rebuildable?: boolean
 }
 
 /** The answer to a deletion: what it removed, or why it was refused. */
@@ -204,7 +210,8 @@ export function indicatorText(indicator: HistoryIndicator | undefined): { key: s
     case "read_only": return { key: "indicator.readOnly", tone: "warn", detail: `unavailable.${indicator.reason ?? "open_failed"}` }
     case "write_failed": return { key: "indicator.writeFailed", tone: "critical", detail: "unavailable.storage_stopped" }
     case "not_recorded": return { key: "indicator.notRecorded", tone: "warn", detail: `unavailable.${indicator.reason ?? "open_failed"}` }
-    case "unavailable": return { key: "indicator.unavailable", tone: "critical", detail: `unavailable.${indicator.reason ?? "open_failed"}` }
+    // Why a history cannot be opened is the host's to keep: every cause reads the same to the user (HistoryRecovery).
+    case "unavailable": return { key: "indicator.unavailable", tone: "critical", detail: "recovery.detail" }
   }
 }
 

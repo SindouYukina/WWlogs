@@ -7,19 +7,19 @@ import (
 
 func TestClassifyCombatFlowKeepsUnknownIsolated(t *testing.T) {
 	cases := []struct {
-		source, target playerRelation
+		source, target PlayerRelation
 		flow           CombatFlow
 		confidence     AttributionConfidence
 	}{
-		{playerRelationLocal, playerRelationUnrelated, CombatFlowLocalOutgoing, AttributionConfirmed},
-		{playerRelationUnrelated, playerRelationLocal, CombatFlowLocalIncoming, AttributionConfirmed},
-		{playerRelationLocal, playerRelationUnknown, CombatFlowUnattributedOutgoing, AttributionUnattributed},
-		{playerRelationUnknown, playerRelationLocal, CombatFlowUnattributedIncoming, AttributionUnattributed},
-		{playerRelationUnknown, playerRelationUnrelated, CombatFlowUnattributedOutgoing, AttributionUnattributed},
-		{playerRelationUnrelated, playerRelationUnknown, CombatFlowUnattributedIncoming, AttributionUnattributed},
-		{playerRelationLocal, playerRelationLocal, CombatFlowLocalInternal, AttributionNotLocal},
-		{playerRelationUnrelated, playerRelationUnrelated, CombatFlowExcluded, AttributionNotLocal},
-		{playerRelationUnknown, playerRelationUnknown, CombatFlowUnresolved, AttributionUnattributed},
+		{PlayerRelationLocal, PlayerRelationUnrelated, CombatFlowLocalOutgoing, AttributionConfirmed},
+		{PlayerRelationUnrelated, PlayerRelationLocal, CombatFlowLocalIncoming, AttributionConfirmed},
+		{PlayerRelationLocal, PlayerRelationUnknown, CombatFlowUnattributedOutgoing, AttributionUnattributed},
+		{PlayerRelationUnknown, PlayerRelationLocal, CombatFlowUnattributedIncoming, AttributionUnattributed},
+		{PlayerRelationUnknown, PlayerRelationUnrelated, CombatFlowUnattributedOutgoing, AttributionUnattributed},
+		{PlayerRelationUnrelated, PlayerRelationUnknown, CombatFlowUnattributedIncoming, AttributionUnattributed},
+		{PlayerRelationLocal, PlayerRelationLocal, CombatFlowLocalInternal, AttributionNotLocal},
+		{PlayerRelationUnrelated, PlayerRelationUnrelated, CombatFlowExcluded, AttributionNotLocal},
+		{PlayerRelationUnknown, PlayerRelationUnknown, CombatFlowUnresolved, AttributionUnattributed},
 	}
 	for _, c := range cases {
 		flow := classifyCombatFlow(c.source, c.target)
@@ -30,11 +30,11 @@ func TestClassifyCombatFlowKeepsUnknownIsolated(t *testing.T) {
 }
 
 func TestNormalizeCombatEventRejectsIncompleteResults(t *testing.T) {
-	base := combatEvent{
+	base := CombatEvent{
 		SessionNumber: 2, RPCID: 77, SourceEntityID: 10, HasSourceEntity: true, TargetEntityID: 20, HasTargetEntity: true,
 		EventTypeCandidate: "DAMAGE_CANDIDATE", Damage: 5, Timestamp: time.Unix(100, 0), DamageID: 9, SkillID: 8,
 	}
-	record, ok := normalizeCombatEvent(base, playerRelationLocal, playerRelationUnrelated)
+	record, ok := normalizeCombatEvent(base, PlayerRelationLocal, PlayerRelationUnrelated)
 	if !ok || record.Kind != CombatEventDamage || record.Key != (CombatEventKey{ProtocolSession: 2, RPCID: 77}) ||
 		record.Flow != CombatFlowLocalOutgoing || record.Amount != 5 || !record.ObservedAt.Equal(time.Unix(100, 0)) ||
 		record.Source.Relation != "LOCAL" || record.Target.Relation != "UNRELATED" || record.Evidence != combatEvidenceDamageRPCResponse {
@@ -42,17 +42,17 @@ func TestNormalizeCombatEventRejectsIncompleteResults(t *testing.T) {
 	}
 	healing := base
 	healing.EventTypeCandidate = "HEALING_CANDIDATE"
-	if record, ok := normalizeCombatEvent(healing, playerRelationLocal, playerRelationLocal); !ok || record.Kind != CombatEventHealing {
+	if record, ok := normalizeCombatEvent(healing, PlayerRelationLocal, PlayerRelationLocal); !ok || record.Kind != CombatEventHealing {
 		t.Fatalf("healing result must normalize as healing, got ok=%v %+v", ok, record)
 	}
-	for name, mutate := range map[string]func(*combatEvent){
-		"zero amount":    func(e *combatEvent) { e.Damage = 0 },
-		"missing source": func(e *combatEvent) { e.HasSourceEntity = false },
-		"zero target":    func(e *combatEvent) { e.TargetEntityID = 0 },
+	for name, mutate := range map[string]func(*CombatEvent){
+		"zero amount":    func(e *CombatEvent) { e.Damage = 0 },
+		"missing source": func(e *CombatEvent) { e.HasSourceEntity = false },
+		"zero target":    func(e *CombatEvent) { e.TargetEntityID = 0 },
 	} {
 		event := base
 		mutate(&event)
-		if _, ok := normalizeCombatEvent(event, playerRelationLocal, playerRelationUnrelated); ok {
+		if _, ok := normalizeCombatEvent(event, PlayerRelationLocal, PlayerRelationUnrelated); ok {
 			t.Errorf("%s: incomplete result must not enter statistics", name)
 		}
 	}
@@ -60,22 +60,22 @@ func TestNormalizeCombatEventRejectsIncompleteResults(t *testing.T) {
 
 func TestDamageStatisticsRejectsRepeatedResponseKeys(t *testing.T) {
 	statistics := NewDamageStatistics()
-	event := combatEvent{
+	event := CombatEvent{
 		SessionNumber: 1, RPCID: 41, SourceEntityID: 100, HasSourceEntity: true, TargetEntityID: 200, HasTargetEntity: true,
 		EventTypeCandidate: "DAMAGE_CANDIDATE", Damage: 30, Timestamp: time.Unix(10, 0),
 	}
-	statistics.addDamageEvent(event, playerRelationLocal, playerRelationUnrelated)
-	statistics.addDamageEvent(event, playerRelationLocal, playerRelationUnrelated)
+	statistics.addDamageEvent(event, PlayerRelationLocal, PlayerRelationUnrelated)
+	statistics.addDamageEvent(event, PlayerRelationLocal, PlayerRelationUnrelated)
 	otherSession := event
 	otherSession.SessionNumber = 2
-	statistics.addDamageEvent(otherSession, playerRelationLocal, playerRelationUnrelated)
+	statistics.addDamageEvent(otherSession, PlayerRelationLocal, PlayerRelationUnrelated)
 	snapshot := statistics.Snapshot()
 	if snapshot.DamageDealt != 60 || snapshot.OutgoingEvents != 2 || snapshot.DuplicateEvents != 1 {
 		t.Fatalf("a repeated key must be counted once and the same RPC id in another session must count: %+v", snapshot)
 	}
 
 	statistics.Reset()
-	statistics.addDamageEvent(event, playerRelationLocal, playerRelationUnrelated)
+	statistics.addDamageEvent(event, PlayerRelationLocal, PlayerRelationUnrelated)
 	afterReset := statistics.Snapshot()
 	if afterReset.DamageDealt != 0 || afterReset.DuplicateEvents != 1 {
 		t.Fatalf("a response applied before Reset must not re-enter the next interval: %+v", afterReset)
@@ -95,10 +95,10 @@ func TestDamageStatisticsCountsEventsWithoutResponseKey(t *testing.T) {
 func TestDamageStatisticsAppliedKeysAreBounded(t *testing.T) {
 	statistics := NewDamageStatistics()
 	for rpc := uint64(1); rpc <= maxStatisticsAppliedKeys+10; rpc++ {
-		statistics.addDamageEvent(combatEvent{
+		statistics.addDamageEvent(CombatEvent{
 			SessionNumber: 1, RPCID: rpc, SourceEntityID: 100, HasSourceEntity: true, TargetEntityID: 200, HasTargetEntity: true,
 			EventTypeCandidate: "DAMAGE_CANDIDATE", Damage: 1, Timestamp: time.Unix(int64(rpc), 0),
-		}, playerRelationLocal, playerRelationUnrelated)
+		}, PlayerRelationLocal, PlayerRelationUnrelated)
 	}
 	statistics.mu.RLock()
 	defer statistics.mu.RUnlock()

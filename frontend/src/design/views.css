@@ -112,8 +112,12 @@ body[data-view="overlay"][data-editing="true"] { --wails-draggable: drag; }
 .ww-overlay-surface[data-editing="true"]::after { content: ""; position: absolute; inset: 2px; border: 1px dashed var(--ww-accent-bright); border-radius: var(--ww-radius-md); pointer-events: none; }
 .ww-overlay-edit { position: absolute; inset-inline: var(--ww-space-2); bottom: var(--ww-space-2); z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: var(--ww-space-2); padding: var(--ww-space-1) var(--ww-space-1) var(--ww-space-1) var(--ww-space-2); border-radius: var(--ww-radius-md); background: var(--ww-surface-3); box-shadow: var(--ww-shadow-popover); font-size: var(--ww-text-2xs); color: var(--ww-text-2); }
 .ww-overlay-edit .ww-btn { flex: none; pointer-events: auto; --wails-draggable: no-drag; }
-/* The empty state covers exactly the area the BUFF and DEBUFF rows draw in, with its text in the middle of that area. */
-.ww-effects-empty { grid-row: 1 / -1; min-width: 0; display: flex; align-items: center; justify-content: center; padding: 0 var(--ww-space-3); background: var(--ww-surface-overlay); border-radius: var(--ww-radius-md); }
+/* Outside Edit Mode an Effects Overlay without cells draws nothing: no background, no text, no frame. */
+.ww-effects[data-mode="hidden"] { visibility: hidden; }
+/* The Edit Mode preview covers the part of the BUFF and DEBUFF rows' area that is on screen, which the Edit Mode bar
+   shortens, with its text in the middle of that part: the rows' box is capped at the strip's height and the preview fills it. */
+.ww-effects-rows:has(> .ww-effects-preview) { position: relative; max-height: 100%; }
+.ww-effects-preview { position: absolute; inset: 0; min-width: 0; display: flex; align-items: center; justify-content: center; padding: 0 var(--ww-space-3); background: var(--ww-surface-overlay); border-radius: var(--ww-radius-md); }
 .ww-effects-legend { display: grid; gap: var(--ww-space-2); margin: 0; padding: var(--ww-space-2) 0; list-style: none; font-size: var(--ww-text-sm); color: var(--ww-text-2); }
 .ww-effects-legend li { display: grid; grid-template-columns: 84px minmax(0, 1fr); align-items: center; column-gap: var(--ww-space-3); }
 .ww-effects-legend-mark { display: flex; justify-content: center; }
@@ -212,6 +216,15 @@ body[data-view="overlay"][data-editing="true"] { --wails-draggable: drag; }
 .ww-history-confirm { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--ww-space-2) var(--ww-space-3); max-width: 100%; padding: var(--ww-space-2) var(--ww-space-3); border: 1px solid var(--ww-critical); border-radius: var(--ww-radius-md); background: var(--ww-critical-soft); }
 .ww-history-confirm p { flex: 1 1 280px; min-width: 0; margin: 0; font-size: var(--ww-text-sm); }
 .ww-history-confirm-actions { display: flex; gap: var(--ww-space-2); }
+/* A history that cannot be opened: one neutral prompt with its actions; the confirmation reuses .ww-history-confirm. */
+.ww-history-recovery-card { padding: var(--ww-space-3) var(--ww-space-4); border-color: var(--ww-critical); }
+.ww-history-recovery { display: flex; flex-direction: column; gap: var(--ww-space-3); }
+.ww-history-recovery-head { display: flex; align-items: flex-start; gap: var(--ww-space-2); color: var(--ww-critical); }
+.ww-history-recovery-text { flex: 1 1 280px; min-width: 0; color: var(--ww-text); }
+.ww-history-recovery-text h3, .ww-history-recovery-text h4 { margin: 0 0 var(--ww-space-1); font-size: var(--ww-text-md); font-weight: var(--ww-weight-semibold); }
+.ww-history-recovery-text p { margin: 0; font-size: var(--ww-text-sm); color: var(--ww-text-2); }
+.ww-history-recovery-actions { display: flex; flex-wrap: wrap; gap: var(--ww-space-2); }
+.ww-history-recovery > .ww-history-confirm { justify-content: space-between; }
 
 /* ------------------------------ Career Overview ------------------------------ */
 /* The range presets need their full width; the selects keep the filter grid's column. */
