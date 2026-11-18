@@ -36,7 +36,21 @@ var overlaySpecs = map[string]overlaySpec{
 	overlayEffects: {windowName: "overlay-effects", title: "WWlogs Effects Overlay", width: 640, height: 120, minWidth: 220, minHeight: 120, maxWidth: 1600, maxHeight: 1200, offsetX: 48, offsetY: 336, defaultOpacity: 62},
 }
 
-// overlayWindowOptions is the single definition of an Overlay's native window, for production and Showcase surfaces.
+// ReviewOverlayWindows returns the native window of every Overlay kind, shown at its default size and offset and loading
+// route(kind): the one Overlay window definition, for a review surface that shows Overlays without the Overlay manager.
+func ReviewOverlayWindows(route func(kind string) string) map[string]application.WebviewWindowOptions {
+	windows := make(map[string]application.WebviewWindowOptions, len(overlaySpecs))
+	for kind, spec := range overlaySpecs {
+		options := overlayWindowOptions(spec, route(kind))
+		options.Hidden = false
+		options.InitialPosition = application.WindowXY
+		options.X, options.Y = spec.offsetX, spec.offsetY
+		windows[kind] = options
+	}
+	return windows
+}
+
+// overlayWindowOptions is the single definition of an Overlay's native window, for production and review surfaces.
 func overlayWindowOptions(spec overlaySpec, url string) application.WebviewWindowOptions {
 	return application.WebviewWindowOptions{
 		Name:           spec.windowName,

@@ -78,6 +78,10 @@ func ParseOptions(arguments []string, output io.Writer) (desktop.Options, error)
 	if *fontRoot != "" && !*showcase {
 		return desktop.Options{}, errors.New("-font-root requires -showcase")
 	}
+	var review *desktop.ReviewSurface
+	if *showcase {
+		review = showcaseSurface(*showcaseOverlays, *fontRoot, output)
+	}
 	return desktop.Options{
 		MasterDatabase: *masterDatabase,
 		Locale:         *locale,
@@ -87,11 +91,9 @@ func ParseOptions(arguments []string, output io.Writer) (desktop.Options, error)
 		},
 		AutoStart:        *autoStart || *replay != "",
 		ShowOverlay:      *showOverlay,
-		Showcase:         *showcase,
-		ShowcaseOverlays: *showcaseOverlays,
+		Review:           review,
 		GameAssetRoot:    *assetRoot,
 		HistoryDatabase:  *historyDatabase,
-		PreviewFontRoot:  *fontRoot,
 		WebviewArguments: webviewArguments(*webviewArgs, *debugPort),
 		EnvironmentProbe: environmentProbe,
 		NpcapTransport:   npcapTransport,

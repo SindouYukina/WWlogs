@@ -35,18 +35,16 @@ type Options struct {
 	AutoStart bool
 	// ShowOverlay shows both Overlays at start; otherwise each restores its saved visibility.
 	ShowOverlay bool
-	// Showcase opens the Development Motion Showcase instead of the Desktop view. ShowcaseOverlays adds its real
-	// transparent windows. Public flags cannot set these, and Public frontend builds do not contain the Showcase.
-	Showcase         bool
-	ShowcaseOverlays bool
+	// Review opens a review surface instead of the Desktop view; nil runs the product. Only the Development composition
+	// supplies one (the Motion Showcase of wwlogs/internal/devdesktop); Public flags cannot set it, and the host holds no
+	// review content of its own.
+	Review *ReviewSurface
 	// GameAssetRoot is an explicitly supplied directory for game images. Empty means the images embedded in the
 	// executable, if any. Only Development flags can set it.
 	GameAssetRoot string
 	// HistoryDatabase is an explicitly supplied Combat History file for tests; empty uses the user's own. Only it records
 	// replays, so a replay never enters the user's own history. Only Development flags can set it.
 	HistoryDatabase string
-	// PreviewFontRoot is an explicitly supplied directory for Development Showcase font candidates.
-	PreviewFontRoot string
 	// WebviewArguments are extra WebView2 browser arguments (rendering experiments, the remote debugging port for
 	// automated UI checks); only Development flags can set them.
 	WebviewArguments []string
@@ -57,6 +55,18 @@ type Options struct {
 	EnvironmentProbe func() capture.CaptureEnvironment
 	NpcapTransport   http.RoundTripper
 	OpenBrowser      func(string) error
+}
+
+// ReviewSurface is a review window the host opens instead of the Desktop view: it loads Route with the default window
+// shape, keeps and saves no window state, and has no Overlay manager and no saved automatic capture start. A Development
+// composition supplies its content (the Motion Showcase, wwlogs/internal/devdesktop); the host only opens it.
+type ReviewSurface struct {
+	// Route is the frontend route of the review window.
+	Route string
+	// Assets, when set, wraps the asset handler, for example to serve explicitly supplied files.
+	Assets func(http.Handler) http.Handler
+	// Open, when set, opens the surface's further windows before the application runs.
+	Open func(app *application.App)
 }
 
 // Composition is what a build profile composes into the host. The build composition boundary of the executable
@@ -100,12 +110,8 @@ func Run(options Options) error {
 	}
 	images := gameAssetSource(options.GameAssetRoot, gameAssetArchive)
 	assetHandler := withGameAssets(application.AssetFileServerFS(frontend), images)
-	if options.PreviewFontRoot != "" {
-		// A wrong path is reported here and shows as Missing in the Showcase; it never stops the application.
-		if info, err := os.Stat(options.PreviewFontRoot); err != nil || !info.IsDir() {
-			fmt.Fprintln(os.Stderr, "WWlogs desktop: the -font-root directory was not found; font candidates will show as missing")
-		}
-		assetHandler = withPreviewFonts(assetHandler, os.DirFS(options.PreviewFontRoot))
+	if options.Review != nil && options.Review.Assets != nil {
+		assetHandler = options.Review.Assets(assetHandler)
 	}
 	catalog, err := readLocaleCatalog(frontend)
 	if err != nil {
@@ -190,8 +196,8 @@ func Run(options Options) error {
 	}
 
 	desktopURL, width, height := "/?view=desktop&"+bootLocaleQuery(settings), desktopShape.width, desktopShape.height
-	if options.Showcase {
-		desktopURL = "/?view=showcase"
+	if options.Review != nil {
+		desktopURL = options.Review.Route
 	} else {
 		keeper = newDesktopWindowKeeper(app, settings, desktopShape)
 		bridge.desktopWindow = keeper
@@ -214,16 +220,16 @@ func Run(options Options) error {
 		keeper.attach(desktop)
 		defer keeper.close(false)
 	} else {
-		// The Showcase review window keeps its default and saves nothing. Wails reads the displays only when the
-		// application runs, so a work area smaller than the default is handled then.
+		// A review window keeps its default and saves nothing. Wails reads the displays only when the application runs,
+		// so a work area smaller than the default is handled then.
 		app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
 			fitDesktopWindow(desktop, app.Screen.GetPrimary(), desktopShape)
 		})
 	}
-	if options.Showcase {
-		// The Showcase is a review surface: it must not rewrite the user's saved windows or settings.
-		if options.ShowcaseOverlays {
-			openShowcaseOverlays(app)
+	if options.Review != nil {
+		// A review surface must not rewrite the user's saved windows or settings, so it has no Overlay manager.
+		if options.Review.Open != nil {
+			options.Review.Open(app)
 		}
 	} else {
 		bridge.overlays = newOverlayManager(app, settings, bridge.shell.fire, shutdown.requested.Load, captureService.Publisher().Next)
@@ -251,7 +257,7 @@ func Run(options Options) error {
 				}
 			}()
 		})
-	} else if !options.Showcase {
+	} else if options.Review == nil {
 		// The saved "start capture when WWlogs launches" preference, evaluated once per run.
 		app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
 			go func() {
