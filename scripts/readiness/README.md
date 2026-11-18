@@ -36,7 +36,7 @@ Inputs:
 | --- | --- | --- |
 | Source tree, `data/master_data.db`, `assets/manifest.json` and `assets/game/**` | tracked | always read |
 | `tests/capture/golden_registry.json` | tracked | the Golden captures the corpus requires for the current game version |
-| Research inputs file | private | `{"protocolSchema": "<client schema from protojs_schema.py>", "clientReferences": "<client reference inventory>", "clientContent": "<client content inventory>"}`; relative paths resolve from the repository root |
+| Research inputs file | private | `{"protocolSchema": "<client schema from protojs_schema.py>", "clientReferences": "<client reference inventory>", "clientContent": "<client content inventory>", "clientImpact": "<client update impact report>"}`; relative paths resolve from the repository root |
 | `-Evidence` directory | run evidence | `verify-results.json`, `golden-coverage.json`, `history-summary.json` (with its `identification` counts) from `verify.ps1 -EvidenceOut` |
 | `-LiveAcceptance` | owner record | `{"gameVersion", "clientVersion", "buildNumber", "executableSha256", "date", "operator", "result", "checks"}` |
 
@@ -87,6 +87,7 @@ reasons) of references the product never requests: `{"client", "resource", "path
 | `verification.regression-suite` | verification | evidence | Every `verify.ps1` step ran and passed | skipped or failing regression |
 | `verification.golden-coverage` | verification | evidence | Every required Golden capture ran from the registered file, checked its facts and passed | a Golden that silently stopped running |
 | `verification.failure-injection` | verification | evidence | The gate's own failure-injection tests ran in both profiles | a gate that no longer detects omissions |
+| `verification.client-impact` | verification | research | The client update impact report compares the client the decoder reads (or was adapted from) with the client of the update, in one platform and region, and found no runtime impact, or found one the product was adapted to | a newer installed client that nobody compared (Global 3.8.11 ran on a 3.8.9 Master for a day, 2026-11-15); a RUNTIME_RELEVANT update gated with the old client's inputs; a pending investigation counted as a pass |
 | `verification.live-acceptance` | verification | live | The owner's Live acceptance of this version | `LIVE / Npcap: NOT RUN` |
 
 Where the product decides, the gate asks the product: effect HUD eligibility is `capture.MasterData.EffectDefinition`
@@ -107,7 +108,17 @@ no longer draws, an inventory of another client, a partial extraction and an exc
 status's icon missing from a copy of the manifest; a client prefab entity the Master has no relation for, one whose template
 the Master names differently, a stale Master relation, and a Master copy without the prefab relations; a History replay
 summary with an enemy without identity, an enemy without a name in one locale and a scene without a kind of play (a recorded
-limit excuses only what it names), and a summary without identification counts. Clean controls of the same inputs pass. Nothing is written to the tracked Master, manifest or any user data.
+limit excuses only what it names), and a summary without identification counts; and client update impact reports that
+are RUNTIME_RELEVANT while the decoder still reads the old client, BLOCKED, pending investigation, about other clients or
+another region, of another schema or of an unknown classification. Clean controls of the same inputs pass. Nothing is written to the tracked Master, manifest or any user data.
+
+The client update impact report (`work/version-update/tools/hotfix_impact.py`, owner-local) is the research input
+`clientImpact`: `{"schema": 1, "platform", "region", "base": {"gameVersion", "clientRegion"}, "target": {...}, "overall",
+"domains": {"<domain>": {"classification", "reasons": [{"level", "reason"}]}}, "liveChecklist"}`. Its base and target are
+compared with the decoded protocol client (`currentProtocolClient`, e.g. `Global 3.8.9`): an update without runtime
+impact (NO_CHANGE, NO_RUNTIME_IMPACT) passes when either side is the decoded client, so the previous version's inputs
+stay valid for the installed client; a RUNTIME_RELEVANT update passes only once the product decodes its target, gated
+with the target's inputs.
 
 ## Troubleshooting
 
@@ -122,4 +133,5 @@ limit excuses only what it names), and a summary without identification counts. 
 | `content.history-identification` FAIL | a stored enemy, stage or kind of play of the corpus has no name | find which layer lost it (wire field not decoded, resolver, Master relation, locale text) before anything else; record a limit in the Golden registry only with client evidence that no source names it |
 | `verification.golden-coverage` FAIL | a required capture was not passed to `verify.ps1`, its file changed, or a fact failed | pass the corpus with `-PcapDirectory`; a changed file needs a new registry entry and independent facts |
 | any evidence check UNVERIFIED | `-Evidence` missing or from a run without `-PcapDirectory` | rerun `verify.ps1 -PcapDirectory logs -EvidenceOut <dir>` |
+| `verification.client-impact` UNVERIFIED or FAIL | no impact report for the installed client, a pending investigation, or a RUNTIME_RELEVANT update not adapted yet | run the impact check of PROCEDURE.md S1a against the installed client; collect the evidence it lists; adapt the domains it names and gate the target's inputs |
 | `master.loads` slow | each locale loads the full Master (about 10 s each on the development PC) | expected; results are remembered within one gate process |

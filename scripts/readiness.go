@@ -26,6 +26,7 @@ type researchInputs struct {
 	ProtocolSchema   string `json:"protocolSchema"`
 	ClientReferences string `json:"clientReferences"`
 	ClientContent    string `json:"clientContent"`
+	ClientImpact     string `json:"clientImpact"`
 }
 
 func main() {
@@ -62,6 +63,7 @@ func run(root, out, research, evidence, live string) error {
 		in.ProtocolSchema = resolve(root, inputs.ProtocolSchema)
 		in.ClientReferences = resolve(root, inputs.ClientReferences)
 		in.ClientContent = resolve(root, inputs.ClientContent)
+		in.ClientImpact = resolve(root, inputs.ClientImpact)
 	}
 	if evidence != "" {
 		for target, name := range map[*string]string{&in.VerifyResults: "verify-results.json", &in.GoldenCoverage: "golden-coverage.json", &in.HistorySummary: "history-summary.json"} {
