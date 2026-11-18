@@ -6,20 +6,14 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
-	"path"
 	"strconv"
 	"strings"
-
-	"github.com/wailsapp/wails/v3/pkg/application"
 
 	"wwlogs/internal/assets"
 )
 
 // gameAssetRoute is the URL prefix the frontend uses for images addressed by static configuration ID.
 const gameAssetRoute = "/game-assets/"
-
-// previewFontRoute serves Development comparison fonts from their separate, explicitly supplied directory.
-const previewFontRoute = "/preview-fonts/"
 
 var gameAssetKinds = map[string]assets.Kind{
 	"character-avatar":   assets.CharacterAvatar,
@@ -73,48 +67,4 @@ func withGameAssets(next http.Handler, source fs.FS) http.Handler {
 		response.Header().Set("Cache-Control", "max-age=3600")
 		_, _ = io.Copy(response, file)
 	})
-}
-
-// withPreviewFonts serves only candidate font files from the separate, explicitly supplied directory.
-func withPreviewFonts(next http.Handler, source fs.FS) http.Handler {
-	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-		name, isFont := strings.CutPrefix(request.URL.Path, previewFontRoute)
-		if !isFont {
-			next.ServeHTTP(response, request)
-			return
-		}
-		servePreviewFont(response, request, source, name)
-	})
-}
-
-// servePreviewFont serves only font files and the manifest. fs.ValidPath rejects any path escape.
-func servePreviewFont(response http.ResponseWriter, request *http.Request, source fs.FS, name string) {
-	contentType, known := previewFontTypes[path.Ext(name)]
-	if !known || !fs.ValidPath(name) {
-		http.NotFound(response, request)
-		return
-	}
-	file, err := source.Open(name)
-	if err != nil {
-		http.NotFound(response, request)
-		return
-	}
-	defer file.Close()
-	response.Header().Set("Content-Type", contentType)
-	_, _ = io.Copy(response, file)
-}
-
-var previewFontTypes = map[string]string{".json": "application/json", ".woff2": "font/woff2", ".ttf": "font/ttf", ".otf": "font/otf"}
-
-// openShowcaseOverlays creates real frameless transparent windows for the Motion Showcase, so transparency, dragging and
-// multi-window cost can be judged in WebView2. They run mock data only and have no path to the capture service.
-func openShowcaseOverlays(app *application.App) {
-	for kind, spec := range overlaySpecs {
-		options := overlayWindowOptions(spec, "/?view=showcase&surface="+kind)
-		options.Name = "showcase-" + kind
-		options.Hidden = false
-		options.InitialPosition = application.WindowXY
-		options.X, options.Y = spec.offsetX, spec.offsetY
-		app.Window.NewWithOptions(options)
-	}
 }
