@@ -15,7 +15,7 @@ import (
 
 // Fixed derivation vectors, version 2.
 //
-// These are the vectors of the derivation research (work/hwid-kdf-poc testdata/vectors-v2.json, research/runs/2026-11-15/
+// These are the vectors of the derivation research (work/experiments/security/hwid-kdf-poc testdata/vectors-v2.json, research/runs/2026-11-15/
 // v0.8.0-hwid-preflight-safety section 2.2), which an independent .NET HKDF implementation reproduced from the written
 // specification. Every input is synthetic: the identifiers spell WWLGTEST and WWLOGSTEST0001, and the RSA keys are test keys
 // without any value. The vectors fix the derivation for good: a change of any constant, encoding or canonicalization rule

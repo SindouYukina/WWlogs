@@ -16,7 +16,7 @@ import (
 // Master locale, unless the Golden registry records why one cannot be named.
 
 // prefabEntity is one entity of a prefab as the client defines it: the TemplateConfig rows and MonsterInfo rows its
-// BlueprintType names in the client's own tables (work/compat-3.8/tools/prefab_identity.py).
+// BlueprintType names in the client's own tables (work/version-update/tools/windows/prefab_identity.py).
 type prefabEntity struct {
 	Prefab    string   `json:"prefab"`
 	Entity    string   `json:"entity"`

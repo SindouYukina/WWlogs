@@ -17,7 +17,7 @@ import (
 // No test here derives a key from this computer's motherboard or from the game protocol key a build embeds: init replaces
 // the platform inputs with a synthetic motherboard (testMachine) and a synthetic RSA key (syntheticProtocolKeyA). Both are
 // the inputs of the fixed derivation vectors (keyderive_test.go), so a history a test creates has exactly the vector key.
-// The synthetic RSA keys were generated for the derivation research (work/hwid-kdf-poc, cmd/genrsa) and have no value. A
+// The synthetic RSA keys were generated for the derivation research (work/experiments/security/hwid-kdf-poc, cmd/genrsa) and have no value. A
 // test that needs another machine or key passes its own KeyInputs.
 
 func init() {

@@ -113,7 +113,7 @@ var semanticEffectFacts = append(currentGoldenFacts(func(capture string) []seman
 	// them (Global 3.8.9: type 2 or 24 cues with a Path and an empty Parameters vector in the hotfix db_buffeffect.db;
 	// BuffItem.Activate draws the icon and only an arrow for "1" or "2"). In the capture they come in the local client's
 	// own ApplyGameplayEffectPush, checked outside the product's effect decoder
-	// (work/live-build31/client_status_crosscheck.py): holder by CombatCommon.EntityId against the role entities of the
+	// (work/tools/combat-audit/live-build31/client_status_crosscheck.py): holder by CombatCommon.EntityId against the role entities of the
 	// server's JoinSceneNotify and EntityAddNotify, stacks from the apply and BuffStackCountPush.NewStackCount on the same
 	// HandleId, instigator role 1512. 1512310003 is on teammates 1311 and 1312 (stack 2 at most), 1512999015 on Lily
 	// herself, 2002205502 on every team member, 1512800104 on the local player's PlayerEntity (EntityType 11, which
@@ -203,7 +203,7 @@ const negativeStatusRole = 1409
 //
 // Server-executed damage (DamageExecuteNotify, counted since 2026-11-14) is in every total below. Each notified result is
 // checked outside the product's decoders (research/runs/2026-11-14/v0.7.0-damage-execute-notify-client-re,
-// work/damage-execute-notify/push_audit.py and classify_pushes.py): its value is the generic schema decode's Damage; its
+// work/experiments/combat/damage-execute-notify/push_audit.py and classify_pushes.py): its value is the generic schema decode's Damage; its
 // attacker is a role entity of the server's JoinSceneNotify FightRoleInfos or the scene's SceneInformation.SceneEntityId,
 // its target an EntityType 2 monster; no counted response explains it (no equal value on the target or equal attacker and
 // DamageId within 2 s whose Life step is not its own, and no notified DamageId ever appears in a client request); a
@@ -214,7 +214,7 @@ const negativeStatusRole = 1409
 // roles 13127004, 15127004 and 13117004, DamageId 1000009900).
 //
 // Role credit of the negative-status results (2026-11-14, research/runs/2026-11-14/v0.7.0-causal-damage-attribution,
-// corrected by research/runs/2026-11-14/v0.7.0-anomaly-attribution-verification; work/causal-attribution/causal_audit.py
+// corrected by research/runs/2026-11-14/v0.7.0-anomaly-attribution-verification; work/tools/combat-audit/causal-attribution/causal_audit.py
 // on the generic schema decode, independent of the product's decoders): every executing status instance on the target
 // (server ApplyGameplayEffectNotify by handle, the client's StackingType 2 shared instance) was created by role 1409's
 // entity and every one of its stack changes (BuffStackCountNotify.InstigatorId) names that entity; a result is a forced
@@ -227,7 +227,7 @@ const negativeStatusRole = 1409
 // the result's frame or the next two) in 1,033 of its 1,047 results, always role 1409's entity; the other 14 results
 // killed their target (EntityLivingStatusNotify in the same frame), which then takes no echo. Of the 1,216 results
 // (12,946,888), 663 were forced (8,899,657), 170 the first execution of a new instance and 383 the instance's own period.
-// The product's per-result credit equals the audit for all 1,216 (work/causal-attribution/compare_product.py).
+// The product's per-result credit equals the audit for all 1,216 (work/tools/combat-audit/causal-attribution/compare_product.py).
 var semanticCompletenessFacts = append(append(currentGoldenFacts(func(capture string) []semanticCompletenessFact {
 	return []semanticCompletenessFact{
 		{capture, 1, 355025, 78716, 0, 0, 746, 0},
@@ -286,7 +286,7 @@ var semanticCompletenessFacts = append(append(currentGoldenFacts(func(capture st
 	semanticCompletenessFact{build28LiveCapture, 29, 778104, 0, 0, 0, 0, 0},
 	semanticCompletenessFact{build28LiveCapture, 30, 774638, 0, 0, 0, 0, 0},
 	// The 18 encounters the engine finished in the Build 31 capture (it discarded a 19th, sequence 18). Checked outside the
-	// product's combat decoders with work/live-build31/completeness_audit_wrap.py on the generic schema decode: all 9,069
+	// product's combat decoders with work/tools/combat-audit/live-build31/completeness_audit_wrap.py on the generic schema decode: all 9,069
 	// responses of both containers keyed by their RequestId continued past the wrap of the client's counter and paired
 	// with the latest request of that RequestId; every value, attacker and target equal to the decode and the request; the
 	// direction from the server's EntityType; every outgoing attacker a role entity of the server's JoinSceneNotify or

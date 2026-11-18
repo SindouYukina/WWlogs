@@ -235,7 +235,7 @@
       "partial": "Partial coverage",
       "partialNote": "{{count}} characters fall back to a system font:",
       "coverageUnknown": "Coverage not recorded in the manifest.",
-      "no-rootNote": "This comparison is unavailable: the candidate directory could not be read. Start the Showcase with -font-root, or use work/dev/Start-Showcase.ps1.",
+      "no-rootNote": "This comparison is unavailable: the candidate directory could not be read. Start the Showcase with -font-root, or use work/tools/showcase/Start-Showcase.ps1.",
       "missingNote": "This comparison is unavailable: required font files are missing. Nothing is shown under this name, so a fallback font cannot pass for it.",
       "failedNote": "This comparison is unavailable: a font file could not be requested or decoded. Nothing is shown under this name, so a fallback font cannot pass for it.",
       "loadingNote": "Loading font files.",
