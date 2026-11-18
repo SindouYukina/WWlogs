@@ -89,6 +89,14 @@ private and never part of the repository; the facts they must show are tracked i
 - `verify.ps1 -EvidenceOut <dir>` records what actually ran: `golden-coverage.json` lists each executed capture, its
   SHA-256, how many facts of each kind it was checked against and whether they held, and the captures whose facts were
   skipped because they were absent.
+- `verify.ps1` reports every step it declares as PASS, FAIL, BLOCKED (required but unable to run) or NOT RUN (only for
+  the owner-local key and the captures of an absent `-PcapDirectory`), and exits 0 only when every step passed (1 on a
+  failed or blocked step, 2 when steps were NOT RUN). A collector counts as run only when its test ran, passed and wrote
+  its outputs: a collector skips itself without its environment and still exits 0.
+- **Wall-clock outputs are samples, never facts.** A replay without pacing publishes host views by wall time, so the
+  same packets give fewer views from a faster executable. The host session collector checks every view a session
+  published against the processor after the same packets and against the publish contract, and lists the view counts
+  in `wallClockFields`; compare them with the contract, never for equality.
 - Synthetic fixtures (frames built in the test) cover what the corpus cannot show on demand: transport loss and
   reordering, RequestId wrap boundaries, reconnects, key collisions, time stops. They test the rule, not the game; a
   game fact still needs a capture and an independent check.
