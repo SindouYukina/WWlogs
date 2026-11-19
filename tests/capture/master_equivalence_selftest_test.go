@@ -271,6 +271,136 @@ func TestMasterEquivalenceHarnessDetectsEveryRegressionClass(t *testing.T) {
 	}
 }
 
+// correctionDeclaration turns the differences a report found into a correction-mode declaration of one correction.
+func correctionDeclaration(differences []masterDifference) ([]masterCorrection, []masterExpectation) {
+	correction := masterCorrection{ID: "role-1312-ko-name", Table: "roleinfo_locale", Column: "name", RowKey: "id=1312, locale=ko-KR",
+		Old: "(fixture name)", New: "改名", GameVersion: "fixture", Source: "fixture client row", Semantics: "the ko-KR display name of role 1312",
+		ExpectedOutput: "role 1312 is named 改名 in ko-KR"}
+	var expectations []masterExpectation
+	for _, x := range differences {
+		old, nw := x.Old, x.New
+		expectations = append(expectations, masterExpectation{Layer: x.Layer, Class: x.Class, Object: x.Object, Locale: x.Locale, Key: x.Key,
+			Old: &old, New: &nw, Count: x.Count, Correction: correction.ID})
+	}
+	return []masterCorrection{correction}, expectations
+}
+
+// A verified data correction passes only with its exact differences declared, every one tied to an evidenced correction:
+// an extra change, a different value, a declared difference that does not happen, an incomplete declaration or a
+// refactor declaration of loaded or display differences all fail.
+func TestMasterCorrectionModeAcceptsOnlyTheDeclaredValues(t *testing.T) {
+	base := buildEquivalenceFixture(t)
+	dir := t.TempDir()
+	rename := "UPDATE roleinfo_locale SET name='改名' WHERE id='1312' AND locale='ko-KR'"
+	corrected := filepath.Join(dir, "corrected.db")
+	copyMasterFile(t, base, corrected)
+	execMasterSQL(t, corrected, []string{rename})
+	options := defaultMasterEquivalenceOptions()
+	options.Locales = []string{"zh-TW", "ko-KR"}
+	options.Mode = masterModeCorrection
+	// Collect what the correction changes (the review step), then declare exactly that.
+	probe := options
+	probe.Corrections, probe.Expectations = []masterCorrection{{ID: "x", Table: "t", Column: "c", RowKey: "k", New: "n", GameVersion: "g", Source: "s", Semantics: "m", ExpectedOutput: "o"}},
+		[]masterExpectation{{Layer: "data", Class: "none", Object: "none", Key: "none", Old: new(string), New: new(string), Correction: "x"}}
+	found, err := runMasterEquivalence(base, corrected, probe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, layer := range []string{"data", "loaded", "display"} {
+		if masterLayerCount(found, layer) == 0 {
+			t.Fatalf("the fixture correction changed nothing in the %s layer: %s", layer, masterEquivalenceSummary(found))
+		}
+	}
+	options.Corrections, options.Expectations = correctionDeclaration(found.Differences)
+	report, err := runMasterEquivalence(base, corrected, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !report.Equivalent {
+		t.Fatalf("the declared correction is not accepted: unexpected %v, absent %v", report.Unexpected, report.ExpectedNotSeen)
+	}
+
+	t.Run("an undeclared change fails", func(t *testing.T) {
+		extra := filepath.Join(t.TempDir(), "extra.db")
+		copyMasterFile(t, corrected, extra)
+		execMasterSQL(t, extra, []string{"UPDATE roleinfo_locale SET name='另一個' WHERE id='1312' AND locale='zh-TW'"})
+		r, err := runMasterEquivalence(base, extra, options)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if r.Equivalent || len(r.Unexpected) == 0 {
+			t.Fatalf("an undeclared zh-TW change passed: %s", masterEquivalenceSummary(r))
+		}
+	})
+	t.Run("another value fails", func(t *testing.T) {
+		other := filepath.Join(t.TempDir(), "other.db")
+		copyMasterFile(t, base, other)
+		execMasterSQL(t, other, []string{"UPDATE roleinfo_locale SET name='別名' WHERE id='1312' AND locale='ko-KR'"})
+		r, err := runMasterEquivalence(base, other, options)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if r.Equivalent || len(r.Unexpected) == 0 || len(r.ExpectedNotSeen) == 0 {
+			t.Fatalf("a different value passed as the declared one: unexpected %v, absent %v", r.Unexpected, r.ExpectedNotSeen)
+		}
+	})
+	t.Run("a declared difference that does not happen fails", func(t *testing.T) {
+		r, err := runMasterEquivalence(base, base, options)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if r.Equivalent || len(r.ExpectedNotSeen) == 0 {
+			t.Fatalf("an unchanged Master passed a correction declaration")
+		}
+	})
+	t.Run("incomplete declarations are refused", func(t *testing.T) {
+		corrections, expectations := correctionDeclaration(found.Differences)
+		broken := map[string]func(c []masterCorrection, e []masterExpectation) ([]masterCorrection, []masterExpectation){
+			"no evidence": func(c []masterCorrection, e []masterExpectation) ([]masterCorrection, []masterExpectation) {
+				c[0].Source = ""
+				return c, e
+			},
+			"no key": func(c []masterCorrection, e []masterExpectation) ([]masterCorrection, []masterExpectation) {
+				e[0].Key = ""
+				return c, e
+			},
+			"no new value": func(c []masterCorrection, e []masterExpectation) ([]masterCorrection, []masterExpectation) {
+				e[0].New = nil
+				return c, e
+			},
+			"a schema difference": func(c []masterCorrection, e []masterExpectation) ([]masterCorrection, []masterExpectation) {
+				e[0].Layer = "schema"
+				return c, e
+			},
+			"an unknown correction": func(c []masterCorrection, e []masterExpectation) ([]masterCorrection, []masterExpectation) {
+				e[0].Correction = "missing"
+				return c, e
+			},
+			"an unused correction": func(c []masterCorrection, e []masterExpectation) ([]masterCorrection, []masterExpectation) {
+				extra := c[0]
+				extra.ID = "unused"
+				return append(c, extra), e
+			},
+		}
+		for name, change := range broken {
+			c := append([]masterCorrection(nil), corrections...)
+			e := append([]masterExpectation(nil), expectations...)
+			c, e = change(c, e)
+			o := options
+			o.Corrections, o.Expectations = c, e
+			if _, err := runMasterEquivalence(base, corrected, o); err == nil {
+				t.Errorf("%s: the declaration was accepted", name)
+			}
+		}
+		// A refactor cannot declare what a correction may.
+		o := options
+		o.Mode, o.Corrections, o.Expectations = masterModeRefactor, nil, expectations
+		if _, err := runMasterEquivalence(base, corrected, o); err == nil {
+			t.Error("refactor mode accepted loaded and display expectations")
+		}
+	})
+}
+
 func TestMasterEquivalenceRefusesToDeclareSemanticDifferences(t *testing.T) {
 	for _, layer := range []string{"loaded", "display"} {
 		if err := validateMasterExpectations([]masterExpectation{{Layer: layer, Class: "entry-changed", Object: "GameMaster.Characters"}}); err == nil {
