@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -15,13 +17,17 @@ import (
 // columns that hold identifiers; the views it reads; and, by name only, every other table of the file. checkMasterContract
 // turns any departure into a named violation, so a missing table, column or view, a changed type, an identifier a
 // TEXT-to-INTEGER conversion could alter, a reference into the wrong namespace or a table that appears unannounced fails a
-// test instead of being skipped by the loader's tolerance of optional tables. The contract is internal work kept outside
-// the repository: the tests that need it read the file WWLOGS_MASTER_CONTRACT names and skip without it, and the checker
-// itself is tested on a contract built from the fixture Master (TestMasterContractCheckerFindsEveryViolationClass).
+// test. The contract is internal work kept outside the repository: the tests that need it read the file
+// WWLOGS_MASTER_CONTRACT names and skip without it, and scripts/verify.ps1 runs them as a required check of its
+// Maintainer mode, where a skip, a missing file or a failure fails the verification. The checker itself is tested on a
+// contract built from the fixture Master (TestMasterContractCheckerFindsEveryViolationClass).
 
 const (
 	// masterContractEnv names the environment variable that gives the Master contract file to the tests that need it.
 	masterContractEnv = "WWLOGS_MASTER_CONTRACT"
+	// masterContractVersion is the contract format these tests read; a contract of another version is refused, never
+	// read as if it were this one.
+	masterContractVersion = 1
 	// masterJSSafeInteger is the largest integer a JavaScript number holds exactly; identifiers reach the frontend as JSON
 	// numbers, and SQLite INTEGER is signed 64-bit, so an identifier must not exceed it.
 	masterJSSafeInteger = 9007199254740991
@@ -115,7 +121,9 @@ func readMasterContract(path string) (masterContract, error) {
 	return c, nil
 }
 
-// masterContractFromEnv reads the Master contract WWLOGS_MASTER_CONTRACT names and skips the test when it is unset.
+// masterContractFromEnv reads the Master contract WWLOGS_MASTER_CONTRACT names and skips the test when it is unset. A set
+// path that cannot be read, a contract of another version and an incomplete contract fail the test: scripts/verify.ps1
+// sets the path in Maintainer mode, and such a contract must never pass for a checked one.
 func masterContractFromEnv(t *testing.T) masterContract {
 	t.Helper()
 	path := os.Getenv(masterContractEnv)
@@ -126,7 +134,31 @@ func masterContractFromEnv(t *testing.T) masterContract {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if problem := masterContractShapeProblem(c); problem != "" {
+		t.Fatalf("Master contract %s: %s", path, problem)
+	}
 	return c
+}
+
+// masterContractShapeProblem names what makes a contract unusable before any of its rules is read: another version, or a
+// part that every check depends on missing.
+func masterContractShapeProblem(c masterContract) string {
+	switch {
+	case c.Version != masterContractVersion:
+		return fmt.Sprintf("contract version %d; these tests read version %d", c.Version, masterContractVersion)
+	case len(c.Locales) == 0:
+		return "it lists no locale"
+	case len(c.Namespaces) == 0:
+		return "it declares no ID namespace"
+	case len(c.Tables) == 0:
+		return "it contracts no table"
+	}
+	for _, table := range c.Tables {
+		if table.Name == "" || len(table.Columns) == 0 {
+			return fmt.Sprintf("table %q lists no column", table.Name)
+		}
+	}
+	return ""
 }
 
 // masterValueRule is the SQL condition a non-null value of a column must meet for each value rule of the contract.
@@ -373,6 +405,49 @@ func checkMasterContract(db *sql.DB, c masterContract) ([]masterContractViolatio
 	return violations, nil
 }
 
+// TestMasterContractShapeIsChecked proves that a contract the Maintainer checks cannot be a wrong or partial file read as a
+// valid one: a missing or unparsable file is an error, and another version or a missing part is a shape problem, each of
+// which fails the contract tests instead of skipping them.
+func TestMasterContractShapeIsChecked(t *testing.T) {
+	valid := func() masterContract {
+		return masterContract{
+			Version:    masterContractVersion,
+			Locales:    []string{"en-US"},
+			Namespaces: []masterContractNamespace{{Name: "RoleInfo.Id", Description: "role"}},
+			Tables:     []masterContractTable{{Name: "roleinfo", Scope: "product", Purpose: "roles", Columns: []masterContractColumn{{Name: "id", Type: "TEXT", Purpose: "key"}}}},
+		}
+	}
+	if problem := masterContractShapeProblem(valid()); problem != "" {
+		t.Fatalf("a complete contract is refused: %s", problem)
+	}
+	for name, edit := range map[string]func(*masterContract){
+		"another version":   func(c *masterContract) { c.Version = masterContractVersion + 1 },
+		"no version":        func(c *masterContract) { c.Version = 0 },
+		"no locale":         func(c *masterContract) { c.Locales = nil },
+		"no namespace":      func(c *masterContract) { c.Namespaces = nil },
+		"no table":          func(c *masterContract) { c.Tables = nil },
+		"a table no column": func(c *masterContract) { c.Tables[0].Columns = nil },
+		"a nameless table":  func(c *masterContract) { c.Tables[0].Name = "" },
+	} {
+		c := valid()
+		edit(&c)
+		if masterContractShapeProblem(c) == "" {
+			t.Errorf("%s: the contract was accepted", name)
+		}
+	}
+	dir := t.TempDir()
+	if _, err := readMasterContract(filepath.Join(dir, "missing.json")); err == nil {
+		t.Error("a missing contract file was read")
+	}
+	truncated := filepath.Join(dir, "truncated.json")
+	if err := os.WriteFile(truncated, []byte(`{"version": 1, "tables": [`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readMasterContract(truncated); err == nil {
+		t.Error("a truncated contract file was read")
+	}
+}
+
 func TestTrackedMasterSatisfiesItsContract(t *testing.T) {
 	contract := masterContractFromEnv(t)
 	db, err := openEmbeddedMasterDatabase()
@@ -386,6 +461,97 @@ func TestTrackedMasterSatisfiesItsContract(t *testing.T) {
 	}
 	for _, v := range violations {
 		t.Error(v.String())
+	}
+}
+
+// TestMasterRuntimeSchemaAgreesWithTheContract keeps the two declarations from drifting apart. The runtime schema
+// (internal/capture/master_schema.go) says what the loader and the display resolver need and is checked at every load;
+// the Master contract describes the whole file. Every product or Development table of the contract is in the runtime
+// schema with the same scope, and no integrity or maintenance table is; every column the contract says a runtime reader
+// reads is in the runtime schema; every runtime column is a contract column of an accepted type; and the views agree.
+func TestMasterRuntimeSchemaAgreesWithTheContract(t *testing.T) {
+	contract := masterContractFromEnv(t)
+	runtimeReaders := map[string]bool{"core": true, "display": true, "development": true}
+	contracted := map[string]masterContractTable{}
+	for _, table := range contract.Tables {
+		contracted[table.Name] = table
+	}
+	contractViews := map[string]masterContractView{}
+	for _, view := range contract.Views {
+		contractViews[view.Name] = view
+	}
+	runtime := map[string]MasterSchemaTable{}
+	for _, table := range MasterRuntimeSchema() {
+		runtime[table.Name] = table
+		if table.View {
+			view, ok := contractViews[table.Name]
+			if !ok {
+				t.Errorf("runtime view %s is not a contract view", table.Name)
+				continue
+			}
+			for _, column := range table.Columns {
+				if !slices.Contains(view.Columns, column.Name) {
+					t.Errorf("runtime view column %s.%s is not a column of the contract view", table.Name, column.Name)
+				}
+			}
+			continue
+		}
+		ct, ok := contracted[table.Name]
+		if !ok {
+			t.Errorf("runtime table %s is not in the contract", table.Name)
+			continue
+		}
+		if ct.Scope != table.Scope {
+			t.Errorf("table %s: runtime scope %s, contract scope %s", table.Name, table.Scope, ct.Scope)
+		}
+		columns := map[string]masterContractColumn{}
+		for _, column := range ct.Columns {
+			columns[column.Name] = column
+		}
+		for _, column := range table.Columns {
+			cc, ok := columns[column.Name]
+			if !ok {
+				t.Errorf("runtime column %s.%s is not in the contract", table.Name, column.Name)
+				continue
+			}
+			if len(column.Types) > 0 && !slices.Contains(column.Types, cc.Type) {
+				t.Errorf("column %s.%s: the contract declares %s, the runtime reads %v", table.Name, column.Name, cc.Type, column.Types)
+			}
+		}
+		for _, cc := range ct.Columns {
+			reads := false
+			for _, reader := range cc.Readers {
+				reads = reads || runtimeReaders[reader]
+			}
+			if !reads {
+				continue
+			}
+			found := false
+			for _, column := range table.Columns {
+				found = found || column.Name == cc.Name
+			}
+			if !found {
+				t.Errorf("the contract says the runtime reads %s.%s (%v); the runtime schema lacks it", table.Name, cc.Name, cc.Readers)
+			}
+		}
+	}
+	for _, ct := range contract.Tables {
+		_, listed := runtime[ct.Name]
+		switch ct.Scope {
+		case "product", "development":
+			if !listed {
+				t.Errorf("contract %s table %s is not in the runtime schema", ct.Scope, ct.Name)
+			}
+		default:
+			if listed {
+				t.Errorf("contract %s table %s is in the runtime schema: the runtime does not read it", ct.Scope, ct.Name)
+			}
+		}
+	}
+	for _, view := range contract.Views {
+		if _, listed := runtime[view.Name]; !listed {
+			t.Errorf("contract view %s is not in the runtime schema", view.Name)
+		}
 	}
 }
 

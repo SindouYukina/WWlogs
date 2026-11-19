@@ -26,6 +26,7 @@ func TestDisplayResolverFallbackAndBoundedCache(t *testing.T) {
 		}
 	}
 	db.Close()
+	completeMasterFixture(t, path)
 	resolver, err := OpenDisplayResolver(path)
 	if err != nil {
 		t.Fatal(err)
@@ -76,6 +77,7 @@ func TestDisplayResolverMasterLocales(t *testing.T) {
 	if path == "" {
 		t.Skip("WWLOGS_DISPLAY_MASTER_DB is not supplied")
 	}
+	completeMasterFixture(t, path)
 	resolver, err := OpenDisplayResolver(path)
 	if err != nil {
 		t.Fatal(err)

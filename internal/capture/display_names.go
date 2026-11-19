@@ -21,17 +21,22 @@ type DisplayResolver struct {
 	mu    sync.Mutex
 	names map[string]DisplayName
 	order []string
-	// modes caches InstanceMode answers within the same bound; modeTables says once whether the Master has the tables.
-	modes      map[string]InstanceMode
-	modeOrder  []string
-	modeTables *bool
+	// modes caches InstanceMode answers within the same bound.
+	modes     map[string]InstanceMode
+	modeOrder []string
 }
 
 const maxDisplayNames = 2048
 
+// OpenDisplayResolver opens a Master that provides the runtime schema (checkMasterRuntimeSchema) for display lookups and
+// refuses any other, as the loader does.
 func OpenDisplayResolver(path string) (*DisplayResolver, error) {
 	db, _, _, err := openMasterDatabase(path)
 	if err != nil {
+		return nil, err
+	}
+	if err := checkMasterRuntimeSchema(db); err != nil {
+		_ = db.Close()
 		return nil, err
 	}
 	resolver, err := newDisplayResolver(db)
@@ -96,8 +101,7 @@ func (r *DisplayResolver) Resolve(ctx context.Context, kind string, id uint64, l
 }
 
 // staticRoleLocked is the RoleInfo a runtime RoleId reads its name and element from: a trial role's parent
-// (trialroleinfo.parent_role_id, see gameMaster.staticRoleID), else the RoleId itself. A Master without the table
-// has no trial roles. The caller holds mu.
+// (trialroleinfo.parent_role_id, see gameMaster.staticRoleID), else the RoleId itself. The caller holds mu.
 func (r *DisplayResolver) staticRoleLocked(ctx context.Context, roleID uint64) uint64 {
 	key := "static-role:" + strconv.FormatUint(roleID, 10)
 	if cached, ok := r.names[key]; ok {

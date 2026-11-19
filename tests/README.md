@@ -4,6 +4,10 @@ All WWlogs product test source files, test helpers, and fixtures belong in this 
 
 - `capture/`, `devcapture/`, `devdesktop/` and `keyembed/` contain white-box tests. `go-overlay.json` maps these files from their physical locations under `tests/` to the product packages under test, and hides their original paths from `tests/` package discovery.
 - `capture/` tests the shared core (`internal/capture`) in both build profiles; `devcapture/` tests the Development capture module (`internal/devcapture`: research and diagnostic outputs, the command census, the live spool). A test file of one package cannot be imported by another, so `devcapture/capture_helpers_test.go` copies the `capture/` helpers the Development tests use, each group named after its original; change a copy with its original.
+- A synthetic Master (a fixture SQLite file built in a test) must provide the runtime schema
+  (`internal/capture/master_schema.go`): the loader and the display resolver refuse any other. `completeMasterFixture`
+  (`capture/master_schema_test.go`, with copies in `devcapture/` and `desktop/`) adds the tables, view and columns a
+  fixture lacks, empty, after the test created what it needs.
 - `versioninfo/` contains product tests that use exported APIs.
 - `architecture/` contains the architecture contracts: static checks of the product source of both build profiles (see below).
 - `buildrun/` tests the official Build Number allocator and the all-or-nothing installation of a build run, each against its own temporary counter directory.
@@ -84,15 +88,27 @@ private and never part of the repository; the facts they must show are tracked i
   evidence only), or an obsolete test. Write the decision and its evidence down before changing the fact.
 - **The corpus is the owner's choice.** `tests/capture/golden_registry.json` names the captures of the current game
   version and which ones are required. A required capture must be executed with every fact checked, from the file with
-  the SHA-256 the registry pins; the version readiness gate (`scripts/readiness`) fails otherwise. Supplementary
-  captures keep their facts for when they are present; their absence is reported, not hidden.
+  the SHA-256 the registry pins; the version readiness gate (`scripts/readiness`) fails otherwise, and so does the
+  semantic replay step of a Maintainer `verify.ps1 -PcapDirectory` run. Supplementary captures keep their facts for when
+  they are present; their absence is reported, not hidden.
 - `verify.ps1 -EvidenceOut <dir>` records what actually ran: `golden-coverage.json` lists each executed capture, its
   SHA-256, how many facts of each kind it was checked against and whether they held, and the captures whose facts were
   skipped because they were absent.
-- `verify.ps1` reports every step it declares as PASS, FAIL, BLOCKED (required but unable to run) or NOT RUN (only for
-  the owner-local key and the captures of an absent `-PcapDirectory`), and exits 0 only when every step passed (1 on a
-  failed or blocked step, 2 when steps were NOT RUN). A collector counts as run only when its test ran, passed and wrote
-  its outputs: a collector skips itself without its environment and still exits 0.
+- `verify.ps1` has two modes. `-Mode Maintainer` (the default) is the maintainer's complete verification: it also runs
+  the checks that need private material, the Master contract (`work/acceptance/master/master_contract.json`, or the file
+  `WWLOGS_MASTER_CONTRACT` names), the owner-local key and, with `-PcapDirectory`, the capture corpus, and a missing or
+  unreadable private input fails it; it never turns into Public. `-Mode Public` runs only what tracked files and public
+  tools allow (formatting, vet, both profiles' tests, the asset check, the frontend build), reads no private material and
+  reports every other step SKIP.
+- `verify.ps1` reports every step it declares as PASS, FAIL, BLOCKED (required but unable to run), NOT RUN (only for the
+  captures of an absent `-PcapDirectory`) or SKIP (Public mode only), and only PASS counts as passed. A Maintainer run
+  exits 0 only when every step passed; a Public run exits 0 when every step it runs passed and says
+  `PASS WITH PRIVATE CHECKS SKIPPED`; both exit 1 on a failed or blocked step and 2 when steps were NOT RUN. The go test
+  steps count the tests that passed and those that skipped themselves. A collector counts as run only when its test ran,
+  passed and wrote its outputs: a collector skips itself without its environment and still exits 0.
+- `tests/verify/rules.tests.ps1` tests the rules `verify.ps1` decides with (`scripts/verify/rules.ps1`): where the Master
+  contract is, how a go test stream reads, when a required check and the required Golden captures count as run, and the
+  verdict of each mode. `verify.ps1` runs it as a step.
 - **Wall-clock outputs are samples, never facts.** A replay without pacing publishes host views by wall time, so the
   same packets give fewer views from a faster executable. The host session collector checks every view a session
   published against the processor after the same packets and against the publish contract, and lists the view counts

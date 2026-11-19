@@ -463,6 +463,39 @@ func TestGateFailsUnexecutedRequiredGolden(t *testing.T) {
 	wantStatus(t, report, "verification.regression-suite", readiness.StatusUnverified)
 }
 
+// A Public verify run (scripts/verify.ps1 -Mode Public) reports the steps that need private material SKIP. A skipped step
+// is no pass: the gate's evidence checks stay open and the version is not STATIC_READY on such a run.
+func TestGateTakesNoPublicVerifyRunAsPassing(t *testing.T) {
+	in := baseInputs(t)
+	passingEvidence(t, &in)
+	var results map[string]any
+	data, err := os.ReadFile(in.VerifyResults)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(data, &results); err != nil {
+		t.Fatal(err)
+	}
+	results["mode"] = "Public"
+	for _, step := range results["results"].([]any) {
+		switch step.(map[string]any)["name"] {
+		case "desktop embedded images", "master: embedded bytes + profile lookup parity", "replay: public output audit + statistics equality",
+			"replay: effect and skill semantics", "replay: combat history fidelity":
+			step.(map[string]any)["state"] = "SKIP"
+			step.(map[string]any)["detail"] = "Public mode: needs the owner-local key"
+		}
+	}
+	in.VerifyResults = writeJSON(t, in.VerifyResults, results)
+	report := run(t, in)
+	for _, id := range []string{"verification.regression-suite", "runtime.profile-parity", "assets.embedded-parity"} {
+		wantStatus(t, report, id, readiness.StatusUnverified)
+	}
+	wantFail(t, report, "verification.golden-coverage", "replay: effect and skill semantics")
+	if report.StaticReady {
+		t.Fatal("a Public verify run made the version STATIC_READY")
+	}
+}
+
 // Failure injection: a HUD status's icon is missing from the pack.
 func TestGateFailsMissingHUDIcon(t *testing.T) {
 	var icon string
@@ -527,6 +560,30 @@ func TestGateFailsNegativeStatusSettlementGaps(t *testing.T) {
 		"InvokePeriod 99990067 names status Buff 10061000, which has no period",
 		"status Buff 10021000 of DamageId 1004 spreads on overflow but has no positive stack limit",
 		"status Buff 150721001 of DamageId 1005 lacks a settlement column")
+}
+
+// Failure injection: a Master without the prefab relation tables is refused by the strict product loader by name, and
+// nothing is decided from it. (What a Master with empty relations leaves unidentified is a research check.)
+func TestGateRefusesMasterWithoutPrefabRelationTables(t *testing.T) {
+	root := repositoryRoot(t)
+	fixture := filepath.Join(t.TempDir(), "master_data.db")
+	copyFile(t, filepath.Join(root, "data", "master_data.db"), fixture)
+	db, err := sql.Open("sqlite", "file:"+filepath.ToSlash(fixture))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range []string{"DROP TABLE prefab_entity_template_ref", "DROP TABLE prefab_entity_monster"} {
+		if _, err := db.Exec(statement); err != nil {
+			db.Close()
+			t.Fatal(err)
+		}
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	report := run(t, readiness.Inputs{Root: root, MasterPath: fixture, Locales: []string{"zh-TW"}})
+	wantFail(t, report, "master.loads", "missing table prefab_entity_monster", "missing table prefab_entity_template_ref")
+	wantStatus(t, report, "content.prefab-entities", readiness.StatusUnverified)
 }
 
 // Failure injection: the History replay of the corpus stored an enemy without identity, an enemy without a name in one

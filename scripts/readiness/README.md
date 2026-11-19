@@ -28,7 +28,7 @@ maintainer's gate decides them.
 ## Running it
 
 ```powershell
-# 1. A verification run that records what it executed.
+# 1. A Maintainer verification run (the default mode) that records what it executed.
 pwsh -NoProfile -File scripts/verify.ps1 -PcapDirectory logs -EvidenceOut <evidence dir>
 # 2. The tracked gate over the tracked tree and that evidence.
 pwsh -NoProfile -File scripts/readiness.ps1 -Out <report dir> -Evidence <evidence dir> [-ResearchInputs <inputs.json>] [-LiveAcceptance <live.json>]
@@ -80,7 +80,7 @@ Inputs:
 | `runtime.history-version-source` | runtime | static | No product or frontend source keeps a game version literal of its own | History or a view recording an old version |
 | `runtime.profile-parity` | runtime | evidence | Public and Development statistics, History and Master answers are equal (`verify.ps1`) | a profile split in core semantics |
 | `runtime.history-version-replay` | runtime | evidence | Every encounter the History replay stored carries the decoded version | stale History game versions |
-| `verification.regression-suite` | verification | evidence | Every `verify.ps1` step ran and passed | skipped or failing regression |
+| `verification.regression-suite` | verification | evidence | Every `verify.ps1` step ran and passed (a `-Mode Public` run skips the private checks, so its evidence never passes) | skipped or failing regression |
 | `verification.golden-coverage` | verification | evidence | Every required Golden capture ran from the registered file, checked its facts and passed | a Golden that silently stopped running |
 | `verification.failure-injection` | verification | evidence | The gate's failure-injection tests ran in both profiles | a gate that no longer detects omissions |
 | `verification.client-impact` | verification | research | The client update was compared with the client the product decodes | a newer installed client that nobody compared (Global 3.8.11 ran on a 3.8.9 Master for a day, 2026-11-15); an update gated with the old client's inputs |
@@ -99,7 +99,7 @@ manifest; a product classification that drops a HUD status or every arrowless (n
 an exclusive instance relation and no name, and a trial role with a missing parent, in a temporary copy of the Master; a
 History version literal with the protocol at 3.9 and a replay whose encounters lack the version; a retired translation
 layer and a stray wire number in a source copy; a required Golden capture absent, without facts, failed, or from another
-file; a HUD status's icon missing from a copy of the manifest; and a
+file; a HUD status's icon missing from a copy of the manifest; a Master copy without the prefab relation tables; and a
 History replay summary with an enemy without identity, an enemy without a name in one locale and a scene without a kind of
 play (a recorded limit excuses only what it names), and a summary without identification counts. Clean controls of the
 same inputs pass. Nothing is written to the tracked Master, manifest or any user data.

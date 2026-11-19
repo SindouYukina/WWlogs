@@ -29,26 +29,19 @@ const (
 )
 
 // hudCuePolarity reads the direction parameter of a HUD cue with a Path. A value the HUD draws no arrow for, or no value
-// (an empty Parameters vector stores no row), is neutral; without the parameters table there is no direction evidence.
-func hudCuePolarity(direction string, haveParameters bool) EffectPolarity {
-	switch {
-	case !haveParameters:
-		return EffectPolarityUnclassified
-	case direction == hudDirectionBuff:
+// (an empty Parameters vector stores no row), is neutral.
+func hudCuePolarity(direction string) EffectPolarity {
+	switch direction {
+	case hudDirectionBuff:
 		return EffectPolarityBuff
-	case direction == hudDirectionDebuff:
+	case hudDirectionDebuff:
 		return EffectPolarityDebuff
 	}
 	return EffectPolarityNeutral
 }
 
 // loadHUDCueParameters reads the direction and monster-head parameters of every HUD cue, keyed by the cue's id as stored.
-// The table is optional, so an older Master has no direction evidence.
 func loadHUDCueParameters(db *sql.DB) (map[string]map[int]string, error) {
-	exists, err := masterTableExists(db, "gameplaycue_parameters")
-	if err != nil || !exists {
-		return nil, err
-	}
 	rows, err := db.Query(`SELECT owner_id, ordinal, value FROM gameplaycue_parameters WHERE ordinal IN (?, ?)`, hudParameterDirection, hudParameterMonsterHead)
 	if err != nil {
 		return nil, fmt.Errorf("query GameplayCue parameters: %w", err)
@@ -72,15 +65,8 @@ func loadHUDCueParameters(db *sql.DB) (map[string]map[int]string, error) {
 // loadBuffHUDCues records, for every buff row, the distinct HUD cue types of its GameplayCueIds whose cue has a Path, and
 // the direction and monster-head visibility of the first such cue in list order. Cues of types 2, 24 and 37 are keyed by
 // buff handle in BuffItemContainer, so the first one is the one the bar keeps; type 14 can add a second item, and in the
-// Master data every definition with both uses the same direction for each. Both tables are optional, so a Master without
-// gameplaycue simply has no HUD evidence.
+// Master data every definition with both uses the same direction for each.
 func loadBuffHUDCues(db *sql.DB, statics map[uint64]BuffStaticParameters) error {
-	for _, table := range []string{"buff_gameplay_cue_ids", "gameplaycue"} {
-		exists, err := masterTableExists(db, table)
-		if err != nil || !exists {
-			return err
-		}
-	}
 	parameters, err := loadHUDCueParameters(db)
 	if err != nil {
 		return err
@@ -108,7 +94,7 @@ func loadBuffHUDCues(db *sql.DB, statics map[uint64]BuffStaticParameters) error 
 		}
 		entry := statics[id]
 		if len(entry.hudCueTypes) == 0 {
-			entry.hudPolarity = hudCuePolarity(parameters[cue][hudParameterDirection], parameters != nil)
+			entry.hudPolarity = hudCuePolarity(parameters[cue][hudParameterDirection])
 			entry.hudHiddenOnMonsterHead = parameters[cue][hudParameterMonsterHead] == hudHiddenOnMonsterHead
 		}
 		index := sort.Search(len(entry.hudCueTypes), func(i int) bool { return entry.hudCueTypes[i] >= cueType })

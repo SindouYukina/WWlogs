@@ -72,9 +72,6 @@ var instanceModeRules = []struct {
 	{"ship_tower", "CORRELATED", `SELECT '` + shipTowerGuideCategory + `' FROM slashtowerstageinfo WHERE inst_id = ? UNION SELECT '` + shipTowerGuideCategory + `' FROM slashandtowercfg_instance_ref WHERE instance_dungeon_id = ?`, 2},
 }
 
-// instanceModeTables must all exist for the guide categories; an older Master without them names no category.
-var instanceModeTables = []string{"instancedungeon", "secondaryguidedata_locale", "dungeondetection", "silentareadetection", "instancedungeonentrance_instance_ref", "slashtowerstageinfo", "slashandtowercfg_instance_ref"}
-
 // InstanceMode returns the kind of play of an instance dungeon in a locale (English as the fallback name). An instance the
 // Master does not place stays UNKNOWN.
 func (r *DisplayResolver) InstanceMode(ctx context.Context, instanceID uint64, locale string) (InstanceMode, error) {
@@ -100,20 +97,6 @@ func (r *DisplayResolver) InstanceMode(ctx context.Context, instanceID uint64, l
 func (r *DisplayResolver) instanceModeLocked(ctx context.Context, instanceID uint64, locale string) (InstanceMode, error) {
 	unknown := InstanceMode{Status: "UNKNOWN"}
 	if instanceID == 0 {
-		return unknown, nil
-	}
-	if r.modeTables == nil {
-		available := true
-		for _, table := range instanceModeTables {
-			exists, err := masterTableExists(r.db, table)
-			if err != nil {
-				return unknown, errors.New("Master instance tables could not be read")
-			}
-			available = available && exists
-		}
-		r.modeTables = &available
-	}
-	if !*r.modeTables {
 		return unknown, nil
 	}
 	id := strconv.FormatUint(instanceID, 10)
@@ -205,22 +188,18 @@ func (r *DisplayResolver) InstanceStage(ctx context.Context, instanceID uint64, 
 		return cached, nil
 	}
 	result := DisplayName{Status: "UNKNOWN"}
-	if exists, err := masterTableExists(r.db, "lordgymentranceset_locale"); err != nil {
-		return result, errors.New("Master instance tables could not be read")
-	} else if exists {
-		for _, candidate := range []string{locale, "en-US"} {
-			titles, err := r.distinctLocked(ctx, `SELECT l.title FROM lordgymentranceset s JOIN lordgymentranceset_locale l ON l.id = s.id
-				WHERE s.dungeon_id = ? AND l.locale = ?`, strconv.FormatUint(instanceID, 10), candidate)
-			if err != nil {
-				return result, err
-			}
-			if len(titles) == 1 {
-				result = DisplayName{Name: titles[0], Status: "CORRELATED", Locale: candidate}
-				break
-			}
-			if len(titles) > 1 {
-				break
-			}
+	for _, candidate := range []string{locale, "en-US"} {
+		titles, err := r.distinctLocked(ctx, `SELECT l.title FROM lordgymentranceset s JOIN lordgymentranceset_locale l ON l.id = s.id
+			WHERE s.dungeon_id = ? AND l.locale = ?`, strconv.FormatUint(instanceID, 10), candidate)
+		if err != nil {
+			return result, err
+		}
+		if len(titles) == 1 {
+			result = DisplayName{Name: titles[0], Status: "CORRELATED", Locale: candidate}
+			break
+		}
+		if len(titles) > 1 {
+			break
 		}
 	}
 	r.remember(key, result)

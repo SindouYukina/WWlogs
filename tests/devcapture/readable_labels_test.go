@@ -2,6 +2,7 @@ package devcapture
 
 import (
 	"database/sql"
+	"strings"
 	"testing"
 
 	"wwlogs/internal/capture"
@@ -35,6 +36,7 @@ func TestReadableLabelsLoadFromMasterAndFallBackToTheOriginal(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	completeMasterFixture(t, path)
 	english, err := capture.LoadGameMasterDatabase(path, "en-US")
 	if err != nil {
 		t.Fatal(err)
@@ -76,18 +78,38 @@ func TestReadableLabelsLoadFromMasterAndFallBackToTheOriginal(t *testing.T) {
 	}
 }
 
-func TestOlderMasterWithoutReadableLabelTablesStillLoads(t *testing.T) {
-	master, err := capture.LoadGameMasterDatabase(buildMasterDatabaseFixture(t), "zh-TW")
+// Empty label tables give no label text and a damage row without an element gives no element; a Master without the label
+// tables is refused by name instead of loading without them.
+func TestMasterWithoutReadableLabelRowsLoadsAndWithoutTheTablesIsRefused(t *testing.T) {
+	path := buildMasterDatabaseFixture(t)
+	completeMasterFixture(t, path)
+	master, err := capture.LoadGameMasterDatabase(path, "zh-TW")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if capture.ResolveSkillLabelText(master, 80010001) != nil {
-		t.Fatal("no label table must give no label text")
+		t.Fatal("no label row must give no label text")
 	}
 	for damageID := range master.Damage {
 		if resolveDamageElement(master, damageID, true) != nil {
-			t.Fatal("a damage table without an element column must give no element")
+			t.Fatal("a damage row without an element must give no element")
 		}
 		break
+	}
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range []string{"DROP TABLE skill_dev_label_locale", "DROP TABLE dev_label_locale", "DROP TABLE elementinfo_locale"} {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	db.Close()
+	_, err = capture.LoadGameMasterDatabase(path, "zh-TW")
+	for _, table := range []string{"skill_dev_label_locale", "dev_label_locale", "elementinfo_locale"} {
+		if err == nil || !strings.Contains(err.Error(), "missing table "+table) {
+			t.Fatalf("a Master without %s: %v", table, err)
+		}
 	}
 }

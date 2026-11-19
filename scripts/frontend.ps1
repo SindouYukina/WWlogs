@@ -4,8 +4,10 @@
 
 .DESCRIPTION
   Copies the frontend sources to a temporary directory outside the repository, installs the exact dependencies from
-  frontend/package-lock.json there with `npm ci`, and runs the typecheck or the production build. Nothing is installed
-  or built inside the repository. The build output goes to -OutDir, which must be outside the repository.
+  frontend/package-lock.json there with `npm ci`, runs the frontend behavior tests (tests/frontend) in that copy with the
+  packages it installed, and runs the typecheck or the production build. Nothing is installed or built inside the
+  repository, and nothing depends on a frontend/node_modules the checkout may have. The build output goes to -OutDir,
+  which must be outside the repository.
 
   Node.js is the system installation on PATH (or the directory named by $env:WWLOGS_NODE_HOME), and npm is the npm
   command on PATH, which a global npm upgrade places ahead of the copy bundled with Node.js. Their versions must fall in
@@ -80,16 +82,6 @@ try {
     & $node (Join-Path $repoRoot 'frontend/locales/validate.mjs')
     if ($LASTEXITCODE -ne 0) { throw 'Bundled localization validation failed' }
 
-    # Pure formatting and trust-state checks use Node's built-in runner and tracked sources only.
-    Push-Location $repoRoot
-    try {
-        $testFiles = @(Get-ChildItem -LiteralPath 'tests/frontend' -Filter '*.test.mjs' | ForEach-Object { "tests/frontend/$($_.Name)" })
-        & $node --test @testFiles
-        if ($LASTEXITCODE -ne 0) { throw "frontend behavior tests failed ($LASTEXITCODE)" }
-    } finally {
-        Pop-Location
-    }
-
     if ($Action -eq 'Build') {
         if ($OutDir -eq '') { throw '-OutDir is required for Build' }
         $OutDir = [IO.Path]::GetFullPath($OutDir)
@@ -98,15 +90,34 @@ try {
         }
     }
 
+    # The copy keeps the repository's shape: the frontend, its behavior tests and the tracked sources the tests read. The
+    # tests then load the packages npm ci installed in the copy, never a node_modules a checkout may or may not have.
     $work = Join-Path ([IO.Path]::GetTempPath()) ('wwlogs-frontend-' + [Guid]::NewGuid().ToString('N'))
-    New-Item -ItemType Directory -Path $work | Out-Null
+    $stagedFrontend = Join-Path $work 'frontend'
+    New-Item -ItemType Directory -Path $stagedFrontend | Out-Null
     try {
         Get-ChildItem -LiteralPath $frontend -Force | Where-Object { $_.Name -notin @('node_modules', 'dist') } |
-            Copy-Item -Destination $work -Recurse
-        Push-Location $work
+            Copy-Item -Destination $stagedFrontend -Recurse
+        $testSources = @(& git -C $repoRoot ls-files -- tests/frontend internal)
+        if ($LASTEXITCODE -ne 0 -or $testSources.Count -eq 0) { throw 'git could not list the sources of the frontend behavior tests' }
+        foreach ($file in $testSources) {
+            $target = Join-Path $work $file
+            [void][IO.Directory]::CreateDirectory((Split-Path -Parent $target))
+            Copy-Item -LiteralPath (Join-Path $repoRoot $file) -Destination $target
+        }
+        Push-Location $stagedFrontend
         try {
             & $node $npm ci --strict-peer-deps --no-audit --no-fund --loglevel=error
             if ($LASTEXITCODE -ne 0) { throw "npm ci failed ($LASTEXITCODE)" }
+            # Pure formatting and trust-state checks use Node's built-in runner, from the root of the copy.
+            Push-Location $work
+            try {
+                $testFiles = @(Get-ChildItem -LiteralPath 'tests/frontend' -Filter '*.test.mjs' | ForEach-Object { "tests/frontend/$($_.Name)" })
+                & $node --test @testFiles
+                if ($LASTEXITCODE -ne 0) { throw "frontend behavior tests failed ($LASTEXITCODE)" }
+            } finally {
+                Pop-Location
+            }
             if ($Action -eq 'Typecheck') {
                 & $node $npm run --silent typecheck
                 if ($LASTEXITCODE -ne 0) { throw "typecheck failed ($LASTEXITCODE)" }

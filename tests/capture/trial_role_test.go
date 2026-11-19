@@ -53,6 +53,7 @@ func TestDisplayResolverNamesATrialRoleByItsParent(t *testing.T) {
 		}
 	}
 	db.Close()
+	completeMasterFixture(t, path)
 	resolver, err := OpenDisplayResolver(path)
 	if err != nil {
 		t.Fatal(err)

@@ -27,6 +27,7 @@ func TestLoadGameMasterDatabaseLoadsNormalizedShieldDefinitionKeys(t *testing.T)
 		t.Fatal(err)
 	}
 
+	completeMasterFixture(t, path)
 	master, err := capture.LoadGameMasterDatabase(path, "zh-TW")
 	if err != nil {
 		t.Fatal(err)
@@ -75,6 +76,7 @@ func TestResolveBulletFollowsSourceChainToExactlyOneActor(t *testing.T) {
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
+	completeMasterFixture(t, path)
 	master, err := capture.LoadGameMasterDatabase(path, "zh-TW")
 	if err != nil {
 		t.Fatal(err)
@@ -157,6 +159,7 @@ func TestResolveBulletUsesLiveVisionSummonOfTheSourceEntity(t *testing.T) {
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
+	completeMasterFixture(t, path)
 	master, err := capture.LoadGameMasterDatabase(path, "zh-TW")
 	if err != nil {
 		t.Fatal(err)

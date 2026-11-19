@@ -853,15 +853,9 @@ func (m *GameMaster) negativeStatusTerm(damageID uint64) (negativeStatusTerm, bo
 
 // loadSQLiteNegativeStatusTriggers reads the InvokePeriod Buffs (buff.extra_effect_id 67) and the status Buffs their first
 // extra-effect parameter names ("10041000#10051000"), keeping only names that are negative-status executors. It also names
-// each negative-status DamageId by the glossary term its executing Buffs share. Both tables are optional.
+// each negative-status DamageId by the glossary term its executing Buffs share.
 func loadSQLiteNegativeStatusTriggers(db *sql.DB, master *GameMaster) error {
 	defer nameNegativeStatuses(master)
-	for _, table := range []string{"buff", "buff_extra_effect_parameters"} {
-		exists, err := masterTableExists(db, table)
-		if err != nil || !exists {
-			return err
-		}
-	}
 	rows, err := db.Query(`SELECT CAST(b.id AS TEXT), CAST(p.value AS TEXT) FROM buff b JOIN buff_extra_effect_parameters p
 		ON CAST(p.owner_id AS TEXT) = CAST(b.id AS TEXT) AND p.ordinal = 0 WHERE CAST(b.extra_effect_id AS TEXT) = ?`, fmt.Sprint(invokePeriodExtraEffect))
 	if err != nil {

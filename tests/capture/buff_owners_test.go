@@ -32,6 +32,7 @@ func TestBuffOwnersComeOnlyFromExplicitReferenceTablesAndKnownBuffs(t *testing.T
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
+	completeMasterFixture(t, path)
 	master, err := LoadGameMasterDatabase(path, "zh-TW")
 	if err != nil {
 		t.Fatal(err)
@@ -125,6 +126,7 @@ func TestRoleBuffObservationNamesTheRoleEvenWithoutABuffDefinition(t *testing.T)
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
+	completeMasterFixture(t, path)
 	master, err := LoadGameMasterDatabase(path, "zh-TW")
 	if err != nil {
 		t.Fatal(err)

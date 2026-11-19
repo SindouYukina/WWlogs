@@ -732,6 +732,79 @@ func mustRemove(t *testing.T, resolver *capture.EntityResolver, entityIDs ...uin
 	}
 }
 
+// ---- copies from tests/capture/master_schema_test.go
+// completeMasterFixture adds to the fixture Master at path every table, view and column of the runtime schema
+// (capture.MasterRuntimeSchema) that it lacks: empty, and declared with the first type the runtime accepts, so the strict
+// loader accepts a fixture that creates only what its test needs.
+func completeMasterFixture(t testing.TB, path string) {
+	t.Helper()
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	quote := func(name string) string { return `"` + strings.ReplaceAll(name, `"`, `""`) + `"` }
+	column := func(c capture.MasterSchemaColumn) string {
+		if len(c.Types) == 0 {
+			return quote(c.Name)
+		}
+		return quote(c.Name) + " " + c.Types[0]
+	}
+	for _, table := range capture.MasterRuntimeSchema() {
+		var kind string
+		switch err := db.QueryRow("SELECT type FROM sqlite_master WHERE name = ?", table.Name).Scan(&kind); {
+		case err == sql.ErrNoRows:
+			columns := make([]string, len(table.Columns))
+			for i, c := range table.Columns {
+				if table.View {
+					columns[i] = "NULL AS " + quote(c.Name)
+				} else {
+					columns[i] = column(c)
+				}
+			}
+			statement := "CREATE TABLE " + quote(table.Name) + " (" + strings.Join(columns, ", ") + ")"
+			if table.View {
+				statement = "CREATE VIEW " + quote(table.Name) + " AS SELECT " + strings.Join(columns, ", ") + " WHERE 0"
+			}
+			if _, err := db.Exec(statement); err != nil {
+				t.Fatal(err)
+			}
+			continue
+		case err != nil:
+			t.Fatal(err)
+		}
+		if table.View {
+			continue
+		}
+		present := map[string]bool{}
+		rows, err := db.Query("SELECT name FROM pragma_table_info(?)", table.Name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for rows.Next() {
+			var name string
+			if err := rows.Scan(&name); err != nil {
+				t.Fatal(err)
+			}
+			present[name] = true
+		}
+		if err := rows.Close(); err != nil {
+			t.Fatal(err)
+		}
+		for _, c := range table.Columns {
+			if !present[c.Name] {
+				if _, err := db.Exec("ALTER TABLE " + quote(table.Name) + " ADD COLUMN " + column(c)); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // ---- copies from tests/capture/master_sqlite_test.go
 func buildMasterDatabaseFixture(t *testing.T) string {
 	t.Helper()

@@ -28,29 +28,27 @@ type BuffOwnersJSON struct {
 }
 
 // buffOwnerQueries joins each explicit Buff-id reference table to the localized name of its owner.
-// Every table is optional so an older master still loads.
 var buffOwnerQueries = []struct {
-	kind   string
-	tables []string
-	query  string
+	kind  string
+	query string
 	// anyBuff keeps rows whose Buff id has no static definition; the observation itself is the evidence.
 	anyBuff bool
 }{
-	{"resonantchain", []string{"resonantchain_buff_ids", "resonantchain_locale"},
+	{"resonantchain",
 		`SELECT CAST(b.value AS TEXT),CAST(b.owner_id AS TEXT),l.name FROM resonantchain_buff_ids b
 		 JOIN resonantchain_locale l ON l.id=b.owner_id AND l.locale=? AND l.name<>''`, false},
-	{"phantomfetter", []string{"phantomfetter_buff_ids", "phantomfetter_locale"},
+	{"phantomfetter",
 		`SELECT CAST(b.value AS TEXT),CAST(b.owner_id AS TEXT),l.name FROM phantomfetter_buff_ids b
 		 JOIN phantomfetter_locale l ON l.id=b.owner_id AND l.locale=? AND l.name<>''`, false},
-	{"weaponreson", []string{"weaponreson_effect", "weaponreson_locale"},
+	{"weaponreson",
 		`SELECT CAST(b.value AS TEXT),CAST(b.owner_id AS TEXT),l.name FROM weaponreson_effect b
 		 JOIN weaponreson_locale l ON l.id=b.owner_id AND l.locale=? AND l.name<>''`, false},
-	{"skill", []string{"skill_buff_ref", "skilldescription_locale"},
+	{"skill",
 		`SELECT CAST(b.buff_id AS TEXT),CAST(b.skill_id AS TEXT),l.name FROM skill_buff_ref b
 		 JOIN skilldescription_locale l ON l.id=b.skill_id AND l.locale=? AND l.name<>''`, false},
 	// role_observation: the role carried this Buff as an active, self-instigated, indefinite-duration Buff in a capture.
 	// It names the role only; it does not say which feature of the role grants the Buff.
-	{"role_observation", []string{"role_buff_observation", "roleinfo_locale"},
+	{"role_observation",
 		`SELECT CAST(b.buff_id AS TEXT),CAST(b.role_id AS TEXT),l.name FROM role_buff_observation b
 		 JOIN roleinfo_locale l ON l.id=b.role_id AND l.locale=? AND l.name<>''`, true},
 }
@@ -64,17 +62,6 @@ func loadSQLiteBuffOwners(db *sql.DB, locale string, master *GameMaster) error {
 	}
 	collected := make(map[ownerKey]map[uint64]struct{})
 	for _, source := range buffOwnerQueries {
-		present := true
-		for _, table := range source.tables {
-			exists, err := masterTableExists(db, table)
-			if err != nil {
-				return err
-			}
-			present = present && exists
-		}
-		if !present {
-			continue
-		}
 		rows, err := db.Query(source.query, locale)
 		if err != nil {
 			return fmt.Errorf("query %s Buff owners: %w", source.kind, err)

@@ -3,6 +3,7 @@ package capture
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -96,12 +97,13 @@ func TestPrefabConfigTypeNamesEntitiesSpawnedFromPrefabs(t *testing.T) {
 
 func TestPrefabRelationsLoadFromTheMaster(t *testing.T) {
 	plain := buildMasterDatabaseFixture(t)
+	completeMasterFixture(t, plain)
 	master, err := LoadGameMasterDatabase(plain, "zh-TW")
 	if err != nil {
-		t.Fatalf("a Master without prefab relations must still load: %v", err)
+		t.Fatalf("a Master with empty prefab relations must load: %v", err)
 	}
 	if len(master.SceneIdentity.prefabTemplates) != 0 || len(master.SceneIdentity.prefabMonsters) != 0 {
-		t.Fatal("a Master without the tables knows no prefab entity")
+		t.Fatal("a Master with empty relations knows no prefab entity")
 	}
 	withRelations := func(t *testing.T, extra ...string) string {
 		path := buildMasterDatabaseFixture(t)
@@ -122,6 +124,10 @@ func TestPrefabRelationsLoadFromTheMaster(t *testing.T) {
 				t.Fatalf("%s: %v", statement, err)
 			}
 		}
+		if err := db.Close(); err != nil {
+			t.Fatal(err)
+		}
+		completeMasterFixture(t, path)
 		return path
 	}
 	master, err = LoadGameMasterDatabase(withRelations(t), "zh-TW")
@@ -141,10 +147,10 @@ func TestPrefabRelationsLoadFromTheMaster(t *testing.T) {
 		t.Fatalf("every candidate is kept in ordinal order: %+v", got)
 	}
 	// A relation naming a row the Master does not hold refuses the Master, like a broken level relation.
-	if _, err := LoadGameMasterDatabase(withRelations(t, "INSERT INTO prefab_entity_template_ref VALUES('222850001','1850002',0,'99999999')"), "zh-TW"); err == nil || !strings.Contains(err.Error(), "prefab_entity_template_ref") {
+	if _, err := LoadGameMasterDatabase(withRelations(t, "INSERT INTO prefab_entity_template_ref VALUES('222850001','1850002',0,'99999999')"), "zh-TW"); err == nil || errors.Is(err, errMasterRuntimeSchema) || !strings.Contains(err.Error(), "prefab_entity_template_ref") {
 		t.Fatalf("a dangling template must refuse the Master: %v", err)
 	}
-	if _, err := LoadGameMasterDatabase(withRelations(t, "INSERT INTO prefab_entity_monster VALUES('222850001','1850003','99999999')"), "zh-TW"); err == nil || !strings.Contains(err.Error(), "prefab_entity_monster") {
+	if _, err := LoadGameMasterDatabase(withRelations(t, "INSERT INTO prefab_entity_monster VALUES('222850001','1850003','99999999')"), "zh-TW"); err == nil || errors.Is(err, errMasterRuntimeSchema) || !strings.Contains(err.Error(), "prefab_entity_monster") {
 		t.Fatalf("a dangling MonsterInfo must refuse the Master: %v", err)
 	}
 }
