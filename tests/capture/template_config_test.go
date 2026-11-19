@@ -43,6 +43,7 @@ func TestTemplateWithoutOfficialNameCarriesDeveloperLabel(t *testing.T) {
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
+	completeMasterFixture(t, path)
 	master, err := LoadGameMasterDatabase(path, "en-US")
 	if err != nil {
 		t.Fatal(err)

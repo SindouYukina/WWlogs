@@ -103,7 +103,11 @@ func buildEquivalenceFixture(t *testing.T) string {
 		"CREATE TABLE instancedungeon_locale(id TEXT, locale TEXT, name TEXT, PRIMARY KEY(id, locale))",
 		"INSERT INTO instancedungeon_locale VALUES('50','zh-TW','測試關卡')",
 		"CREATE INDEX idx_map_entity_template_target ON map_entity_template_ref(template_id)",
+		// A client table the runtime does not read, like the hundreds the tracked Master still keeps (Master Phase M3).
+		"CREATE TABLE research_rank(id TEXT PRIMARY KEY, rank TEXT)",
+		"INSERT INTO research_rank VALUES('1312','3'),('1409','4')",
 	})
+	completeMasterFixture(t, path)
 	return path
 }
 
@@ -177,6 +181,12 @@ func TestMasterEquivalenceHarnessDetectsEveryRegressionClass(t *testing.T) {
 		{Layer: "schema", Class: "column-type-changed", Object: "roleinfo_locale.id"},
 		{Layer: "data", Class: "storage-class-changed", Object: "roleinfo_locale.id"},
 	}
+	researchTypeChange := masterIntegerColumnStatements(t, base, "research_rank", "rank")
+	researchTypeChangeExpected := []masterExpectation{
+		{Layer: "schema", Class: "column-type-changed", Object: "research_rank.rank"},
+		{Layer: "data", Class: "storage-class-changed", Object: "research_rank.rank"},
+	}
+	refused := []string{"loaded/load-error", "display/open-error"}
 	cases := []struct {
 		name         string
 		mutate       []string
@@ -191,15 +201,22 @@ func TestMasterEquivalenceHarnessDetectsEveryRegressionClass(t *testing.T) {
 	}{
 		{name: "identity", equivalent: true, none: []string{"schema", "data", "loaded", "display"}},
 		{name: "physical reorganization", vacuum: true, equivalent: true, none: []string{"schema", "data", "loaded", "display"}},
-		{name: "missing optional table", mutate: []string{"DROP TABLE trialroleinfo"},
-			want: []string{"schema/table-missing", "loaded/entry-missing", "display/name-changed", "display/static-role-changed"}},
-		{name: "missing optional column", mutate: []string{"ALTER TABLE roleinfo DROP COLUMN skin_id"},
-			want: []string{"schema/column-missing", "loaded/entry-changed", "loaded/entry-missing"}},
+		{name: "missing runtime table", mutate: []string{"DROP TABLE trialroleinfo"}, want: append([]string{"schema/table-missing"}, refused...)},
+		{name: "missing runtime column", mutate: []string{"ALTER TABLE roleinfo DROP COLUMN skin_id"}, want: append([]string{"schema/column-missing"}, refused...)},
+		{name: "table the runtime does not read removed undeclared", mutate: []string{"DROP TABLE research_rank"},
+			want: []string{"schema/table-missing"}, none: []string{"loaded", "display"}},
+		{name: "table the runtime does not read removed declared", mutate: []string{"DROP TABLE research_rank"}, equivalent: true,
+			expectations: []masterExpectation{{Layer: "schema", Class: "table-missing", Object: "research_rank"}}, none: []string{"loaded", "display"}},
 		{name: "wrong mapping", mutate: []string{"UPDATE trialroleinfo SET parent_role_id='1409'"},
 			want: []string{"data/rows-changed", "loaded/entry-changed", "display/name-changed", "display/static-role-changed"}},
-		{name: "identifier type change undeclared", mutate: typeChange,
+		{name: "identifier type change of a runtime column undeclared", mutate: typeChange,
+			want: append([]string{"schema/column-type-changed", "data/storage-class-changed"}, refused...)},
+		// The runtime schema accepts one declared type: declaring the schema and data differences cannot pass the refusal.
+		{name: "identifier type change of a runtime column declared", mutate: typeChange, expectations: typeChangeExpected, equivalent: false, want: refused},
+		{name: "identifier type change of a column the runtime does not read undeclared", mutate: researchTypeChange,
 			want: []string{"schema/column-type-changed", "data/storage-class-changed"}, none: []string{"loaded", "display"}},
-		{name: "identifier type change declared", mutate: typeChange, expectations: typeChangeExpected, equivalent: true, none: []string{"loaded", "display"}},
+		{name: "identifier type change of a column the runtime does not read declared", mutate: researchTypeChange, expectations: researchTypeChangeExpected,
+			equivalent: true, none: []string{"loaded", "display"}},
 		{name: "non-canonical identifier", mutate: []string{"UPDATE roleinfo_locale SET id='01312' WHERE id='1312' AND locale='zh-TW'"},
 			want: []string{"data/rows-missing", "data/rows-added", "loaded/entry-changed", "display/name-changed"}},
 		{name: "data loss", mutate: []string{"DELETE FROM map_entity_template_ref"}, want: []string{"data/rows-missing", "loaded/entry-missing"},
@@ -208,7 +225,7 @@ func TestMasterEquivalenceHarnessDetectsEveryRegressionClass(t *testing.T) {
 			want: []string{"data/rows-missing", "loaded/*", "display/name-changed"}, absent: []string{"data/storage-class-changed", "data/rows-changed"}},
 		{name: "namespace mixing", mutate: []string{"UPDATE skill_damage_ref SET skill_id='7001'"},
 			want: []string{"data/rows-missing", "data/rows-added", "loaded/entry-changed"}},
-		{name: "view missing", mutate: []string{"DROP VIEW summon_skill_vision_ref"}, want: []string{"schema/view-missing", "loaded/entry-missing"}},
+		{name: "view missing", mutate: []string{"DROP VIEW summon_skill_vision_ref"}, want: append([]string{"schema/view-missing"}, refused...)},
 		{name: "unknown id becomes known", mutate: []string{"INSERT INTO monsterinfo VALUES('702')", "INSERT INTO monsterinfo_locale VALUES('702','zh-TW','新怪物','Monster.Name')"},
 			want: []string{"data/rows-added", "loaded/entry-added", "display/name-changed"}},
 		{name: "order change", mutate: []string{"UPDATE buff_granted_tags SET value = CASE ordinal WHEN 0 THEN 'Tag.B' ELSE 'Tag.A' END"},
@@ -216,7 +233,7 @@ func TestMasterEquivalenceHarnessDetectsEveryRegressionClass(t *testing.T) {
 		{name: "index removed undeclared", mutate: []string{"DROP INDEX idx_map_entity_template_target"}, want: []string{"schema/index-missing"}, none: []string{"loaded", "display"}},
 		{name: "index removed declared", mutate: []string{"DROP INDEX idx_map_entity_template_target"}, equivalent: true,
 			expectations: []masterExpectation{{Layer: "schema", Class: "index-missing", Object: "map_entity_template_ref:idx_map_entity_template_target"}}},
-		{name: "required table missing", mutate: []string{"DROP TABLE map_instance"}, want: []string{"schema/table-missing", "loaded/load-error"}},
+		{name: "required table missing", mutate: []string{"DROP TABLE map_instance"}, want: append([]string{"schema/table-missing"}, refused...)},
 		{name: "display-only table", mutate: []string{"UPDATE instancedungeon_locale SET name='改名'"}, want: []string{"display/name-changed"}, none: []string{"loaded"}},
 		{name: "locale-only change seen in its locale", mutate: []string{"UPDATE roleinfo_locale SET name='改名' WHERE id='1312' AND locale='ko-KR'"},
 			locales: []string{"ko-KR"}, layers: []string{"loaded", "display"}, want: []string{"loaded/entry-changed", "display/name-changed"}},
@@ -424,7 +441,12 @@ func masterContractForFixture(t *testing.T, path string) masterContract {
 	c := masterContract{Version: 1, Locales: masterEquivalenceLocales}
 	for _, name := range sortedMasterKeys(info.Tables) {
 		table := info.Tables[name]
-		ct := masterContractTable{Name: name, Scope: "product", Purpose: "fixture", WithoutRowid: table.WithoutRowid, NonEmpty: true, ForeignKeys: table.ForeignKeys}
+		rows, err := masterCount(db, "SELECT count(*) FROM "+masterQuote(name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		// The fixture leaves the tables its cases do not need empty; the contract requires rows where it has them.
+		ct := masterContractTable{Name: name, Scope: "product", Purpose: "fixture", WithoutRowid: table.WithoutRowid, NonEmpty: rows > 0, ForeignKeys: table.ForeignKeys}
 		for _, col := range table.Columns {
 			cc := masterContractColumn{Name: col.Name, Type: col.Type, NotNull: col.NotNull, PK: col.PK, Purpose: "fixture"}
 			if col.Default.Valid {
@@ -575,25 +597,37 @@ func trackedMasterInjections() []masterInjection {
 		{Layer: "schema", Class: "column-type-changed", Object: "roleinfo_locale.id", Reason: "injected TEXT to INTEGER migration"},
 		{Layer: "data", Class: "storage-class-changed", Object: "roleinfo_locale.id", Reason: "injected TEXT to INTEGER migration"},
 	}
+	researchTypeExpect := []masterExpectation{
+		{Layer: "schema", Class: "column-type-changed", Object: "damage.payload_id", Reason: "injected TEXT to INTEGER migration of a column the runtime does not read"},
+		{Layer: "data", Class: "storage-class-changed", Object: "damage.payload_id", Reason: "injected TEXT to INTEGER migration of a column the runtime does not read"},
+	}
 	zh := []string{"zh-TW"}
+	// The runtime schema check refuses a Master without a part it reads: the load and the display resolver fail.
+	refused := func(classes ...string) []string { return append(classes, "loaded/load-error", "display/open-error") }
 	return []masterInjection{
-		{Name: "missing optional table", Class: "missing table", SQL: []string{"DROP TABLE buff_granted_tags"}, Locales: zh,
-			Want: []string{"schema/table-missing", "loaded/entry-changed"}, WantContract: []string{"table-missing"}},
+		{Name: "missing Buff tag table", Class: "missing table", SQL: []string{"DROP TABLE buff_granted_tags"}, Locales: zh,
+			Want: refused("schema/table-missing"), WantContract: []string{"table-missing"}},
 		{Name: "missing required table", Class: "missing table", SQL: []string{"DROP TABLE map_instance"}, Locales: zh,
-			Want: []string{"schema/table-missing", "loaded/load-error"}, WantContract: []string{"table-missing"}},
-		{Name: "missing optional column", Class: "missing column", SQL: []string{"ALTER TABLE vision DROP COLUMN dev_note_zh_cn"}, Locales: zh,
-			Want: []string{"schema/column-missing", "loaded/entry-missing"}, WantContract: []string{"column-missing"}},
+			Want: refused("schema/table-missing"), WantContract: []string{"table-missing"}},
+		{Name: "missing Vision note column", Class: "missing column", SQL: []string{"ALTER TABLE vision DROP COLUMN dev_note_zh_cn"}, Locales: zh,
+			Want: refused("schema/column-missing"), WantContract: []string{"column-missing"}},
 		{Name: "missing view", Class: "missing column", SQL: []string{"DROP VIEW summon_skill_vision_ref"}, Locales: zh,
-			Want: []string{"schema/view-missing", "loaded/entry-missing"}, WantContract: []string{"view-missing"}},
+			Want: refused("schema/view-missing"), WantContract: []string{"view-missing"}},
+		{Name: "table the runtime does not read removed declared", Class: "missing table", SQL: []string{"DROP TABLE passiveskill"}, Locales: masterEquivalenceLocales,
+			Expectations: []masterExpectation{{Layer: "schema", Class: "table-missing", Object: "passiveskill", Reason: "injected removal of a table the runtime does not read"}},
+			Equivalent:   true, None: []string{"loaded", "display"}, WantContract: []string{"uncontracted-missing"}},
 		{Name: "wrong trial parent", Class: "wrong mapping", SQL: []string{"UPDATE trialroleinfo SET parent_role_id='1409' WHERE id='15127004'"}, Locales: zh,
 			Want: []string{"data/rows-changed", "loaded/entry-changed", "display/name-changed", "display/static-role-changed"}},
 		{Name: "wrong template relation", Class: "wrong mapping",
 			SQL: []string{"UPDATE map_entity_template_ref SET template_id=(SELECT id FROM templateconfig ORDER BY id LIMIT 1) WHERE rowid=(SELECT max(rowid) FROM map_entity_template_ref)"}, Locales: zh,
 			Want: []string{"data/rows-changed", "loaded/entry-changed"}},
-		{Name: "identifier type change undeclared", Class: "ID type change", IntegerColumn: "roleinfo_locale.id", Locales: zh,
-			Want: []string{"schema/column-type-changed", "data/storage-class-changed"}, WantContract: []string{"column-type-changed"}, None: []string{"loaded", "display"}},
-		{Name: "identifier type change declared", Class: "ID type change", IntegerColumn: "roleinfo_locale.id", Locales: masterEquivalenceLocales, Expectations: typeExpect,
-			Equivalent: true, None: []string{"loaded", "display"}, WantContract: []string{"column-type-changed"}},
+		{Name: "identifier type change of a runtime column undeclared", Class: "ID type change", IntegerColumn: "roleinfo_locale.id", Locales: zh,
+			Want: refused("schema/column-type-changed", "data/storage-class-changed"), WantContract: []string{"column-type-changed"}},
+		// One accepted type per runtime column: declaring the schema and data differences cannot pass the refusal.
+		{Name: "identifier type change of a runtime column declared", Class: "ID type change", IntegerColumn: "roleinfo_locale.id", Locales: zh, Expectations: typeExpect,
+			Want: refused(), WantContract: []string{"column-type-changed"}},
+		{Name: "identifier type change of a column the runtime does not read declared", Class: "ID type change", IntegerColumn: "damage.payload_id", Locales: masterEquivalenceLocales,
+			Expectations: researchTypeExpect, Equivalent: true, None: []string{"loaded", "display"}, WantContract: []string{"column-type-changed"}},
 		{Name: "non-canonical identifier", Class: "ID type change", SQL: []string{"UPDATE roleinfo_locale SET id='01409' WHERE id='1409' AND locale='zh-TW'"}, Locales: zh,
 			Want: []string{"data/rows-missing", "data/rows-added", "loaded/entry-changed", "display/name-changed"}, WantContract: []string{"value-rule-violated", "reference-missing"}},
 		{Name: "lost relation rows", Class: "data loss",

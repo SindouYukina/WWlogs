@@ -12,9 +12,10 @@ import (
 
 // The runtime schema of the combat Master: every table and view this runtime reads, with every column it reads and the
 // declared types it accepts. It is the same in both build profiles, which load one Master through one loader (the
-// Development tables are read by the shared loader too, and only Development outputs use their values).
-// checkMasterRuntimeSchema compares a file with this declaration and names every part of it the file lacks. Everything
-// else in the file is not read by the runtime.
+// Development tables are read by the shared loader too, and only Development outputs use their values). Before a Master is
+// loaded or a display resolver reads it, checkMasterRuntimeSchema compares the file with this declaration and refuses a
+// file that lacks any of it, so no capability is ever loaded half: the loader and the resolver then query these objects
+// directly, without asking whether they exist. Everything else in the file is not read by the runtime.
 //
 // What the declaration does not cover is checked elsewhere: the row-level rules a load enforces as it reads (a parent role,
 // skin owner, map monster or template a relation names must exist; identifiers must parse; the core definitions must not

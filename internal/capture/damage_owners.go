@@ -20,12 +20,8 @@ type DamageOwnerJSONL struct {
 }
 
 // loadSQLiteDamageOwners indexes, for every DamageId, the skills (skill_damage_ref) and Buffs (buff_extra_effect_parameters)
-// that reference it, with the role that owns the skill group of each skill. Both tables are optional.
+// that reference it, with the role that owns the skill group of each skill.
 func loadSQLiteDamageOwners(db *sql.DB, locale string, master *GameMaster) error {
-	exists, err := masterTableExists(db, "skill_damage_ref")
-	if err != nil || !exists {
-		return err
-	}
 	rows, err := db.Query(damageOwnerIDs + `SELECT CAST(d.damage_id AS TEXT),CAST(d.skill_id AS TEXT),COALESCE(CAST(r.id AS TEXT),'') FROM skill_damage_ref d
 		JOIN damage_ids x ON x.id=CAST(d.damage_id AS TEXT)
 		LEFT JOIN skill s ON CAST(s.id AS TEXT)=CAST(d.skill_id AS TEXT)
@@ -61,10 +57,6 @@ func loadSQLiteDamageOwners(db *sql.DB, locale string, master *GameMaster) error
 		master.DamageOwners[damageID] = append(master.DamageOwners[damageID], owner)
 	}
 	if err := rows.Close(); err != nil {
-		return err
-	}
-	buffExists, err := masterTableExists(db, "buff_extra_effect_parameters")
-	if err != nil || !buffExists {
 		return err
 	}
 	buffRows, err := db.Query(damageOwnerIDs + `SELECT DISTINCT CAST(p.value AS TEXT),CAST(p.owner_id AS TEXT) FROM buff_extra_effect_parameters p

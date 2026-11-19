@@ -63,6 +63,9 @@ func TestLoadBuffHUDCuesKeepsHUDTypesWithAPath(t *testing.T) {
 			t.Fatalf("%s: %v", statement, err)
 		}
 	}
+	if err := completeMasterSchema(db); err != nil {
+		t.Fatal(err)
+	}
 	statics := map[uint64]BuffStaticParameters{}
 	if err := loadBuffHUDCues(db, statics); err != nil {
 		t.Fatal(err)
@@ -74,12 +77,12 @@ func TestLoadBuffHUDCuesKeepsHUDTypesWithAPath(t *testing.T) {
 	if want := map[uint64][]int32{10: {2, 24}, 13: {2}}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("HUD cue types = %v, want %v", got, want)
 	}
-	older := map[uint64]BuffStaticParameters{}
+	// The loader reads the table directly (the runtime schema check runs first): without it the load fails.
 	if _, err := db.Exec("DROP TABLE gameplaycue"); err != nil {
 		t.Fatal(err)
 	}
-	if err := loadBuffHUDCues(db, older); err != nil || len(older) != 0 {
-		t.Fatalf("a Master without gameplaycue: %v %v", older, err)
+	if err := loadBuffHUDCues(db, map[uint64]BuffStaticParameters{}); err == nil {
+		t.Fatal("a Master without gameplaycue gave HUD cues without an error")
 	}
 }
 
@@ -105,6 +108,9 @@ func TestLoadBuffHUDCuesReadsDirectionAndMonsterHeadFromTheFirstCue(t *testing.T
 			t.Fatalf("%s: %v", statement, err)
 		}
 	}
+	if err := completeMasterSchema(db); err != nil {
+		t.Fatal(err)
+	}
 	statics := map[uint64]BuffStaticParameters{}
 	if err := loadBuffHUDCues(db, statics); err != nil {
 		t.Fatal(err)
@@ -120,18 +126,13 @@ func TestLoadBuffHUDCuesReadsDirectionAndMonsterHeadFromTheFirstCue(t *testing.T
 			t.Errorf("effect %d = %s hidden=%v, want %+v", id, got.hudPolarity, got.hudHiddenOnMonsterHead, want)
 		}
 	}
-	// Without the parameters table there is no direction evidence at all: an older Master stays unclassified.
+	// Without the parameters table the direction evidence is missing, and the load fails instead of leaving every HUD
+	// effect unclassified.
 	if _, err := db.Exec("DROP TABLE gameplaycue_parameters"); err != nil {
 		t.Fatal(err)
 	}
-	older := map[uint64]BuffStaticParameters{}
-	if err := loadBuffHUDCues(db, older); err != nil {
-		t.Fatal(err)
-	}
-	for _, id := range []uint64{20, 23, 25} {
-		if got := older[id].hudPolarity; got != EffectPolarityUnclassified {
-			t.Errorf("effect %d without cue parameters = %s, want unclassified", id, got)
-		}
+	if err := loadBuffHUDCues(db, map[uint64]BuffStaticParameters{}); err == nil {
+		t.Fatal("a Master without gameplaycue_parameters gave HUD cues without an error")
 	}
 }
 

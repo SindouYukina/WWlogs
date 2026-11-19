@@ -382,85 +382,59 @@ const negativeStatusFormula = 9
 // FormulaType 9 add the DamageIds it has no column for (Global 3.8: 1007, executed by the Glacio Chafe variant 10011100
 // that replaces 10011000 for some appliers, buff.replace_buff_ids).
 func loadSQLiteNegativeStatusDamage(db *sql.DB, master *GameMaster) error {
-	exists, err := masterTableExists(db, "abnormaldamageconfig")
+	rows, err := db.Query(`PRAGMA table_info("abnormaldamageconfig")`)
 	if err != nil {
-		return err
+		return fmt.Errorf("inspect abnormaldamageconfig columns: %w", err)
 	}
-	if exists {
-		rows, err := db.Query(`PRAGMA table_info("abnormaldamageconfig")`)
-		if err != nil {
-			return fmt.Errorf("inspect abnormaldamageconfig columns: %w", err)
+	for rows.Next() {
+		var ordinal, notNull, primaryKey int
+		var name, columnType string
+		var defaultValue sql.NullString
+		if err := rows.Scan(&ordinal, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
+			rows.Close()
+			return fmt.Errorf("read abnormaldamageconfig column: %w", err)
 		}
-		for rows.Next() {
-			var ordinal, notNull, primaryKey int
-			var name, columnType string
-			var defaultValue sql.NullString
-			if err := rows.Scan(&ordinal, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
-				rows.Close()
-				return fmt.Errorf("read abnormaldamageconfig column: %w", err)
-			}
-			if match := abnormalColumn.FindStringSubmatch(name); match != nil {
-				id, err := strconv.ParseUint(match[1], 10, 64)
-				if err != nil {
-					rows.Close()
-					return fmt.Errorf("abnormaldamageconfig column %q: %w", name, err)
-				}
-				master.AbnormalDamageIDs[id] = struct{}{}
-			}
-		}
-		if err := rows.Close(); err != nil {
-			return err
-		}
-	}
-	if present, err := masterColumnExists(db, "damage", "formula_type"); err != nil {
-		return err
-	} else if present {
-		rows, err := db.Query(`SELECT CAST(id AS TEXT) FROM damage WHERE CAST(formula_type AS TEXT) = ?`, strconv.Itoa(negativeStatusFormula))
-		if err != nil {
-			return fmt.Errorf("query negative-status damage rows: %w", err)
-		}
-		for rows.Next() {
-			var raw string
-			if err := rows.Scan(&raw); err != nil {
-				rows.Close()
-				return fmt.Errorf("read negative-status damage row: %w", err)
-			}
-			id, err := parseMasterID(raw, "damage.id")
+		if match := abnormalColumn.FindStringSubmatch(name); match != nil {
+			id, err := strconv.ParseUint(match[1], 10, 64)
 			if err != nil {
 				rows.Close()
-				return err
+				return fmt.Errorf("abnormaldamageconfig column %q: %w", name, err)
 			}
 			master.AbnormalDamageIDs[id] = struct{}{}
 		}
-		if err := rows.Close(); err != nil {
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	rows, err = db.Query(`SELECT CAST(id AS TEXT) FROM damage WHERE CAST(formula_type AS TEXT) = ?`, strconv.Itoa(negativeStatusFormula))
+	if err != nil {
+		return fmt.Errorf("query negative-status damage rows: %w", err)
+	}
+	for rows.Next() {
+		var raw string
+		if err := rows.Scan(&raw); err != nil {
+			rows.Close()
+			return fmt.Errorf("read negative-status damage row: %w", err)
+		}
+		id, err := parseMasterID(raw, "damage.id")
+		if err != nil {
+			rows.Close()
 			return err
 		}
+		master.AbnormalDamageIDs[id] = struct{}{}
+	}
+	if err := rows.Close(); err != nil {
+		return err
 	}
 	if len(master.AbnormalDamageIDs) == 0 {
 		return nil
 	}
-	present, err := masterColumnExists(db, "buff", "extra_effect_id")
-	if err != nil || !present {
-		return err
-	}
-	// The settlement columns are optional: a status without them settles by the strictest rule (negativeStatusSettlement).
-	columns := []string{"CAST(id AS TEXT)", "CAST(extra_effect_id AS TEXT)"}
-	for _, column := range []string{"period", "b_execute_periodic_effect_on_application", "b_clear_stack_on_overflow", "duration_policy"} {
-		present, err := masterColumnExists(db, "buff", column)
-		if err != nil {
-			return err
-		}
-		if present {
-			columns = append(columns, "CAST("+column+" AS TEXT)")
-		} else {
-			columns = append(columns, "NULL")
-		}
-	}
+	// A status without settlement values settles by the strictest rule (negativeStatusSettlement).
 	ids := make([]string, 0, len(master.AbnormalDamageIDs))
 	for id := range master.AbnormalDamageIDs {
 		ids = append(ids, strconv.FormatUint(id, 10))
 	}
-	executors, err := db.Query("SELECT " + strings.Join(columns, ", ") + " FROM buff WHERE CAST(extra_effect_id AS TEXT) IN ('" + strings.Join(ids, "','") + "')")
+	executors, err := db.Query("SELECT CAST(id AS TEXT), CAST(extra_effect_id AS TEXT), CAST(period AS TEXT), CAST(b_execute_periodic_effect_on_application AS TEXT), CAST(b_clear_stack_on_overflow AS TEXT), CAST(duration_policy AS TEXT) FROM buff WHERE CAST(extra_effect_id AS TEXT) IN ('" + strings.Join(ids, "','") + "')")
 	if err != nil {
 		return fmt.Errorf("query negative-status Buffs: %w", err)
 	}

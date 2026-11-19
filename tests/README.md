@@ -4,6 +4,10 @@ All WWlogs product test source files, test helpers, and fixtures belong in this 
 
 - `capture/`, `devcapture/`, `devdesktop/` and `keyembed/` contain white-box tests. `go-overlay.json` maps these files from their physical locations under `tests/` to the product packages under test, and hides their original paths from `tests/` package discovery.
 - `capture/` tests the shared core (`internal/capture`) in both build profiles; `devcapture/` tests the Development capture module (`internal/devcapture`: research and diagnostic outputs, the command census, the live spool). A test file of one package cannot be imported by another, so `devcapture/capture_helpers_test.go` copies the `capture/` helpers the Development tests use, each group named after its original; change a copy with its original.
+- A synthetic Master (a fixture SQLite file built in a test) must provide the runtime schema
+  (`internal/capture/master_schema.go`): the loader and the display resolver refuse any other. `completeMasterFixture`
+  (`capture/master_schema_test.go`, with copies in `devcapture/` and `desktop/`) adds the tables, view and columns a
+  fixture lacks, empty, after the test created what it needs.
 - `versioninfo/` contains product tests that use exported APIs.
 - `architecture/` contains the architecture contracts: static checks of the product source of both build profiles (see below).
 - `buildrun/` tests the official Build Number allocator and the all-or-nothing installation of a build run, each against its own temporary counter directory.

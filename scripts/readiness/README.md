@@ -99,7 +99,7 @@ manifest; a product classification that drops a HUD status or every arrowless (n
 an exclusive instance relation and no name, and a trial role with a missing parent, in a temporary copy of the Master; a
 History version literal with the protocol at 3.9 and a replay whose encounters lack the version; a retired translation
 layer and a stray wire number in a source copy; a required Golden capture absent, without facts, failed, or from another
-file; a HUD status's icon missing from a copy of the manifest; and a
+file; a HUD status's icon missing from a copy of the manifest; a Master copy without the prefab relation tables; and a
 History replay summary with an enemy without identity, an enemy without a name in one locale and a scene without a kind of
 play (a recorded limit excuses only what it names), and a summary without identification counts. Clean controls of the
 same inputs pass. Nothing is written to the tracked Master, manifest or any user data.

@@ -28,9 +28,11 @@ import (
 //
 // The product loads everything it needs from the Master into GameMaster at start and asks DisplayResolver for the rest, so
 // the loaded and display layers cover every Master-dependent decision for every id, whether or not a capture contains it.
-// Only masterNonSemanticFields may differ in the loaded layer; nothing may differ in the display layer. A planned
-// structural change (a removed table, a changed column type, an index) is declared in an expectation file and must then
-// occur exactly; loaded and display differences can never be declared. The harness opens both files read-only.
+// Only masterNonSemanticFields may differ in the loaded layer; nothing may differ in the display layer. A Master the
+// runtime schema check refuses is a load-error (loaded) and an open-error (display) difference. A planned structural
+// change (a removed table the runtime does not read, a changed column type, an index) is declared in an expectation file
+// and must then occur exactly; loaded and display differences can never be declared. The harness opens both files
+// read-only.
 
 // masterEquivalenceLocales are the Master locales of the product (supportedMasterLocales).
 var masterEquivalenceLocales = []string{"zh-TW", "zh-CN", "en-US", "ja-JP", "ko-KR"}
@@ -1202,18 +1204,29 @@ func runMasterEquivalence(oldPath, newPath string, options masterEquivalenceOpti
 			report.Checked["display-ids:"+kind] = len(ids)
 			report.Checked["display-probes:"+kind] = len(probes[kind])
 		}
-		oldResolver, err := OpenDisplayResolver(oldPath)
-		if err != nil {
-			return report, fmt.Errorf("open old display resolver: %w", err)
+		// A display resolver refuses a Master without the runtime schema, as the loader does: that refusal is a display
+		// difference like a load error, and the resolvers are compared only when both open.
+		oldResolver, oldErr := OpenDisplayResolver(oldPath)
+		newResolver, newErr := OpenDisplayResolver(newPath)
+		if oldErr == nil {
+			defer oldResolver.Close()
 		}
-		defer oldResolver.Close()
-		newResolver, err := OpenDisplayResolver(newPath)
-		if err != nil {
-			return report, fmt.Errorf("open new display resolver: %w", err)
+		if newErr == nil {
+			defer newResolver.Close()
 		}
-		defer newResolver.Close()
-		for k, v := range compareMasterDisplay(oldResolver, newResolver, domains, probes, options.Locales, d) {
-			report.Checked["display-"+k] = v
+		if oldErr != nil || newErr != nil {
+			old, nw := "", ""
+			if oldErr != nil {
+				old = oldErr.Error()
+			}
+			if newErr != nil {
+				nw = newErr.Error()
+			}
+			d.add(masterDifference{Layer: "display", Class: "open-error", Object: "OpenDisplayResolver", Old: old, New: nw})
+		} else {
+			for k, v := range compareMasterDisplay(oldResolver, newResolver, domains, probes, options.Locales, d) {
+				report.Checked["display-"+k] = v
+			}
 		}
 	}
 	if layers["loaded"] && len(report.LoadErrors) == 0 {

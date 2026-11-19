@@ -3,7 +3,9 @@ package capture
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -100,9 +102,11 @@ func TestInstanceStageNamesMapsAndHologramSets(t *testing.T) {
 	}
 }
 
-// A Master without the guide tables names no mode and fails nothing.
+// A Master without the guide tables is refused by name when a display resolver opens it; a resolver over such a file
+// reports the missing tables as an error instead of naming no mode, so a lost table never reads as UNKNOWN content.
 func TestInstanceModeWithoutGuideTables(t *testing.T) {
-	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "older.db"))
+	path := filepath.Join(t.TempDir(), "guideless.db")
+	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,14 +118,23 @@ func TestInstanceModeWithoutGuideTables(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	if err := completeMasterSchema(db); err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range []string{"DROP TABLE dungeondetection", "DROP TABLE secondaryguidedata_locale"} {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := OpenDisplayResolver(path); !errors.Is(err, errMasterRuntimeSchema) || !strings.Contains(err.Error(), "missing table dungeondetection") || !strings.Contains(err.Error(), "missing table secondaryguidedata_locale") {
+		t.Fatalf("a Master without guide tables: %v", err)
+	}
 	resolver, err := newDisplayResolver(db)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer resolver.Close()
-	for _, id := range []uint64{8, 20016} {
-		if got, err := resolver.InstanceMode(context.Background(), id, "zh-TW"); err != nil || got.Status != "UNKNOWN" || got.Kind != "" {
-			t.Fatalf("instance %d without guide tables: %+v (%v)", id, got, err)
-		}
+	if got, err := resolver.InstanceMode(context.Background(), 20016, "zh-TW"); err == nil {
+		t.Fatalf("instance 20016 without guide tables gave %+v without an error", got)
 	}
 }

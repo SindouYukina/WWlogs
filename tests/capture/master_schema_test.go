@@ -185,6 +185,31 @@ func TestMasterRuntimeSchemaCheckNamesEveryMissingPart(t *testing.T) {
 	}
 }
 
+// TestEveryMasterEntryPointRefusesAMasterWithoutTheRuntimeSchema: the loader, the desktop data set and the display
+// resolver all refuse a Master missing part of the runtime schema with the same error, which names the part and nothing
+// of the file's location.
+func TestEveryMasterEntryPointRefusesAMasterWithoutTheRuntimeSchema(t *testing.T) {
+	path := buildMasterDatabaseFixture(t)
+	completeMasterFixture(t, path)
+	execMasterSQL(t, path, []string{"DROP TABLE lordgymentranceset_locale", "ALTER TABLE buff DROP COLUMN period"})
+	_, loadErr := LoadGameMasterDatabase(path, "zh-TW")
+	_, dataErr := LoadMasterData(path, "zh-TW")
+	_, displayErr := OpenDisplayResolver(path)
+	for name, err := range map[string]error{"LoadGameMasterDatabase": loadErr, "LoadMasterData": dataErr, "OpenDisplayResolver": displayErr} {
+		if !errors.Is(err, errMasterRuntimeSchema) {
+			t.Errorf("%s: %v, want the runtime schema error", name, err)
+			continue
+		}
+		message := err.Error()
+		if !strings.Contains(message, "missing table lordgymentranceset_locale") || !strings.Contains(message, "missing column buff.period") {
+			t.Errorf("%s does not name both missing parts: %s", name, message)
+		}
+		if strings.Contains(message, filepath.Dir(path)) || strings.Contains(message, filepath.ToSlash(filepath.Dir(path))) {
+			t.Errorf("%s names the file's location: %s", name, message)
+		}
+	}
+}
+
 // TestTrackedMasterProjectedToTheRuntimeSchemaLoadsTheSame drops from a copy of the tracked Master every table and view
 // the runtime schema does not list. The copy must load, and to the same Master as the tracked file: so the runtime reads
 // nothing outside its declaration. (The Master Phase M2 record compares every layer and locale with the equivalence

@@ -562,6 +562,30 @@ func TestGateFailsNegativeStatusSettlementGaps(t *testing.T) {
 		"status Buff 150721001 of DamageId 1005 lacks a settlement column")
 }
 
+// Failure injection: a Master without the prefab relation tables is refused by the strict product loader by name, and
+// nothing is decided from it. (What a Master with empty relations leaves unidentified is a research check.)
+func TestGateRefusesMasterWithoutPrefabRelationTables(t *testing.T) {
+	root := repositoryRoot(t)
+	fixture := filepath.Join(t.TempDir(), "master_data.db")
+	copyFile(t, filepath.Join(root, "data", "master_data.db"), fixture)
+	db, err := sql.Open("sqlite", "file:"+filepath.ToSlash(fixture))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range []string{"DROP TABLE prefab_entity_template_ref", "DROP TABLE prefab_entity_monster"} {
+		if _, err := db.Exec(statement); err != nil {
+			db.Close()
+			t.Fatal(err)
+		}
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	report := run(t, readiness.Inputs{Root: root, MasterPath: fixture, Locales: []string{"zh-TW"}})
+	wantFail(t, report, "master.loads", "missing table prefab_entity_monster", "missing table prefab_entity_template_ref")
+	wantStatus(t, report, "content.prefab-entities", readiness.StatusUnverified)
+}
+
 // Failure injection: the History replay of the corpus stored an enemy without identity, an enemy without a name in one
 // locale and an encounter whose scene has no kind of play; a recorded limit with its reason excuses only what it names, and a
 // summary from a collector without identification counts proves nothing.
