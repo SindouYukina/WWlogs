@@ -63,15 +63,24 @@ type masterDifferences struct {
 	sampled  map[string]int
 	samples  []masterDifference
 	maxValue int
+	// all keeps every difference with its full values, for correction mode, which matches each one exactly.
+	keepAll bool
+	all     []masterDifference
 }
 
 func newMasterDifferences() *masterDifferences {
 	return &masterDifferences{counts: map[string]int{}, objects: map[string]int{}, sampled: map[string]int{}, maxValue: 240}
 }
 
+// masterCorrectionDifferenceLimit bounds what correction mode keeps; a verified correction changes a handful of values.
+const masterCorrectionDifferenceLimit = 100000
+
 func (d *masterDifferences) add(x masterDifference) {
 	if x.Count == 0 {
 		x.Count = 1
+	}
+	if d.keepAll && len(d.all) <= masterCorrectionDifferenceLimit {
+		d.all = append(d.all, x)
 	}
 	class := x.Layer + "/" + x.Class
 	d.counts[class] += x.Count
@@ -932,18 +941,64 @@ func compareMasterDisplay(oldResolver, newResolver *DisplayResolver, domains, pr
 
 // --- run ---
 
+// The two acceptance modes. A refactor (a structural change: dropped tables, types, layout, indexes) may declare only
+// schema and data differences, by layer, class and object, and must leave everything the product loads and shows equal.
+// A correction (Master data a verified client source proves wrong) declares every difference it causes in any layer
+// but schema, each with its exact key, old and new value, and each tied to a recorded correction with its evidence.
+const (
+	masterModeRefactor   = "refactor"
+	masterModeCorrection = "correction"
+)
+
 type masterEquivalenceOptions struct {
 	Layers       []string
 	Locales      []string
+	Mode         string // masterModeRefactor (default) or masterModeCorrection
 	Expectations []masterExpectation
+	Corrections  []masterCorrection
+	// KeepDifferences lists every difference in full in the report (always in correction mode): the review step that
+	// turns a candidate's differences into a correction declaration reads them.
+	KeepDifferences bool
 }
 
-// masterExpectation declares one planned structural difference. Only the schema and data layers can be declared.
+// masterExpectation declares one planned difference. In refactor mode only the schema and data layers can be declared,
+// by layer, class and object. In correction mode it names one exact difference (locale, key, old and new value, count)
+// and the correction that causes it.
 type masterExpectation struct {
-	Layer  string `json:"layer"`
-	Class  string `json:"class"`
-	Object string `json:"object"`
-	Reason string `json:"reason,omitempty"`
+	Layer      string  `json:"layer"`
+	Class      string  `json:"class"`
+	Object     string  `json:"object"`
+	Locale     string  `json:"locale,omitempty"`
+	Key        string  `json:"key,omitempty"`
+	Old        *string `json:"old,omitempty"`
+	New        *string `json:"new,omitempty"`
+	Count      int     `json:"count,omitempty"`
+	Correction string  `json:"correction,omitempty"`
+	Reason     string  `json:"reason,omitempty"`
+}
+
+// masterCorrection is one verified Master data correction: the cell it changes, from and to which value, for which game
+// version, the source that proves it and what it changes for the product.
+type masterCorrection struct {
+	ID             string `json:"id"`
+	Table          string `json:"table"`
+	Column         string `json:"column"`
+	RowKey         string `json:"rowKey"`
+	Old            string `json:"old"`
+	New            string `json:"new"`
+	GameVersion    string `json:"gameVersion"`
+	Source         string `json:"source"`
+	Semantics      string `json:"semantics"`
+	ExpectedOutput string `json:"expectedOutput"`
+}
+
+func (e masterExpectation) matches(x masterDifference) bool {
+	count := e.Count
+	if count == 0 {
+		count = 1
+	}
+	return e.Layer == x.Layer && e.Class == x.Class && e.Object == x.Object && e.Locale == x.Locale && e.Key == x.Key &&
+		e.Old != nil && *e.Old == x.Old && e.New != nil && *e.New == x.New && count == x.Count
 }
 
 type masterFileInfo struct {
@@ -955,6 +1010,7 @@ type masterFileInfo struct {
 type masterEquivalenceReport struct {
 	Old             masterFileInfo      `json:"old"`
 	New             masterFileInfo      `json:"new"`
+	Mode            string              `json:"mode"`
 	Layers          []string            `json:"layers"`
 	Locales         []string            `json:"locales"`
 	NonSemantic     []string            `json:"nonSemanticExclusions"`
@@ -962,7 +1018,9 @@ type masterEquivalenceReport struct {
 	Counts          map[string]int      `json:"counts"`
 	Objects         map[string]int      `json:"objects"`
 	Samples         []masterDifference  `json:"samples"`
+	Corrections     []masterCorrection  `json:"corrections,omitempty"`
 	Expected        []masterExpectation `json:"expected,omitempty"`
+	Differences     []masterDifference  `json:"differences,omitempty"` // correction mode: every difference, in full
 	Unexpected      []string            `json:"unexpected,omitempty"`
 	ExpectedNotSeen []string            `json:"expectedNotSeen,omitempty"`
 	LoadErrors      []string            `json:"loadErrors,omitempty"`
@@ -993,16 +1051,76 @@ func validateMasterExpectations(expectations []masterExpectation) error {
 		if e.Class == "" || e.Object == "" {
 			return fmt.Errorf("expectation %+v names no class or object", e)
 		}
+		if e.Correction != "" {
+			return fmt.Errorf("expectation %s/%s/%s names correction %q, which only correction mode accepts", e.Layer, e.Class, e.Object, e.Correction)
+		}
+	}
+	return nil
+}
+
+// validateMasterCorrections checks a correction-mode declaration: every correction is complete and used, and every
+// expected difference is exact (no class, object or locale wildcard can stand for several values) and tied to one.
+func validateMasterCorrections(corrections []masterCorrection, expectations []masterExpectation) error {
+	if len(corrections) == 0 || len(expectations) == 0 {
+		return fmt.Errorf("correction mode needs its corrections and the exact differences they cause")
+	}
+	known := map[string]bool{}
+	for _, c := range corrections {
+		for name, value := range map[string]string{"id": c.ID, "table": c.Table, "column": c.Column, "rowKey": c.RowKey, "new": c.New,
+			"gameVersion": c.GameVersion, "source": c.Source, "semantics": c.Semantics, "expectedOutput": c.ExpectedOutput} {
+			if strings.TrimSpace(value) == "" {
+				return fmt.Errorf("correction %q has no %s", c.ID, name)
+			}
+		}
+		if c.Old == c.New {
+			return fmt.Errorf("correction %q changes nothing", c.ID)
+		}
+		if known[c.ID] {
+			return fmt.Errorf("correction %q is declared twice", c.ID)
+		}
+		known[c.ID] = true
+	}
+	used := map[string]bool{}
+	for _, e := range expectations {
+		switch {
+		case e.Layer != "data" && e.Layer != "loaded" && e.Layer != "display":
+			return fmt.Errorf("expectation %s/%s/%s: a data correction changes no schema; only data, loaded and display differences can be declared", e.Layer, e.Class, e.Object)
+		case e.Class == "" || e.Object == "" || e.Key == "" || e.Old == nil || e.New == nil:
+			return fmt.Errorf("expectation %s/%s/%s: correction mode declares each difference with its key, old and new value", e.Layer, e.Class, e.Object)
+		case !known[e.Correction]:
+			return fmt.Errorf("expectation %s/%s/%s key %q names no declared correction (%q)", e.Layer, e.Class, e.Object, e.Key, e.Correction)
+		}
+		used[e.Correction] = true
+	}
+	for id := range known {
+		if !used[id] {
+			return fmt.Errorf("correction %q causes no declared difference", id)
+		}
 	}
 	return nil
 }
 
 // runMasterEquivalence compares two Master files. Both are opened read-only through the product's own file opener.
 func runMasterEquivalence(oldPath, newPath string, options masterEquivalenceOptions) (masterEquivalenceReport, error) {
-	report := masterEquivalenceReport{Layers: options.Layers, Locales: options.Locales, Checked: map[string]int{}, Expected: options.Expectations,
-		NonSemantic: []string{"GameMaster.DatabasePath", "GameMaster.Manifest.SourceHash", "DamageMasterRecord.SourceHash"}}
-	if err := validateMasterExpectations(options.Expectations); err != nil {
-		return report, err
+	if options.Mode == "" {
+		options.Mode = masterModeRefactor
+	}
+	report := masterEquivalenceReport{Mode: options.Mode, Layers: options.Layers, Locales: options.Locales, Checked: map[string]int{}, Expected: options.Expectations,
+		Corrections: options.Corrections, NonSemantic: []string{"GameMaster.DatabasePath", "GameMaster.Manifest.SourceHash", "DamageMasterRecord.SourceHash"}}
+	switch options.Mode {
+	case masterModeRefactor:
+		if len(options.Corrections) > 0 {
+			return report, fmt.Errorf("refactor mode declares no corrections")
+		}
+		if err := validateMasterExpectations(options.Expectations); err != nil {
+			return report, err
+		}
+	case masterModeCorrection:
+		if err := validateMasterCorrections(options.Corrections, options.Expectations); err != nil {
+			return report, err
+		}
+	default:
+		return report, fmt.Errorf("unknown mode %q", options.Mode)
 	}
 	var err error
 	if report.Old, err = masterFileFacts(oldPath); err != nil {
@@ -1016,6 +1134,7 @@ func runMasterEquivalence(oldPath, newPath string, options masterEquivalenceOpti
 		layers[l] = true
 	}
 	d := newMasterDifferences()
+	d.keepAll = options.Mode == masterModeCorrection || options.KeepDifferences
 	oldDB, _, _, err := openFileMasterDatabase(oldPath)
 	if err != nil {
 		return report, fmt.Errorf("open old Master: %w", err)
@@ -1101,7 +1220,17 @@ func runMasterEquivalence(oldPath, newPath string, options masterEquivalenceOpti
 		report.SemanticDigest = hex.EncodeToString(semantic.Sum(nil))
 	}
 	report.Counts, report.Objects, report.Samples = d.counts, d.objects, d.samples
-	report.Unexpected, report.ExpectedNotSeen = masterUnexpected(d, options.Expectations)
+	if d.keepAll {
+		if len(d.all) > masterCorrectionDifferenceLimit {
+			return report, fmt.Errorf("more than %d differences: too many to list (and no data correction)", masterCorrectionDifferenceLimit)
+		}
+		report.Differences = d.all
+	}
+	if options.Mode == masterModeCorrection {
+		report.Unexpected, report.ExpectedNotSeen = masterCorrectionUnexpected(d.all, options.Expectations)
+	} else {
+		report.Unexpected, report.ExpectedNotSeen = masterUnexpected(d, options.Expectations)
+	}
 	report.Equivalent = len(report.Unexpected) == 0 && len(report.ExpectedNotSeen) == 0
 	return report, nil
 }
@@ -1136,6 +1265,31 @@ func masterUnexpected(d *masterDifferences, expectations []masterExpectation) (u
 	return unexpected, notSeen
 }
 
+// masterCorrectionUnexpected matches every difference to one exact expectation (each expectation is used once): a
+// difference no expectation names, or an expectation no difference meets, makes the Masters not equivalent.
+func masterCorrectionUnexpected(all []masterDifference, expectations []masterExpectation) (unexpected, notSeen []string) {
+	used := make([]bool, len(expectations))
+	for _, x := range all {
+		found := false
+		for i, e := range expectations {
+			if !used[i] && e.matches(x) {
+				used[i], found = true, true
+				break
+			}
+		}
+		if !found {
+			unexpected = append(unexpected, fmt.Sprintf("%s/%s/%s locale=%q key=%q old=%q new=%q count=%d", x.Layer, x.Class, x.Object, x.Locale,
+				truncateMasterText(x.Key, 240), truncateMasterText(x.Old, 240), truncateMasterText(x.New, 240), x.Count))
+		}
+	}
+	for i, e := range expectations {
+		if !used[i] {
+			notSeen = append(notSeen, fmt.Sprintf("%s/%s/%s locale=%q key=%q (correction %s)", e.Layer, e.Class, e.Object, e.Locale, e.Key, e.Correction))
+		}
+	}
+	return unexpected, notSeen
+}
+
 func masterEquivalenceSummary(r masterEquivalenceReport) string {
 	keys := sortedMasterKeys(r.Counts)
 	parts := make([]string, len(keys))
@@ -1159,18 +1313,27 @@ func writeMasterEquivalenceReport(path string, report masterEquivalenceReport) e
 	return os.WriteFile(path, append(data, '\n'), 0o644)
 }
 
-func readMasterExpectations(path string) ([]masterExpectation, error) {
+// masterExpectationFile is the declaration a comparison reads: {"mode", "corrections", "allow"}. Without a mode it is
+// a refactor declaration.
+type masterExpectationFile struct {
+	Mode        string              `json:"mode"`
+	Corrections []masterCorrection  `json:"corrections"`
+	Allow       []masterExpectation `json:"allow"`
+}
+
+func readMasterExpectations(path string) (masterExpectationFile, error) {
+	var file masterExpectationFile
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, err
-	}
-	var file struct {
-		Allow []masterExpectation `json:"allow"`
+		return file, err
 	}
 	if err := json.Unmarshal(data, &file); err != nil {
-		return nil, fmt.Errorf("parse expectations: %w", err)
+		return file, fmt.Errorf("parse expectations: %w", err)
 	}
-	return file.Allow, validateMasterExpectations(file.Allow)
+	if file.Mode == "" {
+		file.Mode = masterModeRefactor
+	}
+	return file, nil
 }
 
 // TestMasterEquivalenceCollector is a collector, not a regular test: it compares two Master files with every layer and
@@ -1179,10 +1342,13 @@ func readMasterExpectations(path string) ([]masterExpectation, error) {
 //	WWLOGS_MASTER_EQUIVALENCE_OLD      the Master the product uses now (for example the v0.8.0 baseline copy)
 //	WWLOGS_MASTER_EQUIVALENCE_NEW      the candidate Master
 //	WWLOGS_MASTER_EQUIVALENCE_OUT      output directory for master-equivalence.json
-//	WWLOGS_MASTER_EQUIVALENCE_EXPECT   optional JSON {"allow":[{"layer","class","object","reason"}]} of planned schema or
-//	                                   data differences; each must occur, and none can cover loaded or display layers
+//	WWLOGS_MASTER_EQUIVALENCE_EXPECT   optional JSON of planned differences, each of which must occur:
+//	                                   {"allow":[{"layer","class","object","reason"}]}: a refactor, schema and data only;
+//	                                   {"mode":"correction","corrections":[...],"allow":[{..., "locale","key","old","new",
+//	                                   "correction"}]}: a verified data correction, every difference exact and evidenced
 //	WWLOGS_MASTER_EQUIVALENCE_LOCALES  optional comma-separated subset of the Master locales (default: all five)
-//	WWLOGS_MASTER_EQUIVALENCE_MODE     "report" writes the report without failing (for reviewing a game update's delta)
+//	WWLOGS_MASTER_EQUIVALENCE_MODE     "report" writes the report, with every difference in full, without failing (the
+//	                                   review step before a correction declaration, or a game update's delta)
 func TestMasterEquivalenceCollector(t *testing.T) {
 	oldPath, newPath, out := os.Getenv("WWLOGS_MASTER_EQUIVALENCE_OLD"), os.Getenv("WWLOGS_MASTER_EQUIVALENCE_NEW"), os.Getenv("WWLOGS_MASTER_EQUIVALENCE_OUT")
 	if oldPath == "" || newPath == "" || out == "" {
@@ -1198,12 +1364,13 @@ func TestMasterEquivalenceCollector(t *testing.T) {
 		}
 	}
 	if path := os.Getenv("WWLOGS_MASTER_EQUIVALENCE_EXPECT"); path != "" {
-		expectations, err := readMasterExpectations(path)
+		file, err := readMasterExpectations(path)
 		if err != nil {
 			t.Fatal(err)
 		}
-		options.Expectations = expectations
+		options.Mode, options.Corrections, options.Expectations = file.Mode, file.Corrections, file.Allow
 	}
+	options.KeepDifferences = os.Getenv("WWLOGS_MASTER_EQUIVALENCE_MODE") == "report"
 	report, err := runMasterEquivalence(oldPath, newPath, options)
 	if err != nil {
 		t.Fatal(err)
