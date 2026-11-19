@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  One local verification entry point for both build profiles.
+  One local verification entry point for both build profiles, in a Maintainer or a Public mode.
 
 .DESCRIPTION
   Runs formatting, vet, and unit tests for the Public and Development profiles, builds both executables with
@@ -8,24 +8,36 @@
   are Unofficial: verification never reads or advances the owner's official build counter.
   The steps are declared below ($declaredSteps), and every run reports every one of them as PASS (it executed and
   passed), FAIL (it executed and failed), BLOCKED (it was required but could not run: a missing tool or input, or a
-  failed step it depends on) or NOT RUN. Nothing is reported as PASS unless it executed; a test collector counts as
-  executed only when its test ran and passed and wrote its outputs.
+  failed step it depends on), NOT RUN (the caller did not ask for it) or SKIP (Public mode: it needs private material).
+  Nothing is reported as PASS unless it executed; a test collector counts as executed only when its test ran and passed
+  and wrote its outputs. The go test steps count the tests that passed and the ones that skipped themselves.
 
-  NOT RUN is reserved for the local-only material a checkout may lack: the owner-local key input, and the archived PCAP
-  captures when -PcapDirectory is not given. Pass -PcapDirectory to add the replay regression, the public output
-  audit, the encounter replay (determinism and partition), the host session equivalence and the transport
-  perturbation replay through an embedded-key development test binary; a given directory without a capture of the
-  current game version blocks those steps.
+  -Mode Maintainer (the default) is the maintainer's complete verification. It also runs the checks that need private
+  material: the Master contract (work/acceptance/master/master_contract.json, or the file WWLOGS_MASTER_CONTRACT names)
+  checked against the tracked Master, the owner-local key the builds embed, and, with -PcapDirectory, the archived
+  capture corpus, whose required Golden captures (tests/capture/golden_registry.json) must all run and pass. A missing
+  or unreadable private input BLOCKS its steps and fails the run: Maintainer mode never turns into Public mode.
+  -Mode Public verifies a checkout with tracked files and public tools only. It reads no private material: the
+  inherited WWLOGS_* inputs (other than WWLOGS_NODE_HOME) are cleared for the run, and every step that needs private
+  material is SKIP. Its best verdict is "PASS WITH PRIVATE CHECKS SKIPPED", never a Maintainer PASS.
 
-  Exit code 0: every declared step passed. 1: a step failed or was blocked. 2: nothing failed, but steps were NOT RUN,
-  so the verification is incomplete.
+  NOT RUN is reserved for the archived captures when -PcapDirectory is not given. Pass -PcapDirectory (Maintainer mode)
+  to add the replay regression, the public output audit, the encounter replay (determinism and partition), the host
+  session equivalence and the transport perturbation replay through an embedded-key development test binary; a given
+  directory without a capture of the current game version blocks those steps.
+
+  Exit code 0: Maintainer, every declared step passed; Public, every step it runs passed. 1: a step failed or was
+  blocked. 2: nothing failed, but steps were NOT RUN, so the verification is incomplete.
 
   -EvidenceOut writes what the run executed for the version readiness gate (scripts/readiness.ps1):
-  verify-results.json (every step's state), golden-coverage.json (the Golden captures the semantic regression ran)
-  and history-summary.json (the Public History replay summary).
+  verify-results.json (the mode and every step's state), golden-coverage.json (the Golden captures the semantic
+  regression ran) and history-summary.json (the Public History replay summary).
 #>
 param(
-    # Directory that contains archived *.pcap files. Local and private; never read from the repository.
+    # Maintainer: the complete verification with the private material. Public: tracked files and public tools only.
+    [ValidateSet('Maintainer', 'Public')]
+    [string]$Mode = 'Maintainer',
+    # Directory that contains archived *.pcap files. Local and private; never read from the repository. Maintainer only.
     [string]$PcapDirectory = '',
     # Local interface address used only to decide packet direction during offline replay.
     [string]$ReplayIp = '192.168.1.2',
@@ -37,9 +49,13 @@ $ErrorActionPreference = 'Stop'
 # Build with the system Go only: never switch to, or download, another toolchain for a newer go.mod requirement.
 $env:GOTOOLCHAIN = 'local'
 $repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).ProviderPath
+. (Join-Path $PSScriptRoot 'verify/rules.ps1')
 $overlay = Join-Path $repoRoot 'tests/go-overlay.json'
 $results = [ordered]@{}
 $testPackages = @('./cmd/capture', './internal/buildinfo', './internal/capture', './internal/devcapture', './internal/history', './internal/service', './internal/desktop', './internal/devdesktop', './internal/keyembed', './tests/architecture', './tests/assets', './tests/buildrun', './tests/readiness', './tests/versioninfo')
+if ($Mode -eq 'Public' -and $PcapDirectory -ne '') {
+    throw '-PcapDirectory is private material: Public mode reads none. Replay the corpus with -Mode Maintainer.'
+}
 if ($EvidenceOut -ne '') {
     $EvidenceOut = [IO.Path]::GetFullPath($EvidenceOut)
     [void][IO.Directory]::CreateDirectory($EvidenceOut)
@@ -49,15 +65,25 @@ if ($EvidenceOut -ne '') {
 $buildSteps = @('build (Public)', 'build (Development)', 'build identity', 'public flags', 'public binary strings', 'public binary symbols')
 $desktopSteps = @('frontend typecheck + build', 'desktop build (Public + Development)', 'desktop public flags + strings', 'desktop embedded images', 'master: embedded bytes + profile lookup parity')
 $replaySteps = @('replay: public output audit + statistics equality', 'replay: encounter determinism + partition', 'replay: host session equivalence', 'replay: transport perturbation', 'replay: effect and skill semantics', 'replay: combat history fidelity')
-$declaredSteps = @('gofmt', 'go vet (Public)', 'go test (Public)', 'go vet (Development)', 'go test (Development)', 'game assets: version control') + $buildSteps + $desktopSteps + $replaySteps
+$declaredSteps = @('gofmt', 'go vet (Public)', 'go test (Public)', 'go vet (Development)', 'go test (Development)', 'master: private contract', 'verify: mode and result rules', 'game assets: version control') + $buildSteps + $desktopSteps + $replaySteps
+# The steps that need private material, with what they need. Public mode reports them SKIP without running them.
+$keySteps = $buildSteps + @($desktopSteps | Where-Object { $_ -ne 'frontend typecheck + build' })
+$privateNeeds = [ordered]@{ 'master: private contract' = 'the Master contract' }
+foreach ($name in $keySteps) { $privateNeeds[$name] = 'the owner-local key' }
+foreach ($name in $replaySteps) { $privateNeeds[$name] = 'the owner-local key and the capture corpus' }
+# The private Master checks of Maintainer mode: tests of the core that read the Master contract. Each must pass in both
+# profiles; one that skips, fails or does not report fails the step.
+$privateMasterTests = @('TestTrackedMasterSatisfiesItsContract', 'TestMasterContractIsConsistent')
 
 function Set-Result([string]$Name, [string]$State, [string]$Detail = '') {
     if ($Name -notin $declaredSteps) { throw "verify.ps1 reports an undeclared step: $Name" }
+    if ($State -notin @('PASS', 'FAIL', 'BLOCKED', 'NOT RUN', 'SKIP')) { throw "verify.ps1 reports an unknown state $State for $Name" }
+    if ($State -eq 'SKIP' -and $Mode -ne 'Public') { throw "verify.ps1 skipped $Name in $Mode mode, which skips nothing" }
     $results[$Name] = "$State$(if ($Detail) { " - $Detail" })"
     Write-Host ("{0,-9} {1}{2}" -f $State, $Name, $(if ($Detail) { "  ($Detail)" } else { '' }))
 }
 
-# Set-Unreached reports the steps that cannot run after this point (NOT RUN for absent local-only material, BLOCKED
+# Set-Unreached reports the steps that cannot run after this point (NOT RUN for an input the caller did not give, BLOCKED
 # otherwise); a step that already has a result keeps it.
 function Set-Unreached([string[]]$Names, [string]$State, [string]$Reason) {
     foreach ($name in $Names) {
@@ -90,6 +116,13 @@ function Invoke-Go([string[]]$GoArguments) {
     return [pscustomobject]@{ Code = $LASTEXITCODE; Output = ($output | Out-String) }
 }
 
+# Invoke-GoTest runs go test -json and reads which tests passed, failed and skipped themselves (Read-VerifyGoTestJson).
+function Invoke-GoTest([string[]]$GoArguments) {
+    $lines = @(& go @(@('test', '-json') + $GoArguments) 2>&1 | ForEach-Object { "$_" })
+    $code = $LASTEXITCODE
+    return [pscustomobject]@{ Code = $code; Tests = (Read-VerifyGoTestJson $lines) }
+}
+
 # Strings of Development diagnostic, research and output code that no Public executable may contain: spool and
 # output names, Development record types, the command census, the research schema, the research wire path of Buff
 # rows and the Development summary lines.
@@ -101,6 +134,23 @@ function Get-DevelopmentSymbols([string]$Executable) {
     $symbols = & go tool nm $Executable 2>&1 | Out-String
     if ($LASTEXITCODE -ne 0 -or $symbols.Length -lt 1000) { return @("symbol table unreadable") }
     return @('wwlogs/internal/devcapture.', 'wwlogs/internal/devdesktop.', 'github.com/google/gopacket/pcapgo.') | Where-Object { $symbols.Contains($_) }
+}
+
+# The mode's inputs. Maintainer resolves its private Master contract here, before anything runs; Public sets aside every
+# inherited WWLOGS_* input (restored at the end) so that no test or collector reads private material in a Public run.
+$startDirectory = (Get-Location).ProviderPath
+$contract = $null
+$clearedEnvironment = @{}
+if ($Mode -eq 'Maintainer') {
+    $contract = Resolve-VerifyMasterContract $repoRoot $env:WWLOGS_MASTER_CONTRACT $startDirectory
+    Write-Host "Mode: Maintainer (Master contract: $($contract.Shown), $($contract.Source)$(if ($PcapDirectory) { "; capture corpus: $PcapDirectory" } else { '; no capture corpus' }))"
+} else {
+    foreach ($variable in @(Get-ChildItem Env: | Where-Object { $_.Name -like 'WWLOGS_*' -and $_.Name -ne 'WWLOGS_NODE_HOME' })) {
+        $clearedEnvironment[$variable.Name] = $variable.Value
+        Remove-Item -LiteralPath "Env:$($variable.Name)"
+    }
+    Write-Host "Mode: Public (tracked files and public tools only; the checks that need private material are SKIP)"
+    foreach ($name in $privateNeeds.Keys) { Set-Result $name 'SKIP' "Public mode: needs $($privateNeeds[$name])" }
 }
 
 Push-Location $repoRoot
@@ -139,13 +189,67 @@ try {
         Set-Result 'gofmt' 'FAIL' ($unformatted -join ', ')
     }
 
-    # 2. go vet and go test for each profile.
+    # 2. go vet and go test for each profile. The tests run the same way in both modes: without the Master contract, so a
+    # test that needs private material skips itself here and is counted as skipped; the private Master checks run in
+    # their own step.
     $packages = @('./cmd/...', './internal/...', './tests/...')
-    foreach ($profile in @(@{ Name = 'Public'; Tags = @() }, @{ Name = 'Development'; Tags = @('-tags', 'wwdev') })) {
-        $vet = Invoke-Go (@('vet', "-overlay=$overlay") + $profile.Tags + $packages)
-        Set-Result "go vet ($($profile.Name))" $(if ($vet.Code -eq 0) { 'PASS' } else { 'FAIL' }) $(if ($vet.Code -ne 0) { $vet.Output.Trim() })
-        $test = Invoke-Go (@('test', '-count=1', "-overlay=$overlay") + $profile.Tags + $testPackages)
-        Set-Result "go test ($($profile.Name))" $(if ($test.Code -eq 0) { 'PASS' } else { 'FAIL' }) $(if ($test.Code -ne 0) { $test.Output.Trim() })
+    $goTests = [ordered]@{}
+    $contractOverride = $env:WWLOGS_MASTER_CONTRACT
+    Remove-Item Env:WWLOGS_MASTER_CONTRACT -ErrorAction SilentlyContinue
+    try {
+        foreach ($profile in @(@{ Name = 'Public'; Tags = @() }, @{ Name = 'Development'; Tags = @('-tags', 'wwdev') })) {
+            $vet = Invoke-Go (@('vet', "-overlay=$overlay") + $profile.Tags + $packages)
+            Set-Result "go vet ($($profile.Name))" $(if ($vet.Code -eq 0) { 'PASS' } else { 'FAIL' }) $(if ($vet.Code -ne 0) { $vet.Output.Trim() })
+            $test = Invoke-GoTest (@('-count=1', "-overlay=$overlay") + $profile.Tags + $testPackages)
+            $goTests[$profile.Name] = $test.Tests
+            $counted = "$($test.Tests.Passed) passed, $($test.Tests.Skipped) skipped, $($test.Tests.Failed) failed"
+            if ($test.Code -eq 0 -and $test.Tests.Failed -eq 0 -and $test.Tests.FailedPackages.Count -eq 0 -and $test.Tests.Passed -gt 0) {
+                Set-Result "go test ($($profile.Name))" 'PASS' $counted
+            } else {
+                $failure = if ($test.Tests.FailureText) { $test.Tests.FailureText } else { "exit code $($test.Code)" }
+                Set-Result "go test ($($profile.Name))" 'FAIL' "$counted; $failure"
+            }
+        }
+    } finally {
+        if ($null -ne $contractOverride) { $env:WWLOGS_MASTER_CONTRACT = $contractOverride }
+    }
+
+    # The private Master checks (Maintainer): the core's tests that read the Master contract, in both profiles.
+    if ($Mode -eq 'Maintainer') {
+        if ($contract.Problem) {
+            Set-Result 'master: private contract' 'BLOCKED' "$($contract.Problem); Maintainer mode requires it"
+        } else {
+            $previous = $env:WWLOGS_MASTER_CONTRACT
+            $env:WWLOGS_MASTER_CONTRACT = $contract.Path
+            try {
+                $contractRuns = [ordered]@{}
+                $contractFailures = @()
+                foreach ($profile in @(@{ Name = 'Public'; Tags = @() }, @{ Name = 'Development'; Tags = @('-tags', 'wwdev') })) {
+                    $run = Invoke-GoTest (@('-count=1', "-overlay=$overlay") + $profile.Tags + @('-run', "^($($privateMasterTests -join '|'))$", './internal/capture'))
+                    $contractRuns[$profile.Name] = $run.Tests
+                    if ($run.Tests.FailureText) { $contractFailures += $run.Tests.FailureText }
+                }
+            } finally {
+                if ($null -ne $previous) { $env:WWLOGS_MASTER_CONTRACT = $previous } else { Remove-Item Env:WWLOGS_MASTER_CONTRACT -ErrorAction SilentlyContinue }
+            }
+            $contractProblems = @(Get-VerifyRequiredTestProblems $contractRuns 'wwlogs/internal/capture' $privateMasterTests)
+            if ($contractProblems.Count -eq 0) {
+                Set-Result 'master: private contract' 'PASS' "$($privateMasterTests.Count) checks in both profiles against $($contract.Shown)"
+            } else {
+                Set-Result 'master: private contract' 'FAIL' (($contractProblems + $contractFailures) -join '; ')
+            }
+        }
+    }
+
+    # The rules this script applies (modes, verdicts, the private and Golden checks) are tested before they decide.
+    $rulesTest = Join-Path $repoRoot 'tests/verify/rules.tests.ps1'
+    $rulesOutput = @(& ([Diagnostics.Process]::GetCurrentProcess().MainModule.FileName) -NoProfile -NonInteractive -File $rulesTest 2>&1 | ForEach-Object { "$_" })
+    $rulesCode = $LASTEXITCODE
+    $rulesLine = @($rulesOutput | Where-Object { $_ -match '^verify rules: ' } | Select-Object -Last 1)
+    if ($rulesCode -eq 0 -and $rulesLine.Count -eq 1 -and $rulesLine[0] -match '^verify rules: (\d+) of \1 checks passed') {
+        Set-Result 'verify: mode and result rules' 'PASS' ($rulesLine[0] -replace '^verify rules: ', '')
+    } else {
+        Set-Result 'verify: mode and result rules' 'FAIL' "exit code $rulesCode; $(($rulesOutput | Select-Object -Last 20) -join ' ')"
     }
 
     # Product images are under version control, and nothing else under assets/ is. Untracked or changed images fail here
@@ -166,31 +270,56 @@ try {
     Set-Result 'game assets: version control' $(if ($assetProblems.Count -eq 0) { 'PASS' } else { 'FAIL' }) $(if ($assetProblems.Count -gt 0) { $assetProblems -join '; ' } else { "$($assetManifest.entries.Count) images" })
 
     # 3. Build both executables into a throw-away directory and audit them.
-    # The restricted embed-key step alone probes and reads its owner-local key input.
-    $keyStatus = Invoke-Go @('run', './scripts/embed-key.go', '-check-key')
-    $missingKeyMessage = 'owner-local private key is not present'
-    if ($keyStatus.Code -ne 0) {
-        if ($keyStatus.Output.Contains($missingKeyMessage)) {
-            Set-Unreached ($buildSteps + $desktopSteps + $replaySteps) 'NOT RUN' $missingKeyMessage
-        } else {
-            Set-Unreached ($buildSteps + $desktopSteps + $replaySteps) 'BLOCKED' "the key check failed: $($keyStatus.Output.Trim())"
-        }
-    } else {
-        $buildDirectory = Join-Path ([IO.Path]::GetTempPath()) ("wwlogs-verify-" + [Guid]::NewGuid().ToString('N'))
-        New-Item -ItemType Directory -Path $buildDirectory | Out-Null
+    $buildDirectory = Join-Path ([IO.Path]::GetTempPath()) ("wwlogs-verify-" + [Guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $buildDirectory | Out-Null
+    try {
+        # The frontend is typechecked and built outside the repository with the system Node.js and npm. It needs no
+        # private material, so it runs in both modes.
+        $frontendDist = Join-Path $buildDirectory 'frontend-dist'
+        $frontendDevelopmentDist = Join-Path $buildDirectory 'frontend-dist-development'
+        $frontendOutput = ''
+        $frontendStopped = $false
         try {
+            $frontendOutput = & (Join-Path $PSScriptRoot 'frontend.ps1') -Action Build -OutDir $frontendDist -Profile Public 2>&1 | Out-String
+            $frontendOutput += & (Join-Path $PSScriptRoot 'frontend.ps1') -Action Build -OutDir $frontendDevelopmentDist -Profile Development 2>&1 | Out-String
+        } catch {
+            # frontend.ps1 stops with a terminating error: it is this step's result, not the end of the run.
+            $frontendOutput += $_.Exception.Message
+            $frontendStopped = $true
+        }
+        $frontendBuilt = -not $frontendStopped -and (Test-Path -LiteralPath (Join-Path $frontendDist 'index.html')) -and (Test-Path -LiteralPath (Join-Path $frontendDevelopmentDist 'index.html'))
+        if ($frontendBuilt) {
+            Set-Result 'frontend typecheck + build' 'PASS'
+        } else {
+            # A missing Node.js or npm blocks the desktop steps: the product cannot be built without them.
+            $state = if ($frontendOutput -match 'was not found on PATH') { 'BLOCKED' } else { 'FAIL' }
+            Set-Result 'frontend typecheck + build' $state $frontendOutput.Trim()
+        }
+
+        # The executables embed the owner-local key, so only Maintainer mode builds them (Public mode reported their
+        # steps SKIP before anything ran). The restricted embed-key step alone probes and reads that key input; without
+        # it Maintainer mode is blocked, never reduced.
+        $missingKeyMessage = 'owner-local private key is not present'
+        $keyStatus = if ($Mode -eq 'Maintainer') { Invoke-Go @('run', './scripts/embed-key.go', '-check-key') } else { $null }
+        if ($Mode -eq 'Maintainer' -and $keyStatus.Code -ne 0) {
+            if ($keyStatus.Output.Contains($missingKeyMessage)) {
+                Set-Unreached ($keySteps + $replaySteps) 'BLOCKED' "$missingKeyMessage; Maintainer mode requires it"
+            } else {
+                Set-Unreached ($keySteps + $replaySteps) 'BLOCKED' "the key check failed: $($keyStatus.Output.Trim())"
+            }
+        } elseif ($Mode -eq 'Maintainer') {
             $publicExe = Join-Path $buildDirectory 'WWlogs.exe'
             $developmentExe = Join-Path $buildDirectory 'WWlogs-dev.exe'
             $publicBuild = Invoke-Go @('run', './scripts/embed-key.go', '-unofficial', '-profile', 'public', '-o', $publicExe)
             $developmentBuild = Invoke-Go @('run', './scripts/embed-key.go', '-unofficial', '-profile', 'development', '-o', $developmentExe)
             $publicKeyMissing = $publicBuild.Output.Contains($missingKeyMessage)
             $developmentKeyMissing = $developmentBuild.Output.Contains($missingKeyMessage)
-            Set-Result 'build (Public)' $(if ($publicKeyMissing) { 'NOT RUN' } elseif ($publicBuild.Code -eq 0) { 'PASS' } else { 'FAIL' }) $(if ($publicKeyMissing) { $missingKeyMessage } elseif ($publicBuild.Code -ne 0) { $publicBuild.Output.Trim() })
-            Set-Result 'build (Development)' $(if ($developmentKeyMissing) { 'NOT RUN' } elseif ($developmentBuild.Code -eq 0) { 'PASS' } else { 'FAIL' }) $(if ($developmentKeyMissing) { $missingKeyMessage } elseif ($developmentBuild.Code -ne 0) { $developmentBuild.Output.Trim() })
+            Set-Result 'build (Public)' $(if ($publicKeyMissing) { 'BLOCKED' } elseif ($publicBuild.Code -eq 0) { 'PASS' } else { 'FAIL' }) $(if ($publicKeyMissing) { $missingKeyMessage } elseif ($publicBuild.Code -ne 0) { $publicBuild.Output.Trim() })
+            Set-Result 'build (Development)' $(if ($developmentKeyMissing) { 'BLOCKED' } elseif ($developmentBuild.Code -eq 0) { 'PASS' } else { 'FAIL' }) $(if ($developmentKeyMissing) { $missingKeyMessage } elseif ($developmentBuild.Code -ne 0) { $developmentBuild.Output.Trim() })
             if ($publicKeyMissing -or $developmentKeyMissing) {
-                Set-Unreached ($buildSteps + $desktopSteps + $replaySteps) 'NOT RUN' $missingKeyMessage
+                Set-Unreached ($keySteps + $replaySteps) 'BLOCKED' "$missingKeyMessage; Maintainer mode requires it"
             } elseif ($publicBuild.Code -ne 0 -or $developmentBuild.Code -ne 0) {
-                Set-Unreached ($buildSteps + $desktopSteps + $replaySteps) 'BLOCKED' 'blocked: a console build failed'
+                Set-Unreached ($keySteps + $replaySteps) 'BLOCKED' 'blocked: a console build failed'
             }
 
             if ($publicBuild.Code -eq 0 -and $developmentBuild.Code -eq 0) {
@@ -219,27 +348,11 @@ try {
                 $symbolLeak = @(Get-DevelopmentSymbols $publicExe)
                 Set-Result 'public binary symbols' $(if (-not $symbolLeak) { 'PASS' } else { 'FAIL' }) $(if ($symbolLeak) { "links: $($symbolLeak -join ', ')" })
 
-                # Desktop host: the frontend is typechecked and built outside the repository with the system Node.js and npm,
-                # embedded into both profiles, and the Public desktop executable is audited like the console one.
-                $frontendDist = Join-Path $buildDirectory 'frontend-dist'
-                $frontendDevelopmentDist = Join-Path $buildDirectory 'frontend-dist-development'
-                $frontendOutput = ''
-                $frontendStopped = $false
-                try {
-                    $frontendOutput = & (Join-Path $PSScriptRoot 'frontend.ps1') -Action Build -OutDir $frontendDist -Profile Public 2>&1 | Out-String
-                    $frontendOutput += & (Join-Path $PSScriptRoot 'frontend.ps1') -Action Build -OutDir $frontendDevelopmentDist -Profile Development 2>&1 | Out-String
-                } catch {
-                    # frontend.ps1 stops with a terminating error: it is this step's result, not the end of the run.
-                    $frontendOutput += $_.Exception.Message
-                    $frontendStopped = $true
-                }
-                if ($frontendStopped -or -not (Test-Path -LiteralPath (Join-Path $frontendDist 'index.html')) -or -not (Test-Path -LiteralPath (Join-Path $frontendDevelopmentDist 'index.html'))) {
-                    # A missing Node.js or npm blocks the desktop steps: the product cannot be built without them.
-                    $state = if ($frontendOutput -match 'was not found on PATH') { 'BLOCKED' } else { 'FAIL' }
-                    Set-Result 'frontend typecheck + build' $state $frontendOutput.Trim()
+                # Desktop host: the built frontend is embedded into both profiles, and the Public desktop executable is
+                # audited like the console one.
+                if (-not $frontendBuilt) {
                     Set-Unreached $desktopSteps 'BLOCKED' 'blocked: the frontend build did not complete'
                 } else {
-                    Set-Result 'frontend typecheck + build' 'PASS'
                     $desktopPublicExe = Join-Path $buildDirectory 'WWlogs-Desktop.exe'
                     $desktopDevelopmentExe = Join-Path $buildDirectory 'WWlogs-Desktop-dev.exe'
                     $desktopPublic = Invoke-Go @('run', './scripts/embed-key.go', '-unofficial', '-profile', 'public', '-target', 'desktop', '-frontend-dist-public', $frontendDist, '-o', $desktopPublicExe)
@@ -308,7 +421,7 @@ try {
                     }
                 }
 
-                # 4. Optional replay regression against private archived captures.
+                # 4. Replay regression against private archived captures (Maintainer, with -PcapDirectory).
                 if ($PcapDirectory -eq '') {
                     Set-Unreached $replaySteps 'NOT RUN' 'no -PcapDirectory'
                 } elseif (-not (Test-Path -LiteralPath $PcapDirectory -PathType Container)) {
@@ -409,15 +522,29 @@ try {
 
                             # 8. Semantic regression: real captures must list the right statuses in the right rows and name the
                             # right skills. Totals alone cannot catch a status shown in the wrong row or a skill losing its name.
+                            # The corpus must also hold every required Golden capture of the registry, run and passed: a
+                            # corpus without one is not the Maintainer's corpus, even if the captures it has pass.
+                            $coveragePath = if ($EvidenceOut -ne '') { Join-Path $EvidenceOut 'golden-coverage.json' } else { Join-Path $buildDirectory 'golden-coverage.json' }
+                            Remove-Item -LiteralPath $coveragePath -ErrorAction SilentlyContinue
                             $env:WWLOGS_SEMANTIC_REPLAY_PCAPS = $listPath
                             $env:WWLOGS_SEMANTIC_REPLAY_MASTER_DB = Join-Path $repoRoot 'data/master_data.db'
-                            if ($EvidenceOut -ne '') { $env:WWLOGS_SEMANTIC_REPLAY_COVERAGE = Join-Path $EvidenceOut 'golden-coverage.json' }
+                            $env:WWLOGS_SEMANTIC_REPLAY_COVERAGE = $coveragePath
                             try {
                                 $semantic = Invoke-Collector $testBinary 'TestSemanticReplayCollector'
                             } finally {
                                 Remove-Item Env:WWLOGS_SEMANTIC_REPLAY_PCAPS, Env:WWLOGS_SEMANTIC_REPLAY_MASTER_DB, Env:WWLOGS_SEMANTIC_REPLAY_COVERAGE -ErrorAction SilentlyContinue
                             }
-                            Set-Result 'replay: effect and skill semantics' $(if (-not $semantic.Problem) { 'PASS' } else { 'FAIL' }) "$($pcaps.Count) captures$(if ($semantic.Problem) { "; $($semantic.Problem): $($semantic.Tail)" })"
+                            $goldenProblems = @()
+                            if (-not $semantic.Problem) {
+                                if (-not (Test-Path -LiteralPath $coveragePath -PathType Leaf)) {
+                                    $goldenProblems += 'TestSemanticReplayCollector wrote no Golden coverage'
+                                } else {
+                                    $registry = Get-Content -LiteralPath (Join-Path $repoRoot 'tests/capture/golden_registry.json') -Raw | ConvertFrom-Json
+                                    $goldenProblems += @(Test-VerifyGoldenCoverage $registry (Get-Content -LiteralPath $coveragePath -Raw | ConvertFrom-Json))
+                                }
+                            }
+                            $semanticProblems = @($(if ($semantic.Problem) { "$($semantic.Problem): $($semantic.Tail)" })) + $goldenProblems
+                            Set-Result 'replay: effect and skill semantics' $(if ($semanticProblems.Count -eq 0) { 'PASS' } else { 'FAIL' }) "$($pcaps.Count) captures$(if ($semanticProblems.Count) { "; $($semanticProblems -join '; ')" } else { '; every required Golden capture ran and passed' })"
 
                             # 9. Combat History: every capture through the host session path into a fresh history file, in both
                             # profiles. History must not change the final view, must store every finished encounter and accepted
@@ -449,35 +576,39 @@ try {
                     }
                 }
             }
-        } finally {
-            Remove-Item -LiteralPath $buildDirectory -Recurse -Force -ErrorAction SilentlyContinue
         }
+    } finally {
+        Remove-Item -LiteralPath $buildDirectory -Recurse -Force -ErrorAction SilentlyContinue
     }
 } finally {
     Pop-Location
+    foreach ($name in $clearedEnvironment.Keys) { Set-Item -LiteralPath "Env:$name" -Value $clearedEnvironment[$name] }
 }
 
 # A declared step that no branch above reported is a defect of this script, never a pass.
 Set-Unreached $declaredSteps 'BLOCKED' 'not reached: verify.ps1 reported no result for this step'
-$counts = [ordered]@{ 'PASS' = 0; 'FAIL' = 0; 'BLOCKED' = 0; 'NOT RUN' = 0 }
-foreach ($name in $declaredSteps) { $counts[@($results[$name] -split ' - ', 2)[0]]++ }
-$overall = if ($counts['FAIL'] + $counts['BLOCKED'] -gt 0) { 'FAIL' } elseif ($counts['NOT RUN'] -gt 0) { 'INCOMPLETE' } else { 'PASS' }
+$verdict = Get-VerifyVerdict $Mode @($declaredSteps | ForEach-Object { @($results[$_] -split ' - ', 2)[0] })
 
 if ($EvidenceOut -ne '') {
-    # The states exactly as reported above, in declared order, with the commit and working tree they describe.
+    # The states exactly as reported above, in declared order, with the mode, commit and working tree they describe.
     $commit = "$(& git -C $repoRoot rev-parse HEAD 2>$null)".Trim()
     $dirty = @(& git -C $repoRoot status --porcelain 2>$null).Count -gt 0
     $steps = foreach ($name in $declaredSteps) {
         $parts = @($results[$name] -split ' - ', 2)
-        [ordered]@{ name = $name; state = $parts[0]; detail = $(if ($parts.Count -gt 1) { $parts[1] } else { '' }) }
+        [ordered]@{ name = $name; state = $parts[0]; private = $privateNeeds.Contains($name); detail = $(if ($parts.Count -gt 1) { $parts[1] } else { '' }) }
     }
-    $evidence = [ordered]@{ commit = $commit; dirty = $dirty; pcapDirectory = ($PcapDirectory -ne ''); packages = $testPackages; overall = $overall; results = @($steps) }
-    $evidence | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $EvidenceOut 'verify-results.json') -Encoding utf8
+    $testCounts = [ordered]@{}
+    foreach ($profile in $goTests.Keys) {
+        $tests = $goTests[$profile]
+        $testCounts[$profile] = [ordered]@{ passed = $tests.Passed; failed = $tests.Failed; skipped = $tests.Skipped; subtests = $tests.Subtests; skippedTests = @($tests.SkippedTests) }
+    }
+    $evidence = [ordered]@{ commit = $commit; dirty = $dirty; mode = $Mode; pcapDirectory = ($PcapDirectory -ne ''); packages = $testPackages; overall = $verdict.Overall; counts = $verdict.Counts; goTests = $testCounts; results = @($steps) }
+    $evidence | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $EvidenceOut 'verify-results.json') -Encoding utf8
 }
 
 Write-Host ''
-Write-Host "Summary: $($declaredSteps.Count) steps: $(($counts.GetEnumerator() | ForEach-Object { "$($_.Value) $($_.Key)" }) -join ', ')"
-Write-Host "Overall: $overall$(if ($overall -eq 'INCOMPLETE') { ' (steps NOT RUN: the verification is not complete)' })"
-if ($overall -eq 'FAIL') { exit 1 }
-if ($overall -eq 'INCOMPLETE') { exit 2 }
-exit 0
+Write-Host "Summary: $($declaredSteps.Count) steps: $(($verdict.Counts.GetEnumerator() | ForEach-Object { "$($_.Value) $($_.Key)" }) -join ', ')"
+if ($verdict.Counts['SKIP'] -gt 0) { Write-Host "Skipped: $(@($privateNeeds.Keys | Where-Object { $results[$_] -like 'SKIP*' }).Count) private checks (Public mode reads no private material)" }
+if ($verdict.Counts['NOT RUN'] -gt 0) { Write-Host "Not run: $((@($declaredSteps | Where-Object { $results[$_] -like 'NOT RUN*' })) -join ', ')" }
+Write-Host $verdict.Line
+exit $verdict.ExitCode

@@ -463,6 +463,39 @@ func TestGateFailsUnexecutedRequiredGolden(t *testing.T) {
 	wantStatus(t, report, "verification.regression-suite", readiness.StatusUnverified)
 }
 
+// A Public verify run (scripts/verify.ps1 -Mode Public) reports the steps that need private material SKIP. A skipped step
+// is no pass: the gate's evidence checks stay open and the version is not STATIC_READY on such a run.
+func TestGateTakesNoPublicVerifyRunAsPassing(t *testing.T) {
+	in := baseInputs(t)
+	passingEvidence(t, &in)
+	var results map[string]any
+	data, err := os.ReadFile(in.VerifyResults)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(data, &results); err != nil {
+		t.Fatal(err)
+	}
+	results["mode"] = "Public"
+	for _, step := range results["results"].([]any) {
+		switch step.(map[string]any)["name"] {
+		case "desktop embedded images", "master: embedded bytes + profile lookup parity", "replay: public output audit + statistics equality",
+			"replay: effect and skill semantics", "replay: combat history fidelity":
+			step.(map[string]any)["state"] = "SKIP"
+			step.(map[string]any)["detail"] = "Public mode: needs the owner-local key"
+		}
+	}
+	in.VerifyResults = writeJSON(t, in.VerifyResults, results)
+	report := run(t, in)
+	for _, id := range []string{"verification.regression-suite", "runtime.profile-parity", "assets.embedded-parity"} {
+		wantStatus(t, report, id, readiness.StatusUnverified)
+	}
+	wantFail(t, report, "verification.golden-coverage", "replay: effect and skill semantics")
+	if report.StaticReady {
+		t.Fatal("a Public verify run made the version STATIC_READY")
+	}
+}
+
 // Failure injection: a HUD status's icon is missing from the pack.
 func TestGateFailsMissingHUDIcon(t *testing.T) {
 	var icon string

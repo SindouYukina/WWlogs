@@ -28,7 +28,7 @@ maintainer's gate decides them.
 ## Running it
 
 ```powershell
-# 1. A verification run that records what it executed.
+# 1. A Maintainer verification run (the default mode) that records what it executed.
 pwsh -NoProfile -File scripts/verify.ps1 -PcapDirectory logs -EvidenceOut <evidence dir>
 # 2. The tracked gate over the tracked tree and that evidence.
 pwsh -NoProfile -File scripts/readiness.ps1 -Out <report dir> -Evidence <evidence dir> [-ResearchInputs <inputs.json>] [-LiveAcceptance <live.json>]
@@ -80,7 +80,7 @@ Inputs:
 | `runtime.history-version-source` | runtime | static | No product or frontend source keeps a game version literal of its own | History or a view recording an old version |
 | `runtime.profile-parity` | runtime | evidence | Public and Development statistics, History and Master answers are equal (`verify.ps1`) | a profile split in core semantics |
 | `runtime.history-version-replay` | runtime | evidence | Every encounter the History replay stored carries the decoded version | stale History game versions |
-| `verification.regression-suite` | verification | evidence | Every `verify.ps1` step ran and passed | skipped or failing regression |
+| `verification.regression-suite` | verification | evidence | Every `verify.ps1` step ran and passed (a `-Mode Public` run skips the private checks, so its evidence never passes) | skipped or failing regression |
 | `verification.golden-coverage` | verification | evidence | Every required Golden capture ran from the registered file, checked its facts and passed | a Golden that silently stopped running |
 | `verification.failure-injection` | verification | evidence | The gate's failure-injection tests ran in both profiles | a gate that no longer detects omissions |
 | `verification.client-impact` | verification | research | The client update was compared with the client the product decodes | a newer installed client that nobody compared (Global 3.8.11 ran on a 3.8.9 Master for a day, 2026-11-15); an update gated with the old client's inputs |
