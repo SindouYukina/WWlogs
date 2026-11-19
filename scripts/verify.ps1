@@ -73,7 +73,7 @@ foreach ($name in $keySteps) { $privateNeeds[$name] = 'the owner-local key' }
 foreach ($name in $replaySteps) { $privateNeeds[$name] = 'the owner-local key and the capture corpus' }
 # The private Master checks of Maintainer mode: tests of the core that read the Master contract. Each must pass in both
 # profiles; one that skips, fails or does not report fails the step.
-$privateMasterTests = @('TestTrackedMasterSatisfiesItsContract', 'TestMasterContractIsConsistent')
+$privateMasterTests = @('TestTrackedMasterSatisfiesItsContract', 'TestMasterContractIsConsistent', 'TestMasterRuntimeSchemaAgreesWithTheContract')
 
 function Set-Result([string]$Name, [string]$State, [string]$Detail = '') {
     if ($Name -notin $declaredSteps) { throw "verify.ps1 reports an undeclared step: $Name" }

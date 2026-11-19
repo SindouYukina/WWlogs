@@ -435,6 +435,8 @@
     "internal/devcapture/central_capture_helpers_test.go": "tests/devcapture/capture_helpers_test.go",
     "tests/devcapture/equivalence_test.go": "",
     "internal/devcapture/central_equivalence_test.go": "tests/devcapture/equivalence_test.go",
+    "tests/capture/master_schema_test.go": "",
+    "internal/capture/central_master_schema_test.go": "tests/capture/master_schema_test.go",
     "tests/capture/master_contract_test.go": "",
     "internal/capture/central_master_contract_test.go": "tests/capture/master_contract_test.go",
     "tests/capture/master_equivalence_test.go": "",

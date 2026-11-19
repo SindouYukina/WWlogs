@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -460,6 +461,97 @@ func TestTrackedMasterSatisfiesItsContract(t *testing.T) {
 	}
 	for _, v := range violations {
 		t.Error(v.String())
+	}
+}
+
+// TestMasterRuntimeSchemaAgreesWithTheContract keeps the two declarations from drifting apart. The runtime schema
+// (internal/capture/master_schema.go) says what the loader and the display resolver need and is checked at every load;
+// the Master contract describes the whole file. Every product or Development table of the contract is in the runtime
+// schema with the same scope, and no integrity or maintenance table is; every column the contract says a runtime reader
+// reads is in the runtime schema; every runtime column is a contract column of an accepted type; and the views agree.
+func TestMasterRuntimeSchemaAgreesWithTheContract(t *testing.T) {
+	contract := masterContractFromEnv(t)
+	runtimeReaders := map[string]bool{"core": true, "display": true, "development": true}
+	contracted := map[string]masterContractTable{}
+	for _, table := range contract.Tables {
+		contracted[table.Name] = table
+	}
+	contractViews := map[string]masterContractView{}
+	for _, view := range contract.Views {
+		contractViews[view.Name] = view
+	}
+	runtime := map[string]MasterSchemaTable{}
+	for _, table := range MasterRuntimeSchema() {
+		runtime[table.Name] = table
+		if table.View {
+			view, ok := contractViews[table.Name]
+			if !ok {
+				t.Errorf("runtime view %s is not a contract view", table.Name)
+				continue
+			}
+			for _, column := range table.Columns {
+				if !slices.Contains(view.Columns, column.Name) {
+					t.Errorf("runtime view column %s.%s is not a column of the contract view", table.Name, column.Name)
+				}
+			}
+			continue
+		}
+		ct, ok := contracted[table.Name]
+		if !ok {
+			t.Errorf("runtime table %s is not in the contract", table.Name)
+			continue
+		}
+		if ct.Scope != table.Scope {
+			t.Errorf("table %s: runtime scope %s, contract scope %s", table.Name, table.Scope, ct.Scope)
+		}
+		columns := map[string]masterContractColumn{}
+		for _, column := range ct.Columns {
+			columns[column.Name] = column
+		}
+		for _, column := range table.Columns {
+			cc, ok := columns[column.Name]
+			if !ok {
+				t.Errorf("runtime column %s.%s is not in the contract", table.Name, column.Name)
+				continue
+			}
+			if len(column.Types) > 0 && !slices.Contains(column.Types, cc.Type) {
+				t.Errorf("column %s.%s: the contract declares %s, the runtime reads %v", table.Name, column.Name, cc.Type, column.Types)
+			}
+		}
+		for _, cc := range ct.Columns {
+			reads := false
+			for _, reader := range cc.Readers {
+				reads = reads || runtimeReaders[reader]
+			}
+			if !reads {
+				continue
+			}
+			found := false
+			for _, column := range table.Columns {
+				found = found || column.Name == cc.Name
+			}
+			if !found {
+				t.Errorf("the contract says the runtime reads %s.%s (%v); the runtime schema lacks it", table.Name, cc.Name, cc.Readers)
+			}
+		}
+	}
+	for _, ct := range contract.Tables {
+		_, listed := runtime[ct.Name]
+		switch ct.Scope {
+		case "product", "development":
+			if !listed {
+				t.Errorf("contract %s table %s is not in the runtime schema", ct.Scope, ct.Name)
+			}
+		default:
+			if listed {
+				t.Errorf("contract %s table %s is in the runtime schema: the runtime does not read it", ct.Scope, ct.Name)
+			}
+		}
+	}
+	for _, view := range contract.Views {
+		if _, listed := runtime[view.Name]; !listed {
+			t.Errorf("contract view %s is not in the runtime schema", view.Name)
+		}
 	}
 }
 
