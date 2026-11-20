@@ -16,7 +16,7 @@
         {
           "kind": "mode",
           "scene": 82110,
-          "reason": "InstanceDungeon 82110 (InstSubType 40, a character trial instance, MapName resolves) has no entrance and no Adventure Guide or tutorial detection row; the kind of play stays UNKNOWN (Global 3.8.9 and 3.8.11 db_adventure_detect.db)"
+          "reason": "InstanceDungeon 82110 (InstSubType 40, a character trial instance, MapName resolves) has no entrance and no Adventure Guide or tutorial detection row. The client's RoleTrial data identifies it as the instance the client enters for character trial 1185 (role 1512); the kind of play stays UNKNOWN because the Master and the resolver do not map the RoleTrial content system yet, not for lack of a client source (Global 3.8.9, 3.8.11 and 3.8.12 client data)"
         }
       ]
     },
@@ -38,12 +38,12 @@
         {
           "kind": "mode",
           "scene": 9102,
-          "reason": "InstanceDungeon 9102 (InstSubType 29, an event stage, MapName resolves) is reached only by entrance 9102, which no Adventure Guide detection row (DungeonDetection, SilentAreaDetection) and no ShipTower relation names; the kind of play is the Adventure Guide category, so it stays UNKNOWN (Global 3.8.9 and 3.8.11 db_adventure_detect.db)"
+          "reason": "InstanceDungeon 9102 (InstSubType 29, MapName resolves) is reached only by entrance 9102, which no Adventure Guide detection row (DungeonDetection, SilentAreaDetection) and no ShipTower relation names. The client's WeeklyRogue data and code identify it as a WeeklyRogue stage (InstSubType 29 is exactly the stages 9101-9108 that the weekly cycles reach through their map marks); the kind of play stays UNKNOWN because the Master and the resolver do not map the WeeklyRogue content system yet, not for lack of a client source (Global 3.8.9, 3.8.11 and 3.8.12 client data)"
         },
         {
           "kind": "mode",
           "scene": 82110,
-          "reason": "InstanceDungeon 82110 (InstSubType 40, a character trial instance, MapName resolves) has no entrance and no Adventure Guide or tutorial detection row; the kind of play stays UNKNOWN (Global 3.8.9 and 3.8.11 db_adventure_detect.db)"
+          "reason": "InstanceDungeon 82110 (InstSubType 40, a character trial instance, MapName resolves) has no entrance and no Adventure Guide or tutorial detection row. The client's RoleTrial data identifies it as the instance the client enters for character trial 1185 (role 1512); the kind of play stays UNKNOWN because the Master and the resolver do not map the RoleTrial content system yet, not for lack of a client source (Global 3.8.9, 3.8.11 and 3.8.12 client data)"
         }
       ]
     },
@@ -55,7 +55,7 @@
         {
           "kind": "mode",
           "scene": 9105,
-          "reason": "InstanceDungeon 9105 (InstSubType 29, an event stage of the same event as 9101-9108, MapName resolves) is reached only by entrance 9105, which no Adventure Guide detection row (DungeonDetection, SilentAreaDetection, SecondaryGuideData) and no ShipTower relation names; the kind of play is the Adventure Guide category, so it stays UNKNOWN (Global 3.8.9 Master, 3.8.11 and 3.8.12 db_adventure_detect.db, unchanged since 3.8.9)"
+          "reason": "InstanceDungeon 9105 (InstSubType 29, MapName resolves) is reached only by entrance 9105, which no Adventure Guide detection row (DungeonDetection, SilentAreaDetection, SecondaryGuideData) and no ShipTower relation names. The client's WeeklyRogue data and code identify it as a WeeklyRogue stage (InstSubType 29 is exactly the stages 9101-9108 that the weekly cycles reach through their map marks); the kind of play stays UNKNOWN because the Master and the resolver do not map the WeeklyRogue content system yet, not for lack of a client source (Global 3.8.9, 3.8.11 and 3.8.12 client data)"
         }
       ]
     }
