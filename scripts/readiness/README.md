@@ -17,13 +17,33 @@ Check statuses are `PASS`, `FAIL`, `UNVERIFIED` and `NOT_APPLICABLE`. A check th
 
 ## Research checks
 
-Five mandatory checks compare the Master and the image pack with the maintainer's private research inputs: what the
-current client defines and references, and the comparison of a client update with the client the product decodes. The
-tracked gate declares them (kind `research`) at their place in the report. Their implementation, their inputs and how to
-repair what they find are private research tooling: a research extension the maintainer compiles into this package from
-outside the repository (`readiness.ResearchExtension`). A gate built from the tracked tree alone reports every research
-check `UNVERIFIED` ("no research extension ... is compiled into this gate"), so it never reports `STATIC_READY`; only the
-maintainer's gate decides them.
+Ten mandatory checks compare the product with the maintainer's private research evidence: what the current client
+defines and references, the comparison of a client update with the client the product decodes, and the content coverage
+of the client (whether every content instance has a decided scope, and whether the in-scope ones are verified, held by the
+Master and resolved by the product). The tracked gate declares them (kind `research`) at their place in the report. Their
+implementation, their inputs and how to repair what they find are private research tooling: a research extension the
+maintainer compiles into this package from outside the repository (`readiness.ResearchExtension`). A gate built from the
+tracked tree alone reports every research check `UNVERIFIED` ("no research extension ... is compiled into this gate"), so
+it never reports `STATIC_READY`; only the maintainer's gate decides them.
+
+### Evidence assessment
+
+The content coverage checks are assessed checks: the extension must attach the assessment of the evidence it decided
+them by (`Check.assessment`), in neutral terms:
+
+| Field | Content |
+| --- | --- |
+| `evidenceVersion` | the evidence format and the producer's version |
+| `sourceScope` | the client sources and views the evidence covers |
+| `completeness` | `VERIFIED`, `PARTIAL`, `BLOCKED` or `UNVERIFIED` |
+| `coverage` | named coverage lines, each with passed, total and its denominator; never one percentage |
+| `reasons` | reason categories with counts |
+| `limitations` | stated limits of the evidence |
+
+The tracked gate enforces the assessment fail-closed: an assessed check without an assessment, with an unknown
+completeness, or with any completeness other than `VERIFIED` is `UNVERIFIED`, whatever status the extension gave it (a
+`FAIL` stays `FAIL`). Incomplete evidence never passes, so a client whose sources are incomplete is reported with its
+blockers and is never `STATIC_READY`. The report lists every assessment in its "Evidence assessments" table.
 
 ## Running it
 
@@ -76,6 +96,11 @@ Inputs:
 | `content.instance-modes` | content | static | Every category with an instance only it names resolves through `DisplayResolver.InstanceMode` | a new mode the resolver cannot place |
 | `content.unresolved-categories` | content | static, advisory | Categories the client data names only ambiguously | reported limitation, never a blocker |
 | `content.prefab-entities` | content | research | The product identifies every entity of the client's prefabs | an enemy spawned from a prefab that the History cannot name (Global 3.8: Tower of Adversity and ShipTower main enemies showed "未識別") |
+| `content.source-coverage` | content | research, assessed | The client sources that define content were obtained and parsed for the gated client | a client view with sources missing, whose content nobody could see |
+| `content.discovery` | content | research, assessed | Every content system of the gated client is registered or queued for research | a new content system nobody triaged |
+| `content.semantic-mapping` | content | research, assessed | Every in-scope content system's identity, sources and instance rules are verified on the gated client | research conclusions that no longer hold on the current client |
+| `content.master-mapping` | content | research, assessed | The Master holds the relations and names that place and name every in-scope content instance | content never mapped, which no client comparison shows (a baseline gap) |
+| `content.runtime-mapping` | content | research, assessed | The product resolves the kind of play of every in-scope content instance and shows no placeholder name | verified content the product does not support yet (a STATIC_READY that covered only the content the Master models, as Global 3.8.12's before this check) |
 | `content.history-identification` | content | evidence | Every enemy instance, main enemy, stage and kind of play the History replay of the corpus stored is named in every bundled Master locale with the History view's rules, unless `tests/capture/golden_registry.json` records its limit and reason (`identificationLimits`) | a new UNKNOWN the static checks cannot see: an ID the decoder no longer extracts, a resolver gap, a missing locale name |
 | `runtime.history-version-source` | runtime | static | No product or frontend source keeps a game version literal of its own | History or a view recording an old version |
 | `runtime.profile-parity` | runtime | evidence | Public and Development statistics, History and Master answers are equal (`verify.ps1`) | a profile split in core semantics |
@@ -107,14 +132,17 @@ same inputs pass. Nothing is written to the tracked Master, manifest or any user
 `tests/readiness/research_boundary_test.go` holds the research boundary: without a research extension every research
 check is a mandatory `UNVERIFIED` blocker, and a stand-in extension whose checks pass is all a passing run lacks; the
 tracked package declares research checks only through its research slot, registers no extension, reads no research input
-and holds no extension file (a static check of its source, with a negative test of each rule). The research checks' own
-failure-injection tests live with the research extension.
+and holds no extension file (a static check of its source, with a negative test of each rule). It also checks the
+evidence assessment: an assessed check without an assessment, with `PARTIAL`, `BLOCKED`, `UNVERIFIED` or an unknown
+completeness never passes, a `FAIL` keeps its findings, an unassessed research check is left as it was, and the report
+lists every assessment. The research checks' own failure-injection tests live with the research extension.
 
 ## Troubleshooting
 
 | Result | Cause | Repair |
 | --- | --- | --- |
 | a research check `UNVERIFIED`: no research extension | the gate ran from the tracked tree alone | expected outside the maintainer's gate; only the maintainer's gate with its research extension decides these checks |
+| an assessed check `UNVERIFIED`: the evidence is `PARTIAL` (or `BLOCKED`, `UNVERIFIED`) | the evidence does not cover the gated client completely | complete the evidence (its limitations and reasons say what is missing); incomplete evidence is never waived |
 | `characters.art` / `skill-icons` FAIL | the image pack was not refreshed for new roles | refresh the pack for the new client and `go run scripts/asset-manifest.go` (`assets/README.md`) |
 | `effects.hud-classification` FAIL | the HUD rule in `internal/capture/effect_hud_cues.go` / `effect_display.go` no longer matches the client | fix the shared Go rule with client evidence, never per effect |
 | `content.instance-modes` FAIL | a new guide relation or category the resolver does not read | with client evidence, add it to the Master and extend `internal/capture/instance_display.go` |
