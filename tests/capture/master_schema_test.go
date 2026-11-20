@@ -5,6 +5,7 @@ import (
 	"errors"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -14,12 +15,16 @@ import (
 // names every missing part, and prove a Master holding only the runtime schema loads the same as the tracked one, so the
 // declaration is neither short of what the loader reads nor a list of every table of the file.
 
-// masterRuntimeSchemaFingerprintV1 is the fingerprint of runtime schema version 1. A change of the declaration changes it:
-// bump masterRuntimeSchemaVersion and set the new fingerprint here in the same change (see master_schema.go).
-const masterRuntimeSchemaFingerprintV1 = "487d61099888761edfeca581e9a634fc9e2c63b18e570d9443724b7b80df2a69"
+// masterRuntimeSchemaFingerprints are the fingerprints of the runtime schema versions. A change of the declaration changes
+// the fingerprint: bump masterRuntimeSchemaVersion and add the new fingerprint here in the same change (see
+// master_schema.go). Version 1 is kept as the record of what the runtime read before the content model.
+var masterRuntimeSchemaFingerprints = map[int]string{
+	1: "487d61099888761edfeca581e9a634fc9e2c63b18e570d9443724b7b80df2a69",
+	2: "35c6849ebd0eae5872c72f6f87666caa668e0c8529812187dbea2054d6aa430d",
+}
 
 func TestMasterRuntimeSchemaVersionNamesItsDeclaration(t *testing.T) {
-	fingerprints := map[int]string{1: masterRuntimeSchemaFingerprintV1}
+	fingerprints := masterRuntimeSchemaFingerprints
 	want, ok := fingerprints[masterRuntimeSchemaVersion]
 	if !ok {
 		t.Fatalf("runtime schema version %d has no pinned fingerprint", masterRuntimeSchemaVersion)
@@ -61,6 +66,14 @@ func TestMasterRuntimeSchemaDeclarationIsWellFormed(t *testing.T) {
 					t.Errorf("%s.%s accepts unknown type %q", table.Name, column.Name, declared)
 				}
 			}
+		}
+		for _, key := range table.Key {
+			if !columns[key] {
+				t.Errorf("the key of %s names %s, which it does not declare", table.Name, key)
+			}
+		}
+		if len(table.Key) > 0 && (table.View || table.Scope != "product") {
+			t.Errorf("%s declares a key; only product tables do", table.Name)
 		}
 	}
 	if views != 1 || len(seen) != 73 {
@@ -180,8 +193,76 @@ func TestMasterRuntimeSchemaCheckNamesEveryMissingPart(t *testing.T) {
 	if err := checkMasterRuntimeSchema(db); err != nil {
 		t.Fatalf("the restored Master is refused: %v", err)
 	}
-	if cases < 72+211 {
+	if cases < 72+235 {
 		t.Fatalf("only %d cases ran", cases)
+	}
+}
+
+// TestMasterRuntimeSchemaCheckNeedsEachKey: a declared key is the primary key or a unique index over exactly its columns in
+// order. A table without one, or with only a non-unique, partial or reordered index over them, is refused by name; a
+// unique index serves as well as the primary key.
+func TestMasterRuntimeSchemaCheckNeedsEachKey(t *testing.T) {
+	path := emptyRuntimeMaster(t)
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	exec := func(statements ...string) {
+		t.Helper()
+		for _, statement := range statements {
+			if _, err := db.Exec(statement); err != nil {
+				t.Fatalf("%s: %v", statement, err)
+			}
+		}
+	}
+	keyed := 0
+	for _, table := range MasterRuntimeSchema() {
+		if len(table.Key) == 0 {
+			continue
+		}
+		keyed++
+		name := masterQuote(table.Name)
+		quoted := make([]string, len(table.Key))
+		for i, column := range table.Key {
+			quoted[i] = masterQuote(column)
+		}
+		reversed := slices.Clone(quoted)
+		slices.Reverse(reversed)
+		want := "missing key " + table.Name + "(" + strings.Join(table.Key, ", ") + ")"
+		refused := func(what string) {
+			t.Helper()
+			err := checkMasterRuntimeSchema(db)
+			if !errors.Is(err, errMasterRuntimeSchema) || !strings.Contains(err.Error(), want) {
+				t.Errorf("%s %s: %v, want %q", table.Name, what, err, want)
+			}
+		}
+		bare := table
+		bare.Key = nil
+		exec("DROP TABLE "+name, masterFixtureObjectSQL(bare))
+		refused("without a key")
+		exec("CREATE INDEX key_plain ON " + name + " (" + strings.Join(quoted, ", ") + ")")
+		refused("with a non-unique index")
+		exec("DROP INDEX key_plain", "CREATE UNIQUE INDEX key_partial ON "+name+" ("+strings.Join(quoted, ", ")+") WHERE "+quoted[0]+" IS NOT NULL")
+		refused("with a partial unique index")
+		exec("DROP INDEX key_partial")
+		if len(quoted) > 1 {
+			exec("CREATE UNIQUE INDEX key_reordered ON " + name + " (" + strings.Join(reversed, ", ") + ")")
+			refused("with a unique index in another column order")
+			exec("DROP INDEX key_reordered")
+		}
+		exec("CREATE UNIQUE INDEX key_unique ON " + name + " (" + strings.Join(quoted, ", ") + ")")
+		if err := checkMasterRuntimeSchema(db); err != nil {
+			t.Errorf("%s with a unique index over its key is refused: %v", table.Name, err)
+		}
+		exec("DROP TABLE "+name, masterFixtureObjectSQL(table))
+	}
+	if keyed != 4 {
+		t.Fatalf("%d tables declare a key; this test pins the 4 content model tables", keyed)
+	}
+	if err := checkMasterRuntimeSchema(db); err != nil {
+		t.Fatalf("the restored Master is refused: %v", err)
 	}
 }
 
@@ -191,7 +272,7 @@ func TestMasterRuntimeSchemaCheckNamesEveryMissingPart(t *testing.T) {
 func TestEveryMasterEntryPointRefusesAMasterWithoutTheRuntimeSchema(t *testing.T) {
 	path := buildMasterDatabaseFixture(t)
 	completeMasterFixture(t, path)
-	execMasterSQL(t, path, []string{"DROP TABLE lordgymentranceset_locale", "ALTER TABLE buff DROP COLUMN period"})
+	execMasterSQL(t, path, []string{"DROP TABLE content_entry_locale", "ALTER TABLE buff DROP COLUMN period"})
 	_, loadErr := LoadGameMasterDatabase(path, "zh-TW")
 	_, dataErr := LoadMasterData(path, "zh-TW")
 	_, displayErr := OpenDisplayResolver(path)
@@ -201,7 +282,7 @@ func TestEveryMasterEntryPointRefusesAMasterWithoutTheRuntimeSchema(t *testing.T
 			continue
 		}
 		message := err.Error()
-		if !strings.Contains(message, "missing table lordgymentranceset_locale") || !strings.Contains(message, "missing column buff.period") {
+		if !strings.Contains(message, "missing table content_entry_locale") || !strings.Contains(message, "missing column buff.period") {
 			t.Errorf("%s does not name both missing parts: %s", name, message)
 		}
 		if strings.Contains(message, filepath.Dir(path)) || strings.Contains(message, filepath.ToSlash(filepath.Dir(path))) {
@@ -344,8 +425,34 @@ func completeMasterSchema(db *sql.DB) error {
 				}
 			}
 		}
+		if err := completeMasterFixtureKey(db, table); err != nil {
+			return err
+		}
 	}
 	return nil
+}
+
+// completeMasterFixtureKey gives a fixture table the key the runtime schema declares for it, as a unique index, when it has
+// no such key yet.
+func completeMasterFixtureKey(db *sql.DB, table MasterSchemaTable) error {
+	if len(table.Key) == 0 {
+		return nil
+	}
+	keys, err := masterUniqueKeys(db, table.Name)
+	if err != nil {
+		return err
+	}
+	for _, key := range keys {
+		if slices.Equal(key, table.Key) {
+			return nil
+		}
+	}
+	columns := make([]string, len(table.Key))
+	for i, column := range table.Key {
+		columns[i] = masterQuote(column)
+	}
+	_, err = db.Exec("CREATE UNIQUE INDEX " + masterQuote(table.Name+"_runtime_key") + " ON " + masterQuote(table.Name) + " (" + strings.Join(columns, ", ") + ")")
+	return err
 }
 
 func masterFixtureColumnSQL(column MasterSchemaColumn) string {
@@ -367,6 +474,13 @@ func masterFixtureObjectSQL(table MasterSchemaTable) string {
 	}
 	if table.View {
 		return "CREATE VIEW " + masterQuote(table.Name) + " AS SELECT " + strings.Join(columns, ", ") + " WHERE 0"
+	}
+	if len(table.Key) > 0 {
+		key := make([]string, len(table.Key))
+		for i, column := range table.Key {
+			key[i] = masterQuote(column)
+		}
+		columns = append(columns, "PRIMARY KEY ("+strings.Join(key, ", ")+")")
 	}
 	return "CREATE TABLE " + masterQuote(table.Name) + " (" + strings.Join(columns, ", ") + ")"
 }

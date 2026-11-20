@@ -1,4 +1,4 @@
-import { dateOfDay, dayNumber, heatLevel, type HeatmapCell, type HistoryLocalTime, type HistoryMode, type HistoryName, type HistoryStatus, type HistoryZone } from "./history.ts"
+import { dateOfDay, dayNumber, heatLevel, type HeatmapCell, type HistoryContent, type HistoryLocalTime, type HistoryMode, type HistoryName, type HistoryStatus, type HistoryZone } from "./history.ts"
 import type { HistoryLibraryQuery } from "./history-library.ts"
 
 // The Career Overview contracts the Go host returns (internal/desktop/history_career.go, internal/history/career.go). Every
@@ -15,7 +15,7 @@ export interface HistoryCareerQuery {
   /** The last N dates of the view's zone up to today, as Go decides them. */
   lastDays?: number
   gameVersions?: string[]
-  /** Mode keys ("open_world" or "category:<name>") and instance IDs. */
+  /** Mode keys ("open_world", "category:<name>" or "content:<system>") and instance IDs. */
   modes?: string[]
   stages?: number[]
 }
@@ -39,6 +39,7 @@ export interface CareerRecord extends CareerRef {
   skillName?: HistoryName
   mode: HistoryMode
   stage: HistoryName
+  content?: HistoryContent
 }
 
 export interface CareerTotals {
@@ -107,6 +108,7 @@ export interface CareerPlace {
   instanceId?: number
   mode: HistoryMode
   stage: HistoryName
+  content?: HistoryContent
   encounters: number
   counted: number
   damage: number
@@ -130,8 +132,8 @@ export interface HistoryCareer {
   records: { maxHit?: CareerRecord | null; bestDps?: CareerRecord | null; bestDamage?: CareerRecord | null; bestPeak?: CareerRecord | null }
   versions: string[]
   filters: {
-    modes: Array<{ key: string; kind: "open_world" | "category"; name?: string; status: HistoryName["status"]; count: number }>
-    stages: Array<{ instanceId: number; name: HistoryName; count: number }>
+    modes: Array<{ key: string; kind: NonNullable<HistoryMode["kind"]>; name?: string; status: HistoryName["status"]; system?: string; count: number }>
+    stages: Array<{ instanceId: number; name: HistoryName; content?: HistoryContent; count: number }>
   }
 }
 
@@ -141,7 +143,7 @@ export interface CareerState {
   from?: string
   to?: string
   gameVersion?: string
-  /** A mode key of the filters ("open_world" or "category:<name>"). */
+  /** A mode key of the filters ("open_world", "category:<name>" or "content:<system>"). */
   mode?: string
   stage?: number
 }

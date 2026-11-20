@@ -17,16 +17,40 @@ type DisplayName struct {
 
 // DisplayResolver is a read-only, bounded cache of names. It never changes the capture Master's maps or statistics.
 type DisplayResolver struct {
-	db    *sql.DB
-	mu    sync.Mutex
-	names map[string]DisplayName
-	order []string
-	// modes caches InstanceMode answers within the same bound.
-	modes     map[string]InstanceMode
-	modeOrder []string
+	db *sql.DB
+	mu sync.Mutex
+	// names, modes and contents cache the answers of Resolve (and the lookups built on it), InstanceMode and
+	// InstanceContent, each within maxDisplayNames.
+	names    displayCache[DisplayName]
+	modes    displayCache[InstanceMode]
+	contents displayCache[InstanceContent]
 }
 
 const maxDisplayNames = 2048
+
+// displayCache is a bounded first-in, first-out cache of display answers.
+type displayCache[V any] struct {
+	values map[string]V
+	order  []string
+}
+
+func newDisplayCache[V any]() displayCache[V] { return displayCache[V]{values: map[string]V{}} }
+
+func (c *displayCache[V]) get(key string) (V, bool) {
+	value, ok := c.values[key]
+	return value, ok
+}
+
+func (c *displayCache[V]) put(key string, value V) {
+	if _, ok := c.values[key]; !ok {
+		if len(c.order) >= maxDisplayNames {
+			delete(c.values, c.order[0])
+			c.order = c.order[1:]
+		}
+		c.order = append(c.order, key)
+	}
+	c.values[key] = value
+}
 
 // OpenDisplayResolver opens a Master that provides the runtime schema (checkMasterRuntimeSchema) for display lookups and
 // refuses any other, as the loader does.
@@ -51,19 +75,26 @@ func newDisplayResolver(db *sql.DB) (*DisplayResolver, error) {
 	if err := db.Ping(); err != nil {
 		return nil, errors.New("the display Master database is unavailable")
 	}
-	return &DisplayResolver{db: db, names: map[string]DisplayName{}, modes: map[string]InstanceMode{}}, nil
+	return &DisplayResolver{db: db, names: newDisplayCache[DisplayName](), modes: newDisplayCache[InstanceMode](), contents: newDisplayCache[InstanceContent]()}, nil
 }
 
 func (r *DisplayResolver) Close() error { return r.db.Close() }
 
-// Resolve uses official localized rows and then English. An effect term lookup requires an existing term link;
-// looking up a raw effect ID as a glossary ID is never allowed by the projection.
+// Resolve uses official localized rows and then English; a placeholder row is no name (masterOfficialText). An effect
+// term lookup requires an existing term link; looking up a raw effect ID as a glossary ID is never allowed by the
+// projection.
 //
 // "skill" is the UI skill-tree namespace (Skill.Id). "combat_skill" is the runtime namespace of DamageContext.SkillId,
 // whose official names are SkillDescription rows; the two ID spaces are different and must not be mixed. "echo" is
 // PhantomItem.Id; a skill row reaches "skill" or "echo" only through the derived sources of skill_names.go. "instance" is
 // InstanceDungeon.Id, the namespace of JoinSceneNotify.SceneInfo.InstanceId; "template" is TemplateConfig.Id.
 func (r *DisplayResolver) Resolve(ctx context.Context, kind string, id uint64, locale string) (DisplayName, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.resolveLocked(ctx, kind, id, locale)
+}
+
+func (r *DisplayResolver) resolveLocked(ctx context.Context, kind string, id uint64, locale string) (DisplayName, error) {
 	tables := map[string]string{"role": "roleinfo_locale", "skill": "skill_locale", "combat_skill": "skilldescription_locale", "echo": "phantomitem_locale", "monster": "monsterinfo_locale", "term": "term_locale", "instance": "instancedungeon_locale"}
 	query := ""
 	if table, ok := tables[kind]; ok {
@@ -75,9 +106,7 @@ func (r *DisplayResolver) Resolve(ctx context.Context, kind string, id uint64, l
 		return DisplayName{}, errors.New("unsupported Master name kind")
 	}
 	key := kind + ":" + strconv.FormatUint(id, 10) + ":" + locale
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if name, ok := r.names[key]; ok {
+	if name, ok := r.names.get(key); ok {
 		return name, nil
 	}
 	lookup := id
@@ -91,12 +120,12 @@ func (r *DisplayResolver) Resolve(ctx context.Context, kind string, id uint64, l
 		if err != nil && err != sql.ErrNoRows {
 			return result, errors.New("Master display names could not be read")
 		}
-		if err == nil && name != "" {
+		if err == nil && masterOfficialText(name) {
 			result = DisplayName{Name: name, Status: "VERIFIED", Locale: candidate}
 			break
 		}
 	}
-	r.remember(key, result)
+	r.names.put(key, result)
 	return result, nil
 }
 
@@ -104,7 +133,7 @@ func (r *DisplayResolver) Resolve(ctx context.Context, kind string, id uint64, l
 // (trialroleinfo.parent_role_id, see gameMaster.staticRoleID), else the RoleId itself. The caller holds mu.
 func (r *DisplayResolver) staticRoleLocked(ctx context.Context, roleID uint64) uint64 {
 	key := "static-role:" + strconv.FormatUint(roleID, 10)
-	if cached, ok := r.names[key]; ok {
+	if cached, ok := r.names.get(key); ok {
 		parent, _ := strconv.ParseUint(cached.Name, 10, 64)
 		return parent
 	}
@@ -115,18 +144,8 @@ func (r *DisplayResolver) staticRoleLocked(ctx context.Context, roleID uint64) u
 			parent = value
 		}
 	}
-	r.remember(key, DisplayName{Name: strconv.FormatUint(parent, 10)})
+	r.names.put(key, DisplayName{Name: strconv.FormatUint(parent, 10)})
 	return parent
-}
-
-// remember caches a lookup within the bound. The caller holds mu.
-func (r *DisplayResolver) remember(key string, value DisplayName) {
-	if len(r.order) >= maxDisplayNames {
-		delete(r.names, r.order[0])
-		r.order = r.order[1:]
-	}
-	r.names[key] = value
-	r.order = append(r.order, key)
 }
 
 // RoleElement returns a role's static element ID from Master, or zero when it is unknown. It selects a display color
@@ -135,7 +154,7 @@ func (r *DisplayResolver) RoleElement(ctx context.Context, roleID uint64) uint64
 	key := "element:" + strconv.FormatUint(roleID, 10)
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if cached, ok := r.names[key]; ok {
+	if cached, ok := r.names.get(key); ok {
 		element, _ := strconv.ParseUint(cached.Name, 10, 64)
 		return element
 	}
@@ -143,7 +162,7 @@ func (r *DisplayResolver) RoleElement(ctx context.Context, roleID uint64) uint64
 	if err := r.db.QueryRowContext(ctx, "SELECT element_id FROM roleinfo WHERE id=?", strconv.FormatUint(r.staticRoleLocked(ctx, roleID), 10)).Scan(&text); err != nil {
 		text = sql.NullString{}
 	}
-	r.remember(key, DisplayName{Name: text.String})
+	r.names.put(key, DisplayName{Name: text.String})
 	element, _ := strconv.ParseUint(text.String, 10, 64)
 	return element
 }

@@ -213,8 +213,8 @@ func BenchmarkMasterDisplaySQLiteLookup(b *testing.B) {
 	b.ResetTimer()
 	for range b.N {
 		display.mu.Lock()
-		clear(display.names)
-		display.order = display.order[:0]
+		clear(display.names.values)
+		display.names.order = display.names.order[:0]
 		display.mu.Unlock()
 		benchmarkMasterDisplayName, err = display.Resolve(context.Background(), "role", 1409, "zh-TW")
 		if err != nil {

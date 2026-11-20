@@ -14,6 +14,7 @@ import { chartSeries, RoleBoard, SkillTable, StatCard } from "./DashboardView"
 import { AnalysisWorkspace, EnemiesCard, LinkedName, type TimelineMode } from "./HistoryAnalysis"
 import { HistoryLibraryView } from "./HistoryLibrary"
 import { HistoryCompare } from "./HistoryCompare"
+import { ContentLayers, ModeName, StageName } from "./HistoryNames"
 import { compareLimit, toggleCompared, type ComparedEntry } from "@/lib/history-compare"
 import { defaultLibraryQuery, type HistoryIntent, type HistoryLibraryQuery } from "@/lib/history-library"
 import { useSettledKey } from "@/lib/useSettledKey"
@@ -110,9 +111,7 @@ export function ZoneNote({ zone }: { zone: HistoryZone | undefined }) {
 }
 
 function SceneCell({ summary }: { summary: HistoryEncounterSummary }) {
-  const { t } = useTranslation("history")
-  if (!summary.scene.known) return <span className="ww-history-unknown">{t("unidentified")}</span>
-  return <LinkedName name={summary.sceneName} fallback={t("unidentified")} id={summary.scene.instanceId} title={t("correlatedNote")} />
+  return <StageName name={summary.sceneName} content={summary.content} instanceId={summary.scene.instanceId} known={summary.scene.known} />
 }
 
 /**
@@ -125,13 +124,9 @@ function GameVersion({ summary }: { summary: HistoryEncounterSummary }) {
   return <span className="ww-history-version" data-field="game-version" data-version={summary.gameVersion}>{summary.gameVersion}</span>
 }
 
-/** The kind of play Go resolved for the encounter's instance; the open world is labelled here, a category named by Go. */
+/** The kind of play Go resolved for the encounter's instance (HistoryNames.ModeName). */
 function ModeCell({ summary }: { summary: HistoryEncounterSummary }) {
-  const { t } = useTranslation("history")
-  const mode = summary.mode
-  if (!summary.scene.known || !mode?.kind) return <span className="ww-history-unknown">{t("unidentified")}</span>
-  const name = mode.kind === "open_world" ? t("modeOpenWorld") : mode.name
-  return <span data-mode-kind={mode.kind}><LinkedName name={{ name, status: mode.status }} fallback={t("unidentified")} title={t("correlatedNote")} /></span>
+  return <ModeName mode={summary.mode} known={summary.scene.known} />
 }
 
 function EnemyCell({ summary }: { summary: HistoryEncounterSummary }) {
@@ -287,6 +282,7 @@ function EncounterDetail({ detail, backLabel, onBack, onDeleted, timelineMode, s
           <div><dt>{t("columns.version")}</dt><dd className="ww-num"><GameVersion summary={summary} /></dd></div>
           <div><dt>{t("columns.mode")}</dt><dd data-field="mode"><ModeCell summary={summary} /></dd></div>
           <div><dt>{t("columns.scene")}</dt><dd><SceneCell summary={summary} /></dd></div>
+          {summary.scene.known && summary.content && <div><dt>{t("columns.content")}</dt><dd data-field="content"><ContentLayers content={summary.content} /></dd></div>}
           <div><dt>{t("columns.enemy")}</dt><dd><EnemyCell summary={summary} /></dd></div>
           <div><dt>{t("timeRange")}</dt><dd className="ww-num" data-field="time-range" title={clockTitle(summary.start, summary.recorded)}>{start} – {end}</dd></div>
           <div><dt>{t("columns.duration")}</dt><dd className="ww-num">{summary.durationSeconds === undefined ? "—" : format.clock(summary.durationSeconds)}</dd></div>

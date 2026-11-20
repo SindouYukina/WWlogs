@@ -680,7 +680,7 @@ func (g *gate) contentChecks(categories, modes, unresolved *Check, m *masterView
 	resolver := m.product.DisplayResolver()
 	ctx := context.Background()
 	reached := map[uint64]int{}
-	openWorld, unknown := 0, 0
+	openWorld, contentSystems, unknown := 0, 0, 0
 	for _, id := range instances {
 		mode, err := resolver.InstanceMode(ctx, id, "en-US")
 		if err != nil {
@@ -694,6 +694,8 @@ func (g *gate) contentChecks(categories, modes, unresolved *Check, m *masterView
 			if category, ok := nameOf[mode.Name]; ok {
 				reached[category]++
 			}
+		case capture.InstanceModeContentSystem:
+			contentSystems++
 		default:
 			unknown++
 		}
@@ -729,7 +731,7 @@ func (g *gate) contentChecks(categories, modes, unresolved *Check, m *masterView
 		unresolved.Reason = "content the client data names ambiguously stays UNKNOWN or takes the other category's CORRELATED mode (research/topics/output/combat-history.md section 17)"
 	}
 	modes.Coverage = &Coverage{Passed: resolvedCategories, Total: len(withRelation), Denominator: "guide categories whose detection rows reach an instance (resolved, or ambiguous in the client data)"}
-	modes.Evidence = append(modes.Evidence, fmt.Sprintf("%d instances: %d open world, %d in a category, %d without a single category (ambiguous or not offered by any guide row)", len(instances), openWorld, sumValues(reached), unknown))
+	modes.Evidence = append(modes.Evidence, fmt.Sprintf("%d instances: %d open world, %d in a category, %d in a content system the game names no system for, %d without a single category (ambiguous, or offered by no guide row or content system)", len(instances), openWorld, sumValues(reached), contentSystems, unknown))
 }
 
 // categoryRelations is a WITH clause naming each guide category's client relations to entrances and instances that exist

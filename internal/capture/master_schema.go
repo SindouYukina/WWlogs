@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -23,13 +24,18 @@ import (
 // references) is the maintainer's private Master contract, checked in Maintainer verification, where the two declarations
 // are also compared (TestMasterRuntimeSchemaAgreesWithTheContract).
 //
-// Changing the declaration (a table, column or accepted type) changes its fingerprint and needs a new
+// Changing the declaration (a table, column, accepted type or key) changes its fingerprint and needs a new
 // masterRuntimeSchemaVersion: TestMasterRuntimeSchemaVersionNamesItsDeclaration pins one to the other. Removing a table the
 // declaration does not list needs neither. A column type migration lists the old and the new type while the current and
 // the candidate Master are compared under one runtime, then only the new one.
+//
+// Version 2 (v0.9.0 M2.5-B3-2) adds the content model the display resolver reads (content_system, content_entry,
+// content_entry_locale, content_context), each with the key its lookups rely on, and drops the four tables of the two
+// display rules the content model replaced (the ShipTower stage rule and the Tactical Hologram title fallback): the runtime
+// no longer reads them, though the Master still holds them.
 
 // masterRuntimeSchemaVersion identifies the declaration below.
-const masterRuntimeSchemaVersion = 1
+const masterRuntimeSchemaVersion = 2
 
 // MasterSchemaTable is a table or view of the combat Master the runtime reads, with the columns it reads.
 type MasterSchemaTable struct {
@@ -39,6 +45,9 @@ type MasterSchemaTable struct {
 	// Both profiles load every table, so both require each one.
 	Scope   string
 	Columns []MasterSchemaColumn
+	// Key, when set, is the primary key or a unique index over exactly these columns in this order that the runtime relies
+	// on: a lookup by the key reads at most one row, and a lookup by its leading columns searches the key, not the table.
+	Key []string
 }
 
 // MasterSchemaColumn is a column the runtime reads and the declared types it accepts. Without a type any is accepted: the
@@ -51,6 +60,22 @@ type MasterSchemaColumn struct {
 // masterTable declares a table whose values the product uses; each column is "name TYPE", "name TYPE|TYPE" or "name *".
 func masterTable(name string, columns ...string) MasterSchemaTable {
 	return masterSchemaObject(name, false, "product", columns)
+}
+
+// masterKeyedTable declares a product table with the key its lookups rely on.
+func masterKeyedTable(name string, key []string, columns ...string) MasterSchemaTable {
+	table := masterSchemaObject(name, false, "product", columns)
+	declared := map[string]bool{}
+	for _, column := range table.Columns {
+		declared[column.Name] = true
+	}
+	for _, column := range key {
+		if !declared[column] {
+			panic("master runtime schema: key column " + name + "." + column + " is not a declared column")
+		}
+	}
+	table.Key = append([]string(nil), key...)
+	return table
 }
 
 // masterDevelopmentTable declares a table whose values only Development outputs use.
@@ -153,10 +178,12 @@ var masterRuntimeSchema = []MasterSchemaTable{
 	masterTable("dungeondetection", "dungeon_id TEXT", "secondary TEXT", "sub_dungeon_id TEXT", "jump_with_sub_dungeon_id INTEGER", "instance_dungeon_entrance_id TEXT"),
 	masterTable("silentareadetection", "dungeon_id TEXT", "secondary TEXT", "instance_dungeon_entrance_id TEXT"),
 	masterTable("instancedungeonentrance_instance_ref", "entrance_id TEXT", "instance_dungeon_id TEXT"),
-	masterTable("slashtowerstageinfo", "inst_id TEXT"),
-	masterTable("slashandtowercfg_instance_ref", "instance_dungeon_id TEXT"),
-	masterTable("lordgymentranceset", "id TEXT", "dungeon_id TEXT"),
-	masterTable("lordgymentranceset_locale", "id TEXT", "locale TEXT", "title TEXT"),
+	// The content model (content_display.go): a context's system and entries, an entry's name state, and its names.
+	masterKeyedTable("content_system", []string{"id"}, "id TEXT", "guide_category_id TEXT", "name_status TEXT"),
+	masterKeyedTable("content_entry", []string{"id"}, "id TEXT", "name_status TEXT"),
+	masterKeyedTable("content_entry_locale", []string{"id", "locale"}, "id TEXT", "locale TEXT", "name TEXT"),
+	masterKeyedTable("content_context", []string{"instance_id", "system_id", "ordinal"}, "instance_id TEXT", "system_id TEXT", "ordinal INTEGER",
+		"activity TEXT", "season TEXT", "cycle TEXT", "series TEXT", "stage TEXT", "difficulty TEXT", "mode TEXT", "role_id TEXT"),
 	masterView("summon_skill_vision_ref", "summon_type", "summon_skill_id", "vision_id", "phantom_skill_id"),
 }
 
@@ -168,12 +195,16 @@ func MasterRuntimeSchema() []MasterSchemaTable {
 		for j := range table.Columns {
 			table.Columns[j].Types = append([]string(nil), table.Columns[j].Types...)
 		}
+		if table.Key != nil {
+			table.Key = append([]string(nil), table.Key...)
+		}
 		schema[i] = table
 	}
 	return schema
 }
 
-// masterRuntimeSchemaFingerprint is the SHA-256 of the declaration in a fixed text form.
+// masterRuntimeSchemaFingerprint is the SHA-256 of the declaration in a fixed text form. A table without a key hashes as
+// it did before keys were declared.
 func masterRuntimeSchemaFingerprint() string {
 	hash := sha256.New()
 	for _, table := range masterRuntimeSchema {
@@ -185,6 +216,9 @@ func masterRuntimeSchemaFingerprint() string {
 		for _, column := range table.Columns {
 			fmt.Fprintf(hash, "\t%s %s\n", column.Name, strings.Join(column.Types, "|"))
 		}
+		if len(table.Key) > 0 {
+			fmt.Fprintf(hash, "\tkey %s\n", strings.Join(table.Key, ","))
+		}
 	}
 	return hex.EncodeToString(hash.Sum(nil))
 }
@@ -193,8 +227,8 @@ func masterRuntimeSchemaFingerprint() string {
 var errMasterRuntimeSchema = errors.New("the combat Master database does not have the structure this version of WWlogs reads")
 
 // checkMasterRuntimeSchema compares a Master with the runtime schema and names every difference: a missing table or view,
-// an object of the other kind, a missing column, a column declared with a type the runtime does not read, and a view the
-// database cannot compile. It reads only the schema, never a row.
+// an object of the other kind, a missing column, a column declared with a type the runtime does not read, a missing key,
+// and a view the database cannot compile. It reads only the schema, never a row.
 func checkMasterRuntimeSchema(db *sql.DB) error {
 	kinds := map[string]string{}
 	rows, err := db.Query("SELECT name, type FROM sqlite_master WHERE type IN ('table', 'view')")
@@ -241,6 +275,17 @@ func checkMasterRuntimeSchema(db *sql.DB) error {
 				problems = append(problems, fmt.Sprintf("column %s.%s is declared %q, this runtime reads %s", table.Name, column.Name, declaredType, strings.Join(column.Types, " or ")))
 			}
 		}
+		if len(table.Key) == 0 {
+			continue
+		}
+		keys, err := masterUniqueKeys(db, table.Name)
+		if err != nil {
+			problems = append(problems, fmt.Sprintf("the keys of table %s cannot be read: %v", table.Name, err))
+			continue
+		}
+		if !slices.ContainsFunc(keys, func(key []string) bool { return slices.Equal(key, table.Key) }) {
+			problems = append(problems, fmt.Sprintf("missing key %s(%s)", table.Name, strings.Join(table.Key, ", ")))
+		}
 	}
 	if len(problems) > 0 {
 		sort.Strings(problems)
@@ -256,6 +301,71 @@ func masterTypeAccepted(accepted []string, declared string) bool {
 		}
 	}
 	return false
+}
+
+// masterUniqueKeys reads the unique keys of a table, each as its columns in order: the primary key, and every unique index
+// that covers the whole table (a partial index does not, and an expression index has no column list).
+func masterUniqueKeys(db *sql.DB, table string) ([][]string, error) {
+	var keys [][]string
+	rows, err := db.Query(`SELECT name FROM pragma_table_info(?) WHERE pk > 0 ORDER BY pk`, table)
+	if err != nil {
+		return nil, err
+	}
+	var primary []string
+	for rows.Next() {
+		var column string
+		if err := rows.Scan(&column); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		primary = append(primary, column)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if len(primary) > 0 {
+		keys = append(keys, primary)
+	}
+	rows, err = db.Query(`SELECT name FROM pragma_index_list(?) WHERE "unique" = 1 AND partial = 0`, table)
+	if err != nil {
+		return nil, err
+	}
+	var indexes []string
+	for rows.Next() {
+		var index string
+		if err := rows.Scan(&index); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		indexes = append(indexes, index)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	for _, index := range indexes {
+		rows, err := db.Query(`SELECT name FROM pragma_index_info(?) ORDER BY seqno`, index)
+		if err != nil {
+			return nil, err
+		}
+		var columns []string
+		complete := true
+		for rows.Next() {
+			var column sql.NullString
+			if err := rows.Scan(&column); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			complete = complete && column.Valid
+			columns = append(columns, column.String)
+		}
+		if err := rows.Close(); err != nil {
+			return nil, err
+		}
+		if complete && len(columns) > 0 {
+			keys = append(keys, columns)
+		}
+	}
+	return keys, nil
 }
 
 // masterDeclaredColumns reads a table's or view's columns and declared types. For a view SQLite compiles it, so a view

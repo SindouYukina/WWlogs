@@ -191,8 +191,10 @@ type replaySummary struct {
 
 // identification counts what the History names of the stored encounters, with the rules of the desktop History view
 // (internal/desktop/history.go nameProjection): an enemy instance by its MonsterInfo link, else its TemplateConfig link,
-// and none when it reported conflicting identities; a known scene by InstanceStage and its kind of play by InstanceMode. A
-// name is checked in every bundled Master locale. The version readiness gate reads it (content.history-identification).
+// and none when it reported conflicting identities; a known scene's stage by InstanceStage, else by the named content
+// layers the view shows in its place (the instance's content, when its content system gave the mode), and its kind of
+// play by InstanceMode. A name is checked in every bundled Master locale. The version readiness gate reads it
+// (content.history-identification).
 type identification struct {
 	EnemyInstances      int            `json:"enemyInstances"`
 	EnemiesWithMonster  int            `json:"enemiesWithMonster"`
@@ -204,7 +206,9 @@ type identification struct {
 	MainEnemiesUnnamed  map[string]int `json:"mainEnemiesUnnamed"`
 	ScenesKnown         int            `json:"scenesKnown"`
 	StagesUnnamed       map[string]int `json:"stagesUnnamed"`
-	ModesUnresolved     map[string]int `json:"modesUnresolved"`
+	// StagesByContent counts the stages without a stage name that the view names by their content layers.
+	StagesByContent map[string]int `json:"stagesByContent"`
+	ModesUnresolved map[string]int `json:"modesUnresolved"`
 	// Unidentified lists the stored enemy instances without an identity or without a name in some locale.
 	Unidentified []unidentifiedEnemy `json:"unidentified,omitempty"`
 	// UnresolvedScenes lists the known scenes without a stage name or a kind of play in some locale.
@@ -239,7 +243,7 @@ func (a *identification) add(b identification) {
 	a.EnemiesUnidentified += b.EnemiesUnidentified
 	a.MainEnemies += b.MainEnemies
 	a.ScenesKnown += b.ScenesKnown
-	for _, pair := range []struct{ to, from *map[string]int }{{&a.EnemyNamesMissing, &b.EnemyNamesMissing}, {&a.MainEnemiesUnnamed, &b.MainEnemiesUnnamed}, {&a.StagesUnnamed, &b.StagesUnnamed}, {&a.ModesUnresolved, &b.ModesUnresolved}} {
+	for _, pair := range []struct{ to, from *map[string]int }{{&a.EnemyNamesMissing, &b.EnemyNamesMissing}, {&a.MainEnemiesUnnamed, &b.MainEnemiesUnnamed}, {&a.StagesUnnamed, &b.StagesUnnamed}, {&a.StagesByContent, &b.StagesByContent}, {&a.ModesUnresolved, &b.ModesUnresolved}} {
 		if *pair.to == nil {
 			*pair.to = map[string]int{}
 		}
@@ -282,7 +286,7 @@ func enemyName(t *testing.T, names *capture.DisplayResolver, enemy capture.Encou
 func identify(t *testing.T, names *capture.DisplayResolver, captureName, key string, detail EncounterDetail, into *identification) {
 	t.Helper()
 	ctx := context.Background()
-	for _, counter := range []*map[string]int{&into.EnemyNamesMissing, &into.MainEnemiesUnnamed, &into.StagesUnnamed, &into.ModesUnresolved} {
+	for _, counter := range []*map[string]int{&into.EnemyNamesMissing, &into.MainEnemiesUnnamed, &into.StagesUnnamed, &into.StagesByContent, &into.ModesUnresolved} {
 		if *counter == nil {
 			*counter = map[string]int{}
 		}
@@ -331,13 +335,20 @@ func identify(t *testing.T, names *capture.DisplayResolver, captureName, key str
 			if err != nil {
 				t.Fatal(err)
 			}
-			if stage.Name == "" {
-				into.StagesUnnamed[locale]++
-				entry.StageMissing = append(entry.StageMissing, locale)
-			}
 			mode, err := names.InstanceMode(ctx, detail.Summary.Scene.InstanceID, locale)
 			if err != nil {
 				t.Fatal(err)
+			}
+			if stage.Name == "" {
+				switch named, err := contentNamesStage(ctx, names, detail.Summary.Scene.InstanceID, locale, mode); {
+				case err != nil:
+					t.Fatal(err)
+				case named:
+					into.StagesByContent[locale]++
+				default:
+					into.StagesUnnamed[locale]++
+					entry.StageMissing = append(entry.StageMissing, locale)
+				}
 			}
 			if mode.Kind == "" {
 				into.ModesUnresolved[locale]++
@@ -348,6 +359,24 @@ func identify(t *testing.T, names *capture.DisplayResolver, captureName, key str
 			into.UnresolvedScenes = append(into.UnresolvedScenes, entry)
 		}
 	}
+}
+
+// contentNamesStage reports whether the History view names a stage without a stage name by its content: the instance's
+// content system gave its mode and the content has a named layer.
+func contentNamesStage(ctx context.Context, names *capture.DisplayResolver, instanceID uint64, locale string, mode capture.InstanceMode) (bool, error) {
+	if mode.System == "" {
+		return false, nil
+	}
+	content, err := names.InstanceContent(ctx, instanceID, locale)
+	if err != nil || content.System != mode.System {
+		return false, err
+	}
+	for _, layer := range content.Layers {
+		if layer.State == capture.ContentLayerOfficial && layer.Name != "" {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // analysisTally counts what the analysis checks covered; it holds no timing, so both profiles must report the same.

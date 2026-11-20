@@ -23,6 +23,7 @@
     "version": "Game version",
     "mode": "Mode",
     "scene": "Stage or scene",
+    "content": "Content",
     "enemy": "Main enemy",
     "duration": "Duration",
     "dps": "Encounter DPS",
@@ -30,6 +31,32 @@
   },
   "unidentified": "Unidentified",
   "modeOpenWorld": "Overworld",
+  "contentSystem": {
+    "wheel-tower": "Matrix Challenge",
+    "boss-rush": "Boss Rush",
+    "tower-defense": "Co-op Tower Defense",
+    "role-trial": "Character Trial"
+  },
+  "contentSystemOther": "Other content",
+  "contentSystemNote": {
+    "NO_OFFICIAL_NAME": "WWlogs classification: the game gives this mode no name",
+    "UNRESOLVED": "WWlogs classification: the official name of this mode is not confirmed yet",
+    "NAME_MISSING": "WWlogs classification: this mode has no official name in this language or in English"
+  },
+  "contentLayer": {
+    "activity": "Event",
+    "season": "Season",
+    "cycle": "Cycle",
+    "series": "Series",
+    "stage": "Stage",
+    "difficulty": "Difficulty",
+    "mode": "Variant",
+    "role": "Trial character"
+  },
+  "contentLayerValue": "{{label}}: {{name}}",
+  "contentLayerOpen": "{{label}}: undetermined ({{n}} possible)",
+  "contentLayerOpenNote": "The encounter could be any of them, and nothing recorded says which",
+  "stageContentNote": "No official stage name; shown by its content in the Master",
   "correlatedNote": "Named through a Master relation that is not directly confirmed (for example an indirect link, or a record of another game version)",
   "sameType": "×{{n}}",
   "unreliableShort": "Unreliable",

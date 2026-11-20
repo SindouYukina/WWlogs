@@ -23,6 +23,7 @@
     "version": "게임 버전",
     "mode": "모드",
     "scene": "스테이지／장소",
+    "content": "콘텐츠",
     "enemy": "주요 적",
     "duration": "전투 시간",
     "dps": "Encounter DPS",
@@ -30,6 +31,32 @@
   },
   "unidentified": "미확인",
   "modeOpenWorld": "오픈월드",
+  "contentSystem": {
+    "wheel-tower": "매트릭스 도전",
+    "boss-rush": "보스 러시",
+    "tower-defense": "협동 타워 디펜스",
+    "role-trial": "캐릭터 체험"
+  },
+  "contentSystemOther": "기타 콘텐츠",
+  "contentSystemNote": {
+    "NO_OFFICIAL_NAME": "WWlogs 분류: 게임에서 이 모드에 이름을 붙이지 않았습니다",
+    "UNRESOLVED": "WWlogs 분류: 이 모드의 공식 이름은 아직 확인되지 않았습니다",
+    "NAME_MISSING": "WWlogs 분류: 이 모드는 이 언어와 영어 모두 공식 이름이 없습니다"
+  },
+  "contentLayer": {
+    "activity": "이벤트",
+    "season": "시즌",
+    "cycle": "주기",
+    "series": "시리즈",
+    "stage": "스테이지",
+    "difficulty": "난이도",
+    "mode": "형식",
+    "role": "체험 캐릭터"
+  },
+  "contentLayerValue": "{{label}}: {{name}}",
+  "contentLayerOpen": "{{label}}: 확인 불가 (후보 {{n}}개)",
+  "contentLayerOpenNote": "이 전투는 그중 하나에 해당하지만, 어느 것인지 알려 주는 기록이 없습니다",
+  "stageContentNote": "공식 스테이지 이름이 없어 Master의 콘텐츠 정보로 표시합니다",
   "correlatedNote": "Master 연결로 추정한 이름이며 직접 확인되지 않았습니다(간접 연결 또는 다른 게임 버전의 기록 등)",
   "sameType": "×{{n}}",
   "unreliableShort": "신뢰할 수 없음",
