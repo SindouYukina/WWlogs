@@ -152,9 +152,8 @@ func TestPrefabRelationsLoadFromTheMaster(t *testing.T) {
 // capturedPrefabEnemies are prefab entities that took confirmed local damage in the Global 3.8.9 LIVE capture
 // LIVE_20261113_224240 (Tower of Adversity and the ShipTower stages), read independently of the product decoder: the
 // generic schema decode of its EntityAddNotify.EntityPbs[] (ConfigType 5, PrefabId, ConfigId), and the client's own
-// PrefabConfig (db_prefab.db, the same file in the 3.8.9 and 3.8.11 hot patches) with TemplateConfig.BlueprintType
-// (db_template.db) and MonsterInfo.MonsterEntityID (db_monster_Info.db), joined by work/version-update/tools/windows/prefab_identity.py.
-// monster 0 means no MonsterInfo shares the BlueprintType.
+// prefab, template and monster definitions, the same in the 3.8.9 and 3.8.11 clients (private research record).
+// monster 0 means the client defines no MonsterInfo for the entity.
 var capturedPrefabEnemies = []struct {
 	prefab, entity, template, monster uint64
 	blueprint                         string

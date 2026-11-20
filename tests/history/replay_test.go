@@ -412,7 +412,7 @@ type analysisTiming struct {
 // historyHUDFacts are statuses a stored capture must show as HUD rows in the History effect analysis, with their polarity.
 // They are the History side of the Overlay facts of TestSemanticReplayCollector: in the Build 31 LIVE capture of Global
 // 3.8.9 the HUD draws Lily's (role 1512) statuses and Xin's type-24 statuses with their icon and without an arrow (cue
-// Parameters empty in the 3.8.9 hotfix db_buffeffect.db; BuffItem.Activate), and the local client's own
+// Parameters empty in the Global 3.8.9 client data; BuffItem.Activate), and the local client's own
 // ApplyGameplayEffectPush puts them on team role entities or the local PlayerEntity
 // (work/tools/combat-audit/live-build31/client_status_crosscheck.py).
 var historyHUDFacts = map[string]map[int64]capture.EffectPolarity{

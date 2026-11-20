@@ -118,8 +118,8 @@ func (g *gate) masterChecks() {
 	modes := g.check("content.instance-modes", DomainContent, "Every Adventure Guide category with an instance only it names resolves through the product's mode resolver", KindStatic, true)
 	// Advisory: content the client data itself cannot place is reported, never guessed and never a blocker.
 	unresolved := g.check("content.unresolved-categories", DomainContent, "Guide categories the client data names only ambiguously (reported limitation)", KindStatic, false)
-	content := g.check("master.client-content", DomainMaster, "Every row, playable role and HUD buff the current client defines is in the Master, read from the client's own ConfigDB and decoded snapshot", KindResearch, true)
-	prefabs := g.check("content.prefab-entities", DomainContent, "Every entity of the client's prefabs is identified by the product as the client's own PrefabConfig, TemplateConfig and MonsterInfo name it", KindResearch, true)
+	content := g.researchCheck("master.client-content", DomainMaster, "The Master holds what the current client defines (private research check)")
+	prefabs := g.researchCheck("content.prefab-entities", DomainContent, "The product identifies every entity of the client's prefabs (private research check)")
 	settlement := g.check("combat.negative-status-settlement", DomainCharacters, "Every negative-status DamageId (server-only FormulaType 9) is executed by status Buffs whose settlement the product reads (timed, on application, instant, spreading on overflow), and every InvokePeriod forces only timed statuses", KindStatic, true)
 	dependents := []*Check{loads, relations, names, art, trial, skillIcons, skillNames, hudClass, hudIcons, categories, modes, unresolved, content, prefabs, settlement}
 
@@ -230,8 +230,8 @@ func (g *gate) masterChecks() {
 	}
 	g.hudChecks(hudClass, hudIcons, m)
 	g.contentChecks(categories, modes, unresolved, m)
-	g.clientContentCheck(content, m)
-	g.prefabEntityCheck(prefabs, m)
+	g.research(content)
+	g.research(prefabs)
 	g.negativeStatusCheck(settlement, m)
 }
 
@@ -243,7 +243,7 @@ func (g *gate) masterChecks() {
 // overflow needs a positive stack limit, since its overflow is an application at that limit; and every InvokePeriod (extra
 // effect 67) names only statuses with a period, the only ones whose execution it can force (InvokePeriod.OnExecute ->
 // ApplyPeriodExecution). A new negative status, or one that settles in a new way, fails here until the settlement research
-// covers it (work/version-update/PROCEDURE.md).
+// covers it.
 func (g *gate) negativeStatusCheck(c *Check, m *masterView) {
 	damageIDs, err := m.ids(`SELECT id FROM damage WHERE CAST(formula_type AS TEXT) = '9' ORDER BY CAST(id AS INTEGER)`)
 	if err != nil || len(damageIDs) == 0 {
