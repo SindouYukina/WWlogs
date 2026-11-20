@@ -77,6 +77,41 @@ const (
 // maxFindings bounds the findings one check lists; the rest are counted.
 const maxFindings = 40
 
+// Evidence completeness of an Assessment.
+const (
+	CompletenessVerified   = "VERIFIED"
+	CompletenessPartial    = "PARTIAL"
+	CompletenessBlocked    = "BLOCKED"
+	CompletenessUnverified = "UNVERIFIED"
+)
+
+// Assessment is a check's neutral account of the evidence it decided on: which evidence (its version), over which source
+// scope, how complete that evidence is, the coverage it measured (each share with its denominator), the categories of what
+// did not pass and the limits that remain. The tracked gate only validates and reports it: a check of evidence that is not
+// VERIFIED never passes.
+type Assessment struct {
+	EvidenceVersion string          `json:"evidenceVersion"`
+	SourceScope     string          `json:"sourceScope"`
+	Completeness    string          `json:"completeness"`
+	Coverage        []NamedCoverage `json:"coverage,omitempty"`
+	Reasons         []ReasonCount   `json:"reasons,omitempty"`
+	Limitations     []string        `json:"limitations,omitempty"`
+}
+
+// NamedCoverage is one measured share of an Assessment with its denominator named.
+type NamedCoverage struct {
+	Name        string `json:"name"`
+	Passed      int    `json:"passed"`
+	Total       int    `json:"total"`
+	Denominator string `json:"denominator"`
+}
+
+// ReasonCount counts the findings of one category.
+type ReasonCount struct {
+	Category string `json:"category"`
+	Count    int    `json:"count"`
+}
+
 // Coverage is a checked share with its denominator named.
 type Coverage struct {
 	Passed      int    `json:"passed"`
@@ -100,6 +135,10 @@ type Check struct {
 	MoreFindings int `json:"moreFindings,omitempty"`
 	// Subjects lists every failing subject (for example "effect 1512310003"), without the bound of Findings.
 	Subjects []string `json:"subjects,omitempty"`
+	// Assessment is the evidence account of a check that decides on an assessed body of evidence (research checks).
+	Assessment *Assessment `json:"assessment,omitempty"`
+	// assessed marks a check that must report an Assessment to pass.
+	assessed bool
 }
 
 // fail records a finding and marks the check failed.
@@ -279,12 +318,37 @@ func (g *gate) researchCheck(id string, domain Domain, title string) *Check {
 	return g.check(id, domain, title, KindResearch, true)
 }
 
+// assessedResearchCheck declares a mandatory research check that must report an evidence Assessment to pass.
+func (g *gate) assessedResearchCheck(id string, domain Domain, title string) *Check {
+	c := g.researchCheck(id, domain, title)
+	c.assessed = true
+	return c
+}
+
+// enforceAssessment keeps a check of incomplete or unstated evidence from passing (fail-closed): an assessed check without
+// an Assessment, an unknown completeness, or a completeness other than VERIFIED leaves the check UNVERIFIED instead of
+// PASS. A FAIL stays a FAIL.
+func enforceAssessment(c *Check) {
+	a := c.Assessment
+	switch {
+	case a == nil:
+		if c.assessed {
+			c.unverified("the research check reported no evidence assessment (evidence version, source scope, completeness)")
+		}
+	case a.Completeness != CompletenessVerified && a.Completeness != CompletenessPartial && a.Completeness != CompletenessBlocked && a.Completeness != CompletenessUnverified:
+		c.unverified(fmt.Sprintf("the research check reported an unknown evidence completeness %q", a.Completeness))
+	case a.Completeness != CompletenessVerified:
+		c.unverified(fmt.Sprintf("the evidence is %s: a check of incomplete evidence never passes", a.Completeness))
+	}
+}
+
 // research runs a declared research check with the extension that implements it. Without one the check stays
 // UNVERIFIED: the tracked gate cannot decide it.
 func (g *gate) research(c *Check) {
 	for _, extension := range g.extensions {
 		if run := extension.Checks[c.ID]; run != nil {
 			run(&ResearchRun{Inputs: g.in.ResearchInputs, g: g}, c)
+			enforceAssessment(c)
 			return
 		}
 	}
@@ -309,6 +373,7 @@ func Run(in Inputs) (*Report, error) {
 	g.research(g.researchCheck("verification.client-impact", DomainVerification, "The client update was compared with the client the product decodes (private research check)"))
 	g.assetChecks()
 	g.masterChecks()
+	g.contentCoverageChecks()
 	g.runtimeChecks()
 	g.evidenceChecks()
 	for _, extension := range g.extensions {

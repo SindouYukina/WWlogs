@@ -20,13 +20,23 @@ import (
 )
 
 // declaredResearchChecks are the research checks the tracked gate declares, in report order.
-var declaredResearchChecks = []string{"protocol.schema-keys", "master.client-content", "assets.client-references", "content.prefab-entities", "verification.client-impact"}
+var declaredResearchChecks = []string{"protocol.schema-keys", "master.client-content", "assets.client-references", "content.prefab-entities",
+	"content.source-coverage", "content.discovery", "content.semantic-mapping", "content.master-mapping", "content.runtime-mapping",
+	"verification.client-impact"}
 
-// passingResearch is a stand-in research extension whose checks all pass.
+// assessedResearchChecks must report an evidence assessment to pass.
+var assessedResearchChecks = []string{"content.source-coverage", "content.discovery", "content.semantic-mapping", "content.master-mapping", "content.runtime-mapping"}
+
+// verifiedAssessment is the assessment of complete evidence.
+func verifiedAssessment() *readiness.Assessment {
+	return &readiness.Assessment{EvidenceVersion: "stand-in 1", SourceScope: "test", Completeness: readiness.CompletenessVerified}
+}
+
+// passingResearch is a stand-in research extension whose checks all pass on verified evidence.
 func passingResearch() readiness.ResearchExtension {
 	checks := map[string]func(*readiness.ResearchRun, *readiness.Check){}
 	for _, id := range declaredResearchChecks {
-		checks[id] = func(*readiness.ResearchRun, *readiness.Check) {}
+		checks[id] = func(_ *readiness.ResearchRun, c *readiness.Check) { c.Assessment = verifiedAssessment() }
 	}
 	return readiness.ResearchExtension{Name: "stand-in", Checks: checks}
 }
@@ -71,6 +81,87 @@ func TestResearchChecksNeedAResearchExtension(t *testing.T) {
 	in.Research = []readiness.ResearchExtension{passingResearch()}
 	if report := run(t, in); !report.StaticReady {
 		t.Fatalf("with passing research checks: blockers %v", report.Blockers)
+	}
+}
+
+// The tracked gate validates every research check's evidence assessment fail-closed: an assessed check without one, an
+// unknown completeness and evidence that is not VERIFIED never pass, whatever the extension says; a FAIL stays a FAIL; and
+// the report carries the assessment in its JSON and its matrix.
+func TestResearchAssessmentsFailClosed(t *testing.T) {
+	in := baseInputs(t)
+	in.Locales = []string{"en-US"}
+	behave := map[string]func(*readiness.Check){
+		"content.source-coverage": func(c *readiness.Check) {},
+		"content.discovery": func(c *readiness.Check) {
+			c.Assessment = &readiness.Assessment{Completeness: readiness.CompletenessPartial}
+		},
+		"content.semantic-mapping": func(c *readiness.Check) { c.Assessment = &readiness.Assessment{Completeness: "MOSTLY"} },
+		"content.master-mapping": func(c *readiness.Check) {
+			c.Status = readiness.StatusFail
+			c.Findings = append(c.Findings, "a required layer is missing (fixture)")
+			c.Assessment = verifiedAssessment()
+		},
+		"content.prefab-entities": func(c *readiness.Check) {},
+		"content.runtime-mapping": func(c *readiness.Check) {
+			c.Assessment = &readiness.Assessment{EvidenceVersion: "e 2", SourceScope: "scope x", Completeness: readiness.CompletenessVerified,
+				Coverage: []readiness.NamedCoverage{{Name: "instances resolved", Passed: 3, Total: 4, Denominator: "in-scope instances"}},
+				Reasons:  []readiness.ReasonCount{{Category: "RUNTIME_MODE_UNRESOLVED", Count: 1}}, Limitations: []string{"limit y"}}
+		},
+		"master.client-content": func(c *readiness.Check) {
+			c.Assessment = &readiness.Assessment{Completeness: readiness.CompletenessBlocked}
+		},
+	}
+	checks := map[string]func(*readiness.ResearchRun, *readiness.Check){}
+	for id, f := range behave {
+		f := f
+		checks[id] = func(_ *readiness.ResearchRun, c *readiness.Check) { f(c) }
+	}
+	in.Research = []readiness.ResearchExtension{{Name: "fault injection", Checks: checks}}
+	report := run(t, in)
+	for id, want := range map[string]struct {
+		status readiness.Status
+		reason string
+	}{
+		"content.source-coverage":  {readiness.StatusUnverified, "no evidence assessment"},
+		"content.discovery":        {readiness.StatusUnverified, "the evidence is PARTIAL"},
+		"content.semantic-mapping": {readiness.StatusUnverified, "unknown evidence completeness"},
+		"content.master-mapping":   {readiness.StatusFail, ""},
+		"content.prefab-entities":  {readiness.StatusPass, ""},
+		"content.runtime-mapping":  {readiness.StatusPass, ""},
+		"master.client-content":    {readiness.StatusUnverified, "the evidence is BLOCKED"},
+	} {
+		c := checkOf(t, report, id)
+		if c.Status != want.status || !strings.Contains(c.Reason, want.reason) {
+			t.Errorf("%s = %s (%q), want %s with %q", id, c.Status, c.Reason, want.status, want.reason)
+		}
+	}
+	if c := checkOf(t, report, "content.master-mapping"); strings.Join(c.Findings, "; ") != "a required layer is missing (fixture)" {
+		t.Errorf("the failure lost its findings: %v", c.Findings)
+	}
+	if report.StaticReady {
+		t.Error("a run whose research evidence is incomplete reported STATIC_READY")
+	}
+	var json, md strings.Builder
+	if err := report.WriteJSON(&json); err != nil {
+		t.Fatal(err)
+	}
+	if err := report.WriteMarkdown(&md); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"assessment"`, `"completeness": "VERIFIED"`, `"category": "RUNTIME_MODE_UNRESOLVED"`, `"denominator": "in-scope instances"`} {
+		if !strings.Contains(json.String(), want) {
+			t.Errorf("the JSON report lacks %s", want)
+		}
+	}
+	for _, want := range []string{"Evidence assessments:", "instances resolved 3/4 (in-scope instances)", "RUNTIME_MODE_UNRESOLVED 1", "limit y"} {
+		if !strings.Contains(md.String(), want) {
+			t.Errorf("the matrix lacks %q", want)
+		}
+	}
+	for _, id := range assessedResearchChecks {
+		if c := checkOf(t, report, id); c.Kind != readiness.KindResearch || !c.Mandatory || c.Domain != readiness.DomainContent {
+			t.Errorf("%s: kind %s, mandatory %v, domain %s", id, c.Kind, c.Mandatory, c.Domain)
+		}
 	}
 }
 
