@@ -23,8 +23,8 @@ import (
 //	data     every row of every table both files have, with values normalized to text so that a storage-type change
 //	         alone is not a data change; storage classes per column are compared separately
 //	loaded   every field of GameMaster as LoadGameMasterDatabase builds it, entry by entry, in each Master locale
-//	display  every DisplayResolver answer (Resolve, RoleElement, StaticRole, InstanceMode, InstanceStage) for every id the
-//	         Master can list in each namespace, plus ids it does not have, in each locale
+//	display  every DisplayResolver answer (Resolve, RoleElement, StaticRole, InstanceMode, InstanceStage, InstanceContent)
+//	         for every id the Master can list in each namespace, plus ids it does not have, in each locale
 //
 // The product loads everything it needs from the Master into GameMaster at start and asks DisplayResolver for the rest, so
 // the loaded and display layers cover every Master-dependent decision for every id, whether or not a capture contains it.
@@ -889,7 +889,20 @@ func masterModeAnswer(mode InstanceMode, err error) string {
 	if err != nil {
 		return "error: " + err.Error()
 	}
-	return string(mode.Kind) + "|" + mode.Status + "|" + mode.Locale + "|" + mode.Basis + "|" + mode.Name
+	return string(mode.Kind) + "|" + mode.Status + "|" + mode.Locale + "|" + mode.Basis + "|" + mode.Name + "|" + mode.System + "|" + mode.NameStatus + "|" + mode.Conflict
+}
+
+// masterContentAnswer is an instance's content answer in a fixed text form: its system, status and contexts, then every
+// layer with its state, name, locale, candidates and character.
+func masterContentAnswer(content InstanceContent, err error) string {
+	if err != nil {
+		return "error: " + err.Error()
+	}
+	answer := content.System + "|" + content.Status + "|" + strings.Join(content.Systems, ",") + "|" + strconv.Itoa(content.Contexts)
+	for _, layer := range content.Layers {
+		answer += "|" + layer.Dimension + ":" + string(layer.State) + ":" + layer.Locale + ":" + layer.Name + ":" + strconv.Itoa(layer.Candidates) + ":" + strconv.FormatUint(layer.RoleID, 10)
+	}
+	return answer
 }
 
 func compareMasterDisplay(oldResolver, newResolver *DisplayResolver, domains, probes map[string][]uint64, locales []string, d *masterDifferences) map[string]int {
@@ -933,6 +946,12 @@ func compareMasterDisplay(oldResolver, newResolver *DisplayResolver, domains, pr
 					newStage, newErr := newResolver.InstanceStage(ctx, id, locale)
 					if a, b := masterDisplayAnswer(oldStage, oldErr), masterDisplayAnswer(newStage, newErr); a != b {
 						d.add(masterDifference{Layer: "display", Class: "instance-stage-changed", Object: "instance", Locale: locale, Key: strconv.FormatUint(id, 10), Old: a, New: b})
+					}
+					checked["instance-content"]++
+					oldContent, oldErr := oldResolver.InstanceContent(ctx, id, locale)
+					newContent, newErr := newResolver.InstanceContent(ctx, id, locale)
+					if a, b := masterContentAnswer(oldContent, oldErr), masterContentAnswer(newContent, newErr); a != b {
+						d.add(masterDifference{Layer: "display", Class: "instance-content-changed", Object: "instance", Locale: locale, Key: strconv.FormatUint(id, 10), Old: a, New: b})
 					}
 				}
 			}

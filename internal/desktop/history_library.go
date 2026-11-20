@@ -19,14 +19,15 @@ import (
 // HistoryLibraryQuery is the library query of the view: the stored-value filters, and the filters the host resolves.
 type HistoryLibraryQuery struct {
 	history.LibraryQuery
-	// Modes are mode keys of the facets: "open_world", or "category:" and the category name.
+	// Modes are mode keys of the facets: "open_world", "category:" and the category name, or "content:" and the content
+	// system of a mode the game names no system for.
 	Modes []string `json:"modes,omitempty"`
 	// Stages are instance IDs.
 	Stages []uint64 `json:"stages,omitempty"`
 	// Roles are static RoleIds (a trial role counts as its parent).
 	Roles []uint64 `json:"roles,omitempty"`
-	// Text is matched, case-insensitively, against the Master's mode, stage and character names in the UI locale (the open
-	// world is a UI label, not a Master name: it is chosen as a mode).
+	// Text is matched, case-insensitively, against the Master's mode, stage, content and character names in the UI locale
+	// (the open world and a content system without a game name are UI labels, not Master names: they are chosen as a mode).
 	Text string `json:"text,omitempty"`
 }
 
@@ -54,9 +55,10 @@ type historyModeFacetJSON struct {
 }
 
 type historyStageFacetJSON struct {
-	InstanceID uint64      `json:"instanceId"`
-	Name       historyName `json:"name"`
-	Count      int         `json:"count"`
+	InstanceID uint64          `json:"instanceId"`
+	Name       historyName     `json:"name"`
+	Content    *historyContent `json:"content,omitempty"`
+	Count      int             `json:"count"`
 }
 
 type historyRoleFacetJSON struct {
@@ -71,26 +73,35 @@ type instanceNames struct {
 	modeKey string
 	mode    historyMode
 	stage   historyName
+	content *historyContent
 }
 
-// modeKey is the facet key of a mode: open world, a named category, or "" without a mode.
+// modeKey is the facet key of a mode: open world, a named category, a content system without a game name, or "" without
+// a mode.
 func modeKey(mode historyMode) string {
 	switch {
 	case mode.Kind == capture.InstanceModeOpenWorld:
 		return "open_world"
 	case mode.Kind == capture.InstanceModeCategory && mode.Name != "":
 		return "category:" + mode.Name
+	case mode.Kind == capture.InstanceModeContentSystem && mode.System != "":
+		return "content:" + mode.System
 	}
 	return ""
 }
 
-// instances names every instance of a facet count in the UI locale. A name is VERIFIED only for the game version of the
-// embedded Master; the library mixes versions, so names here are capped at CORRELATED.
+// instanceNames names one stored instance in the UI locale. A name is VERIFIED only for the game version of the embedded
+// Master; the library and the career mix versions, so names there are capped at CORRELATED.
+func (n *nameProjection) instanceNames(id uint64) instanceNames {
+	mode := n.mode(id, false)
+	return instanceNames{modeKey: modeKey(mode), mode: mode, stage: n.stage(id, false), content: n.content(id, false)}
+}
+
+// instances names every instance of a facet count.
 func (n *nameProjection) instances(counts map[uint64]int) map[uint64]instanceNames {
 	out := make(map[uint64]instanceNames, len(counts))
 	for id := range counts {
-		mode := n.mode(id, false)
-		out[id] = instanceNames{modeKey: modeKey(mode), mode: mode, stage: n.stage(id, false)}
+		out[id] = n.instanceNames(id)
 	}
 	return out
 }
@@ -193,7 +204,11 @@ func resolveLibraryFilters(query HistoryLibraryQuery, instances map[uint64]insta
 	if text := strings.ToLower(strings.TrimSpace(query.Text)); text != "" {
 		resolved.MatchInstances, resolved.MatchRoleIDs = []uint64{}, []uint64{}
 		for id, known := range instances {
-			if strings.Contains(strings.ToLower(known.mode.Name), text) || strings.Contains(strings.ToLower(known.stage.Name), text) {
+			match := strings.Contains(strings.ToLower(known.mode.Name), text) || strings.Contains(strings.ToLower(known.stage.Name), text)
+			for _, name := range known.content.names() {
+				match = match || strings.Contains(strings.ToLower(name), text)
+			}
+			if match {
 				resolved.MatchInstances = append(resolved.MatchInstances, id)
 			}
 		}
@@ -211,7 +226,7 @@ func libraryFacets(facets history.LibraryFacets, instances map[uint64]instanceNa
 	stages := make([]historyStageFacetJSON, 0, len(facets.Instances))
 	for id, count := range facets.Instances {
 		known := instances[id]
-		stages = append(stages, historyStageFacetJSON{InstanceID: id, Name: known.stage, Count: count})
+		stages = append(stages, historyStageFacetJSON{InstanceID: id, Name: known.stage, Content: known.content, Count: count})
 		if known.modeKey == "" {
 			continue
 		}

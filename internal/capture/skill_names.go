@@ -824,6 +824,10 @@ func loadSQLiteVisionItems(db *sql.DB) (map[uint64][]echoItem, error) {
 		if err := rows.Scan(&rawVision, &rawItem, &rawMonster, &rawParent, &locale, &name); err != nil {
 			return nil, fmt.Errorf("read echo skill names: %w", err)
 		}
+		if !masterOfficialText(name) {
+			// A placeholder is no name, as if the row were missing.
+			continue
+		}
 		vision, err := parseMasterID(rawVision, "phantomitem.skill_id")
 		if err != nil {
 			return nil, err
@@ -1062,6 +1066,10 @@ func loadLocalizedNames(db *sql.DB, table, locale string, into map[uint64]string
 				id, err := parseMasterID(raw, table+".id")
 				if err != nil {
 					return err
+				}
+				if !masterOfficialText(name) {
+					// A placeholder is no name: the English name stays, as for a missing row.
+					continue
 				}
 				into[id] = name
 			}

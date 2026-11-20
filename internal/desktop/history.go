@@ -82,9 +82,10 @@ func fileSHA256(path string) (string, error) {
 }
 
 // historyName is a Master name with its evidence for the History view. A monster name comes through a Master link from an
-// observed ID, so it is at most CORRELATED. A scene or mode name is VERIFIED when the encounter was fought in the game
-// version the embedded Master describes and the relation is one the client itself resolves (capture.InstanceMode,
-// capture.InstanceStage); fought in another version it is at most CORRELATED. An ID without a name stays UNKNOWN.
+// observed ID, so it is at most CORRELATED. A scene, mode or content name is VERIFIED when the encounter was fought in the
+// game version the embedded Master describes and the relation is one the client itself resolves or the content model
+// records (capture.InstanceMode, capture.InstanceStage, capture.InstanceContent); fought in another version it is at most
+// CORRELATED. An ID without a name stays UNKNOWN.
 type historyName struct {
 	Name   string `json:"name,omitempty"`
 	Status string `json:"status"`
@@ -101,19 +102,40 @@ func (n *nameProjection) linked(kind string, id uint64) historyName {
 	return historyName{Name: name.Name, Status: "CORRELATED"}
 }
 
-// historyMode is the kind of play of an encounter's instance: an Adventure Guide category named by the Master, or the open
-// world, which the UI labels; UNKNOWN without a relation.
+// historyMode is the kind of play of an encounter's instance: an Adventure Guide category named by the Master, a content
+// system the game names no system for (System, with its NameStatus), or the open world; the UI labels the last two. It is
+// UNKNOWN without a relation.
 type historyMode struct {
-	Kind   capture.InstanceModeKind `json:"kind,omitempty"`
-	Name   string                   `json:"name,omitempty"`
-	Status string                   `json:"status"`
+	Kind       capture.InstanceModeKind `json:"kind,omitempty"`
+	Name       string                   `json:"name,omitempty"`
+	Status     string                   `json:"status"`
+	System     string                   `json:"system,omitempty"`
+	NameStatus string                   `json:"nameStatus,omitempty"`
+}
+
+// historyContent is the content model's view of an encounter's instance (capture.InstanceContent), given when the
+// instance's content system gave its mode. Every modelled layer keeps its state; only an OFFICIAL layer has a name, whose
+// status follows the encounter's game version as a scene name's does. A RUNTIME_DEPENDENT layer counts the candidates the
+// History cannot choose between, since no stored fact says which context the encounter was.
+type historyContent struct {
+	System string                `json:"system"`
+	Layers []historyContentLayer `json:"layers"`
+}
+
+type historyContentLayer struct {
+	Dimension  string `json:"dimension"`
+	State      string `json:"state"`
+	Name       string `json:"name,omitempty"`
+	Status     string `json:"status,omitempty"`
+	Candidates int    `json:"candidates,omitempty"`
 }
 
 type historySummaryJSON struct {
 	history.EncounterSummary
-	SceneName     historyName `json:"sceneName"`
-	Mode          historyMode `json:"mode"`
-	MainEnemyName historyName `json:"mainEnemyName"`
+	SceneName     historyName     `json:"sceneName"`
+	Mode          historyMode     `json:"mode"`
+	Content       *historyContent `json:"content,omitempty"`
+	MainEnemyName historyName     `json:"mainEnemyName"`
 }
 
 // versioned caps a status at CORRELATED unless the encounter was fought in the game version of the embedded Master.
@@ -143,7 +165,51 @@ func (n *nameProjection) mode(instanceID uint64, current bool) historyMode {
 	if mode.Kind == "" {
 		return historyMode{Status: "UNKNOWN"}
 	}
-	return historyMode{Kind: mode.Kind, Name: mode.Name, Status: versioned(mode.Status, current)}
+	return historyMode{Kind: mode.Kind, Name: mode.Name, Status: versioned(mode.Status, current), System: mode.System, NameStatus: mode.NameStatus}
+}
+
+// content is the content model's view of an instance whose mode its content system gave; nil for any other instance,
+// including one whose content system disagrees with a guide relation (the mode is then the guide relation's).
+func (n *nameProjection) content(instanceID uint64, current bool) *historyContent {
+	mode, err := n.resolver.InstanceMode(n.ctx, instanceID, n.locale)
+	if err != nil {
+		n.err = err
+		return nil
+	}
+	if mode.System == "" {
+		return nil
+	}
+	content, err := n.resolver.InstanceContent(n.ctx, instanceID, n.locale)
+	if err != nil {
+		n.err = err
+		return nil
+	}
+	if content.System != mode.System {
+		return nil
+	}
+	out := &historyContent{System: content.System, Layers: make([]historyContentLayer, 0, len(content.Layers))}
+	for _, layer := range content.Layers {
+		entry := historyContentLayer{Dimension: layer.Dimension, State: string(layer.State), Candidates: layer.Candidates}
+		if layer.State == capture.ContentLayerOfficial {
+			entry.Name, entry.Status = layer.Name, versioned("VERIFIED", current)
+		}
+		out.Layers = append(out.Layers, entry)
+	}
+	return out
+}
+
+// contentNames are the official names of an instance's content layers, for text search.
+func (c *historyContent) names() []string {
+	if c == nil {
+		return nil
+	}
+	var names []string
+	for _, layer := range c.Layers {
+		if layer.Name != "" {
+			names = append(names, layer.Name)
+		}
+	}
+	return names
 }
 
 func (n *nameProjection) summary(summary history.EncounterSummary) historySummaryJSON {
@@ -153,6 +219,7 @@ func (n *nameProjection) summary(summary history.EncounterSummary) historySummar
 		current := summary.GameVersion != "" && summary.GameVersion == capture.CurrentGameVersion()
 		out.SceneName = n.stage(summary.Scene.InstanceID, current)
 		out.Mode = n.mode(summary.Scene.InstanceID, current)
+		out.Content = n.content(summary.Scene.InstanceID, current)
 	}
 	if enemy := summary.MainEnemy; enemy != nil && !enemy.IdentityConflict {
 		out.MainEnemyName = n.enemy(enemy.MonsterID, enemy.TemplateID)

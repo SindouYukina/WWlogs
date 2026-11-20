@@ -648,7 +648,7 @@ func loadSQLiteBuffTerms(db *sql.DB, locale string, master *GameMaster) error {
 		if status != ResolutionVerified && status != ResolutionCorrelated {
 			continue
 		}
-		if _, defined := master.BuffDefinitions[buffID]; !defined || name == "" {
+		if _, defined := master.BuffDefinitions[buffID]; !defined || !masterOfficialText(name) {
 			continue
 		}
 		terms[buffID] = EffectTermRecord{TermID: termID, Name: name, Description: strings.TrimSpace(richTextTag.ReplaceAllString(description, "")), Status: status}
@@ -972,7 +972,7 @@ func loadLocalizedDefinitions(db *sql.DB, locale, baseTable, localeTable string,
 			return fmt.Errorf("duplicate %s ID %d", baseTable, id)
 		}
 		record := MasterRecord{ID: id, Language: locale, Status: string(ResolutionVerified), SourceTable: baseTable}
-		if name.Valid {
+		if name.Valid && masterOfficialText(name.String) {
 			record.Name = name.String
 		}
 		if record.Name == "" {
@@ -1042,7 +1042,7 @@ func loadSQLiteSkills(db *sql.DB, locale string, master *GameMaster) error {
 			return err
 		}
 		record := MasterRecord{ID: id, Language: locale, Status: string(ResolutionVerified), SourceTable: "skilldescription -> skill"}
-		if name.Valid {
+		if name.Valid && masterOfficialText(name.String) {
 			record.Name = name.String
 		}
 		if record.Name == "" {
@@ -1225,11 +1225,13 @@ func loadTemplateCatalog(db *sql.DB, master *GameMaster) error {
 			return err
 		}
 		candidate := SceneTemplateCandidate{TemplateID: id, BlueprintType: blueprintType, RawName: rawName, NameStatus: string(ResolutionUnknown), Language: master.Locale}
-		if name.Valid && strings.TrimSpace(name.String) != "" && !strings.HasPrefix(strings.ToLower(strings.TrimSpace(name.String)), "dnt/") && textKey.Valid && textKey.String != "" {
+		if name.Valid && masterOfficialText(name.String) && textKey.Valid && textKey.String != "" {
 			candidate.Name = name.String
 			candidate.NameTextKey = textKey.String
 			candidate.NameStatus = string(ResolutionVerified)
-			candidate.Subtitle = subtitle.String
+			if masterOfficialText(subtitle.String) {
+				candidate.Subtitle = subtitle.String
+			}
 		}
 		master.SceneIdentity.TemplateCatalog[id] = candidate
 	}

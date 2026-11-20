@@ -11,14 +11,7 @@
     {
       "name": "LIVE_20261112_110155",
       "required": false,
-      "note": "Global 3.8.9 trial team with role 1512; supplementary since the owner reset logs/",
-      "identificationLimits": [
-        {
-          "kind": "mode",
-          "scene": 82110,
-          "reason": "InstanceDungeon 82110 (InstSubType 40, a character trial instance, MapName resolves) has no entrance and no Adventure Guide or tutorial detection row. The client's RoleTrial data identifies it as the instance the client enters for character trial 1185 (role 1512); the kind of play stays UNKNOWN because the Master and the resolver do not map the RoleTrial content system yet, not for lack of a client source (Global 3.8.9, 3.8.11 and 3.8.12 client data)"
-        }
-      ]
+      "note": "Global 3.8.9 trial team with role 1512; supplementary since the owner reset logs/"
     },
     {
       "name": "SYNTH-MISSED-LOGIN-RELOGIN-3.8",
@@ -33,31 +26,12 @@
     {
       "name": "LIVE_20261112_230754",
       "required": false,
-      "note": "Owner's Build 28 LIVE capture, 30 encounters, standalone CombatReceivePackNotify responses; supplementary",
-      "identificationLimits": [
-        {
-          "kind": "mode",
-          "scene": 9102,
-          "reason": "InstanceDungeon 9102 (InstSubType 29, MapName resolves) is reached only by entrance 9102, which no Adventure Guide detection row (DungeonDetection, SilentAreaDetection) and no ShipTower relation names. The client's WeeklyRogue data and code identify it as a WeeklyRogue stage (InstSubType 29 is exactly the stages 9101-9108 that the weekly cycles reach through their map marks); the kind of play stays UNKNOWN because the Master and the resolver do not map the WeeklyRogue content system yet, not for lack of a client source (Global 3.8.9, 3.8.11 and 3.8.12 client data)"
-        },
-        {
-          "kind": "mode",
-          "scene": 82110,
-          "reason": "InstanceDungeon 82110 (InstSubType 40, a character trial instance, MapName resolves) has no entrance and no Adventure Guide or tutorial detection row. The client's RoleTrial data identifies it as the instance the client enters for character trial 1185 (role 1512); the kind of play stays UNKNOWN because the Master and the resolver do not map the RoleTrial content system yet, not for lack of a client source (Global 3.8.9, 3.8.11 and 3.8.12 client data)"
-        }
-      ]
+      "note": "Owner's Build 28 LIVE capture, 30 encounters, standalone CombatReceivePackNotify responses; supplementary"
     },
     {
       "name": "LIVE_20261118_194306",
       "required": false,
-      "note": "Owner's v0.8.0 LIVE acceptance capture (unofficial Development build of bf1f7a5) on Global 3.8.12, IPv6 traffic: 17 encounters, 15 of them in the event stage 9105; supplementary, no Golden facts",
-      "identificationLimits": [
-        {
-          "kind": "mode",
-          "scene": 9105,
-          "reason": "InstanceDungeon 9105 (InstSubType 29, MapName resolves) is reached only by entrance 9105, which no Adventure Guide detection row (DungeonDetection, SilentAreaDetection, SecondaryGuideData) and no ShipTower relation names. The client's WeeklyRogue data and code identify it as a WeeklyRogue stage (InstSubType 29 is exactly the stages 9101-9108 that the weekly cycles reach through their map marks); the kind of play stays UNKNOWN because the Master and the resolver do not map the WeeklyRogue content system yet, not for lack of a client source (Global 3.8.9, 3.8.11 and 3.8.12 client data)"
-        }
-      ]
+      "note": "Owner's v0.8.0 LIVE acceptance capture (unofficial Development build of bf1f7a5) on Global 3.8.12, IPv6 traffic: 17 encounters, 15 of them in the event stage 9105; supplementary, no Golden facts"
     }
   ]
 }

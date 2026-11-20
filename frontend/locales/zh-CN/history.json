@@ -23,6 +23,7 @@
     "version": "游戏版本",
     "mode": "游戏玩法",
     "scene": "关卡／场景",
+    "content": "内容",
     "enemy": "主要敌人",
     "duration": "持续时间",
     "dps": "Encounter DPS",
@@ -30,6 +31,32 @@
   },
   "unidentified": "未识别",
   "modeOpenWorld": "大世界",
+  "contentSystem": {
+    "wheel-tower": "矩阵挑战",
+    "boss-rush": "首领连战",
+    "tower-defense": "联机塔防",
+    "role-trial": "角色试用"
+  },
+  "contentSystemOther": "其他内容",
+  "contentSystemNote": {
+    "NO_OFFICIAL_NAME": "WWlogs 的分类：游戏没有为这种玩法命名",
+    "UNRESOLVED": "WWlogs 的分类：这种玩法的官方名称尚未确认",
+    "NAME_MISSING": "WWlogs 的分类：这种玩法在此语言和英文中都没有官方名称"
+  },
+  "contentLayer": {
+    "activity": "活动",
+    "season": "赛季",
+    "cycle": "周期",
+    "series": "系列",
+    "stage": "关卡",
+    "difficulty": "难度",
+    "mode": "模式",
+    "role": "试用角色"
+  },
+  "contentLayerValue": "{{label}}：{{name}}",
+  "contentLayerOpen": "{{label}}：无法确定（{{n}} 种可能）",
+  "contentLayerOpenNote": "这场战斗可能属于其中任一种，记录中没有数据能判断是哪一种",
+  "stageContentNote": "没有官方关卡名称；以 Master 的内容数据表示",
   "correlatedNote": "通过 Master 关联推定的名称，未经直接确认（例如间接关联，或此记录属于其他游戏版本）",
   "sameType": "×{{n}}",
   "unreliableShort": "不可靠",

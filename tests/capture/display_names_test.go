@@ -19,7 +19,10 @@ func TestDisplayResolverFallbackAndBoundedCache(t *testing.T) {
 		if _, err = db.Exec("CREATE TABLE " + table + " (id TEXT,locale TEXT,name TEXT,PRIMARY KEY(id,locale))"); err != nil {
 			t.Fatal(err)
 		}
-		for _, row := range [][3]string{{"42", "en-US", "Example"}, {"42", "zh-TW", "測試"}, {"42", "zh-CN", "测试"}, {"42", "ko-KR", "테스트"}} {
+		for _, row := range [][3]string{{"42", "en-US", "Example"}, {"42", "zh-TW", "測試"}, {"42", "zh-CN", "测试"}, {"42", "ko-KR", "테스트"},
+			// The client's placeholder is no text: 43 falls back to English, 44 has no name, 45 only an empty row.
+			{"43", "zh-CN", "dnt/测试"}, {"43", "ja-JP", " DNT/テスト"}, {"43", "en-US", "Placeholder fallback"},
+			{"44", "zh-CN", "dnt/仅占位"}, {"44", "en-US", "dnt/placeholder"}, {"45", "zh-TW", ""}} {
 			if _, err = db.Exec("INSERT INTO "+table+" VALUES (?,?,?)", row[0], row[1], row[2]); err != nil {
 				t.Fatal(err)
 			}
@@ -46,23 +49,33 @@ func TestDisplayResolverFallbackAndBoundedCache(t *testing.T) {
 		if err != nil || name.Name != "" || name.Status != "UNKNOWN" {
 			t.Fatalf("unknown: %+v %v", name, err)
 		}
+		for _, locale := range []string{"zh-CN", "ja-JP"} {
+			if name, err := resolver.Resolve(ctx, kind, 43, locale); err != nil || name.Name != "Placeholder fallback" || name.Locale != "en-US" || name.Status != "VERIFIED" {
+				t.Fatalf("%s %s placeholder: %+v %v, want the English name", kind, locale, name, err)
+			}
+		}
+		for _, c := range []struct {
+			id     uint64
+			locale string
+		}{{44, "zh-CN"}, {44, "en-US"}, {45, "zh-TW"}} {
+			if name, err := resolver.Resolve(ctx, kind, c.id, c.locale); err != nil || name.Name != "" || name.Status != "UNKNOWN" {
+				t.Fatalf("%s %d %s: %+v %v, want no name", kind, c.id, c.locale, name, err)
+			}
+		}
 	}
 	if _, err = resolver.Resolve(ctx, "entity", 42, "en-US"); err == nil {
 		t.Fatal("unapproved lookup kind accepted")
 	}
 	resolver.mu.Lock()
-	resolver.names = map[string]DisplayName{}
-	resolver.order = nil
+	resolver.names = newDisplayCache[DisplayName]()
 	for i := 0; i < maxDisplayNames; i++ {
-		key := string(rune(i + 100))
-		resolver.names[key] = DisplayName{}
-		resolver.order = append(resolver.order, key)
+		resolver.names.put(string(rune(i+100)), DisplayName{})
 	}
 	resolver.mu.Unlock()
 	if _, err = resolver.Resolve(ctx, "role", 42, "en-US"); err != nil {
 		t.Fatal(err)
 	}
-	if len(resolver.names) != maxDisplayNames || len(resolver.order) != maxDisplayNames {
+	if len(resolver.names.values) != maxDisplayNames || len(resolver.names.order) != maxDisplayNames {
 		t.Fatal("unbounded cache")
 	}
 	resolver.db.Close()
@@ -95,7 +108,7 @@ func TestDisplayResolverMasterLocales(t *testing.T) {
 		for _, locale := range []string{"zh-TW", "zh-CN", "en-US", "ja-JP", "ko-KR"} {
 			var expected string
 			err := resolver.db.QueryRow("SELECT name FROM "+table+" WHERE id=? AND locale=?", raw, locale).Scan(&expected)
-			if err == sql.ErrNoRows || expected == "" {
+			if err == sql.ErrNoRows || !masterOfficialText(expected) {
 				if err := resolver.db.QueryRow("SELECT name FROM "+table+" WHERE id=? AND locale='en-US'", raw).Scan(&expected); err != nil {
 					t.Fatal(err)
 				}

@@ -18,18 +18,19 @@ import (
 // HistoryCareerQuery is the career query of the view.
 type HistoryCareerQuery struct {
 	history.CareerQuery
-	// Modes are mode keys ("open_world" or "category:" and the name); Stages are instance IDs.
+	// Modes are mode keys ("open_world", "category:" and the name, or "content:" and the system); Stages are instance IDs.
 	Modes  []string `json:"modes,omitempty"`
 	Stages []uint64 `json:"stages,omitempty"`
 }
 
 type careerRecordJSON struct {
 	history.CareerRecord
-	RoleName  *historyName `json:"roleName,omitempty"`
-	ElementID uint64       `json:"elementId,omitempty"`
-	SkillName *historyName `json:"skillName,omitempty"`
-	Mode      historyMode  `json:"mode"`
-	Stage     historyName  `json:"stage"`
+	RoleName  *historyName    `json:"roleName,omitempty"`
+	ElementID uint64          `json:"elementId,omitempty"`
+	SkillName *historyName    `json:"skillName,omitempty"`
+	Mode      historyMode     `json:"mode"`
+	Stage     historyName     `json:"stage"`
+	Content   *historyContent `json:"content,omitempty"`
 }
 
 type careerRoleJSON struct {
@@ -60,6 +61,7 @@ type careerPlaceJSON struct {
 	InstanceID uint64            `json:"instanceId,omitempty"`
 	Mode       historyMode       `json:"mode"`
 	Stage      historyName       `json:"stage"`
+	Content    *historyContent   `json:"content,omitempty"`
 	Encounters int               `json:"encounters"`
 	Counted    int               `json:"counted"`
 	Damage     int64             `json:"damage"`
@@ -132,17 +134,16 @@ func (c *careerNames) element(role uint64) uint64 {
 	return element
 }
 
-func (c *careerNames) place(instance uint64) (historyMode, historyName) {
+func (c *careerNames) place(instance uint64) instanceNames {
 	if instance == 0 {
-		return historyMode{Status: "UNKNOWN"}, historyName{Status: "UNKNOWN"}
+		return instanceNames{mode: historyMode{Status: "UNKNOWN"}, stage: historyName{Status: "UNKNOWN"}}
 	}
 	known, ok := c.instances[instance]
 	if !ok {
-		known = instanceNames{mode: c.names.mode(instance, false), stage: c.names.stage(instance, false)}
-		known.modeKey = modeKey(known.mode)
+		known = c.names.instanceNames(instance)
 		c.instances[instance] = known
 	}
-	return known.mode, known.stage
+	return known
 }
 
 func (c *careerNames) record(record *history.CareerRecord) *careerRecordJSON {
@@ -158,7 +159,8 @@ func (c *careerNames) record(record *history.CareerRecord) *careerRecordJSON {
 		name := c.skillName(record)
 		out.SkillName = &name
 	}
-	out.Mode, out.Stage = c.place(record.Instance)
+	place := c.place(record.Instance)
+	out.Mode, out.Stage, out.Content = place.mode, place.stage, place.content
 	return out
 }
 
@@ -215,10 +217,11 @@ func (b *Bridge) HistoryCareer(query HistoryCareerQuery, zoneName string) (json.
 	stages := make([]careerPlaceJSON, 0, len(view.Instances))
 	modes := map[string]*careerPlaceJSON{}
 	for _, instance := range view.Instances {
-		mode, stage := c.place(instance.Instance)
+		place := c.place(instance.Instance)
+		mode := place.mode
 		best := c.record(instance.BestDPS)
-		stages = append(stages, careerPlaceJSON{Key: modeKey(mode), InstanceID: instance.Instance, Mode: mode, Stage: stage, Encounters: instance.Encounters, Counted: instance.Counted, Damage: instance.Damage, LowerBound: instance.DamageLowerBound, BestDPS: best})
-		key := modeKey(mode)
+		stages = append(stages, careerPlaceJSON{Key: place.modeKey, InstanceID: instance.Instance, Mode: mode, Stage: place.stage, Content: place.content, Encounters: instance.Encounters, Counted: instance.Counted, Damage: instance.Damage, LowerBound: instance.DamageLowerBound, BestDPS: best})
+		key := place.modeKey
 		if key == "" {
 			key = "unknown"
 		}
@@ -249,7 +252,7 @@ func (b *Bridge) HistoryCareer(query HistoryCareerQuery, zoneName string) (json.
 	filterModes := map[string]historyModeFacetJSON{}
 	filterStages := make([]historyStageFacetJSON, 0, len(instances))
 	for id, known := range instances {
-		filterStages = append(filterStages, historyStageFacetJSON{InstanceID: id, Name: known.stage, Count: probe.Facets.Instances[id]})
+		filterStages = append(filterStages, historyStageFacetJSON{InstanceID: id, Name: known.stage, Content: known.content, Count: probe.Facets.Instances[id]})
 		if known.modeKey == "" {
 			continue
 		}

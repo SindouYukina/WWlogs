@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "r
 import { useTranslation } from "react-i18next"
 import { ActivityHeatmap, Button, Card, CharacterAvatar, Icon, Reveal, Segmented, Select, ThemeBackdrop, Tooltip, type HeatmapDay, type ThemeId } from "@/design"
 import { elementColor, useFormatters } from "@/lib/format"
-import { dateOfDay, dayNumber, type HistoryIndicator, type HistoryMode, type HistoryName } from "@/lib/history"
+import { dateOfDay, dayNumber, modeText, stageText, type HistoryIndicator } from "@/lib/history"
 import { careerLibraryQuery, careerPresets, careerStateQuery, maxCalendarDays, rangeHeatmapLayout, type CareerPlace, type CareerPreset, type CareerRecord, type CareerRole, type CareerState, type HistoryCareer } from "@/lib/history-career"
 import { recordClasses, type HistoryIntent } from "@/lib/history-library"
 import { host } from "@/lib/host"
@@ -11,6 +11,7 @@ import { useSettledKey } from "@/lib/useSettledKey"
 import { StatCard } from "./DashboardView"
 import { LinkedName } from "./HistoryAnalysis"
 import { ClassChip } from "./HistoryLibrary"
+import { ModeName, StageName } from "./HistoryNames"
 import { HistoryIndicatorChip, statusNote, useDateFormats, ZoneNote } from "./HistoryView"
 import { HistoryRecovery } from "./HistoryRecovery"
 
@@ -52,17 +53,6 @@ function useCareerFormats() {
   }), [t, format])
 }
 
-/** A mode Go resolved: the open world is labelled here, a category is named by the Master. */
-function ModeText({ mode }: { mode: HistoryMode }) {
-  const { t } = useTranslation("history")
-  if (!mode.kind) return <span className="ww-history-unknown">{t("unidentified")}</span>
-  return <LinkedName name={{ name: mode.kind === "open_world" ? t("modeOpenWorld") : mode.name, status: mode.status }} fallback={t("unidentified")} title={t("correlatedNote")} />
-}
-
-function StageText({ stage, instanceId }: { stage: HistoryName; instanceId?: number }) {
-  const { t } = useTranslation("history")
-  return <LinkedName name={stage} fallback={t("unidentified")} id={instanceId} title={t("correlatedNote")} />
-}
 
 /** The avatars of the static roles behind a record, named from the career's own role list. */
 function RecordRoles({ roles, known }: { roles: readonly number[]; known: ReadonlyMap<number, CareerRole> }) {
@@ -94,8 +84,8 @@ function RecordRow({ kind, record, known, onOpen }: { kind: RecordKind; record: 
     </span>
     <span className="ww-career-record-where">
       <span className="ww-num">{record.start.date} {record.start.clock}</span>
-      <span><ModeText mode={record.mode} /></span>
-      {record.instanceId !== undefined && <span><StageText stage={record.stage} instanceId={record.instanceId} /></span>}
+      <span><ModeName mode={record.mode} /></span>
+      {record.instanceId !== undefined && <span><StageName name={record.stage} content={record.content} instanceId={record.instanceId} /></span>}
       <span className="ww-history-version">{record.gameVersion || t("library.versionUnknown")}</span>
     </span>
   </button>
@@ -192,12 +182,12 @@ function PlaceTable({ places, kind, onOpen, onRecord }: { places: readonly Caree
     <tbody>{places.map(place => {
       // A group of instances without a known mode has no filter to open.
       const openable = kind === "stage" ? place.instanceId !== undefined : place.key !== "unknown" && place.key !== ""
-      const name = kind === "mode" ? <ModeText mode={place.mode} /> : <StageText stage={place.stage} instanceId={place.instanceId} />
+      const name = kind === "mode" ? <ModeName mode={place.mode} /> : <StageName name={place.stage} content={place.content} instanceId={place.instanceId} />
       return <tr key={`${place.key}-${place.instanceId ?? ""}`} className={openable ? "ww-history-row" : undefined} tabIndex={openable ? 0 : undefined} role={openable ? "button" : undefined}
         data-key={place.key} data-instance-id={place.instanceId} aria-label={openable ? t("career.placeOpen") : undefined}
         onClick={openable ? () => onOpen(place) : undefined} onKeyDown={openable ? event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onOpen(place) } } : undefined}>
         <td>{name}</td>
-        {kind === "stage" && <td><ModeText mode={place.mode} /></td>}
+        {kind === "stage" && <td><ModeName mode={place.mode} /></td>}
         <td className="ww-num">{format.integer(place.encounters)}</td>
         <td className="ww-num">{format.integer(place.counted)}</td>
         <td className="ww-num">{place.counted > 0 ? formats.damage(place.damage, place.damageLowerBound) : "—"}</td>
@@ -283,8 +273,8 @@ export function CareerView({ theme, refreshKey, indicator, state, onState, onOpe
   const any = { value: "", label: t("library.any") }
   const presetOptions = useMemo(() => careerPresets.map(preset => ({ value: preset, label: t(`career.range.${preset}`) })), [i18n.language])
   const versionOptions = useMemo(() => [any, ...(career?.versions ?? []).map(version => ({ value: version, label: version }))], [career, i18n.language])
-  const modeOptions = useMemo(() => [any, ...(career?.filters.modes ?? []).map(mode => ({ value: mode.key, label: `${mode.kind === "open_world" ? t("modeOpenWorld") : mode.name} (${format.integer(mode.count)})` }))], [career, i18n.language])
-  const stageOptions = useMemo(() => [any, ...(career?.filters.stages ?? []).filter(stage => stage.name.name).map(stage => ({ value: String(stage.instanceId), label: `${stage.name.name} (${format.integer(stage.count)})` }))], [career, i18n.language])
+  const modeOptions = useMemo(() => [any, ...(career?.filters.modes ?? []).map(mode => ({ value: mode.key, label: `${modeText(mode, t)} (${format.integer(mode.count)})` }))], [career, i18n.language])
+  const stageOptions = useMemo(() => [any, ...(career?.filters.stages ?? []).flatMap(stage => { const label = stageText(stage.name, stage.content, t); return label ? [{ value: String(stage.instanceId), label: `${label} (${format.integer(stage.count)})` }] : [] })], [career, i18n.language])
   const trendOptions = useMemo(() => trendKinds.filter(kind => !roleTrend || kind !== "time").map(kind => ({ value: kind, label: t(`career.trend.${kind}`) })), [i18n.language, roleTrend])
   const trendRoleOptions = useMemo(() => [{ value: "0", label: t("career.trendAll") }, ...(career?.roles ?? []).map(role => ({ value: String(role.roleId), label: role.name.name ?? t("unknownRole", { ns: "common", id: role.roleId }) }))], [career, i18n.language])
 

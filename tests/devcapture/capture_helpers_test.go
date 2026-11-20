@@ -763,6 +763,13 @@ func completeMasterFixture(t testing.TB, path string) {
 					columns[i] = column(c)
 				}
 			}
+			if len(table.Key) > 0 {
+				key := make([]string, len(table.Key))
+				for i, column := range table.Key {
+					key[i] = quote(column)
+				}
+				columns = append(columns, "PRIMARY KEY ("+strings.Join(key, ", ")+")")
+			}
 			statement := "CREATE TABLE " + quote(table.Name) + " (" + strings.Join(columns, ", ") + ")"
 			if table.View {
 				statement = "CREATE VIEW " + quote(table.Name) + " AS SELECT " + strings.Join(columns, ", ") + " WHERE 0"
@@ -797,6 +804,16 @@ func completeMasterFixture(t testing.TB, path string) {
 				if _, err := db.Exec("ALTER TABLE " + quote(table.Name) + " ADD COLUMN " + column(c)); err != nil {
 					t.Fatal(err)
 				}
+			}
+		}
+		// A table the fixture created itself gets the declared key as a unique index (a second one is harmless).
+		if len(table.Key) > 0 {
+			key := make([]string, len(table.Key))
+			for i, column := range table.Key {
+				key[i] = quote(column)
+			}
+			if _, err := db.Exec("CREATE UNIQUE INDEX IF NOT EXISTS " + quote(table.Name+"_runtime_key") + " ON " + quote(table.Name) + " (" + strings.Join(key, ", ") + ")"); err != nil {
+				t.Fatal(err)
 			}
 		}
 	}

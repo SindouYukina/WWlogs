@@ -7,6 +7,7 @@ import { host } from "@/lib/host"
 import { StatusSkillName } from "./DashboardView"
 import { LinkedName } from "./HistoryAnalysis"
 import { ClassChip } from "./HistoryLibrary"
+import { ModeName, StageName } from "./HistoryNames"
 
 // The Encounter Comparison: two to four stored encounters side by side. Go reads each one as its History detail shows it,
 // lines contributors and skills up, states the conditions the encounters share and gives the changes from the first one;
@@ -50,14 +51,13 @@ function ValueCell({ value, format, field }: { value: CompareValue; format: (val
 
 function EncounterHead({ encounter, index, onOpen, onRemove }: { encounter: CompareEncounter; index: number; onOpen: () => void; onRemove: () => void }) {
   const { t } = useTranslation("history")
-  const mode = encounter.mode
   return <th className="ww-compare-head" data-encounter-id={encounter.id} data-class={encounter.class}>
     <div className="ww-compare-head-line"><span className="ww-num ww-compare-time">{encounter.localDate} {encounter.start.clock}</span>{index === 0 && <Chip tone="neutral">{t("compare.base")}</Chip>}</div>
     <div className="ww-compare-head-line ww-history-note">
       <span className="ww-history-version">{encounter.gameVersion || t("library.versionUnknown")}</span>
-      <span>{!encounter.scene.known || !mode?.kind ? t("unidentified") : mode.kind === "open_world" ? t("modeOpenWorld") : mode.name}</span>
+      <ModeName mode={encounter.mode} known={encounter.scene.known} />
     </div>
-    <div className="ww-compare-head-line ww-history-note"><LinkedName name={encounter.sceneName} fallback={t("unidentified")} id={encounter.scene.instanceId} title={t("correlatedNote")} /></div>
+    <div className="ww-compare-head-line ww-history-note"><StageName name={encounter.sceneName} content={encounter.content} instanceId={encounter.scene.instanceId} known={encounter.scene.known} /></div>
     <div className="ww-compare-head-line"><ClassChip value={encounter.class} /></div>
     <div className="ww-compare-head-line">
       <Button size="sm" variant="ghost" data-field="compare-open" onClick={onOpen}>{t("compare.open")}</Button>

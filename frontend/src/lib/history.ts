@@ -71,11 +71,74 @@ export interface HistoryName {
   status: "VERIFIED" | "CORRELATED" | "UNKNOWN"
 }
 
-/** The kind of play of an encounter: an Adventure Guide category named by the Master, or the open world, which the UI labels. */
+/**
+ * The kind of play of an encounter: an Adventure Guide category named by the Master, the open world, or a content system the
+ * game gives no system name (system), which the UI labels with a WWlogs classification and never as a game name.
+ */
 export interface HistoryMode {
-  kind?: "open_world" | "category"
+  kind?: "open_world" | "category" | "content_system"
   name?: string
   status: "VERIFIED" | "CORRELATED" | "UNKNOWN"
+  /** The content system that gave the mode. */
+  system?: string
+  /** Why a content system mode has no game name: none exists, it is not decided yet, or none in this language or English. */
+  nameStatus?: "NO_OFFICIAL_NAME" | "UNRESOLVED" | "NAME_MISSING"
+}
+
+/** One dimension of the content Go read for an encounter's instance (Go historyContentLayer). */
+export interface HistoryContentLayer {
+  dimension: "activity" | "season" | "cycle" | "series" | "stage" | "difficulty" | "mode" | "role"
+  /**
+   * OFFICIAL with its name; NO_OFFICIAL_NAME (the game names it nowhere); UNRESOLVED (not known yet); NAME_MISSING (no name in
+   * this language or English); RUNTIME_DEPENDENT (the encounter could be any of candidates, and nothing stored says which).
+   */
+  state: "OFFICIAL" | "NO_OFFICIAL_NAME" | "UNRESOLVED" | "NAME_MISSING" | "RUNTIME_DEPENDENT"
+  name?: string
+  status?: "VERIFIED" | "CORRELATED"
+  candidates?: number
+}
+
+/** The content Go read for an encounter's instance, when its content system gave the mode. */
+export interface HistoryContent {
+  system: string
+  layers: HistoryContentLayer[]
+}
+
+/** The content layers the UI shows: the named ones, and the ones whose value the History cannot choose. */
+export function shownContentLayers(content: HistoryContent | undefined): HistoryContentLayer[] {
+  return (content?.layers ?? []).filter(layer => (layer.state === "OFFICIAL" && !!layer.name) || layer.state === "RUNTIME_DEPENDENT")
+}
+
+/** The named content layers, which identify an instance that has no stage name of its own. */
+export function namedContentLayers(content: HistoryContent | undefined): HistoryContentLayer[] {
+  return (content?.layers ?? []).filter(layer => layer.state === "OFFICIAL" && !!layer.name)
+}
+
+type Translate = (key: string, options?: Record<string, unknown>) => string
+
+/** The text of a mode: the Master's category name, or the UI label of the open world or of a content system. */
+export function modeText(mode: HistoryMode | undefined, t: Translate): string | undefined {
+  if (!mode?.kind) return undefined
+  if (mode.kind === "open_world") return t("modeOpenWorld")
+  if (mode.kind === "content_system") return t(`contentSystem.${mode.system ?? ""}`, { defaultValue: t("contentSystemOther") })
+  return mode.name
+}
+
+/** One content layer as text: its dimension and name, or its dimension and how many values the History cannot choose from. */
+export function contentLayerText(layer: HistoryContentLayer, t: Translate): string {
+  const label = t(`contentLayer.${layer.dimension}`)
+  if (layer.state === "RUNTIME_DEPENDENT") return t("contentLayerOpen", { label, n: layer.candidates ?? 0 })
+  return t("contentLayerValue", { label, name: layer.name ?? "" })
+}
+
+/**
+ * The stage text of an instance: its own stage name, else its named content layers, each labelled with its dimension so
+ * that no other layer reads as the stage; undefined when neither exists.
+ */
+export function stageText(name: HistoryName, content: HistoryContent | undefined, t: Translate): string | undefined {
+  if (name.name) return name.name
+  const layers = namedContentLayers(content)
+  return layers.length ? layers.map(layer => contentLayerText(layer, t)).join(" · ") : undefined
 }
 
 export type HistoryEncounterState = "open" | "finished" | "abandoned"
@@ -107,6 +170,8 @@ export interface HistoryEncounterSummary {
   enemies: number
   sceneName: HistoryName
   mode: HistoryMode
+  /** The content of the encounter's instance, when its content system gave the mode. */
+  content?: HistoryContent
   mainEnemyName: HistoryName
   /** Why the record is incomplete or unfinished: entries_lost, application_exit, recording_disabled or not_finished. */
   incompleteReason?: string
