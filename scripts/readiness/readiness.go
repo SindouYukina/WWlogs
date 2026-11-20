@@ -3,10 +3,14 @@
 // Go decisions to what the Overlay and History show.
 //
 // It is build and verification tooling: no product package imports it, and it reads only what its Inputs name. Tracked
-// inputs (the source tree, the Master, the image manifest) are always read. Private research inputs (the client protocol
-// schema, the client's image references) and run evidence (scripts/verify.ps1 results, Golden coverage, the History
-// replay summary, the owner's Live acceptance) are optional: a check whose input is missing is UNVERIFIED, never PASS, and
-// an UNVERIFIED mandatory check keeps the version from STATIC_READY.
+// inputs (the source tree, the Master, the image manifest) are always read. Run evidence (scripts/verify.ps1 results,
+// Golden coverage, the History replay summary, the owner's Live acceptance) is optional: a check whose input is missing is
+// UNVERIFIED, never PASS, and an UNVERIFIED mandatory check keeps the version from STATIC_READY.
+//
+// Research checks compare the Master and the image pack with the maintainer's private research inputs. The tracked gate
+// declares each one, mandatory, at its place in the report; their implementation is private research tooling, a
+// ResearchExtension compiled into this package by the maintainer's own overlay. Without one every research check is
+// UNVERIFIED, so a gate built from the tracked tree alone never reports STATIC_READY.
 //
 // The checks ask the product itself wherever the product decides: effect HUD eligibility comes from
 // capture.MasterData.EffectDefinition (the definition the Overlay and History both use) and an instance's mode from
@@ -65,7 +69,7 @@ var Domains = []struct {
 // Input kinds say what a check reads.
 const (
 	KindStatic   = "static"   // tracked repository inputs only
-	KindResearch = "research" // a private research input named by Inputs
+	KindResearch = "research" // a private research input, read by a research extension
 	KindEvidence = "evidence" // results of a verification run named by Inputs
 	KindLive     = "live"     // the owner's Live acceptance record
 )
@@ -166,13 +170,12 @@ type Inputs struct {
 	// GoldenRegistry defaults to Root/tests/capture/golden_registry.json.
 	GoldenRegistry string
 
-	// Research inputs (private, optional).
-	ProtocolSchema   string
-	ClientReferences string
-	// ClientContent is the client content inventory (client_content_inventory.py); master.client-content compares it.
-	ClientContent string
-	// ClientImpact is the client update impact report (hotfix_impact.py); verification.client-impact reads it.
-	ClientImpact string
+	// ResearchInputs is the maintainer's private research inputs file (optional). The tracked gate never reads it; it
+	// passes it to the research extensions.
+	ResearchInputs string
+	// Research are the research extensions that run the research checks; nil means the ones compiled into this package
+	// (none in the tracked tree).
+	Research []ResearchExtension
 
 	// Evidence of a verification run (optional).
 	VerifyResults  string
@@ -219,12 +222,13 @@ func (in *Inputs) defaults() {
 
 // gate carries one run's shared state.
 type gate struct {
-	in       Inputs
-	report   *Report
-	checks   map[string]*Check
-	source   *protocolSource
-	manifest *manifestFile
-	master   *masterView
+	in         Inputs
+	report     *Report
+	checks     map[string]*Check
+	source     *protocolSource
+	manifest   *manifestFile
+	master     *masterView
+	extensions []ResearchExtension
 }
 
 func (g *gate) check(id string, domain Domain, title, kind string, mandatory bool) *Check {
@@ -234,19 +238,84 @@ func (g *gate) check(id string, domain Domain, title, kind string, mandatory boo
 	return c
 }
 
+// A ResearchExtension runs research checks (see the package comment). Titles and Checks are keyed by the IDs of the
+// research checks the gate declares: Titles replaces a declared title, Checks runs the check once the data it needs is
+// read. Extra declares and runs the extension's further checks after every tracked check.
+type ResearchExtension struct {
+	Name   string
+	Titles map[string]string
+	Checks map[string]func(run *ResearchRun, c *Check)
+	Extra  func(run *ResearchRun)
+}
+
+// ResearchRun is one gate run as a research extension sees it.
+type ResearchRun struct {
+	// Inputs is the private research inputs file the caller named, or "".
+	Inputs string
+	g      *gate
+}
+
+// Check declares a further mandatory check of the extension; it passes unless the extension records otherwise.
+func (r *ResearchRun) Check(id string, domain Domain, title, kind string) *Check {
+	return r.g.check(id, domain, title, kind, true)
+}
+
+// registeredResearch are the research extensions compiled into this package. The tracked tree registers none.
+var registeredResearch []ResearchExtension
+
+// registerResearch adds a research extension compiled into this package; the extension calls it from its init.
+func registerResearch(extension ResearchExtension) {
+	registeredResearch = append(registeredResearch, extension)
+}
+
+// researchCheck declares a mandatory research check at its place in the report.
+func (g *gate) researchCheck(id string, domain Domain, title string) *Check {
+	for _, extension := range g.extensions {
+		if own := extension.Titles[id]; own != "" {
+			title = own
+			break
+		}
+	}
+	return g.check(id, domain, title, KindResearch, true)
+}
+
+// research runs a declared research check with the extension that implements it. Without one the check stays
+// UNVERIFIED: the tracked gate cannot decide it.
+func (g *gate) research(c *Check) {
+	for _, extension := range g.extensions {
+		if run := extension.Checks[c.ID]; run != nil {
+			run(&ResearchRun{Inputs: g.in.ResearchInputs, g: g}, c)
+			return
+		}
+	}
+	reason := "a check of the maintainer's private research inputs: no research extension that implements it is compiled into this gate"
+	if g.in.ResearchInputs != "" {
+		reason += " (the research inputs file was not read)"
+	}
+	c.unverified(reason)
+}
+
 // Run executes every check and returns the report. Only an unusable Root is an error; everything else is a check result.
 func Run(in Inputs) (*Report, error) {
 	if in.Root == "" {
 		return nil, fmt.Errorf("readiness: repository root is required")
 	}
 	in.defaults()
-	g := &gate{in: in, report: &Report{Generated: in.Now().UTC()}, checks: map[string]*Check{}}
+	g := &gate{in: in, report: &Report{Generated: in.Now().UTC()}, checks: map[string]*Check{}, extensions: in.Research}
+	if g.extensions == nil {
+		g.extensions = registeredResearch
+	}
 	g.protocolChecks()
-	g.clientImpactCheck()
+	g.research(g.researchCheck("verification.client-impact", DomainVerification, "The client update was compared with the client the product decodes (private research check)"))
 	g.assetChecks()
 	g.masterChecks()
 	g.runtimeChecks()
 	g.evidenceChecks()
+	for _, extension := range g.extensions {
+		if extension.Extra != nil {
+			extension.Extra(&ResearchRun{Inputs: g.in.ResearchInputs, g: g})
+		}
+	}
 	if g.master != nil {
 		g.master.close()
 	}

@@ -167,7 +167,7 @@ func TestTrackedMasterHUDCuesOfKnownEffects(t *testing.T) {
 		10010000: EffectPolarityDebuff, 10041000: EffectPolarityDebuff, 10061000: EffectPolarityDebuff, 9100001202: EffectPolarityDebuff,
 		// Role statuses the HUD draws with their icon and without an arrow: Xin's type-24 statuses, and Lily's (role 1512)
 		// four Global 3.8.9 statuses, whose cues 1512623002..1512623005 (T_IconLiliBuff02..05) are type 2 with an empty
-		// Parameters vector in the 3.8.9 hotfix db_buffeffect.db, read with the shipped GameplayCue.js slots.
+		// Parameters vector in the Global 3.8.9 client data.
 		1311400007: EffectPolarityNeutral, 1311400008: EffectPolarityNeutral,
 		1512310003: EffectPolarityNeutral, 1512800104: EffectPolarityNeutral, 2002205502: EffectPolarityNeutral, 1512999015: EffectPolarityNeutral,
 	} {

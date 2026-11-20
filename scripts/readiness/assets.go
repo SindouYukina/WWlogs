@@ -6,11 +6,9 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"sort"
-	"strings"
 )
 
-// The assets domain checks the image pack against itself, against the game version and, with the research input,
+// The assets domain checks the image pack against itself, against the game version and, through a research check,
 // against what the current client references. Which images each domain needs (role art, skill and buff icons) is
 // checked with the Master in characters and effects.
 
@@ -46,22 +44,10 @@ func readManifest(path string) (*manifestFile, error) {
 	return &manifest, nil
 }
 
-// clientReferences is the research input of PROCEDURE.md 5.2.
-type clientReferences struct {
-	Client     string   `json:"client"`
-	Resource   string   `json:"resource"`
-	Paths      []string `json:"paths"`
-	Exclusions []struct {
-		Path   string `json:"path"`
-		Source string `json:"source"`
-		Reason string `json:"reason"`
-	} `json:"exclusions"`
-}
-
 func (g *gate) assetChecks() {
 	integrity := g.check("assets.manifest-integrity", DomainAssets, "Every manifest image exists with its recorded SHA-256 and size; no unlisted image", KindStatic, true)
 	version := g.check("assets.manifest-version", DomainAssets, "The image pack belongs to the decoded game version", KindStatic, true)
-	references := g.check("assets.client-references", DomainAssets, "The pack holds exactly the images the current client references (explicit exclusions apart)", KindResearch, true)
+	references := g.researchCheck("assets.client-references", DomainAssets, "The image pack matches what the current client references (private research check)")
 
 	manifest, err := readManifest(g.in.ManifestPath)
 	if err != nil {
@@ -109,55 +95,5 @@ func (g *gate) assetChecks() {
 		version.Evidence = append(version.Evidence, fmt.Sprintf("pack %s resource %s, game version %s", manifest.Client, manifest.Resource, g.source.gameVersion))
 	}
 
-	g.clientReferenceCheck(references, manifest)
-}
-
-func (g *gate) clientReferenceCheck(c *Check, manifest *manifestFile) {
-	if g.in.ClientReferences == "" {
-		c.unverified("no client reference inventory was supplied (research input clientReferences; PROCEDURE.md S7)")
-		return
-	}
-	data, err := os.ReadFile(g.in.ClientReferences)
-	if err != nil {
-		c.unverified(fmt.Sprintf("the client reference inventory cannot be read: %v", err))
-		return
-	}
-	var refs clientReferences
-	if err := json.Unmarshal(data, &refs); err != nil {
-		c.fail("the client reference inventory cannot be parsed: %v", err)
-		return
-	}
-	if refs.Resource != manifest.Resource {
-		c.fail("the inventory describes resource %q, the pack %q", refs.Resource, manifest.Resource)
-	}
-	referenced := map[string]bool{}
-	present := 0
-	for _, path := range refs.Paths {
-		referenced[path] = true
-		if manifest.has(path) {
-			present++
-		} else {
-			c.fail("%s is referenced by the client but missing from the pack", path)
-		}
-	}
-	var unreferenced []string
-	for _, entry := range manifest.Entries {
-		if !referenced[entry.Path] {
-			unreferenced = append(unreferenced, entry.Path)
-		}
-	}
-	sort.Strings(unreferenced)
-	for _, path := range unreferenced {
-		c.fail("%s is in the pack but no longer referenced by the client (Remove or Unresolved decision missing)", path)
-	}
-	reasons := map[string]int{}
-	for _, exclusion := range refs.Exclusions {
-		reason := exclusion.Reason
-		if i := strings.Index(reason, ":"); i > 0 {
-			reason = reason[:i]
-		}
-		reasons[reason]++
-	}
-	c.Coverage = &Coverage{Passed: present, Total: len(refs.Paths), Denominator: "client-referenced images the product requests"}
-	c.Evidence = append(c.Evidence, fmt.Sprintf("inventory %s resource %s: %d paths, %d explicit exclusions %v", refs.Client, refs.Resource, len(refs.Paths), len(refs.Exclusions), reasons))
+	g.research(references)
 }

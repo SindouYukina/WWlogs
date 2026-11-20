@@ -1,7 +1,6 @@
 package readiness
 
 import (
-	"encoding/json"
 	"fmt"
 	"io/fs"
 	"os"
@@ -117,7 +116,7 @@ func productSources(root string, dirs []string, exts map[string]bool) ([]string,
 func (g *gate) protocolChecks() {
 	single := g.check("protocol.single-native-decoder", DomainProtocol, "One generated native decoder table; no retired protocol layer", KindStatic, true)
 	format := g.check("protocol.version-format", DomainProtocol, "The decoded game version is one major.minor and matches the protocol's client", KindStatic, true)
-	keys := g.check("protocol.schema-keys", DomainProtocol, "Every generated wire number resolves to the same number in the current client schema", KindResearch, true)
+	keys := g.researchCheck("protocol.schema-keys", DomainProtocol, "The generated wire numbers agree with the current client (private research check)")
 
 	text, err := readText(filepath.Join(g.in.Root, filepath.FromSlash(numbersFile)))
 	if err != nil {
@@ -190,7 +189,7 @@ func (g *gate) protocolChecks() {
 		format.Evidence = append(format.Evidence, fmt.Sprintf("game version %s, protocol client %s", src.gameVersion, src.protocolClient))
 	}
 
-	g.schemaKeys(keys, src)
+	g.research(keys)
 }
 
 var reVersion = regexp.MustCompile(`\d+\.\d+(?:\.\d+)*`)
@@ -202,75 +201,6 @@ func lastVersionIn(label string) string {
 		return ""
 	}
 	return all[len(all)-1]
-}
-
-// clientSchema is the minified schema protojs_schema.py writes from the client's Protocol.js and NetDefine.js.
-type clientSchema struct {
-	ProtocolSHA256  string `json:"protocolSha256"`
-	NetDefineSHA256 string `json:"netDefineSha256"`
-	// Messages maps a minified message name to its fields by number; Commands maps a command number to its message.
-	Messages map[string]map[string]schemaField `json:"messages"`
-	Commands map[string]string                 `json:"commands"`
-}
-
-type schemaField struct {
-	Name string `json:"name"`
-}
-
-func (g *gate) schemaKeys(c *Check, src *protocolSource) {
-	if g.in.ProtocolSchema == "" {
-		c.unverified("no client protocol schema was supplied (research input protocolSchema; PROCEDURE.md S2)")
-		return
-	}
-	data, err := os.ReadFile(g.in.ProtocolSchema)
-	if err != nil {
-		c.unverified(fmt.Sprintf("the client protocol schema cannot be read: %v", err))
-		return
-	}
-	var schema clientSchema
-	if err := json.Unmarshal(data, &schema); err != nil {
-		c.fail("the client protocol schema is not a protojs_schema.py schema: %v", err)
-		return
-	}
-	commands, messages := schema.Commands, schema.Messages
-	c.Evidence = append(c.Evidence, fmt.Sprintf("schema %s: %d messages, %d commands", filepath.Base(g.in.ProtocolSchema), len(messages), len(commands)))
-	if len(messages) == 0 || len(commands) == 0 {
-		c.fail("the client protocol schema lists no messages or commands")
-		return
-	}
-	if schema.ProtocolSHA256 != src.protocolSHA256 || schema.NetDefineSHA256 != src.netDefineSHA {
-		c.fail("the generated numbers come from Protocol.js %s / NetDefine.js %s, the schema from %s / %s: regenerate (PROCEDURE.md S3)",
-			short(src.protocolSHA256), short(src.netDefineSHA), short(schema.ProtocolSHA256), short(schema.NetDefineSHA256))
-	}
-	matched := 0
-	for _, constant := range src.constants {
-		number := strconv.Itoa(constant.value)
-		switch constant.kind {
-		case "command":
-			if commands[number] != constant.key {
-				c.fail("%s %s = %d: the client's command %d is %q, not %q", constant.file, constant.name, constant.value, constant.value, commands[number], constant.key)
-				continue
-			}
-		case "field":
-			dot := strings.LastIndex(constant.key, ".")
-			if dot <= 0 {
-				c.fail("%s %s: comment %q is not message.property", constant.file, constant.name, constant.key)
-				continue
-			}
-			message, property := constant.key[:dot], constant.key[dot+1:]
-			fields, ok := messages[message]
-			if !ok {
-				c.fail("%s %s: message %q is not in the client schema", constant.file, constant.name, message)
-				continue
-			}
-			if fields[number].Name != property {
-				c.fail("%s %s = %d: field %d of %s is %q, not %q", constant.file, constant.name, constant.value, constant.value, message, fields[number].Name, property)
-				continue
-			}
-		}
-		matched++
-	}
-	c.Coverage = &Coverage{Passed: matched, Total: len(src.constants), Denominator: "generated wire constants (product and test files)"}
 }
 
 func short(hash string) string {
