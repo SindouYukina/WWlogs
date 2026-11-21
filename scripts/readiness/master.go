@@ -474,7 +474,12 @@ func (g *gate) trialCheck(c *Check, m *masterView) {
 	ctx := context.Background()
 	resolved := 0
 	for _, t := range trials {
-		if got := resolver.StaticRole(ctx, t.trial); got != t.parent {
+		got, err := resolver.StaticRole(ctx, t.trial)
+		if err != nil {
+			c.fail("trial role %d cannot be resolved: %v", t.trial, err)
+			continue
+		}
+		if got != t.parent {
 			c.fail("trial role %d resolves to %d, its parent is %d", t.trial, got, t.parent)
 			continue
 		}

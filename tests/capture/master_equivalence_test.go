@@ -885,6 +885,14 @@ func masterDisplayAnswer(name DisplayName, err error) string {
 	return name.Status + "|" + name.Locale + "|" + name.Name
 }
 
+// masterIDAnswer is a StaticRole or RoleElement answer: the ID, or the error.
+func masterIDAnswer(id uint64, err error) string {
+	if err != nil {
+		return "error: " + err.Error()
+	}
+	return strconv.FormatUint(id, 10)
+}
+
 func masterModeAnswer(mode InstanceMode, err error) string {
 	if err != nil {
 		return "error: " + err.Error()
@@ -923,12 +931,12 @@ func compareMasterDisplay(oldResolver, newResolver *DisplayResolver, domains, pr
 		if k.kind == "role" {
 			for _, id := range ids {
 				checked["role-element"]++
-				if a, b := oldResolver.RoleElement(ctx, id), newResolver.RoleElement(ctx, id); a != b {
-					d.add(masterDifference{Layer: "display", Class: "role-element-changed", Object: "role", Key: strconv.FormatUint(id, 10), Old: strconv.FormatUint(a, 10), New: strconv.FormatUint(b, 10)})
+				if a, b := masterIDAnswer(oldResolver.RoleElement(ctx, id)), masterIDAnswer(newResolver.RoleElement(ctx, id)); a != b {
+					d.add(masterDifference{Layer: "display", Class: "role-element-changed", Object: "role", Key: strconv.FormatUint(id, 10), Old: a, New: b})
 				}
 				checked["static-role"]++
-				if a, b := oldResolver.StaticRole(ctx, id), newResolver.StaticRole(ctx, id); a != b {
-					d.add(masterDifference{Layer: "display", Class: "static-role-changed", Object: "role", Key: strconv.FormatUint(id, 10), Old: strconv.FormatUint(a, 10), New: strconv.FormatUint(b, 10)})
+				if a, b := masterIDAnswer(oldResolver.StaticRole(ctx, id)), masterIDAnswer(newResolver.StaticRole(ctx, id)); a != b {
+					d.add(masterDifference{Layer: "display", Class: "static-role-changed", Object: "role", Key: strconv.FormatUint(id, 10), Old: a, New: b})
 				}
 			}
 		}

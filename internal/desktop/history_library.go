@@ -1,7 +1,6 @@
 package desktop
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"sort"
@@ -107,17 +106,10 @@ func (n *nameProjection) instances(counts map[uint64]int) map[uint64]instanceNam
 }
 
 // staticRoles maps every runtime RoleId of a facet count to the role it shows as.
-func (b *Bridge) staticRoles(ctx context.Context, counts map[uint64]int) map[uint64]uint64 {
+func (n *nameProjection) staticRoles(counts map[uint64]int) map[uint64]uint64 {
 	out := make(map[uint64]uint64, len(counts))
-	resolver := b.projection.resolver
 	for id := range counts {
-		static := id
-		if resolver != nil {
-			if parent := resolver.StaticRole(ctx, id); parent != 0 {
-				static = parent
-			}
-		}
-		out[id] = static
+		out[id] = n.staticRole(id)
 	}
 	return out
 }
@@ -146,7 +138,7 @@ func (b *Bridge) HistoryLibrary(query HistoryLibraryQuery, zoneName string) (jso
 		return nil, err
 	}
 	instances := names.instances(base.Facets.Instances)
-	static := b.staticRoles(names.ctx, base.Facets.Roles)
+	static := names.staticRoles(base.Facets.Roles)
 	resolved := resolveLibraryFilters(query, instances, static, func(role uint64) string { return names.roleName(role).Name })
 	view, err := b.history.Library(names.ctx, resolved, zone.Location)
 	if err != nil && !errors.Is(err, history.ErrUnavailable) {
@@ -160,10 +152,12 @@ func (b *Bridge) HistoryLibrary(query HistoryLibraryQuery, zoneName string) (jso
 			if parent == 0 {
 				parent = role.RoleID
 			}
-			out.Roles = append(out.Roles, historyLibraryRoleJSON{RoleID: role.RoleID, StaticRoleID: parent, ElementID: b.roleElement(names.ctx, parent), Name: names.roleName(parent), Damage: role.Damage})
+			out.Roles = append(out.Roles, historyLibraryRoleJSON{RoleID: role.RoleID, StaticRoleID: parent, ElementID: names.element(parent), Name: names.roleName(parent), Damage: role.Damage})
 		}
 		entries = append(entries, out)
 	}
+	// The facets name roles too, so they are built before the failed-lookup check.
+	facets := libraryFacets(base.Facets, instances, static, names)
 	if names.err != nil {
 		return nil, names.err
 	}
@@ -174,7 +168,7 @@ func (b *Bridge) HistoryLibrary(query HistoryLibraryQuery, zoneName string) (jso
 		Offset     int                       `json:"offset"`
 		Encounters []historyLibraryEntryJSON `json:"encounters"`
 		Facets     any                       `json:"facets"`
-	}{b.history.Status(), zoneJSON(zone), view.Total, view.Offset, entries, libraryFacets(base.Facets, instances, static, names, b, names.ctx)})
+	}{b.history.Status(), zoneJSON(zone), view.Total, view.Offset, entries, facets})
 }
 
 // resolveLibraryFilters turns the Master-backed filters of a query into the stored IDs they select: instances by mode and
@@ -221,7 +215,7 @@ func resolveLibraryFilters(query HistoryLibraryQuery, instances map[uint64]insta
 	return resolved
 }
 
-func libraryFacets(facets history.LibraryFacets, instances map[uint64]instanceNames, static map[uint64]uint64, names *nameProjection, b *Bridge, ctx context.Context) any {
+func libraryFacets(facets history.LibraryFacets, instances map[uint64]instanceNames, static map[uint64]uint64, names *nameProjection) any {
 	modes := map[string]*historyModeFacetJSON{}
 	stages := make([]historyStageFacetJSON, 0, len(facets.Instances))
 	for id, count := range facets.Instances {
@@ -257,7 +251,7 @@ func libraryFacets(facets history.LibraryFacets, instances map[uint64]instanceNa
 	}
 	roles := make([]historyRoleFacetJSON, 0, len(roleCounts))
 	for role, count := range roleCounts {
-		roles = append(roles, historyRoleFacetJSON{RoleID: role, ElementID: b.roleElement(ctx, role), Name: names.roleName(role), Count: count})
+		roles = append(roles, historyRoleFacetJSON{RoleID: role, ElementID: names.element(role), Name: names.roleName(role), Count: count})
 	}
 	sort.Slice(roles, func(i, j int) bool {
 		if roles[i].Count != roles[j].Count {
@@ -275,13 +269,6 @@ func libraryFacets(facets history.LibraryFacets, instances map[uint64]instanceNa
 		FirstDate    string                  `json:"firstDate,omitempty"`
 		LastDate     string                  `json:"lastDate,omitempty"`
 	}{facets.GameVersions, facets.Classes, facets.Sources, modeList, stages, roles, facets.FirstDate, facets.LastDate}
-}
-
-func (b *Bridge) roleElement(ctx context.Context, role uint64) uint64 {
-	if b.projection.resolver == nil || role == 0 {
-		return 0
-	}
-	return b.projection.resolver.RoleElement(ctx, role)
 }
 
 func containsKey(values []string, value string) bool {
