@@ -106,3 +106,38 @@ test("a status row has its own key, which parses back to the role and its Damage
   assert.equal(statsRowKey({ contributor: "role-7-1409", skillId: 0 }), "role-7-1409:unassigned")
   assert.notEqual(statusRowKey("role-7-1409", 1001), skillRowKey("role-7-1409", 1001), "a status row never shares a key with a skill row")
 })
+
+// The analysis and the effect lanes are separate queries. With one shared failure flag, a later answer of the analysis (a
+// new range) cleared the failure of the lanes while the effect panels waited for lanes that were never coming, and a new
+// encounter opened on the previous encounter's failure.
+test("each analysis query keeps its own failure, and a new encounter starts without one", () => {
+  const view = source("frontend/src/views/HistoryAnalysis.tsx")
+  assert.match(view, /host\.historyAnalysis\(id, query\)\.then\(answer => \{ if \(current\) \{ setAnalysis\(answer\); setAnalysisFailed\(false\) \} \}\)\.catch\(\(\) => \{ if \(current\) setAnalysisFailed\(true\) \}\)/)
+  assert.match(view, /host\.historyEffects\(id, lanesQuery\)\.then\(answer => \{ if \(current\) \{ setLanes\(answer\); setLanesFailed\(false\) \} \}\)\.catch\(\(\) => \{ if \(current\) setLanesFailed\(true\) \}\)/)
+  const reset = view.match(/if \(scope !== id\) \{([\s\S]*?)\n\s*\}/)
+  assert.ok(reset, "the reset for a new encounter is found")
+  assert.match(reset[1], /setAnalysisFailed\(false\)/)
+  assert.match(reset[1], /setLanesFailed\(false\)/)
+  // The toolbar notes a failure whose older answer is still shown (lanes without an answer show it in place); a missing
+  // analysis shows its failure, not a loading note.
+  assert.match(view, /\{\(analysisFailed \|\| \(lanesFailed && lanes !== null\)\) && <p className="ww-history-note" data-tone="critical" role="alert">\{t\("loadFailed"\)\}<\/p>\}/)
+  assert.match(view, /if \(analysisFailed && !analysis\) return <Card className="ww-history-context"><p className="ww-history-note" data-tone="critical" role="alert">/)
+})
+
+test("a part of the analysis whose query failed shows the failure instead of loading", () => {
+  const view = source("frontend/src/views/HistoryAnalysis.tsx")
+  // No panel waits on missing effect lanes without asking whether their query failed: the timeline card, the precise lanes
+  // and the Effects tab all show the shared note, and the icon timeline stops showing itself as loading.
+  assert.doesNotMatch(view, /if \(!lanes\) return <p className="ww-dash-empty-note">/)
+  assert.doesNotMatch(view, /\{!lanes && <p className="ww-dash-empty-note">/)
+  assert.equal((view.match(/<Unanswered failed=\{lanesFailed\} \/>/g) ?? []).length, 3)
+  assert.match(view, /loading=\{\(!lanes && !lanesFailed\) \|\| !hitsReady\}/)
+  // The correlation and the hit list of a class are separate queries with their own failure.
+  assert.match(view, /\{!answer \? <Unanswered failed=\{answerFailed\} failure=\{t\("analysis\.correlation\.failed"\)\} \/>/)
+  assert.match(view, /\.catch\(\(\) => setListed\(previous => previous\?\.cls === cls \? \{ cls, page: null, failed: true \} : previous\)\)/)
+  assert.match(view, /\{!listed\.page \? <Unanswered failed=\{listed\.failed === true\} \/>/)
+  // The note itself: a failed query reads as a failure, never as loading.
+  const note = view.match(/function Unanswered\([\s\S]*?\n\}/)
+  assert.ok(note, "the note for an unanswered query is found")
+  assert.match(note[0], /return failed \? <p className="ww-history-note" data-tone="critical" role="alert"[^>]*>\{failure \?\? t\("loadFailed"\)\}<\/p>\s*: <p className="ww-dash-empty-note">\{t\("analysis\.loading"\)\}<\/p>/)
+})

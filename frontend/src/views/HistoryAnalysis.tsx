@@ -155,7 +155,10 @@ export function AnalysisWorkspace({ detail, timelineMode: mode, setTimelineMode:
   const [query, setQuery] = useState<AnalysisQuery>(fullQuery)
   const [analysis, setAnalysis] = useState<EncounterAnalysis | null>(null)
   const [lanes, setLanes] = useState<EffectLanesData | null>(null)
-  const [failed, setFailed] = useState(false)
+  // Each query keeps its own failure: a later answer of one never hides the failure of the other, and a part of the page
+  // whose query failed shows that failure instead of waiting for an answer that is not coming.
+  const [analysisFailed, setAnalysisFailed] = useState(false)
+  const [lanesFailed, setLanesFailed] = useState(false)
   const [tab, setTab] = useState<Tab>("skills")
   const [focus, setFocus] = useState<Focus>(null)
   // A new encounter starts from the whole fight with nothing selected.
@@ -166,16 +169,20 @@ export function AnalysisWorkspace({ detail, timelineMode: mode, setTimelineMode:
     setFocus(null)
     setAnalysis(null)
     setLanes(null)
+    setAnalysisFailed(false)
+    setLanesFailed(false)
   }
   useEffect(() => {
     let current = true
-    host.historyAnalysis(id, query).then(answer => { if (current) { setAnalysis(answer); setFailed(false) } }).catch(() => { if (current) setFailed(true) })
+    setAnalysisFailed(false)
+    host.historyAnalysis(id, query).then(answer => { if (current) { setAnalysis(answer); setAnalysisFailed(false) } }).catch(() => { if (current) setAnalysisFailed(true) })
     return () => { current = false }
   }, [id, query])
   const lanesQuery = useMemo(() => ({ ...fullQuery, contributor: query.contributor, enemy: query.enemy, effects: query.effects }), [query.contributor, query.enemy, query.effects])
   useEffect(() => {
     let current = true
-    host.historyEffects(id, lanesQuery).then(answer => { if (current) setLanes(answer) }).catch(() => { if (current) setFailed(true) })
+    setLanesFailed(false)
+    host.historyEffects(id, lanesQuery).then(answer => { if (current) { setLanes(answer); setLanesFailed(false) } }).catch(() => { if (current) setLanesFailed(true) })
     return () => { current = false }
   }, [id, lanesQuery])
   // The skill hits of the icon timeline, read beside the analysis and the lanes, once per encounter and filters: a range
@@ -224,7 +231,7 @@ export function AnalysisWorkspace({ detail, timelineMode: mode, setTimelineMode:
   const selectedRow = query.contributor ? rowByKey.get(query.contributor) : undefined
   const whoLabel = selectedRow ? nameOf(selectedRow) : a("team")
 
-  if (failed && !analysis) return <Card className="ww-history-context"><p className="ww-history-note" data-tone="critical" role="alert">{t("loadFailed")}</p></Card>
+  if (analysisFailed && !analysis) return <Card className="ww-history-context"><p className="ww-history-note" data-tone="critical" role="alert">{t("loadFailed")}</p></Card>
   if (!analysis) return <Card className="ww-history-context"><p className="ww-dash-empty-note">{a("loading")}</p></Card>
   if (analysis.state !== "ready") return <Card className="ww-history-context"><p className="ww-dash-empty-note" data-field="analysis-state" data-state={analysis.state}>{a(`state.${analysis.state}`)}</p></Card>
 
@@ -250,7 +257,7 @@ export function AnalysisWorkspace({ detail, timelineMode: mode, setTimelineMode:
           options={[{ value: "hud", label: a("scope.hud") }, { value: "all", label: a("scope.all") }]} /></div>
       </div>
       {!analysis.consistent && <p className="ww-history-note" data-tone="warn" data-field="analysis-inconsistent">{a("inconsistent")}</p>}
-      {failed && <p className="ww-history-note" data-tone="critical" role="alert">{t("loadFailed")}</p>}
+      {(analysisFailed || (lanesFailed && lanes !== null)) && <p className="ww-history-note" data-tone="critical" role="alert">{t("loadFailed")}</p>}
     </Card>
     <div className="ww-history-stats" data-field="analysis-cards">
       <StatCard index={0} hero icon="bolt" label={t("encounterDps", { ns: "common" })} field="analysis-dps" status={dps.status} value={usableDps(dps) ? dps.value : undefined} format={dpsFormat} note={cardNote} scope={cardScope} stale={false} numberMode="ease" />
@@ -259,7 +266,7 @@ export function AnalysisWorkspace({ detail, timelineMode: mode, setTimelineMode:
       <StatCard index={3} icon="heal" label={t("healing", { ns: "dashboard" })} field="analysis-healing" status={healing.status} value={healingShown ? healing.reported : undefined} format={healingFormat}
         note={healingShown ? t("healingNote", { ns: "dashboard", value: healingFormat(healing.effective) }) : healingReason === "enemy_filter" ? a("healingNoEnemy") : t("healingUnavailable", { ns: "dashboard" })} scope={cardScope} stale={false} numberMode="ease" />
     </div>
-    <TimelineCard detail={detail} analysis={analysis} lanes={lanes} lines={lines} query={query} setQuery={setQuery} setContributor={setContributor} selected={selected} onRange={onRange} resetRange={resetRange}
+    <TimelineCard detail={detail} analysis={analysis} lanes={lanes} lanesFailed={lanesFailed} lines={lines} query={query} setQuery={setQuery} setContributor={setContributor} selected={selected} onRange={onRange} resetRange={resetRange}
       focus={focus} setFocus={setFocus} actorName={actorName} enemyLabel={enemyLabel} reveal={reveal} replay={replay} mode={mode} setMode={setMode} hits={hitsReady ? hits : null} />
     <Card className="ww-analysis-tabs">
       <div className="ww-analysis-tabs-head">
@@ -268,7 +275,7 @@ export function AnalysisWorkspace({ detail, timelineMode: mode, setTimelineMode:
       </div>
       <ContentSwitch contentKey={tab}>
         {tab === "skills" && <SkillsTab analysis={analysis} encounter={encounter} rows={rows} query={query} setQuery={setQuery} setContributor={setContributor} range={range} entering={entering} />}
-        {tab === "effects" && <EffectsTab encounterId={id} lanes={lanes} analysis={analysis} focus={focus} setFocus={setFocus} actorName={actorName} enemyLabel={enemyLabel} range={range} />}
+        {tab === "effects" && <EffectsTab encounterId={id} lanes={lanes} lanesFailed={lanesFailed} analysis={analysis} focus={focus} setFocus={setFocus} actorName={actorName} enemyLabel={enemyLabel} range={range} />}
         {tab === "events" && <EventsTab id={id} query={query} analysis={analysis} lanes={lanes} actorName={actorName} enemyLabel={enemyLabel} rowByKey={rowByKey} />}
       </ContentSwitch>
     </Card>
@@ -342,6 +349,8 @@ interface TimelineCardProps {
   detail: HistoryEncounterDetail
   analysis: EncounterAnalysis
   lanes: EffectLanesData | null
+  /** The effect lanes could not be read; with no lanes this shows the failure instead of a loading note. */
+  lanesFailed: boolean
   lines: TimelineLine[]
   query: AnalysisQuery
   setQuery: (update: (query: AnalysisQuery) => AnalysisQuery) => void
@@ -370,7 +379,7 @@ interface TimelineCardProps {
  * encounter, as the reset button does, keeping the filters and the window. Switching the presentation keeps the range, the
  * filters, the window and the loaded data.
  */
-const TimelineCard = memo(function TimelineCard({ detail, analysis, lanes, lines, query, setQuery, setContributor, selected, onRange, resetRange, focus, setFocus, actorName, enemyLabel, reveal, replay, mode, setMode, hits }: TimelineCardProps) {
+const TimelineCard = memo(function TimelineCard({ detail, analysis, lanes, lanesFailed, lines, query, setQuery, setContributor, selected, onRange, resetRange, focus, setFocus, actorName, enemyLabel, reveal, replay, mode, setMode, hits }: TimelineCardProps) {
   const { t } = useTranslation(["history", "dashboard", "common"])
   const a = (key: string, options?: Record<string, unknown>) => t(`analysis.${key}`, { ns: "history", ...options })
   const format = useFormatters()
@@ -537,16 +546,16 @@ const TimelineCard = memo(function TimelineCard({ detail, analysis, lanes, lines
           {hitsReady && hits?.failed && <p className="ww-history-note" data-tone="critical" role="alert">{a("icon.hitsFailed")}</p>}
           {hitAnswer?.truncated && <p className="ww-history-note" data-tone="warn" data-field="hits-truncated">{a("icon.hitsTruncated", { listed: format.integer(hitAnswer.listed), total: format.integer(hitAnswer.total) })}</p>}
           {(hitAnswer?.untimed ?? 0) > 0 && <p className="ww-history-note" data-field="hits-untimed">{a("icon.untimed", { n: format.integer(hitAnswer!.untimed) })}</p>}
-          {!lanes && <p className="ww-dash-empty-note">{a("loading")}</p>}
+          {!lanes && <Unanswered failed={lanesFailed} />}
           <IconTimeline durationMs={durationMs} view={view} groups={groups} gaps={analysis.gaps} range={selected} sync={sync} selected={iconSelected} onPick={onPick} reveal={reveal}
-            describeCluster={describeCluster} describeSegment={describeSegment} labels={{ aria: a("icon.aria"), expand: a("icon.expand"), collapse: a("icon.collapse"), empty: a("icon.empty") }} loading={!lanes || !hitsReady} />
+            describeCluster={describeCluster} describeSegment={describeSegment} labels={{ aria: a("icon.aria"), expand: a("icon.expand"), collapse: a("icon.collapse"), empty: a("icon.empty") }} loading={(!lanes && !lanesFailed) || !hitsReady} />
           {lanes && <EffectNotes lanes={lanes} />}
           {pickedHits && pick?.kind === "hits" && <HitDetail cluster={pick.cluster} track={pickedHits.track} rows={pickedHits.rows} seriesName={seriesName} query={query} setQuery={setQuery} onClose={() => onPick(null)} />}
           {focusedEffect && lanes && <EffectDetail encounterId={detail.summary.id} lanes={lanes} analysis={analysis} rowKey={focusedEffect} actorName={actorName} enemyLabel={enemyLabel} segment={pickedSegment} gaps={analysis.gaps} />}
         </div>
         : <>
           <div className="ww-analysis-lanes-head"><h4>{a("lanesTitle")}</h4></div>
-          <TimelineLanes encounterId={detail.summary.id} lanes={lanes} analysis={analysis} range={selected} focus={focus} setFocus={setFocus} actorName={actorName} enemyLabel={enemyLabel} view={view} sync={sync} />
+          <TimelineLanes encounterId={detail.summary.id} lanes={lanes} lanesFailed={lanesFailed} analysis={analysis} range={selected} focus={focus} setFocus={setFocus} actorName={actorName} enemyLabel={enemyLabel} view={view} sync={sync} />
         </>}
     </div>
   </div></Card>
@@ -586,6 +595,8 @@ function HitDetail({ cluster, track, rows, seriesName, query, setQuery, onClose 
 interface EffectTabProps {
   encounterId: number
   lanes: EffectLanesData | null
+  /** The effect lanes could not be read; with no lanes this shows the failure instead of a loading note. */
+  lanesFailed: boolean
   analysis: EncounterAnalysis
   range: { fromMs: number; toMs: number } | null
   focus: Focus
@@ -600,6 +611,16 @@ function useLaneLabels() {
     markers: Object.fromEntries(["applied", "start_unconfirmed", "removed", "holder_removed", "superseded", "untracked", "instant", "continues"].map(kind => [kind, t(`analysis.marker.${kind}`)])),
     evidence: Object.fromEntries(["confirmed", "stated", "unknown"].map(kind => [kind, t(`analysis.evidence.${kind}`)])),
   }), [t])
+}
+
+/**
+ * What a part of the page shows while its query has no answer: the failure when the query failed (it is not coming), or
+ * that it is still loading.
+ */
+function Unanswered({ failed, failure }: { failed: boolean; failure?: string }) {
+  const { t } = useTranslation("history")
+  return failed ? <p className="ww-history-note" data-tone="critical" role="alert" data-field="query-failed">{failure ?? t("loadFailed")}</p>
+    : <p className="ww-dash-empty-note">{t("analysis.loading")}</p>
 }
 
 function EffectNotes({ lanes }: { lanes: EffectLanesData }) {
@@ -631,12 +652,12 @@ function laneRows(rows: readonly EffectRow[], actorName: EffectTabProps["actorNa
  * The effect lanes of the unified timeline: the effects of the scope on the same axis as the DPS lines right above them, with
  * the selected one's details below.
  */
-const TimelineLanes = memo(function TimelineLanes({ encounterId, lanes, analysis, range, focus, setFocus, actorName, enemyLabel, view, sync }: EffectTabProps & { view?: TimeView; sync?: TimelineSync }) {
+const TimelineLanes = memo(function TimelineLanes({ encounterId, lanes, lanesFailed, analysis, range, focus, setFocus, actorName, enemyLabel, view, sync }: EffectTabProps & { view?: TimeView; sync?: TimelineSync }) {
   const { t } = useTranslation("history")
   const labels = useLaneLabels()
   const rows = useMemo(() => lanes ? laneRows(lanes.rows, actorName, enemyLabel) : [], [lanes, actorName, enemyLabel])
   const selected = focus?.kind === "effect" ? focus.key : null
-  if (!lanes) return <p className="ww-dash-empty-note">{t("analysis.loading")}</p>
+  if (!lanes) return <Unanswered failed={lanesFailed} />
   // The lanes span the same width as the DPS timeline above them, so a moment lines up; the details follow below.
   return <div className="ww-analysis-stack">
     <EvidenceLegend />
@@ -723,20 +744,23 @@ function EffectCorrelationPanel({ encounterId, analysis, row, actorName, enemyLa
   const shownScope = scopes.includes(scope) ? scope : "selection"
   const query = useMemo(() => correlationQuery(analysis.query, shownScope, row.holder), [analysis.query, shownScope, row.holder])
   const [answer, setAnswer] = useState<EffectCorrelation | null>(null)
-  const [failed, setFailed] = useState(false)
-  const [listed, setListed] = useState<{ cls: CorrelationClass; page: EventPage | null } | null>(null)
+  // The correlation and the hit list of a class are separate queries, each with its own failure.
+  const [answerFailed, setAnswerFailed] = useState(false)
+  const [listed, setListed] = useState<{ cls: CorrelationClass; page: EventPage | null; failed?: boolean } | null>(null)
   const queryKey = JSON.stringify(query)
   useEffect(() => {
     let current = true
     setListed(null)
-    host.historyEffectCorrelation(encounterId, query, row.key).then(next => { if (current) { setAnswer(next); setFailed(false) } }).catch(() => { if (current) setFailed(true) })
+    setAnswerFailed(false)
+    host.historyEffectCorrelation(encounterId, query, row.key).then(next => { if (current) { setAnswer(next); setAnswerFailed(false) } }).catch(() => { if (current) setAnswerFailed(true) })
     return () => { current = false }
   }, [encounterId, row.key, queryKey])
   const list = (cls: CorrelationClass) => {
     if (listed?.cls === cls) { setListed(null); return }
     setListed({ cls, page: null })
     host.historyEvents(encounterId, { ...query, kinds: ["damage"], effectRow: "", correlateEffect: row.key, correlation: cls, offset: 0, limit: correlationListLimit })
-      .then(page => setListed(previous => previous?.cls === cls ? { cls, page } : previous)).catch(() => setFailed(true))
+      .then(page => setListed(previous => previous?.cls === cls ? { cls, page } : previous))
+      .catch(() => setListed(previous => previous?.cls === cls ? { cls, page: null, failed: true } : previous))
   }
   const contributorNames = useMemo(() => new Map((analysis.encounter ? combatRows(analysis.encounter) : []).map(entry => [entry.key, nameOf(entry)])), [analysis.encounter, nameOf])
   const rowName = (kind: "contributor" | "skill" | "enemy", key: string) => {
@@ -756,8 +780,8 @@ function EffectCorrelationPanel({ encounterId, analysis, row, actorName, enemyLa
     <p className="ww-history-note">{t("analysis.correlation.note")}</p>
     {scopes.length > 1 && <div data-field="correlation-scope"><Segmented label={t("analysis.correlation.scopeLabel")} value={shownScope} onChange={(next: CorrelationScope) => setScope(next)}
       options={scopes.map(value => ({ value, label: t(`analysis.correlation.scope.${value}`) }))} /></div>}
-    {failed && <p className="ww-history-note" data-tone="critical" role="alert">{t("analysis.correlation.failed")}</p>}
-    {!answer ? <p className="ww-dash-empty-note">{t("analysis.loading")}</p>
+    {answerFailed && answer && <p className="ww-history-note" data-tone="critical" role="alert">{t("analysis.correlation.failed")}</p>}
+    {!answer ? <Unanswered failed={answerFailed} failure={t("analysis.correlation.failed")} />
       : !answer.available ? <p className="ww-history-note" data-tone="warn" data-field="correlation-unavailable">{t("analysis.correlation.unavailable")}</p>
       : !total || total.hits === 0 ? <p className="ww-dash-empty-note" data-field="correlation-empty">{t("analysis.correlation.noHits")}</p>
       : <>
@@ -778,7 +802,7 @@ function EffectCorrelationPanel({ encounterId, analysis, row, actorName, enemyLa
         {total.unknown.hits > 0 && <p className="ww-history-note" data-field="correlation-reasons">{t("analysis.correlation.reasonsLead")} {Object.entries(answer.reasons).map(([reason, count]) => `${t(`analysis.correlation.reason.${reason}`)} ${format.integer(count)}`).join("、")}</p>}
         {answer.untimed > 0 && <p className="ww-history-note">{t("analysis.correlation.untimed", { n: format.integer(answer.untimed) })}</p>}
         {listed && <div className="ww-correlation-hits" data-field="correlation-hits" data-class={listed.cls}>
-          {!listed.page ? <p className="ww-dash-empty-note">{t("analysis.loading")}</p> : <ol>
+          {!listed.page ? <Unanswered failed={listed.failed === true} /> : <ol>
             {listed.page.rows.map(hit => <li key={hit.key}>
               <span className="ww-num">{hit.atMs === undefined ? "—" : formatMs(hit.atMs)}</span>
               <span className="ww-truncate">{actorName(hit.source, enemyLabel)}</span>
@@ -824,12 +848,12 @@ function SegmentFacts({ row, segment, gaps }: { row: EffectRow; segment: EffectR
 }
 
 /** The Effects tab: every effect of the scope with its coverage of the selected range. */
-const EffectsTab = memo(function EffectsTab({ encounterId, lanes, analysis, focus, setFocus, actorName, enemyLabel }: EffectTabProps) {
+const EffectsTab = memo(function EffectsTab({ encounterId, lanes, lanesFailed, analysis, focus, setFocus, actorName, enemyLabel }: EffectTabProps) {
   const { t } = useTranslation("history")
   const format = useFormatters()
   const selected = focus?.kind === "effect" ? focus.key : null
   const coverage = useMemo(() => new Map(analysis.effects.rows.map(row => [row.key, row])), [analysis.effects.rows])
-  if (!lanes) return <p className="ww-dash-empty-note">{t("analysis.loading")}</p>
+  if (!lanes) return <Unanswered failed={lanesFailed} />
   return <div className="ww-analysis-split">
     <div className="ww-analysis-main-col">
       {lanes.rows.length === 0 ? <p className="ww-dash-empty-note">{t("analysis.effects.none")}</p> :
