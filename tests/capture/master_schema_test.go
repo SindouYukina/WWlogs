@@ -294,7 +294,9 @@ func TestEveryMasterEntryPointRefusesAMasterWithoutTheRuntimeSchema(t *testing.T
 // TestTrackedMasterProjectedToTheRuntimeSchemaLoadsTheSame drops from a copy of the tracked Master every table and view
 // the runtime schema does not list. The copy must load, and to the same Master as the tracked file: so the runtime reads
 // nothing outside its declaration. (The Master Phase M2 record compares every layer and locale with the equivalence
-// harness; this test keeps the guarantee in every run.)
+// harness; this test keeps the guarantee in every run.) Since the Master was reduced to what the product and its
+// verification use, only a few dozen objects lie outside the runtime schema (foreign-key parents and tables kept for
+// verification and maintenance); the test fails when there is none left to drop, because it would then check nothing.
 func TestTrackedMasterProjectedToTheRuntimeSchemaLoadsTheSame(t *testing.T) {
 	if testing.Short() {
 		t.Skip("copies the tracked Master")
@@ -328,8 +330,8 @@ func TestTrackedMasterProjectedToTheRuntimeSchemaLoadsTheSame(t *testing.T) {
 		t.Fatal(err)
 	}
 	db.Close()
-	if len(drops) < 200 {
-		t.Fatalf("only %d objects lie outside the runtime schema", len(drops))
+	if len(drops) == 0 {
+		t.Fatal("no object lies outside the runtime schema: the projection checks nothing")
 	}
 	execMasterSQL(t, projected, drops)
 	full, err := LoadGameMasterDatabase(source, "zh-TW")

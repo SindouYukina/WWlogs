@@ -110,7 +110,7 @@ const (
 
 // skillGenreUITypes maps SkillInfo.SkillGenre to the Skill.SkillType of the UI skill that describes it. The genres are the
 // game's own: the developer labels of the genres read basic attack (0), heavy attack (1), resonance skill (2), liberation
-// (3), intro (4), dodge counter (5) and outro (13); skilltype_locale names types 1, 2, 3, 5 and 11 the same way. Other
+// (3), intro (4), dodge counter (5) and outro (13); the game's skill type names call types 1, 2, 3, 5 and 11 the same. Other
 // genres have no UI skill type of their own and stay out of this rule.
 var skillGenreUITypes = map[int64]int64{0: 1, 1: 1, 2: 2, 3: 3, 4: 5, 5: 1, 13: 11}
 
