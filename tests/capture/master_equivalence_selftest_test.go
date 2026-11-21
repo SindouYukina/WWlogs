@@ -657,10 +657,12 @@ func trackedMasterInjections() []masterInjection {
 				"UPDATE buff_granted_tags SET ordinal = 101 - ordinal WHERE ordinal >= 100",
 			}, Locales: zh,
 			Want: []string{"loaded/entry-changed"}},
-		{Name: "index removed undeclared", Class: "index", SQL: []string{"DROP INDEX idx_map_entity_template_target"}, Locales: zh,
+		// An index the tracked Master keeps (the readiness gate's trial-parent lookup uses it); the runtime reads the same
+		// rows without it.
+		{Name: "index removed undeclared", Class: "index", SQL: []string{"DROP INDEX idx_trialroleinfo_parent"}, Locales: zh,
 			Want: []string{"schema/index-missing"}, WantContract: []string{"index-missing"}, None: []string{"loaded", "display"}},
-		{Name: "index removed declared", Class: "index", SQL: []string{"DROP INDEX idx_map_entity_template_target"}, Locales: zh, Equivalent: true,
-			Expectations: []masterExpectation{{Layer: "schema", Class: "index-missing", Object: "map_entity_template_ref:idx_map_entity_template_target", Reason: "injected"}},
+		{Name: "index removed declared", Class: "index", SQL: []string{"DROP INDEX idx_trialroleinfo_parent"}, Locales: zh, Equivalent: true,
+			Expectations: []masterExpectation{{Layer: "schema", Class: "index-missing", Object: "trialroleinfo:idx_trialroleinfo_parent", Reason: "injected"}},
 			WantContract: []string{"index-missing"}},
 		{Name: "display-only category name", Class: "display path",
 			SQL:     []string{"UPDATE secondaryguidedata_locale SET text=text||'*' WHERE locale='zh-TW' AND id=(SELECT secondary FROM dungeondetection GROUP BY secondary ORDER BY count(*) DESC, secondary LIMIT 1)"},
