@@ -229,12 +229,15 @@ func (s *CaptureService) Start(cfg capture.SessionConfig) error {
 		}
 	}
 	session, err := s.open(cfg)
+	if err != nil && recorder != nil {
+		// Removing the history this capture began waits for the history writer and a database transaction. Like closing a
+		// session Stop asked for while it opened, it runs outside the lifecycle lock: a Stop meanwhile keeps its own deadline
+		// and Status answers, while the state stays starting (or stopping) so no new session begins before it ended.
+		recorder.Abort()
+	}
 
 	s.mu.Lock()
 	if err != nil {
-		if recorder != nil {
-			recorder.Abort()
-		}
 		s.status = Status{State: StateError, LastError: err.Error(), App: s.identity}
 		s.publishLocked()
 		close(done)
