@@ -602,6 +602,7 @@ func trackedMasterInjections() []masterInjection {
 		{Layer: "data", Class: "storage-class-changed", Object: "damage.payload_id", Reason: "injected TEXT to INTEGER migration of a column the runtime does not read"},
 	}
 	zh := []string{"zh-TW"}
+	// A mutation names its rows by primary key, never by rowid: most relation tables of the Master are WITHOUT ROWID.
 	// The runtime schema check refuses a Master without a part it reads: the load and the display resolver fail.
 	refused := func(classes ...string) []string { return append(classes, "loaded/load-error", "display/open-error") }
 	return []masterInjection{
@@ -619,7 +620,7 @@ func trackedMasterInjections() []masterInjection {
 		{Name: "wrong trial parent", Class: "wrong mapping", SQL: []string{"UPDATE trialroleinfo SET parent_role_id='1409' WHERE id='15127004'"}, Locales: zh,
 			Want: []string{"data/rows-changed", "loaded/entry-changed", "display/name-changed", "display/static-role-changed"}},
 		{Name: "wrong template relation", Class: "wrong mapping",
-			SQL: []string{"UPDATE map_entity_template_ref SET template_id=(SELECT id FROM templateconfig ORDER BY id LIMIT 1) WHERE rowid=(SELECT max(rowid) FROM map_entity_template_ref)"}, Locales: zh,
+			SQL: []string{"UPDATE map_entity_template_ref SET template_id=(SELECT id FROM templateconfig ORDER BY id LIMIT 1) WHERE (map_id, entity_id, ordinal)=(SELECT map_id, entity_id, ordinal FROM map_entity_template_ref ORDER BY map_id DESC, entity_id DESC, ordinal DESC LIMIT 1)"}, Locales: zh,
 			Want: []string{"data/rows-changed", "loaded/entry-changed"}},
 		{Name: "identifier type change of a runtime column undeclared", Class: "ID type change", IntegerColumn: "roleinfo_locale.id", Locales: zh,
 			Want: refused("schema/column-type-changed", "data/storage-class-changed"), WantContract: []string{"column-type-changed"}},
@@ -631,16 +632,16 @@ func trackedMasterInjections() []masterInjection {
 		{Name: "non-canonical identifier", Class: "ID type change", SQL: []string{"UPDATE roleinfo_locale SET id='01409' WHERE id='1409' AND locale='zh-TW'"}, Locales: zh,
 			Want: []string{"data/rows-missing", "data/rows-added", "loaded/entry-changed", "display/name-changed"}, WantContract: []string{"value-rule-violated", "reference-missing"}},
 		{Name: "lost relation rows", Class: "data loss",
-			SQL: []string{"DELETE FROM map_entity_template_ref WHERE rowid IN (SELECT rowid FROM map_entity_template_ref ORDER BY rowid LIMIT 100)"}, Locales: zh,
+			SQL: []string{"DELETE FROM map_entity_template_ref WHERE (map_id, entity_id, ordinal) IN (SELECT map_id, entity_id, ordinal FROM map_entity_template_ref ORDER BY map_id, entity_id, ordinal LIMIT 100)"}, Locales: zh,
 			Want: []string{"data/rows-missing", "loaded/entry-missing"}},
 		{Name: "lost names", Class: "data loss",
 			SQL: []string{"DELETE FROM skilldescription_locale WHERE locale='zh-TW' AND id IN (SELECT id FROM skilldescription_locale WHERE locale='zh-TW' ORDER BY id LIMIT 10)"}, Locales: zh,
 			Want: []string{"data/rows-missing", "loaded/entry-changed", "display/name-changed"}},
 		{Name: "UI skill id replaced by a combat skill id", Class: "namespace mixing",
-			SQL: []string{"UPDATE skill_damage_ref SET skill_id=(SELECT d.id FROM skilldescription d WHERE d.id NOT IN (SELECT id FROM skill) ORDER BY d.id LIMIT 1) WHERE rowid=(SELECT min(rowid) FROM skill_damage_ref)"}, Locales: zh,
+			SQL: []string{"UPDATE skill_damage_ref SET skill_id=(SELECT d.id FROM skilldescription d WHERE d.id NOT IN (SELECT id FROM skill) ORDER BY d.id LIMIT 1) WHERE (skill_id, ordinal)=(SELECT skill_id, ordinal FROM skill_damage_ref ORDER BY skill_id, ordinal LIMIT 1)"}, Locales: zh,
 			Want: []string{"data/rows-missing", "data/rows-added", "loaded/entry-changed"}, WantContract: []string{"reference-missing"}},
 		{Name: "Buff owner source given combat skill ids", Class: "namespace mixing",
-			SQL: []string{"UPDATE skill_buff_ref SET skill_id=(SELECT id FROM skilldescription_locale WHERE locale='zh-TW' AND name<>'' AND id NOT IN (SELECT id FROM skill) ORDER BY id LIMIT 1) WHERE rowid=(SELECT min(rowid) FROM skill_buff_ref WHERE buff_id IN (SELECT id FROM buff))"}, Locales: zh,
+			SQL: []string{"UPDATE skill_buff_ref SET skill_id=(SELECT id FROM skilldescription_locale WHERE locale='zh-TW' AND name<>'' AND id NOT IN (SELECT id FROM skill) ORDER BY id LIMIT 1) WHERE (skill_id, ordinal)=(SELECT skill_id, ordinal FROM skill_buff_ref WHERE buff_id IN (SELECT id FROM buff) ORDER BY skill_id, ordinal LIMIT 1)"}, Locales: zh,
 			Want: []string{"data/rows-missing", "data/rows-added", "loaded/*"}, WantContract: []string{"reference-missing"}},
 		{Name: "locale-only change, other locale", Class: "locale coverage",
 			SQL:     []string{"UPDATE skilldescription_locale SET name=name||'*' WHERE locale='ja-JP' AND id=(SELECT id FROM skilldescription_locale WHERE locale='ja-JP' ORDER BY id LIMIT 1)"},

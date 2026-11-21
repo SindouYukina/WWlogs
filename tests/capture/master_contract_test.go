@@ -468,7 +468,8 @@ func TestTrackedMasterSatisfiesItsContract(t *testing.T) {
 // (internal/capture/master_schema.go) says what the loader and the display resolver need and is checked at every load;
 // the Master contract describes the whole file. Every product or Development table of the contract is in the runtime
 // schema with the same scope, and no integrity or maintenance table is; every column the contract says a runtime reader
-// reads is in the runtime schema; every runtime column is a contract column of an accepted type; and the views agree.
+// reads is in the runtime schema; every runtime column is a contract column of an accepted type; a table the runtime
+// reads by rowid is a rowid table in the contract; and the views agree.
 func TestMasterRuntimeSchemaAgreesWithTheContract(t *testing.T) {
 	contract := masterContractFromEnv(t)
 	runtimeReaders := map[string]bool{"core": true, "display": true, "development": true}
@@ -503,6 +504,9 @@ func TestMasterRuntimeSchemaAgreesWithTheContract(t *testing.T) {
 		}
 		if ct.Scope != table.Scope {
 			t.Errorf("table %s: runtime scope %s, contract scope %s", table.Name, table.Scope, ct.Scope)
+		}
+		if table.Rowid && ct.WithoutRowid {
+			t.Errorf("table %s: the runtime reads its rowid, the contract says WITHOUT ROWID", table.Name)
 		}
 		columns := map[string]masterContractColumn{}
 		for _, column := range ct.Columns {

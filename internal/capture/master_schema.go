@@ -33,9 +33,12 @@ import (
 // content_entry_locale, content_context), each with the key its lookups rely on, and drops the four tables of the two
 // display rules the content model replaced (the ShipTower stage rule and the Tactical Hologram title fallback): the runtime
 // no longer reads them, though the Master still holds them.
+//
+// Version 3 (v0.9.0 M4) declares that the runtime reads roleinfo's rowid: the damage owners list the roles of a skill
+// group in roleinfo's storage order, so roleinfo must stay a rowid table while most other tables are WITHOUT ROWID.
 
 // masterRuntimeSchemaVersion identifies the declaration below.
-const masterRuntimeSchemaVersion = 2
+const masterRuntimeSchemaVersion = 3
 
 // MasterSchemaTable is a table or view of the combat Master the runtime reads, with the columns it reads.
 type MasterSchemaTable struct {
@@ -48,6 +51,8 @@ type MasterSchemaTable struct {
 	// Key, when set, is the primary key or a unique index over exactly these columns in this order that the runtime relies
 	// on: a lookup by the key reads at most one row, and a lookup by its leading columns searches the key, not the table.
 	Key []string
+	// Rowid is set when the runtime reads the table's rowid, its storage order: the table must not be WITHOUT ROWID.
+	Rowid bool
 }
 
 // MasterSchemaColumn is a column the runtime reads and the declared types it accepts. Without a type any is accepted: the
@@ -75,6 +80,13 @@ func masterKeyedTable(name string, key []string, columns ...string) MasterSchema
 		}
 	}
 	table.Key = append([]string(nil), key...)
+	return table
+}
+
+// masterRowidTable declares a product table whose rowid the runtime reads as the storage order of its rows.
+func masterRowidTable(name string, columns ...string) MasterSchemaTable {
+	table := masterSchemaObject(name, false, "product", columns)
+	table.Rowid = true
 	return table
 }
 
@@ -110,7 +122,7 @@ func masterSchemaObject(name string, view bool, scope string, columns []string) 
 
 // masterRuntimeSchema lists the objects in the order the loader reads them.
 var masterRuntimeSchema = []MasterSchemaTable{
-	masterTable("roleinfo", "id TEXT", "skin_id TEXT", "element_id TEXT", "skill_id TEXT"),
+	masterRowidTable("roleinfo", "id TEXT", "skin_id TEXT", "element_id TEXT", "skill_id TEXT"),
 	masterTable("roleinfo_locale", "id TEXT", "locale TEXT", "name TEXT"),
 	masterTable("trialroleinfo", "id TEXT", "parent_role_id TEXT"),
 	masterTable("roleskin", "id TEXT", "role_id TEXT", "mesh_id TEXT"),
@@ -203,8 +215,8 @@ func MasterRuntimeSchema() []MasterSchemaTable {
 	return schema
 }
 
-// masterRuntimeSchemaFingerprint is the SHA-256 of the declaration in a fixed text form. A table without a key hashes as
-// it did before keys were declared.
+// masterRuntimeSchemaFingerprint is the SHA-256 of the declaration in a fixed text form. A table without a key or a rowid
+// requirement hashes as it did before they were declared.
 func masterRuntimeSchemaFingerprint() string {
 	hash := sha256.New()
 	for _, table := range masterRuntimeSchema {
@@ -219,6 +231,9 @@ func masterRuntimeSchemaFingerprint() string {
 		if len(table.Key) > 0 {
 			fmt.Fprintf(hash, "\tkey %s\n", strings.Join(table.Key, ","))
 		}
+		if table.Rowid {
+			fmt.Fprintf(hash, "\trowid\n")
+		}
 	}
 	return hex.EncodeToString(hash.Sum(nil))
 }
@@ -228,7 +243,8 @@ var errMasterRuntimeSchema = errors.New("the combat Master database does not hav
 
 // checkMasterRuntimeSchema compares a Master with the runtime schema and names every difference: a missing table or view,
 // an object of the other kind, a missing column, a column declared with a type the runtime does not read, a missing key,
-// and a view the database cannot compile. It reads only the schema, never a row.
+// a WITHOUT ROWID table whose rowid the runtime reads, and a view the database cannot compile. It reads only the schema,
+// never a row.
 func checkMasterRuntimeSchema(db *sql.DB) error {
 	kinds := map[string]string{}
 	rows, err := db.Query("SELECT name, type FROM sqlite_master WHERE type IN ('table', 'view')")
@@ -273,6 +289,14 @@ func checkMasterRuntimeSchema(db *sql.DB) error {
 			}
 			if len(column.Types) > 0 && !masterTypeAccepted(column.Types, declaredType) {
 				problems = append(problems, fmt.Sprintf("column %s.%s is declared %q, this runtime reads %s", table.Name, column.Name, declaredType, strings.Join(column.Types, " or ")))
+			}
+		}
+		if table.Rowid {
+			var withoutRowid bool
+			if err := db.QueryRow(`SELECT wr FROM pragma_table_list(?)`, table.Name).Scan(&withoutRowid); err != nil {
+				problems = append(problems, fmt.Sprintf("the layout of table %s cannot be read: %v", table.Name, err))
+			} else if withoutRowid {
+				problems = append(problems, "table "+table.Name+" is WITHOUT ROWID; this runtime reads its rowid")
 			}
 		}
 		if len(table.Key) == 0 {
