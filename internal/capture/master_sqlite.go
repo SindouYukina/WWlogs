@@ -951,8 +951,11 @@ func loadSQLiteCharacterSkins(db *sql.DB, master *GameMaster) error {
 	return nil
 }
 
+// loadLocalizedDefinitions reads every ID of baseTable (roles, monsters) with its name by the rule DisplayResolver.Resolve
+// names them by: the official text (masterOfficialText) of the locale, else the official en-US text; an ID with neither
+// has no name (UNKNOWN). Language is the locale the name was read from, or the requested locale when there is none.
 func loadLocalizedDefinitions(db *sql.DB, locale, baseTable, localeTable string, destination *map[uint64]MasterRecord) error {
-	query := fmt.Sprintf("SELECT b.id,l.name FROM %s b LEFT JOIN %s l ON l.id=b.id AND l.locale=? ORDER BY b.id", baseTable, localeTable)
+	query := fmt.Sprintf("SELECT b.id,l.name,e.name FROM %s b LEFT JOIN %s l ON l.id=b.id AND l.locale=? LEFT JOIN %s e ON e.id=b.id AND e.locale='en-US' ORDER BY b.id", baseTable, localeTable, localeTable)
 	rows, err := db.Query(query, locale)
 	if err != nil {
 		return fmt.Errorf("query %s definitions: %w", baseTable, err)
@@ -960,8 +963,8 @@ func loadLocalizedDefinitions(db *sql.DB, locale, baseTable, localeTable string,
 	defer rows.Close()
 	for rows.Next() {
 		var rawID string
-		var name sql.NullString
-		if err := rows.Scan(&rawID, &name); err != nil {
+		var name, english sql.NullString
+		if err := rows.Scan(&rawID, &name, &english); err != nil {
 			return fmt.Errorf("read %s definition: %w", baseTable, err)
 		}
 		id, err := parseMasterID(rawID, baseTable)
@@ -972,8 +975,12 @@ func loadLocalizedDefinitions(db *sql.DB, locale, baseTable, localeTable string,
 			return fmt.Errorf("duplicate %s ID %d", baseTable, id)
 		}
 		record := MasterRecord{ID: id, Language: locale, Status: string(ResolutionVerified), SourceTable: baseTable}
-		if name.Valid && masterOfficialText(name.String) {
+		switch {
+		case name.Valid && masterOfficialText(name.String):
 			record.Name = name.String
+		case english.Valid && masterOfficialText(english.String):
+			// For en-US itself both columns are the same row, already not a name: the fallback ends there.
+			record.Name, record.Language = english.String, "en-US"
 		}
 		if record.Name == "" {
 			record.NameStatus = string(ResolutionUnknown)
