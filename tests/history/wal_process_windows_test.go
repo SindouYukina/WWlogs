@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"math/rand/v2"
 	"os"
 	"os/exec"
@@ -37,6 +38,12 @@ func TestHistoryHelperProcess(t *testing.T) {
 		registerTornXTS()
 		encryptionVFS = "wwlogs-torn-xts"
 		sizeOf = func(int64) int64 { return 1 }
+		// "crash" on standard input makes tornVFS end the process at the start of its next write (crashBetweenWrites).
+		go func() {
+			if line, _ := bufio.NewReader(os.Stdin).ReadString('\n'); strings.TrimSpace(line) == "crash" {
+				tornCrashRequested.Store(true)
+			}
+		}()
 	}
 	store, err := Open(Options{Path: path, Location: time.UTC, Build: &testBuild, MasterSHA256: "test-master"})
 	if err != nil {
@@ -59,6 +66,7 @@ func TestHistoryHelperProcess(t *testing.T) {
 // historyWriterProcess is a running helper process and what it last reported.
 type historyWriterProcess struct {
 	cmd       *exec.Cmd
+	stdin     io.WriteCloser
 	span      atomic.Int64
 	committed atomic.Int64
 	ended     chan struct{}
@@ -75,6 +83,9 @@ func startHistoryWriterProcess(t *testing.T, path string, environment ...string)
 	p.cmd.Env = append(append(os.Environ(), "WWLOGS_HISTORY_HELPER=writer", "WWLOGS_HISTORY_HELPER_DB="+path), environment...)
 	stdout, err := p.cmd.StdoutPipe()
 	if err != nil {
+		t.Fatal(err)
+	}
+	if p.stdin, err = p.cmd.StdinPipe(); err != nil {
 		t.Fatal(err)
 	}
 	if err := p.cmd.Start(); err != nil {
@@ -117,6 +128,26 @@ func (p *historyWriterProcess) kill(t *testing.T) int64 {
 	}
 	_ = p.cmd.Wait()
 	<-p.ended
+	return p.committed.Load()
+}
+
+// crashBetweenWrites ends a writer that records through tornVFS as a crash would (TerminateProcess) at the start of its
+// next write, so never between the two writes tornVFS makes of one sector (see TestTornWritesNeverReachAnotherProcess).
+// It returns the last transaction the writer reported committed.
+func (p *historyWriterProcess) crashBetweenWrites(t *testing.T) int64 {
+	t.Helper()
+	if _, err := io.WriteString(p.stdin, "crash\n"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-p.ended:
+	case <-time.After(30 * time.Second):
+		t.Fatal("the writer process did not reach a write within 30 s")
+	}
+	_ = p.cmd.Wait()
+	if code := p.cmd.ProcessState.ExitCode(); code != tornCrashExitCode {
+		t.Fatalf("the writer process ended with exit code %d, not by the crash it was asked for (%d)", code, tornCrashExitCode)
+	}
 	return p.committed.Load()
 }
 
