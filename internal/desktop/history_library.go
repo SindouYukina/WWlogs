@@ -45,12 +45,20 @@ type historyLibraryEntryJSON struct {
 	Vehicle bool                     `json:"vehicle,omitempty"`
 }
 
+// historyModeFacetJSON is one mode the library and career filters offer. A content system the game names no system for
+// has no Name: the UI labels it by System, as it labels the same mode in a row.
 type historyModeFacetJSON struct {
 	Key    string                   `json:"key"`
 	Kind   capture.InstanceModeKind `json:"kind"`
 	Name   string                   `json:"name,omitempty"`
 	Status string                   `json:"status"`
+	System string                   `json:"system,omitempty"`
 	Count  int                      `json:"count"`
+}
+
+// modeFacet is the filter option of a stored instance's mode, without its count.
+func modeFacet(known instanceNames) historyModeFacetJSON {
+	return historyModeFacetJSON{Key: known.modeKey, Kind: known.mode.Kind, Name: known.mode.Name, Status: known.mode.Status, System: known.mode.System}
 }
 
 type historyStageFacetJSON struct {
@@ -225,7 +233,8 @@ func libraryFacets(facets history.LibraryFacets, instances map[uint64]instanceNa
 			continue
 		}
 		if modes[known.modeKey] == nil {
-			modes[known.modeKey] = &historyModeFacetJSON{Key: known.modeKey, Kind: known.mode.Kind, Name: known.mode.Name, Status: known.mode.Status}
+			facet := modeFacet(known)
+			modes[known.modeKey] = &facet
 		}
 		modes[known.modeKey].Count += count
 	}

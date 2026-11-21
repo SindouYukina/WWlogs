@@ -352,6 +352,28 @@ func TestFrontendSnapshotTypesMatchTheGoPayload(t *testing.T) {
 	}
 }
 
+// The History types the frontend declares (lib/history.ts, history-library.ts) name the JSON fields the History host
+// methods send (history.go, history_library.go, history_career.go): what every History view reads to name where an
+// encounter was fought, and the mode filter options of the library and the career page.
+func TestFrontendHistoryTypesMatchTheGoPayload(t *testing.T) {
+	for _, contract := range []struct {
+		file, name string
+		goType     reflect.Type
+	}{
+		{"history.ts", "HistoryEncounterSummary", reflect.TypeOf(historySummaryJSON{})},
+		{"history.ts", "HistoryName", reflect.TypeOf(historyName{})},
+		{"history.ts", "HistoryMode", reflect.TypeOf(historyMode{})},
+		{"history.ts", "HistoryContent", reflect.TypeOf(historyContent{})},
+		{"history.ts", "HistoryContentLayer", reflect.TypeOf(historyContentLayer{})},
+		{"history-library.ts", "HistoryModeFacet", reflect.TypeOf(historyModeFacetJSON{})},
+	} {
+		t.Run(contract.name, func(t *testing.T) {
+			declared := tsInterfaceFields(t, readFrontendSource(t, contract.file), contract.name)
+			compareContract(t, contract.name, declared, jsonFields(contract.goType), nil)
+		})
+	}
+}
+
 // The top-level fields of an encoded snapshot are the fields of the frontend Snapshot type.
 func TestFrontendSnapshotTypeMatchesTheEncodedSnapshot(t *testing.T) {
 	// Every omitempty field of the shell carries a value, so the encoding shows all of them.
