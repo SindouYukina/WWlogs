@@ -80,9 +80,9 @@ func newDisplayResolver(db *sql.DB) (*DisplayResolver, error) {
 
 func (r *DisplayResolver) Close() error { return r.db.Close() }
 
-// Resolve uses official localized rows and then English; a placeholder row is no name (masterOfficialText). An effect
-// term lookup requires an existing term link; looking up a raw effect ID as a glossary ID is never allowed by the
-// projection.
+// Resolve uses official localized rows and then English; a placeholder row is no name (masterOfficialText), and a name is
+// shown without the client's rich-text markup (masterPlainText). An effect term lookup requires an existing term link;
+// looking up a raw effect ID as a glossary ID is never allowed by the projection.
 //
 // "skill" is the UI skill-tree namespace (Skill.Id). "combat_skill" is the runtime namespace of DamageContext.SkillId,
 // whose official names are SkillDescription rows; the two ID spaces are different and must not be mixed. "echo" is
@@ -125,8 +125,10 @@ func (r *DisplayResolver) resolveLocked(ctx context.Context, kind string, id uin
 			return result, errors.New("Master display names could not be read")
 		}
 		if err == nil && masterOfficialText(name) {
-			result = DisplayName{Name: name, Status: "VERIFIED", Locale: candidate}
-			break
+			if plain := masterPlainText(name); plain != "" {
+				result = DisplayName{Name: plain, Status: "VERIFIED", Locale: candidate}
+				break
+			}
 		}
 	}
 	r.names.put(key, result)
