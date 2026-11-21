@@ -42,6 +42,51 @@ func TestLoadGameMasterDatabaseUsesLocaleAndKeepsIDNamespacesSeparate(t *testing
 	}
 }
 
+// Role and monster names follow the rule of DisplayResolver.Resolve: the locale's official text, else the official en-US
+// text, else no name. A placeholder is no text, en-US itself falls back to nothing, and Language is the locale the name is.
+func TestLoadGameMasterDatabaseFallsBackToEnglishRoleAndMonsterNames(t *testing.T) {
+	path := buildMasterDatabaseFixture(t)
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range []string{
+		"INSERT INTO roleinfo_locale VALUES('1312','zh-CN','dnt/测试角色','Role.Name')",
+		"INSERT INTO monsterinfo_locale VALUES('701','en-US','dnt/placeholder','Monster.Name'),('701','ja-JP',' DNT/仮','Monster.Name')",
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatalf("%s: %v", statement, err)
+		}
+	}
+	db.Close()
+	completeMasterFixture(t, path)
+	for _, c := range []struct {
+		locale, role, roleLanguage, monster, monsterLanguage string
+	}{
+		{"zh-TW", "測試角色", "zh-TW", "測試怪物", "zh-TW"},
+		{"ko-KR", "시험 캐릭터", "ko-KR", "Test Monster", "en-US"},
+		{"ja-JP", "Test Character", "en-US", "Test Monster", "en-US"},
+		{"zh-CN", "Test Character", "en-US", "Test Monster", "en-US"},
+		{"en-US", "Test Character", "en-US", "Test Monster", "en-US"},
+	} {
+		master, err := LoadGameMasterDatabase(path, c.locale)
+		if err != nil {
+			t.Fatal(err)
+		}
+		role, monster := master.Characters[1312], master.Monsters[700]
+		if role.Name != c.role || role.Language != c.roleLanguage || role.NameStatus != string(ResolutionVerified) {
+			t.Fatalf("%s role = %+v, want %q from %s", c.locale, role, c.role, c.roleLanguage)
+		}
+		if monster.Name != c.monster || monster.Language != c.monsterLanguage || monster.NameStatus != string(ResolutionVerified) {
+			t.Fatalf("%s monster = %+v, want %q from %s", c.locale, monster, c.monster, c.monsterLanguage)
+		}
+		// 701 has only placeholders: no name in any locale, and the record keeps the requested locale.
+		if unnamed := master.Monsters[701]; unnamed.Name != "" || unnamed.NameStatus != string(ResolutionUnknown) || unnamed.Language != c.locale {
+			t.Fatalf("%s placeholder-only monster = %+v, want no name", c.locale, unnamed)
+		}
+	}
+}
+
 func TestLoadGameMasterDatabaseLoadsNormalizedBuffDefinitionKeys(t *testing.T) {
 	path := buildMasterDatabaseFixture(t)
 	db, err := sql.Open("sqlite", path)

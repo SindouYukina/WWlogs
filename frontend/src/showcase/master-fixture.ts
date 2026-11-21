@@ -215,7 +215,7 @@ export const masterRoles = [
     "skillId": 9700011,
     "names": {
      "en": "Valse of Bloom and Blight",
-     "ja": "狂い咲きと枯れる<ano=りんぶ>輪舞</ano>",
+     "ja": "狂い咲きと枯れる輪舞",
      "ko": "만개와 시듦의 춤",
      "zh-CN": "盛放与凋零的轮舞",
      "zh-TW": "盛放與凋零的輪舞"
@@ -225,7 +225,7 @@ export const masterRoles = [
     "skillId": 9700025,
     "names": {
      "en": "Fervor Efflorescent",
-     "ja": "花の<ano=よじん>余燼</ano>",
+     "ja": "花の余燼",
      "ko": "아름다운 결말",
      "zh-CN": "芳华绽烬",
      "zh-TW": "芳華綻燼"

@@ -80,9 +80,9 @@ func newDisplayResolver(db *sql.DB) (*DisplayResolver, error) {
 
 func (r *DisplayResolver) Close() error { return r.db.Close() }
 
-// Resolve uses official localized rows and then English; a placeholder row is no name (masterOfficialText). An effect
-// term lookup requires an existing term link; looking up a raw effect ID as a glossary ID is never allowed by the
-// projection.
+// Resolve uses official localized rows and then English; a placeholder row is no name (masterOfficialText), and a name is
+// shown without the client's rich-text markup (masterPlainText). An effect term lookup requires an existing term link;
+// looking up a raw effect ID as a glossary ID is never allowed by the projection.
 //
 // "skill" is the UI skill-tree namespace (Skill.Id). "combat_skill" is the runtime namespace of DamageContext.SkillId,
 // whose official names are SkillDescription rows; the two ID spaces are different and must not be mixed. "echo" is
@@ -111,7 +111,11 @@ func (r *DisplayResolver) resolveLocked(ctx context.Context, kind string, id uin
 	}
 	lookup := id
 	if kind == "role" {
-		lookup = r.staticRoleLocked(ctx, id)
+		static, err := r.staticRoleLocked(ctx, id)
+		if err != nil {
+			return DisplayName{Status: "UNKNOWN"}, err
+		}
+		lookup = static
 	}
 	result := DisplayName{Status: "UNKNOWN"}
 	for _, candidate := range []string{locale, "en-US"} {
@@ -121,56 +125,89 @@ func (r *DisplayResolver) resolveLocked(ctx context.Context, kind string, id uin
 			return result, errors.New("Master display names could not be read")
 		}
 		if err == nil && masterOfficialText(name) {
-			result = DisplayName{Name: name, Status: "VERIFIED", Locale: candidate}
-			break
+			if plain := masterPlainText(name); plain != "" {
+				result = DisplayName{Name: plain, Status: "VERIFIED", Locale: candidate}
+				break
+			}
 		}
 	}
 	r.names.put(key, result)
 	return result, nil
 }
 
+// Role lookups that the Master cannot answer. A RoleId that trialroleinfo or roleinfo does not list is not one of them: it
+// is not a trial, or has no element. Neither error is cached, so a later lookup reads the tables again.
+var (
+	// errRoleTables is a failed read of trialroleinfo or roleinfo (SQLite, or the caller's context ending).
+	errRoleTables = errors.New("Master role tables could not be read")
+	// errRoleValue is a trialroleinfo parent or roleinfo element that is not a number; the loader refuses such a parent.
+	errRoleValue = errors.New("Master role tables hold a value that is not an ID")
+)
+
 // staticRoleLocked is the RoleInfo a runtime RoleId reads its name and element from: a trial role's parent
-// (trialroleinfo.parent_role_id, see gameMaster.staticRoleID), else the RoleId itself. The caller holds mu.
-func (r *DisplayResolver) staticRoleLocked(ctx context.Context, roleID uint64) uint64 {
+// (trialroleinfo.parent_role_id, see GameMaster.StaticRoleID), else the RoleId itself. A failed lookup returns the RoleId
+// with errRoleTables or errRoleValue. The caller holds mu.
+func (r *DisplayResolver) staticRoleLocked(ctx context.Context, roleID uint64) (uint64, error) {
 	key := "static-role:" + strconv.FormatUint(roleID, 10)
 	if cached, ok := r.names.get(key); ok {
 		parent, _ := strconv.ParseUint(cached.Name, 10, 64)
-		return parent
+		return parent, nil
 	}
 	parent := roleID
-	var text string
-	if err := r.db.QueryRowContext(ctx, "SELECT parent_role_id FROM trialroleinfo WHERE id=?", strconv.FormatUint(roleID, 10)).Scan(&text); err == nil {
-		if value, err := strconv.ParseUint(text, 10, 64); err == nil && value != 0 {
-			parent = value
+	var text sql.NullString
+	switch err := r.db.QueryRowContext(ctx, "SELECT parent_role_id FROM trialroleinfo WHERE id=?", strconv.FormatUint(roleID, 10)).Scan(&text); {
+	case errors.Is(err, sql.ErrNoRows):
+	case err != nil:
+		return roleID, errRoleTables
+	default:
+		// The same rule as loadSQLiteTrialRoleParents (parseMasterID): a trial row names a non-zero parent.
+		value, err := strconv.ParseUint(text.String, 10, 64)
+		if !text.Valid || err != nil || value == 0 {
+			return roleID, errRoleValue
 		}
+		parent = value
 	}
 	r.names.put(key, DisplayName{Name: strconv.FormatUint(parent, 10)})
-	return parent
+	return parent, nil
 }
 
-// RoleElement returns a role's static element ID from Master, or zero when it is unknown. It selects a display color
-// only, so a failed lookup is not an error: the UI then uses its neutral series color.
-func (r *DisplayResolver) RoleElement(ctx context.Context, roleID uint64) uint64 {
+// RoleElement returns a role's static element ID from Master. A role the Master does not list, or lists without an
+// element, has element zero, and the UI then uses its neutral series color. A failed lookup returns zero with
+// errRoleTables or errRoleValue, which the caller reports like a failed name lookup.
+func (r *DisplayResolver) RoleElement(ctx context.Context, roleID uint64) (uint64, error) {
 	key := "element:" + strconv.FormatUint(roleID, 10)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if cached, ok := r.names.get(key); ok {
 		element, _ := strconv.ParseUint(cached.Name, 10, 64)
-		return element
+		return element, nil
 	}
+	static, err := r.staticRoleLocked(ctx, roleID)
+	if err != nil {
+		return 0, err
+	}
+	var element uint64
 	var text sql.NullString
-	if err := r.db.QueryRowContext(ctx, "SELECT element_id FROM roleinfo WHERE id=?", strconv.FormatUint(r.staticRoleLocked(ctx, roleID), 10)).Scan(&text); err != nil {
-		text = sql.NullString{}
+	switch err := r.db.QueryRowContext(ctx, "SELECT element_id FROM roleinfo WHERE id=?", strconv.FormatUint(static, 10)).Scan(&text); {
+	case errors.Is(err, sql.ErrNoRows):
+	case err != nil:
+		return 0, errRoleTables
+	case text.Valid && text.String != "":
+		value, err := strconv.ParseUint(text.String, 10, 64)
+		if err != nil {
+			return 0, errRoleValue
+		}
+		element = value
 	}
-	r.names.put(key, DisplayName{Name: text.String})
-	element, _ := strconv.ParseUint(text.String, 10, 64)
-	return element
+	r.names.put(key, DisplayName{Name: strconv.FormatUint(element, 10)})
+	return element, nil
 }
 
 // StaticRole returns the RoleId whose static data and character art describe a runtime RoleId: a trial role's parent,
 // else the RoleId itself. Images are addressed by it, so a trial character shows its parent's avatar and portrait the way
-// it shows its parent's name and element. It selects images only and never affects statistics.
-func (r *DisplayResolver) StaticRole(ctx context.Context, roleID uint64) uint64 {
+// it shows its parent's name and element. It selects images only and never affects statistics. A failed lookup returns
+// the RoleId itself with errRoleTables or errRoleValue.
+func (r *DisplayResolver) StaticRole(ctx context.Context, roleID uint64) (uint64, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.staticRoleLocked(ctx, roleID)

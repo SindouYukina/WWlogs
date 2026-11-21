@@ -105,6 +105,30 @@ func (n *nameProjection) resolve(kind string, id uint64) capture.DisplayName {
 	return name
 }
 
+// staticRole is the RoleId a runtime role shows the art of (DisplayResolver.StaticRole), and element its element; a
+// failed lookup is kept in err as resolve keeps it. Without a resolver a role shows as itself, with no element.
+func (n *nameProjection) staticRole(role uint64) uint64 {
+	if n.resolver == nil {
+		return role
+	}
+	static, err := n.resolver.StaticRole(n.ctx, role)
+	if err != nil {
+		n.err = err
+	}
+	return static
+}
+
+func (n *nameProjection) element(role uint64) uint64 {
+	if n.resolver == nil || role == 0 {
+		return 0
+	}
+	element, err := n.resolver.RoleElement(n.ctx, role)
+	if err != nil {
+		n.err = err
+	}
+	return element
+}
+
 func (n *nameProjection) skills(original []capture.ViewSkill) []capture.ViewSkill {
 	result := append([]capture.ViewSkill{}, original...)
 	for i := range result {
@@ -118,8 +142,8 @@ func (n *nameProjection) roles(original []capture.ViewRole) []capture.ViewRole {
 	for i := range result {
 		name := n.resolve("role", result[i].RoleID)
 		result[i].Name, result[i].NameStatus = name.Name, name.Status
-		result[i].StaticRoleID = n.resolver.StaticRole(n.ctx, result[i].RoleID)
-		result[i].ElementID = n.resolver.RoleElement(n.ctx, result[i].RoleID)
+		result[i].StaticRoleID = n.staticRole(result[i].RoleID)
+		result[i].ElementID = n.element(result[i].RoleID)
 		result[i].Skills = n.skills(result[i].Skills)
 		result[i].UnassignedSkill = projectUnassignedSkill(n.ctx, n.resolver, result[i].UnassignedSkill, n.locale, &n.err)
 		result[i].Statuses = n.statuses(result[i].Statuses)

@@ -129,7 +129,7 @@ func (c *careerNames) element(role uint64) uint64 {
 	if element, ok := c.elements[role]; ok {
 		return element
 	}
-	element := c.bridge.roleElement(c.ctx, role)
+	element := c.names.element(role)
 	c.elements[role] = element
 	return element
 }
@@ -187,12 +187,7 @@ func (b *Bridge) HistoryCareer(query HistoryCareerQuery, zoneName string) (json.
 		if role, ok := static[runtime]; ok {
 			return role
 		}
-		role := runtime
-		if b.projection.resolver != nil {
-			if parent := b.projection.resolver.StaticRole(names.ctx, runtime); parent != 0 {
-				role = parent
-			}
-		}
+		role := names.staticRole(runtime)
 		static[runtime] = role
 		return role
 	}
@@ -271,6 +266,8 @@ func (b *Bridge) HistoryCareer(query HistoryCareerQuery, zoneName string) (json.
 	sort.Slice(filterStages, func(i, j int) bool {
 		return filterStages[i].Count > filterStages[j].Count || filterStages[i].Count == filterStages[j].Count && filterStages[i].InstanceID < filterStages[j].InstanceID
 	})
+	// The records name roles and skills too, so they are built before the failed-lookup check.
+	records := map[string]any{"maxHit": c.record(view.Records.MaxHit), "bestDps": c.record(view.Records.BestDPS), "bestDamage": c.record(view.Records.BestDamage), "bestPeak": c.record(view.Records.BestPeak)}
 	if names.err != nil {
 		return nil, names.err
 	}
@@ -291,7 +288,7 @@ func (b *Bridge) HistoryCareer(query HistoryCareerQuery, zoneName string) (json.
 		Filters  map[string]any       `json:"filters"`
 	}{
 		Status: b.history.Status(), Zone: zoneJSON(zone), Today: view.Today, From: view.From, To: view.To, Totals: view.Totals, Days: view.Days, Roles: roles, Combos: combos, Modes: modeList, Stages: stages,
-		Records:  map[string]any{"maxHit": c.record(view.Records.MaxHit), "bestDps": c.record(view.Records.BestDPS), "bestDamage": c.record(view.Records.BestDamage), "bestPeak": c.record(view.Records.BestPeak)},
+		Records:  records,
 		Versions: view.Versions, Filters: map[string]any{"modes": modeFacets, "stages": filterStages},
 	})
 }

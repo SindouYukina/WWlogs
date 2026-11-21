@@ -84,6 +84,59 @@ func TestDisplayResolverFallbackAndBoundedCache(t *testing.T) {
 	}
 }
 
+// A name is shown as the client shows it, without its rich-text markup: a word group keeps its text and a ruby annotation
+// keeps its base text (the Global 3.8.12 Master has 32 such names: ja-JP instances, skills and combat skills, ko-KR skills
+// and templates). Text without markup is unchanged, and a text that is only markup is no name.
+func TestDisplayResolverShowsNamesWithoutClientMarkup(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "master.db")
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range []string{
+		"CREATE TABLE instancedungeon_locale (id TEXT NOT NULL, locale TEXT NOT NULL, name TEXT NOT NULL, text_key TEXT, PRIMARY KEY(id, locale))",
+		"CREATE TABLE skill_locale (id TEXT, locale TEXT, name TEXT, PRIMARY KEY(id, locale))",
+		"INSERT INTO instancedungeon_locale VALUES ('900', 'ja-JP', '<word>テティスの底</word>', 'K'), ('900', 'en-US', 'Tethys'' Deep', 'K'), " +
+			"('912', 'ja-JP', '<ano=むすうてんら>夢枢天羅</ano>', 'K'), ('913', 'ja-JP', '<word></word>', 'K'), ('913', 'en-US', 'Fallback stage', 'K'), " +
+			"('914', 'zh-TW', '第一關 1/2', 'K')",
+		"INSERT INTO skill_locale VALUES ('1004305', 'ko-KR', '내가 바로 <ano=지상선>땅 위의 신선</ano>이다'), ('1001302', 'ja-JP', '狂い咲きと枯れる<ano=りんぶ>輪舞</ano>')",
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	db.Close()
+	completeMasterFixture(t, path)
+	resolver, err := OpenDisplayResolver(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resolver.Close()
+	ctx := context.Background()
+	for _, c := range []struct {
+		kind           string
+		id             uint64
+		locale, name   string
+		resolvedLocale string
+	}{
+		{"instance", 900, "ja-JP", "テティスの底", "ja-JP"},
+		{"instance", 900, "zh-TW", "Tethys' Deep", "en-US"},
+		{"instance", 912, "ja-JP", "夢枢天羅", "ja-JP"},
+		{"instance", 913, "ja-JP", "Fallback stage", "en-US"},
+		{"instance", 914, "zh-TW", "第一關 1/2", "zh-TW"},
+		{"skill", 1004305, "ko-KR", "내가 바로 땅 위의 신선이다", "ko-KR"},
+		{"skill", 1001302, "ja-JP", "狂い咲きと枯れる輪舞", "ja-JP"},
+	} {
+		name, err := resolver.Resolve(ctx, c.kind, c.id, c.locale)
+		if err != nil || name.Name != c.name || name.Locale != c.resolvedLocale || name.Status != "VERIFIED" {
+			t.Fatalf("%s %d %s = %+v %v, want %q from %s", c.kind, c.id, c.locale, name, err, c.name, c.resolvedLocale)
+		}
+	}
+	if stage, err := resolver.InstanceStage(ctx, 912, "ja-JP"); err != nil || stage.Name != "夢枢天羅" {
+		t.Fatalf("stage = %+v %v, want the base text", stage, err)
+	}
+}
+
 // This optional integration check reads only a caller-supplied, reviewed Master database.
 func TestDisplayResolverMasterLocales(t *testing.T) {
 	path := os.Getenv("WWLOGS_DISPLAY_MASTER_DB")
