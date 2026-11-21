@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -276,6 +277,36 @@ func buildMasterDatabaseFixture(t *testing.T) string {
 		t.Fatal(err)
 	}
 	return path
+}
+
+// TestDamageOwnersKeepTheStorageOrderOfASkillGroupsRoles pins the order the Development damageOwners output shows: the
+// roles of one skill group come in roleinfo's storage order, not in id order, whatever plan SQLite picks. The index over
+// (skill_id, id) would hand the join the roles in id order.
+func TestDamageOwnersKeepTheStorageOrderOfASkillGroupsRoles(t *testing.T) {
+	path := buildMasterDatabaseFixture(t)
+	execMasterSQL(t, path, []string{
+		"INSERT INTO roleinfo VALUES('5010','77','0')",
+		"INSERT INTO roleinfo VALUES('5008','77','0')",
+		"INSERT INTO roleinfo VALUES('5009','77','0')",
+		"CREATE INDEX roleinfo_by_skill_and_id ON roleinfo(skill_id, id)",
+		"CREATE TABLE skill_damage_ref(skill_id TEXT NOT NULL, ordinal INTEGER NOT NULL, damage_id TEXT NOT NULL, PRIMARY KEY(skill_id, ordinal)) WITHOUT ROWID",
+		"INSERT INTO skill_damage_ref VALUES('1312', 0, '18446744073709551614')",
+	})
+	completeMasterFixture(t, path)
+	master, err := LoadGameMasterDatabase(path, "zh-TW")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var roles []uint64
+	for _, owner := range master.DamageOwners[18446744073709551614] {
+		if owner.Kind != "skill" || owner.ID != 1312 {
+			t.Fatalf("unexpected owner %+v", owner)
+		}
+		roles = append(roles, owner.RoleID)
+	}
+	if want := []uint64{1312, 5010, 5008, 5009}; !slices.Equal(roles, want) {
+		t.Fatalf("roles of skill group 77 = %v, want roleinfo's storage order %v", roles, want)
+	}
 }
 
 func TestRuntimeSkillDefinitionsRetainMultipleActorBindingsWithoutInferringOwner(t *testing.T) {

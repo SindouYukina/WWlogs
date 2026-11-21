@@ -17,10 +17,11 @@ import (
 
 // masterRuntimeSchemaFingerprints are the fingerprints of the runtime schema versions. A change of the declaration changes
 // the fingerprint: bump masterRuntimeSchemaVersion and add the new fingerprint here in the same change (see
-// master_schema.go). Version 1 is kept as the record of what the runtime read before the content model.
+// master_schema.go). Earlier versions are kept as the record of what the runtime read before.
 var masterRuntimeSchemaFingerprints = map[int]string{
 	1: "487d61099888761edfeca581e9a634fc9e2c63b18e570d9443724b7b80df2a69",
 	2: "35c6849ebd0eae5872c72f6f87666caa668e0c8529812187dbea2054d6aa430d",
+	3: "107a34955bf8bb032036f2319036697f6b409440d9d34a06c6470a9a55bd5eda",
 }
 
 func TestMasterRuntimeSchemaVersionNamesItsDeclaration(t *testing.T) {
@@ -74,6 +75,9 @@ func TestMasterRuntimeSchemaDeclarationIsWellFormed(t *testing.T) {
 		}
 		if len(table.Key) > 0 && (table.View || table.Scope != "product") {
 			t.Errorf("%s declares a key; only product tables do", table.Name)
+		}
+		if table.Rowid && (table.View || table.Scope != "product") {
+			t.Errorf("%s declares a rowid; only product tables do", table.Name)
 		}
 	}
 	if views != 1 || len(seen) != 73 {
@@ -263,6 +267,50 @@ func TestMasterRuntimeSchemaCheckNeedsEachKey(t *testing.T) {
 	}
 	if err := checkMasterRuntimeSchema(db); err != nil {
 		t.Fatalf("the restored Master is refused: %v", err)
+	}
+}
+
+// TestMasterRuntimeSchemaCheckNeedsTheRowidItReads: a table whose rowid the runtime reads (its storage order) is refused
+// by name when it is WITHOUT ROWID, with every column it declares present, and accepted again as a rowid table.
+func TestMasterRuntimeSchemaCheckNeedsTheRowidItReads(t *testing.T) {
+	path := emptyRuntimeMaster(t)
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	exec := func(statements ...string) {
+		t.Helper()
+		for _, statement := range statements {
+			if _, err := db.Exec(statement); err != nil {
+				t.Fatalf("%s: %v", statement, err)
+			}
+		}
+	}
+	rowid := 0
+	for _, table := range MasterRuntimeSchema() {
+		if !table.Rowid {
+			continue
+		}
+		rowid++
+		columns := make([]string, len(table.Columns))
+		for i, column := range table.Columns {
+			columns[i] = masterFixtureColumnSQL(column)
+		}
+		keyed := "CREATE TABLE " + masterQuote(table.Name) + " (" + strings.Join(columns, ", ") + ", PRIMARY KEY (" + masterQuote(table.Columns[0].Name) + ")) WITHOUT ROWID"
+		exec("DROP TABLE "+masterQuote(table.Name), keyed)
+		want := "table " + table.Name + " is WITHOUT ROWID; this runtime reads its rowid"
+		if err := checkMasterRuntimeSchema(db); !errors.Is(err, errMasterRuntimeSchema) || !strings.Contains(err.Error(), want) {
+			t.Errorf("%s WITHOUT ROWID: %v, want %q", table.Name, err, want)
+		}
+		exec("DROP TABLE "+masterQuote(table.Name), masterFixtureObjectSQL(table))
+		if err := checkMasterRuntimeSchema(db); err != nil {
+			t.Errorf("%s as a rowid table is refused: %v", table.Name, err)
+		}
+	}
+	if rowid != 1 {
+		t.Fatalf("%d tables declare a rowid; this test pins roleinfo", rowid)
 	}
 }
 

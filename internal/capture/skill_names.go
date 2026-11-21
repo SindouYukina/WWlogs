@@ -514,8 +514,9 @@ func loadSQLiteSkillNameSources(db *sql.DB, locale string, master *GameMaster) e
 			}
 		}
 	}
-	if err := pairs(`SELECT CAST(s.id AS TEXT),CAST(r.role_id AS TEXT) FROM skill s
-		JOIN role_skill_group_ref r ON CAST(r.skill_group_id AS TEXT)=CAST(s.skill_group_id AS TEXT)`, func(uiSkill, roleID uint64) error {
+	// The skill group keys are TEXT in both tables (runtime schema), so the join compares them directly and searches the key.
+	if err := pairs(`SELECT s.id,r.role_id FROM skill s
+		JOIN role_skill_group_ref r ON r.skill_group_id=s.skill_group_id`, func(uiSkill, roleID uint64) error {
 		if names.uiSkillRoles[uiSkill] == nil {
 			names.uiSkillRoles[uiSkill] = map[uint64]struct{}{}
 		}
@@ -549,8 +550,8 @@ func loadSQLiteSkillNameSources(db *sql.DB, locale string, master *GameMaster) e
 	}
 	roleSkillOfType := func(skillType int64, into map[uint64]uint64) error {
 		found := map[uint64]map[uint64]struct{}{}
-		if err := pairs(`SELECT CAST(r.role_id AS TEXT),CAST(s.id AS TEXT) FROM skill s
-		JOIN role_skill_group_ref r ON CAST(r.skill_group_id AS TEXT)=CAST(s.skill_group_id AS TEXT) WHERE s.skill_type=?`, func(roleID, uiSkill uint64) error {
+		if err := pairs(`SELECT r.role_id,s.id FROM skill s
+		JOIN role_skill_group_ref r ON r.skill_group_id=s.skill_group_id WHERE s.skill_type=?`, func(roleID, uiSkill uint64) error {
 			if found[roleID] == nil {
 				found[roleID] = map[uint64]struct{}{}
 			}
@@ -809,11 +810,12 @@ func scanMasterIDPairs(db *sql.DB, query string, read func(a, b uint64)) error {
 	return rows.Err()
 }
 
-// loadSQLiteVisionItems reads every PhantomItem of each Vision with its localized names and monster family.
+// loadSQLiteVisionItems reads every PhantomItem of each Vision with its localized names and monster family. The item keys
+// are TEXT in both tables (runtime schema), so the join compares them directly and searches the locale table's key.
 func loadSQLiteVisionItems(db *sql.DB) (map[uint64][]echoItem, error) {
-	rows, err := db.Query(`SELECT CAST(i.skill_id AS TEXT), CAST(i.id AS TEXT), COALESCE(CAST(i.monster_id AS TEXT),'0'), COALESCE(CAST(i.parent_monster_id AS TEXT),'0'), l.locale, l.name
-		FROM phantomitem i JOIN phantomitem_locale l ON CAST(l.id AS TEXT)=CAST(i.id AS TEXT) AND l.name<>''
-		WHERE i.skill_id IS NOT NULL AND CAST(i.skill_id AS TEXT)<>''`)
+	rows, err := db.Query(`SELECT i.skill_id, i.id, COALESCE(i.monster_id,'0'), COALESCE(i.parent_monster_id,'0'), l.locale, l.name
+		FROM phantomitem i JOIN phantomitem_locale l ON l.id=i.id AND l.name<>''
+		WHERE i.skill_id IS NOT NULL AND i.skill_id<>''`)
 	if err != nil {
 		return nil, fmt.Errorf("query echo skill names: %w", err)
 	}
