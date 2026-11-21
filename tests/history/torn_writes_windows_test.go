@@ -6,6 +6,7 @@ import (
 	"errors"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -45,7 +46,21 @@ func tornWrap(file vfs.File, flags vfs.OpenFlag, err error) (vfs.File, vfs.OpenF
 
 type tornFile struct{ vfs.File }
 
+// tornCrashRequested is set in a writer process whose parent asked it to crash (historyWriterProcess.crashBetweenWrites).
+var tornCrashRequested atomic.Bool
+
+// tornCrashExitCode is the exit code of a writer process that crashed itself at a write.
+const tornCrashExitCode = 197
+
 func (f *tornFile) WriteAt(p []byte, off int64) (int, error) {
+	if tornCrashRequested.Load() {
+		// End the process as TerminateProcess ends a crashed one, before this write begins: no deferred function runs and
+		// no file is closed. A real crash cannot stop between the two writes below, which only this VFS splits.
+		if process, err := syscall.GetCurrentProcess(); err == nil {
+			_ = syscall.TerminateProcess(process, tornCrashExitCode)
+		}
+		select {}
+	}
 	mixed := make([]byte, len(p))
 	_, _ = f.File.ReadAt(mixed, off) // bytes past the end stay zero
 	for i := range mixed {
@@ -163,7 +178,17 @@ func tornHistoryRun(t *testing.T, checkpoint bool) {
 
 // TestTornWritesNeverReachAnotherProcess records through tornVFS in another process while this one, read-only beside it
 // (the second WWlogs the writer lock allows), reads the newest rows on its own connections. The locks that keep a torn
-// sector from readers must hold across processes too.
+// sector from readers must hold across processes too. Then the writer crashes and every transaction it reported committed
+// must be stored.
+//
+// The writer crashes itself at the start of a write (crashBetweenWrites), not at a random moment: a kill between the two
+// writes tornVFS makes of one sector leaves the interleaved bytes on disk, which no process crash can do. Write-ahead log
+// frames are 4,120 bytes, so every other frame begins 8 bytes into a 16-byte AES block of the previous frame; the first
+// write of a transaction rewrites that block, and interleaved there it corrupts the previous, committed frame, whose
+// transaction recovery then drops. That is a torn sector of a power loss, which the history's synchronous=NORMAL
+// write-ahead log does not promise to survive; 2026-11-22 a random kill hit it once in a verify run (119 rows stored,
+// 120 reported), and a kill held inside that window lost the previous transaction exactly when its write began 8 bytes
+// before a frame boundary, never once the sector's new bytes were written.
 func TestTornWritesNeverReachAnotherProcess(t *testing.T) {
 	registerTornXTS()
 	saved := encryptionVFS
@@ -201,14 +226,14 @@ func TestTornWritesNeverReachAnotherProcess(t *testing.T) {
 		}(conn)
 	}
 	time.Sleep(duration)
-	reported := writer.kill(t)
+	reported := writer.crashBetweenWrites(t)
 	done.Store(true)
 	wg.Wait()
 	if err := reader.Close(); err != nil {
 		t.Fatal(err)
 	}
 	counts, messages, failed := failures.snapshot()
-	t.Logf("%s: writer process reported %d rows, %d reads in this process, %d failed %v", driverVersion(), reported, reads.Load(), failed, counts)
+	t.Logf("%s: writer process reported %d rows and crashed at a write, %d reads in this process, %d failed %v", driverVersion(), reported, reads.Load(), failed, counts)
 	if failed > 0 {
 		t.Errorf("%d reads returned what was never written: %v", failed, messages)
 	}
@@ -216,7 +241,7 @@ func TestTornWritesNeverReachAnotherProcess(t *testing.T) {
 	ledger := &stressLedger{size: func(int64) int64 { return 1 }}
 	stored, err := stressCheckTotals(ctx, store.db, span, ledger)
 	if err != nil || stored < reported {
-		t.Fatalf("%d rows stored, %d reported committed (%v)", stored, reported, err)
+		t.Fatalf("%d rows stored, %d reported committed (%v): a transaction the writer reported committed is gone", stored, reported, err)
 	}
 	stressVerifyAll(t, store.db, span, stored, ledger)
 	assertIntegrity(t, store)
