@@ -3,8 +3,10 @@ package desktop
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"wwlogs/internal/capture"
@@ -118,5 +120,110 @@ func TestHistoryNamesOfContentSystems(t *testing.T) {
 	}
 	if hidden := resolveLibraryFilters(HistoryLibraryQuery{Text: "不應顯示"}, instances, nil, func(uint64) string { return "" }); len(hidden.MatchInstances) != 0 {
 		t.Fatalf("a contradicted content name was searchable: %v", hidden.MatchInstances)
+	}
+}
+
+// TestHistoryNamesOfContentSystemsWithTheEmbeddedMaster checks what the History views send with the Master the build
+// embeds, in every bundled Master locale: a row (nameProjection.summary, as HistoryDay, HistoryLibrary and HistoryCompare
+// send it) and the mode filter option of the library and the career page (modeFacet) must name the same mode, and a
+// content system the game names no system for must reach both with its system, which the UI labels. The instances are the
+// two matrix instances of the owner's 2026-11-22 LIVE encounters (no MapName: no stage name, and only the content layers
+// the Master names stand in for one) and one instance of every other kind the History names (the Master's content rows
+// themselves are checked in tests/capture/content_display_test.go).
+func TestHistoryNamesOfContentSystemsWithTheEmbeddedMaster(t *testing.T) {
+	masters, err := capture.LoadMasterData("", "zh-TW")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { masters.Close() })
+	resolver := masters.DisplayResolver()
+	cases := []struct {
+		instance uint64
+		kind     capture.InstanceModeKind
+		system   string
+		stage    bool // the instance has a stage name of its own
+	}{
+		{107700001, capture.InstanceModeContentSystem, "wheel-tower", false},
+		{107700002, capture.InstanceModeContentSystem, "wheel-tower", false},
+		{82110, capture.InstanceModeContentSystem, "role-trial", true},
+		{8301, capture.InstanceModeContentSystem, "boss-rush", true},
+		{8900, capture.InstanceModeContentSystem, "tower-defense", true},
+		{9102, capture.InstanceModeCategory, "weekly-rogue", true},
+		{3925, capture.InstanceModeCategory, "tactical-hologram", false},
+		{40286, capture.InstanceModeCategory, "ship-tower", true},
+		{20016, capture.InstanceModeCategory, "tower-of-adversity", true},
+		{210404021, capture.InstanceModeCategory, "", true},
+		{8, capture.InstanceModeOpenWorld, "", true},
+	}
+	matrixModes := map[string][2]string{"zh-TW": {"穩態協議", "奇點擴張"}, "en-US": {"Stability Accords", "Singularity Expansion"}}
+	for _, locale := range []string{"zh-TW", "zh-CN", "en-US", "ja-JP", "ko-KR"} {
+		names := &nameProjection{ctx: t.Context(), resolver: resolver, locale: locale}
+		counts := map[uint64]int{}
+		for _, c := range cases {
+			counts[c.instance] = 1
+			row := names.summary(history.EncounterSummary{Scene: history.SceneRef{Known: true, InstanceID: c.instance}, GameVersion: capture.CurrentGameVersion()})
+			if row.Mode.Kind != c.kind || row.Mode.System != c.system || row.Mode.Status == "UNKNOWN" {
+				t.Fatalf("%s %d: row mode %+v, want kind %s of system %q", locale, c.instance, row.Mode, c.kind, c.system)
+			}
+			if c.kind == capture.InstanceModeCategory && row.Mode.Name == "" || c.kind != capture.InstanceModeCategory && row.Mode.Name != "" {
+				t.Fatalf("%s %d: mode name %q: only a category is named by the Master; the UI labels the others", locale, c.instance, row.Mode.Name)
+			}
+			if (row.SceneName.Name != "") != c.stage {
+				t.Fatalf("%s %d: stage %+v, want a stage name of its own: %v", locale, c.instance, row.SceneName, c.stage)
+			}
+			option := modeFacet(names.instanceNames(c.instance))
+			if option.Key != modeKey(row.Mode) || option.Kind != row.Mode.Kind || option.Name != row.Mode.Name || option.System != row.Mode.System {
+				t.Fatalf("%s %d: filter option %+v names another mode than the row %+v", locale, c.instance, option, row.Mode)
+			}
+		}
+		for i, instance := range []uint64{107700001, 107700002} {
+			row := names.summary(history.EncounterSummary{Scene: history.SceneRef{Known: true, InstanceID: instance}, GameVersion: capture.CurrentGameVersion()})
+			if row.SceneName != (historyName{Status: "UNKNOWN"}) || row.Content == nil || row.Content.System != "wheel-tower" {
+				t.Fatalf("%s %d: stage %+v content %+v", locale, instance, row.SceneName, row.Content)
+			}
+			var shown []string
+			for _, layer := range row.Content.Layers {
+				shown = append(shown, layer.Dimension+"="+layer.State)
+				switch {
+				case layer.Dimension == "mode" && (layer.State != "OFFICIAL" || layer.Name == "" || layer.Status != "VERIFIED"):
+					t.Fatalf("%s %d: the matrix mode is one named entry: %+v", locale, instance, layer)
+				case layer.Dimension == "mode" && matrixModes[locale][i] != "" && layer.Name != matrixModes[locale][i]:
+					t.Fatalf("%s %d: mode %q, want %q", locale, instance, layer.Name, matrixModes[locale][i])
+				case layer.Dimension != "mode" && layer.Name != "":
+					// Activity and cycle are left open by the Master: no current activity such as 終焉矩陣 is chosen.
+					t.Fatalf("%s %d: layer %+v names a value the static data cannot choose", locale, instance, layer)
+				}
+			}
+			if strings.Join(shown, " ") != "activity=RUNTIME_DEPENDENT cycle=RUNTIME_DEPENDENT stage=NO_OFFICIAL_NAME mode=OFFICIAL" {
+				t.Fatalf("%s %d: content layers %v", locale, instance, shown)
+			}
+		}
+		// The library's filter options as Go sends them: every content system without a game name carries its system.
+		raw, err := json.Marshal(libraryFacets(history.LibraryFacets{Instances: counts}, names.instances(counts), map[uint64]uint64{}, names))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var facets struct {
+			Modes []map[string]any `json:"modes"`
+		}
+		if err := json.Unmarshal(raw, &facets); err != nil {
+			t.Fatal(err)
+		}
+		systems := map[string]bool{}
+		for _, option := range facets.Modes {
+			if option["kind"] == string(capture.InstanceModeContentSystem) {
+				system, _ := option["system"].(string)
+				if option["key"] != "content:"+system || system == "" {
+					t.Fatalf("%s: content system option %v must carry its system", locale, option)
+				}
+				systems[system] = true
+			}
+		}
+		if want := map[string]bool{"wheel-tower": true, "role-trial": true, "boss-rush": true, "tower-defense": true}; !reflect.DeepEqual(systems, want) {
+			t.Fatalf("%s: content system options %v, want %v", locale, systems, want)
+		}
+		if names.err != nil {
+			t.Fatal(names.err)
+		}
 	}
 }

@@ -52,11 +52,24 @@ export interface LibraryCount {
   count: number
 }
 
+/**
+ * One mode the library and career filters offer (Go historyModeFacetJSON): a named category, the open world, or a content
+ * system the game names no system for, which is labelled by its system as in a row.
+ */
+export interface HistoryModeFacet {
+  key: string
+  kind: NonNullable<HistoryMode["kind"]>
+  name?: string
+  status: HistoryName["status"]
+  system?: string
+  count: number
+}
+
 export interface HistoryLibraryFacets {
   gameVersions: LibraryCount[]
   classes: LibraryCount[]
   sources: LibraryCount[]
-  modes: Array<{ key: string; kind: NonNullable<HistoryMode["kind"]>; name?: string; status: HistoryName["status"]; system?: string; count: number }>
+  modes: HistoryModeFacet[]
   stages: Array<{ instanceId: number; name: HistoryName; content?: HistoryContent; count: number }>
   roles: Array<{ roleId: number; elementId?: number; name: HistoryName; count: number }>
   firstDate?: string

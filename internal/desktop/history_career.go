@@ -251,8 +251,10 @@ func (b *Bridge) HistoryCareer(query HistoryCareerQuery, zoneName string) (json.
 		if known.modeKey == "" {
 			continue
 		}
-		facet := filterModes[known.modeKey]
-		facet.Key, facet.Kind, facet.Name, facet.Status = known.modeKey, known.mode.Kind, known.mode.Name, known.mode.Status
+		facet, counted := filterModes[known.modeKey]
+		if !counted {
+			facet = modeFacet(known)
+		}
 		facet.Count += probe.Facets.Instances[id]
 		filterModes[known.modeKey] = facet
 	}

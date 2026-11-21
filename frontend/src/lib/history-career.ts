@@ -1,5 +1,5 @@
 import { dateOfDay, dayNumber, heatLevel, type HeatmapCell, type HistoryContent, type HistoryLocalTime, type HistoryMode, type HistoryName, type HistoryStatus, type HistoryZone } from "./history.ts"
-import type { HistoryLibraryQuery } from "./history-library.ts"
+import type { HistoryLibraryQuery, HistoryModeFacet } from "./history-library.ts"
 
 // The Career Overview contracts the Go host returns (internal/desktop/history_career.go, internal/history/career.go). Every
 // total, record, eligibility and date comes from Go; this file only names the query presets and lays out a calendar grid of
@@ -132,7 +132,7 @@ export interface HistoryCareer {
   records: { maxHit?: CareerRecord | null; bestDps?: CareerRecord | null; bestDamage?: CareerRecord | null; bestPeak?: CareerRecord | null }
   versions: string[]
   filters: {
-    modes: Array<{ key: string; kind: NonNullable<HistoryMode["kind"]>; name?: string; status: HistoryName["status"]; system?: string; count: number }>
+    modes: HistoryModeFacet[]
     stages: Array<{ instanceId: number; name: HistoryName; content?: HistoryContent; count: number }>
   }
 }
