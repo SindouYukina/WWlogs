@@ -483,8 +483,9 @@ func TestLoadGameMasterDatabaseReadsNegativeStatusSettlement(t *testing.T) {
 		"INSERT INTO damage VALUES('1001',0,9),('1007',0,9),('1508007001',0,0)",
 		"CREATE TABLE abnormaldamageconfig(level INTEGER PRIMARY KEY,abnormal1001 INTEGER)",
 		"INSERT INTO abnormaldamageconfig VALUES(1,11)",
-		"CREATE TABLE buff(id TEXT PRIMARY KEY,extra_effect_id TEXT,period REAL,b_execute_periodic_effect_on_application INTEGER,b_clear_stack_on_overflow INTEGER)",
-		"INSERT INTO buff VALUES('10041000','1001',3,1,0),('10011100','1007',0,1,0),('10021000','1004',0,1,1),('1409303001','67',0,1,0),('1508300100','0',0,1,0)",
+		"CREATE TABLE buff(id TEXT PRIMARY KEY,extra_effect_id TEXT,period INTEGER,b_execute_periodic_effect_on_application INTEGER,b_clear_stack_on_overflow INTEGER)",
+		// 1008 has no AbnormalDamageConfig column (the Master's columns are Abnormal1001 to Abnormal1006) and no FormulaType 9.
+		"INSERT INTO buff VALUES('10041000','1001',3,1,0),('10011100','1007',0,1,0),('10021000','1008',0,1,1),('1409303001','67',0,1,0),('1508300100','0',0,1,0)",
 		"CREATE TABLE buff_extra_effect_parameters(owner_id TEXT,ordinal INTEGER,value TEXT)",
 		"INSERT INTO buff_extra_effect_parameters VALUES('1409303001',0,'10041000#10011100#abc')",
 	}
@@ -497,6 +498,7 @@ func TestLoadGameMasterDatabaseReadsNegativeStatusSettlement(t *testing.T) {
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
+	completeMasterFixture(t, path)
 	master, err := LoadGameMasterDatabase(path, "zh-TW")
 	if err != nil {
 		t.Fatal(err)
@@ -506,10 +508,10 @@ func TestLoadGameMasterDatabaseReadsNegativeStatusSettlement(t *testing.T) {
 			t.Fatalf("DamageId %d is a negative status", id)
 		}
 	}
-	if master.isNegativeStatusDamage(1004) || master.isNegativeStatusDamage(1508007001) {
+	if master.isNegativeStatusDamage(1008) || master.isNegativeStatusDamage(1508007001) {
 		t.Fatal("a DamageId with neither an AbnormalDamageConfig column nor FormulaType 9 is no negative status")
 	}
-	if !master.negativeStatusExecutes(10041000, 1001) || !master.negativeStatusExecutes(10011100, 1007) || master.negativeStatusExecutes(10021000, 1004) {
+	if !master.negativeStatusExecutes(10041000, 1001) || !master.negativeStatusExecutes(10011100, 1007) || master.negativeStatusExecutes(10021000, 1008) {
 		t.Fatal("status executors are the Buffs whose extra effect is a negative-status DamageId")
 	}
 	if got := master.negativeStatusSettlementOf(10041000); got != (NegativeStatusSettlementRule{Known: true, Periodic: true, ExecutesOnCreation: true}) {

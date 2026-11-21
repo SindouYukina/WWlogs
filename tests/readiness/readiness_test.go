@@ -3,8 +3,9 @@ package readiness_test
 // Tests of the version readiness gate. The current repository must have no static gap, and every kind of gap the Global
 // 3.8 adaptation actually had (or could have) must make the gate fail, on isolated defective copies: a manifest without
 // the new role's art, a product classification that drops a HUD status, a new game mode the resolver cannot place, a
-// History that keeps an old game version, a retired protocol layer, stale wire numbers, a required Golden capture that did
-// not run, and a Master lookup that no longer resolves. Nothing here touches the tracked Master, manifest or any user data.
+// History that keeps an old game version, a retired protocol layer, a required Golden capture that did not run, and a
+// Master lookup that no longer resolves. Nothing here touches the tracked Master, manifest or any user data. The research
+// checks are declared here and implemented by the maintainer's private research extension (research_boundary_test.go).
 
 import (
 	"database/sql"
@@ -13,7 +14,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -194,55 +194,6 @@ func manifestPaths(t *testing.T) []string {
 	return paths
 }
 
-var reConstant = regexp.MustCompile(`(?m)^\s*([Cc]md|[Ff]ield)([A-Za-z0-9_]+)\s*=\s*(\d+)\s*//\s*(\S+)\s*$`)
-var reHash = regexp.MustCompile(`\(SHA-256 ([0-9a-f]{64})\)`)
-
-// schemaFromConstants writes a client schema (the protojs_schema.py layout) that agrees with the generated numbers, with
-// one command optionally renumbered, as a stand-in for the private client schema.
-func schemaFromConstants(t *testing.T, renumber string) string {
-	t.Helper()
-	root := repositoryRoot(t)
-	var text string
-	for _, file := range []string{"internal/capture/protocol_numbers.go", "tests/capture/protocol_numbers_test.go"} {
-		data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(file)))
-		if err != nil {
-			t.Fatal(err)
-		}
-		text += strings.ReplaceAll(string(data), "\r\n", "\n") + "\n"
-	}
-	hashes := reHash.FindAllStringSubmatch(text, 2)
-	if len(hashes) < 2 {
-		t.Fatal("the generated numbers carry no Protocol.js and NetDefine.js hashes")
-	}
-	messages := map[string]map[string]map[string]string{}
-	commands := map[string]string{}
-	for _, m := range reConstant.FindAllStringSubmatch(text, -1) {
-		number, key := m[3], m[4]
-		if strings.EqualFold(m[1], "cmd") {
-			if m[1]+m[2] == renumber {
-				value, _ := strconv.Atoi(number)
-				number = strconv.Itoa(value + 1)
-			}
-			commands[number] = key
-			continue
-		}
-		dot := strings.LastIndex(key, ".")
-		message, property := key[:dot], key[dot+1:]
-		if messages[message] == nil {
-			messages[message] = map[string]map[string]string{}
-		}
-		messages[message][number] = map[string]string{"name": property, "kind": "int32"}
-	}
-	schema := map[string]any{"protocolSha256": hashes[0][1], "netDefineSha256": hashes[1][1], "messages": messages, "commands": commands}
-	return writeJSON(t, filepath.Join(t.TempDir(), "schema.json"), schema)
-}
-
-// clientInventory writes a client reference inventory of the given paths for the tracked manifest's resource.
-func clientInventory(t *testing.T, paths []string) string {
-	t.Helper()
-	return writeJSON(t, filepath.Join(t.TempDir(), "client-references.json"), map[string]any{"client": "fixture", "resource": "3.8.9", "paths": paths, "exclusions": []any{}})
-}
-
 // passingEvidence writes verify results, Golden coverage and a History summary as a complete passing run would.
 func passingEvidence(t *testing.T, in *readiness.Inputs) {
 	t.Helper()
@@ -297,63 +248,12 @@ func TestCurrentRepositoryHasNoStaticGap(t *testing.T) {
 	wantStatus(t, report, "verification.client-impact", readiness.StatusUnverified)
 }
 
-// impactReport writes a client update impact report (hotfix_impact.py, schema 1) of the Windows Global client.
-func impactReport(t *testing.T, overall, base, target string, change func(map[string]any)) string {
-	t.Helper()
-	report := map[string]any{"schema": 1, "platform": "windows", "region": "Global",
-		"base":    map[string]any{"label": "base", "gameVersion": base, "clientRegion": "Global"},
-		"target":  map[string]any{"label": "target", "gameVersion": target, "clientRegion": "Global"},
-		"overall": overall, "domains": map[string]any{"stage": map[string]any{"classification": overall, "reasons": []any{map[string]any{"level": overall, "reason": "fixture"}}}}}
-	if change != nil {
-		change(report)
-	}
-	return writeJSON(t, filepath.Join(t.TempDir(), "impact.json"), report)
-}
-
-// The impact report connects the client the product decodes (Global 3.8.9) with the client an update brought: only an
-// update without runtime impact, or one the product was adapted to, passes; a pending investigation is no pass, and a
-// report about other clients or another region proves nothing.
-func TestGateClientImpactConnectsTheDecodedClient(t *testing.T) {
-	cases := []struct {
-		name, overall, base, target string
-		change                      func(map[string]any)
-		want                        readiness.Status
-		finding                     string
-	}{
-		{"hot patch without runtime impact", "NO_RUNTIME_IMPACT", "3.8.9", "3.8.11", nil, readiness.StatusPass, ""},
-		{"no change after an adaptation", "NO_CHANGE", "3.8.8", "3.8.9", nil, readiness.StatusPass, ""},
-		{"adapted to the relevant update", "RUNTIME_RELEVANT", "3.8.8", "3.8.9", nil, readiness.StatusPass, ""},
-		{"relevant update not adapted", "RUNTIME_RELEVANT", "3.8.9", "3.8.12", nil, readiness.StatusFail, "the product still decodes Global 3.8.9"},
-		{"investigation pending", "INVESTIGATION_REQUIRED", "3.8.9", "3.8.12", nil, readiness.StatusUnverified, ""},
-		{"blocked", "BLOCKED", "3.8.9", "3.8.12", nil, readiness.StatusFail, "BLOCKED"},
-		{"other clients", "NO_RUNTIME_IMPACT", "3.8.0", "3.8.1", nil, readiness.StatusFail, "the decoder reads Global 3.8.9"},
-		{"another region", "NO_RUNTIME_IMPACT", "3.8.9", "3.8.11", func(r map[string]any) { r["base"].(map[string]any)["clientRegion"] = "CN" }, readiness.StatusFail, "regions"},
-		{"another schema", "NO_RUNTIME_IMPACT", "3.8.9", "3.8.11", func(r map[string]any) { r["schema"] = 2 }, readiness.StatusFail, "schema 2"},
-		{"unknown classification", "COMPATIBLE", "3.8.9", "3.8.11", nil, readiness.StatusFail, "COMPATIBLE"},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			in := baseInputs(t)
-			in.ClientImpact = impactReport(t, tc.overall, tc.base, tc.target, tc.change)
-			report := run(t, in)
-			if tc.want == readiness.StatusFail {
-				wantFail(t, report, "verification.client-impact", tc.finding)
-				return
-			}
-			wantStatus(t, report, "verification.client-impact", tc.want)
-		})
-	}
-}
-
 // A complete passing run is STATIC_READY, and only the owner's Live record makes it LIVE_VERIFIED: the two states never
-// stand in for each other.
+// stand in for each other. A stand-in research extension passes the research checks.
 func TestStaticReadyAndLiveVerifiedAreSeparate(t *testing.T) {
 	in := baseInputs(t)
 	in.Locales = []string{"zh-TW", "zh-CN", "en-US", "ja-JP", "ko-KR"}
-	in.ProtocolSchema = schemaFromConstants(t, "")
-	in.ClientReferences = clientInventory(t, manifestPaths(t))
-	in.ClientContent = contentInventory(t, nil)
-	in.ClientImpact = impactReport(t, "NO_RUNTIME_IMPACT", "3.8.9", "3.8.11", nil)
+	in.Research = []readiness.ResearchExtension{passingResearch()}
 	passingEvidence(t, &in)
 	report := run(t, in)
 	if !report.StaticReady || report.LiveVerified {
@@ -500,9 +400,9 @@ func TestGateFailsStaleHistoryGameVersion(t *testing.T) {
 	wantFail(t, report, "verification.golden-coverage", "the Golden registry is for game version \"3.8\", the decoder reads \"3.9\"")
 }
 
-// Failure injection 6: the protocol was renewed but a retired translation layer stayed in the product, and the committed
-// numbers do not match the current client schema.
-func TestGateFailsRetiredProtocolLayerAndStaleNumbers(t *testing.T) {
+// Failure injection 6: the protocol was renewed but a retired translation layer and a stray wire number stayed in the
+// product.
+func TestGateFailsRetiredProtocolLayer(t *testing.T) {
 	root := repositoryRoot(t)
 	tree := t.TempDir()
 	copyFile(t, filepath.Join(root, "internal", "capture", "protocol_numbers.go"), filepath.Join(tree, "internal", "capture", "protocol_numbers.go"))
@@ -518,17 +418,11 @@ func TestGateFailsRetiredProtocolLayerAndStaleNumbers(t *testing.T) {
 	}
 	in := readiness.Inputs{Root: tree, MasterPath: filepath.Join(root, "data", "master_data.db"), ManifestPath: filepath.Join(root, "assets", "manifest.json"),
 		AssetRoot: filepath.Join(root, "assets"), Product: sharedProduct(t), Locales: []string{}}
-	in.ProtocolSchema = schemaFromConstants(t, "CmdDamageExecuteRequest")
 	report := run(t, in)
 	wantFail(t, report, "protocol.single-native-decoder", "internal/capture/protocol_translation.go: a retired protocol layer", "internal/capture/protocol_translation_3.8.json: a retired protocol layer", "internal/capture/damage_numbers.go:4 assigns a wire number outside the generated file")
-	wantFail(t, report, "protocol.schema-keys", "CmdDamageExecuteRequest")
 
-	// The same tree without the defects passes both checks: the injection, not the fixture, made them fail.
-	clean := baseInputs(t)
-	clean.ProtocolSchema = schemaFromConstants(t, "")
-	report = run(t, clean)
-	wantStatus(t, report, "protocol.single-native-decoder", readiness.StatusPass)
-	wantStatus(t, report, "protocol.schema-keys", readiness.StatusPass)
+	// The tracked tree passes the check: the injection, not the fixture, made it fail.
+	wantStatus(t, run(t, baseInputs(t)), "protocol.single-native-decoder", readiness.StatusPass)
 }
 
 // Failure injection 7: a required Golden capture did not run, ran without facts, failed, or ran from another file.
@@ -569,174 +463,37 @@ func TestGateFailsUnexecutedRequiredGolden(t *testing.T) {
 	wantStatus(t, report, "verification.regression-suite", readiness.StatusUnverified)
 }
 
-// The client reference inventory catches an image the client references but the pack lacks, and one the pack keeps after
-// the client stopped referencing it.
-func TestGateFailsClientReferenceDrift(t *testing.T) {
-	paths := manifestPaths(t)
+// A Public verify run (scripts/verify.ps1 -Mode Public) reports the steps that need private material SKIP. A skipped step
+// is no pass: the gate's evidence checks stay open and the version is not STATIC_READY on such a run.
+func TestGateTakesNoPublicVerifyRunAsPassing(t *testing.T) {
 	in := baseInputs(t)
-	in.ClientReferences = clientInventory(t, append(paths[1:], "game/buffs/999999999/icon.webp"))
-	report := run(t, in)
-	wantFail(t, report, "assets.client-references", "game/buffs/999999999/icon.webp is referenced by the client but missing from the pack", paths[0]+" is in the pack but no longer referenced")
-}
-
-// contentInventory writes a client content inventory (research input clientContent) whose client side is a copy of the
-// tracked Master, changed by mutate: the clean control of master.client-content, and every defect injected into it.
-func contentInventory(t *testing.T, mutate func(inventory map[string]any)) string {
-	t.Helper()
-	db, err := sql.Open("sqlite", "file:"+filepath.ToSlash(filepath.Join(repositoryRoot(t), "data", "master_data.db"))+"?mode=ro")
+	passingEvidence(t, &in)
+	var results map[string]any
+	data, err := os.ReadFile(in.VerifyResults)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
-	column := func(query string) []string {
-		rows, err := db.Query(query)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer rows.Close()
-		var out []string
-		for rows.Next() {
-			var value string
-			if err := rows.Scan(&value); err != nil {
-				t.Fatal(err)
-			}
-			out = append(out, value)
-		}
-		return out
-	}
-	tables := map[string]any{}
-	for _, table := range []string{"roleinfo", "trialroleinfo", "buff", "gameplaycue", "skill", "secondaryguidedata", "dungeondetection", "silentareadetection", "instancedungeon"} {
-		ids := column("SELECT CAST(id AS TEXT) FROM " + table)
-		tables[table] = map[string]any{"sourceRows": len(ids), "decodedRows": len(ids), "ids": ids}
-	}
-	inventory := map[string]any{
-		"client": "Global 3.8.9", "resource": "3.8.9", "tables": tables,
-		"playableRoles": column("SELECT CAST(id AS TEXT) FROM roleinfo WHERE role_type = 1"),
-		"hudBuffs": column(`SELECT DISTINCT b.owner_id FROM buff_gameplay_cue_ids b JOIN gameplaycue g ON g.id = CAST(CAST(b.value AS INTEGER) AS TEXT)
-			WHERE g.path_asset_id IS NOT NULL AND g.path_asset_id <> '' AND g.cue_type IN (2, 14, 24, 37)`),
-		"prefabEntities": prefabEntitiesOf(t, db),
-		"exclusions":     []any{},
-	}
-	if mutate != nil {
-		mutate(inventory)
-	}
-	return writeJSON(t, filepath.Join(t.TempDir(), "client-content.json"), inventory)
-}
-
-// prefabEntitiesOf lists the prefab entities of the Master's prefab relations as the inventory lists the client's: every
-// template in ordinal order and every MonsterInfo of the entity.
-func prefabEntitiesOf(t *testing.T, db *sql.DB) []map[string]any {
-	t.Helper()
-	entities := map[string]map[string]any{}
-	var order []string
-	rows, err := db.Query("SELECT prefab_id, entity_id, template_id FROM prefab_entity_template_ref ORDER BY CAST(prefab_id AS INTEGER), CAST(entity_id AS INTEGER), ordinal")
-	if err != nil {
+	if err := json.Unmarshal(data, &results); err != nil {
 		t.Fatal(err)
 	}
-	for rows.Next() {
-		var prefab, entity, template string
-		if err := rows.Scan(&prefab, &entity, &template); err != nil {
-			t.Fatal(err)
+	results["mode"] = "Public"
+	for _, step := range results["results"].([]any) {
+		switch step.(map[string]any)["name"] {
+		case "desktop embedded images", "master: embedded bytes + profile lookup parity", "replay: public output audit + statistics equality",
+			"replay: effect and skill semantics", "replay: combat history fidelity":
+			step.(map[string]any)["state"] = "SKIP"
+			step.(map[string]any)["detail"] = "Public mode: needs the owner-local key"
 		}
-		key := prefab + "/" + entity
-		if entities[key] == nil {
-			entities[key] = map[string]any{"prefab": prefab, "entity": entity, "blueprint": "", "templates": []string{}, "monsters": []string{}}
-			order = append(order, key)
-		}
-		entities[key]["templates"] = append(entities[key]["templates"].([]string), template)
 	}
-	rows.Close()
-	rows, err = db.Query("SELECT prefab_id, entity_id, monster_id FROM prefab_entity_monster ORDER BY CAST(prefab_id AS INTEGER), CAST(entity_id AS INTEGER), CAST(monster_id AS INTEGER)")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for rows.Next() {
-		var prefab, entity, monster string
-		if err := rows.Scan(&prefab, &entity, &monster); err != nil {
-			t.Fatal(err)
-		}
-		key := prefab + "/" + entity
-		if entities[key] == nil {
-			entities[key] = map[string]any{"prefab": prefab, "entity": entity, "blueprint": "", "templates": []string{}, "monsters": []string{}}
-			order = append(order, key)
-		}
-		entities[key]["monsters"] = append(entities[key]["monsters"].([]string), monster)
-	}
-	rows.Close()
-	out := make([]map[string]any, 0, len(order))
-	for _, key := range order {
-		out = append(out, entities[key])
-	}
-	return out
-}
-
-// addTableID adds an id to one table of a content inventory, as a row the client defines.
-func addTableID(inventory map[string]any, table, id string) {
-	entry := inventory["tables"].(map[string]any)[table].(map[string]any)
-	entry["ids"] = append(entry["ids"].([]string), id)
-	entry["sourceRows"] = entry["sourceRows"].(int) + 1
-	entry["decodedRows"] = entry["decodedRows"].(int) + 1
-}
-
-// The clean control: an inventory of exactly the Master's client rows passes, with every row counted.
-func TestGateClientContentMatchesTheMaster(t *testing.T) {
-	in := baseInputs(t)
-	in.ClientContent = contentInventory(t, nil)
+	in.VerifyResults = writeJSON(t, in.VerifyResults, results)
 	report := run(t, in)
-	wantStatus(t, report, "master.client-content", readiness.StatusPass)
-	if c := checkOf(t, report, "master.client-content"); c.Coverage == nil || c.Coverage.Total == 0 || c.Coverage.Passed != c.Coverage.Total {
-		t.Fatalf("coverage %+v, want every client row", c.Coverage)
+	for _, id := range []string{"verification.regression-suite", "runtime.profile-parity", "assets.embedded-parity"} {
+		wantStatus(t, report, id, readiness.StatusUnverified)
 	}
-}
-
-// Failure injection: the client defines a new role, a new HUD status and new rows that the Master build dropped. The
-// other Master checks walk the Master's own rows and cannot see them.
-func TestGateFailsClientContentTheMasterLacks(t *testing.T) {
-	in := baseInputs(t)
-	in.ClientContent = contentInventory(t, func(inventory map[string]any) {
-		addTableID(inventory, "roleinfo", "9999")
-		inventory["playableRoles"] = append(inventory["playableRoles"].([]string), "9999")
-		addTableID(inventory, "buff", "999999999")
-		addTableID(inventory, "gameplaycue", "999999998")
-		inventory["hudBuffs"] = append(inventory["hudBuffs"].([]string), "999999999")
-		addTableID(inventory, "instancedungeon", "999997")
-	})
-	report := run(t, in)
-	wantFail(t, report, "master.client-content", "roleinfo 9999 is in the client but not in the Master", "playable role 9999 of the client is not playable in the Master",
-		"buff 999999999 is in the client but not in the Master", "the client HUD draws buff 999999999 but the Master gives it no HUD cue",
-		"gameplaycue 999999998 is in the client but not in the Master", "instancedungeon 999997 is in the client but not in the Master")
-	// The static checks that read the Master alone still pass: only the cross-layer check sees the dropped rows.
-	wantStatus(t, report, "characters.art", readiness.StatusPass)
-	wantStatus(t, report, "effects.hud-classification", readiness.StatusPass)
-}
-
-// Failure injection: the Master gives a buff a HUD cue the client no longer draws (a stale Master after an update).
-func TestGateFailsClientContentStaleHUDRelation(t *testing.T) {
-	in := baseInputs(t)
-	in.ClientContent = contentInventory(t, func(inventory map[string]any) {
-		hud := inventory["hudBuffs"].([]string)
-		inventory["hudBuffs"] = hud[1:]
-	})
-	report := run(t, in)
-	wantFail(t, report, "master.client-content", "a HUD cue the client does not draw")
-}
-
-// Failure injection: the inventory was extracted from another client than the decoder's, or its extraction is partial.
-func TestGateFailsClientContentFromAnotherClientOrPartialExtraction(t *testing.T) {
-	in := baseInputs(t)
-	in.ClientContent = contentInventory(t, func(inventory map[string]any) { inventory["client"] = "Global 3.9.0" })
-	wantFail(t, run(t, in), "master.client-content", `the inventory describes client "Global 3.9.0", the decoder reads "Global 3.8.9"`)
-
-	in.ClientContent = contentInventory(t, func(inventory map[string]any) {
-		entry := inventory["tables"].(map[string]any)["buff"].(map[string]any)
-		entry["decodedRows"] = entry["decodedRows"].(int) - 3
-	})
-	wantFail(t, run(t, in), "master.client-content", "buff: 28009 of the client's 28012 rows decoded in the extraction snapshot")
-
-	in.ClientContent = contentInventory(t, func(inventory map[string]any) {
-		inventory["exclusions"] = []any{map[string]any{"table": "buff", "id": "1"}}
-	})
-	wantFail(t, run(t, in), "master.client-content", "the exclusion of buff 1 states no reason")
+	wantFail(t, report, "verification.golden-coverage", "replay: effect and skill semantics")
+	if report.StaticReady {
+		t.Fatal("a Public verify run made the version STATIC_READY")
+	}
 }
 
 // Failure injection: a HUD status's icon is missing from the pack.
@@ -805,51 +562,10 @@ func TestGateFailsNegativeStatusSettlementGaps(t *testing.T) {
 		"status Buff 150721001 of DamageId 1005 lacks a settlement column")
 }
 
-// The clean control of content.prefab-entities: a client whose prefabs are exactly the Master's relations passes, every
-// entity counted.
-func TestGatePrefabEntitiesMatchTheMaster(t *testing.T) {
-	in := baseInputs(t)
-	in.ClientContent = contentInventory(t, nil)
-	report := run(t, in)
-	wantStatus(t, report, "content.prefab-entities", readiness.StatusPass)
-	if c := checkOf(t, report, "content.prefab-entities"); c.Coverage == nil || c.Coverage.Total < 5000 || c.Coverage.Passed != c.Coverage.Total {
-		t.Fatalf("coverage %+v, want every prefab entity of the Global 3.8 client", c.Coverage)
-	}
-}
-
-// Failure injection: the client spawns an enemy from a prefab entity the Master has no relation for (the Global 3.8 defect:
-// Tower of Adversity enemies showed no main enemy), a prefab entity whose template the Master names differently, and a Master
-// relation for an entity the client no longer defines.
-func TestGateFailsPrefabEntityGaps(t *testing.T) {
-	in := baseInputs(t)
-	in.ClientContent = contentInventory(t, func(inventory map[string]any) {
-		entities := inventory["prefabEntities"].([]map[string]any)
-		for _, entity := range entities {
-			if entity["prefab"] == "222850001" && entity["entity"] == "1850000" {
-				entity["templates"] = []string{"24000014"}
-			}
-		}
-		var kept []map[string]any
-		for _, entity := range entities {
-			if !(entity["prefab"] == "222700104" && entity["entity"] == "1700001") {
-				kept = append(kept, entity)
-			}
-		}
-		kept = append(kept, map[string]any{"prefab": "222850001", "entity": "1859999", "blueprint": "Monster_New", "templates": []string{"24000013"}, "monsters": []string{}})
-		inventory["prefabEntities"] = kept
-	})
-	report := run(t, in)
-	wantFail(t, report, "content.prefab-entities",
-		"prefab 222850001 entity 1859999 (Monster_New): the Master has no relation, so the product leaves this enemy unidentified",
-		"prefab 222850001 entity 1850000 (): the product names TemplateConfig [24000013], the client [24000014]",
-		"the Master relates prefab entity 222700104/1700001, which the client does not define")
-}
-
-// Failure injection: a Master without the prefab relations, loaded by the product, leaves every prefab entity of the client
-// unidentified; an inventory from before the prefab inventory keeps the check UNVERIFIED.
-func TestGateFailsMasterWithoutPrefabRelations(t *testing.T) {
+// Failure injection: a Master without the prefab relation tables is refused by the strict product loader by name, and
+// nothing is decided from it. (What a Master with empty relations leaves unidentified is a research check.)
+func TestGateRefusesMasterWithoutPrefabRelationTables(t *testing.T) {
 	root := repositoryRoot(t)
-	inventory := contentInventory(t, nil)
 	fixture := filepath.Join(t.TempDir(), "master_data.db")
 	copyFile(t, filepath.Join(root, "data", "master_data.db"), fixture)
 	db, err := sql.Open("sqlite", "file:"+filepath.ToSlash(fixture))
@@ -858,22 +574,16 @@ func TestGateFailsMasterWithoutPrefabRelations(t *testing.T) {
 	}
 	for _, statement := range []string{"DROP TABLE prefab_entity_template_ref", "DROP TABLE prefab_entity_monster"} {
 		if _, err := db.Exec(statement); err != nil {
+			db.Close()
 			t.Fatal(err)
 		}
 	}
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
-	report := run(t, readiness.Inputs{Root: root, MasterPath: fixture, Locales: []string{"zh-TW"}, ClientContent: inventory})
-	// Findings are bounded; every failing entity is still a subject.
-	wantFail(t, report, "content.prefab-entities", "the Master has no relation, so the product leaves this enemy unidentified", "prefab entity 222850001/1850000")
-	if c := checkOf(t, report, "content.prefab-entities"); c.Coverage == nil || c.Coverage.Passed != 0 {
-		t.Fatalf("coverage %+v, want no prefab entity identified", c.Coverage)
-	}
-
-	in := baseInputs(t)
-	in.ClientContent = contentInventory(t, func(inventory map[string]any) { delete(inventory, "prefabEntities") })
-	wantStatus(t, run(t, in), "content.prefab-entities", readiness.StatusUnverified)
+	report := run(t, readiness.Inputs{Root: root, MasterPath: fixture, Locales: []string{"zh-TW"}})
+	wantFail(t, report, "master.loads", "missing table prefab_entity_monster", "missing table prefab_entity_template_ref")
+	wantStatus(t, report, "content.prefab-entities", readiness.StatusUnverified)
 }
 
 // Failure injection: the History replay of the corpus stored an enemy without identity, an enemy without a name in one

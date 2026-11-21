@@ -3,20 +3,25 @@ package capture
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
-// The kind of play and the stage of the instances the Build 31 LIVE capture fought in, against the embedded Global 3.8.9
-// Master. Each mode follows a relation the client resolves itself (instance_display.go); the expected names are the
-// game's own SecondaryGuideData texts and InstanceDungeon MapNames:
+// The kind of play and the stage of the instances the Build 31 LIVE capture fought in, against the embedded Master. Each
+// mode follows a relation the client resolves itself (instance_display.go); the expected names are the game's own
+// SecondaryGuideData texts and InstanceDungeon MapNames. Instances the content model lists take their system's mode
+// (basis "content", VERIFIED); where a guide relation names the same category it confirms the answer:
 //
 //	8          InstType 1 (BigWorldInstance)                                  open world
-//	20016..24  DungeonDetection 20010008/9 -> entrance 89 -> InstanceDungeonList  逆境深塔 (Secondary 5)
+//	20016..24  content system tower-of-adversity (category 5); DungeonDetection 20010008/9 -> entrance 89 -> list
+//	           names the same category                                        逆境深塔
 //	5067       DungeonDetection 20010560 SubDungeonId, Secondary 6               角色教學 (Lily's tutorial)
-//	3925       SilentAreaDetection 30020022..24 -> entrance 3925 -> list          全像戰略 (Secondary 61)
+//	3925       content system tactical-hologram (category 61); SilentAreaDetection 30020022..24 -> entrance 3925 ->
+//	           list names the same category                                   全像戰略
 //	210404021  SilentAreaDetection 30010030 DungeonId (namespace not shown)      無音清剿 (Secondary 22), CORRELATED
-//	40286/7    SlashTowerStageInfo, the ShipTower system of category 28          冥歌海墟, CORRELATED
+//	40286/7    content system ship-tower (category 28), which replaced the CORRELATED ShipTower stage rule  冥歌海墟
 func TestInstanceModeOfTheBuild31Instances(t *testing.T) {
 	db, err := openEmbeddedMasterDatabase()
 	if err != nil {
@@ -36,14 +41,14 @@ func TestInstanceModeOfTheBuild31Instances(t *testing.T) {
 		basis    string
 	}{
 		{8, InstanceModeOpenWorld, "", "VERIFIED", "inst_type"},
-		{20016, InstanceModeCategory, "逆境深塔", "VERIFIED", "entrance"},
-		{20019, InstanceModeCategory, "逆境深塔", "VERIFIED", "entrance"},
-		{20024, InstanceModeCategory, "逆境深塔", "VERIFIED", "entrance"},
+		{20016, InstanceModeCategory, "逆境深塔", "VERIFIED", "content"},
+		{20019, InstanceModeCategory, "逆境深塔", "VERIFIED", "content"},
+		{20024, InstanceModeCategory, "逆境深塔", "VERIFIED", "content"},
 		{5067, InstanceModeCategory, "角色教學", "VERIFIED", "sub_dungeon"},
-		{3925, InstanceModeCategory, "全像戰略", "VERIFIED", "entrance"},
+		{3925, InstanceModeCategory, "全像戰略", "VERIFIED", "content"},
 		{210404021, InstanceModeCategory, "無音清剿", "CORRELATED", "silent_area_dungeon"},
-		{40286, InstanceModeCategory, "冥歌海墟", "CORRELATED", "ship_tower"},
-		{40287, InstanceModeCategory, "冥歌海墟", "CORRELATED", "ship_tower"},
+		{40286, InstanceModeCategory, "冥歌海墟", "VERIFIED", "content"},
+		{40287, InstanceModeCategory, "冥歌海墟", "VERIFIED", "content"},
 		{0, "", "", "UNKNOWN", ""},
 		{999999999, "", "", "UNKNOWN", ""},
 	} {
@@ -64,9 +69,9 @@ func TestInstanceModeOfTheBuild31Instances(t *testing.T) {
 	}
 }
 
-// The stage is the instance's own MapName; an instance without one is named by its Tactical Hologram entrance set, which
-// several holograms share, so that name is CORRELATED.
-func TestInstanceStageNamesMapsAndHologramSets(t *testing.T) {
+// The stage is the instance's own MapName. A Tactical Hologram instance has none: its series is a layer of its content
+// (TestInstanceContentOfTheEmbeddedMaster), never its stage.
+func TestInstanceStageNamesMaps(t *testing.T) {
 	db, err := openEmbeddedMasterDatabase()
 	if err != nil {
 		t.Fatal(err)
@@ -87,7 +92,7 @@ func TestInstanceStageNamesMapsAndHologramSets(t *testing.T) {
 		{40286, "無盡湍淵-上半", "VERIFIED"},
 		{5067, "訓練儀-淵武", "VERIFIED"},
 		{210404021, "影造圓庭·凝率", "VERIFIED"},
-		{3925, "全像戰略·演武", "CORRELATED"},
+		{3925, "", "UNKNOWN"},
 		{999999999, "", "UNKNOWN"},
 	} {
 		got, err := resolver.InstanceStage(ctx, c.instance, "zh-TW")
@@ -100,9 +105,11 @@ func TestInstanceStageNamesMapsAndHologramSets(t *testing.T) {
 	}
 }
 
-// A Master without the guide tables names no mode and fails nothing.
+// A Master without the guide tables is refused by name when a display resolver opens it; a resolver over such a file
+// reports the missing tables as an error instead of naming no mode, so a lost table never reads as UNKNOWN content.
 func TestInstanceModeWithoutGuideTables(t *testing.T) {
-	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "older.db"))
+	path := filepath.Join(t.TempDir(), "guideless.db")
+	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,14 +121,23 @@ func TestInstanceModeWithoutGuideTables(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	if err := completeMasterSchema(db); err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range []string{"DROP TABLE dungeondetection", "DROP TABLE secondaryguidedata_locale"} {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := OpenDisplayResolver(path); !errors.Is(err, errMasterRuntimeSchema) || !strings.Contains(err.Error(), "missing table dungeondetection") || !strings.Contains(err.Error(), "missing table secondaryguidedata_locale") {
+		t.Fatalf("a Master without guide tables: %v", err)
+	}
 	resolver, err := newDisplayResolver(db)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer resolver.Close()
-	for _, id := range []uint64{8, 20016} {
-		if got, err := resolver.InstanceMode(context.Background(), id, "zh-TW"); err != nil || got.Status != "UNKNOWN" || got.Kind != "" {
-			t.Fatalf("instance %d without guide tables: %+v (%v)", id, got, err)
-		}
+	if got, err := resolver.InstanceMode(context.Background(), 20016, "zh-TW"); err == nil {
+		t.Fatalf("instance 20016 without guide tables gave %+v without an error", got)
 	}
 }

@@ -5,7 +5,36 @@ import (
 	"testing"
 
 	"wwlogs/internal/capture"
+	"wwlogs/internal/history"
 )
+
+// The library keeps a failed role lookup instead of showing the role as itself or in the neutral color: the static roles
+// of its filters, and the role facets, which HistoryLibrary builds before it checks for one.
+func TestLibraryReportsAFailedRoleLookup(t *testing.T) {
+	resolver := brokenRoleMaster(t)
+	names := &nameProjection{ctx: t.Context(), resolver: resolver, locale: "en-US"}
+	if static := names.staticRoles(map[uint64]int{13127004: 1, 1409: 1}); static[13127004] != 1312 || static[1409] != 1409 || names.err != nil {
+		t.Fatalf("static roles = %v %v, want the trial's parent and a role of its own", static, names.err)
+	}
+	names.staticRoles(map[uint64]int{13127005: 1})
+	if names.err == nil {
+		t.Fatal("a trial row whose parent is not an ID was read as a role of its own")
+	}
+	facetNames := &nameProjection{ctx: t.Context(), resolver: resolver, locale: "en-US"}
+	libraryFacets(history.LibraryFacets{Roles: map[uint64]int{1312: 1}}, map[uint64]instanceNames{}, map[uint64]uint64{1312: 1312}, facetNames)
+	if facetNames.err != nil {
+		t.Fatalf("sound facet: %v", facetNames.err)
+	}
+	libraryFacets(history.LibraryFacets{Roles: map[uint64]int{1313: 2}}, map[uint64]instanceNames{}, map[uint64]uint64{1313: 1313}, facetNames)
+	if facetNames.err == nil {
+		t.Fatal("a role facet whose element is not a number was shown in the neutral color")
+	}
+	// Without a resolver a role shows as itself, with no element, and nothing fails.
+	none := &nameProjection{ctx: t.Context()}
+	if static, element := none.staticRole(13127004), none.element(13127004); static != 13127004 || element != 0 || none.err != nil {
+		t.Fatalf("no resolver: %d %d %v", static, element, none.err)
+	}
+}
 
 // The library's Master-backed filters select stored IDs: a mode or stage selects instances, a character selects every
 // runtime RoleId shown as it (a trial role is its parent), and a text search matches mode, stage and character names.

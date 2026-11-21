@@ -23,6 +23,7 @@
     "version": "ゲームバージョン",
     "mode": "モード",
     "scene": "ステージ／シーン",
+    "content": "コンテンツ",
     "enemy": "主な敵",
     "duration": "戦闘時間",
     "dps": "Encounter DPS",
@@ -30,6 +31,32 @@
   },
   "unidentified": "未識別",
   "modeOpenWorld": "世界",
+  "contentSystem": {
+    "wheel-tower": "マトリクス挑戦",
+    "boss-rush": "ボスラッシュ",
+    "tower-defense": "協力タワーディフェンス",
+    "role-trial": "キャラクター体験"
+  },
+  "contentSystemOther": "その他のコンテンツ",
+  "contentSystemNote": {
+    "NO_OFFICIAL_NAME": "WWlogs の分類：ゲームはこのモードに名前を付けていません",
+    "UNRESOLVED": "WWlogs の分類：このモードの公式名はまだ確認されていません",
+    "NAME_MISSING": "WWlogs の分類：このモードにはこの言語でも英語でも公式名がありません"
+  },
+  "contentLayer": {
+    "activity": "イベント",
+    "season": "シーズン",
+    "cycle": "周期",
+    "series": "シリーズ",
+    "stage": "ステージ",
+    "difficulty": "難易度",
+    "mode": "形式",
+    "role": "体験キャラクター"
+  },
+  "contentLayerValue": "{{label}}：{{name}}",
+  "contentLayerOpen": "{{label}}：特定できません（候補 {{n}}）",
+  "contentLayerOpenNote": "この戦闘はそのいずれかに当たりますが、どれかを示す記録はありません",
+  "stageContentNote": "公式のステージ名がないため、Master のコンテンツ情報で表示しています",
   "correlatedNote": "Master の関連付けから推定した名前で、直接確認されていません（間接的な関連付け、または別のゲームバージョンの記録など）",
   "sameType": "×{{n}}",
   "unreliableShort": "信頼不可",

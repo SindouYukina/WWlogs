@@ -118,8 +118,8 @@ func (g *gate) masterChecks() {
 	modes := g.check("content.instance-modes", DomainContent, "Every Adventure Guide category with an instance only it names resolves through the product's mode resolver", KindStatic, true)
 	// Advisory: content the client data itself cannot place is reported, never guessed and never a blocker.
 	unresolved := g.check("content.unresolved-categories", DomainContent, "Guide categories the client data names only ambiguously (reported limitation)", KindStatic, false)
-	content := g.check("master.client-content", DomainMaster, "Every row, playable role and HUD buff the current client defines is in the Master, read from the client's own ConfigDB and decoded snapshot", KindResearch, true)
-	prefabs := g.check("content.prefab-entities", DomainContent, "Every entity of the client's prefabs is identified by the product as the client's own PrefabConfig, TemplateConfig and MonsterInfo name it", KindResearch, true)
+	content := g.researchCheck("master.client-content", DomainMaster, "The Master holds what the current client defines (private research check)")
+	prefabs := g.researchCheck("content.prefab-entities", DomainContent, "The product identifies every entity of the client's prefabs (private research check)")
 	settlement := g.check("combat.negative-status-settlement", DomainCharacters, "Every negative-status DamageId (server-only FormulaType 9) is executed by status Buffs whose settlement the product reads (timed, on application, instant, spreading on overflow), and every InvokePeriod forces only timed statuses", KindStatic, true)
 	dependents := []*Check{loads, relations, names, art, trial, skillIcons, skillNames, hudClass, hudIcons, categories, modes, unresolved, content, prefabs, settlement}
 
@@ -230,8 +230,8 @@ func (g *gate) masterChecks() {
 	}
 	g.hudChecks(hudClass, hudIcons, m)
 	g.contentChecks(categories, modes, unresolved, m)
-	g.clientContentCheck(content, m)
-	g.prefabEntityCheck(prefabs, m)
+	g.research(content)
+	g.research(prefabs)
 	g.negativeStatusCheck(settlement, m)
 }
 
@@ -243,7 +243,7 @@ func (g *gate) masterChecks() {
 // overflow needs a positive stack limit, since its overflow is an application at that limit; and every InvokePeriod (extra
 // effect 67) names only statuses with a period, the only ones whose execution it can force (InvokePeriod.OnExecute ->
 // ApplyPeriodExecution). A new negative status, or one that settles in a new way, fails here until the settlement research
-// covers it (work/version-update/PROCEDURE.md).
+// covers it.
 func (g *gate) negativeStatusCheck(c *Check, m *masterView) {
 	damageIDs, err := m.ids(`SELECT id FROM damage WHERE CAST(formula_type AS TEXT) = '9' ORDER BY CAST(id AS INTEGER)`)
 	if err != nil || len(damageIDs) == 0 {
@@ -474,7 +474,12 @@ func (g *gate) trialCheck(c *Check, m *masterView) {
 	ctx := context.Background()
 	resolved := 0
 	for _, t := range trials {
-		if got := resolver.StaticRole(ctx, t.trial); got != t.parent {
+		got, err := resolver.StaticRole(ctx, t.trial)
+		if err != nil {
+			c.fail("trial role %d cannot be resolved: %v", t.trial, err)
+			continue
+		}
+		if got != t.parent {
 			c.fail("trial role %d resolves to %d, its parent is %d", t.trial, got, t.parent)
 			continue
 		}
@@ -680,7 +685,7 @@ func (g *gate) contentChecks(categories, modes, unresolved *Check, m *masterView
 	resolver := m.product.DisplayResolver()
 	ctx := context.Background()
 	reached := map[uint64]int{}
-	openWorld, unknown := 0, 0
+	openWorld, contentSystems, unknown := 0, 0, 0
 	for _, id := range instances {
 		mode, err := resolver.InstanceMode(ctx, id, "en-US")
 		if err != nil {
@@ -694,6 +699,8 @@ func (g *gate) contentChecks(categories, modes, unresolved *Check, m *masterView
 			if category, ok := nameOf[mode.Name]; ok {
 				reached[category]++
 			}
+		case capture.InstanceModeContentSystem:
+			contentSystems++
 		default:
 			unknown++
 		}
@@ -729,7 +736,7 @@ func (g *gate) contentChecks(categories, modes, unresolved *Check, m *masterView
 		unresolved.Reason = "content the client data names ambiguously stays UNKNOWN or takes the other category's CORRELATED mode (research/topics/output/combat-history.md section 17)"
 	}
 	modes.Coverage = &Coverage{Passed: resolvedCategories, Total: len(withRelation), Denominator: "guide categories whose detection rows reach an instance (resolved, or ambiguous in the client data)"}
-	modes.Evidence = append(modes.Evidence, fmt.Sprintf("%d instances: %d open world, %d in a category, %d without a single category (ambiguous or not offered by any guide row)", len(instances), openWorld, sumValues(reached), unknown))
+	modes.Evidence = append(modes.Evidence, fmt.Sprintf("%d instances: %d open world, %d in a category, %d in a content system the game names no system for, %d without a single category (ambiguous, or offered by no guide row or content system)", len(instances), openWorld, sumValues(reached), contentSystems, unknown))
 }
 
 // categoryRelations is a WITH clause naming each guide category's client relations to entrances and instances that exist

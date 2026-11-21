@@ -2,14 +2,18 @@ package capture
 
 import (
 	"database/sql"
+	"errors"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 )
 
 func TestLoadGameMasterDatabaseUsesLocaleAndKeepsIDNamespacesSeparate(t *testing.T) {
 	databasePath := buildMasterDatabaseFixture(t)
 
+	completeMasterFixture(t, databasePath)
 	traditional, err := LoadGameMasterDatabase(databasePath, "zh-TW")
 	if err != nil {
 		t.Fatal(err)
@@ -38,6 +42,51 @@ func TestLoadGameMasterDatabaseUsesLocaleAndKeepsIDNamespacesSeparate(t *testing
 	}
 }
 
+// Role and monster names follow the rule of DisplayResolver.Resolve: the locale's official text, else the official en-US
+// text, else no name. A placeholder is no text, en-US itself falls back to nothing, and Language is the locale the name is.
+func TestLoadGameMasterDatabaseFallsBackToEnglishRoleAndMonsterNames(t *testing.T) {
+	path := buildMasterDatabaseFixture(t)
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range []string{
+		"INSERT INTO roleinfo_locale VALUES('1312','zh-CN','dnt/测试角色','Role.Name')",
+		"INSERT INTO monsterinfo_locale VALUES('701','en-US','dnt/placeholder','Monster.Name'),('701','ja-JP',' DNT/仮','Monster.Name')",
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatalf("%s: %v", statement, err)
+		}
+	}
+	db.Close()
+	completeMasterFixture(t, path)
+	for _, c := range []struct {
+		locale, role, roleLanguage, monster, monsterLanguage string
+	}{
+		{"zh-TW", "測試角色", "zh-TW", "測試怪物", "zh-TW"},
+		{"ko-KR", "시험 캐릭터", "ko-KR", "Test Monster", "en-US"},
+		{"ja-JP", "Test Character", "en-US", "Test Monster", "en-US"},
+		{"zh-CN", "Test Character", "en-US", "Test Monster", "en-US"},
+		{"en-US", "Test Character", "en-US", "Test Monster", "en-US"},
+	} {
+		master, err := LoadGameMasterDatabase(path, c.locale)
+		if err != nil {
+			t.Fatal(err)
+		}
+		role, monster := master.Characters[1312], master.Monsters[700]
+		if role.Name != c.role || role.Language != c.roleLanguage || role.NameStatus != string(ResolutionVerified) {
+			t.Fatalf("%s role = %+v, want %q from %s", c.locale, role, c.role, c.roleLanguage)
+		}
+		if monster.Name != c.monster || monster.Language != c.monsterLanguage || monster.NameStatus != string(ResolutionVerified) {
+			t.Fatalf("%s monster = %+v, want %q from %s", c.locale, monster, c.monster, c.monsterLanguage)
+		}
+		// 701 has only placeholders: no name in any locale, and the record keeps the requested locale.
+		if unnamed := master.Monsters[701]; unnamed.Name != "" || unnamed.NameStatus != string(ResolutionUnknown) || unnamed.Language != c.locale {
+			t.Fatalf("%s placeholder-only monster = %+v, want no name", c.locale, unnamed)
+		}
+	}
+}
+
 func TestLoadGameMasterDatabaseLoadsNormalizedBuffDefinitionKeys(t *testing.T) {
 	path := buildMasterDatabaseFixture(t)
 	db, err := sql.Open("sqlite", path)
@@ -56,6 +105,7 @@ func TestLoadGameMasterDatabaseLoadsNormalizedBuffDefinitionKeys(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	completeMasterFixture(t, path)
 	master, err := LoadGameMasterDatabase(path, "zh-TW")
 	if err != nil {
 		t.Fatal(err)
@@ -86,6 +136,7 @@ func TestLoadGameMasterDatabaseRejectsAmbiguousRoleSkinMappings(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	completeMasterFixture(t, path)
 	master, err := LoadGameMasterDatabase(path, "zh-TW")
 	if err != nil {
 		t.Fatal(err)
@@ -116,6 +167,7 @@ func TestSkillNamespacesRemainSeparateForDamageAndCommonRequests(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	completeMasterFixture(t, path)
 	master, err := LoadGameMasterDatabase(path, "zh-TW")
 	if err != nil {
 		t.Fatal(err)
@@ -136,7 +188,9 @@ func TestSkillNamespacesRemainSeparateForDamageAndCommonRequests(t *testing.T) {
 }
 
 func TestLoadGameMasterDatabaseResolvesOnlyUniqueSceneMonsterAndTemplateReferences(t *testing.T) {
-	master, err := LoadGameMasterDatabase(buildMasterDatabaseFixture(t), "zh-TW")
+	path := buildMasterDatabaseFixture(t)
+	completeMasterFixture(t, path)
+	master, err := LoadGameMasterDatabase(path, "zh-TW")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -176,6 +230,7 @@ func TestLoadGameMasterDatabaseUsesDefaultTraditionalChineseLocaleAgainstLocalCo
 	if err != nil {
 		t.Fatal(err)
 	}
+	completeMasterFixture(t, path)
 	master, err := LoadGameMasterDatabase(path, "zh-TW")
 	if err != nil {
 		t.Fatal(err)
@@ -269,6 +324,36 @@ func buildMasterDatabaseFixture(t *testing.T) string {
 	return path
 }
 
+// TestDamageOwnersKeepTheStorageOrderOfASkillGroupsRoles pins the order the Development damageOwners output shows: the
+// roles of one skill group come in roleinfo's storage order, not in id order, whatever plan SQLite picks. The index over
+// (skill_id, id) would hand the join the roles in id order.
+func TestDamageOwnersKeepTheStorageOrderOfASkillGroupsRoles(t *testing.T) {
+	path := buildMasterDatabaseFixture(t)
+	execMasterSQL(t, path, []string{
+		"INSERT INTO roleinfo VALUES('5010','77','0')",
+		"INSERT INTO roleinfo VALUES('5008','77','0')",
+		"INSERT INTO roleinfo VALUES('5009','77','0')",
+		"CREATE INDEX roleinfo_by_skill_and_id ON roleinfo(skill_id, id)",
+		"CREATE TABLE skill_damage_ref(skill_id TEXT NOT NULL, ordinal INTEGER NOT NULL, damage_id TEXT NOT NULL, PRIMARY KEY(skill_id, ordinal)) WITHOUT ROWID",
+		"INSERT INTO skill_damage_ref VALUES('1312', 0, '18446744073709551614')",
+	})
+	completeMasterFixture(t, path)
+	master, err := LoadGameMasterDatabase(path, "zh-TW")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var roles []uint64
+	for _, owner := range master.DamageOwners[18446744073709551614] {
+		if owner.Kind != "skill" || owner.ID != 1312 {
+			t.Fatalf("unexpected owner %+v", owner)
+		}
+		roles = append(roles, owner.RoleID)
+	}
+	if want := []uint64{1312, 5010, 5008, 5009}; !slices.Equal(roles, want) {
+		t.Fatalf("roles of skill group 77 = %v, want roleinfo's storage order %v", roles, want)
+	}
+}
+
 func TestRuntimeSkillDefinitionsRetainMultipleActorBindingsWithoutInferringOwner(t *testing.T) {
 	path := buildMasterDatabaseFixture(t)
 	db, err := sql.Open("sqlite", path)
@@ -276,16 +361,17 @@ func TestRuntimeSkillDefinitionsRetainMultipleActorBindingsWithoutInferringOwner
 		t.Fatal(err)
 	}
 	for _, query := range []string{
-		"CREATE TABLE entityskillpreload(id TEXT PRIMARY KEY,skill_id TEXT)",
+		"CREATE TABLE entityskillpreload(id TEXT PRIMARY KEY,actor_asset_id TEXT,skill_id TEXT)",
 		"CREATE INDEX idx_preload_skill ON entityskillpreload(skill_id)",
 		"INSERT INTO skilldescription VALUES('9001',NULL),('9002',NULL)",
-		"INSERT INTO entityskillpreload VALUES('1','9001'),('2','9001'),('3','9002')",
+		"INSERT INTO entityskillpreload VALUES('1','actor-a','9001'),('2','actor-b','9001'),('3','actor-a','9002')",
 	} {
 		if _, err := db.Exec(query); err != nil {
 			t.Fatal(err)
 		}
 	}
 	db.Close()
+	completeMasterFixture(t, path)
 	master, err := LoadGameMasterDatabase(path, "zh-TW")
 	if err != nil {
 		t.Fatal(err)
@@ -325,6 +411,7 @@ func TestTemplateNamesUseRequestedLocaleAndNeverFallBackToRawLabels(t *testing.T
 	}
 	db.Close()
 	for _, item := range []struct{ locale, name string }{{"zh-TW", "測試王"}, {"en-US", "Test Boss"}, {"ko-KR", ""}, {"ja-JP", ""}, {"zh-CN", ""}} {
+		completeMasterFixture(t, path)
 		master, err := LoadGameMasterDatabase(path, item.locale)
 		if err != nil {
 			t.Fatal(err)
@@ -343,18 +430,15 @@ func TestTemplateNamesUseRequestedLocaleAndNeverFallBackToRawLabels(t *testing.T
 	}
 }
 
-func TestMalformedOptionalTemplateLocaleFailsObservably(t *testing.T) {
+// A template locale table without the key and subtitle columns the loader reads is refused by name, never loaded with
+// template names silently missing.
+func TestMalformedTemplateLocaleFailsObservably(t *testing.T) {
 	path := buildMasterDatabaseFixture(t)
-	db, err := sql.Open("sqlite", path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec("CREATE TABLE templateconfig_locale(id TEXT,locale TEXT,name TEXT)"); err != nil {
-		t.Fatal(err)
-	}
-	db.Close()
-	if _, err := LoadGameMasterDatabase(path, "zh-TW"); err == nil {
-		t.Fatal("malformed locale schema was silently accepted")
+	completeMasterFixture(t, path)
+	execMasterSQL(t, path, []string{"DROP TABLE templateconfig_locale", "CREATE TABLE templateconfig_locale(id TEXT,locale TEXT,name TEXT)"})
+	_, err := LoadGameMasterDatabase(path, "zh-TW")
+	if !errors.Is(err, errMasterRuntimeSchema) || !strings.Contains(err.Error(), "missing column templateconfig_locale.name_text_key") || !strings.Contains(err.Error(), "missing column templateconfig_locale.subtitle") {
+		t.Fatalf("a malformed template locale table: %v", err)
 	}
 }
 
@@ -378,6 +462,7 @@ func TestLoadGameMasterDatabaseTranslatesRoleSkinThroughNormalizedTable(t *testi
 		t.Fatal(err)
 	}
 
+	completeMasterFixture(t, path)
 	master, err := LoadGameMasterDatabase(path, "zh-TW")
 	if err != nil {
 		t.Fatal(err)
@@ -427,8 +512,9 @@ func TestLoadGameMasterDatabaseRejectsRoleSkinWithMissingCharacter(t *testing.T)
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := LoadGameMasterDatabase(path, "zh-TW"); err == nil {
-		t.Fatal("a RoleSkin row naming an absent character must fail loading")
+	completeMasterFixture(t, path)
+	if _, err := LoadGameMasterDatabase(path, "zh-TW"); err == nil || errors.Is(err, errMasterRuntimeSchema) {
+		t.Fatalf("a RoleSkin row naming an absent character must fail loading as a broken relation: %v", err)
 	}
 }
 
@@ -464,6 +550,7 @@ func TestResolveSummonSkillMapsVisionTypesToDTVisionKeys(t *testing.T) {
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
+	completeMasterFixture(t, path)
 	master, err := LoadGameMasterDatabase(path, "zh-TW")
 	if err != nil {
 		t.Fatal(err)
@@ -515,6 +602,7 @@ func TestResolveSkillLabelNeverFillsOfficialNameAndRejectsConflicts(t *testing.T
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
+	completeMasterFixture(t, path)
 	master, err := LoadGameMasterDatabase(path, "zh-TW")
 	if err != nil {
 		t.Fatal(err)
@@ -554,6 +642,7 @@ func TestLoadGameMasterDatabaseLoadsBuffStaticParametersWithoutNames(t *testing.
 		t.Fatal(err)
 	}
 
+	completeMasterFixture(t, path)
 	master, err := LoadGameMasterDatabase(path, "zh-TW")
 	if err != nil {
 		t.Fatal(err)
@@ -580,32 +669,31 @@ func TestLoadGameMasterDatabaseLoadsBuffStaticParametersWithoutNames(t *testing.
 	}
 }
 
-func TestLoadGameMasterDatabaseToleratesMasterWithoutBuffStaticTables(t *testing.T) {
+// A Master whose Buff static tables are missing is refused by name; with the tables present and empty, a buff row keeps
+// its definition and gains no static parameter it does not have.
+func TestLoadGameMasterDatabaseRefusesAMasterWithoutBuffStaticTables(t *testing.T) {
 	path := buildMasterDatabaseFixture(t)
-	db, err := sql.Open("sqlite", path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec("CREATE TABLE buff(id TEXT PRIMARY KEY)"); err != nil {
-		db.Close()
-		t.Fatal(err)
-	}
-	if _, err := db.Exec("INSERT INTO buff VALUES('70001')"); err != nil {
-		db.Close()
-		t.Fatal(err)
-	}
-	if err := db.Close(); err != nil {
-		t.Fatal(err)
-	}
+	execMasterSQL(t, path, []string{"CREATE TABLE buff(id TEXT PRIMARY KEY)", "INSERT INTO buff VALUES('70001')"})
+	completeMasterFixture(t, path)
 	master, err := LoadGameMasterDatabase(path, "zh-TW")
 	if err != nil {
-		t.Fatalf("an older master with only buff.id must still load: %v", err)
+		t.Fatal(err)
 	}
 	if !master.HasBuffDefinition(70001) {
 		t.Fatal("buff definition lost")
 	}
 	if static, ok := master.buffStatic(70001); ok && (static.HasDuration || static.HasStackLimit || len(static.Tags) > 0) {
-		t.Fatalf("static parameters appeared without their tables: %+v", static)
+		t.Fatalf("static parameters appeared without rows: %+v", static)
+	}
+	execMasterSQL(t, path, []string{"DROP TABLE buff_duration_magnitude", "DROP TABLE buff_granted_tags", "ALTER TABLE buff DROP COLUMN stack_limit_count"})
+	_, err = LoadGameMasterDatabase(path, "zh-TW")
+	if !errors.Is(err, errMasterRuntimeSchema) {
+		t.Fatalf("a Master without the Buff static tables: %v", err)
+	}
+	for _, part := range []string{"missing table buff_duration_magnitude", "missing table buff_granted_tags", "missing column buff.stack_limit_count"} {
+		if !strings.Contains(err.Error(), part) {
+			t.Errorf("the refusal does not name %q: %v", part, err)
+		}
 	}
 }
 
@@ -637,6 +725,7 @@ func TestLoadGameMasterDatabaseLoadsLocalizedBuffTermsAsCorrelatedNames(t *testi
 		t.Fatal(err)
 	}
 
+	completeMasterFixture(t, path)
 	traditional, err := LoadGameMasterDatabase(path, "zh-TW")
 	if err != nil {
 		t.Fatal(err)

@@ -50,6 +50,27 @@ func (r *Report) WriteMarkdown(w io.Writer) error {
 		}
 		fmt.Fprintf(&b, "| `%s` %s | %s | %s | %v | %s | %s | %s |\n", c.ID, escape(c.Title), c.Domain, c.Kind, c.Mandatory, c.Status, escape(coverage), escape(strings.Join(notes, "; ")))
 	}
+	var assessed []*Check
+	for _, c := range r.Checks {
+		if c.Assessment != nil {
+			assessed = append(assessed, c)
+		}
+	}
+	if len(assessed) > 0 {
+		b.WriteString("\nEvidence assessments:\n\n| Check | Result | Completeness | Source scope | Evidence | Coverage | Reasons | Limitations |\n| --- | --- | --- | --- | --- | --- | --- | --- |\n")
+		for _, c := range assessed {
+			a := c.Assessment
+			var shares, reasons []string
+			for _, x := range a.Coverage {
+				shares = append(shares, fmt.Sprintf("%s %d/%d (%s)", x.Name, x.Passed, x.Total, x.Denominator))
+			}
+			for _, x := range a.Reasons {
+				reasons = append(reasons, fmt.Sprintf("%s %d", x.Category, x.Count))
+			}
+			fmt.Fprintf(&b, "| `%s` | %s | %s | %s | %s | %s | %s | %s |\n", c.ID, c.Status, a.Completeness, escape(a.SourceScope), escape(a.EvidenceVersion),
+				escape(strings.Join(shares, "; ")), escape(strings.Join(reasons, ", ")), escape(strings.Join(a.Limitations, "; ")))
+		}
+	}
 	_, err := io.WriteString(w, b.String())
 	return err
 }

@@ -225,6 +225,9 @@ func TestSkillNameSourcesLoaderExcludesAmbiguousRelations(t *testing.T) {
 			t.Fatalf("%s: %v", statement, err)
 		}
 	}
+	if err := completeMasterSchema(db); err != nil {
+		t.Fatal(err)
+	}
 	master := &GameMaster{}
 	if err := loadSQLiteSkillNameSources(db, "zh-TW", master); err != nil {
 		t.Fatal(err)
@@ -258,8 +261,10 @@ func TestSkillNameSourcesLoaderExcludesAmbiguousRelations(t *testing.T) {
 	}
 }
 
-func TestSkillNameSourcesLoaderToleratesAnOlderMaster(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "old.db")
+// The skill name sources read their tables directly: without them the load fails instead of naming nothing, and with
+// them present and empty it names nothing.
+func TestSkillNameSourcesLoaderNeedsItsTables(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sources.db")
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		t.Fatal(err)
@@ -268,12 +273,18 @@ func TestSkillNameSourcesLoaderToleratesAnOlderMaster(t *testing.T) {
 	if _, err := db.Exec("CREATE TABLE skill(id TEXT PRIMARY KEY,skill_group_id TEXT)"); err != nil {
 		t.Fatal(err)
 	}
+	if err := loadSQLiteSkillNameSources(db, "zh-TW", &GameMaster{}); err == nil {
+		t.Fatal("the skill name sources loaded without their tables")
+	}
+	if err := completeMasterSchema(db); err != nil {
+		t.Fatal(err)
+	}
 	master := &GameMaster{}
 	if err := loadSQLiteSkillNameSources(db, "zh-TW", master); err != nil {
 		t.Fatal(err)
 	}
 	if master.skillNames == nil || len(master.skillNames.damageListSkills) != 0 || len(master.skillNames.echoItems) != 0 {
-		t.Fatalf("a Master without the relations named rows: %+v", master.skillNames)
+		t.Fatalf("empty relations named rows: %+v", master.skillNames)
 	}
 }
 

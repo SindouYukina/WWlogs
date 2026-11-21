@@ -395,6 +395,8 @@
     "internal/desktop/central_history_test.go": "tests/desktop/history_test.go",
     "tests/desktop/history_names_test.go": "",
     "internal/desktop/central_history_names_test.go": "tests/desktop/history_names_test.go",
+    "tests/desktop/history_content_test.go": "",
+    "internal/desktop/central_history_content_test.go": "tests/desktop/history_content_test.go",
     "tests/history/flow_control_test.go": "",
     "internal/history/central_flow_control_test.go": "tests/history/flow_control_test.go",
     "tests/history/replay_pacing_test.go": "",
@@ -434,6 +436,18 @@
     "tests/devcapture/capture_helpers_test.go": "",
     "internal/devcapture/central_capture_helpers_test.go": "tests/devcapture/capture_helpers_test.go",
     "tests/devcapture/equivalence_test.go": "",
-    "internal/devcapture/central_equivalence_test.go": "tests/devcapture/equivalence_test.go"
+    "internal/devcapture/central_equivalence_test.go": "tests/devcapture/equivalence_test.go",
+    "tests/capture/master_schema_test.go": "",
+    "internal/capture/central_master_schema_test.go": "tests/capture/master_schema_test.go",
+    "tests/capture/master_contract_test.go": "",
+    "internal/capture/central_master_contract_test.go": "tests/capture/master_contract_test.go",
+    "tests/capture/master_content_model_test.go": "",
+    "internal/capture/central_master_content_model_test.go": "tests/capture/master_content_model_test.go",
+    "tests/capture/content_display_test.go": "",
+    "internal/capture/central_content_display_test.go": "tests/capture/content_display_test.go",
+    "tests/capture/master_equivalence_test.go": "",
+    "internal/capture/central_master_equivalence_test.go": "tests/capture/master_equivalence_test.go",
+    "tests/capture/master_equivalence_selftest_test.go": "",
+    "internal/capture/central_master_equivalence_selftest_test.go": "tests/capture/master_equivalence_selftest_test.go"
   }
 }

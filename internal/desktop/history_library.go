@@ -1,7 +1,6 @@
 package desktop
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"sort"
@@ -19,14 +18,15 @@ import (
 // HistoryLibraryQuery is the library query of the view: the stored-value filters, and the filters the host resolves.
 type HistoryLibraryQuery struct {
 	history.LibraryQuery
-	// Modes are mode keys of the facets: "open_world", or "category:" and the category name.
+	// Modes are mode keys of the facets: "open_world", "category:" and the category name, or "content:" and the content
+	// system of a mode the game names no system for.
 	Modes []string `json:"modes,omitempty"`
 	// Stages are instance IDs.
 	Stages []uint64 `json:"stages,omitempty"`
 	// Roles are static RoleIds (a trial role counts as its parent).
 	Roles []uint64 `json:"roles,omitempty"`
-	// Text is matched, case-insensitively, against the Master's mode, stage and character names in the UI locale (the open
-	// world is a UI label, not a Master name: it is chosen as a mode).
+	// Text is matched, case-insensitively, against the Master's mode, stage, content and character names in the UI locale
+	// (the open world and a content system without a game name are UI labels, not Master names: they are chosen as a mode).
 	Text string `json:"text,omitempty"`
 }
 
@@ -45,18 +45,27 @@ type historyLibraryEntryJSON struct {
 	Vehicle bool                     `json:"vehicle,omitempty"`
 }
 
+// historyModeFacetJSON is one mode the library and career filters offer. A content system the game names no system for
+// has no Name: the UI labels it by System, as it labels the same mode in a row.
 type historyModeFacetJSON struct {
 	Key    string                   `json:"key"`
 	Kind   capture.InstanceModeKind `json:"kind"`
 	Name   string                   `json:"name,omitempty"`
 	Status string                   `json:"status"`
+	System string                   `json:"system,omitempty"`
 	Count  int                      `json:"count"`
 }
 
+// modeFacet is the filter option of a stored instance's mode, without its count.
+func modeFacet(known instanceNames) historyModeFacetJSON {
+	return historyModeFacetJSON{Key: known.modeKey, Kind: known.mode.Kind, Name: known.mode.Name, Status: known.mode.Status, System: known.mode.System}
+}
+
 type historyStageFacetJSON struct {
-	InstanceID uint64      `json:"instanceId"`
-	Name       historyName `json:"name"`
-	Count      int         `json:"count"`
+	InstanceID uint64          `json:"instanceId"`
+	Name       historyName     `json:"name"`
+	Content    *historyContent `json:"content,omitempty"`
+	Count      int             `json:"count"`
 }
 
 type historyRoleFacetJSON struct {
@@ -71,42 +80,44 @@ type instanceNames struct {
 	modeKey string
 	mode    historyMode
 	stage   historyName
+	content *historyContent
 }
 
-// modeKey is the facet key of a mode: open world, a named category, or "" without a mode.
+// modeKey is the facet key of a mode: open world, a named category, a content system without a game name, or "" without
+// a mode.
 func modeKey(mode historyMode) string {
 	switch {
 	case mode.Kind == capture.InstanceModeOpenWorld:
 		return "open_world"
 	case mode.Kind == capture.InstanceModeCategory && mode.Name != "":
 		return "category:" + mode.Name
+	case mode.Kind == capture.InstanceModeContentSystem && mode.System != "":
+		return "content:" + mode.System
 	}
 	return ""
 }
 
-// instances names every instance of a facet count in the UI locale. A name is VERIFIED only for the game version of the
-// embedded Master; the library mixes versions, so names here are capped at CORRELATED.
+// instanceNames names one stored instance in the UI locale. A name is VERIFIED only for the game version of the embedded
+// Master; the library and the career mix versions, so names there are capped at CORRELATED.
+func (n *nameProjection) instanceNames(id uint64) instanceNames {
+	mode := n.mode(id, false)
+	return instanceNames{modeKey: modeKey(mode), mode: mode, stage: n.stage(id, false), content: n.content(id, false)}
+}
+
+// instances names every instance of a facet count.
 func (n *nameProjection) instances(counts map[uint64]int) map[uint64]instanceNames {
 	out := make(map[uint64]instanceNames, len(counts))
 	for id := range counts {
-		mode := n.mode(id, false)
-		out[id] = instanceNames{modeKey: modeKey(mode), mode: mode, stage: n.stage(id, false)}
+		out[id] = n.instanceNames(id)
 	}
 	return out
 }
 
 // staticRoles maps every runtime RoleId of a facet count to the role it shows as.
-func (b *Bridge) staticRoles(ctx context.Context, counts map[uint64]int) map[uint64]uint64 {
+func (n *nameProjection) staticRoles(counts map[uint64]int) map[uint64]uint64 {
 	out := make(map[uint64]uint64, len(counts))
-	resolver := b.projection.resolver
 	for id := range counts {
-		static := id
-		if resolver != nil {
-			if parent := resolver.StaticRole(ctx, id); parent != 0 {
-				static = parent
-			}
-		}
-		out[id] = static
+		out[id] = n.staticRole(id)
 	}
 	return out
 }
@@ -135,7 +146,7 @@ func (b *Bridge) HistoryLibrary(query HistoryLibraryQuery, zoneName string) (jso
 		return nil, err
 	}
 	instances := names.instances(base.Facets.Instances)
-	static := b.staticRoles(names.ctx, base.Facets.Roles)
+	static := names.staticRoles(base.Facets.Roles)
 	resolved := resolveLibraryFilters(query, instances, static, func(role uint64) string { return names.roleName(role).Name })
 	view, err := b.history.Library(names.ctx, resolved, zone.Location)
 	if err != nil && !errors.Is(err, history.ErrUnavailable) {
@@ -149,10 +160,12 @@ func (b *Bridge) HistoryLibrary(query HistoryLibraryQuery, zoneName string) (jso
 			if parent == 0 {
 				parent = role.RoleID
 			}
-			out.Roles = append(out.Roles, historyLibraryRoleJSON{RoleID: role.RoleID, StaticRoleID: parent, ElementID: b.roleElement(names.ctx, parent), Name: names.roleName(parent), Damage: role.Damage})
+			out.Roles = append(out.Roles, historyLibraryRoleJSON{RoleID: role.RoleID, StaticRoleID: parent, ElementID: names.element(parent), Name: names.roleName(parent), Damage: role.Damage})
 		}
 		entries = append(entries, out)
 	}
+	// The facets name roles too, so they are built before the failed-lookup check.
+	facets := libraryFacets(base.Facets, instances, static, names)
 	if names.err != nil {
 		return nil, names.err
 	}
@@ -163,7 +176,7 @@ func (b *Bridge) HistoryLibrary(query HistoryLibraryQuery, zoneName string) (jso
 		Offset     int                       `json:"offset"`
 		Encounters []historyLibraryEntryJSON `json:"encounters"`
 		Facets     any                       `json:"facets"`
-	}{b.history.Status(), zoneJSON(zone), view.Total, view.Offset, entries, libraryFacets(base.Facets, instances, static, names, b, names.ctx)})
+	}{b.history.Status(), zoneJSON(zone), view.Total, view.Offset, entries, facets})
 }
 
 // resolveLibraryFilters turns the Master-backed filters of a query into the stored IDs they select: instances by mode and
@@ -193,7 +206,11 @@ func resolveLibraryFilters(query HistoryLibraryQuery, instances map[uint64]insta
 	if text := strings.ToLower(strings.TrimSpace(query.Text)); text != "" {
 		resolved.MatchInstances, resolved.MatchRoleIDs = []uint64{}, []uint64{}
 		for id, known := range instances {
-			if strings.Contains(strings.ToLower(known.mode.Name), text) || strings.Contains(strings.ToLower(known.stage.Name), text) {
+			match := strings.Contains(strings.ToLower(known.mode.Name), text) || strings.Contains(strings.ToLower(known.stage.Name), text)
+			for _, name := range known.content.names() {
+				match = match || strings.Contains(strings.ToLower(name), text)
+			}
+			if match {
 				resolved.MatchInstances = append(resolved.MatchInstances, id)
 			}
 		}
@@ -206,17 +223,18 @@ func resolveLibraryFilters(query HistoryLibraryQuery, instances map[uint64]insta
 	return resolved
 }
 
-func libraryFacets(facets history.LibraryFacets, instances map[uint64]instanceNames, static map[uint64]uint64, names *nameProjection, b *Bridge, ctx context.Context) any {
+func libraryFacets(facets history.LibraryFacets, instances map[uint64]instanceNames, static map[uint64]uint64, names *nameProjection) any {
 	modes := map[string]*historyModeFacetJSON{}
 	stages := make([]historyStageFacetJSON, 0, len(facets.Instances))
 	for id, count := range facets.Instances {
 		known := instances[id]
-		stages = append(stages, historyStageFacetJSON{InstanceID: id, Name: known.stage, Count: count})
+		stages = append(stages, historyStageFacetJSON{InstanceID: id, Name: known.stage, Content: known.content, Count: count})
 		if known.modeKey == "" {
 			continue
 		}
 		if modes[known.modeKey] == nil {
-			modes[known.modeKey] = &historyModeFacetJSON{Key: known.modeKey, Kind: known.mode.Kind, Name: known.mode.Name, Status: known.mode.Status}
+			facet := modeFacet(known)
+			modes[known.modeKey] = &facet
 		}
 		modes[known.modeKey].Count += count
 	}
@@ -242,7 +260,7 @@ func libraryFacets(facets history.LibraryFacets, instances map[uint64]instanceNa
 	}
 	roles := make([]historyRoleFacetJSON, 0, len(roleCounts))
 	for role, count := range roleCounts {
-		roles = append(roles, historyRoleFacetJSON{RoleID: role, ElementID: b.roleElement(ctx, role), Name: names.roleName(role), Count: count})
+		roles = append(roles, historyRoleFacetJSON{RoleID: role, ElementID: names.element(role), Name: names.roleName(role), Count: count})
 	}
 	sort.Slice(roles, func(i, j int) bool {
 		if roles[i].Count != roles[j].Count {
@@ -260,13 +278,6 @@ func libraryFacets(facets history.LibraryFacets, instances map[uint64]instanceNa
 		FirstDate    string                  `json:"firstDate,omitempty"`
 		LastDate     string                  `json:"lastDate,omitempty"`
 	}{facets.GameVersions, facets.Classes, facets.Sources, modeList, stages, roles, facets.FirstDate, facets.LastDate}
-}
-
-func (b *Bridge) roleElement(ctx context.Context, role uint64) uint64 {
-	if b.projection.resolver == nil || role == 0 {
-		return 0
-	}
-	return b.projection.resolver.RoleElement(ctx, role)
 }
 
 func containsKey(values []string, value string) bool {

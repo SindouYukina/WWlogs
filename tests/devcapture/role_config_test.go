@@ -28,6 +28,7 @@ func TestLoadGameMasterDatabaseLoadsTrialRoleParents(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	completeMasterFixture(t, path)
 	master, err := capture.LoadGameMasterDatabase(path, "zh-TW")
 	if err != nil {
 		t.Fatal(err)

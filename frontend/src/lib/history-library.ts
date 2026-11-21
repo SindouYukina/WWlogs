@@ -1,4 +1,4 @@
-import type { HistoryEncounterSummary, HistoryName, HistoryStatus, HistoryZone } from "./history.ts"
+import type { HistoryContent, HistoryEncounterSummary, HistoryMode, HistoryName, HistoryStatus, HistoryZone } from "./history.ts"
 
 // The History Library contracts the Go host returns (internal/desktop/history_library.go). Go selects, sorts, pages and
 // classifies the records; the Master-backed filters (mode, stage, character, text) are resolved by Go too. This file only
@@ -25,7 +25,7 @@ export interface HistoryLibraryQuery {
   sort?: LibrarySort
   offset?: number
   limit?: number
-  /** Mode keys of the facets ("open_world" or "category:<name>"), instance IDs, static RoleIds and free text. */
+  /** Mode keys of the facets ("open_world", "category:<name>" or "content:<system>"), instance IDs, static RoleIds and free text. */
   modes?: string[]
   stages?: number[]
   roles?: number[]
@@ -52,12 +52,25 @@ export interface LibraryCount {
   count: number
 }
 
+/**
+ * One mode the library and career filters offer (Go historyModeFacetJSON): a named category, the open world, or a content
+ * system the game names no system for, which is labelled by its system as in a row.
+ */
+export interface HistoryModeFacet {
+  key: string
+  kind: NonNullable<HistoryMode["kind"]>
+  name?: string
+  status: HistoryName["status"]
+  system?: string
+  count: number
+}
+
 export interface HistoryLibraryFacets {
   gameVersions: LibraryCount[]
   classes: LibraryCount[]
   sources: LibraryCount[]
-  modes: Array<{ key: string; kind: "open_world" | "category"; name?: string; status: HistoryName["status"]; count: number }>
-  stages: Array<{ instanceId: number; name: HistoryName; count: number }>
+  modes: HistoryModeFacet[]
+  stages: Array<{ instanceId: number; name: HistoryName; content?: HistoryContent; count: number }>
   roles: Array<{ roleId: number; elementId?: number; name: HistoryName; count: number }>
   firstDate?: string
   lastDate?: string

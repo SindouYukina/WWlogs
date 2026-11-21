@@ -1,6 +1,6 @@
 {
   "gameVersion": "3.8",
-  "note": "Captures whose Golden facts (tests/capture/semantic_replay_dev_test.go) form the regression corpus of the current game version. A required capture must be executed by scripts/verify.ps1 -PcapDirectory with every fact checked, or the version readiness gate (scripts/readiness) fails. Supplementary captures keep their facts for when they are present; the owner decides the corpus (2026-11-13: only the Build 31 LIVE capture). identificationLimits record, per capture, a stored enemy (encounter and ordinal), stage or kind of play (scene InstanceId) the History cannot name, with the reason; the readiness check content.history-identification fails on every other unnamed one.",
+  "note": "Captures whose Golden facts (tests/capture/semantic_replay_dev_test.go) form the regression corpus of the current game version. A required capture must be executed by scripts/verify.ps1 -PcapDirectory with every fact checked, or the version readiness gate (scripts/readiness) fails. Supplementary captures keep their facts for when they are present; the owner decides the corpus (2026-11-13: only the Build 31 LIVE capture is required; 2026-11-22: every completed capture of the Development spool is archived in logs/ and replayed). identificationLimits record, per capture, a stored enemy (encounter and ordinal), stage or kind of play (scene InstanceId) the History cannot name, with the reason; the readiness check content.history-identification fails on every other unnamed one.",
   "captures": [
     {
       "name": "LIVE_20261113_224240",
@@ -11,14 +11,7 @@
     {
       "name": "LIVE_20261112_110155",
       "required": false,
-      "note": "Global 3.8.9 trial team with role 1512; supplementary since the owner reset logs/",
-      "identificationLimits": [
-        {
-          "kind": "mode",
-          "scene": 82110,
-          "reason": "InstanceDungeon 82110 (InstSubType 40, a character trial instance, MapName resolves) has no entrance and no Adventure Guide or tutorial detection row; the kind of play stays UNKNOWN (Global 3.8.9 and 3.8.11 db_adventure_detect.db)"
-        }
-      ]
+      "note": "Global 3.8.9 trial team with role 1512; supplementary since the owner reset logs/"
     },
     {
       "name": "SYNTH-MISSED-LOGIN-RELOGIN-3.8",
@@ -33,31 +26,42 @@
     {
       "name": "LIVE_20261112_230754",
       "required": false,
-      "note": "Owner's Build 28 LIVE capture, 30 encounters, standalone CombatReceivePackNotify responses; supplementary",
-      "identificationLimits": [
-        {
-          "kind": "mode",
-          "scene": 9102,
-          "reason": "InstanceDungeon 9102 (InstSubType 29, an event stage, MapName resolves) is reached only by entrance 9102, which no Adventure Guide detection row (DungeonDetection, SilentAreaDetection) and no ShipTower relation names; the kind of play is the Adventure Guide category, so it stays UNKNOWN (Global 3.8.9 and 3.8.11 db_adventure_detect.db)"
-        },
-        {
-          "kind": "mode",
-          "scene": 82110,
-          "reason": "InstanceDungeon 82110 (InstSubType 40, a character trial instance, MapName resolves) has no entrance and no Adventure Guide or tutorial detection row; the kind of play stays UNKNOWN (Global 3.8.9 and 3.8.11 db_adventure_detect.db)"
-        }
-      ]
+      "note": "Owner's Build 28 LIVE capture, 30 encounters, standalone CombatReceivePackNotify responses; supplementary"
     },
     {
       "name": "LIVE_20261118_194306",
       "required": false,
-      "note": "Owner's v0.8.0 LIVE acceptance capture (unofficial Development build of bf1f7a5) on Global 3.8.12, IPv6 traffic: 17 encounters, 15 of them in the event stage 9105; supplementary, no Golden facts",
-      "identificationLimits": [
-        {
-          "kind": "mode",
-          "scene": 9105,
-          "reason": "InstanceDungeon 9105 (InstSubType 29, an event stage of the same event as 9101-9108, MapName resolves) is reached only by entrance 9105, which no Adventure Guide detection row (DungeonDetection, SilentAreaDetection, SecondaryGuideData) and no ShipTower relation names; the kind of play is the Adventure Guide category, so it stays UNKNOWN (Global 3.8.9 Master, 3.8.11 and 3.8.12 db_adventure_detect.db, unchanged since 3.8.9)"
-        }
-      ]
+      "note": "Owner's v0.8.0 LIVE acceptance capture (unofficial Development build of bf1f7a5) on Global 3.8.12, IPv6 traffic: 17 encounters, 15 of them in the event stage 9105; supplementary, no Golden facts"
+    },
+    {
+      "name": "LIVE_20261112_105901",
+      "required": false,
+      "note": "Owner's Build 23 LIVE capture of 2026-11-12 (Global 3.8.9): 1,076 packets that start after the login, so it has no protocol session and nothing is decoded; supplementary, no Golden facts"
+    },
+    {
+      "name": "LIVE_20261113_003431",
+      "required": false,
+      "note": "Owner's Build 29 LIVE capture of 2026-11-13 (Global 3.8.9): 295 packets without a login handshake, so it has no protocol session and nothing is decoded; supplementary, no Golden facts"
+    },
+    {
+      "name": "LIVE_20261116_091700",
+      "required": false,
+      "note": "Owner's Build 47 LIVE capture on Global 3.8.11: one encounter; supplementary, no Golden facts"
+    },
+    {
+      "name": "LIVE_20261116_104600",
+      "required": false,
+      "note": "Owner's Build 48 LIVE capture on Global 3.8.11: one encounter; supplementary, no Golden facts"
+    },
+    {
+      "name": "LIVE_20261119_182116",
+      "required": false,
+      "note": "Owner's LIVE capture (unofficial v0.8.0 Development build of bf1f7a5) on Global 3.8.12: 10 encounters, 8 of them in the matrix instances 107700001 (2) and 107700002 (6) of the wheel-tower content system; supplementary, no Golden facts"
+    },
+    {
+      "name": "LIVE_20261122_012752",
+      "required": false,
+      "note": "Owner's LIVE capture with the official Build 50 (v0.8.0) Development executable on Global 3.8.13: 4 encounters, one in each of the matrix instances 107700001 and 107700002, which Build 50 could not name; supplementary, no Golden facts"
     }
   ]
 }

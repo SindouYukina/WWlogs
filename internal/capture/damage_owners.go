@@ -6,10 +6,6 @@ import (
 	"sort"
 )
 
-// Materialize the text keys once so SQLite can index the join without changing
-// how IDs from different SQLite storage types compare.
-const damageOwnerIDs = `WITH damage_ids(id) AS MATERIALIZED (SELECT CAST(id AS TEXT) FROM damage) `
-
 // DamageOwnerJSONL is one static owner of a DamageId: a skill that lists the DamageId in its damage references, or a
 // Buff whose extra-effect parameters name it. The owner is a master-table reference, not the runtime attacker.
 type DamageOwnerJSONL struct {
@@ -20,16 +16,19 @@ type DamageOwnerJSONL struct {
 }
 
 // loadSQLiteDamageOwners indexes, for every DamageId, the skills (skill_damage_ref) and Buffs (buff_extra_effect_parameters)
-// that reference it, with the role that owns the skill group of each skill. Both tables are optional.
+// that reference it, with the role that owns the skill group of each skill. The runtime schema declares every key these
+// joins compare as TEXT, so they compare the columns themselves and SQLite searches each key; a CAST would hide the key
+// and compare every row.
+//
+// The roles of one skill group keep roleinfo's storage order (r.rowid, the client's order): the sort below orders owners
+// by kind and id only, so that order decides which roles of a shared skill group the Development damageOwners output
+// shows first. ORDER BY makes it independent of the query plan; the runtime schema requires roleinfo to be a rowid table.
 func loadSQLiteDamageOwners(db *sql.DB, locale string, master *GameMaster) error {
-	exists, err := masterTableExists(db, "skill_damage_ref")
-	if err != nil || !exists {
-		return err
-	}
-	rows, err := db.Query(damageOwnerIDs + `SELECT CAST(d.damage_id AS TEXT),CAST(d.skill_id AS TEXT),COALESCE(CAST(r.id AS TEXT),'') FROM skill_damage_ref d
-		JOIN damage_ids x ON x.id=CAST(d.damage_id AS TEXT)
-		LEFT JOIN skill s ON CAST(s.id AS TEXT)=CAST(d.skill_id AS TEXT)
-		LEFT JOIN roleinfo r ON CAST(r.skill_id AS TEXT)=CAST(s.skill_group_id AS TEXT)`)
+	rows, err := db.Query(`SELECT d.damage_id,d.skill_id,COALESCE(r.id,'') FROM skill_damage_ref d
+		JOIN damage x ON x.id=d.damage_id
+		LEFT JOIN skill s ON s.id=d.skill_id
+		LEFT JOIN roleinfo r ON r.skill_id=s.skill_group_id
+		ORDER BY d.skill_id,r.rowid`)
 	if err != nil {
 		return fmt.Errorf("query skill damage owners: %w", err)
 	}
@@ -63,12 +62,8 @@ func loadSQLiteDamageOwners(db *sql.DB, locale string, master *GameMaster) error
 	if err := rows.Close(); err != nil {
 		return err
 	}
-	buffExists, err := masterTableExists(db, "buff_extra_effect_parameters")
-	if err != nil || !buffExists {
-		return err
-	}
-	buffRows, err := db.Query(damageOwnerIDs + `SELECT DISTINCT CAST(p.value AS TEXT),CAST(p.owner_id AS TEXT) FROM buff_extra_effect_parameters p
-		JOIN damage_ids x ON x.id=CAST(p.value AS TEXT)`)
+	buffRows, err := db.Query(`SELECT DISTINCT p.value,p.owner_id FROM buff_extra_effect_parameters p
+		JOIN damage x ON x.id=p.value`)
 	if err != nil {
 		return fmt.Errorf("query buff damage owners: %w", err)
 	}

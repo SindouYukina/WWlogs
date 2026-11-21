@@ -18,18 +18,19 @@ import (
 // HistoryCareerQuery is the career query of the view.
 type HistoryCareerQuery struct {
 	history.CareerQuery
-	// Modes are mode keys ("open_world" or "category:" and the name); Stages are instance IDs.
+	// Modes are mode keys ("open_world", "category:" and the name, or "content:" and the system); Stages are instance IDs.
 	Modes  []string `json:"modes,omitempty"`
 	Stages []uint64 `json:"stages,omitempty"`
 }
 
 type careerRecordJSON struct {
 	history.CareerRecord
-	RoleName  *historyName `json:"roleName,omitempty"`
-	ElementID uint64       `json:"elementId,omitempty"`
-	SkillName *historyName `json:"skillName,omitempty"`
-	Mode      historyMode  `json:"mode"`
-	Stage     historyName  `json:"stage"`
+	RoleName  *historyName    `json:"roleName,omitempty"`
+	ElementID uint64          `json:"elementId,omitempty"`
+	SkillName *historyName    `json:"skillName,omitempty"`
+	Mode      historyMode     `json:"mode"`
+	Stage     historyName     `json:"stage"`
+	Content   *historyContent `json:"content,omitempty"`
 }
 
 type careerRoleJSON struct {
@@ -60,6 +61,7 @@ type careerPlaceJSON struct {
 	InstanceID uint64            `json:"instanceId,omitempty"`
 	Mode       historyMode       `json:"mode"`
 	Stage      historyName       `json:"stage"`
+	Content    *historyContent   `json:"content,omitempty"`
 	Encounters int               `json:"encounters"`
 	Counted    int               `json:"counted"`
 	Damage     int64             `json:"damage"`
@@ -127,22 +129,21 @@ func (c *careerNames) element(role uint64) uint64 {
 	if element, ok := c.elements[role]; ok {
 		return element
 	}
-	element := c.bridge.roleElement(c.ctx, role)
+	element := c.names.element(role)
 	c.elements[role] = element
 	return element
 }
 
-func (c *careerNames) place(instance uint64) (historyMode, historyName) {
+func (c *careerNames) place(instance uint64) instanceNames {
 	if instance == 0 {
-		return historyMode{Status: "UNKNOWN"}, historyName{Status: "UNKNOWN"}
+		return instanceNames{mode: historyMode{Status: "UNKNOWN"}, stage: historyName{Status: "UNKNOWN"}}
 	}
 	known, ok := c.instances[instance]
 	if !ok {
-		known = instanceNames{mode: c.names.mode(instance, false), stage: c.names.stage(instance, false)}
-		known.modeKey = modeKey(known.mode)
+		known = c.names.instanceNames(instance)
 		c.instances[instance] = known
 	}
-	return known.mode, known.stage
+	return known
 }
 
 func (c *careerNames) record(record *history.CareerRecord) *careerRecordJSON {
@@ -158,7 +159,8 @@ func (c *careerNames) record(record *history.CareerRecord) *careerRecordJSON {
 		name := c.skillName(record)
 		out.SkillName = &name
 	}
-	out.Mode, out.Stage = c.place(record.Instance)
+	place := c.place(record.Instance)
+	out.Mode, out.Stage, out.Content = place.mode, place.stage, place.content
 	return out
 }
 
@@ -185,12 +187,7 @@ func (b *Bridge) HistoryCareer(query HistoryCareerQuery, zoneName string) (json.
 		if role, ok := static[runtime]; ok {
 			return role
 		}
-		role := runtime
-		if b.projection.resolver != nil {
-			if parent := b.projection.resolver.StaticRole(names.ctx, runtime); parent != 0 {
-				role = parent
-			}
-		}
+		role := names.staticRole(runtime)
 		static[runtime] = role
 		return role
 	}
@@ -215,10 +212,11 @@ func (b *Bridge) HistoryCareer(query HistoryCareerQuery, zoneName string) (json.
 	stages := make([]careerPlaceJSON, 0, len(view.Instances))
 	modes := map[string]*careerPlaceJSON{}
 	for _, instance := range view.Instances {
-		mode, stage := c.place(instance.Instance)
+		place := c.place(instance.Instance)
+		mode := place.mode
 		best := c.record(instance.BestDPS)
-		stages = append(stages, careerPlaceJSON{Key: modeKey(mode), InstanceID: instance.Instance, Mode: mode, Stage: stage, Encounters: instance.Encounters, Counted: instance.Counted, Damage: instance.Damage, LowerBound: instance.DamageLowerBound, BestDPS: best})
-		key := modeKey(mode)
+		stages = append(stages, careerPlaceJSON{Key: place.modeKey, InstanceID: instance.Instance, Mode: mode, Stage: place.stage, Content: place.content, Encounters: instance.Encounters, Counted: instance.Counted, Damage: instance.Damage, LowerBound: instance.DamageLowerBound, BestDPS: best})
+		key := place.modeKey
 		if key == "" {
 			key = "unknown"
 		}
@@ -249,12 +247,14 @@ func (b *Bridge) HistoryCareer(query HistoryCareerQuery, zoneName string) (json.
 	filterModes := map[string]historyModeFacetJSON{}
 	filterStages := make([]historyStageFacetJSON, 0, len(instances))
 	for id, known := range instances {
-		filterStages = append(filterStages, historyStageFacetJSON{InstanceID: id, Name: known.stage, Count: probe.Facets.Instances[id]})
+		filterStages = append(filterStages, historyStageFacetJSON{InstanceID: id, Name: known.stage, Content: known.content, Count: probe.Facets.Instances[id]})
 		if known.modeKey == "" {
 			continue
 		}
-		facet := filterModes[known.modeKey]
-		facet.Key, facet.Kind, facet.Name, facet.Status = known.modeKey, known.mode.Kind, known.mode.Name, known.mode.Status
+		facet, counted := filterModes[known.modeKey]
+		if !counted {
+			facet = modeFacet(known)
+		}
 		facet.Count += probe.Facets.Instances[id]
 		filterModes[known.modeKey] = facet
 	}
@@ -268,6 +268,8 @@ func (b *Bridge) HistoryCareer(query HistoryCareerQuery, zoneName string) (json.
 	sort.Slice(filterStages, func(i, j int) bool {
 		return filterStages[i].Count > filterStages[j].Count || filterStages[i].Count == filterStages[j].Count && filterStages[i].InstanceID < filterStages[j].InstanceID
 	})
+	// The records name roles and skills too, so they are built before the failed-lookup check.
+	records := map[string]any{"maxHit": c.record(view.Records.MaxHit), "bestDps": c.record(view.Records.BestDPS), "bestDamage": c.record(view.Records.BestDamage), "bestPeak": c.record(view.Records.BestPeak)}
 	if names.err != nil {
 		return nil, names.err
 	}
@@ -288,7 +290,7 @@ func (b *Bridge) HistoryCareer(query HistoryCareerQuery, zoneName string) (json.
 		Filters  map[string]any       `json:"filters"`
 	}{
 		Status: b.history.Status(), Zone: zoneJSON(zone), Today: view.Today, From: view.From, To: view.To, Totals: view.Totals, Days: view.Days, Roles: roles, Combos: combos, Modes: modeList, Stages: stages,
-		Records:  map[string]any{"maxHit": c.record(view.Records.MaxHit), "bestDps": c.record(view.Records.BestDPS), "bestDamage": c.record(view.Records.BestDamage), "bestPeak": c.record(view.Records.BestPeak)},
+		Records:  records,
 		Versions: view.Versions, Filters: map[string]any{"modes": modeFacets, "stages": filterStages},
 	})
 }

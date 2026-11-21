@@ -19,20 +19,10 @@ import (
 	"wwlogs/scripts/readiness"
 )
 
-// researchInputs is the private research inputs file (work/version-update/PROCEDURE.md 5.2).
-type researchInputs struct {
-	GameVersion      string `json:"gameVersion"`
-	ClientVersion    string `json:"clientVersion"`
-	ProtocolSchema   string `json:"protocolSchema"`
-	ClientReferences string `json:"clientReferences"`
-	ClientContent    string `json:"clientContent"`
-	ClientImpact     string `json:"clientImpact"`
-}
-
 func main() {
 	root := flag.String("root", ".", "repository root")
 	out := flag.String("out", "", "directory for readiness.json and readiness.md (required)")
-	research := flag.String("research-inputs", "", "private research inputs file (optional)")
+	research := flag.String("research-inputs", "", "private research inputs file, read by the research extension (optional)")
 	evidence := flag.String("evidence", "", "directory written by scripts/verify.ps1 -EvidenceOut (optional)")
 	live := flag.String("live-acceptance", "", "the owner's Live acceptance record (optional)")
 	flag.Parse()
@@ -52,18 +42,20 @@ func run(root, out, research, evidence, live string) error {
 	}
 	in := readiness.Inputs{Root: root, LiveAcceptance: live}
 	if research != "" {
-		var inputs researchInputs
-		data, err := os.ReadFile(research)
+		// Only a research extension reads the file's fields; one that is missing or no JSON object stops the gate here.
+		path, err := filepath.Abs(research)
+		if err != nil {
+			return err
+		}
+		data, err := os.ReadFile(path)
 		if err != nil {
 			return fmt.Errorf("read research inputs: %w", err)
 		}
-		if err := json.Unmarshal(data, &inputs); err != nil {
+		var fields map[string]any
+		if err := json.Unmarshal(data, &fields); err != nil {
 			return fmt.Errorf("parse research inputs: %w", err)
 		}
-		in.ProtocolSchema = resolve(root, inputs.ProtocolSchema)
-		in.ClientReferences = resolve(root, inputs.ClientReferences)
-		in.ClientContent = resolve(root, inputs.ClientContent)
-		in.ClientImpact = resolve(root, inputs.ClientImpact)
+		in.ResearchInputs = path
 	}
 	if evidence != "" {
 		for target, name := range map[*string]string{&in.VerifyResults: "verify-results.json", &in.GoldenCoverage: "golden-coverage.json", &in.HistorySummary: "history-summary.json"} {
@@ -110,13 +102,6 @@ func run(root, out, research, evidence, live string) error {
 		os.Exit(1)
 	}
 	return nil
-}
-
-func resolve(root, path string) string {
-	if path == "" || filepath.IsAbs(path) {
-		return path
-	}
-	return filepath.Join(root, filepath.FromSlash(path))
 }
 
 func fileExists(path string) bool {

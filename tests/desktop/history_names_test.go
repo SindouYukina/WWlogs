@@ -39,6 +39,7 @@ func historyNamesMaster(t *testing.T) *capture.DisplayResolver {
 		}
 	}
 	db.Close()
+	completeMasterFixture(t, path)
 	resolver, err := capture.OpenDisplayResolver(path)
 	if err != nil {
 		t.Fatal(err)

@@ -123,7 +123,12 @@ func openFileMasterDatabase(path string) (*sql.DB, string, string, error) {
 	return db, absPath, hash, nil
 }
 
+// loadMasterDataFromDatabase loads a Master that provides the runtime schema (checkMasterRuntimeSchema) and refuses any
+// other: every loader below then reads its tables and columns directly, so a Master is loaded whole or not at all.
 func loadMasterDataFromDatabase(db *sql.DB, databasePath, hash, locale string) (*GameMaster, error) {
+	if err := checkMasterRuntimeSchema(db); err != nil {
+		return nil, err
+	}
 	master := &GameMaster{
 		Manifest:                      MasterManifest{Language: locale, ClientRegion: "Global", SourceHash: hash},
 		DatabasePath:                  databasePath,
@@ -274,21 +279,8 @@ func loadMasterDataFromDatabase(db *sql.DB, databasePath, hash, locale string) (
 	return master, nil
 }
 
-// loadSQLiteTrialRoleParents reads the optional normalized TrialRoleInfo relation.
+// loadSQLiteTrialRoleParents reads the normalized TrialRoleInfo relation.
 func loadSQLiteTrialRoleParents(db *sql.DB, master *GameMaster) error {
-	exists, err := masterTableExists(db, "trialroleinfo")
-	if err != nil || !exists {
-		return err
-	}
-	for _, column := range []string{"id", "parent_role_id"} {
-		present, err := masterColumnExists(db, "trialroleinfo", column)
-		if err != nil {
-			return err
-		}
-		if !present {
-			return fmt.Errorf("trialroleinfo is missing required column %s", column)
-		}
-	}
 	rows, err := db.Query("SELECT id,parent_role_id FROM trialroleinfo ORDER BY id")
 	if err != nil {
 		return fmt.Errorf("query TrialRoleInfo parent relations: %w", err)
@@ -321,12 +313,8 @@ func loadSQLiteTrialRoleParents(db *sql.DB, master *GameMaster) error {
 	return nil
 }
 
-// loadSQLiteSkillLabels reads the developer skill labels of the skillinfo table when it exists.
+// loadSQLiteSkillLabels reads the developer skill labels of the skillinfo table.
 func loadSQLiteSkillLabels(db *sql.DB, master *GameMaster) error {
-	exists, err := masterTableExists(db, "skillinfo")
-	if err != nil || !exists {
-		return err
-	}
 	rows, err := db.Query("SELECT skill_id,dev_name_zh_cn FROM skillinfo WHERE dev_name_zh_cn IS NOT NULL")
 	if err != nil {
 		return fmt.Errorf("query SkillInfo labels: %w", err)
@@ -351,36 +339,10 @@ func loadSQLiteSkillLabels(db *sql.DB, master *GameMaster) error {
 	return rows.Err()
 }
 
-// masterColumnExists reports whether table has the named column.
-func masterColumnExists(db *sql.DB, table, column string) (bool, error) {
-	rows, err := db.Query(fmt.Sprintf("PRAGMA table_info(%q)", table))
-	if err != nil {
-		return false, fmt.Errorf("inspect %s columns: %w", table, err)
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var ordinal, notNull, primaryKey int
-		var name, columnType string
-		var defaultValue sql.NullString
-		if err := rows.Scan(&ordinal, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
-			return false, fmt.Errorf("read %s column: %w", table, err)
-		}
-		if name == column {
-			return true, nil
-		}
-	}
-	return false, rows.Err()
-}
-
 // loadSQLiteActorChain reads the static tables that link a source entity to the actor
-// blueprint whose BulletPreload rows list the bullets it may use. Every table is optional,
-// so an older master still loads; a missing link only shortens the chain.
+// blueprint whose BulletPreload rows list the bullets it may use.
 func loadSQLiteActorChain(db *sql.DB, master *GameMaster) error {
 	pairs := func(table, query string, visit func(a, b sql.NullString) error) error {
-		exists, err := masterTableExists(db, table)
-		if err != nil || !exists {
-			return err
-		}
 		rows, err := db.Query(query)
 		if err != nil {
 			return fmt.Errorf("query %s chain: %w", table, err)
@@ -404,24 +366,18 @@ func loadSQLiteActorChain(db *sql.DB, master *GameMaster) error {
 		parsed, err := parseMasterID(value.String, what)
 		return parsed, err == nil, err
 	}
-	hasMesh, err := masterColumnExists(db, "roleskin", "mesh_id")
-	if err != nil {
-		return err
-	}
-	if hasMesh {
-		if err := pairs("roleskin", "SELECT id,mesh_id FROM roleskin", func(a, b sql.NullString) error {
-			skin, ok, err := id(a, "roleskin.id")
-			if err != nil || !ok {
-				return err
-			}
-			mesh, ok, err := id(b, "roleskin.mesh_id")
-			if ok {
-				master.RoleSkinMesh[skin] = mesh
-			}
-			return err
-		}); err != nil {
+	if err := pairs("roleskin", "SELECT id,mesh_id FROM roleskin", func(a, b sql.NullString) error {
+		skin, ok, err := id(a, "roleskin.id")
+		if err != nil || !ok {
 			return err
 		}
+		mesh, ok, err := id(b, "roleskin.mesh_id")
+		if ok {
+			master.RoleSkinMesh[skin] = mesh
+		}
+		return err
+	}); err != nil {
+		return err
 	}
 	if err := pairs("modelconfigpreload", "SELECT id,actor_asset_id FROM modelconfigpreload WHERE actor_asset_id IS NOT NULL", func(a, b sql.NullString) error {
 		model, ok, err := id(a, "modelconfigpreload.id")
@@ -456,24 +412,18 @@ func loadSQLiteActorChain(db *sql.DB, master *GameMaster) error {
 	}); err != nil {
 		return err
 	}
-	hasCast, err := masterColumnExists(db, "vision", "birth_cast_skill_id")
-	if err != nil {
-		return err
-	}
-	if hasCast {
-		if err := pairs("vision", "SELECT id,birth_cast_skill_id FROM vision WHERE birth_cast_skill_id IS NOT NULL", func(a, b sql.NullString) error {
-			vision, ok, err := id(a, "vision.id")
-			if err != nil || !ok {
-				return err
-			}
-			skill, ok, err := id(b, "vision.birth_cast_skill_id")
-			if ok {
-				master.VisionCast[skill] = append(master.VisionCast[skill], vision)
-			}
-			return err
-		}); err != nil {
+	if err := pairs("vision", "SELECT id,birth_cast_skill_id FROM vision WHERE birth_cast_skill_id IS NOT NULL", func(a, b sql.NullString) error {
+		vision, ok, err := id(a, "vision.id")
+		if err != nil || !ok {
 			return err
 		}
+		skill, ok, err := id(b, "vision.birth_cast_skill_id")
+		if ok {
+			master.VisionCast[skill] = append(master.VisionCast[skill], vision)
+		}
+		return err
+	}); err != nil {
+		return err
 	}
 	if err := pairs("bulletpreload", "SELECT actor_asset_id,bullet_id FROM bulletpreload WHERE actor_asset_id IS NOT NULL AND bullet_id IS NOT NULL", func(a, b sql.NullString) error {
 		bullet, ok, err := id(b, "bulletpreload.bullet_id")
@@ -490,34 +440,18 @@ func loadSQLiteActorChain(db *sql.DB, master *GameMaster) error {
 	}); err != nil {
 		return err
 	}
-	hasRowDamage, err := masterColumnExists(db, "commonbullet", "damage_id")
-	if err != nil {
-		return err
-	}
-	if hasRowDamage {
-		if err := pairs("commonbullet", "SELECT id,damage_id FROM commonbullet WHERE damage_id IS NOT NULL", func(a, b sql.NullString) error {
-			bullet, ok, err := id(a, "commonbullet.id")
-			if err != nil || !ok {
-				return err
-			}
-			damage, ok, err := id(b, "commonbullet.damage_id")
-			if ok {
-				master.CommonBulletDamage[bullet] = damage
-			}
-			return err
-		}); err != nil {
+	if err := pairs("commonbullet", "SELECT id,damage_id FROM commonbullet WHERE damage_id IS NOT NULL", func(a, b sql.NullString) error {
+		bullet, ok, err := id(a, "commonbullet.id")
+		if err != nil || !ok {
 			return err
 		}
-	}
-	hasActorSkills, err := masterColumnExists(db, "entityskillpreload", "actor_asset_id")
-	if err != nil {
+		damage, ok, err := id(b, "commonbullet.damage_id")
+		if ok {
+			master.CommonBulletDamage[bullet] = damage
+		}
 		return err
-	}
-	if !hasActorSkills {
-		return pairs("asset_reference", "SELECT id,path FROM asset_reference", func(a, b sql.NullString) error {
-			master.AssetPath[a.String] = b.String
-			return nil
-		})
+	}); err != nil {
+		return err
 	}
 	if err := pairs("entityskillpreload", "SELECT actor_asset_id,skill_id FROM entityskillpreload WHERE actor_asset_id IS NOT NULL AND skill_id IS NOT NULL", func(a, b sql.NullString) error {
 		skill, ok, err := id(b, "entityskillpreload.skill_id")
@@ -546,13 +480,9 @@ func loadSQLiteActorChain(db *sql.DB, master *GameMaster) error {
 	})
 }
 
-// loadSQLiteBullets reads commonbullet and bulletpreload row keys when the tables exist.
+// loadSQLiteBullets reads commonbullet and bulletpreload row keys.
 func loadSQLiteBullets(db *sql.DB, master *GameMaster) error {
 	load := func(table, query string, visit func(id uint64, label sql.NullString)) error {
-		exists, err := masterTableExists(db, table)
-		if err != nil || !exists {
-			return err
-		}
 		rows, err := db.Query(query)
 		if err != nil {
 			return fmt.Errorf("query %s definitions: %w", table, err)
@@ -582,12 +512,8 @@ func loadSQLiteBullets(db *sql.DB, master *GameMaster) error {
 	})
 }
 
-// loadSQLiteVisions reads DT_Vision row keys from the vision table when it exists.
+// loadSQLiteVisions reads DT_Vision row keys from the vision table.
 func loadSQLiteVisions(db *sql.DB, master *GameMaster) error {
-	exists, err := masterTableExists(db, "vision")
-	if err != nil || !exists {
-		return err
-	}
 	rows, err := db.Query("SELECT id FROM vision")
 	if err != nil {
 		return fmt.Errorf("query Vision definitions: %w", err)
@@ -607,19 +533,8 @@ func loadSQLiteVisions(db *sql.DB, master *GameMaster) error {
 	return rows.Err()
 }
 
-// loadSQLiteBuffDefinitions reads normalized buff.Id keys when the table exists.
+// loadSQLiteBuffDefinitions reads normalized buff.Id keys.
 func loadSQLiteBuffDefinitions(db *sql.DB, master *GameMaster) error {
-	exists, err := masterTableExists(db, "buff")
-	if err != nil || !exists {
-		return err
-	}
-	present, err := masterColumnExists(db, "buff", "id")
-	if err != nil {
-		return err
-	}
-	if !present {
-		return fmt.Errorf("buff is missing required column id")
-	}
 	rows, err := db.Query("SELECT id FROM buff ORDER BY id")
 	if err != nil {
 		return fmt.Errorf("query Buff definitions: %w", err)
@@ -643,64 +558,46 @@ func loadSQLiteBuffDefinitions(db *sql.DB, master *GameMaster) error {
 }
 
 // loadSQLiteBuffStaticParameters reads the definition fields of existing buff rows: the duration
-// policy, the stack limit, the single static duration magnitude and the granted tag paths. Every
-// table and column is optional so an older Master still loads. Rows without a buff.id are ignored.
+// policy, the stack limit, the single static duration magnitude and the granted tag paths. Rows
+// without a buff.id are ignored.
 func loadSQLiteBuffStaticParameters(db *sql.DB, master *GameMaster) error {
 	if len(master.BuffDefinitions) == 0 {
 		return nil
 	}
 	statics := make(map[uint64]BuffStaticParameters)
-	exists, err := masterTableExists(db, "buff")
-	if err != nil || !exists {
-		return err
-	}
-	hasPolicy, err := masterColumnExists(db, "buff", "duration_policy")
+	rows, err := db.Query("SELECT id, duration_policy, stack_limit_count, game_attribute_id FROM buff")
 	if err != nil {
-		return err
+		return fmt.Errorf("query Buff static parameters: %w", err)
 	}
-	hasLimit, err := masterColumnExists(db, "buff", "stack_limit_count")
-	if err != nil {
-		return err
-	}
-	hasAttribute, err := masterColumnExists(db, "buff", "game_attribute_id")
-	if err != nil {
-		return err
-	}
-	if hasPolicy || hasLimit || hasAttribute {
-		rows, err := db.Query("SELECT id, " + nullableColumn(hasPolicy, "duration_policy") + ", " + nullableColumn(hasLimit, "stack_limit_count") + ", " + nullableColumn(hasAttribute, "game_attribute_id") + " FROM buff")
+	for rows.Next() {
+		var raw string
+		var policy, limit, attribute sql.NullInt64
+		if err := rows.Scan(&raw, &policy, &limit, &attribute); err != nil {
+			rows.Close()
+			return fmt.Errorf("read Buff static parameters: %w", err)
+		}
+		id, err := parseMasterID(raw, "buff.id")
 		if err != nil {
-			return fmt.Errorf("query Buff static parameters: %w", err)
-		}
-		for rows.Next() {
-			var raw string
-			var policy, limit, attribute sql.NullInt64
-			if err := rows.Scan(&raw, &policy, &limit, &attribute); err != nil {
-				rows.Close()
-				return fmt.Errorf("read Buff static parameters: %w", err)
-			}
-			id, err := parseMasterID(raw, "buff.id")
-			if err != nil {
-				rows.Close()
-				return err
-			}
-			entry := statics[id]
-			if policy.Valid {
-				entry.DurationPolicy, entry.HasDurationPolicy = policy.Int64, true
-			}
-			if limit.Valid && limit.Int64 >= 0 {
-				entry.StackLimit, entry.HasStackLimit = uint64(limit.Int64), true
-			}
-			if attribute.Valid && attribute.Int64 > 0 {
-				entry.Attribute, entry.HasAttribute = uint64(attribute.Int64), true
-			}
-			statics[id] = entry
-		}
-		if err := rows.Err(); err != nil {
 			rows.Close()
 			return err
 		}
-		rows.Close()
+		entry := statics[id]
+		if policy.Valid {
+			entry.DurationPolicy, entry.HasDurationPolicy = policy.Int64, true
+		}
+		if limit.Valid && limit.Int64 >= 0 {
+			entry.StackLimit, entry.HasStackLimit = uint64(limit.Int64), true
+		}
+		if attribute.Valid && attribute.Int64 > 0 {
+			entry.Attribute, entry.HasAttribute = uint64(attribute.Int64), true
+		}
+		statics[id] = entry
 	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
 	if err := loadBuffMagnitudes(db, statics); err != nil {
 		return err
 	}
@@ -724,15 +621,9 @@ func loadSQLiteBuffStaticParameters(db *sql.DB, master *GameMaster) error {
 
 var richTextTag = regexp.MustCompile(`<[^>]*>`)
 
-// loadSQLiteBuffTerms reads buff_term_ref joined to the localized term text. Both tables are optional.
-// A relation whose evidence is not VERIFIED or CORRELATED, or whose buff row is absent, is ignored.
+// loadSQLiteBuffTerms reads buff_term_ref joined to the localized term text. A relation whose evidence
+// is not VERIFIED or CORRELATED, or whose buff row is absent, is ignored.
 func loadSQLiteBuffTerms(db *sql.DB, locale string, master *GameMaster) error {
-	for _, table := range []string{"buff_term_ref", "term_locale"} {
-		exists, err := masterTableExists(db, table)
-		if err != nil || !exists {
-			return err
-		}
-	}
 	rows, err := db.Query(`SELECT r.buff_id, r.term_id, r.evidence_status, l.name, l.description
 		FROM buff_term_ref r JOIN term_locale l ON l.id = r.term_id AND l.locale = ? ORDER BY r.buff_id`, locale)
 	if err != nil {
@@ -757,7 +648,7 @@ func loadSQLiteBuffTerms(db *sql.DB, locale string, master *GameMaster) error {
 		if status != ResolutionVerified && status != ResolutionCorrelated {
 			continue
 		}
-		if _, defined := master.BuffDefinitions[buffID]; !defined || name == "" {
+		if _, defined := master.BuffDefinitions[buffID]; !defined || !masterOfficialText(name) {
 			continue
 		}
 		terms[buffID] = EffectTermRecord{TermID: termID, Name: name, Description: strings.TrimSpace(richTextTag.ReplaceAllString(description, "")), Status: status}
@@ -769,20 +660,9 @@ func loadSQLiteBuffTerms(db *sql.DB, locale string, master *GameMaster) error {
 	return nil
 }
 
-func nullableColumn(present bool, name string) string {
-	if present {
-		return name
-	}
-	return "NULL"
-}
-
 // loadBuffMagnitudes keeps the duration magnitude only for rows that list exactly one value;
 // several values would need a rule to pick one.
 func loadBuffMagnitudes(db *sql.DB, statics map[uint64]BuffStaticParameters) error {
-	exists, err := masterTableExists(db, "buff_duration_magnitude")
-	if err != nil || !exists {
-		return err
-	}
 	rows, err := db.Query("SELECT owner_id, value FROM buff_duration_magnitude ORDER BY owner_id, ordinal")
 	if err != nil {
 		return fmt.Errorf("query Buff duration magnitudes: %w", err)
@@ -823,10 +703,6 @@ func loadBuffMagnitudes(db *sql.DB, statics map[uint64]BuffStaticParameters) err
 // loadBuffModifierPresence marks rows that list at least one modifier magnitude. The value itself is
 // not kept: a magnitude can be a raw amount, a percentage or a calculation input, and nothing here needs it.
 func loadBuffModifierPresence(db *sql.DB, statics map[uint64]BuffStaticParameters) error {
-	exists, err := masterTableExists(db, "buff_modifier_magnitude")
-	if err != nil || !exists {
-		return err
-	}
 	rows, err := db.Query("SELECT DISTINCT owner_id FROM buff_modifier_magnitude")
 	if err != nil {
 		return fmt.Errorf("query Buff modifier magnitudes: %w", err)
@@ -852,10 +728,6 @@ func loadBuffModifierPresence(db *sql.DB, statics map[uint64]BuffStaticParameter
 const maxBuffStaticTags = 8
 
 func loadBuffGrantedTags(db *sql.DB, statics map[uint64]BuffStaticParameters) error {
-	exists, err := masterTableExists(db, "buff_granted_tags")
-	if err != nil || !exists {
-		return err
-	}
 	rows, err := db.Query("SELECT owner_id, value FROM buff_granted_tags ORDER BY owner_id, ordinal")
 	if err != nil {
 		return fmt.Errorf("query Buff granted tags: %w", err)
@@ -880,19 +752,8 @@ func loadBuffGrantedTags(db *sql.DB, statics map[uint64]BuffStaticParameters) er
 	return rows.Err()
 }
 
-// loadSQLiteShieldDefinitions reads normalized shield.Id keys when the table exists.
+// loadSQLiteShieldDefinitions reads normalized shield.Id keys.
 func loadSQLiteShieldDefinitions(db *sql.DB, master *GameMaster) error {
-	exists, err := masterTableExists(db, "shield")
-	if err != nil || !exists {
-		return err
-	}
-	present, err := masterColumnExists(db, "shield", "id")
-	if err != nil {
-		return err
-	}
-	if !present {
-		return fmt.Errorf("shield is missing required column id")
-	}
 	rows, err := db.Query("SELECT id FROM shield ORDER BY id")
 	if err != nil {
 		return fmt.Errorf("query Shield definitions: %w", err)
@@ -915,12 +776,8 @@ func loadSQLiteShieldDefinitions(db *sql.DB, master *GameMaster) error {
 	return rows.Err()
 }
 
-// loadSQLitePhantomSkills reads PhantomSkill.PhantomSkillId when the table exists.
+// loadSQLitePhantomSkills reads PhantomSkill.PhantomSkillId.
 func loadSQLitePhantomSkills(db *sql.DB, master *GameMaster) error {
-	exists, err := masterTableExists(db, "phantomskill")
-	if err != nil || !exists {
-		return err
-	}
 	rows, err := db.Query("SELECT phantom_skill_id FROM phantomskill WHERE phantom_skill_id IS NOT NULL")
 	if err != nil {
 		return fmt.Errorf("query PhantomSkill definitions: %w", err)
@@ -940,17 +797,8 @@ func loadSQLitePhantomSkills(db *sql.DB, master *GameMaster) error {
 	return rows.Err()
 }
 
-// loadSQLiteConcomitantVisionSummonSkills reads the normalized Type 1 Vision crosswalk when present.
+// loadSQLiteConcomitantVisionSummonSkills reads the normalized Type 1 Vision crosswalk.
 func loadSQLiteConcomitantVisionSummonSkills(db *sql.DB, master *GameMaster) error {
-	var viewCount int
-	if err := db.QueryRow(
-		"SELECT COUNT(*) FROM sqlite_master WHERE type='view' AND name='summon_skill_vision_ref'",
-	).Scan(&viewCount); err != nil {
-		return fmt.Errorf("check SummonSkillId Vision crosswalk: %w", err)
-	}
-	if viewCount == 0 {
-		return nil
-	}
 	rows, err := db.Query(
 		"SELECT summon_type, summon_skill_id, vision_id, phantom_skill_id " +
 			"FROM summon_skill_vision_ref ORDER BY summon_type, summon_skill_id",
@@ -994,17 +842,9 @@ func loadSQLiteConcomitantVisionSummonSkills(db *sql.DB, master *GameMaster) err
 	return rows.Err()
 }
 
-// loadSQLiteRoleSkins reads the normalized roleskin table when the database has one.
-// Each skin must reference a character that exists in the localized RoleInfo set;
-// a missing referent is a build defect, not an unknown value.
+// loadSQLiteRoleSkins reads the normalized roleskin table. Each skin must reference a character
+// that exists in the localized RoleInfo set; a missing referent is a build defect, not an unknown value.
 func loadSQLiteRoleSkins(db *sql.DB, master *GameMaster) error {
-	exists, err := masterTableExists(db, "roleskin")
-	if err != nil {
-		return err
-	}
-	if !exists {
-		return nil
-	}
 	rows, err := db.Query("SELECT id,role_id FROM roleskin ORDER BY id")
 	if err != nil {
 		return fmt.Errorf("query RoleSkin definitions: %w", err)
@@ -1047,13 +887,6 @@ func loadSQLiteRoleSkins(db *sql.DB, master *GameMaster) error {
 }
 
 func loadSQLiteCommonSkills(db *sql.DB, master *GameMaster) error {
-	exists, err := masterTableExists(db, "commonskillpreload")
-	if err != nil {
-		return err
-	}
-	if !exists {
-		return nil
-	}
 	rows, err := db.Query("SELECT id FROM commonskillpreload ORDER BY id")
 	if err != nil {
 		return fmt.Errorf("query CommonSkillPreload definitions: %w", err)
@@ -1078,34 +911,7 @@ func loadSQLiteCommonSkills(db *sql.DB, master *GameMaster) error {
 }
 
 func loadSQLiteCharacterSkins(db *sql.DB, master *GameMaster) error {
-	rows, err := db.Query("PRAGMA table_info(roleinfo)")
-	if err != nil {
-		return fmt.Errorf("inspect RoleInfo columns: %w", err)
-	}
-	hasSkinID := false
-	for rows.Next() {
-		var ordinal int
-		var name, columnType string
-		var notNull, primaryKey int
-		var defaultValue sql.NullString
-		if err := rows.Scan(&ordinal, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
-			rows.Close()
-			return fmt.Errorf("read RoleInfo column: %w", err)
-		}
-		if name == "skin_id" {
-			hasSkinID = true
-		}
-	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		return fmt.Errorf("iterate RoleInfo columns: %w", err)
-	}
-	rows.Close()
-	if !hasSkinID {
-		return nil
-	}
-
-	rows, err = db.Query("SELECT id,skin_id FROM roleinfo WHERE skin_id IS NOT NULL AND skin_id <> '' AND skin_id <> '0' ORDER BY id")
+	rows, err := db.Query("SELECT id,skin_id FROM roleinfo WHERE skin_id IS NOT NULL AND skin_id <> '' AND skin_id <> '0' ORDER BY id")
 	if err != nil {
 		return fmt.Errorf("query RoleInfo skin references: %w", err)
 	}
@@ -1145,8 +951,11 @@ func loadSQLiteCharacterSkins(db *sql.DB, master *GameMaster) error {
 	return nil
 }
 
+// loadLocalizedDefinitions reads every ID of baseTable (roles, monsters) with its name by the rule DisplayResolver.Resolve
+// names them by: the official text (masterOfficialText) of the locale, else the official en-US text; an ID with neither
+// has no name (UNKNOWN). Language is the locale the name was read from, or the requested locale when there is none.
 func loadLocalizedDefinitions(db *sql.DB, locale, baseTable, localeTable string, destination *map[uint64]MasterRecord) error {
-	query := fmt.Sprintf("SELECT b.id,l.name FROM %s b LEFT JOIN %s l ON l.id=b.id AND l.locale=? ORDER BY b.id", baseTable, localeTable)
+	query := fmt.Sprintf("SELECT b.id,l.name,e.name FROM %s b LEFT JOIN %s l ON l.id=b.id AND l.locale=? LEFT JOIN %s e ON e.id=b.id AND e.locale='en-US' ORDER BY b.id", baseTable, localeTable, localeTable)
 	rows, err := db.Query(query, locale)
 	if err != nil {
 		return fmt.Errorf("query %s definitions: %w", baseTable, err)
@@ -1154,8 +963,8 @@ func loadLocalizedDefinitions(db *sql.DB, locale, baseTable, localeTable string,
 	defer rows.Close()
 	for rows.Next() {
 		var rawID string
-		var name sql.NullString
-		if err := rows.Scan(&rawID, &name); err != nil {
+		var name, english sql.NullString
+		if err := rows.Scan(&rawID, &name, &english); err != nil {
 			return fmt.Errorf("read %s definition: %w", baseTable, err)
 		}
 		id, err := parseMasterID(rawID, baseTable)
@@ -1166,8 +975,12 @@ func loadLocalizedDefinitions(db *sql.DB, locale, baseTable, localeTable string,
 			return fmt.Errorf("duplicate %s ID %d", baseTable, id)
 		}
 		record := MasterRecord{ID: id, Language: locale, Status: string(ResolutionVerified), SourceTable: baseTable}
-		if name.Valid {
+		switch {
+		case name.Valid && masterOfficialText(name.String):
 			record.Name = name.String
+		case english.Valid && masterOfficialText(english.String):
+			// For en-US itself both columns are the same row, already not a name: the fallback ends there.
+			record.Name, record.Language = english.String, "en-US"
 		}
 		if record.Name == "" {
 			record.NameStatus = string(ResolutionUnknown)
@@ -1212,16 +1025,9 @@ func loadSQLiteSkills(db *sql.DB, locale string, master *GameMaster) error {
 	}
 	rows.Close()
 
-	hasPreload, err := masterTableExists(db, "entityskillpreload")
-	if err != nil {
-		return err
-	}
-	preloadMatch := "0"
-	if hasPreload {
-		preloadMatch = "EXISTS(SELECT 1 FROM entityskillpreload p WHERE p.skill_id=d.id)"
-	}
 	rows, err = db.Query(`SELECT d.id,d.skill_level_group_id,
-		(SELECT skill_group_id FROM skill WHERE skill_level_group_id=d.skill_level_group_id ORDER BY id LIMIT 1),l.name,`+preloadMatch+`
+		(SELECT skill_group_id FROM skill WHERE skill_level_group_id=d.skill_level_group_id ORDER BY id LIMIT 1),l.name,
+		EXISTS(SELECT 1 FROM entityskillpreload p WHERE p.skill_id=d.id)
 		FROM skilldescription d
 		LEFT JOIN skilldescription_locale l ON l.id=d.id AND l.locale=?
 		ORDER BY d.id`, locale)
@@ -1243,7 +1049,7 @@ func loadSQLiteSkills(db *sql.DB, locale string, master *GameMaster) error {
 			return err
 		}
 		record := MasterRecord{ID: id, Language: locale, Status: string(ResolutionVerified), SourceTable: "skilldescription -> skill"}
-		if name.Valid {
+		if name.Valid && masterOfficialText(name.String) {
 			record.Name = name.String
 		}
 		if record.Name == "" {
@@ -1279,16 +1085,7 @@ func loadSQLiteSkills(db *sql.DB, locale string, master *GameMaster) error {
 }
 
 func loadSQLiteDamage(db *sql.DB, hash string, master *GameMaster) error {
-	// damage.element is optional so an older master without the column still loads.
-	hasElement, err := masterColumnExists(db, "damage", "element")
-	if err != nil {
-		return err
-	}
-	elementColumn := "NULL"
-	if hasElement {
-		elementColumn = "element"
-	}
-	rows, err := db.Query("SELECT id,calculate_type," + elementColumn + " FROM damage WHERE calculate_type IS NOT NULL ORDER BY id")
+	rows, err := db.Query("SELECT id,calculate_type,element FROM damage WHERE calculate_type IS NOT NULL ORDER BY id")
 	if err != nil {
 		return fmt.Errorf("query damage classifications: %w", err)
 	}
@@ -1358,28 +1155,16 @@ func loadSQLiteScene(db *sql.DB, master *GameMaster) error {
 }
 
 // loadPrefabRelations reads the relations of the entities of prefabs (prefab_entity_monster, prefab_entity_template_ref),
-// built from the client's PrefabConfig like the level relations from LevelEntityConfig. A Master without the tables knows
-// no prefab entity, so such an entity stays unidentified; a relation naming a row the Master lacks is refused like a broken
-// level relation.
+// built from the client's PrefabConfig like the level relations from LevelEntityConfig. An entity of no listed prefab
+// stays unidentified; a relation naming a row the Master lacks is refused like a broken level relation.
 func loadPrefabRelations(db *sql.DB, master *GameMaster) error {
 	prefabKey := func(prefabID, entityID uint64) prefabEntityKey {
 		return prefabEntityKey{prefabID: prefabID, entityID: entityID}
 	}
-	if exists, err := masterTableExists(db, "prefab_entity_monster"); err != nil {
+	if err := loadMonsterRelation(db, master, "prefab_entity_monster", "prefab_id", prefabKey, master.SceneIdentity.prefabMonsters); err != nil {
 		return err
-	} else if exists {
-		if err := loadMonsterRelation(db, master, "prefab_entity_monster", "prefab_id", prefabKey, master.SceneIdentity.prefabMonsters); err != nil {
-			return err
-		}
 	}
-	if exists, err := masterTableExists(db, "prefab_entity_template_ref"); err != nil {
-		return err
-	} else if exists {
-		if err := loadTemplateRelation(db, master, "prefab_entity_template_ref", "prefab_id", prefabKey, master.SceneIdentity.prefabTemplates); err != nil {
-			return err
-		}
-	}
-	return nil
+	return loadTemplateRelation(db, master, "prefab_entity_template_ref", "prefab_id", prefabKey, master.SceneIdentity.prefabTemplates)
 }
 
 // loadMonsterRelation reads a <scope>/entity -> MonsterInfo relation and keeps only the keys that name exactly one
@@ -1431,17 +1216,7 @@ func loadMonsterRelation[K comparable](db *sql.DB, master *GameMaster, table, sc
 }
 
 func loadTemplateCatalog(db *sql.DB, master *GameMaster) error {
-	hasTemplateLocales, err := masterTableExists(db, "templateconfig_locale")
-	if err != nil {
-		return err
-	}
-	query := "SELECT id,blueprint_type,raw_name,NULL,NULL,NULL FROM templateconfig ORDER BY id"
-	args := []any{}
-	if hasTemplateLocales {
-		query = `SELECT t.id,t.blueprint_type,t.raw_name,l.name,l.name_text_key,l.subtitle FROM templateconfig t LEFT JOIN templateconfig_locale l ON l.id=t.id AND l.locale=? AND l.name_text_key=t.tid_name ORDER BY t.id`
-		args = append(args, master.Locale)
-	}
-	rows, err := db.Query(query, args...)
+	rows, err := db.Query(`SELECT t.id,t.blueprint_type,t.raw_name,l.name,l.name_text_key,l.subtitle FROM templateconfig t LEFT JOIN templateconfig_locale l ON l.id=t.id AND l.locale=? AND l.name_text_key=t.tid_name ORDER BY t.id`, master.Locale)
 	if err != nil {
 		return fmt.Errorf("query scene template catalog: %w", err)
 	}
@@ -1457,11 +1232,13 @@ func loadTemplateCatalog(db *sql.DB, master *GameMaster) error {
 			return err
 		}
 		candidate := SceneTemplateCandidate{TemplateID: id, BlueprintType: blueprintType, RawName: rawName, NameStatus: string(ResolutionUnknown), Language: master.Locale}
-		if name.Valid && strings.TrimSpace(name.String) != "" && !strings.HasPrefix(strings.ToLower(strings.TrimSpace(name.String)), "dnt/") && textKey.Valid && textKey.String != "" {
+		if name.Valid && masterOfficialText(name.String) && textKey.Valid && textKey.String != "" {
 			candidate.Name = name.String
 			candidate.NameTextKey = textKey.String
 			candidate.NameStatus = string(ResolutionVerified)
-			candidate.Subtitle = subtitle.String
+			if masterOfficialText(subtitle.String) {
+				candidate.Subtitle = subtitle.String
+			}
 		}
 		master.SceneIdentity.TemplateCatalog[id] = candidate
 	}
@@ -1471,15 +1248,12 @@ func loadTemplateCatalog(db *sql.DB, master *GameMaster) error {
 	return loadSQLiteTemplateDevLabels(db, master)
 }
 
-// loadSQLiteTemplateDevLabels attaches the optional developer note of templates that have no official name.
+// loadSQLiteTemplateDevLabels attaches the developer note of templates that have no official name.
 // The master locale wins; the zh-CN original is the fallback.
 func loadSQLiteTemplateDevLabels(db *sql.DB, master *GameMaster) error {
 	rows, err := queryDevLabels(db, "templateconfig", master.Locale)
-	if err != nil || rows == nil {
-		return err
-	}
 	if err != nil {
-		return fmt.Errorf("query template developer labels: %w", err)
+		return err
 	}
 	defer rows.Close()
 	chosen := make(map[uint64]*CombatEventLabelTextJSONL)
@@ -1586,19 +1360,7 @@ func hashFile(path string) (string, error) {
 	return hex.EncodeToString(hash.Sum(nil)), nil
 }
 
-func masterTableExists(db *sql.DB, table string) (bool, error) {
-	var count int
-	if err := db.QueryRow("SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?", table).Scan(&count); err != nil {
-		return false, fmt.Errorf("inspect optional master table %s: %w", table, err)
-	}
-	return count == 1, nil
-}
-
 func loadSQLiteBlueprintEntityTypes(db *sql.DB, master *GameMaster) error {
-	hasEntityType, err := masterColumnExists(db, "blueprintconfig", "entity_type")
-	if err != nil || !hasEntityType {
-		return err
-	}
 	rows, err := db.Query("SELECT blueprint_type,entity_type FROM blueprintconfig WHERE blueprint_type IS NOT NULL AND entity_type IS NOT NULL")
 	if err != nil {
 		return fmt.Errorf("query blueprint entity types: %w", err)

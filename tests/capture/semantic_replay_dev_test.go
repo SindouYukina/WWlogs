@@ -110,7 +110,7 @@ var semanticEffectFacts = append(currentGoldenFacts(func(capture string) []seman
 	semanticEffectFact{build29LiveCapture, 10041000, EffectPolarityDebuff, EffectTargetEnemy, 8, ""},
 	semanticEffectFact{build29LiveCapture, 10061000, EffectPolarityDebuff, EffectTargetEnemy, 6, ""},
 	// Statuses the HUD draws with their icon and without an arrow, listed in the first row as neutral cells. The game draws
-	// them (Global 3.8.9: type 2 or 24 cues with a Path and an empty Parameters vector in the hotfix db_buffeffect.db;
+	// them (Global 3.8.9: type 2 or 24 cues with a Path and an empty Parameters vector in the client data;
 	// BuffItem.Activate draws the icon and only an arrow for "1" or "2"). In the capture they come in the local client's
 	// own ApplyGameplayEffectPush, checked outside the product's effect decoder
 	// (work/tools/combat-audit/live-build31/client_status_crosscheck.py): holder by CombatCommon.EntityId against the role entities of the

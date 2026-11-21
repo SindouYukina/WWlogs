@@ -13,13 +13,9 @@ type LocalizedSkillLabel struct {
 	Kind   string
 }
 
-// loadSQLiteSkillLabelText reads the optional skill_dev_label_locale table. Only the requested locale and the
-// zh-CN original are kept, so an older master without the table still loads.
+// loadSQLiteSkillLabelText reads the skill_dev_label_locale table. Only the requested locale and the zh-CN original are
+// kept.
 func loadSQLiteSkillLabelText(db *sql.DB, locale string, master *GameMaster) error {
-	exists, err := masterTableExists(db, "skill_dev_label_locale")
-	if err != nil || !exists {
-		return err
-	}
 	rows, err := db.Query("SELECT skill_id,locale,label,label_kind FROM skill_dev_label_locale WHERE locale IN (?,?)", locale, "zh-CN")
 	if err != nil {
 		return fmt.Errorf("query skill developer label text: %w", err)
@@ -46,12 +42,7 @@ func loadSQLiteSkillLabelText(db *sql.DB, locale string, master *GameMaster) err
 }
 
 // queryDevLabels reads the dev_label_locale rows of one ID namespace for the master locale and the zh-CN original.
-// It returns nil rows when the optional table is missing, so an older master still loads.
 func queryDevLabels(db *sql.DB, namespace, locale string) (*sql.Rows, error) {
-	exists, err := masterTableExists(db, "dev_label_locale")
-	if err != nil || !exists {
-		return nil, err
-	}
 	rows, err := db.Query("SELECT id,locale,label,label_kind FROM dev_label_locale WHERE namespace=? AND locale IN (?,?)", namespace, locale, "zh-CN")
 	if err != nil {
 		return nil, fmt.Errorf("query %s developer labels: %w", namespace, err)
@@ -69,7 +60,7 @@ func loadSQLiteVisionDevLabels(db *sql.DB, locale string, master *GameMaster) er
 // the zh-CN original; the text is a developer note and never an official name.
 func loadSQLiteDevLabelMap(db *sql.DB, namespace, locale string, target map[uint64]*CombatEventLabelTextJSONL) error {
 	rows, err := queryDevLabels(db, namespace, locale)
-	if err != nil || rows == nil {
+	if err != nil {
 		return err
 	}
 	defer rows.Close()
@@ -92,10 +83,6 @@ func loadSQLiteDevLabelMap(db *sql.DB, namespace, locale string, target map[uint
 
 // loadSQLiteElementNames reads the localized element names (ElementInfo) for the master locale.
 func loadSQLiteElementNames(db *sql.DB, locale string, master *GameMaster) error {
-	exists, err := masterTableExists(db, "elementinfo_locale")
-	if err != nil || !exists {
-		return err
-	}
 	rows, err := db.Query("SELECT id,name FROM elementinfo_locale WHERE locale=? AND name IS NOT NULL AND name<>''", locale)
 	if err != nil {
 		return fmt.Errorf("query element names: %w", err)

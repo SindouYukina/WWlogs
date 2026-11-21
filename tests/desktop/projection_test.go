@@ -5,12 +5,103 @@ import (
 	"encoding/json"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
 	"wwlogs/internal/capture"
 	"wwlogs/internal/service"
 )
+
+// completeMasterFixture adds to the fixture Master at path every table, view and column of the runtime schema
+// (capture.MasterRuntimeSchema) that it lacks: empty, and declared with the first type the runtime accepts, so the display
+// resolver accepts a fixture that creates only what its test needs. It is a copy of the tests/capture helper of the same
+// name (tests/capture/master_schema_test.go); change them together.
+func completeMasterFixture(t testing.TB, path string) {
+	t.Helper()
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	quote := func(name string) string { return `"` + strings.ReplaceAll(name, `"`, `""`) + `"` }
+	column := func(c capture.MasterSchemaColumn) string {
+		if len(c.Types) == 0 {
+			return quote(c.Name)
+		}
+		return quote(c.Name) + " " + c.Types[0]
+	}
+	for _, table := range capture.MasterRuntimeSchema() {
+		var kind string
+		switch err := db.QueryRow("SELECT type FROM sqlite_master WHERE name = ?", table.Name).Scan(&kind); {
+		case err == sql.ErrNoRows:
+			columns := make([]string, len(table.Columns))
+			for i, c := range table.Columns {
+				if table.View {
+					columns[i] = "NULL AS " + quote(c.Name)
+				} else {
+					columns[i] = column(c)
+				}
+			}
+			if len(table.Key) > 0 {
+				key := make([]string, len(table.Key))
+				for i, column := range table.Key {
+					key[i] = quote(column)
+				}
+				columns = append(columns, "PRIMARY KEY ("+strings.Join(key, ", ")+")")
+			}
+			statement := "CREATE TABLE " + quote(table.Name) + " (" + strings.Join(columns, ", ") + ")"
+			if table.View {
+				statement = "CREATE VIEW " + quote(table.Name) + " AS SELECT " + strings.Join(columns, ", ") + " WHERE 0"
+			}
+			if _, err := db.Exec(statement); err != nil {
+				t.Fatal(err)
+			}
+			continue
+		case err != nil:
+			t.Fatal(err)
+		}
+		if table.View {
+			continue
+		}
+		present := map[string]bool{}
+		rows, err := db.Query("SELECT name FROM pragma_table_info(?)", table.Name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for rows.Next() {
+			var name string
+			if err := rows.Scan(&name); err != nil {
+				t.Fatal(err)
+			}
+			present[name] = true
+		}
+		if err := rows.Close(); err != nil {
+			t.Fatal(err)
+		}
+		for _, c := range table.Columns {
+			if !present[c.Name] {
+				if _, err := db.Exec("ALTER TABLE " + quote(table.Name) + " ADD COLUMN " + column(c)); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+		// A table the fixture created itself gets the declared key as a unique index (a second one is harmless).
+		if len(table.Key) > 0 {
+			key := make([]string, len(table.Key))
+			for i, column := range table.Key {
+				key[i] = quote(column)
+			}
+			if _, err := db.Exec("CREATE UNIQUE INDEX IF NOT EXISTS " + quote(table.Name+"_runtime_key") + " ON " + quote(table.Name) + " (" + strings.Join(key, ", ") + ")"); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestDisplayProjectionRelocalizesExistingSnapshotWithoutChangingCore(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "master.db")
@@ -26,6 +117,7 @@ func TestDisplayProjectionRelocalizesExistingSnapshotWithoutChangingCore(t *test
 		}
 	}
 	db.Close()
+	completeMasterFixture(t, path)
 	resolver, err := capture.OpenDisplayResolver(path)
 	if err != nil {
 		t.Fatal(err)
@@ -96,6 +188,7 @@ func TestDisplayProjectionKeepsTheEnginesRankingContract(t *testing.T) {
 		}
 	}
 	db.Close()
+	completeMasterFixture(t, path)
 	resolver, err := capture.OpenDisplayResolver(path)
 	if err != nil {
 		t.Fatal(err)
@@ -149,6 +242,7 @@ func TestDisplayProjectionGivesATrialRoleItsParentsArt(t *testing.T) {
 		}
 	}
 	db.Close()
+	completeMasterFixture(t, path)
 	resolver, err := capture.OpenDisplayResolver(path)
 	if err != nil {
 		t.Fatal(err)
@@ -181,6 +275,64 @@ func TestDisplayProjectionGivesATrialRoleItsParentsArt(t *testing.T) {
 	}
 }
 
+// brokenRoleMaster is a Master with one sound trial (13127004 of 1312) beside two rows it cannot answer for: a trial whose
+// parent is not an ID (13127005) and a role whose element is not a number (1313).
+func brokenRoleMaster(t *testing.T) *capture.DisplayResolver {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "master.db")
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range []string{
+		"CREATE TABLE roleinfo_locale (id TEXT,locale TEXT,name TEXT,PRIMARY KEY(id,locale))",
+		"CREATE TABLE roleinfo (id TEXT PRIMARY KEY,element_id TEXT)",
+		"CREATE TABLE trialroleinfo (id TEXT PRIMARY KEY,group_id TEXT,type INTEGER,parent_role_id TEXT)",
+		"INSERT INTO roleinfo VALUES('1312','6'),('1313','fire')",
+		"INSERT INTO roleinfo_locale VALUES('1312','en-US','Fixture role'),('1313','en-US','Element fixture')",
+		"INSERT INTO trialroleinfo VALUES('13127004','13127004',1,'1312'),('13127005','13127005',1,'x')",
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	db.Close()
+	completeMasterFixture(t, path)
+	resolver, err := capture.OpenDisplayResolver(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { resolver.Close() })
+	return resolver
+}
+
+// A role lookup the Master cannot answer fails the projection the way a failed name lookup does, instead of showing the
+// role with its own RoleId's art and no name, or with the neutral color, as if the Master did not list it.
+func TestDisplayProjectionReportsAFailedRoleLookup(t *testing.T) {
+	resolver := brokenRoleMaster(t)
+	store := loadSettings(filepath.Join(t.TempDir(), "settings.json"), testLocaleCatalog())
+	for _, role := range []uint64{13127005, 1313} {
+		view := capture.ViewSnapshot{Roles: []capture.ViewRole{{RoleID: 13127004}, {RoleID: role}}}
+		raw, err := (&displayProjection{resolver: resolver}).encode(&service.Snapshot{Sequence: 1, View: &view}, store.current(), testLocaleCatalog(), service.ListeningStatus{}, OverlayStates{}, historyIndicator{})
+		if err == nil || !strings.Contains(err.Error(), "Master role tables") {
+			t.Fatalf("role %d: projected %s with error %v, want the failed role lookup", role, raw, err)
+		}
+	}
+	// The sound trial alone still projects with its parent's art and element.
+	view := capture.ViewSnapshot{Roles: []capture.ViewRole{{RoleID: 13127004}}}
+	raw, err := (&displayProjection{resolver: resolver}).encode(&service.Snapshot{Sequence: 2, View: &view}, store.current(), testLocaleCatalog(), service.ListeningStatus{}, OverlayStates{}, historyIndicator{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var shown struct{ View capture.ViewSnapshot }
+	if err := json.Unmarshal(raw, &shown); err != nil {
+		t.Fatal(err)
+	}
+	if role := shown.View.Roles[0]; role.StaticRoleID != 1312 || role.ElementID != 6 {
+		t.Fatalf("sound trial = %+v, want the parent's art and element", role)
+	}
+}
+
 func TestShellChangeReencodesWithoutTouchingCoreSequence(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "master.db")
 	db, _ := sql.Open("sqlite", path)
@@ -194,6 +346,7 @@ func TestShellChangeReencodesWithoutTouchingCoreSequence(t *testing.T) {
 		t.Fatal(err)
 	}
 	db.Close()
+	completeMasterFixture(t, path)
 	resolver, err := capture.OpenDisplayResolver(path)
 	if err != nil {
 		t.Fatal(err)
@@ -290,6 +443,7 @@ func TestDisplayProjectionRelocalizesSkillNamesWithoutChangingSkillStatistics(t 
 		}
 	}
 	db.Close()
+	completeMasterFixture(t, path)
 	resolver, err := capture.OpenDisplayResolver(path)
 	if err != nil {
 		t.Fatal(err)
@@ -371,6 +525,7 @@ func TestDisplayProjectionRelocalizesDerivedSkillNamesThroughTheirSource(t *test
 		}
 	}
 	db.Close()
+	completeMasterFixture(t, path)
 	resolver, err := capture.OpenDisplayResolver(path)
 	if err != nil {
 		t.Fatal(err)

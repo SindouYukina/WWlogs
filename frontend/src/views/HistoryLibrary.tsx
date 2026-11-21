@@ -4,8 +4,10 @@ import { Button, Card, CharacterAvatar, Chip, Icon, Select, Tooltip } from "@/de
 import { usableDps } from "@/lib/combat-data"
 import { useFormatters } from "@/lib/format"
 import { chosenState, classTone, defaultLibraryQuery, deletableIds, libraryFiltered, librarySorts, recordClasses, toggleChosen, type HistoryLibrary as Library, type HistoryLibraryEntry, type HistoryLibraryQuery, type LibrarySort, type RecordClass } from "@/lib/history-library"
+import { modeText, stageText } from "@/lib/history"
 import { host } from "@/lib/host"
 import { dpsText } from "@/lib/snapshot"
+import { ModeName, StageName } from "./HistoryNames"
 
 // The History Library: every stored encounter across dates, filtered and sorted by Go. The view edits the query and lays
 // out the page; it never filters, sorts or classifies records itself.
@@ -31,17 +33,6 @@ export interface HistoryLibraryProps {
 /** Deleting several encounters: off, choosing them in the list, or asking to confirm. */
 type DeleteStep = "off" | "choosing" | "confirming"
 
-function ModeName({ entry }: { entry: HistoryLibraryEntry }) {
-  const { t } = useTranslation("history")
-  if (!entry.scene.known || !entry.mode?.kind) return <span className="ww-history-unknown">{t("unidentified")}</span>
-  return <span data-mode-kind={entry.mode.kind}>{entry.mode.kind === "open_world" ? t("modeOpenWorld") : entry.mode.name}{entry.mode.status === "CORRELATED" && <span className="ww-history-mark" title={t("correlatedNote")}>≈</span>}</span>
-}
-
-function StageName({ entry }: { entry: HistoryLibraryEntry }) {
-  const { t } = useTranslation("history")
-  if (!entry.scene.known || !entry.sceneName.name) return <span className="ww-history-unknown">{t("unidentified")}</span>
-  return <span title={entry.sceneName.status === "CORRELATED" ? t("correlatedNote") : undefined}>{entry.sceneName.name}{entry.sceneName.status === "CORRELATED" && <span className="ww-history-mark">≈</span>}</span>
-}
 
 export function ClassChip({ value }: { value: RecordClass }) {
   const { t } = useTranslation("history")
@@ -125,8 +116,8 @@ export function HistoryLibraryView({ zone, refreshKey, query, onQuery, onOpen, c
   const facets = page?.facets
   const any = { value: "", label: t("library.any") }
   const versionOptions = useMemo(() => [any, ...(facets?.gameVersions ?? []).map(v => ({ value: v.value, label: `${v.value || t("library.versionUnknown")} (${format.integer(v.count)})` }))], [facets, i18n.language])
-  const modeOptions = useMemo(() => [any, ...(facets?.modes ?? []).map(m => ({ value: m.key, label: `${m.kind === "open_world" ? t("modeOpenWorld") : m.name} (${format.integer(m.count)})` }))], [facets, i18n.language])
-  const stageOptions = useMemo(() => [any, ...(facets?.stages ?? []).filter(s => s.name.name).map(s => ({ value: String(s.instanceId), label: `${s.name.name} (${format.integer(s.count)})` }))], [facets, i18n.language])
+  const modeOptions = useMemo(() => [any, ...(facets?.modes ?? []).map(m => ({ value: m.key, label: `${modeText(m, t)} (${format.integer(m.count)})` }))], [facets, i18n.language])
+  const stageOptions = useMemo(() => [any, ...(facets?.stages ?? []).flatMap(s => { const label = stageText(s.name, s.content, t); return label ? [{ value: String(s.instanceId), label: `${label} (${format.integer(s.count)})` }] : [] })], [facets, i18n.language])
   const roleOptions = useMemo(() => [any, ...(facets?.roles ?? []).map(r => ({ value: String(r.roleId), label: `${r.name.name ?? r.roleId} (${format.integer(r.count)})` }))], [facets, i18n.language])
   const classOptions = useMemo(() => [any, ...recordClasses.map(c => ({ value: c, label: t(`library.class.${c}`) }))], [i18n.language])
   const sourceOptions = useMemo(() => [any, { value: "live", label: t("source.live") }, { value: "replay", label: t("source.replay") }], [i18n.language])
@@ -206,8 +197,8 @@ export function HistoryLibraryView({ zone, refreshKey, query, onQuery, onOpen, c
               </td>}
               <td className="ww-num ww-history-time" data-field="start">{entry.localDate} {entry.start.clock}</td>
               <td className="ww-history-version-column">{entry.gameVersion ? <span className="ww-history-version">{entry.gameVersion}</span> : <span className="ww-history-unknown" title={t("versionUnknown")}>—</span>}</td>
-              <td data-field="mode"><ModeName entry={entry} /></td>
-              <td data-field="scene"><StageName entry={entry} /></td>
+              <td data-field="mode"><ModeName mode={entry.mode} known={entry.scene.known} /></td>
+              <td data-field="scene"><StageName name={entry.sceneName} content={entry.content} instanceId={entry.scene.instanceId} known={entry.scene.known} /></td>
               <td><RoleAvatars entry={entry} /></td>
               <td className="ww-num" data-field="duration">{entry.durationSeconds === undefined ? "—" : format.clock(entry.durationSeconds)}</td>
               <td className="ww-num" data-field="damage">{entry.damageDealt === undefined || entry.state !== "finished" ? "—" : `${entry.class === "degraded" || entry.class === "known_affected" ? "≥ " : ""}${format.integer(entry.damageDealt)}`}</td>

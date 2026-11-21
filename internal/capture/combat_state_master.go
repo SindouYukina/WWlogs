@@ -28,12 +28,8 @@ type FSMMaster struct {
 	Labels map[string]map[string]LocalizedSkillLabel
 }
 
-// loadSQLitePropertyNames reads PropertyIndex keys and the master-locale names; the tables are optional.
+// loadSQLitePropertyNames reads PropertyIndex keys and the master-locale names.
 func loadSQLitePropertyNames(db *sql.DB, locale string, master *GameMaster) error {
-	exists, err := masterTableExists(db, "propertyindex")
-	if err != nil || !exists {
-		return err
-	}
 	rows, err := db.Query(`SELECT CAST(p.id AS INTEGER),p.key,COALESCE(l.name,'') FROM propertyindex p
 		LEFT JOIN propertyindex_locale l ON l.id=p.id AND l.locale=? ORDER BY CAST(p.id AS INTEGER)`, locale)
 	if err != nil {
@@ -51,12 +47,8 @@ func loadSQLitePropertyNames(db *sql.DB, locale string, master *GameMaster) erro
 	return rows.Err()
 }
 
-// loadSQLiteStateMachines reads the state-machine node identities and their containment; the tables are optional.
+// loadSQLiteStateMachines reads the state-machine node identities, their containment and their localized labels.
 func loadSQLiteStateMachines(db *sql.DB, locale string, master *GameMaster) error {
-	exists, err := masterTableExists(db, "aistatemachine_node")
-	if err != nil || !exists {
-		return err
-	}
 	fsm := &FSMMaster{
 		MachinesByNode:    make(map[int64][]string),
 		MachinesByVersion: make(map[int64][]string),
@@ -120,32 +112,26 @@ func loadSQLiteStateMachines(db *sql.DB, locale string, master *GameMaster) erro
 	if err := childRows.Err(); err != nil {
 		return err
 	}
-	labelsPresent, err := masterTableExists(db, "aistatemachine_node_name_locale")
+	labelRows, err := db.Query("SELECT dev_name_zh_cn,locale,label,label_kind FROM aistatemachine_node_name_locale WHERE locale IN (?,?)", locale, "zh-CN")
 	if err != nil {
-		return err
+		return fmt.Errorf("query state-machine node labels: %w", err)
 	}
-	if labelsPresent {
-		labelRows, err := db.Query("SELECT dev_name_zh_cn,locale,label,label_kind FROM aistatemachine_node_name_locale WHERE locale IN (?,?)", locale, "zh-CN")
-		if err != nil {
-			return fmt.Errorf("query state-machine node labels: %w", err)
+	defer labelRows.Close()
+	for labelRows.Next() {
+		var name string
+		var label LocalizedSkillLabel
+		if err := labelRows.Scan(&name, &label.Locale, &label.Text, &label.Kind); err != nil {
+			return fmt.Errorf("read state-machine node label: %w", err)
 		}
-		defer labelRows.Close()
-		for labelRows.Next() {
-			var name string
-			var label LocalizedSkillLabel
-			if err := labelRows.Scan(&name, &label.Locale, &label.Text, &label.Kind); err != nil {
-				return fmt.Errorf("read state-machine node label: %w", err)
-			}
-			byLocale := fsm.Labels[name]
-			if byLocale == nil {
-				byLocale = make(map[string]LocalizedSkillLabel)
-				fsm.Labels[name] = byLocale
-			}
-			byLocale[label.Locale] = label
+		byLocale := fsm.Labels[name]
+		if byLocale == nil {
+			byLocale = make(map[string]LocalizedSkillLabel)
+			fsm.Labels[name] = byLocale
 		}
-		if err := labelRows.Err(); err != nil {
-			return err
-		}
+		byLocale[label.Locale] = label
+	}
+	if err := labelRows.Err(); err != nil {
+		return err
 	}
 	master.FSM = fsm
 	return nil

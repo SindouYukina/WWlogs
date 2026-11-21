@@ -25,6 +25,9 @@ import (
 // enemies, main enemies, stages and modes). The fixture is never changed. With WWLOGS_HISTORY_MASTER_REAL_INPUTS=1 it opens
 // the copy with the real inputs of a build (this computer's SMBIOS table and the protocol key the build embeds), so a copy
 // of the owner's history can be compared; that needs a test binary from scripts/embed-key.go -test-binary ./internal/history.
+// With WWLOGS_HISTORY_MASTER_VIEWS naming a file, every view rendered with the new Master is also written there, one JSON
+// line per view in key order, and the identification there lists every scene with its stage and mode in every locale, so
+// two builds can be compared view by view on the same history.
 func TestHistoryMasterImpactCollector(t *testing.T) {
 	fixture, oldPath, newPath, out := os.Getenv("WWLOGS_HISTORY_MASTER_FIXTURE"), os.Getenv("WWLOGS_HISTORY_MASTER_OLD"), os.Getenv("WWLOGS_HISTORY_MASTER_NEW"), os.Getenv("WWLOGS_HISTORY_MASTER_OUT")
 	if fixture == "" || oldPath == "" || newPath == "" || out == "" {
@@ -171,6 +174,9 @@ func TestHistoryMasterImpactCollector(t *testing.T) {
 	}
 	result := map[string]any{"encounters": len(ids), "locales": locales, "views": len(before), "identical": identical, "differences": differences,
 		"identification": map[string]identification{"old": identified(oldPath), "new": identified(newPath)}}
+	if viewsPath := os.Getenv("WWLOGS_HISTORY_MASTER_VIEWS"); viewsPath != "" {
+		writeRenderedViews(t, viewsPath, after, func() []string { return sceneAnswers(t, ctx, store, ids, newPath, locales) })
+	}
 	data, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
 		t.Fatal(err)
@@ -179,6 +185,63 @@ func TestHistoryMasterImpactCollector(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Logf("%d encounters, %d views, %d identical, %d differ (%s)", len(ids), len(before), identical, len(differences), filepath.Base(out))
+}
+
+// writeRenderedViews writes each rendered view as one JSON line (view key, value) in key order, then one line per scene answer.
+func writeRenderedViews(t *testing.T, path string, views map[string]any, scenes func() []string) {
+	t.Helper()
+	var out strings.Builder
+	for _, key := range sortedKeys(views) {
+		data, err := json.Marshal(map[string]any{"view": key, "value": normalizeJSON(t, views[key])})
+		if err != nil {
+			t.Fatal(err)
+		}
+		out.Write(data)
+		out.WriteByte('\n')
+	}
+	for _, line := range scenes() {
+		out.WriteString(line)
+		out.WriteByte('\n')
+	}
+	if err := os.WriteFile(path, []byte(out.String()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// sceneAnswers is the stage and the kind of play of every stored scene in every locale, as JSON lines.
+func sceneAnswers(t *testing.T, ctx context.Context, store *Store, ids []int64, masterPath string, locales []string) []string {
+	t.Helper()
+	names, err := capture.OpenDisplayResolver(masterPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer names.Close()
+	var lines []string
+	for _, id := range ids {
+		detail, err := store.Encounter(ctx, id, time.UTC)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !detail.Summary.Scene.Known {
+			continue
+		}
+		for _, locale := range locales {
+			stage, err := names.InstanceStage(ctx, detail.Summary.Scene.InstanceID, locale)
+			if err != nil {
+				t.Fatal(err)
+			}
+			mode, err := names.InstanceMode(ctx, detail.Summary.Scene.InstanceID, locale)
+			if err != nil {
+				t.Fatal(err)
+			}
+			data, err := json.Marshal(map[string]any{"scene": fmt.Sprintf("%s/encounter-%d", locale, id), "instance": detail.Summary.Scene.InstanceID, "stage": stage, "mode": mode})
+			if err != nil {
+				t.Fatal(err)
+			}
+			lines = append(lines, string(data))
+		}
+	}
+	return lines
 }
 
 func displayName(t *testing.T, ctx context.Context, names *capture.DisplayResolver, kind string, id uint64, locale string) string {
