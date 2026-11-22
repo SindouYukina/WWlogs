@@ -1,6 +1,7 @@
 import test from "node:test"
 import assert from "node:assert/strict"
 import { readFileSync, readdirSync, statSync } from "node:fs"
+import { DatabaseSync } from "node:sqlite"
 import { defaultTheme, resolveTheme, themeCharacters, themeIds } from "../../frontend/src/design/themes/registry.ts"
 import { flavors, motionVariables, springs } from "../../frontend/src/design/motion/tokens.ts"
 import { springPosition } from "../../frontend/src/design/motion/spring.ts"
@@ -22,7 +23,8 @@ test("the Go settings list and the frontend registry name the same themes", () =
 })
 
 test("each theme maps to its confirmed character and has art", () => {
-  assert.deepEqual(themeCharacters, { electro: 1312, aero: 1409, havoc: 1508, glacio: 1107, fusion: 1209 })
+  assert.deepEqual(themeCharacters, { electro: 1312, aero: 1409, havoc: 1508, glacio: 1107, fusion: 1209, spectro: 1512 })
+  assert.deepEqual([...themeIds], ["electro", "aero", "havoc", "glacio", "fusion", "spectro"], "picker order: Spectro is the sixth card, on the right")
   const art = readdirSync("frontend/src/design/themes/art")
   for (const theme of themeIds) {
     assert.ok(art.includes(`${theme}.webp`), theme)
@@ -71,6 +73,69 @@ test("the theme picker keeps every theme in one row", () => {
   for (const theme of themeIds) assert.ok(css.includes(`[data-theme-preview="${theme}"]`), `${theme} has swatches`)
 })
 
+test("a narrow window scrolls the theme row inside itself instead of wrapping or shrinking the names", () => {
+  const css = readFileSync("frontend/src/design/components.css", "utf8")
+  const picker = /\.ww-theme-picker \{[^}]*\}/.exec(css)[0]
+  assert.match(picker, /repeat\(\d+, minmax\(var\(--ww-theme-card-min-width\), 1fr\)\)/, "cards share the width down to a readable minimum")
+  assert.match(picker, /overflow-x: auto/, "below that minimum the row scrolls inside the picker, not the page")
+  assert.match(picker, /margin: calc\(-1 \* var\(--ww-theme-picker-bleed\)\); padding: var\(--ww-theme-picker-bleed\)/, "the bleed keeps the hover lift and focus ring clear of the scroll clip")
+  assert.match(picker, /scroll-padding-inline: var\(--ww-theme-picker-bleed\)/)
+  const tokens = readFileSync("frontend/src/design/tokens.css", "utf8")
+  const minimum = Number(/--ww-theme-card-min-width: (\d+)px;/.exec(tokens)[1])
+  // The widest names measured at this width (Cartethyia, Spectro) need about 53 px of the 66 px text column.
+  assert.ok(minimum >= 112 && minimum <= 140, `minimum card width ${minimum}px`)
+  assert.match(css, /\.ww-theme-card-text > strong, \.ww-theme-card-text > small \{ overflow: hidden; white-space: nowrap; text-overflow: ellipsis; \}/)
+  assert.match(css, /\.ww-theme-card-swatches > i \{ flex: none;/, "the three dots never squeeze together")
+  assert.match(css, /\.ww-theme-card\[aria-checked="true"\]:focus-visible \{ box-shadow: inset 0 0 0 2px var\(--ww-indicator\), var\(--ww-focus-ring\); \}/, "the selected card still shows focus")
+  const picker_tsx = readFileSync("frontend/src/design/components/appearance.tsx", "utf8")
+  assert.match(picker_tsx, /onFocus=\{event => event\.currentTarget\.scrollIntoView\(\{ block: "nearest", inline: "nearest" \}\)\}/, "a card reached with the keyboard scrolls fully into view")
+})
+
+test("the Spectro theme leads with a soft gold, keeps clear of the caution yellow and adds Lily's hair as its second note", () => {
+  const block = themesCss.slice(themesCss.indexOf('[data-ww-theme="spectro"]'), themesCss.indexOf("::selection"))
+  const tokens = readFileSync("frontend/src/design/tokens.css", "utf8")
+  const color = (source, name) => {
+    const [L, C, h] = new RegExp(`${name}: oklch\\(([0-9.]+) ([0-9.]+) ([0-9.]+)\\)`).exec(source).slice(1).map(Number)
+    return { L, C, h, a: C * Math.cos((h * Math.PI) / 180), b: C * Math.sin((h * Math.PI) / 180) }
+  }
+  const distance = (x, y) => Math.hypot(x.L - y.L, x.a - y.a, x.b - y.b)
+  const accent = color(block, "--ww-accent")
+  const warn = color(tokens, "--ww-warn")
+  assert.ok(accent.h >= 60 && accent.h <= 95, "the lead color is gold")
+  assert.ok(accent.C <= 0.13 && accent.C < warn.C, "softer than the caution yellow, never neon")
+  assert.ok(distance(accent, warn) >= 0.06, `gold sits apart from the caution yellow (${distance(accent, warn).toFixed(3)})`)
+  const hero = color(block, "--ww-hero-number")
+  assert.ok(hero.L >= 0.9 && hero.C <= 0.06, "the brightest gold is a pale lily light")
+  const second = color(block, "--ww-accent-2")
+  assert.ok(second.h >= 300 || second.h <= 20, "the second note is her lavender-pink hair")
+  assert.equal(/--ww-indicator: ([^;]+);/.exec(block)[1], "var(--ww-accent)")
+  const ink = Number(/--ww-ink-h: (\d+);/.exec(block)[1])
+  const fusionInk = Number(/--ww-ink-h: (\d+);/.exec(themesCss.slice(themesCss.indexOf('[data-ww-theme="fusion"]')))[1])
+  assert.ok(ink > fusionInk && ink <= 345, `the ground follows her pink-purple, pinker than Fusion's lavender (${ink})`)
+  // Gold at the shared accent lightness reads as ochre, so this theme sets every accent step itself.
+  for (const step of ["--ww-accent:", "--ww-accent-strong", "--ww-accent-bright", "--ww-accent-soft", "--ww-accent-line", "--ww-on-accent", "--ww-accent-fill-top", "--ww-accent-fill-bottom", "--ww-accent-fill-hover"]) assert.ok(block.includes(step), step)
+})
+
+test("every theme and character name comes from the Master in every language", () => {
+  const db = new DatabaseSync("data/master_data.db", { readOnly: true })
+  try {
+    const manifest = JSON.parse(readFileSync("frontend/locales/manifest.json", "utf8").replace(/^\uFEFF/, ""))
+    for (const locale of manifest.supportedLocales) {
+      const masterLocale = manifest.languages[locale].masterLocale
+      const settings = JSON.parse(readFileSync(`frontend/locales/${locale}/settings.json`, "utf8").replace(/^\uFEFF/, ""))
+      for (const theme of themeIds) {
+        const role = String(themeCharacters[theme])
+        const element = db.prepare("select element_id from roleinfo where id = ?").get(role).element_id
+        const character = db.prepare("select name from roleinfo_locale where id = ? and locale = ?").get(role, masterLocale).name
+        const name = db.prepare("select name from elementinfo_locale where id = ? and locale = ?").get(element, masterLocale).name
+        assert.deepEqual(settings.themes[theme], { name, character }, `${locale} ${theme}`)
+      }
+    }
+  } finally {
+    db.close()
+  }
+})
+
 test("the Fusion theme is the character first and the warm note second", () => {
   const block = themesCss.slice(themesCss.indexOf('[data-ww-theme="fusion"]'))
   const hue = name => Number(new RegExp(`${name}: oklch\\([0-9.]+ [0-9.]+ ([0-9.]+)`).exec(block)[1])
@@ -84,6 +149,11 @@ test("theme names match the game's own names in every language", () => {
   for (const [locale, [name, character]] of Object.entries(expected)) {
     const settings = JSON.parse(readFileSync(`frontend/locales/${locale}/settings.json`, "utf8").replace(/^\uFEFF/, ""))
     assert.deepEqual(settings.themes.fusion, { name, character }, locale)
+  }
+  const spectro = { "zh-TW": ["衍射", "莉莉"], "zh-CN": ["衍射", "莉莉"], en: ["Spectro", "Lily"], ja: ["回折", "リリー"], ko: ["회절", "릴리"] }
+  for (const [locale, [name, character]] of Object.entries(spectro)) {
+    const settings = JSON.parse(readFileSync(`frontend/locales/${locale}/settings.json`, "utf8").replace(/^\uFEFF/, ""))
+    assert.deepEqual(settings.themes.spectro, { name, character }, locale)
   }
 })
 

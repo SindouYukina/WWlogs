@@ -38,6 +38,10 @@
     "fusion": {
       "name": "용융",
       "character": "모니에"
+    },
+    "spectro": {
+      "name": "회절",
+      "character": "릴리"
     }
   },
   "groups": {

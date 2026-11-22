@@ -42,6 +42,35 @@ func TestAppearanceDefaultsPersistenceAndValidation(t *testing.T) {
 	}
 }
 
+// Every official theme, Spectro included, survives a restart; a settings file written before Spectro existed loads as it
+// is and switches to it without being reset.
+func TestEveryThemePersistsAndEarlierSettingsSwitchToSpectro(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "user", "settings.json")
+	for _, theme := range []string{"electro", "aero", "havoc", "glacio", "fusion", "spectro"} {
+		if _, err := loadSettings(path, testLocaleCatalog()).setAppearance(theme, false); err != nil {
+			t.Fatalf("%s: %v", theme, err)
+		}
+		reloaded := loadSettings(path, testLocaleCatalog()).current()
+		if reloaded.Warning != "" || reloaded.Settings.Theme != theme || effectiveTheme(reloaded.Settings) != theme {
+			t.Fatalf("%s not restored: %+v", theme, reloaded)
+		}
+	}
+	if err := os.WriteFile(path, []byte(`{"version":1,"locale":"ja","theme":"fusion","reduceMotion":true,"updateIntervalMs":500}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	earlier := loadSettings(path, testLocaleCatalog())
+	if state := earlier.current(); state.Warning != "" || effectiveTheme(state.Settings) != "fusion" || !state.Settings.ReduceMotion || state.Settings.UpdateIntervalMs != 500 {
+		t.Fatalf("earlier settings: %+v", state)
+	}
+	if _, err := earlier.setAppearance("spectro", true); err != nil {
+		t.Fatal(err)
+	}
+	reloaded := loadSettings(path, testLocaleCatalog()).current().Settings
+	if reloaded.Theme != "spectro" || !reloaded.ReduceMotion || reloaded.Locale != "ja" || reloaded.UpdateIntervalMs != 500 {
+		t.Fatalf("switch to spectro kept other preferences: %+v", reloaded)
+	}
+}
+
 func TestSettingsRoundTripAndValidation(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "user", "settings.json")
 	store := loadSettings(path, testLocaleCatalog())

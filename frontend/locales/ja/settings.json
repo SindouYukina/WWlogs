@@ -38,6 +38,10 @@
     "fusion": {
       "name": "焦熱",
       "character": "モーニエ"
+    },
+    "spectro": {
+      "name": "回折",
+      "character": "リリー"
     }
   },
   "groups": {

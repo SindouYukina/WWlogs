@@ -188,6 +188,10 @@
   --ww-overlay-edit-height: 36px;
   --ww-sidebar-width: 236px;
   --ww-license-text-height: 320px;
+  /* The narrowest theme card that keeps every theme and character name whole in every language; below six of these the
+     picker scrolls sideways. The bleed is the room a card's hover lift and focus ring need inside that scroll box. */
+  --ww-theme-card-min-width: 120px;
+  --ww-theme-picker-bleed: var(--ww-space-1_5);
 }
 
 [data-element="1"] { --ww-series: var(--ww-element-glacio); }

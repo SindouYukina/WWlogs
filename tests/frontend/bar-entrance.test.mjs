@@ -16,7 +16,7 @@ test("the bar entrance is short, decelerating and staggered, and the same in eve
   assert.equal(full["--ww-bar-enter-dur"], "650ms")
   assert.equal(full["--ww-bar-enter-stagger"], "50ms")
   assert.equal(full["--ww-ease-bar-enter"], barEntrance.easing)
-  for (const flavor of ["electro", "aero", "havoc", "glacio", "fusion"]) {
+  for (const flavor of ["electro", "aero", "havoc", "glacio", "fusion", "spectro"]) {
     assert.equal(motionVariables({ flavor })["--ww-bar-enter-dur"], "650ms", flavor)
   }
 })

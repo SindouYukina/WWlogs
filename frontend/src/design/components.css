@@ -386,19 +386,23 @@ body[data-view] img { -webkit-user-drag: none; }
 .ww-has-backdrop > :not(.ww-backdrop) { position: relative; }
 
 /* ------------------------------ Theme picker ------------------------------ */
-.ww-theme-picker { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--ww-space-3); width: 100%; }
+/* One row always. Cards share the width down to a readable minimum; below it the row scrolls sideways inside its own box
+   instead of wrapping or shrinking the names. The bleed keeps hover lift and the focus ring clear of the scroll clip. */
+.ww-theme-picker { display: grid; grid-template-columns: repeat(6, minmax(var(--ww-theme-card-min-width), 1fr)); gap: var(--ww-space-3); margin: calc(-1 * var(--ww-theme-picker-bleed)); padding: var(--ww-theme-picker-bleed); scroll-padding-inline: var(--ww-theme-picker-bleed); overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; scrollbar-color: var(--ww-surface-4) transparent; }
 .ww-theme-card { position: relative; display: grid; grid-template-rows: auto auto; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--ww-space-1) var(--ww-space-2); padding: 0 0 var(--ww-space-2); border: 0; border-radius: var(--ww-radius-md); overflow: hidden; cursor: pointer; font: inherit; text-align: start; color: var(--ww-text); background: var(--ww-surface-1); box-shadow: inset 0 0 0 1px var(--ww-line-soft); transition: transform var(--ww-spring-snappy-dur) var(--ww-spring-snappy), box-shadow var(--ww-dur-base) var(--ww-ease-standard); }
 .ww-theme-card:hover { transform: translateY(-2px); box-shadow: inset 0 0 0 1px var(--ww-line-strong); }
 .ww-theme-card:active { transform: scale(0.98); }
 .ww-theme-card:focus-visible { outline: none; box-shadow: var(--ww-focus-ring); }
 .ww-theme-card[aria-checked="true"] { box-shadow: inset 0 0 0 2px var(--ww-indicator); }
+.ww-theme-card[aria-checked="true"]:focus-visible { box-shadow: inset 0 0 0 2px var(--ww-indicator), var(--ww-focus-ring); }
 .ww-theme-card-art { grid-column: 1 / -1; display: block; position: relative; aspect-ratio: 16 / 10; background-size: cover; background-position: right top; }
 .ww-theme-card-check { position: absolute; top: 6px; right: 6px; display: grid; place-items: center; width: 20px; height: 20px; border-radius: var(--ww-radius-full); background: var(--ww-indicator); color: var(--ww-on-accent); animation: ww-pop-in var(--ww-spring-lively-dur) var(--ww-spring-lively) both; }
 .ww-theme-card-text { display: flex; flex-direction: column; min-width: 0; padding-inline-start: var(--ww-space-2); line-height: 1.3; }
+.ww-theme-card-text > strong, .ww-theme-card-text > small { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .ww-theme-card-text > strong { font-size: var(--ww-text-base); font-weight: var(--ww-weight-semibold); }
 .ww-theme-card-text > small { font-size: var(--ww-text-xs); color: var(--ww-text-3); }
 .ww-theme-card-swatches { display: flex; gap: 3px; padding-inline-end: var(--ww-space-2); }
-.ww-theme-card-swatches > i { width: 8px; height: 8px; border-radius: 50%; box-shadow: inset 0 0 0 1px oklch(1 0 0 / 0.14); }
+.ww-theme-card-swatches > i { flex: none; width: 8px; height: 8px; border-radius: 50%; box-shadow: inset 0 0 0 1px oklch(1 0 0 / 0.14); }
 [data-theme-preview="electro"] > .ww-theme-card-swatches > i:nth-child(1) { background: oklch(0.6 0.19 21); }
 [data-theme-preview="electro"] > .ww-theme-card-swatches > i:nth-child(2) { background: oklch(0.83 0.095 85); }
 [data-theme-preview="electro"] > .ww-theme-card-swatches > i:nth-child(3) { background: oklch(0.2 0.008 20); }
@@ -414,6 +418,9 @@ body[data-view] img { -webkit-user-drag: none; }
 [data-theme-preview="fusion"] > .ww-theme-card-swatches > i:nth-child(1) { background: oklch(0.78 0.085 284); }
 [data-theme-preview="fusion"] > .ww-theme-card-swatches > i:nth-child(2) { background: oklch(0.77 0.125 58); }
 [data-theme-preview="fusion"] > .ww-theme-card-swatches > i:nth-child(3) { background: oklch(0.22 0.026 282); }
+[data-theme-preview="spectro"] > .ww-theme-card-swatches > i:nth-child(1) { background: oklch(0.78 0.12 74); }
+[data-theme-preview="spectro"] > .ww-theme-card-swatches > i:nth-child(2) { background: oklch(0.79 0.085 338); }
+[data-theme-preview="spectro"] > .ww-theme-card-swatches > i:nth-child(3) { background: oklch(0.22 0.018 326); }
 
 /* ------------------------------ Listening status ------------------------------ */
 .ww-listening { --ww-status: var(--ww-idle); --ww-status-soft: var(--ww-idle-soft); display: inline-flex; align-items: center; gap: var(--ww-space-1_5); min-width: 0; color: var(--ww-status); font-size: var(--ww-text-xs); font-weight: var(--ww-weight-medium); line-height: 1.2; white-space: nowrap; }
