@@ -1,0 +1,87 @@
+name: Bug report
+description: Report something in WWlogs that does not work as it should.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a problem. Please check first that it has not been reported already.
+
+        **Keep this report safe to publish.** Do not attach packet captures (PCAP), keys, combat history files or game files, and do not include your game UID, player name or other personal information; crop or cover them in screenshots. A security problem belongs in a private report: see the [security policy](https://github.com/SindouYukina/WWlogs/security/policy).
+  - type: input
+    id: wwlogs-version
+    attributes:
+      label: WWlogs version
+      description: Settings → About shows the version and the Build number.
+      placeholder: v1.0.0, Build number …
+    validations:
+      required: true
+  - type: input
+    id: windows-version
+    attributes:
+      label: Windows version
+      placeholder: Windows 11 24H2
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      options:
+        - Capture and connection (Npcap, network interface, login)
+        - Combat Overlay or Effects Overlay
+        - Dashboard (DPS, damage, skills)
+        - BUFF / DEBUFF tracking
+        - Combat history or encounter analysis
+        - Career overview
+        - Settings, themes or languages
+        - Installation or startup
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened
+      description: Describe the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual result
+    validations:
+      required: true
+  - type: textarea
+    id: combat-details
+    attributes:
+      label: Combat details
+      description: For problems with parsing or statistics, the game mode or stage, the feature where the problem shows, and how what you observed differs from what you expected, for example a missing hit, damage counted for the wrong character or a duration that looks wrong.
+  - type: textarea
+    id: extra
+    attributes:
+      label: Screenshots or other information
+      description: Only what is safe to share publicly.
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Before you submit
+      options:
+        - label: This report contains no packet captures, keys, combat history files, game files, game UID, player name or other personal information.
+          required: true
