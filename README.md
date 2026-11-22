@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="media/logo.png" alt="WWlogs 標誌" width="160">
+  <img src="media/logo.png" alt="WWlogs 標誌" width="200">
 </p>
 
 <h1 align="center">WWlogs</h1>
