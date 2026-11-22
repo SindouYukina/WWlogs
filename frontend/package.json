@@ -1,7 +1,7 @@
 {
   "name": "wwlogs-frontend",
   "private": true,
-  "version": "0.5.0",
+  "version": "1.0.0",
   "type": "module",
   "engines": {
     "node": ">=26.13.1 <27",
