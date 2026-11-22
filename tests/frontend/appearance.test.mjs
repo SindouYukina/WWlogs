@@ -109,6 +109,9 @@ test("the Spectro theme leads with a soft gold, keeps clear of the caution yello
   const second = color(block, "--ww-accent-2")
   assert.ok(second.h >= 300 || second.h <= 20, "the second note is her lavender-pink hair")
   assert.equal(/--ww-indicator: ([^;]+);/.exec(block)[1], "var(--ww-accent)")
+  const ink = Number(/--ww-ink-h: (\d+);/.exec(block)[1])
+  const fusionInk = Number(/--ww-ink-h: (\d+);/.exec(themesCss.slice(themesCss.indexOf('[data-ww-theme="fusion"]')))[1])
+  assert.ok(ink > fusionInk && ink <= 345, `the ground follows her pink-purple, pinker than Fusion's lavender (${ink})`)
   // Gold at the shared accent lightness reads as ochre, so this theme sets every accent step itself.
   for (const step of ["--ww-accent:", "--ww-accent-strong", "--ww-accent-bright", "--ww-accent-soft", "--ww-accent-line", "--ww-on-accent", "--ww-accent-fill-top", "--ww-accent-fill-bottom", "--ww-accent-fill-hover"]) assert.ok(block.includes(step), step)
 })

@@ -420,7 +420,7 @@ body[data-view] img { -webkit-user-drag: none; }
 [data-theme-preview="fusion"] > .ww-theme-card-swatches > i:nth-child(3) { background: oklch(0.22 0.026 282); }
 [data-theme-preview="spectro"] > .ww-theme-card-swatches > i:nth-child(1) { background: oklch(0.78 0.12 74); }
 [data-theme-preview="spectro"] > .ww-theme-card-swatches > i:nth-child(2) { background: oklch(0.79 0.085 338); }
-[data-theme-preview="spectro"] > .ww-theme-card-swatches > i:nth-child(3) { background: oklch(0.22 0.011 75); }
+[data-theme-preview="spectro"] > .ww-theme-card-swatches > i:nth-child(3) { background: oklch(0.22 0.018 326); }
 
 /* ------------------------------ Listening status ------------------------------ */
 .ww-listening { --ww-status: var(--ww-idle); --ww-status-soft: var(--ww-idle-soft); display: inline-flex; align-items: center; gap: var(--ww-space-1_5); min-width: 0; color: var(--ww-status); font-size: var(--ww-text-xs); font-weight: var(--ww-weight-medium); line-height: 1.2; white-space: nowrap; }
