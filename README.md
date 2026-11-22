@@ -1,12 +1,32 @@
-# WWlogs
+<p align="center">
+  <img src="media/logo.png" alt="WWlogs 標誌" width="160">
+</p>
 
-[繁體中文](README.md) · [English](README.en.md) · [日本語](README.ja.md) · [简体中文](README.zh-CN.md)
+<h1 align="center">WWlogs</h1>
+
+<p align="center">《鳴潮》PC 版的戰鬥紀錄與分析工具：即時 DPS、BUFF／DEBUFF 追蹤與戰鬥回顧</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/platform-Windows%20x64-0078D6?style=flat-square" alt="platform: Windows x64">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--only-blue?style=flat-square" alt="license: AGPL-3.0-only"></a>
+</p>
+
+<p align="center">
+  <a href="README.md">繁體中文</a> · <a href="README.en.md">English</a> · <a href="README.ja.md">日本語</a> · <a href="README.zh-CN.md">简体中文</a>
+</p>
 
 WWlogs 是《鳴潮》（Wuthering Waves）PC 版的戰鬥分析工具。它在 Windows 上透過 Npcap 讀取遊戲的網路通訊，即時顯示隊伍與各角色的 DPS、傷害與技能明細，以及遊戲 HUD 上的 BUFF／DEBUFF 狀態；每一場結束的戰鬥都會保存在你的電腦上，方便日後回顧、篩選與比較。
 
-WWlogs 是獨立開發的非官方工具，詳見[授權與聲明](#授權與聲明)。
+> [!CAUTION]
+> WWlogs 是獨立開發的非官方第三方工具，不代表 KURO GAMES，也沒有取得官方認可。使用第三方工具可能伴隨風險，WWlogs 無法保證不會對你的帳號造成影響，是否使用請自行了解並評估。分享截圖、錄影或直播時，請留意畫面中的遊戲 UID、玩家名稱與其他個人資訊。
 
 ![戰鬥總覽：DPS、總傷害、傷害排名、DPS 時間變化與技能明細](media/dashboard.png)
+
+## 開發緣由
+
+那天我興高采烈地抽到了「鎖暝」，當場決定讓她擔任隊伍的主 C。結果實際上場後才發現，她的 BUFF 觸發條件比我想像中嚴苛得多，戰鬥中也很難看清楚相關的狀態到底有沒有觸發、還剩多久。
+
+主 C 計畫還沒開始就卡關了。既然遊戲裡看不清楚，那就自己做一個工具吧：把戰鬥記錄下來、把效果追蹤清楚、把傷害拆開來看。這就是 WWlogs 的起點。
 
 ## 主要功能
 
@@ -81,6 +101,8 @@ WWlogs 只支援目前的遊戲版本。遊戲更新到新版本後，如果畫�
 
 ## 安裝與使用
 
+以下是一般玩家的使用方式，不需要自行編譯。
+
 1. 安裝 [Npcap](https://npcap.com/)，安裝時保留預設選項即可。
 2. 從 [Releases](https://github.com/SindouYukina/WWlogs/releases) 下載 `WWlogs.exe`。WWlogs 是單一執行檔，不需要安裝。
 3. 開啟 `WWlogs.exe`，在「設定 → 一般」選擇遊戲連線使用的網路介面。
@@ -100,7 +122,7 @@ WWlogs 必須看到遊戲的登入過程，才能解析該次連線的戰鬥資�
 
 ## 數據說明
 
-- **DPS**：已確認的傷害，除以戰鬥從開始到結束的實際經過時間；動畫、切換角色與轉場的時間也包含在內。
+- **DPS（Encounter DPS）**：已確認的傷害，除以戰鬥從開始到結束的實際經過時間；動畫、切換角色與轉場的時間也包含在內。
 - **總傷害**：只計入伺服器確認的傷害。歸屬未知的傷害不計入總傷害，畫面上會另外標示。
 - **命中次數**：技能表統計的是傷害命中，不是技能施放次數；WWlogs 不記錄技能施放。
 - **BUFF／DEBUFF**：剩餘秒數是估計值。WWlogs 只呈現效果的狀態與時間，不估算效果帶來多少傷害，也不計算 rDPS。遊戲資料中多數效果沒有名稱，因此效果以遊戲圖示顯示，分析頁另外列出效果 ID。
@@ -112,6 +134,115 @@ WWlogs 必須看到遊戲的登入過程，才能解析該次連線的戰鬥資�
 - 設定與戰鬥歷史只保存在這台電腦上（`%LOCALAPPDATA%\WWlogs`）。
 - WWlogs 不會上傳戰鬥資料，也沒有遙測或自動更新功能。只有在偵測到尚未安裝 Npcap 時，才會連線到 Npcap 官方網站與 GitHub，查詢最新的 Npcap 安裝程式。
 - 戰鬥歷史保存戰鬥結果、每一筆已確認的傷害與治療結果，以及效果的變化，不保存原始網路封包。
+
+## 常見問題（FAQ）
+
+### WWlogs 必須在登入遊戲之前開始擷取嗎？
+
+是的。WWlogs 需要觀察遊戲的登入過程，才能取得解析該次連線所需的資訊。如果開始擷取時已經登入，WWlogs 會提示錯過了登入；回到遊戲的登入畫面重新登入即可，不需要停止擷取。若想省去這個步驟，可以在「設定 → 一般」開啟「啟動時自動開始擷取」，並在登入遊戲前先開啟 WWlogs。
+
+### 為什麼開始擷取後沒有戰鬥資料？
+
+請依序確認：
+
+1. Npcap 已經安裝；WWlogs 偵測不到 Npcap 時會在畫面上提示。
+2. 「設定 → 一般」選擇的是遊戲連線實際使用的網路介面。
+3. 擷取是在登入遊戲之前開始的；如果錯過了登入，請回到登入畫面重新登入。
+4. 目前的遊戲版本受到這個版本的 WWlogs 支援；不支援時，畫面會顯示「此遊戲版本尚未支援，請更新 WWlogs」。
+
+頂端列的監聽狀態（例如「等待遊戲」「監聽中」）也會顯示 WWlogs 目前的情況。
+
+### WWlogs 會讀取或修改遊戲記憶體嗎？
+
+不會。WWlogs 只透過 Npcap 擷取遊戲用戶端與伺服器之間的網路通訊，並在你的電腦上解析其中的戰鬥資料；它不讀取或修改遊戲記憶體、不注入任何程式，也不修改遊戲檔案。
+
+### 使用 WWlogs 有封號風險嗎？
+
+WWlogs 是非官方第三方工具，沒有取得 KURO GAMES 的授權、認可或背書。上述的技術設計不等於零風險，WWlogs 無法保證使用後不會對帳號造成影響。是否使用，請自行了解遊戲的相關規定並評估風險。
+
+### 為什麼 WWlogs 的 DPS 和其他工具不同？
+
+WWlogs 的 DPS（Encounter DPS）是戰鬥中已確認的傷害，除以戰鬥從開始到結束的實際經過時間；動畫、切換角色與轉場的時間也包含在內。其他工具若採用不同的時間範圍或計算方式，數值自然會不同。此外，擷取是否完整（有封包遺失時，DPS 會標示為下限）以及傷害能否確認歸屬（歸屬未知的傷害不計入總傷害），也會影響結果。詳見[數據說明](#數據說明)。
+
+### 為什麼部分 BUFF／DEBUFF 沒有名稱，或剩餘時間不準確？
+
+遊戲資料中多數效果沒有可用的官方名稱：效果 Overlay 只顯示遊戲圖示，分析頁則以「未識別效果」加上效果 ID 標示這些效果，不會自行替它們命名。效果 Overlay 的剩餘秒數是估計值；分析頁的生效區間會依證據標示為「已確認生效」「依伺服器陳述的時間」或「無法判定」，WWlogs 不會把推定的結果當成已驗證的事實。
+
+### WWlogs 會上傳我的戰鬥資料嗎？
+
+不會。戰鬥分析與戰鬥歷史都保存在你的電腦上，WWlogs 不上傳戰鬥紀錄，也沒有遙測或雲端帳號同步。WWlogs 本身只會在一種情況下連線網路：偵測到尚未安裝 Npcap 時，向 Npcap 官方網站與 GitHub 查詢最新的 Npcap 安裝程式。
+
+### 遊戲更新後無法解析怎麼辦？
+
+WWlogs 只支援目前經過確認的遊戲版本，不保證與其他版本相容。遊戲更新後如果畫面顯示「此遊戲版本尚未支援，請更新 WWlogs」，請等待支援新遊戲版本的 WWlogs 正式更新。
+
+### 支援 PS5、Linux 或 macOS 嗎？
+
+目前只支援 Windows PC 版。WWlogs 沒有 PS5、Linux、macOS 或遠端擷取的版本，也不承諾未來會推出。
+
+### 可以自行編譯 WWlogs 嗎？
+
+可以。WWlogs 的原始碼以 AGPL-3.0-only 授權公開，你可以依照授權條款使用、修改與散布。建置方式請見[開發與建置](#開發與建置)。建置所需的外部金鑰必須自行準備；本專案不提供金鑰，也不提供或討論取得方法。
+
+### WWlogs 可以匯出戰鬥 Log 嗎？
+
+不行，這是刻意的產品設計，而不是技術限制。WWlogs 的目的是幫助你分析自己的戰鬥表現、理解技能與 BUFF／DEBUFF、改善自己的操作；WWlogs 反對以 DPS 為核心的玩家間競爭（PVP）機制。因此 WWlogs 官方版本：
+
+- 不提供原始戰鬥 Log 匯出；
+- 不提供可重建或交換戰鬥紀錄的 CSV、JSON 等明文資料匯出；
+- 不提供公開的 DPS 排行榜；
+- 不提供官方的跨玩家戰鬥紀錄比較服務。
+
+WWlogs 鼓勵的是跟自己比、持續進步，而不是玩家之間的數值競爭。
+
+### 更換電腦後，可以繼承原本的戰鬥歷史嗎？
+
+不行。戰鬥歷史只供建立紀錄的那台電腦在本機使用；換到新電腦後，即使複製原本的紀錄檔案，也無法直接在新電腦上讀取。WWlogs 官方版本不提供跨電腦的移轉、還原或繼承功能，新電腦上的戰鬥歷史會重新開始累積。這與 WWlogs 專注於個人分析、反對 DPS 競爭的方向一致。
+
+## 開發與建置
+
+一般玩家請依照[安裝與使用](#安裝與使用)下載正式版本，不需要自行編譯。本節提供給想從原始碼建置 WWlogs 的開發者。
+
+**需要的環境**
+
+- Windows x64 與 PowerShell 7（`pwsh`）。
+- Go：`go.mod` 指定的版本以上（目前為 1.27.4）。建置腳本會設定 `GOTOOLCHAIN=local`，只使用系統安裝的 Go，不會自動下載其他版本。
+- Node.js 與 npm：版本需符合 `frontend/package.json` 的 `engines`（目前為 Node.js `>=26.13.1 <27`、npm `>=12.2.2 <13`）。前端依賴會依照 `frontend/package-lock.json` 安裝。
+- 外部金鑰（見下方說明）。
+
+**外部金鑰**
+
+建置時需要一份外部金鑰：2048 位元、PKCS#1 格式的 RSA 私鑰 PEM 檔，放在 `.local/keys/privateKey.pem`（`.local/` 不納入 Git）；缺少這份檔案時，建置會直接停止。金鑰必須由開發者自行準備：WWlogs 不提供任何金鑰，也不提供或討論取得方法。
+
+**建置**
+
+```powershell
+git clone https://github.com/SindouYukina/WWlogs.git
+cd WWlogs
+pwsh -File scripts/build.ps1 -Profile Public
+```
+
+- 完成的執行檔位於 `bin\public\WWlogs.exe`。`-Profile Development` 會建置含診斷與重播功能的開發版本（`bin\development\WWlogs.exe`），只供開發與研究使用；對外散布的版本一律是 Public。`-Profile Both` 會一次建置兩者。
+- 從原始碼建置的執行檔會標示為非正式建置（Unofficial）；正式的建置編號只由專案擁有者的建置環境配發。自行建置的執行檔不保證與正式發布版位元組完全相同。
+- 建置流程、建置編號與其他選項的詳細說明，請見 [build/windows/README.md](build/windows/README.md)。
+
+## 致謝
+
+WWlogs 的許多設計受到下列專案的啟發，在此致上謝意。這些專案與 WWlogs 沒有合作、贊助或背書關係；WWlogs 參考的是它們的設計與理念，沒有使用它們的程式碼或資料。
+
+### 核心啟發
+
+- **[FF Logs](https://www.fflogs.com/) 與 [xivanalysis](https://xivanalysis.com/)**：深入分析戰鬥紀錄的理念，包括單場戰鬥回顧、以技能事件與戰鬥時間軸呈現戰鬥、BUFF／DEBUFF 的覆蓋分析，以及透過戰鬥資料理解並改善自己的操作。WWlogs 參考的是它們的分析深度與資訊呈現方式，而不是公開排行榜或玩家之間的競爭模式。
+- **[ZMDLogs](https://github.com/deepdarkssj/ZMDLogs)**：把封包擷取、協定解析與資料呈現分層處理的設計，以及即時傷害 Overlay 與 BUFF／DEBUFF Overlay 的資訊組織方式。ZMDLogs 分析的是另一款遊戲，兩者的協定並不相容。
+- **[A2Tools DPS Meter](https://github.com/taengu/A2Tools-DPS-Meter)**：DPS 儀表板的資訊組織、傷害數據的呈現方式，以及傷害條與其動態效果。
+
+### 設計與研究參考
+
+- **[AionMeter](https://tmopcode.github.io/AionMeter/)／[AionFlex](https://aionflex.gg/)**：Overlay 的外觀與資訊呈現、效果即將到期時的提示，以及 Overlay 設定項目的規劃。
+- **[Iridium-Ww](https://github.com/WutheringWavesGame/Iridium-Ww)**：早期的 UDP／KCP 協定研究，以及擷取、分框與解析分層的思路。這是較早期的歷史研究參考，其協定資料不適用於目前的遊戲版本。
+- **[Kokonut UI](https://kokonutui.com/)／[easeUI](https://easeui.dev/)**：分段控制項（Segmented Control）的移動指示器、互動動態，以及短轉場與版面運算方式的設計參考。
+
+WWlogs 實際使用的第三方函式庫、字型，以及複製進專案的程式碼（例如 shadcn/ui 元件），其著作權與授權列在 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)，也可以在程式的「設定 → 授權」中查看。
 
 ## 授權與聲明
 
