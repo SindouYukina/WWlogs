@@ -361,6 +361,17 @@ func (s *settingsStore) seedInitialLocale(preferred []string) {
 	s.state.Settings = value
 }
 
+// launchLocale is the language seedInitialLocale settles on, worked out without saving anything. A launch that does not
+// start, because another WWlogs runs, shows its message in it and must leave the running instance's settings alone.
+func (s *settingsStore) launchLocale(preferred []string) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.localeSeed != localeSeedNone || s.state.Settings.LanguagePreference == languagePreferenceAuto {
+		return initialLocaleFor(preferred, s.catalog)
+	}
+	return s.state.Settings.Locale
+}
+
 func (s *settingsStore) current() SettingsState {
 	s.mu.Lock()
 	defer s.mu.Unlock()

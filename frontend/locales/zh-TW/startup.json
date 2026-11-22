@@ -1,0 +1,5 @@
+{
+  "alreadyRunningElsewhere": "WWlogs 已在另一個 Windows 工作階段或桌面上執行。每位 Windows 使用者同一時間只能執行一個 WWlogs。",
+  "notResponding": "WWlogs 已在執行，但沒有回應。請稍候再試一次。如果仍然沒有回應，請在工作管理員中結束 WWlogs，再重新啟動。",
+  "checkFailed": "WWlogs 無法確認是否已在執行，因此沒有啟動。請再試一次；如果一直發生，請重新啟動 Windows。"
+}
