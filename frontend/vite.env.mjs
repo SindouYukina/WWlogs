@@ -17,6 +17,23 @@ export function productLicenseText() {
 }
 
 /**
+ * Emits the files the Go host reads from the frontend archive: the language manifest, and a copy of each language's
+ * startup namespace, the few texts the host shows before any window exists (a launch that cannot start).
+ */
+export function hostLocaleFiles(manifest) {
+  return {
+    name: "bundled-locale-manifest",
+    generateBundle() {
+      this.emitFile({ type: "asset", fileName: "locales/manifest.json", source: JSON.stringify(manifest) })
+      for (const locale of manifest.supportedLocales) {
+        const text = readFileSync(new URL(`./locales/${locale}/startup.json`, import.meta.url), "utf8").replace(/^\uFEFF/, "")
+        this.emitFile({ type: "asset", fileName: `locales/${locale}/startup.json`, source: JSON.stringify(JSON.parse(text)) })
+      }
+    },
+  }
+}
+
+/**
  * Compares the npm packages a bundle's modules come from with the frontend components of the library license manifest
  * (src/lib/library-licenses/manifest.json). A component marked "generated" contributes generated code (styles, bundler
  * helpers) rather than modules, so it is never expected among the module paths. Returns the packages bundled without a

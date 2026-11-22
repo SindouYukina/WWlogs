@@ -7,7 +7,6 @@ package desktop
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"net/http"
@@ -79,31 +78,15 @@ type Composition struct {
 	PrintVersion func(io.Writer)
 }
 
-// Main parses the command line of the composed profile and runs the host until the Desktop window closes.
+// Main parses the command line of the composed profile and runs the host until the Desktop window closes. Only one WWlogs
+// runs for each Windows user: a launch while one runs brings that one's window back and exits (launcher.launch).
 func Main(composition Composition) {
-	for _, argument := range os.Args[1:] {
-		if argument == "-version" || argument == "--version" {
-			composition.PrintVersion(os.Stdout)
-			return
-		}
-	}
-	options, err := composition.ParseOptions(os.Args[1:], os.Stderr)
-	if errors.Is(err, flag.ErrHelp) {
-		return
-	}
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "WWlogs desktop: %v\n", err)
-		os.Exit(2)
-	}
-	if err := Run(options); err != nil {
-		fmt.Fprintf(os.Stderr, "WWlogs desktop: %v\n", err)
-		os.Exit(1)
-	}
+	os.Exit(systemLauncher.launch(composition, os.Args[1:], os.Stdout, os.Stderr))
 }
 
-// Run starts the application and blocks until it quits. The capture is stopped and its resources released before
-// Run returns.
-func Run(options Options) error {
+// run starts the application and blocks until it quits. The capture is stopped and its resources released before run
+// returns. activation, when set, is given the window a later launch brings back.
+func run(options Options, activation *instanceActivation) error {
 	frontend, _, err := frontendFS()
 	if err != nil {
 		return err
@@ -125,18 +108,7 @@ func Run(options Options) error {
 	settings.useSystemLanguages(systemLanguages)
 	settings.seedInitialLocale(systemLanguages())
 	if options.Locale != "" {
-		locale := options.Locale
-		// Preserve older desktop CLI aliases using only the bundled manifest's Master mapping.
-		if !catalog.valid(locale) {
-			for _, candidate := range catalog.SupportedLocales {
-				language := catalog.Languages[candidate]
-				if language.MasterLocale == locale {
-					locale = candidate
-					break
-				}
-			}
-		}
-		if _, err := settings.setLocale(locale); err != nil {
+		if _, err := settings.setLocale(catalog.optionLocale(options.Locale)); err != nil {
 			return err
 		}
 	}
@@ -215,6 +187,8 @@ func Run(options Options) error {
 		InitialPosition:  application.WindowCentered,
 		Hidden:           keeper != nil,
 	})
+	// A later launch brings this window back, the Desktop window or the review window alike, and waits while it closes.
+	activation.attach(desktop, shutdown.requested.Load)
 	if keeper != nil {
 		// The window opens where the user left it: the keeper places and shows it once its runtime is ready.
 		keeper.attach(desktop)
