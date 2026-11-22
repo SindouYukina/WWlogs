@@ -1,10 +1,19 @@
 // Node-only build helpers, kept out of vite.config.ts so the frontend needs no Node type definitions.
-import { createReadStream, existsSync } from "node:fs"
+import { createReadStream, existsSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 
 /** The Motion Showcase exists only in Development builds. A build that names no profile is Public. */
 export function showcaseEnabled(command) {
   return command === "serve" || process.env.WWLOGS_FRONTEND_PROFILE === "development"
+}
+
+/**
+ * WWlogs' license for Settings > About: the LICENSE file at the repository root, unmodified, with the LF line endings of
+ * the FSF original whatever the checkout uses. It becomes a build constant because the dev server loads no file outside
+ * the frontend, and widening its allow list to the repository would also expose the private directories there.
+ */
+export function productLicenseText() {
+  return readFileSync(new URL("../LICENSE", import.meta.url), "utf8").replace(/\r\n/g, "\n")
 }
 
 // The dev server has no Go host, so game images and preview fonts come from separate roots named explicitly by their

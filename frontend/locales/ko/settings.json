@@ -61,6 +61,8 @@
     "look": "외관",
     "capture": "네트워크 캡처",
     "about": "버전 정보",
+    "softwareLicense": "오픈 소스 라이선스",
+    "gameMaterial": "《명조: 워더링 웨이브》 게임 자료",
     "fontLicenses": "글꼴 라이선스",
     "displayPerformance": "표시 및 성능"
   },
@@ -116,7 +118,23 @@
       "project": "공식 프로젝트",
       "fontSource": "글꼴 파일 출처",
       "license": "라이선스 공식 사이트"
+    },
+    "game": {
+      "owner": "《명조: 워더링 웨이브》(Wuthering Waves)의 게임 아트와 지식재산권은 {{holder}} 또는 각 정당한 권리자에게 귀속됩니다.",
+      "scope": "여기에는 WWlogs에서 사용하는 캐릭터 이미지, 스킬 아이콘, 효과 아이콘, 테마 배경 및 관련 파생 디자인이 포함됩니다.",
+      "license": "이 자료는 WWlogs 자체 소스 코드에 속하지 않으며, WWlogs의 {{spdx}} 라이선스가 적용되지 않습니다.",
+      "unofficial": "WWlogs는 독립적으로 개발된 비공식 도구입니다. {{holder}}를 대표하지 않으며, 공식 제휴, 후원 또는 승인을 받았다고 주장하지 않습니다.",
+      "officialSite": "《명조: 워더링 웨이브》 공식 웹사이트"
     }
+  },
+  "softwareLicense": {
+    "summary": "WWlogs는 오픈 소스 소프트웨어입니다. {{license}}의 조건에 따라 사용, 배포 및 수정할 수 있습니다. 이 소프트웨어는 어떠한 보증도 없이 제공됩니다.",
+    "name": "소프트웨어 라이선스",
+    "spdx": "SPDX 식별자",
+    "source": "소스 코드",
+    "repository": "GitHub 저장소",
+    "text": "라이선스 전문",
+    "textHint": "영어 원문 그대로 표시하며 번역본은 제공하지 않습니다."
   },
   "updateInterval": "전투 정보 업데이트 간격",
   "updateIntervalHint": "대시보드와 두 오버레이에 공통으로 적용되며 효과 카운트다운도 포함합니다. 화면 업데이트 빈도만 바뀌고 모든 전투 이벤트는 그대로 집계됩니다.",

@@ -61,6 +61,8 @@
     "look": "Appearance",
     "capture": "Network capture",
     "about": "Version",
+    "softwareLicense": "Open-source license",
+    "gameMaterial": "Wuthering Waves game material",
     "fontLicenses": "Font licenses",
     "displayPerformance": "Display and performance"
   },
@@ -116,7 +118,23 @@
       "project": "Official project",
       "fontSource": "Font file source",
       "license": "License website"
+    },
+    "game": {
+      "owner": "Wuthering Waves game art and intellectual property belong to {{holder}} or their respective rights holders.",
+      "scope": "This includes the character images, skill icons, effect icons, theme backgrounds and related derivative designs used in WWlogs.",
+      "license": "This material is not part of WWlogs' own source code and is not covered by its {{spdx}} license.",
+      "unofficial": "WWlogs is an independently developed, unofficial tool. It does not represent {{holder}} and does not claim any official partnership, sponsorship or endorsement.",
+      "officialSite": "Wuthering Waves official website"
     }
+  },
+  "softwareLicense": {
+    "summary": "WWlogs is open-source software. You may use, share and modify it under the terms of the {{license}}. It is provided without any warranty.",
+    "name": "Software license",
+    "spdx": "SPDX identifier",
+    "source": "Source code",
+    "repository": "GitHub repository",
+    "text": "License text",
+    "textHint": "Shown in its original English; the license text is not translated."
   },
   "updateInterval": "Combat data update interval",
   "updateIntervalHint": "Shared by the Dashboard and both Overlays, including effect countdowns. Only the screen update rate changes; every combat event is still counted.",

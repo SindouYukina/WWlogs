@@ -61,6 +61,8 @@
     "look": "外观",
     "capture": "网络捕获",
     "about": "版本信息",
+    "softwareLicense": "开源授权",
+    "gameMaterial": "《鸣潮》游戏素材",
     "fontLicenses": "字体授权",
     "displayPerformance": "显示与性能"
   },
@@ -116,7 +118,23 @@
       "project": "官方项目",
       "fontSource": "字型文件来源",
       "license": "授权条款官方网站"
+    },
+    "game": {
+      "owner": "《鸣潮》（Wuthering Waves）的游戏美术与知识产权，归 {{holder}} 或其各自的合法权利人所有。",
+      "scope": "包括 WWlogs 中使用的角色图像、技能图标、效果图标、主题背景及相关衍生设计。",
+      "license": "上述素材不属于 WWlogs 自有的源代码，不在其 {{spdx}} 授权范围内。",
+      "unofficial": "WWlogs 是独立开发的非官方工具，不代表 {{holder}}，也未声称与其存在任何官方合作、赞助或背书关系。",
+      "officialSite": "《鸣潮》官方网站"
     }
+  },
+  "softwareLicense": {
+    "summary": "WWlogs 是开源软件，可依据 {{license}} 的条款使用、分发和修改。本软件不提供任何担保。",
+    "name": "软件授权",
+    "spdx": "SPDX 标识符",
+    "source": "源代码",
+    "repository": "GitHub 仓库",
+    "text": "授权条款全文",
+    "textHint": "以英文原文显示，不提供翻译版本。"
   },
   "updateInterval": "战斗信息更新间隔",
   "updateIntervalHint": "仪表盘与两个 Overlay 共用，包含效果倒计时。只改变画面更新频率，所有战斗事件仍会完整计算。",

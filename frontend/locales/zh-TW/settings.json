@@ -61,6 +61,8 @@
     "look": "外觀",
     "capture": "網路擷取",
     "about": "版本資訊",
+    "softwareLicense": "開源授權",
+    "gameMaterial": "《鳴潮》遊戲素材",
     "fontLicenses": "字體授權",
     "displayPerformance": "顯示與效能"
   },
@@ -116,7 +118,23 @@
       "project": "官方專案",
       "fontSource": "字型檔來源",
       "license": "授權條款官方網站"
+    },
+    "game": {
+      "owner": "《鳴潮》（Wuthering Waves）的遊戲美術與智慧財產權，歸 {{holder}} 或其各自的合法權利人所有。",
+      "scope": "包括 WWlogs 中使用的角色圖像、技能圖示、效果圖示、主題背景及相關衍生設計。",
+      "license": "上述素材不屬於 WWlogs 自有的原始碼，不在其 {{spdx}} 授權範圍內。",
+      "unofficial": "WWlogs 是獨立開發的非官方工具，不代表 {{holder}}，也未宣稱與其有任何官方合作、贊助或背書關係。",
+      "officialSite": "《鳴潮》官方網站"
     }
+  },
+  "softwareLicense": {
+    "summary": "WWlogs 是開放原始碼軟體，可依 {{license}} 的條款使用、散布及修改。本軟體不提供任何擔保。",
+    "name": "軟體授權",
+    "spdx": "SPDX 識別碼",
+    "source": "原始碼",
+    "repository": "GitHub 儲存庫",
+    "text": "授權條款全文",
+    "textHint": "以英文原文顯示，不提供翻譯版本。"
   },
   "updateInterval": "戰鬥資訊更新間隔",
   "updateIntervalHint": "儀表板與兩個 Overlay 共用，包含效果倒數。只改變畫面更新頻率，所有戰鬥事件仍會完整計算。",
