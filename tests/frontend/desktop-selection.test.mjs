@@ -16,15 +16,17 @@ test("product text is not drag-selectable, editable fields and marked values are
   assert.ok(css.includes("body[data-view] img { -webkit-user-drag: none; }"))
 })
 
-test("the copyable values are exactly the build identity, license text, diagnostics and raw skill IDs", () => {
+test("the copyable values are exactly the build identity, license texts, license identifier, source address, diagnostics and raw skill IDs", () => {
   const about = read("frontend/src/views/SettingsView.tsx")
   for (const field of ["app-version", "app-build-number", "app-revision"]) assert.match(about, new RegExp(`className="ww-num ww-selectable" data-field="${field}"`), field)
   const licenses = read("frontend/src/views/LicensesPage.tsx")
   assert.ok(licenses.includes('className="ww-license-text ww-selectable"') && licenses.includes('className="ww-selectable" data-field={`license-notice-${font.id}`}'))
+  for (const field of ["app-license-spdx", "app-source"]) assert.ok(licenses.includes(`className="ww-selectable" lang="en" data-field="${field}"`), field)
+  assert.ok(licenses.includes('className="ww-license-text ww-selectable" lang="en" tabIndex={open ? 0 : -1} data-field="app-license-text"'))
   const dashboard = read("frontend/src/views/DashboardView.tsx")
   assert.ok(dashboard.includes('className="ww-dash-facts ww-selectable"') && dashboard.includes('className="ww-dash-skill-id ww-num ww-selectable"'))
   const marked = sources("frontend/src").flatMap(path => read(path).match(/ww-selectable"/g) ?? [])
-  assert.equal(marked.length, 7, "no other text was made selectable")
+  assert.equal(marked.length, 10, "no other text was made selectable")
 })
 
 test("selection is not suppressed by intercepting pointer events", () => {
