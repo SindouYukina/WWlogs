@@ -34,12 +34,12 @@ WWlogs 是《鳴潮》（Wuthering Waves）PC 版的戰鬥分析工具。它在 
 
 兩個可以疊在遊戲畫面上的小視窗，戰鬥時不必切換畫面就能看到數據。
 
-- **戰鬥 Overlay**：總傷害、隊伍 DPS、戰鬥時間，以及每位隊員的 DPS、傷害、占比與承受傷害。
+- **戰鬥 Overlay**：總傷害、隊伍 DPS、戰鬥時間，以及每位隊員的 DPS、傷害、占比與承受傷害；隊員依傷害高低排序，名次改變時會即時換位。
 - **效果 Overlay**：以遊戲本身的圖示顯示遊戲 HUD 上的狀態。第一列是增益與中性狀態，第二列是減益；每個圖示附有估計的剩餘秒數與層數，施加在敵人身上的狀態會另外標示。
 - 兩個 Overlay 可以分別開關，可設定保持在最上層、滑鼠穿透、背景不透明度與顯示倍率，並在編輯模式中拖曳位置、調整大小。
 
 <p>
-  <img src="media/overlay-combat.webp" alt="戰鬥 Overlay：戰鬥中即時更新的總傷害、隊伍 DPS 與各隊員數據" width="486"><br>
+  <img src="media/overlay-combat.webp" alt="戰鬥 Overlay：戰鬥中即時更新的總傷害、隊伍 DPS、各隊員數據與傷害排名的換位" width="486"><br>
   <img src="media/overlay-effects.webp" alt="效果 Overlay：遊戲 HUD 狀態的圖示、剩餘秒數與層數" width="329">
 </p>
 
