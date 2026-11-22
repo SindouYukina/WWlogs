@@ -8,11 +8,13 @@ That license applies only to WWlogs' own source code. The game material, fonts a
 
 The source code written for WWlogs, including its Go, TypeScript, CSS, PowerShell and test sources, is licensed under AGPL-3.0-only:
 
+> Copyright (C) 2026 SindouYukina
+>
 > WWlogs is free software: you can redistribute it and/or modify it under the terms of the GNU Affero General Public License as published by the Free Software Foundation, version 3.
 >
 > WWlogs is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more details.
 
-Files copied from the third-party projects in section 4 keep their own licenses.
+This copyright notice covers only the source code written for WWlogs. It does not claim the Wuthering Waves material, the fonts or the third-party software in sections 2 to 4, which belong to their respective holders. Files copied from the third-party projects in section 4 keep their own licenses.
 
 ## 2. Wuthering Waves game material
 
@@ -39,11 +41,11 @@ WWlogs executables embed the fonts in `frontend/src/design/fonts/`. Their comple
 
 ## 4. Third-party software
 
-Each component below remains under its own license. Its complete license text is part of its source at the listed version: the `LICENSE` file of the module or package, and any further license files it carries, such as the `LICENSE-3RD-PARTY.md` notices of the modernc.org modules.
+Each component below remains under its own license. Its complete license text is part of its source at the listed version: the `LICENSE` file of the module or package, and any further license and notice files it carries, such as the Go `PATENTS` grant and the `LICENSE-3RD-PARTY.md` notices of the modernc.org modules. None of the components ships a `NOTICE` file. Unmodified copies of these files for every component in sections 4.1 and 4.2 are in `frontend/src/lib/library-licenses/`, listed by its `manifest.json`, and WWlogs executables show them offline and untranslated in Settings > Licenses.
 
 ### 4.1 Linked into WWlogs.exe
 
-The Development and Public executables link the same Go modules. The list is the build information of `WWlogs.exe` (`go version -m`); the versions are pinned in `go.mod` and `go.sum`.
+The Development and Public executables link the same Go modules. The list is the build information of `WWlogs.exe` (`go version -m`), which a test compares with the modules the desktop executable imports in both profiles; the versions are pinned in `go.mod` and `go.sum`.
 
 | Component | Version | License | Copyright notice |
 | --- | --- | --- | --- |
@@ -67,7 +69,7 @@ The Development and Public executables link the same Go modules. The list is the
 
 ### 4.2 Bundled into the WWlogs.exe frontend
 
-The Development and Public frontends bundle the same npm packages. The list is the set of packages whose modules the production bundle contains; the versions are pinned in `frontend/package-lock.json`.
+The Development and Public frontends bundle the same npm packages. The list is the set of packages whose modules or generated code the production bundle contains, and the frontend build fails when its bundle and the license manifest disagree; the versions are pinned in `frontend/package-lock.json`.
 
 | Component | Version | License | Copyright notice |
 | --- | --- | --- | --- |
@@ -80,6 +82,7 @@ The Development and Public frontends bundle the same npm packages. The list is t
 | `@wailsio/runtime` | 3.1.0 | MIT (declared by the package, which carries no license file of its own; the Wails repository's license applies) | Copyright (c) 2018-Present Lea Anthony |
 | `tailwindcss` | 4.3.4 | MIT (the generated stylesheet, including its base styles) | Copyright (c) Tailwind Labs, Inc. |
 | `vite` | 8.3.6 | MIT (the module preload helper it adds to the bundle) | Copyright (c) 2019-present, VoidZero Inc. and Vite contributors |
+| `rolldown` | 1.2.16 | MIT (the module runtime helpers it adds to the bundle; its `THIRD-PARTY-LICENSE` carries the Rollup and esbuild notices) | Copyright (c) 2024-present VoidZero Inc. & Contributors |
 
 ### 4.3 Copied into this repository
 

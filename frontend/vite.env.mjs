@@ -16,6 +16,40 @@ export function productLicenseText() {
   return readFileSync(new URL("../LICENSE", import.meta.url), "utf8").replace(/\r\n/g, "\n")
 }
 
+/**
+ * Compares the npm packages a bundle's modules come from with the frontend components of the library license manifest
+ * (src/lib/library-licenses/manifest.json). A component marked "generated" contributes generated code (styles, bundler
+ * helpers) rather than modules, so it is never expected among the module paths. Returns the packages bundled without a
+ * listed license and the listed packages the bundle no longer contains.
+ */
+export function libraryLicenseGaps(moduleIds, components) {
+  const bundled = new Set()
+  for (const id of moduleIds) {
+    const match = /node_modules[\\/]((?:@[^\\/]+[\\/])?[^\\/]+)[\\/]/.exec(id)
+    if (match) bundled.add(match[1].replaceAll("\\", "/"))
+  }
+  const listed = components.filter(component => component.group === "frontend")
+  return {
+    unlisted: [...bundled].filter(name => !listed.some(component => component.name === name)).sort(),
+    unbundled: listed.filter(component => !component.generated && !bundled.has(component.name)).map(component => component.name).sort(),
+  }
+}
+
+/** Fails a production build whose bundle and the library license manifest disagree, so no bundled package goes unlisted. */
+export function libraryLicenseGuard() {
+  const manifest = JSON.parse(readFileSync(new URL("./src/lib/library-licenses/manifest.json", import.meta.url), "utf8"))
+  return {
+    name: "library-license-guard",
+    apply: "build",
+    generateBundle(_options, bundle) {
+      const moduleIds = Object.values(bundle).flatMap(output => output.type === "chunk" ? output.moduleIds ?? Object.keys(output.modules ?? {}) : [])
+      const { unlisted, unbundled } = libraryLicenseGaps(moduleIds, manifest.components)
+      if (unlisted.length) this.error(`Bundled packages without a license in src/lib/library-licenses/manifest.json: ${unlisted.join(", ")}`)
+      if (unbundled.length) this.error(`Listed in src/lib/library-licenses/manifest.json but no longer bundled: ${unbundled.join(", ")}`)
+    },
+  }
+}
+
 // The dev server has no Go host, so game images and preview fonts come from separate roots named explicitly by their
 // environment variables. Missing roots return 404 and components show their fallbacks.
 const folders = {

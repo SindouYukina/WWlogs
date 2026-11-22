@@ -1,12 +1,14 @@
 import assert from "node:assert/strict"
 import { createHash } from "node:crypto"
-import { readFileSync } from "node:fs"
+import { existsSync, readFileSync, readdirSync } from "node:fs"
 import test from "node:test"
-import { productLicenseText } from "../../frontend/vite.env.mjs"
+import { libraryLicenseGaps, productLicenseText } from "../../frontend/vite.env.mjs"
 
 const read = path => readFileSync(path, "utf8").replace(/\r\n/g, "\n")
 const manifest = JSON.parse(read("frontend/locales/manifest.json"))
 const fontsCss = read("frontend/src/design/typography.css")
+const libraryFolder = "frontend/src/lib/library-licenses"
+const libraries = JSON.parse(read(`${libraryFolder}/manifest.json`)).components
 
 test("the licenses list exactly the fonts the design system bundles", () => {
   const source = read("frontend/src/lib/font-licenses.ts")
@@ -38,7 +40,7 @@ test("every locale names the page and its labels, and none translates the legal 
     for (const key of keys) assert.ok(settings.licenses[key], `${locale}: ${key}`)
     for (const key of ["inter", "noto"]) assert.ok(settings.licenses.usageOf[key], `${locale}: usage of ${key}`)
     for (const key of ["project", "fontSource", "license"]) assert.ok(settings.licenses.link[key], `${locale}: link ${key}`)
-    assert.ok(!/PERMISSION (AND|&) CONDITIONS/.test(JSON.stringify(settings)), `${locale} must not carry license text`)
+    assert.ok(!/PERMISSION (AND|&) CONDITIONS|Redistribution and use in source and binary forms|Permission is hereby granted/.test(JSON.stringify(settings)), `${locale} must not carry license text`)
   }
 })
 
@@ -55,33 +57,107 @@ test("LICENSE is the unmodified FSF text of the GNU AGPL v3.0, and the build bun
   assert.ok(read("frontend/vite.config.ts").includes("__WWLOGS_LICENSE_TEXT__: JSON.stringify(productLicenseText())"))
   const source = read("frontend/src/lib/legal-notices.ts")
   assert.ok(source.includes('name: "GNU Affero General Public License v3.0 only"') && source.includes('spdx: "AGPL-3.0-only"') && source.includes("text: __WWLOGS_LICENSE_TEXT__"))
+  assert.ok(source.includes('productName = "WWlogs"') && source.includes('holder: "SindouYukina"') && source.includes('notice: "Copyright (C) 2026 SindouYukina"'), "the fixed names have one source")
   assert.doesNotMatch(source, /or[- ]later/i)
 })
 
-test("every locale states the software license and the game-material notice, with the proper names supplied by the code", () => {
+// The legal sentences of the About and Licenses pages. Their fixed names come from legal-notices.ts by interpolation.
+const legalSentences = settings => ({
+  "softwareLicense.grant": settings.softwareLicense.grant,
+  "softwareLicense.warranty": settings.softwareLicense.warranty,
+  "softwareLicense.thirdParty": settings.softwareLicense.thirdParty,
+  "licenses.game.owner": settings.licenses.game.owner,
+  "licenses.game.scope": settings.licenses.game.scope,
+  "licenses.game.license": settings.licenses.game.license,
+  "licenses.game.unofficial": settings.licenses.game.unofficial,
+  "licenses.libraries.intro": settings.licenses.libraries.intro,
+})
+const placeholders = {
+  "softwareLicense.grant": ["license", "product"],
+  "softwareLicense.warranty": ["license", "product"],
+  "softwareLicense.thirdParty": ["copyright", "page", "product", "rightsHolder", "spdx"],
+  "licenses.game.owner": ["rightsHolder"],
+  "licenses.game.scope": ["product"],
+  "licenses.game.license": ["product", "spdx"],
+  "licenses.game.unofficial": ["product", "rightsHolder"],
+  "licenses.libraries.intro": ["product"],
+}
+
+test("every locale states the copyright, license, warranty disclaimer and rights notices in its own language", () => {
+  const english = legalSentences(JSON.parse(read("frontend/locales/en/settings.json")))
   for (const locale of manifest.supportedLocales) {
     const settings = JSON.parse(read(`frontend/locales/${locale}/settings.json`))
-    for (const key of ["softwareLicense", "gameMaterial"]) assert.ok(settings.sections[key], `${locale}: sections.${key}`)
-    for (const key of ["summary", "name", "spdx", "source", "repository", "text", "textHint"]) assert.ok(settings.softwareLicense[key], `${locale}: softwareLicense.${key}`)
+    for (const key of ["softwareLicense", "gameMaterial", "libraryLicenses"]) assert.ok(settings.sections[key], `${locale}: sections.${key}`)
+    for (const key of ["grant", "warranty", "thirdParty", "holder", "name", "spdx", "source", "repository", "text", "textHint"]) assert.ok(settings.softwareLicense[key], `${locale}: softwareLicense.${key}`)
+    assert.equal(settings.softwareLicense.summary, undefined, `${locale}: the summary was split into the grant and the warranty disclaimer`)
     for (const key of ["owner", "scope", "license", "unofficial", "officialSite"]) assert.ok(settings.licenses.game[key], `${locale}: licenses.game.${key}`)
-    // The license name, its SPDX identifier and the rights holder are interpolated, so no language can alter them.
-    assert.match(settings.softwareLicense.summary, /\{\{license\}\}/, locale)
-    assert.match(settings.licenses.game.license, /\{\{spdx\}\}/, locale)
-    for (const key of ["owner", "unofficial"]) assert.match(settings.licenses.game[key], /\{\{holder\}\}/, `${locale}: ${key}`)
-    assert.doesNotMatch(JSON.stringify(settings), /KURO|Affero|AGPL/i, `${locale} must not spell out a name the code supplies`)
+    for (const key of ["go", "frontend"]) assert.ok(settings.licenses.libraries.groups[key], `${locale}: licenses.libraries.groups.${key}`)
+    for (const [key, sentence] of Object.entries(legalSentences(settings))) {
+      const names = [...new Set([...sentence.matchAll(/\{\{(\w+)\}\}/g)].map(match => match[1]))].sort()
+      assert.deepEqual(names, placeholders[key], `${locale}: ${key} interpolates the fixed names`)
+      // WWlogs, the copyright notice and holder, the license name, its identifier and KURO GAMES are never spelled out.
+      assert.doesNotMatch(sentence, /WWlogs|SindouYukina|Copyright \(C\)|KURO|AGPL|Affero/i, `${locale}: ${key}`)
+      // Each language states the notice in its own words: no English paragraph is shown to every language.
+      if (locale !== "en") assert.notEqual(sentence, english[key], `${locale}: ${key} is not translated`)
+    }
+    if (locale !== "en") assert.doesNotMatch(settings.softwareLicense.warranty, /WITHOUT ANY WARRANTY|MERCHANTABILITY/, `${locale}: the warranty disclaimer is translated`)
   }
 })
 
-test("the About page shows WWlogs' license and the Licenses page the game-material notice, from one source", () => {
+test("the About page shows the copyright, license and disclaimers, and the Licenses page every notice, from one source", () => {
   const view = read("frontend/src/views/SettingsView.tsx")
   const about = /function AboutPage[\s\S]*?\n\}\n/.exec(view)[0]
   assert.ok(about.includes("<SoftwareLicenseSection openLink={controller.openLicenseLink} />"))
   assert.ok(about.indexOf('data-field="app-version"') < about.indexOf("<SoftwareLicenseSection"), "the version information stays first")
   const page = read("frontend/src/views/LicensesPage.tsx")
-  for (const value of ["productLicense.name", "productLicense.spdx", "productLicense.text", "sourceRepository.url", "gameMaterial.holder", "gameMaterial.officialSite.url"]) assert.ok(page.includes(value), value)
-  assert.ok(page.indexOf("<GameMaterialNotice") < page.indexOf("fontLicenses.map"), "the notice comes first and the font licenses stay")
+  for (const value of ["productCopyright.notice", "productCopyright.holder", "productLicense.name", "productLicense.spdx", "productLicense.text", "sourceRepository.url", "gameMaterial.holder", "gameMaterial.officialSite.url", "productName"]) assert.ok(page.includes(value), value)
+  for (const key of ["softwareLicense.grant", "softwareLicense.warranty", "softwareLicense.thirdParty", "softwareLicense.holder"]) assert.ok(page.includes(`t("${key}"`), key)
+  const order = ["<GameMaterialNotice", "fontLicenses.map", "<LibraryLicenses />"].map(mark => page.indexOf(mark, page.indexOf("export function LicensesPage")))
+  assert.ok(order.every(index => index > 0) && order[0] < order[1] && order[1] < order[2], "the game notice, then the font licenses, then the libraries")
   // Every visible sentence is a translation: the page holds no notice text and no proper name of its own.
-  assert.doesNotMatch(page, /KURO|Wuthering|Affero|AGPL|鳴潮|鸣潮|명조/)
+  assert.doesNotMatch(page, /KURO|Wuthering|Affero|AGPL|SindouYukina|Copyright \(C\)|鳴潮|鸣潮|명조/)
+})
+
+test("every listed library carries the unmodified license files of its source, and nothing else is in the folder", () => {
+  const ids = libraries.map(library => library.id)
+  assert.equal(new Set(ids).size, ids.length, "component ids are unique")
+  const folders = readdirSync(libraryFolder, { withFileTypes: true }).filter(entry => entry.isDirectory()).map(entry => entry.name)
+  assert.deepEqual(folders.sort(), [...ids].sort(), "one folder per listed component")
+  const lock = JSON.parse(read("frontend/package-lock.json")).packages
+  let compared = 0
+  for (const library of libraries) {
+    assert.ok(["go", "frontend"].includes(library.group) && library.license && library.notices.length && library.files.length, library.id)
+    assert.deepEqual(readdirSync(`${libraryFolder}/${library.id}`).sort(), [...library.files].sort(), `${library.id}: exactly the listed files`)
+    for (const file of library.files) assert.ok(read(`${libraryFolder}/${library.id}/${file}`).length > 0, `${library.id}/${file}`)
+    // The notice shown on the card is a line of the component's own license file.
+    const licenseText = read(`${libraryFolder}/${library.id}/${library.files[0]}`)
+    for (const notice of library.notices) assert.ok(licenseText.includes(notice), `${library.id}: "${notice}" is in ${library.files[0]}`)
+    if (library.source !== "npm") continue // Go: tests/desktop/licenses_test.go compares them with the toolchain and module cache
+    assert.equal(lock[`node_modules/${library.name}`]?.version, library.version, `${library.name}: the lockfile pins the listed version`)
+    if (library.licenseFrom) continue // @wailsio/runtime ships no license file; the Wails module's is compared in Go
+    const installed = `frontend/node_modules/${library.name}`
+    assert.equal(JSON.parse(read(`${installed}/package.json`)).version, library.version, `${library.name}: installed version`)
+    for (const file of library.files) {
+      assert.ok(existsSync(`${installed}/${file}`), `${library.name}: ${file} is in the package`)
+      assert.equal(read(`${libraryFolder}/${library.id}/${file}`), read(`${installed}/${file}`), `${library.id}/${file} is the package's own file`)
+      compared++
+    }
+  }
+  assert.ok(compared >= 10, `compared ${compared} npm license files`)
+  const source = read("frontend/src/lib/library-licenses.ts")
+  assert.ok(source.includes('import.meta.glob<string>("./library-licenses/*/*", { query: "?raw", import: "default", eager: true })'))
+})
+
+test("a frontend build fails when its bundle and the library license manifest disagree", () => {
+  const ids = names => names.map(name => `/x/node_modules/${name}/index.js`)
+  const bundled = libraries.filter(library => library.group === "frontend" && !library.generated).map(library => library.name)
+  assert.deepEqual(libraryLicenseGaps([...ids(bundled), "/x/src/main.tsx", "\0rolldown/runtime.js"], libraries), { unlisted: [], unbundled: [] })
+  // A package without a listed license, also a scoped one and one with Windows separators, is reported.
+  assert.deepEqual(libraryLicenseGaps([...ids(bundled), "/x/node_modules/left-pad/index.js", "C:\\x\\node_modules\\@scope\\pkg\\a.js"], libraries).unlisted, ["@scope/pkg", "left-pad"])
+  // A listed package the bundle no longer contains is reported; generated contributions are not expected as modules.
+  assert.deepEqual(libraryLicenseGaps(ids(bundled.filter(name => name !== "scheduler")), libraries).unbundled, ["scheduler"])
+  assert.ok(libraries.filter(library => library.generated).every(library => !libraryLicenseGaps(ids(bundled), libraries).unbundled.includes(library.name)))
+  assert.match(read("frontend/vite.config.ts"), /libraryLicenseGuard\(\)/)
 })
 
 test("the entry sits after every other group, and both profiles share one page", () => {
