@@ -23,7 +23,7 @@ Wuthering Waves (鳴潮) game art and intellectual property belong to KURO GAMES
 - the character images, skill icons, echo skill icons and effect icons under `assets/game/`;
 - the theme backgrounds and their thumbnails in `frontend/src/design/themes/art/`, prepared from Wuthering Waves character art;
 - the game names, text and other values taken from the game client that `data/master_data.db` contains, and the character names in the localization files;
-- the screenshots and animations of WWlogs in `media/`, which show this material as WWlogs displays it.
+- the images in `media/`: the screenshots and animations of WWlogs, which show this material as WWlogs displays it, and the WWlogs logo, which depicts a Wuthering Waves character.
 
 This material is not part of WWlogs' own source code and is not covered by its AGPL-3.0-only license. Its presence in this repository or in an executable does not grant any right to use or redistribute it.
 
