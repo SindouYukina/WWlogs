@@ -38,6 +38,10 @@
     "fusion": {
       "name": "용융",
       "character": "모니에"
+    },
+    "spectro": {
+      "name": "회절",
+      "character": "릴리"
     }
   },
   "groups": {
@@ -61,7 +65,10 @@
     "look": "외관",
     "capture": "네트워크 캡처",
     "about": "버전 정보",
+    "softwareLicense": "오픈 소스 라이선스",
+    "gameMaterial": "《명조: 워더링 웨이브》 게임 자료",
     "fontLicenses": "글꼴 라이선스",
+    "libraryLicenses": "서드파티 라이브러리",
     "displayPerformance": "표시 및 성능"
   },
   "showWindow": "이 오버레이 표시",
@@ -116,7 +123,33 @@
       "project": "공식 프로젝트",
       "fontSource": "글꼴 파일 출처",
       "license": "라이선스 공식 사이트"
+    },
+    "game": {
+      "owner": "《명조: 워더링 웨이브》(Wuthering Waves)의 게임 아트와 지식재산권은 {{rightsHolder}} 또는 각 정당한 권리자에게 귀속됩니다.",
+      "scope": "여기에는 {{product}}에서 사용하는 캐릭터 이미지, 스킬 아이콘, 효과 아이콘, 테마 배경 및 관련 파생 디자인이 포함됩니다.",
+      "license": "이 자료는 {{product}} 자체 소스 코드에 속하지 않으며, 해당 {{spdx}} 라이선스가 적용되지 않습니다.",
+      "unofficial": "{{product}}는 독립적으로 개발된 비공식 도구입니다. {{rightsHolder}}를 대표하지 않으며, 공식 제휴, 후원 또는 승인을 받았다고 주장하지 않습니다.",
+      "officialSite": "《명조: 워더링 웨이브》 공식 웹사이트"
+    },
+    "libraries": {
+      "intro": "{{product}} 실행 파일에는 다음 오픈 소스 구성 요소가 포함되어 있습니다. 각 구성 요소는 고유한 라이선스를 따릅니다. 라이선스 파일과 그 안의 저작권 고지 및 기타 고지는 원문 그대로 표시하며 번역본은 제공하지 않습니다.",
+      "groups": {
+        "go": "Go 런타임 및 모듈",
+        "frontend": "프런트엔드 패키지"
+      }
     }
+  },
+  "softwareLicense": {
+    "grant": "{{product}}는 자유 소프트웨어입니다. 자유 소프트웨어 재단이 공표한 {{license}}의 조건에 따라 이 프로그램을 재배포하거나 수정할 수 있습니다.",
+    "warranty": "{{product}}는 유용하게 사용되기를 바라며 배포되지만, 상품성이나 특정 목적에의 적합성에 대한 묵시적 보증을 포함하여 어떠한 보증도 제공하지 않습니다. 자세한 내용은 {{license}}를 참조하십시오.",
+    "thirdParty": "{{copyright}} 및 {{spdx}} 라이선스는 {{product}} 자체 소스 코드에만 적용됩니다. 《명조: 워더링 웨이브》 게임 자료는 {{rightsHolder}} 또는 각 정당한 권리자에게 귀속되며, 내장 글꼴과 서드파티 라이브러리는 각자의 라이선스를 따릅니다. 자세한 내용은 '{{page}}' 페이지를 참조하십시오.",
+    "holder": "저작권자",
+    "name": "소프트웨어 라이선스",
+    "spdx": "SPDX 식별자",
+    "source": "소스 코드",
+    "repository": "GitHub 저장소",
+    "text": "라이선스 전문",
+    "textHint": "영어 원문 그대로 표시하며 번역본은 제공하지 않습니다."
   },
   "updateInterval": "전투 정보 업데이트 간격",
   "updateIntervalHint": "대시보드와 두 오버레이에 공통으로 적용되며 효과 카운트다운도 포함합니다. 화면 업데이트 빈도만 바뀌고 모든 전투 이벤트는 그대로 집계됩니다.",

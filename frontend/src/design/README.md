@@ -5,7 +5,7 @@ One design system serves the Desktop window, the Combat Overlay and the Effects 
 | Path | Responsibility |
 | --- | --- |
 | `tokens.css` | Every token, derived from a small set of theme inputs: colors, type scales, spacing, radii, surfaces, shadows and alpha steps. |
-| `themes.css` | The theme inputs for the four official themes. Status and character series colors are never overridden here. |
+| `themes.css` | The theme inputs for every official theme; the list and its order are in `themes/registry.ts`. Status and character series colors are never overridden here. |
 | `themes/` | The theme ID registry and pre-processed character art. |
 | `typography.css`, `fonts/` | Bundled WOFF2 fonts, language stacks, and the Display, UI and Data text roles. |
 | `motion/tokens.ts` | The only place for durations, curves, spring parameters and per-theme motion flavors. They are installed as `--ww-*` CSS variables. |
@@ -31,7 +31,7 @@ One design system serves the Desktop window, the Combat Overlay and the Effects 
 
 ## Themes
 
-A theme is a set of tokens, not a set of components: palette, surfaces, ornament, corner scale, chart grid, ambient background and motion flavor. Add a theme by adding its inputs to `themes.css`, its ID to `themes/registry.ts` and `validTheme` in `internal/desktop/settings.go`, its art under `themes/art/`, its motion flavor, and its names to every locale's `settings.json`. Art is pre-processed outside the product (blur, masking, desaturation), so the page paints one static image. Character series colors follow the character in every theme, and data and rank springs are not themed.
+A theme is a set of tokens, not a set of components: palette, surfaces, ornament, corner scale, chart grid, ambient background and motion flavor. Its controls follow its element: the accent, selection, focus, hero numbers and glow take the hue of the element's damage color at their own lightness and chroma, kept apart from the status palette. Its ground, its backdrop art and its second accent extend the character's own colors, and the backdrop carries a small note of the element color. Add a theme by adding its inputs to `themes.css`, its ID to `themes/registry.ts` and `validTheme` in `internal/desktop/settings.go`, its art under `themes/art/`, its picker swatches in `components.css`, its motion flavor, and its names (taken from the Master) to every locale's `settings.json`. The picker keeps every theme in one row and scrolls sideways inside itself when the window is too narrow for the minimum card width. Art is pre-processed outside the product (blur, masking, desaturation), so the page paints one static image. Character series colors follow the character in every theme, and data and rank springs are not themed.
 
 ## Typography
 

@@ -38,7 +38,7 @@ test("the DPS curve entrance shoots in almost at once and glides to a stop, for 
   const full = motionVariables()
   assert.equal(full["--ww-curve-enter-dur"], `${curveEntrance.durationMs}ms`)
   assert.equal(full["--ww-ease-curve-enter"], curveEntrance.easing)
-  for (const flavor of ["electro", "aero", "havoc", "glacio", "fusion"]) assert.equal(motionVariables({ flavor })["--ww-curve-enter-dur"], `${curveEntrance.durationMs}ms`, flavor)
+  for (const flavor of ["electro", "aero", "havoc", "glacio", "fusion", "spectro"]) assert.equal(motionVariables({ flavor })["--ww-curve-enter-dur"], `${curveEntrance.durationMs}ms`, flavor)
   assert.equal(motionVariables({ preference: "reduced" })["--ww-curve-enter-dur"], "0ms")
   assert.equal(motionVariables({ scale: 2 })["--ww-curve-enter-dur"], `${curveEntrance.durationMs * 2}ms`)
 })

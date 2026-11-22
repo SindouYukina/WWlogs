@@ -11,7 +11,7 @@ import { useThemeDescriptions } from "@/lib/useListeningLabels"
 import { indicatorText, type HistoryChange } from "@/lib/history"
 import { HistoryIndicatorChip } from "./HistoryView"
 import { HistoryRecovery } from "./HistoryRecovery"
-import { LicensesPage } from "./LicensesPage"
+import { LicensesPage, SoftwareLicenseSection } from "./LicensesPage"
 
 type Page = "general" | "history" | "appearance" | "combatOverlay" | "effectsOverlay" | "about" | "licenses"
 
@@ -217,12 +217,15 @@ function AboutPage({ controller }: { controller: SettingsController }) {
   const show = (text: IdentityText) => text.kind === "value" ? text.value : t(text.key)
   const profile = app ? profileKey(app) : undefined
   const revision = app ? revisionText(app) : undefined
-  return <SettingsSection title={t("sections.about")}>
-    <SettingsRow title={t("buildVersion")} description={t("storage")}><span className="ww-num ww-selectable" data-field="app-version">{app ? show(versionText(app)) : "—"}</span></SettingsRow>
-    <SettingsRow title={t("buildNumber")}><span className="ww-num ww-selectable" data-field="app-build-number" data-official={app?.official ? "true" : "false"}>{app ? show(buildNumberText(app)) : "—"}</span></SettingsRow>
-    <SettingsRow title={t("buildProfile")}><span data-field="app-profile">{app ? (profile ? t(profile) : app.profile) : "—"}</span></SettingsRow>
-    <SettingsRow title={t("buildRevision")} description={revision?.note ? t(revision.note) : undefined}><span className="ww-num ww-selectable" data-field="app-revision" data-dirty={app?.dirty}>{revision ? show(revision.revision) : "—"}</span></SettingsRow>
-  </SettingsSection>
+  return <>
+    <SettingsSection title={t("sections.about")}>
+      <SettingsRow title={t("buildVersion")} description={t("storage")}><span className="ww-num ww-selectable" data-field="app-version">{app ? show(versionText(app)) : "—"}</span></SettingsRow>
+      <SettingsRow title={t("buildNumber")}><span className="ww-num ww-selectable" data-field="app-build-number" data-official={app?.official ? "true" : "false"}>{app ? show(buildNumberText(app)) : "—"}</span></SettingsRow>
+      <SettingsRow title={t("buildProfile")}><span data-field="app-profile">{app ? (profile ? t(profile) : app.profile) : "—"}</span></SettingsRow>
+      <SettingsRow title={t("buildRevision")} description={revision?.note ? t(revision.note) : undefined}><span className="ww-num ww-selectable" data-field="app-revision" data-dirty={app?.dirty}>{revision ? show(revision.revision) : "—"}</span></SettingsRow>
+    </SettingsSection>
+    <SoftwareLicenseSection openLink={controller.openLicenseLink} />
+  </>
 }
 
 /** The one Settings view. Everything it shows is a working setting: a row without a backend does not exist here. */

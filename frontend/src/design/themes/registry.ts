@@ -1,5 +1,5 @@
 // Official themes. IDs are stable and language-independent; internal/desktop/settings.go validates the same list.
-export const themeIds = ["electro", "aero", "havoc", "glacio", "fusion"] as const
+export const themeIds = ["electro", "aero", "havoc", "glacio", "fusion", "spectro"] as const
 export type ThemeId = (typeof themeIds)[number]
 
 export const defaultTheme: ThemeId = "electro"
@@ -11,6 +11,7 @@ export const themeCharacters: Readonly<Record<ThemeId, number>> = {
   havoc: 1508,
   glacio: 1107,
   fusion: 1209,
+  spectro: 1512,
 }
 
 export function resolveTheme(value: string | undefined): ThemeId {

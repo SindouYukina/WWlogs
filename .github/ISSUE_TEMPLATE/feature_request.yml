@@ -1,0 +1,39 @@
+name: Feature request
+description: Suggest an improvement or a new capability for WWlogs.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A feature request is a proposal, not a commitment to implement it. The maintainer decides what WWlogs implements, and a request has to fit the direction of the official project, which focuses on analyzing your own combat. The official project does not add DPS leaderboards or other comparisons between players, plain-text export of combat logs, or transfer of combat history between PCs.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: What do you want to do, and what stands in the way today?
+    validations:
+      required: true
+  - type: textarea
+    id: scenario
+    attributes:
+      label: When you would use it
+      description: A real situation in which you would use this feature.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected feature
+      description: What WWlogs should do.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Suggested solution
+      description: How it could work, if you have an idea.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: Other approaches you considered, and whether there is a workaround today.

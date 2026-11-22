@@ -42,3 +42,17 @@ func (c localeCatalog) valid(locale string) bool {
 	_, ok := c.Languages[locale]
 	return ok
 }
+
+// optionLocale is the bundled locale a -locale value names: a bundled locale, or the Master locale of one, which older
+// desktop command lines used. Any other value is returned unchanged, for setLocale to refuse.
+func (c localeCatalog) optionLocale(locale string) string {
+	if c.valid(locale) {
+		return locale
+	}
+	for _, candidate := range c.SupportedLocales {
+		if c.Languages[candidate].MasterLocale == locale {
+			return candidate
+		}
+	}
+	return locale
+}

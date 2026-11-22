@@ -15,18 +15,20 @@ func overlayActivationStyle(style uint32, editing bool) uint32 {
 	return style | w32.WS_EX_NOACTIVATE
 }
 
-// onOverlayThread runs a native call on the window's thread. It does nothing for a window without a native handle.
-func onOverlayThread(window *application.WebviewWindow, call func(hwnd w32.HWND)) {
+// onWindowThread runs a native call on the window's thread and reports whether it ran. It does nothing for a window
+// without a native handle.
+func onWindowThread(window *application.WebviewWindow, call func(hwnd w32.HWND)) bool {
 	handle := window.NativeWindow()
 	if handle == nil {
-		return
+		return false
 	}
 	hwnd := w32.HWND(handle)
 	application.InvokeSync(func() { call(hwnd) })
+	return true
 }
 
 func setOverlayActivation(window *application.WebviewWindow, editing bool) {
-	onOverlayThread(window, func(hwnd w32.HWND) {
+	onWindowThread(window, func(hwnd w32.HWND) {
 		current := uint32(w32.GetWindowLong(hwnd, w32.GWL_EXSTYLE))
 		if next := overlayActivationStyle(current, editing); next != current {
 			w32.SetWindowLong(hwnd, w32.GWL_EXSTYLE, next)
@@ -38,7 +40,7 @@ func setOverlayActivation(window *application.WebviewWindow, editing bool) {
 // window whatever its style, but it does nothing to a window that is already visible. Show is still needed for Wails' own
 // state and for WebView2's visibility.
 func showOverlayInactive(window *application.WebviewWindow) {
-	onOverlayThread(window, func(hwnd w32.HWND) { w32.ShowWindow(hwnd, w32.SW_SHOWNA) })
+	onWindowThread(window, func(hwnd w32.HWND) { w32.ShowWindow(hwnd, w32.SW_SHOWNA) })
 }
 
 // setOverlayTopmost replaces Wails' SetAlwaysOnTop, whose SetWindowPos omits SWP_NOACTIVATE.
@@ -47,7 +49,7 @@ func setOverlayTopmost(window *application.WebviewWindow, topmost bool) {
 	if topmost {
 		insertAfter = w32.HWND_TOPMOST
 	}
-	onOverlayThread(window, func(hwnd w32.HWND) {
+	onWindowThread(window, func(hwnd w32.HWND) {
 		w32.SetWindowPos(hwnd, insertAfter, 0, 0, 0, 0, w32.SWP_NOMOVE|w32.SWP_NOSIZE|w32.SWP_NOACTIVATE)
 	})
 }
@@ -61,7 +63,7 @@ func foregroundWindow() uintptr {
 // SetWindowPos without SWP_NOACTIVATE. That only makes the new window active inside this thread, unless this thread holds
 // the foreground, which means the Desktop window had it. Then the Desktop window gets it back; no other process is involved.
 func returnForeground(window *application.WebviewWindow, previous uintptr) {
-	onOverlayThread(window, func(hwnd w32.HWND) {
+	onWindowThread(window, func(hwnd w32.HWND) {
 		if previous != 0 && previous != uintptr(hwnd) && w32.GetForegroundWindow() == hwnd {
 			w32.SetForegroundWindow(w32.HWND(previous))
 		}

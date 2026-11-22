@@ -9,7 +9,9 @@ import glacio from "./art/glacio.webp"
 import glacioThumb from "./art/glacio-thumb.webp"
 import havoc from "./art/havoc.webp"
 import havocThumb from "./art/havoc-thumb.webp"
+import spectro from "./art/spectro.webp"
+import spectroThumb from "./art/spectro-thumb.webp"
 
 // Static, pre-processed art. Blur, masking and desaturation were done at asset build time, so the page paints one image.
-export const themeArt: Readonly<Record<ThemeId, string>> = { electro, aero, havoc, glacio, fusion }
-export const themeThumb: Readonly<Record<ThemeId, string>> = { electro: electroThumb, aero: aeroThumb, havoc: havocThumb, glacio: glacioThumb, fusion: fusionThumb }
+export const themeArt: Readonly<Record<ThemeId, string>> = { electro, aero, havoc, glacio, fusion, spectro }
+export const themeThumb: Readonly<Record<ThemeId, string>> = { electro: electroThumb, aero: aeroThumb, havoc: havocThumb, glacio: glacioThumb, fusion: fusionThumb, spectro: spectroThumb }

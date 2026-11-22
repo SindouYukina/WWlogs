@@ -1,0 +1,5 @@
+{
+  "alreadyRunningElsewhere": "WWlogs is already running in another Windows session or on another desktop. Only one WWlogs can run at a time for each Windows user.",
+  "notResponding": "WWlogs is already running but is not responding. Wait a moment and try again. If it still does not respond, end WWlogs in Task Manager and start it again.",
+  "checkFailed": "WWlogs could not check whether it is already running, so it did not start. Try again. If this keeps happening, restart Windows."
+}

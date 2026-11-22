@@ -52,7 +52,7 @@ $repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).ProviderP
 . (Join-Path $PSScriptRoot 'verify/rules.ps1')
 $overlay = Join-Path $repoRoot 'tests/go-overlay.json'
 $results = [ordered]@{}
-$testPackages = @('./cmd/capture', './internal/buildinfo', './internal/capture', './internal/devcapture', './internal/history', './internal/service', './internal/desktop', './internal/devdesktop', './internal/keyembed', './tests/architecture', './tests/assets', './tests/buildrun', './tests/readiness', './tests/versioninfo')
+$testPackages = @('./cmd/capture', './internal/buildinfo', './internal/capture', './internal/devcapture', './internal/history', './internal/service', './internal/desktop', './internal/devdesktop', './internal/keyembed', './internal/instance', './tests/architecture', './tests/assets', './tests/buildrun', './tests/readiness', './tests/versioninfo')
 if ($Mode -eq 'Public' -and $PcapDirectory -ne '') {
     throw '-PcapDirectory is private material: Public mode reads none. Replay the corpus with -Mode Maintainer.'
 }
