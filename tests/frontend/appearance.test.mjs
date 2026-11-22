@@ -136,12 +136,36 @@ test("every theme and character name comes from the Master in every language", (
   }
 })
 
-test("the Fusion theme is the character first and the warm note second", () => {
-  const block = themesCss.slice(themesCss.indexOf('[data-ww-theme="fusion"]'))
-  const hue = name => Number(new RegExp(`${name}: oklch\\([0-9.]+ [0-9.]+ ([0-9.]+)`).exec(block)[1])
-  assert.equal(/--ww-accent-h: (\d+)/.exec(block)[1], "284", "the leading color comes from her hair and coat")
-  assert.ok(hue("--ww-accent-2") < 80, "the second color is the warm one")
-  assert.ok(hue("--ww-indicator") > 270 && hue("--ww-hero-number") > 270, "selection and hero numbers stay cold")
+test("every theme's controls follow its element's damage color, kept apart from the status palette", () => {
+  const tokens = readFileSync("frontend/src/design/tokens.css", "utf8")
+  const toLab = (L, C, h) => ({ L, C, h, a: C * Math.cos((h * Math.PI) / 180), b: C * Math.sin((h * Math.PI) / 180) })
+  const oklch = (source, name) => toLab(...new RegExp(`${name}: oklch\\(([0-9.]+) ([0-9.]+) ([0-9.]+)\\)`).exec(source).slice(1).map(Number))
+  const hex = value => {
+    const linear = [1, 3, 5].map(i => parseInt(value.slice(i, i + 2), 16) / 255).map(c => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4))
+    const [l, m, s] = [
+      0.4122 * linear[0] + 0.5363 * linear[1] + 0.0514 * linear[2],
+      0.2119 * linear[0] + 0.6807 * linear[1] + 0.1074 * linear[2],
+      0.0883 * linear[0] + 0.2817 * linear[1] + 0.63 * linear[2],
+    ].map(Math.cbrt)
+    const L = 0.2105 * l + 0.7936 * m - 0.0041 * s, a = 1.978 * l - 2.4286 * m + 0.4506 * s, b = 0.0259 * l + 0.7828 * m - 0.8087 * s
+    return { L, a, b, C: Math.hypot(a, b), h: ((Math.atan2(b, a) * 180) / Math.PI + 360) % 360 }
+  }
+  const distance = (x, y) => Math.hypot(x.L - y.L, x.a - y.a, x.b - y.b)
+  const hueGap = (x, y) => Math.abs(((x - y + 540) % 360) - 180)
+  const status = ["--ww-good", "--ww-warn", "--ww-critical", "--ww-info"].map(name => [name, oklch(tokens, name)])
+  const block = theme => {
+    const start = themesCss.indexOf(`[data-ww-theme="${theme}"]`)
+    return themesCss.slice(start, themesCss.indexOf("\n}", start))
+  }
+  for (const theme of themeIds) {
+    const series = hex(new RegExp(`--ww-element-${theme}: (#[0-9a-f]{6});`).exec(tokens)[1])
+    const accent = oklch(block(theme), "--ww-accent")
+    assert.ok(hueGap(accent.h, series.h) <= 15, `${theme}: the accent takes the element's hue (${accent.h} vs ${series.h.toFixed(1)})`)
+    for (const [name, color] of status) assert.ok(distance(accent, color) >= 0.06, `${theme}: the accent stays apart from ${name} (${distance(accent, color).toFixed(3)})`)
+    assert.equal(/--ww-indicator: ([^;]+);/.exec(block(theme))[1], "var(--ww-accent)", `${theme}: selection marks use the element color`)
+    const second = oklch(block(theme), "--ww-accent-2")
+    assert.ok(distance(second, accent) >= 0.1, `${theme}: the second accent is a separate, character note`)
+  }
 })
 
 test("theme names match the game's own names in every language", () => {

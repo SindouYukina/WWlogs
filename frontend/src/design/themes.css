@@ -1,134 +1,157 @@
 /*
  * Official character themes. Stable IDs are the game's element IDs in English; display names come from locale resources.
- * Palettes are derived from each character's art (research/topics/output/design-system-motion.md), not from the element
- * color. Character series colors in data views are deliberately untouched by these rules.
+ * Each theme's controls follow its element: the accent, selection, focus, hero numbers and glow take the hue of the
+ * element's damage color, set at their own lightness and chroma and kept apart from the status palette, so a theme color
+ * is never read as a status. The ground, the backdrop art and the second accent extend the character's own colors
+ * (research/topics/output/design-system-motion.md). Character series colors in data views are untouched by these rules.
  */
 
-/* Electro / Suoming: crimson hair, black lacquer umbrella flecked with gold, warm charcoal. The default brand theme. */
+/* Electro / Suoming: crimson hair, a black lacquer umbrella flecked with gold, warm charcoal. Electro violet leads the controls and her crimson is the second note. The default brand theme. */
 :root,
 [data-ww-theme="electro"] {
   --ww-ink-h: 20;
   --ww-ink-c: 0.008;
   --ww-ink-lift: 0;
-  --ww-accent-h: 21;
-  --ww-accent-c: 0.19;
+  --ww-accent-h: 293;
+  --ww-accent-c: 0.16;
   --ww-radius-scale: 1;
-  --ww-accent-2: oklch(0.83 0.095 85);
-  --ww-accent-2-soft: oklch(0.83 0.095 85 / 0.14);
+  --ww-accent: oklch(0.7 0.16 293);
+  --ww-accent-strong: oklch(0.62 0.17 293);
+  --ww-accent-bright: oklch(0.8 0.11 293);
+  --ww-accent-soft: oklch(0.7 0.16 293 / 0.16);
+  --ww-accent-line: oklch(0.7 0.16 293 / 0.45);
+  --ww-accent-2: oklch(0.7 0.17 21);
+  --ww-accent-2-soft: oklch(0.7 0.17 21 / 0.14);
   --ww-indicator: var(--ww-accent);
-  --ww-hero-number: oklch(0.78 0.137 21);
-  --ww-glow: 0 0 28px -12px oklch(0.6 0.19 21 / 0.55);
+  --ww-hero-number: oklch(0.84 0.1 293);
+  --ww-time: oklch(0.84 0.1 293);
+  --ww-glow: 0 0 28px -12px oklch(0.6 0.17 293 / 0.55);
   --ww-sheen: oklch(0.95 0.02 60 / 0.06);
-  --ww-card-edge: linear-gradient(90deg, oklch(0.67 0.19 21 / 0.55), oklch(0.83 0.095 85 / 0.3) 32%, transparent 72%);
-  --ww-card-corner: linear-gradient(oklch(0.83 0.095 85 / 0.55), oklch(0.83 0.095 85 / 0.55)) right 10px top 0 / 12px 1px no-repeat;
+  --ww-card-edge: linear-gradient(90deg, oklch(0.7 0.16 293 / 0.55), oklch(0.7 0.17 21 / 0.3) 32%, transparent 72%);
+  --ww-card-corner: linear-gradient(oklch(0.7 0.17 21 / 0.6), oklch(0.7 0.17 21 / 0.6)) right 10px top 0 / 12px 1px no-repeat;
   --ww-chart-grid: oklch(0.95 0.02 60 / 0.06);
-  /* A cold note from the logo's blue flower balances the warm crimson. */
-  --ww-theme-ambient: radial-gradient(900px 520px at 88% -8%, oklch(0.45 0.13 21 / 0.2), transparent 70%), radial-gradient(760px 480px at 8% 108%, oklch(0.36 0.05 262 / 0.16), transparent 70%);
-  --ww-selection: oklch(0.6 0.19 21 / 0.42);
+  /* Her crimson in the light, with the element's violet where it fades. */
+  --ww-theme-ambient: radial-gradient(900px 520px at 88% -8%, oklch(0.45 0.13 21 / 0.2), transparent 70%), radial-gradient(760px 480px at 8% 108%, oklch(0.42 0.12 293 / 0.16), transparent 70%);
+  --ww-selection: oklch(0.6 0.17 293 / 0.42);
 }
 
-/* Aero / Cartethyia: gold hair and a white gown fading into cobalt. Navy ink, azure and champagne, long soft curves. */
+/* Aero / Cartethyia: gold hair and a white gown fading into cobalt. Navy ink, long soft curves; Aero's light green leads the controls and her champagne is the second note. */
 [data-ww-theme="aero"] {
   --ww-ink-h: 258;
   --ww-ink-c: 0.024;
   --ww-ink-lift: 0.004;
-  --ww-accent-h: 248;
-  --ww-accent-c: 0.135;
+  --ww-accent-h: 180;
+  --ww-accent-c: 0.11;
   --ww-radius-scale: 1.25;
-  --ww-on-accent: oklch(0.17 0.03 258);
-  --ww-accent-fill-top: oklch(0.74 0.12 245);
-  --ww-accent-fill-bottom: oklch(0.67 0.135 248);
-  --ww-accent-fill-hover: oklch(0.8 0.1 242);
+  --ww-accent: oklch(0.76 0.11 180);
+  --ww-accent-strong: oklch(0.68 0.11 180);
+  --ww-accent-bright: oklch(0.84 0.08 178);
+  --ww-accent-soft: oklch(0.76 0.11 180 / 0.15);
+  --ww-accent-line: oklch(0.76 0.11 180 / 0.45);
+  --ww-on-accent: oklch(0.17 0.03 220);
+  --ww-accent-fill-top: oklch(0.79 0.1 180);
+  --ww-accent-fill-bottom: oklch(0.72 0.11 180);
+  --ww-accent-fill-hover: oklch(0.85 0.08 178);
   --ww-accent-2: oklch(0.86 0.062 70);
   --ww-accent-2-soft: oklch(0.86 0.062 70 / 0.14);
-  --ww-indicator: oklch(0.76 0.115 242);
-  --ww-hero-number: oklch(0.84 0.085 238);
-  --ww-glow: 0 0 34px -12px oklch(0.62 0.14 250 / 0.6);
+  --ww-indicator: var(--ww-accent);
+  --ww-hero-number: oklch(0.88 0.07 178);
+  --ww-glow: 0 0 34px -12px oklch(0.64 0.11 180 / 0.55);
   --ww-sheen: oklch(0.95 0.03 240 / 0.07);
-  --ww-card-edge: linear-gradient(90deg, transparent, oklch(0.76 0.115 242 / 0.5) 28%, oklch(0.86 0.062 70 / 0.34) 62%, transparent);
+  --ww-card-edge: linear-gradient(90deg, transparent, oklch(0.76 0.11 180 / 0.5) 28%, oklch(0.86 0.062 70 / 0.34) 62%, transparent);
   --ww-card-corner: none;
   --ww-chart-grid: oklch(0.85 0.05 245 / 0.075);
-  --ww-theme-ambient: radial-gradient(1000px 560px at 84% -10%, oklch(0.5 0.13 250 / 0.22), transparent 70%), radial-gradient(700px 460px at 6% 110%, oklch(0.7 0.05 70 / 0.08), transparent 70%);
-  --ww-selection: oklch(0.62 0.14 250 / 0.45);
+  --ww-theme-ambient: radial-gradient(1000px 560px at 84% -10%, oklch(0.5 0.13 250 / 0.22), transparent 70%), radial-gradient(700px 460px at 6% 110%, oklch(0.62 0.1 180 / 0.1), transparent 70%);
+  --ww-selection: oklch(0.64 0.11 180 / 0.45);
 }
 
-/* Havoc / Chisa: a black uniform, white collar and one crimson blade. Near-monochrome, paper white, hard short corners. */
+/* Havoc / Chisa: a black uniform, white collar and one crimson blade. Near-monochrome ink, hard short corners and paper-white hero numbers; Havoc's deep purple-red leads the controls and her blade red is the second note. */
 [data-ww-theme="havoc"] {
   --ww-ink-h: 300;
   --ww-ink-c: 0.004;
   --ww-ink-lift: -0.012;
-  --ww-accent-h: 30;
-  --ww-accent-c: 0.008;
+  --ww-accent-h: 354;
+  --ww-accent-c: 0.18;
   --ww-radius-scale: 0.5;
-  --ww-accent: oklch(0.93 0.008 30);
-  --ww-accent-strong: oklch(0.84 0.008 30);
-  --ww-accent-bright: oklch(0.97 0.006 30);
-  --ww-accent-soft: oklch(0.93 0.008 30 / 0.12);
-  --ww-accent-line: oklch(0.6 0.18 24 / 0.6);
-  --ww-on-accent: oklch(0.17 0.004 300);
-  --ww-accent-fill-top: oklch(0.95 0.008 30);
-  --ww-accent-fill-bottom: oklch(0.86 0.008 30);
-  --ww-accent-fill-hover: oklch(0.98 0.006 30);
+  --ww-accent: oklch(0.66 0.18 354);
+  --ww-accent-strong: oklch(0.57 0.18 354);
+  --ww-accent-bright: oklch(0.76 0.13 354);
+  --ww-accent-soft: oklch(0.66 0.18 354 / 0.14);
+  --ww-accent-line: oklch(0.66 0.18 354 / 0.5);
   --ww-accent-2: oklch(0.61 0.18 24);
   --ww-accent-2-soft: oklch(0.61 0.18 24 / 0.16);
-  --ww-indicator: oklch(0.6 0.19 24);
+  --ww-indicator: var(--ww-accent);
   --ww-hero-number: oklch(0.97 0.006 30);
   --ww-time: oklch(0.66 0.17 24);
-  --ww-glow: 0 0 0 1px oklch(0.6 0.18 24 / 0.32);
+  --ww-glow: 0 0 0 1px oklch(0.6 0.18 354 / 0.32);
   --ww-sheen: oklch(1 0 0 / 0.045);
-  --ww-card-edge: linear-gradient(90deg, oklch(0.6 0.19 24) 0 44px, transparent 44px);
+  --ww-card-edge: linear-gradient(90deg, oklch(0.62 0.19 354) 0 44px, transparent 44px);
   --ww-card-corner: linear-gradient(135deg, transparent 50%, oklch(0.6 0.19 24 / 0.85) 50%) right 0 top 0 / 9px 9px no-repeat;
   --ww-chart-grid: oklch(1 0 0 / 0.055);
-  --ww-theme-ambient: radial-gradient(800px 500px at 96% 104%, oklch(0.42 0.15 24 / 0.13), transparent 70%);
-  --ww-selection: oklch(0.6 0.19 24 / 0.45);
+  --ww-theme-ambient: radial-gradient(800px 500px at 96% 104%, oklch(0.42 0.15 24 / 0.13), transparent 70%), radial-gradient(720px 460px at 6% -8%, oklch(0.4 0.13 354 / 0.1), transparent 70%);
+  --ww-selection: oklch(0.58 0.18 354 / 0.45);
 }
 
-/* Glacio / Carlotta: silver hair, white lace, a magenta mantle with ice-teal trim. Slate surfaces, rose and ice, poised. */
+/* Glacio / Carlotta: silver hair, white lace, a magenta mantle with ice-teal trim. Slate surfaces, poised; Glacio's ice blue leads the controls and her rose is the second note. */
 [data-ww-theme="glacio"] {
   --ww-ink-h: 255;
   --ww-ink-c: 0.018;
   --ww-ink-lift: 0.012;
-  --ww-accent-h: 358;
-  --ww-accent-c: 0.175;
+  --ww-accent-h: 240;
+  --ww-accent-c: 0.13;
   --ww-radius-scale: 1.1;
-  --ww-accent-2: oklch(0.86 0.052 205);
-  --ww-accent-2-soft: oklch(0.86 0.052 205 / 0.14);
+  --ww-accent: oklch(0.7 0.13 240);
+  --ww-accent-strong: oklch(0.62 0.13 240);
+  --ww-accent-bright: oklch(0.8 0.09 236);
+  --ww-accent-soft: oklch(0.7 0.13 240 / 0.15);
+  --ww-accent-line: oklch(0.7 0.13 240 / 0.45);
+  /* A step darker than the shared fill, so the white label stays above 4.5:1 on blue. */
+  --ww-accent-fill-top: oklch(0.54 0.13 240);
+  --ww-accent-fill-bottom: oklch(0.49 0.13 240);
+  --ww-accent-fill-hover: oklch(0.58 0.13 240);
+  --ww-accent-2: oklch(0.76 0.13 358);
+  --ww-accent-2-soft: oklch(0.76 0.13 358 / 0.14);
   --ww-indicator: var(--ww-accent);
-  --ww-hero-number: oklch(0.82 0.105 355);
+  --ww-hero-number: oklch(0.85 0.08 236);
   --ww-time: oklch(0.86 0.052 205);
-  --ww-glow: 0 0 30px -13px oklch(0.62 0.17 358 / 0.55);
+  --ww-glow: 0 0 30px -13px oklch(0.62 0.13 240 / 0.55);
   --ww-sheen: oklch(0.96 0.015 240 / 0.08);
-  --ww-card-edge: linear-gradient(90deg, oklch(0.86 0.052 205 / 0.4), oklch(0.66 0.175 358 / 0.42) 45%, transparent 82%);
+  --ww-card-edge: linear-gradient(90deg, oklch(0.8 0.09 236 / 0.45), oklch(0.7 0.15 358 / 0.4) 45%, transparent 82%);
   --ww-card-corner: linear-gradient(oklch(0.86 0.052 205 / 0.5), oklch(0.86 0.052 205 / 0.5)) right 10px top 3px / 18px 1px no-repeat;
   --ww-chart-grid: oklch(0.88 0.03 235 / 0.075);
-  --ww-theme-ambient: radial-gradient(880px 520px at 88% -8%, oklch(0.46 0.13 358 / 0.16), transparent 70%), radial-gradient(760px 480px at 6% 108%, oklch(0.7 0.05 205 / 0.09), transparent 70%);
-  --ww-selection: oklch(0.6 0.17 358 / 0.42);
+  --ww-theme-ambient: radial-gradient(880px 520px at 88% -8%, oklch(0.46 0.13 358 / 0.16), transparent 70%), radial-gradient(760px 480px at 6% 108%, oklch(0.6 0.1 238 / 0.1), transparent 70%);
+  --ww-selection: oklch(0.6 0.13 240 / 0.42);
 }
 
-/* Fusion / Mornye: silver hair and a white coat over indigo, gold fittings and red eyes. Starlit ink and lavender lead; the warm ember stays a small note, so it never reads as a warning. */
+/* Fusion / Mornye: silver hair and a white coat over indigo, gold fittings and red eyes. Starlit ink; Fusion's orange leads the controls, lighter and softer than the status palette's critical red so it never reads as an alarm, and her lavender is the second note. */
 [data-ww-theme="fusion"] {
   --ww-ink-h: 282;
   --ww-ink-c: 0.026;
   --ww-ink-lift: 0.002;
-  --ww-accent-h: 284;
-  --ww-accent-c: 0.1;
+  --ww-accent-h: 50;
+  --ww-accent-c: 0.13;
   --ww-radius-scale: 0.85;
-  --ww-on-accent: oklch(0.17 0.03 284);
-  --ww-accent-fill-top: oklch(0.79 0.08 284);
-  --ww-accent-fill-bottom: oklch(0.71 0.095 284);
-  --ww-accent-fill-hover: oklch(0.85 0.065 284);
-  --ww-accent-2: oklch(0.77 0.125 58);
-  --ww-accent-2-soft: oklch(0.77 0.125 58 / 0.14);
-  --ww-indicator: oklch(0.78 0.085 284);
-  --ww-hero-number: oklch(0.88 0.05 280);
-  --ww-glow: 0 0 32px -12px oklch(0.6 0.12 284 / 0.6);
+  --ww-accent: oklch(0.76 0.13 50);
+  --ww-accent-strong: oklch(0.68 0.14 46);
+  --ww-accent-bright: oklch(0.85 0.09 58);
+  --ww-accent-soft: oklch(0.76 0.13 50 / 0.15);
+  --ww-accent-line: oklch(0.76 0.13 50 / 0.45);
+  --ww-on-accent: oklch(0.18 0.03 50);
+  --ww-accent-fill-top: oklch(0.79 0.12 52);
+  --ww-accent-fill-bottom: oklch(0.72 0.13 48);
+  --ww-accent-fill-hover: oklch(0.85 0.1 56);
+  --ww-accent-2: oklch(0.78 0.085 284);
+  --ww-accent-2-soft: oklch(0.78 0.085 284 / 0.14);
+  --ww-indicator: var(--ww-accent);
+  --ww-hero-number: oklch(0.89 0.06 62);
+  --ww-glow: 0 0 32px -12px oklch(0.66 0.13 48 / 0.55);
   --ww-sheen: oklch(0.95 0.02 284 / 0.07);
-  --ww-card-edge: linear-gradient(90deg, oklch(0.78 0.085 284 / 0.55), oklch(0.77 0.125 58 / 0.3) 38%, transparent 76%);
+  --ww-card-edge: linear-gradient(90deg, oklch(0.76 0.13 50 / 0.55), oklch(0.78 0.085 284 / 0.3) 38%, transparent 76%);
   /* One star point rather than a line. */
-  --ww-card-corner: radial-gradient(circle, oklch(0.77 0.125 58 / 0.8) 0 1.5px, transparent 2px) right 9px top 4px / 5px 5px no-repeat;
+  --ww-card-corner: radial-gradient(circle, oklch(0.8 0.11 56 / 0.8) 0 1.5px, transparent 2px) right 9px top 4px / 5px 5px no-repeat;
   --ww-chart-grid: oklch(0.86 0.04 284 / 0.075);
   --ww-theme-ambient: radial-gradient(940px 540px at 86% -8%, oklch(0.48 0.11 284 / 0.2), transparent 70%), radial-gradient(640px 420px at 6% 110%, oklch(0.62 0.12 52 / 0.075), transparent 70%);
-  --ww-selection: oklch(0.6 0.11 284 / 0.45);
+  --ww-selection: oklch(0.62 0.13 48 / 0.42);
 }
 
 /* Spectro / Lily: white lilies with golden hearts, a black veil and pink-purple hair. Plum ink and her pink-purple, a little pinker than Fusion's lavender, carry the scene; Spectro's radiant honey gold leads the controls and her hair is the second note. The gold is warmer and softer than the status palette's caution yellow and the brightest gold is a pale lily light, so the theme reads as light, never as a warning. */
