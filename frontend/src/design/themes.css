@@ -131,4 +131,36 @@
   --ww-selection: oklch(0.6 0.11 284 / 0.45);
 }
 
+/* Spectro / Lily: white lilies with golden hearts, a black veil and lavender-pink hair. Warm graphite, a radiant honey gold leads and her hair is the second note. The gold is warmer and softer than the status palette's caution yellow and the brightest gold is a pale lily light, so the theme reads as light, never as a warning. */
+[data-ww-theme="spectro"] {
+  --ww-ink-h: 75;
+  --ww-ink-c: 0.011;
+  --ww-ink-lift: 0.004;
+  --ww-accent-h: 74;
+  --ww-accent-c: 0.12;
+  --ww-radius-scale: 1.15;
+  /* A gold at the shared accent lightness turns to ochre, so the accent steps are set here, lighter and softer. */
+  --ww-accent: oklch(0.78 0.12 74);
+  --ww-accent-strong: oklch(0.7 0.12 72);
+  --ww-accent-bright: oklch(0.88 0.075 86);
+  --ww-accent-soft: oklch(0.78 0.12 74 / 0.15);
+  --ww-accent-line: oklch(0.78 0.12 74 / 0.45);
+  --ww-on-accent: oklch(0.19 0.02 70);
+  --ww-accent-fill-top: oklch(0.81 0.11 78);
+  --ww-accent-fill-bottom: oklch(0.74 0.12 74);
+  --ww-accent-fill-hover: oklch(0.86 0.095 82);
+  --ww-accent-2: oklch(0.79 0.085 338);
+  --ww-accent-2-soft: oklch(0.79 0.085 338 / 0.14);
+  --ww-indicator: var(--ww-accent);
+  --ww-hero-number: oklch(0.93 0.05 90);
+  --ww-glow: 0 0 34px -12px oklch(0.72 0.12 74 / 0.55);
+  --ww-sheen: oklch(0.96 0.03 88 / 0.07);
+  --ww-card-edge: linear-gradient(90deg, oklch(0.8 0.11 76 / 0.5), oklch(0.79 0.085 338 / 0.3) 40%, transparent 78%);
+  /* Light falling into the corner rather than a drawn mark. */
+  --ww-card-corner: radial-gradient(64px 36px at 100% 0, oklch(0.86 0.09 84 / 0.11), transparent);
+  --ww-chart-grid: oklch(0.9 0.035 84 / 0.07);
+  --ww-theme-ambient: radial-gradient(920px 540px at 86% -10%, oklch(0.55 0.11 78 / 0.2), transparent 70%), radial-gradient(680px 440px at 6% 110%, oklch(0.62 0.08 338 / 0.08), transparent 70%);
+  --ww-selection: oklch(0.7 0.12 74 / 0.42);
+}
+
 ::selection { background: var(--ww-selection); }

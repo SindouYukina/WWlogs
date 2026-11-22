@@ -159,7 +159,7 @@ const defaultTheme = "electro"
 // validTheme lists stable, language-independent theme IDs. Frontend tokens use the same IDs.
 func validTheme(theme string) bool {
 	switch theme {
-	case "electro", "aero", "havoc", "glacio", "fusion":
+	case "electro", "aero", "havoc", "glacio", "fusion", "spectro":
 		return true
 	}
 	return false

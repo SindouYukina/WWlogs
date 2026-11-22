@@ -91,15 +91,16 @@ try {
     }
 
     # The copy keeps the repository's shape: the frontend, the repository LICENSE it bundles for Settings > About, its
-    # behavior tests and the tracked sources the tests read. The tests then load the packages npm ci installed in the copy,
-    # never a node_modules a checkout may or may not have.
+    # behavior tests and the tracked sources the tests read (Go sources, and the Master the theme names are checked
+    # against). The tests then load the packages npm ci installed in the copy, never a node_modules a checkout may or may
+    # not have.
     $work = Join-Path ([IO.Path]::GetTempPath()) ('wwlogs-frontend-' + [Guid]::NewGuid().ToString('N'))
     $stagedFrontend = Join-Path $work 'frontend'
     New-Item -ItemType Directory -Path $stagedFrontend | Out-Null
     try {
         Get-ChildItem -LiteralPath $frontend -Force | Where-Object { $_.Name -notin @('node_modules', 'dist') } |
             Copy-Item -Destination $stagedFrontend -Recurse
-        $stagedSources = @(& git -C $repoRoot ls-files -- LICENSE tests/frontend internal)
+        $stagedSources = @(& git -C $repoRoot ls-files -- LICENSE tests/frontend internal data/master_data.db)
         if ($LASTEXITCODE -ne 0 -or $stagedSources.Count -eq 0) { throw 'git could not list the sources of the frontend behavior tests' }
         if ($stagedSources -notcontains 'LICENSE') { throw 'LICENSE is not tracked: the frontend bundles it as the license text of Settings > About' }
         foreach ($file in $stagedSources) {

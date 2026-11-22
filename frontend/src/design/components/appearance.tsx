@@ -49,12 +49,15 @@ export interface ThemePickerProps {
   describe: (theme: ThemeId) => { name: string; character: string }
 }
 
-/** Selection applies at once, so the preview is the whole window. */
+/**
+ * Selection applies at once, so the preview is the whole window. In a narrow window the row scrolls sideways; Chromium does
+ * not scroll a partly visible element on focus, so a focused card brings itself fully into view.
+ */
 export function ThemePicker({ value, onChange, label, describe }: ThemePickerProps) {
   return <div className="ww-theme-picker" role="radiogroup" aria-label={label}>
     {themeIds.map(theme => {
       const { name, character } = describe(theme)
-      return <button key={theme} type="button" role="radio" aria-checked={theme === value} className="ww-theme-card" data-theme-preview={theme} onClick={() => onChange(theme)}>
+      return <button key={theme} type="button" role="radio" aria-checked={theme === value} className="ww-theme-card" data-theme-preview={theme} onClick={() => onChange(theme)} onFocus={event => event.currentTarget.scrollIntoView({ block: "nearest", inline: "nearest" })}>
         <span className="ww-theme-card-art" style={{ backgroundImage: `url("${themeThumb[theme]}")` }}>
           {theme === value && <span className="ww-theme-card-check"><Icon name="check" size={13} /></span>}
         </span>

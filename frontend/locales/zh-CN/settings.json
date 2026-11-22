@@ -38,6 +38,10 @@
     "fusion": {
       "name": "热熔",
       "character": "莫宁"
+    },
+    "spectro": {
+      "name": "衍射",
+      "character": "莉莉"
     }
   },
   "groups": {
