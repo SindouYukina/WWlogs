@@ -6,6 +6,18 @@ export interface NoticeLink {
   url: string
 }
 
+/**
+ * The fixed names the translated legal text interpolates. No translation spells them out, so every language shows
+ * exactly these.
+ */
+export const productName = "WWlogs"
+
+/** The copyright of WWlogs' own source code, as the owner states it. It covers no third-party material. */
+export const productCopyright = {
+  holder: "SindouYukina",
+  notice: "Copyright (C) 2026 SindouYukina",
+} as const
+
 /** The license of WWlogs' own source code. Its name and SPDX identifier are the same in every language. */
 export const productLicense = {
   name: "GNU Affero General Public License v3.0 only",

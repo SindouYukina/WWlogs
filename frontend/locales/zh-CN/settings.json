@@ -64,6 +64,7 @@
     "softwareLicense": "开源授权",
     "gameMaterial": "《鸣潮》游戏素材",
     "fontLicenses": "字体授权",
+    "libraryLicenses": "第三方库",
     "displayPerformance": "显示与性能"
   },
   "showWindow": "显示此 Overlay",
@@ -120,15 +121,25 @@
       "license": "授权条款官方网站"
     },
     "game": {
-      "owner": "《鸣潮》（Wuthering Waves）的游戏美术与知识产权，归 {{holder}} 或其各自的合法权利人所有。",
-      "scope": "包括 WWlogs 中使用的角色图像、技能图标、效果图标、主题背景及相关衍生设计。",
-      "license": "上述素材不属于 WWlogs 自有的源代码，不在其 {{spdx}} 授权范围内。",
-      "unofficial": "WWlogs 是独立开发的非官方工具，不代表 {{holder}}，也未声称与其存在任何官方合作、赞助或背书关系。",
+      "owner": "《鸣潮》（Wuthering Waves）的游戏美术与知识产权，归 {{rightsHolder}} 或其各自的合法权利人所有。",
+      "scope": "包括 {{product}} 中使用的角色图像、技能图标、效果图标、主题背景及相关衍生设计。",
+      "license": "上述素材不属于 {{product}} 自有的源代码，不在其 {{spdx}} 授权范围内。",
+      "unofficial": "{{product}} 是独立开发的非官方工具，不代表 {{rightsHolder}}，也未声称与其存在任何官方合作、赞助或背书关系。",
       "officialSite": "《鸣潮》官方网站"
+    },
+    "libraries": {
+      "intro": "{{product}} 可执行文件包含以下开源组件，各组件依其原有授权提供。授权文件及其中的版权声明与其他声明以原文显示，不提供翻译版本。",
+      "groups": {
+        "go": "Go 运行时与模块",
+        "frontend": "前端软件包"
+      }
     }
   },
   "softwareLicense": {
-    "summary": "WWlogs 是开源软件，可依据 {{license}} 的条款使用、分发和修改。本软件不提供任何担保。",
+    "grant": "{{product}} 是自由软件；可以依据自由软件基金会发布的 {{license}} 条款，再分发和／或修改本程序。",
+    "warranty": "发布 {{product}} 是希望它能够有用，但不提供任何担保；甚至不包含对适销性或特定用途适用性的默示担保。详情请参阅 {{license}}。",
+    "thirdParty": "{{copyright}} 与 {{spdx}} 授权仅适用于 {{product}} 自有的源代码。《鸣潮》游戏素材归 {{rightsHolder}} 或其各自的合法权利人所有；内置字体与第三方库则依其各自的授权提供。详见“{{page}}”页面。",
+    "holder": "著作权人",
     "name": "软件授权",
     "spdx": "SPDX 标识符",
     "source": "源代码",

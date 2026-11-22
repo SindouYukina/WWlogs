@@ -38,6 +38,12 @@ body[data-view="desktop"] { margin: 0; background: var(--ww-surface-canvas); ove
 .ww-license-links { display: flex; flex-wrap: wrap; gap: var(--ww-space-1); }
 .ww-license-notice { display: flex; flex-direction: column; align-items: flex-start; gap: var(--ww-space-2); padding: var(--ww-space-3) 0 var(--ww-space-4); }
 .ww-license-statement { margin: 0; font-size: var(--ww-text-sm); color: var(--ww-text-2); }
+.ww-license-copyright { margin: 0; font-size: var(--ww-text-base); font-weight: var(--ww-weight-semibold); color: var(--ww-text); }
+.ww-license-group { margin: var(--ww-space-4) 0 0; font-size: var(--ww-text-sm); font-weight: var(--ww-weight-semibold); color: var(--ww-text-2); }
+.ww-license-notices { white-space: pre-line; }
+.ww-license-file { display: flex; flex-direction: column; gap: var(--ww-space-1); }
+.ww-license-file + .ww-license-file { margin-top: var(--ww-space-3); }
+.ww-license-file-name { font-size: var(--ww-text-xs); color: var(--ww-text-3); }
 .ww-license-text { max-height: var(--ww-license-text-height); margin: 0; padding: var(--ww-space-3); overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; border-radius: var(--ww-radius-md); background: var(--ww-surface-rail); font-family: var(--ww-font-ui); font-size: var(--ww-text-xs); line-height: 1.6; color: var(--ww-text-2); }
 .ww-license-text:focus-visible { outline: none; box-shadow: var(--ww-focus-ring); }
 @media (max-width: 1240px) { .ww-app-tools .ww-listening-detail { display: none; } }

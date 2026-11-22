@@ -64,6 +64,7 @@
     "softwareLicense": "Open-source license",
     "gameMaterial": "Wuthering Waves game material",
     "fontLicenses": "Font licenses",
+    "libraryLicenses": "Third-party libraries",
     "displayPerformance": "Display and performance"
   },
   "showWindow": "Show this overlay",
@@ -120,15 +121,25 @@
       "license": "License website"
     },
     "game": {
-      "owner": "Wuthering Waves game art and intellectual property belong to {{holder}} or their respective rights holders.",
-      "scope": "This includes the character images, skill icons, effect icons, theme backgrounds and related derivative designs used in WWlogs.",
-      "license": "This material is not part of WWlogs' own source code and is not covered by its {{spdx}} license.",
-      "unofficial": "WWlogs is an independently developed, unofficial tool. It does not represent {{holder}} and does not claim any official partnership, sponsorship or endorsement.",
+      "owner": "Wuthering Waves game art and intellectual property belong to {{rightsHolder}} or their respective rights holders.",
+      "scope": "This includes the character images, skill icons, effect icons, theme backgrounds and related derivative designs used in {{product}}.",
+      "license": "This material is not part of the source code written for {{product}} and is not covered by the {{spdx}} license.",
+      "unofficial": "{{product}} is an independently developed, unofficial tool. It does not represent {{rightsHolder}} and does not claim any official partnership, sponsorship or endorsement.",
       "officialSite": "Wuthering Waves official website"
+    },
+    "libraries": {
+      "intro": "{{product}} executables include the open-source components below. Each remains under its own license; the license files, with their copyright and other notices, are shown in their original language and are not translated.",
+      "groups": {
+        "go": "Go runtime and modules",
+        "frontend": "Frontend packages"
+      }
     }
   },
   "softwareLicense": {
-    "summary": "WWlogs is open-source software. You may use, share and modify it under the terms of the {{license}}. It is provided without any warranty.",
+    "grant": "{{product}} is free software: you can redistribute it and/or modify it under the terms of the {{license}}, as published by the Free Software Foundation.",
+    "warranty": "{{product}} is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the {{license}} for more details.",
+    "thirdParty": "{{copyright}} and the {{spdx}} license apply only to the source code written for {{product}}. Wuthering Waves game material belongs to {{rightsHolder}} or its respective rights holders, and the bundled fonts and third-party libraries remain under their own licenses. See the {{page}} page for details.",
+    "holder": "Copyright holder",
     "name": "Software license",
     "spdx": "SPDX identifier",
     "source": "Source code",
